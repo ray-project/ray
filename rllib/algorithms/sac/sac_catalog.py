@@ -10,10 +10,8 @@ from ray.rllib.core.models.base import Model, ActorCriticEncoder
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
-# TODO (simon): Check, if for the twin_q case there could
-# be defined a catalog that can be used by both, DQN and
-# SAC.
-# Furthermore, this could also possibly inherit from PPOCatalog.
+# TODO (simon): Check, if we can directly derive from DQNCatalog.
+# This should work as we need a qf and qf_target.
 class SACCatalog(Catalog):
     """The catalog class used to build models for SAC."""
 
@@ -48,8 +46,8 @@ class SACCatalog(Catalog):
             # shared=self._model_config_dict["vf_shared_layers"],
         )
 
-        self.pi_and_vf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
-        self.pi_and_vf_head_activation = self._model_config_dict[
+        self.pi_and_qf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
+        self.pi_and_qf_head_activation = self._model_config_dict[
             "post_fcnet_activation"
         ]
 
@@ -58,16 +56,18 @@ class SACCatalog(Catalog):
         # -> Build pi config only in the `self.build_pi_head` method.
         self.pi_head_config = None
 
-        self.vf_head_config = MLPHeadConfig(
-            input_dims=self.latent_dims,
-            hidden_layer_dims=self.pi_and_vf_head_hiddens,
-            hidden_layer_activation=self.pi_and_vf_head_activation,
-            output_layer_activation="linear",
-            output_layer_dim=1,
-        )
+        if issubclass(self.action_space, gym.spaces.Discrete):
+            self.qf_head_config = MLPHeadConfig(
+                input_dims=self.latent_dims,
+                hidden_layer_dims=self.pi_and_vf_head_hiddens,
+                hidden_layer_activation=self.pi_and_vf_head_activation,
+                output_layer_activation="linear",
+                output_layer_dim=self.action_space.n,
+            )
+        # TODO (simon): Implement the continuous case.
 
-        # Define the Q network.
-        # Use the base encoder for the Q network.
+        # Define the Q target network.
+        # Use the base encoder for the Q target network.
         # TODO (simon): Implement in a later step a q network with
         # different post_fcnet_hiddens than value function and pi.
         self.qf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
