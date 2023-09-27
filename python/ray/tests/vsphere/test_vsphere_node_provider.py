@@ -7,7 +7,10 @@ from unittest.mock import MagicMock, patch
 from ray.autoscaler._private.vsphere.node_provider import VsphereNodeProvider
 from com.vmware.vcenter_client import VM
 from com.vmware.vcenter.vm_client import Power as HardPower
-from ray.autoscaler._private.vsphere.config import update_vsphere_configs
+from ray.autoscaler._private.vsphere.config import (
+    update_vsphere_configs,
+    validate_frozen_vm_configs,
+)
 
 _CLUSTER_NAME = "test"
 _PROVIDER_CONFIG = {
@@ -425,6 +428,7 @@ def test_update_vsphere_configs():
                     "resource_pool": "frozen-rp",
                     "library_item": "frozen",
                     "cluster": "cluster",
+                    "datastore": "vsanDatastore",
                 }
             }
         },
@@ -444,6 +448,95 @@ def test_update_vsphere_configs():
         in input_config["available_node_types"]["ray.head.default"]["node_config"]
     )
     assert "frozen_vm" in input_config["available_node_types"]["worker"]["node_config"]
+
+
+def test_validate_frozen_vm_configs():
+    # Test a valid case with OVF deployment
+    config = {
+        "name": "single-frozen-vm",
+        "library_item": "frozen-vm-template",
+        "cluster": "vsanCluster",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test a valid case with existing frozen VM
+    config = {"name": "existing-single-frozen-vm"}
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test a valid case with OVF deployment and resource pool
+    config = {
+        "name": "frozen-vm-prefix",
+        "library_item": "frozen-vm-template",
+        "resource_pool": "frozen-vm-resource-pool",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test a valid case with existing resource pool
+    config = {"resource_pool": "frozen-vm-resource-pool"}
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test an invalid case missing everything for OVF deployment
+    config = {
+        "library_item": "frozen-vm-template",
+    }
+    try:
+        validate_frozen_vm_configs(config)
+    except Exception as e:
+        assert isinstance(e, AssertionError)
+
+    # Test an invalid case missing datastore for OVF deployment
+    config = {
+        "name": "single-frozen-vm",
+        "library_item": "frozen-vm-template",
+        "cluster": "vsanCluster",
+    }
+    try:
+        validate_frozen_vm_configs(config)
+    except Exception as e:
+        assert isinstance(e, AssertionError)
+
+    # Test an invalid case missing cluster and resource pool for OVF deployment
+    config = {
+        "name": "single-frozen-vm",
+        "library_item": "frozen-vm-template",
+        "datastore": "vsanDatastore",
+    }
+    try:
+        validate_frozen_vm_configs(config)
+    except Exception as e:
+        assert isinstance(e, AssertionError)
+
+    # Test an invalid case missing name for OVF deployment
+    config = {
+        "library_item": "frozen-vm-template",
+        "cluster": "vsanCluster",
+        "datastore": "vsanDatastore",
+    }
+    try:
+        validate_frozen_vm_configs(config)
+    except Exception as e:
+        assert isinstance(e, AssertionError)
+
+    # Test an valid case with redundant data
+    config = {
+        "name": "single-frozen-vm",
+        "library_item": "frozen-vm-template",
+        "resource_pool": "frozen-vm-resource-pool",
+        "cluster": "vsanCluster",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
+
+    # Another case with redundant data
+    config = {
+        "name": "single-frozen-vm",
+        "resource_pool": "frozen-vm-resource-pool",
+        "cluster": "vsanCluster",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
 
 
 if __name__ == "__main__":
