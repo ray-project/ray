@@ -14,7 +14,6 @@ from ray.train import BackendConfig, Checkpoint, TrainingIterator
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
-from ray.train._internal.checkpoint import TuneCheckpointManager
 from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
@@ -27,30 +26,6 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
-
-
-# TODO(team-ml): Refactor checkpoint management along with Tune.
-class _DataParallelCheckpointManager(TuneCheckpointManager):
-    def __init__(
-        self,
-        preprocessor: "Preprocessor",
-        run_dir: Optional[Path] = None,
-        checkpoint_strategy: Optional[CheckpointConfig] = None,
-    ):
-        self.preprocessor = preprocessor
-        super(_DataParallelCheckpointManager, self).__init__(
-            run_dir=run_dir,
-            checkpoint_strategy=checkpoint_strategy,
-        )
-
-    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        air_checkpoint: air.Checkpoint = checkpoint.dir_or_data
-        checkpoint.dir_or_data = add_preprocessor_to_checkpoint(
-            air_checkpoint, self.preprocessor
-        )
-        super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
-            checkpoint=checkpoint
-        )
 
 
 @DeveloperAPI
@@ -233,10 +208,6 @@ class DataParallelTrainer(BaseTrainer):
             for checkpoints saved from this Trainer. Must be JSON-serializable.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
-
-    _checkpoint_manager_cls: Type[
-        TuneCheckpointManager
-    ] = _DataParallelCheckpointManager
 
     # Exposed here for testing purposes. Should never need
     # to be overriden.
