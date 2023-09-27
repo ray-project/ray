@@ -10,6 +10,8 @@ steps:
     commands:
       - pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
       - FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
+      - echo -e "\e[93mReminder: Run './ci/setup_hooks.sh' to install a pre-push hook that automatically runs the linter before you push.\e[39m"
+
     depends_on: forge
 
   - label: ":lint-roller: lint: untested code snippet"
