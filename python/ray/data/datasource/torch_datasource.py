@@ -10,6 +10,9 @@ if TYPE_CHECKING:
     import torch
 
 
+TORCH_DATASOURCE_READER_BATCH_SIZE = 32
+
+
 @DeveloperAPI
 class TorchDatasource(Datasource):
     """Torch datasource, for reading from `map-style
@@ -22,18 +25,18 @@ class TorchDatasource(Datasource):
         self,
         dataset: "torch.utils.data.Dataset",
         shuffle: bool = False,
-        batch_size: int = 32,
     ):
-        return _TorchDatasourceReader(dataset, shuffle, batch_size)
+        return _TorchDatasourceReader(dataset, shuffle)
 
 
 class _TorchDatasourceReader(Reader):
     def __init__(
-        self, dataset: "torch.utils.data.Dataset", shuffle: bool, batch_size: int
+        self,
+        dataset: "torch.utils.data.Dataset",
+        shuffle: bool,
     ):
         self._dataset = dataset
         self._shuffle = shuffle
-        self._batch_size = batch_size
 
     def get_read_tasks(self, parallelism):
         import torch
@@ -73,9 +76,8 @@ class _TorchDatasourceReader(Reader):
             )
             read_tasks.append(
                 ReadTask(
-                    lambda subset=subsets[i], batch_size=self._batch_size: _read_subset(
+                    lambda subset=subsets[i]: _read_subset(
                         subset,
-                        batch_size,
                     ),
                     metadata=meta,
                 ),
@@ -87,11 +89,11 @@ class _TorchDatasourceReader(Reader):
         return None
 
 
-def _read_subset(subset: "torch.utils.data.Subset", batch_size: int):
+def _read_subset(subset: "torch.utils.data.Subset"):
     batch = []
     for item in subset:
         batch.append(item)
-        if len(batch) == batch_size:
+        if len(batch) == TORCH_DATASOURCE_READER_BATCH_SIZE:
             builder = DelegatingBlockBuilder()
             builder.add_batch({"item": batch})
             yield builder.build()
