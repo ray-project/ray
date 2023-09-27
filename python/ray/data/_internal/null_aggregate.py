@@ -1,10 +1,9 @@
-from types import ModuleType
-from typing import Any, Callable, Tuple, Union
+from typing import Any, Callable, Tuple
 
 import numpy as np
 
-from ray.data.block import AggType, Block, KeyType, T, U
 from ray.data._internal.util import _lazy_import_pandas
+from ray.data.block import AggType, Block, KeyType, T, U
 
 WrappedAggType = Tuple[AggType, int]
 

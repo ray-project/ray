@@ -52,6 +52,7 @@ LazyModule = Union[None, bool, ModuleType]
 _pandas: LazyModule = None
 _pyarrow_dataset: LazyModule = None
 
+
 def _lazy_import_pandas() -> LazyModule:
     global _pandas
     if _pandas is None:
@@ -62,6 +63,7 @@ def _lazy_import_pandas() -> LazyModule:
             # keep trying to import it on every _lazy_import_pandas() call.
             _pandas = False
     return _pandas
+
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
     global _pyarrow_dataset
