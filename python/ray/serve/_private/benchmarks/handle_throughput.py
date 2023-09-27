@@ -1,9 +1,10 @@
-import argparse
 import asyncio
 import logging
 
+import click
+
 from ray import serve
-from ray.serve.benchmarks.microbenchmark import timeit
+from ray.serve._private.benchmarks.microbenchmark import timeit
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 
 
@@ -45,42 +46,42 @@ class Caller:
         )
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Benchmark deployment handle throughput."
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=100,
-        help="Number of requests to send to downstream deployment in each trial.",
-    )
-    parser.add_argument(
-        "--num-replicas",
-        type=int,
-        default=10,
-        help="Number of replicas in the downstream deployment.",
-    )
-    parser.add_argument(
-        "--num-trials",
-        type=float,
-        default=5,
-        help="How many trials of the benchmark to run.",
-    )
-    parser.add_argument(
-        "--trial-runtime",
-        type=float,
-        default=1,
-        help="How long to run each trial of the benchmark for (seconds).",
-    )
-
-    args = parser.parse_args()
-
+@click.command(help="Benchmark deployment handle throughput.")
+@click.option(
+    "--batch-size",
+    type=int,
+    default=100,
+    help="Number of requests to send to downstream deployment in each trial.",
+)
+@click.option(
+    "--num-replicas",
+    type=int,
+    default=1,
+    help="Number of replicas in the downstream deployment.",
+)
+@click.option(
+    "--num-trials",
+    type=int,
+    default=5,
+    help="Number of trials of the benchmark to run.",
+)
+@click.option(
+    "--trial-runtime",
+    type=int,
+    default=1,
+    help="Duration to run each trial of the benchmark for (seconds).",
+)
+def main(
+    batch_size: int,
+    num_replicas: int,
+    num_trials: int,
+    trial_runtime: float,
+):
     app = Caller.bind(
-        Downstream.options(num_replicas=args.num_replicas).bind(),
-        batch_size=args.batch_size,
-        num_trials=args.num_trials,
-        trial_runtime=args.trial_runtime,
+        Downstream.options(num_replicas=num_replicas).bind(),
+        batch_size=batch_size,
+        num_trials=num_trials,
+        trial_runtime=trial_runtime,
     )
     h = serve.run(app).options(
         use_new_handle_api=True,
@@ -89,8 +90,12 @@ if __name__ == "__main__":
     mean, stddev = h.run_benchmark.remote().result()
     print(
         "DeploymentHandle throughput {}: {} +- {} requests/s".format(
-            f"(num_replicas={args.num_replicas}, batch_size={args.batch_size})",
+            f"(num_replicas={num_replicas}, batch_size={batch_size})",
             mean,
             stddev,
         )
     )
+
+
+if __name__ == "__main__":
+    main()
