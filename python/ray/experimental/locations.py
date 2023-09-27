@@ -5,7 +5,7 @@ from ray._raylet import ObjectRef
 
 
 def get_object_locations(
-    obj_refs: List[ObjectRef], timeout_ms: int = -1, for_metrics: bool = False
+    obj_refs: List[ObjectRef], timeout_ms: int = -1, skip_get_locations: bool = False
 ) -> Dict[ObjectRef, Dict[str, Any]]:
     """Lookup the locations for a list of objects.
 
@@ -40,8 +40,8 @@ def get_object_locations(
     # This call can be expensive if not called by the driver.
     # If this is for purely metrics use, we can skip the call for performance.
     if (
-        for_metrics
-        and not ray.data.context.DataContext.get_current().enable_metric_collection
+        skip_get_locations
+        and not ray.data.context.DataContext.get_current().enable_get_object_locations_for_metrics
     ):
         return {
             ref: {"node_ids": [], "object_size": 0, "did_spill": False}
