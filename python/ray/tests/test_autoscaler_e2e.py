@@ -38,6 +38,13 @@ def test_ray_status_activity(shutdown_only, enable_v2):
     try:
         cluster.start(_system_config={"enable_autoscaler_v2": enable_v2})
         ray.init(address="auto")
+        if enable_v2:
+            assert (
+                subprocess.check_output("ray status --verbose", shell=True)
+                .decode()
+                .count("Idle: ")
+                > 0
+            )
 
         @ray.remote(num_cpus=2, resources={"fun": 2})
         class Actor:
@@ -53,6 +60,26 @@ def test_ray_status_activity(shutdown_only, enable_v2):
             .decode()
             .count("Resource: CPU currently in use.")
             == occurrences
+        )
+
+        from ray.util.placement_group import placement_group
+
+        pg = placement_group([{"CPU": 2}], strategy="STRICT_SPREAD")
+        ray.get(pg.ready())
+
+        occurrences = 2 if enable_v2 else 0
+        assert (
+            subprocess.check_output("ray status --verbose", shell=True)
+            .decode()
+            .count("Resource: CPU currently in use.")
+            == occurrences
+        )
+
+        assert (
+            subprocess.check_output("ray status --verbose", shell=True)
+            .decode()
+            .count("Resource: bundle_group_")
+            == 0
         )
     finally:
         cluster.shutdown()
