@@ -644,17 +644,6 @@ padding: 20px;
     font-weight: 500;
 }
 
-.mantine-Modal-root {
-  z-index: 10000;
-  position: absolute;
-}
-
-#kapa-widget-container {
-  z-index: 10000 !important;
-  position: absolute !important;
-}
-
-
 .searchDiv {
     width: 100%;
     position: relative;
@@ -792,4 +781,149 @@ footer.col.footer > p {
 
 #csat-textarea {
   resize: none;
+}
+
+
+/* Ray Assistant */
+
+.container-xl.blurred {
+    filter: blur(5px);
+}
+
+.chat-widget {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    z-index: 1000;
+}
+
+.chat-popup {
+    display: none;
+    position: fixed;
+    top: 20%;
+    left: 50%;
+    transform: translate(-50%, -20%);
+    width: 50%;
+    height: 70%;
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    box-shadow: 0 5px 10px rgba(0,0,0,0.1);
+    z-index: 1001;
+    max-height: 1000px;
+    overflow: hidden;
+    padding-bottom: 40px;
+}
+
+.chatFooter {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 100%;
+    background-color: #f8f9fa;
+}
+
+#openChatBtn {
+    background-color: #000;
+    color: #fff;
+    width: 70px;
+    height: 70px;
+    border-radius: 10px;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#closeChatBtn {
+    border: none;
+    background-color: transparent;
+    color: #000;
+    font-size: 1.2em;
+}
+
+#closeChatBtn:hover {
+    color: #888;
+}
+
+.chatHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chatContentContainer {
+    padding: 15px;
+    max-height: calc(100% - 80px);
+    overflow-y: auto;
+}
+
+.chatContentContainer input {
+    width: 100%;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+#result{
+    padding: 20px;
+    border-radius: 5px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    background-color: #f8f9fa;
+    max-height: calc(100% - 20px);
+    overflow-y: auto;
+}
+
+#searchBtn {
+    margin-top: 0px;
+    margin-top: 10px;
+}
+
+textarea {
+    width:80%;
+}
+
+.thumbs {
+    cursor: pointer;
+    margin: 0 10px;
+    font-size: 1.5rem;
+    transition: background 0.2s, transform 0.2s;
+    padding: 10px;
+    border-radius: 50%;
+}
+
+.thumbs.active {
+    transform: scale(1.3);
+}
+
+.thumbs-up.active {
+    background-color: #b0e57c;
+}
+
+.thumbs-down.active {
+    background-color: #ff7f7f;
+}
+
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+#spinnerContainer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    position: absolute;
+}
+
+.spinner {
+    border: 16px solid #f3f3f3;
+    border-top: 16px solid #3498db;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 2s linear infinite;
 }
