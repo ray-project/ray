@@ -259,6 +259,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         </Link>
         <br />
         <CpuStackTraceLink pid={pid} ip={ip} type="" />
+        <br />
         <CpuProfilingLink pid={pid} ip={ip} type="" />
         <br />
       </TableCell>
