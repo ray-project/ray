@@ -2286,20 +2286,21 @@ def from_torch(
     dataset: "torch.utils.data.Dataset",
     parallelism: int = -1,
     shuffle: bool = False,
+    force_local: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
 
     .. note::
         Parallel read dispatches read tasks to worker nodes. The underlying files of the dataset must be accesible from every node in the cluster.
-        (for example the files are stored on cloud storage or a shared filesystem)
+        (for example the files are stored on cloud storage or a shared filesystem).
+        Use `force_local=True` if the files are not accessible from all nodes.
 
     .. note::
         This function uses a streaming implementation. The dataset does not need to fit completely into memory.
 
     .. note::
-        For iterable-style datasets, this function is not parallelized. It loads the entire dataset into the head
-        node's memory before moving the data to the distributed object store.
+        For iterable-style datasets, this function is not parallelized.
 
     Examples:
         >>> import ray
@@ -2321,6 +2322,7 @@ def from_torch(
             :ref:`Tuning read parallelism <read_parallelism>`. Parallelism is
             upper bounded by the total number of rows in the Torch dataset.
         shuffle: If True, the dataset will be randomly partitioned for a parallel read. Otherwise, the dataset will be partitioned into contiguous blocks.
+        force_local: If True, all read tasks will run on a local node.
 
     Returns:
         A :class:`MaterializedDataset` containing the Torch dataset samples.
@@ -2335,11 +2337,18 @@ def from_torch(
                 "Parallelism must be set to -1 or 1 for an `IterableDataset`"
             )
         parallelism = 1
+    ray_remote_args = {}
+    if force_local:
+        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
     return read_datasource(
         TorchDatasource(),
         dataset=dataset,
         parallelism=parallelism,
         shuffle=shuffle,
+        ray_remote_args=ray_remote_args,
     )
 
 
