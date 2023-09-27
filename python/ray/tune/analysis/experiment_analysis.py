@@ -242,7 +242,6 @@ class ExperimentAnalysis:
 
         This can point to a remote storage location (e.g. S3) or to a local
         location (path on the head node)."""
-        # TODO(justinvyu): [storage_location] This should return the fs + path.
         return self._experiment_fs_path
 
     @property

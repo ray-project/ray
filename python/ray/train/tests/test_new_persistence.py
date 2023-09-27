@@ -599,8 +599,6 @@ def test_trainer(
                 "in_trainer": True,
                 "num_iterations": TestConstants.NUM_ITERATIONS,
                 "fail_iters": [2, 4],
-                # TODO(justinvyu): This should be separated into its own test once
-                # CI has been fully migrated.
                 # Test that global rank 0 is not required to checkpoint.
                 "no_checkpoint_ranks": no_checkpoint_ranks,
             },

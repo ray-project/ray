@@ -647,9 +647,6 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 @pytest.mark.parametrize("use_function_trainable", [True, False])
 def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_trainable):
     """Tests Tuner restoration for a `tune.with_parameters` wrapped trainable."""
-    if not use_function_trainable:
-        # TODO(justinvyu): [class_trainable]
-        pytest.skip("Class trainable not supported yet if FF is enabled.")
 
     def train_func(config, data_str=None, data_obj=None):
         assert data_str is not None and data_obj is not None
