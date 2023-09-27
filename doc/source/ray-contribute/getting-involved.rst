@@ -65,17 +65,17 @@ There are a couple steps to merge a contribution.
      git remote add upstream https://github.com/ray-project/ray.git
      git pull . upstream/master
 
-2. Make sure all existing `tests <getting-involved.html#testing>`__ and `linters <getting-involved.html#lint-and-formatting>`__ pass.
-   Run ``setup_hooks.sh`` to create a git hook that will run the linter before you push your changes.
-3. If introducing a new feature or patching a bug, be sure to add new test cases
+2. Run ``setup_hooks.sh`` to create a git hook that will automatically run the `linters <getting-involved.html#lint-and-formatting>`__ before you push your changes. (You only need to do this once.) 
+3. Make sure all existing `tests <getting-involved.html#testing>`__ pass.  
+4. If introducing a new feature or patching a bug, be sure to add new test cases
    in the relevant file in ``ray/python/ray/tests/``.
-4. Document the code. Public functions need to be documented, and remember to provide an usage
+5. Document the code. Public functions need to be documented, and remember to provide an usage
    example if applicable. See ``doc/README.md`` for instructions on editing and building public documentation.
-5. Address comments on your PR. During the review
+6. Address comments on your PR. During the review
    process you may need to address merge conflicts with other changes. To resolve merge conflicts,
    run ``git pull . upstream/master`` on your branch (please do not use rebase, as it is less
    friendly to the GitHub review tool. All commits will be squashed on merge.)
-6. Reviewers will merge and approve the pull request; be sure to ping them if
+7. Reviewers will merge and approve the pull request; be sure to ping them if
    the pull request is getting stale.
 
 PR Review Process
@@ -232,7 +232,8 @@ See :ref:`this <writing-code-snippets_ref>` for more details about how to write 
 Lint and Formatting
 ~~~~~~~~~~~~~~~~~~~
 
-We also have tests for code formatting and linting that need to pass before merge.
+We also have tests for code formatting and linting that need to pass before merge. You can run ``setup_hooks.sh`` to create a git hook that will run the linters before you push your changes.
+
 
 * For Python formatting, install the `required dependencies <https://github.com/ray-project/ray/blob/master/python/requirements/lint-requirements.txt>`_ first with:
 
@@ -284,7 +285,6 @@ In addition, there are other formatting and semantic checkers for components lik
 
     ./ci/lint/check-git-clang-tidy-output.sh
 
-You can run ``setup_hooks.sh`` to create a git hook that will run the linter before you push your changes.
 
 Understanding CI test jobs
 --------------------------
