@@ -552,7 +552,7 @@ def test_log_monitor(tmp_path, live_dead_pids):
 
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
     )
 
     # files
@@ -707,7 +707,7 @@ def test_log_monitor_actor_task_name_and_job_id(tmp_path):
 
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, lambda _: True, max_files_open=5
     )
     worker_out_log_file = f"worker-{worker_id}-{job_id}-{pid}.out"
     first_line = "First line\n"
@@ -793,7 +793,7 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     log_dir.mkdir()
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, lambda _: True, max_files_open=5
     )
 
     current = 0
