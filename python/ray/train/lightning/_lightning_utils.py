@@ -1,27 +1,24 @@
 import os
+import logging
 import ray
+import shutil
+import tempfile
+import torch
+
 from ray import train
 from ray.air.constants import MODEL_KEY
 from ray.data.dataset import DataIterator
 from ray.util import PublicAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-
-import logging
-import shutil
-import torch
-import tempfile
 from ray.train import Checkpoint
 from ray.train._internal.storage import _use_storage_context
-from ray.train.lightning.lightning_checkpoint import (
-    LightningCheckpoint,
-    LegacyLightningCheckpoint,
-)
+
 from packaging.version import Version
 from typing import Any, Dict, Optional
 from torch.utils.data import IterableDataset, DataLoader
 
 
-def import_lightning():
+def import_lightning():  # noqa: F402
     try:
         import lightning.pytorch as pl
     except ModuleNotFoundError:
@@ -331,6 +328,11 @@ class RayModelCheckpoint(pl.callbacks.ModelCheckpoint):
         a `LegacyLightningCheckpoint` and reports it to the AIR session along with
         the latest metrics.
         """
+
+        from ray.train.lightning.lightning_checkpoint import (
+            LightningCheckpoint,
+            LegacyLightningCheckpoint,
+        )
 
         # Align the frequency of checkpointing and logging
         if not self.is_checkpoint_step:

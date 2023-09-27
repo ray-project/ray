@@ -25,12 +25,11 @@ from ray.train.lightning._lightning_utils import (
     import_lightning,
 )
 
-pl = import_lightning()
-
-
 import logging
 
 logger = logging.getLogger(__name__)
+
+pl = import_lightning()
 
 
 LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE = (
