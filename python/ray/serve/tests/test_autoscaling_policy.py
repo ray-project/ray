@@ -385,7 +385,7 @@ class TestGetDecisionNumReplicas:
         assert new_num_replicas == 123
 
     @pytest.mark.parametrize("delay_s", [30.0, 0.0])
-    def test_fluctuating_ongoing_requests(delay_s, self):
+    def test_fluctuating_ongoing_requests(self, delay_s):
         """
         Simulates a workload that switches between too many and too few
         ongoing requests.
@@ -434,7 +434,7 @@ class TestGetDecisionNumReplicas:
     @pytest.mark.parametrize(
         "ongoing_requests", [[7, 1, 8, 4], [8, 1, 8, 4], [6, 1, 8, 4], [0, 1, 8, 4]]
     )
-    def test_imbalanced_replicas(ongoing_requests, self):
+    def test_imbalanced_replicas(self, ongoing_requests):
         config = AutoscalingConfig(
             min_replicas=1,
             max_replicas=10,
@@ -489,7 +489,7 @@ class TestGetDecisionNumReplicas:
     @pytest.mark.parametrize(
         "ongoing_requests", [[20, 0, 0, 0], [100, 0, 0, 0], [10, 0, 0, 0]]
     )
-    def test_single_replica_receives_all_requests(ongoing_requests, self):
+    def test_single_replica_receives_all_requests(self, ongoing_requests):
         target_requests = 5
 
         config = AutoscalingConfig(
