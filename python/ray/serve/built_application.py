@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional
 
-from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve.deployment import Deployment
 from ray.util.annotations import Deprecated
 
@@ -66,23 +65,3 @@ class BuiltApplication:
     @property
     def ingress(self) -> Optional[Deployment]:
         return self._deployments[self._ingress]
-
-
-def _get_deploy_args_from_built_app(app: BuiltApplication):
-    """Get list of deploy args from a BuiltApplication."""
-    deploy_args_list = []
-    for deployment in list(app.deployments.values()):
-        is_ingress = deployment.name == app.ingress.name
-        deploy_args_list.append(
-            get_deploy_args(
-                name=deployment._name,
-                replica_config=deployment._replica_config,
-                ingress=is_ingress,
-                deployment_config=deployment._deployment_config,
-                version=deployment.version,
-                route_prefix=deployment.route_prefix,
-                is_driver_deployment=deployment._is_driver_deployment,
-                docs_path=deployment._docs_path,
-            )
-        )
-    return deploy_args_list
