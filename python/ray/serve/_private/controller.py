@@ -4,7 +4,6 @@ import marshal
 import os
 import pickle
 import time
-from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
