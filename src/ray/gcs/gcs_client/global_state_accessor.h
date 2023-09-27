@@ -34,37 +34,37 @@ class GlobalStateAccessor {
   /// \param gcs_client_options The client options to connect to gcs
   explicit GlobalStateAccessor(const GcsClientOptions &gcs_client_options);
 
-  ~GlobalStateAccessor() LOCKS_EXCLUDED(mutex_);
+  ~GlobalStateAccessor() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Connect gcs server.
   ///
   /// \return Whether the connection is successful.
-  bool Connect() LOCKS_EXCLUDED(mutex_);
+  bool Connect() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Disconnect from gcs server.
-  void Disconnect() LOCKS_EXCLUDED(mutex_);
+  void Disconnect() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of all jobs from GCS Service.
   ///
   /// \return All job info. To support multi-language, we serialize each JobTableData and
   /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::vector<std::string> GetAllJobInfo() LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllJobInfo() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get next job id from GCS Service.
   ///
   /// \return Next job id.
-  JobID GetNextJobID() LOCKS_EXCLUDED(mutex_);
+  JobID GetNextJobID() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get all node information from GCS.
   ///
   /// \return A list of `GcsNodeInfo` objects serialized in protobuf format.
-  std::vector<std::string> GetAllNodeInfo() LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllNodeInfo() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of all task events from GCS Service.
   ///
   /// \return All task events info.
-  std::vector<std::string> GetAllTaskEvents() LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllTaskEvents() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of a node resource from GCS Service.
   ///
@@ -72,19 +72,19 @@ class GlobalStateAccessor {
   /// \return node resource map info. To support multi-language, we serialize each
   /// ResourceTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::string GetNodeResourceInfo(const NodeID &node_id) LOCKS_EXCLUDED(mutex_);
+  std::string GetNodeResourceInfo(const NodeID &node_id) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get available resources of all nodes.
   ///
   /// \return available resources of all nodes. To support multi-language, we serialize
   /// each AvailableResources and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::vector<std::string> GetAllAvailableResources() LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllAvailableResources() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get ids of draining nodes.
   ///
   /// \return ids of draining nodes.
-  std::vector<NodeID> GetDrainingNodes() LOCKS_EXCLUDED(mutex_);
+  std::vector<NodeID> GetDrainingNodes() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get newest resource usage of all nodes from GCS Service. Only used when light
   /// rerouce usage report enabled.
@@ -92,14 +92,21 @@ class GlobalStateAccessor {
   /// \return resource usage info. To support multi-language, we serialize each
   /// data and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::unique_ptr<std::string> GetAllResourceUsage() LOCKS_EXCLUDED(mutex_);
+  std::unique_ptr<std::string> GetAllResourceUsage() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of all actors from GCS Service.
   ///
+  /// \param  actor_id To filter actors by actor_id.
+  /// \param  job_id To filter actors by job_id.
+  /// \param  actor_state_name To filter actors based on actor state.
   /// \return All actor info. To support multi-language, we serialize each ActorTableData
   /// and return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::vector<std::string> GetAllActorInfo() LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllActorInfo(
+      const std::optional<ActorID> &actor_id = std::nullopt,
+      const std::optional<JobID> &job_id = std::nullopt,
+      const std::optional<std::string> &actor_state_name = std::nullopt)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of an actor from GCS Service.
   ///
@@ -108,7 +115,7 @@ class GlobalStateAccessor {
   /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
   std::unique_ptr<std::string> GetActorInfo(const ActorID &actor_id)
-      LOCKS_EXCLUDED(mutex_);
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of a worker from GCS Service.
   ///
@@ -117,28 +124,28 @@ class GlobalStateAccessor {
   /// and return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
   std::unique_ptr<std::string> GetWorkerInfo(const WorkerID &worker_id)
-      LOCKS_EXCLUDED(mutex_);
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of all workers from GCS Service.
   ///
   /// \return All worker info. To support multi-language, we serialize each
   /// WorkerTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::vector<std::string> GetAllWorkerInfo() LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllWorkerInfo() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Add information of a worker to GCS Service.
   ///
   /// \param serialized_string The serialized data of worker to be added in the GCS
   /// Service, use string is convenient for python to use.
   /// \return Is operation success.
-  bool AddWorkerInfo(const std::string &serialized_string) LOCKS_EXCLUDED(mutex_);
+  bool AddWorkerInfo(const std::string &serialized_string) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of all placement group from GCS Service.
   ///
   /// \return All placement group info. To support multi-language, we serialize each
   /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::vector<std::string> GetAllPlacementGroupInfo() LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllPlacementGroupInfo() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of a placement group from GCS Service by ID.
   ///
@@ -147,7 +154,7 @@ class GlobalStateAccessor {
   /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupInfo(
-      const PlacementGroupID &placement_group_id) LOCKS_EXCLUDED(mutex_);
+      const PlacementGroupID &placement_group_id) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of a placement group from GCS Service by name.
   ///
@@ -158,7 +165,7 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupByName(
       const std::string &placement_group_name, const std::string &ray_namespace)
-      LOCKS_EXCLUDED(mutex_);
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get value of the key from GCS Service.
   ///
@@ -167,12 +174,12 @@ class GlobalStateAccessor {
   /// \return Value of the key.
   std::unique_ptr<std::string> GetInternalKV(const std::string &ns,
                                              const std::string &key)
-      LOCKS_EXCLUDED(mutex_);
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get the serialized system config from GCS.
   ///
   /// \return The serialized system config.
-  std::string GetSystemConfig() LOCKS_EXCLUDED(mutex_);
+  std::string GetSystemConfig() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get the node to connect for a Ray driver.
   ///
@@ -182,7 +189,7 @@ class GlobalStateAccessor {
   /// Where used, it needs to be deserialized with protobuf function.
   ray::Status GetNodeToConnectForDriver(const std::string &node_ip_address,
                                         std::string *node_to_connect)
-      LOCKS_EXCLUDED(mutex_);
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   /// MultiItem transformation helper in template style.
@@ -235,11 +242,11 @@ class GlobalStateAccessor {
   mutable absl::Mutex mutex_;
 
   /// Whether this client is connected to gcs server.
-  bool is_connected_ GUARDED_BY(mutex_) = false;
+  bool is_connected_ ABSL_GUARDED_BY(mutex_) = false;
 
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<instrumented_io_context> io_service_;
-  std::unique_ptr<GcsClient> gcs_client_ GUARDED_BY(mutex_);
+  std::unique_ptr<GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs

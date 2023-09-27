@@ -1,10 +1,11 @@
+import asyncio
 import json
 import os
 import subprocess
 import sys
 import tempfile
-from copy import deepcopy
 import time
+from copy import deepcopy
 from unittest.mock import patch
 
 import numpy as np
@@ -13,22 +14,23 @@ from fastapi.encoders import jsonable_encoder
 
 import ray
 from ray import serve
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.serve._private.utils import (
+    MetricsPusher,
     calculate_remaining_timeout,
+    dict_keys_snake_to_camel_case,
+    get_all_live_placement_group_names,
     get_deployment_import_path,
+    get_head_node_id,
+    is_running_in_asyncio_loop,
     merge_dict,
-    msgpack_serialize,
     msgpack_deserialize,
+    msgpack_serialize,
     override_runtime_envs_except_env_vars,
     serve_encoders,
     snake_to_camel_case,
-    dict_keys_snake_to_camel_case,
-    get_all_live_placement_group_names,
-    get_head_node_id,
-    MetricsPusher,
 )
 from ray.serve.tests.utils import MockTimer
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 
 def test_serialize():
@@ -153,7 +155,6 @@ class TestGetDeploymentImportPath:
         sys.platform == "win32", reason="File path incorrect on Windows."
     )
     def test_replace_main(self):
-
         temp_fname = "testcase.py"
         expected_import_path = "testcase.main_f"
 
@@ -747,6 +748,21 @@ def test_metrics_pusher_multiple_tasks():
         # Check there are three results set and all are expected.
         for key in expected_results.keys():
             assert result[key] == expected_results[key]
+
+
+def test_is_running_in_asyncio_loop_false():
+    assert is_running_in_asyncio_loop() is False
+
+
+@pytest.mark.asyncio
+async def test_is_running_in_asyncio_loop_true():
+    assert is_running_in_asyncio_loop() is True
+
+    async def check():
+        return is_running_in_asyncio_loop()
+
+    # Verify that it also works in a task.
+    assert await asyncio.ensure_future(check()) is True
 
 
 if __name__ == "__main__":

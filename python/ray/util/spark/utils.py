@@ -81,7 +81,7 @@ def exec_cmd(
         )
 
 
-def check_port_open(host, port):
+def is_port_in_use(host, port):
     import socket
     from contextlib import closing
 
@@ -103,7 +103,7 @@ def get_random_unused_port(
         port = rng.randint(min_port, max_port)
         if port in exclude_list:
             continue
-        if not check_port_open(host, port):
+        if not is_port_in_use(host, port):
             return port
     raise RuntimeError(
         f"Get available port between range {min_port} and {max_port} failed."

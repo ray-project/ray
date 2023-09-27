@@ -29,7 +29,7 @@ More Frameworks
 
         .. button-ref:: distributed-tensorflow-keras
 
-            TensorFlow & Keras
+            TensorFlow and Keras
 
     .. grid-item-card::
         :img-top: /images/xgboost_logo.png
@@ -37,7 +37,7 @@ More Frameworks
 
         .. button-ref:: distributed-xgboost-lightgbm
 
-            XGBoost & LightGBM
+            XGBoost and LightGBM
 
     .. grid-item-card::
         :img-top: /images/horovod.png

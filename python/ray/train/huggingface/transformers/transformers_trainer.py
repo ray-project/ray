@@ -20,7 +20,7 @@ from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
-from ray.util import PublicAPI
+from ray.util.annotations import Deprecated
 
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
@@ -72,8 +72,15 @@ if TYPE_CHECKING:
 
 TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
 
+TRANSFORMERS_TRAINER_DEPRECATION_MESSAGE = (
+    "The TransformersTransformers will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-transformers.html#transformerstrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated(message=TRANSFORMERS_TRAINER_DEPRECATION_MESSAGE, warning=True)
 class TransformersTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
 
@@ -83,7 +90,7 @@ class TransformersTrainer(TorchTrainer):
     configured for distributed PyTorch training. If you have PyTorch >= 1.12.0
     installed, you can also run FSDP training by specifying the ``fsdp`` argument
     in ``TrainingArguments``. DeepSpeed is
-    also supported - see :doc:`/ray-air/examples/gptj_deepspeed_fine_tuning`.
+    also supported - see :doc:`/train/examples/deepspeed/gptj_deepspeed_fine_tuning`.
     For more information on configuring FSDP or DeepSpeed, refer to `Hugging Face
     documentation <https://huggingface.co/docs/transformers/\
 main/en/main_classes/trainer#transformers.TrainingArguments>`__.

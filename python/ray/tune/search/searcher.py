@@ -229,15 +229,17 @@ class Searcher:
         # lazy imports to avoid circular dependencies
         from ray.tune.experiment import Trial
         from ray.tune.analysis import ExperimentAnalysis
-        from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
         from ray.tune.result import DONE
+
+        # TODO(justinvyu): [code_removal]
+        from ray.tune.analysis.experiment_analysis import LegacyExperimentAnalysis
 
         if isinstance(trials_or_analysis, (list, tuple)):
             trials = trials_or_analysis
         elif isinstance(trials_or_analysis, Trial):
             trials = [trials_or_analysis]
         elif isinstance(
-            trials_or_analysis, (ExperimentAnalysis, NewExperimentAnalysis)
+            trials_or_analysis, (ExperimentAnalysis, LegacyExperimentAnalysis)
         ):
             trials = trials_or_analysis.trials
         else:

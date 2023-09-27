@@ -299,7 +299,8 @@ class _MockTrialRunner:
 
     def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
-        trial.restored_checkpoint = checkpoint_obj.dir_or_data
+        if checkpoint_obj:
+            trial.restored_checkpoint = checkpoint_obj.dir_or_data
         trial.status = Trial.RUNNING
         return True
 
@@ -340,7 +341,7 @@ class HyperbandSuite(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def schedulerSetup(self, num_trials, max_t=81):
+    def schedulerSetup(self, num_trials, max_t=81, **kwargs):
         """Setup a scheduler and Runner with max Iter = 9.
 
         Bracketing is placed as follows:
@@ -350,12 +351,12 @@ class HyperbandSuite(unittest.TestCase):
         (34, 3) -> (12, 9) -> (4, 27) -> (2, 42);
         (81, 1) -> (27, 3) -> (9, 9) -> (3, 27) -> (1, 41);"""
         sched = HyperBandScheduler(
-            metric="episode_reward_mean", mode="max", max_t=max_t
+            metric="episode_reward_mean", mode="max", max_t=max_t, **kwargs
         )
-        for i in range(num_trials):
-            t = Trial("__fake")
-            sched.on_trial_add(None, t)
         runner = _MockTrialRunner(sched)
+        for i in range(num_trials):
+            t = Trial("__fake", trial_id=f"ft_{i:04d}", stub=True)
+            runner.add_trial(t)
         return sched, runner
 
     def default_statistics(self):
@@ -699,6 +700,156 @@ class HyperbandSuite(unittest.TestCase):
         # Make sure "choose_trial_to_run" still works
         trial = sched.choose_trial_to_run(runner)
         self.assertIsNotNone(trial)
+
+    def testSmallMaxTStop(self, stop_last_trials=True):
+        """Assert that trials are stopped after max_t is reached or
+        continued if `stop_last_trials=False`."""
+        sched, runner = self.schedulerSetup(
+            num_trials=8, max_t=8, reduction_factor=2, stop_last_trials=stop_last_trials
+        )
+        trials = runner.get_trials()
+
+        for trial in trials:
+            runner.start_trial(trial)
+
+        def _result(trial, timestep, reward):
+            action = sched.on_trial_result(
+                runner,
+                trial,
+                {"training_iteration": timestep, "episode_reward_mean": reward},
+            )
+            runner.process_action(trial, action)
+
+        def _execute_delayed_actions():
+            for hb in sched._hyperbands:
+                for b in hb:
+                    for t in b.trials_to_unpause:
+                        runner.start_trial(t)
+
+        # Trials of the first bracket (s=0).
+        # These don't halve.
+        _result(trials[0], timestep=4, reward=10)
+        _result(trials[1], timestep=4, reward=20)
+        _result(trials[2], timestep=4, reward=30)
+        _result(trials[3], timestep=4, reward=40)
+
+        assert trials[0].status == Trial.RUNNING
+        assert trials[1].status == Trial.RUNNING
+        assert trials[2].status == Trial.RUNNING
+        assert trials[3].status == Trial.RUNNING
+
+        # Trials of the second bracket (s=1).
+        # These halve after 4 timesteps.
+        _result(trials[4], timestep=4, reward=10)
+        _result(trials[5], timestep=4, reward=20)
+        _result(trials[6], timestep=4, reward=30)
+        _result(trials[7], timestep=4, reward=40)
+
+        _execute_delayed_actions()
+
+        assert trials[4].status == Trial.TERMINATED
+        assert trials[5].status == Trial.TERMINATED
+        assert trials[6].status == Trial.RUNNING
+        assert trials[7].status == Trial.RUNNING
+
+        # First bracket. The trials will be terminated if stop_last_trials=True
+        # and continue otherwise.
+        _result(trials[0], timestep=8, reward=10)
+        _result(trials[1], timestep=8, reward=20)
+        _result(trials[2], timestep=8, reward=30)
+        _result(trials[3], timestep=8, reward=40)
+
+        _execute_delayed_actions()
+
+        if stop_last_trials:
+            assert trials[0].status == Trial.TERMINATED
+            assert trials[1].status == Trial.TERMINATED
+            assert trials[2].status == Trial.TERMINATED
+            assert trials[3].status == Trial.TERMINATED
+        else:
+            assert trials[0].status == Trial.RUNNING
+            assert trials[1].status == Trial.RUNNING
+            assert trials[2].status == Trial.RUNNING
+            assert trials[3].status == Trial.RUNNING
+
+        # Second bracket
+        _result(trials[6], timestep=8, reward=30)
+        _result(trials[7], timestep=8, reward=40)
+
+        _execute_delayed_actions()
+
+        if stop_last_trials:
+            assert trials[6].status == Trial.TERMINATED
+            assert trials[7].status == Trial.TERMINATED
+        else:
+            assert trials[6].status == Trial.RUNNING
+            assert trials[7].status == Trial.RUNNING
+
+    def testSmallMaxTContinue(self):
+        self.testSmallMaxTStop(stop_last_trials=False)
+
+    def testSmallMaxTOverstepStop(self, stop_last_trials=True):
+        """Test that when trials report timesteps > max_t early, they are
+        stopped correctly.
+        """
+        sched, runner = self.schedulerSetup(
+            num_trials=8, max_t=8, reduction_factor=2, stop_last_trials=stop_last_trials
+        )
+        trials = runner.get_trials()
+
+        for trial in trials:
+            runner.start_trial(trial)
+
+        def _result(trial, timestep, reward):
+            action = sched.on_trial_result(
+                runner,
+                trial,
+                {"training_iteration": timestep, "episode_reward_mean": reward},
+            )
+            runner.process_action(trial, action)
+
+        def _execute_delayed_actions():
+            for hb in sched._hyperbands:
+                for b in hb:
+                    for t in b.trials_to_unpause:
+                        runner.start_trial(t)
+
+        # Trials of the first bracket (s=0).
+        # These don't halve.
+        _result(trials[0], timestep=4, reward=10)
+        _result(trials[1], timestep=4, reward=20)
+        _result(trials[2], timestep=4, reward=30)
+        _result(trials[3], timestep=4, reward=40)
+
+        assert trials[0].status == Trial.RUNNING
+        assert trials[1].status == Trial.RUNNING
+        assert trials[2].status == Trial.RUNNING
+        assert trials[3].status == Trial.RUNNING
+
+        # Trials of the second bracket (s=1).
+        # These halve after 4 timesteps.
+        # ATTN: Here we report timestep=8. This means after the first halving, the
+        # bracket is actually finished, as the trials already progressed very far.
+        # This can e.g. happen if a non-iteration timestep is manually reported
+        _result(trials[4], timestep=8, reward=10)
+        _result(trials[5], timestep=8, reward=20)
+        _result(trials[6], timestep=8, reward=30)
+        _result(trials[7], timestep=8, reward=40)
+
+        _execute_delayed_actions()
+
+        assert trials[4].status == Trial.TERMINATED
+        assert trials[5].status == Trial.TERMINATED
+
+        if stop_last_trials:
+            assert trials[6].status == Trial.TERMINATED
+            assert trials[7].status == Trial.TERMINATED
+        else:
+            assert trials[6].status == Trial.RUNNING
+            assert trials[7].status == Trial.RUNNING
+
+    def testSmallMaxTOverstepContinue(self, stop_last_trials=True):
+        self.testSmallMaxTOverstepStop(stop_last_trials=False)
 
 
 class BOHBSuite(unittest.TestCase):

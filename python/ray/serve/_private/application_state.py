@@ -1,28 +1,26 @@
-from copy import deepcopy
-from dataclasses import dataclass
-from enum import Enum
 import logging
 import time
 import traceback
-from typing import Dict, List, Optional, Callable, Tuple
+from copy import deepcopy
+from dataclasses import dataclass
+from enum import Enum
+from typing import Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray import cloudpickle
-from ray.exceptions import RuntimeEnvSetupError
 from ray._private.utils import import_attr
-from ray.serve._private.config import DeploymentConfig
-from ray.serve.exceptions import RayServeException
-
+from ray.exceptions import RuntimeEnvSetupError
 from ray.serve._private.common import (
+    ApplicationStatus,
+    ApplicationStatusInfo,
     DeploymentID,
+    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
-    ApplicationStatusInfo,
-    ApplicationStatus,
     EndpointInfo,
     EndpointTag,
-    DeploymentInfo,
 )
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
@@ -33,10 +31,11 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
+    DEFAULT,
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
-    DEFAULT,
 )
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
 from ray.types import ObjectRef
 
@@ -151,10 +150,10 @@ class ApplicationState:
     def status(self) -> ApplicationStatus:
         """Status of the application.
 
-        DEPLOYING: The deploy task is still running, or the deployments
+        DEPLOYING: The build task is still running, or the deployments
             have started deploying but aren't healthy yet.
         RUNNING: All deployments are healthy.
-        DEPLOY_FAILED: The deploy task failed or one or more deployments
+        DEPLOY_FAILED: The build task failed or one or more deployments
             became unhealthy in the process of deploying
         UNHEALTHY: While the application was running, one or more
             deployments transition from healthy to unhealthy.
@@ -199,9 +198,9 @@ class ApplicationState:
     ):
         """Set application target state.
 
-        While waiting for deploy task to finish, this should be
+        While waiting for build task to finish, this should be
             (None, False)
-        When deploy task has finished and during normal operation, this should be
+        When build task has finished and during normal operation, this should be
             (target_deployments, False)
         When a request to delete the application has been received, this should be
             ({}, True)
@@ -352,7 +351,7 @@ class ApplicationState:
             except Exception:
                 self._set_target_state_deployment_infos(None)
                 self._update_status(
-                    BuildAppStatus.FAILED,
+                    ApplicationStatus.DEPLOY_FAILED,
                     (
                         f"Unexpected error occured while applying config for "
                         f"application '{self._name}': \n{traceback.format_exc()}"
@@ -371,9 +370,7 @@ class ApplicationState:
             self._set_target_state_deployment_infos(None)
 
             # Kick off new build app task
-            logger.info(
-                f"Starting build_serve_application task for application '{self._name}'."
-            )
+            logger.info(f"Building application '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
                 runtime_env=self._target_state.config.runtime_env
             ).remote(
@@ -464,7 +461,7 @@ class ApplicationState:
         try:
             args, err = ray.get(self._build_app_task_info.obj_ref)
             if err is None:
-                logger.info(f"Deploy task for app '{self._name}' ran successfully.")
+                logger.info(f"Built application '{self._name}' successfully.")
             else:
                 return (
                     None,
@@ -846,6 +843,8 @@ class ApplicationStateManager:
         for app_state in self._application_states.values():
             app_state.delete()
 
+        self._kv_store.delete(CHECKPOINT_KEY)
+
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all applications have shut down.
 
@@ -901,8 +900,8 @@ def build_serve_application(
         Error message: a string if an error was raised, otherwise None.
     """
     try:
-        from ray.serve.api import _build
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
+        from ray.serve.api import _build
         from ray.serve.built_application import _get_deploy_args_from_built_app
 
         # Import and build the application.

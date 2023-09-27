@@ -1,17 +1,17 @@
-import sys
-import pytest
 import subprocess
+import sys
 import time
 
-import ray
-from ray._private.test_utils import wait_for_condition
+import pytest
 
+import ray
 from ray import serve
+from ray._private.test_utils import wait_for_condition
 from ray.serve.tests.utils import (
     check_ray_started,
-    start_telemetry_app,
-    check_telemetry_recorded,
     check_telemetry_not_recorded,
+    check_telemetry_recorded,
+    start_telemetry_app,
 )
 
 

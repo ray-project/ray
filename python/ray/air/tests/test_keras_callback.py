@@ -138,7 +138,7 @@ class TestReportCheckpointCallback:
         assert second_metric == {"loss": 1}
         assert second_checkpoint is not None
 
-    def parse_call(self, call) -> Tuple[Dict, ray.air.Checkpoint]:
+    def parse_call(self, call) -> Tuple[Dict, train.Checkpoint]:
         (metrics,), kwargs = call
         checkpoint = kwargs["checkpoint"]
         return metrics, checkpoint

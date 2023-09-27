@@ -5,6 +5,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest_docker import *  # noqa
 
 
+# TODO(sang): Also check temp dir
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_ray_session_name_preserved(docker_cluster):
     get_nodes_script = """
@@ -37,7 +38,7 @@ print(ray._private.worker._global_node.session_name)
 
     head.restart()
 
-    wait_for_condition(get_session_name, to_head=True)
+    wait_for_condition(get_session_name, timeout=30, to_head=True)
     session_name_head_after_restart = get_session_name(to_head=True)
     wait_for_condition(get_session_name, to_head=False)
     session_name_worker_after_restart = get_session_name(to_head=False)

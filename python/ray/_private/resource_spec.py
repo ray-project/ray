@@ -90,8 +90,8 @@ class ResourceSpec(
     def to_resource_dict(self):
         """Returns a dict suitable to pass to raylet initialization.
 
-        This renames num_cpus / num_gpus to "CPU" / "GPU", translates memory
-        from bytes into 100MB memory units, and checks types.
+        This renames num_cpus / num_gpus to "CPU" / "GPU",
+        translates memory from bytes into 100MB memory units, and checks types.
         """
         assert self.resolved()
 
@@ -275,7 +275,12 @@ class ResourceSpec(
                 )
 
         spec = ResourceSpec(
-            num_cpus, num_gpus, memory, object_store_memory, resources, redis_max_memory
+            num_cpus,
+            num_gpus,
+            memory,
+            object_store_memory,
+            resources,
+            redis_max_memory,
         )
         assert spec.resolved()
         return spec

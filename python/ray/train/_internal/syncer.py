@@ -40,7 +40,7 @@ DEFAULT_SYNC_PERIOD = 300
 DEFAULT_SYNC_TIMEOUT = 1800
 
 
-@PublicAPI
+@PublicAPI(stability="stable")
 @dataclass
 class SyncConfig:
     """Configuration object for Train/Tune file syncing to `RunConfig(storage_path)`.
@@ -68,7 +68,7 @@ class SyncConfig:
         sync_timeout: Maximum time in seconds to wait for a sync process
             to finish running. A sync operation will run for at most this long
             before raising a `TimeoutError`. Defaults to 30 minutes.
-        sync_artifacts: Whether or not to sync artifacts that are saved to the
+        sync_artifacts: [Beta] Whether or not to sync artifacts that are saved to the
             trial directory (accessed via `train.get_context().get_trial_dir()`)
             to the persistent storage configured via `train.RunConfig(storage_path)`.
             The trial or remote worker will try to launch an artifact syncing
@@ -81,12 +81,12 @@ class SyncConfig:
             Defaults to True.
     """
 
-    upload_dir: Optional[str] = _DEPRECATED_VALUE
-    syncer: Optional[Union[str, "Syncer"]] = _DEPRECATED_VALUE
     sync_period: int = DEFAULT_SYNC_PERIOD
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT
     sync_artifacts: bool = False
     sync_artifacts_on_checkpoint: bool = True
+    upload_dir: Optional[str] = _DEPRECATED_VALUE
+    syncer: Optional[Union[str, "Syncer"]] = _DEPRECATED_VALUE
     sync_on_checkpoint: bool = _DEPRECATED_VALUE
 
     def _deprecation_warning(self, attr_name: str, extra_msg: str):

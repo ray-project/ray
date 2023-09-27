@@ -4000,6 +4000,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/recommender_system_with_recsim_and_slateq_torch",
+    main = "examples/recommender_system_with_recsim_and_slateq.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
+    args = ["--stop-iters=2", "--num-steps-sampled-before-learning_starts=100", "--framework=torch", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
+)
+
+py_test(
     name = "examples/recommender_system_with_recsim_and_slateq_tf2",
     main = "examples/recommender_system_with_recsim_and_slateq.py",
     tags = ["team:rllib", "exclusive", "examples"],

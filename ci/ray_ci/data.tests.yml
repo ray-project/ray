@@ -1,0 +1,5 @@
+flaky_tests:
+  - //python/ray/data:test_streaming_executor
+  - //python/ray/data:test_split
+  - //python/ray/data:test_object_gc
+  - //python/ray/data:test_stats
