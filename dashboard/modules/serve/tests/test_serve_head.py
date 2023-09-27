@@ -70,13 +70,24 @@ def test_get_serve_instance_details(ray_start_stop):
         assert response.status_code == 200
 
         serve_details = ServeInstanceDetails(**response.json())
-        return (
-            serve_details.applications["app1"].status == ApplicationStatus.RUNNING
-            and serve_details.applications["app2"].status == ApplicationStatus.RUNNING
-        )
+        assert serve_details.applications["app1"].status == ApplicationStatus.RUNNING
+        assert serve_details.applications["app2"].status == ApplicationStatus.RUNNING
+        return True
 
     wait_for_condition(applications_running, timeout=15)
     print("All applications are in a RUNNING state.")
+
+    def serve_head_running():
+        assert (
+            requests.get(
+                "http://localhost:8265/api/serve_head/applications/"
+            ).status_code
+            == 200
+        )
+        return True
+
+    wait_for_condition(serve_head_running, timeout=10)
+    print("Serve head is running and responsive.")
 
     serve_details = ServeInstanceDetails(
         **requests.get("http://localhost:8265/api/serve_head/applications/").json()
