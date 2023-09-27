@@ -17,7 +17,7 @@ from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.train._internal import session
+from ray.train._internal.session import _get_session
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
 
 from ray.train import Checkpoint
@@ -696,25 +696,24 @@ class BaseTrainer(abc.ABC):
 
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
-        restored = bool(self._restore_path)
         metadata = self.metadata
 
         def train_func(config):
             assert metadata is not None, metadata
             # Propagate user metadata from the Trainer constructor.
-            session._get_session().metadata = metadata
+            _get_session().metadata = metadata
 
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
 
             # Get the checkpoint from Tune and pass it to workers later on.
-            checkpoint = session.get_checkpoint()
+            checkpoint = ray.train.get_checkpoint()
             if checkpoint:
                 # Set `starting_checkpoint` for auto-recovery fault-tolerance
                 # as well as manual restoration.
                 trainer.starting_checkpoint = checkpoint
-            # Else: Train will restore from the user-provided
+            # else: Train will restore from the user-provided
             # `resume_from_checkpoint` == `starting_checkpoint`.
 
             trainer.setup()
