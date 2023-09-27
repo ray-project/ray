@@ -82,7 +82,6 @@ def test_iter_batches_no_spilling_upon_no_transformation(shutdown_only):
     ctx = ray.init(num_cpus=1, object_store_memory=300e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100)
-
     check_no_spill(ctx, ds.repeat())
     check_no_spill(ctx, ds.window(blocks_per_window=20))
 
@@ -233,6 +232,33 @@ def test_pipeline_splitting_has_no_spilling_with_equal_splitting(shutdown_only):
             ray.cancel(t, force=True)
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
+
+
+def test_global_bytes_spilled(shutdown_only):
+    # The object store is about 90MB.
+    ctx = ray.init(object_store_memory=90e6)
+    # The size of dataset is 500*(80*80*4)*8B, about 100MB.
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100).materialize()
+
+    with pytest.raises(AssertionError):
+        check_no_spill(ctx, ds.repeat())
+    assert ds._get_stats_summary().global_bytes_spilled > 0
+    assert ds._get_stats_summary().global_bytes_restored > 0
+
+    assert "Spilled to disk:" in ds.stats()
+
+
+def test_no_global_bytes_spilled(shutdown_only):
+    # The object store is about 200MB.
+    ctx = ray.init(object_store_memory=200e6)
+    # The size of dataset is 500*(80*80*4)*8B, about 100MB.
+    ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100).materialize()
+
+    check_no_spill(ctx, ds.repeat())
+    assert ds._get_stats_summary().global_bytes_spilled == 0
+    assert ds._get_stats_summary().global_bytes_restored == 0
+
+    assert "Cluster memory:" not in ds.stats()
 
 
 if __name__ == "__main__":

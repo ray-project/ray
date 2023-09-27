@@ -1,18 +1,19 @@
 import logging
+import warnings
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
-import warnings
 
 import pydantic
 from pydantic import (
     BaseModel,
     NonNegativeFloat,
-    PositiveFloat,
     NonNegativeInt,
+    PositiveFloat,
     PositiveInt,
     validator,
 )
 
+from ray._private.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -20,7 +21,6 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
-from ray._private.utils import import_attr
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -258,15 +258,17 @@ class gRPCOptions(BaseModel):
                 if callable(imported_func):
                     callables.append(imported_func)
                 else:
-                    logger.warning(
+                    message = (
                         f"{func} is not a callable function! Please make sure "
                         "the function is imported correctly."
                     )
-            except ModuleNotFoundError:
-                logger.warning(
+                    raise ValueError(message)
+            except ModuleNotFoundError as e:
+                message = (
                     f"{func} can't be imported! Please make sure there are no typo "
                     "in those functions. Or you might want to rebuild service "
                     "definitions if .proto file is changed."
                 )
+                raise ModuleNotFoundError(message) from e
 
         return callables

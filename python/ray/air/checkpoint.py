@@ -28,7 +28,7 @@ from ray.air._internal.remote_storage import (
 )
 from ray.air._internal.util import _copy_dir_ignore_conflicts
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -63,9 +63,9 @@ class _CheckpointMetadata:
     checkpoint_state: Dict[str, Any]
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class Checkpoint:
-    """Ray AIR Checkpoint.
+    """[Deprecated] Ray AIR Checkpoint.
 
     An AIR Checkpoint are a common interface for accessing models across
     different AIR components and libraries. A Checkpoint can have its data
@@ -166,6 +166,16 @@ class Checkpoint:
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
     ):
+        from ray.train._internal.storage import _use_storage_context
+
+        if _use_storage_context():
+            raise DeprecationWarning(
+                "`ray.air.Checkpoint` is deprecated. "
+                "Please use `ray.train.Checkpoint` instead. "
+                "See the `Checkpoint: New API` section in "
+                "https://github.com/ray-project/ray/issues/37868 for a migration guide."
+            )
+
         # First, resolve file:// URIs to local paths
         if uri:
             local_path = _get_local_path(uri)
@@ -269,14 +279,6 @@ class Checkpoint:
 
         In all other cases, this will return None.
 
-        Example:
-
-            >>> from ray.air import Checkpoint
-            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
-            >>> assert checkpoint.path == "s3://some-bucket/some-location"
-            >>> checkpoint = Checkpoint.from_dict({"data": 1})
-            >>> assert checkpoint.path == None
-
         Returns:
             Checkpoint path if this checkpoint is reachable from the current node (e.g.
             cloud storage or locally available directory).
@@ -301,14 +303,6 @@ class Checkpoint:
         In all other cases, this will return None. Users can then choose to
         persist to cloud with
         :meth:`Checkpoint.to_uri() <ray.air.Checkpoint.to_uri>`.
-
-        Example:
-
-            >>> from ray.air import Checkpoint
-            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
-            >>> assert checkpoint.uri == "s3://some-bucket/some-location"
-            >>> checkpoint = Checkpoint.from_dict({"data": 1})
-            >>> assert checkpoint.uri == None
 
         Returns:
             Checkpoint URI if this URI is reachable from the current node (e.g.

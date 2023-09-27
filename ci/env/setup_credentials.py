@@ -1,9 +1,11 @@
 """
 This script sets up credentials for some services in the
 CI environment.
-This prints out credentials in the following format, to be ingested
-by as bazel test envs.
---test_env=WANDB_API_KEY=abcd --test_env=COMET_API_KEY=efgh
+This generates a bash script in the following format, which will
+then be sourced to run bazel test with.
+
+export WANDB_API_KEY=abcd
+export COMET_API_KEY=efgh
 """
 import boto3
 import json
@@ -34,16 +36,9 @@ def main():
     except Exception as e:
         print(f"Could not get Ray AIR secrets: {e}")
         sys.exit(1)
-        return
 
-    print(
-        " ".join(
-            [
-                f"--test_env={SERVICES[key]}={ray_air_secrets[key]}"
-                for key in SERVICES.keys()
-            ]
-        )
-    )
+    for key in SERVICES.keys():
+        print(f"export {SERVICES[key]}={ray_air_secrets[key]}")
 
 
 if __name__ == "__main__":

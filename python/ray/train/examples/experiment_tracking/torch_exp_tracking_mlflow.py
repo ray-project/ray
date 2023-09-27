@@ -53,7 +53,7 @@ def train_func(config):
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
     # Training
-    for epoch in range(2):
+    for epoch in range(1):
         for images, labels in train_loader:
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -72,7 +72,7 @@ trainer = TorchTrainer(
     train_loop_config={
         "save_dir": os.path.join(os.environ["SHARED_STORAGE_PATH"], "mlruns")
     },
-    scaling_config=ScalingConfig(num_workers=4),
+    scaling_config=ScalingConfig(num_workers=2),
 )
 trainer.fit()
 # __end__

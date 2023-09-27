@@ -3,6 +3,14 @@
 Ray Train: Scalable Model Training
 ==================================
 
+|
+
+.. figure:: images/logo.png
+   :align: center
+   :width: 50%
+
+|
+
 Ray Train is a scalable machine learning library for distributed training and fine-tuning.
 
 Ray Train allows you to scale model training code from a single machine to a cluster of machines in the cloud, and abstracts away the complexities of distributed computing.
@@ -89,7 +97,7 @@ Get started
             :outline:
             :expand:
 
-            Try Ray Train and Lightning
+            Try Ray Train with Lightning
 
     .. grid-item-card::
 
@@ -166,7 +174,7 @@ Learn more
         Consult the API Reference for full descriptions of the Ray Train API.
 
         +++
-        .. button-ref:: air-trainer-ref
+        .. button-ref:: train-api
             :color: primary
             :outline:
             :expand:

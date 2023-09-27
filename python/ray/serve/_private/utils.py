@@ -6,23 +6,14 @@ import math
 import os
 import random
 import string
+import threading
 import time
 import traceback
 from enum import Enum
 from functools import wraps
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Tuple,
-    TypeVar,
-    Union,
-    Optional,
-)
-import threading
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
+import __main__
 import fastapi.encoders
 import numpy as np
 import pydantic
@@ -31,19 +22,15 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._private.utils import import_attr
+from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
+from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve._private.constants import (
-    HTTP_PROXY_TIMEOUT,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
-from ray._raylet import MessagePackSerializer
-from ray._private.utils import import_attr
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-
-import __main__
 
 try:
     import pandas as pd
@@ -171,43 +158,6 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
         name += "-{}".format(modifier)
 
     return name
-
-
-def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
-    """Given two iterables, return the entries that's (added, removed, updated).
-
-    Usage:
-        >>> from ray.serve._private.utils import compute_iterable_delta
-        >>> old = {"a", "b"}
-        >>> new = {"a", "d"}
-        >>> compute_iterable_delta(old, new)
-        ({'d'}, {'b'}, {'a'})
-    """
-    old_keys, new_keys = set(old), set(new)
-    added_keys = new_keys - old_keys
-    removed_keys = old_keys - new_keys
-    updated_keys = old_keys.intersection(new_keys)
-    return added_keys, removed_keys, updated_keys
-
-
-def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
-    """Given two dicts, return the entries that's (added, removed, updated).
-
-    Usage:
-        >>> from ray.serve._private.utils import compute_dict_delta
-        >>> old = {"a": 1, "b": 2}
-        >>> new = {"a": 3, "d": 4}
-        >>> compute_dict_delta(old, new)
-        ({'d': 4}, {'b': 2}, {'a': 3})
-    """
-    added_keys, removed_keys, updated_keys = compute_iterable_delta(
-        old_dict.keys(), new_dict.keys()
-    )
-    return (
-        {k: new_dict[k] for k in added_keys},
-        {k: old_dict[k] for k in removed_keys},
-        {k: new_dict[k] for k in updated_keys},
-    )
 
 
 def ensure_serialization_context():
@@ -542,7 +492,6 @@ class MetricsPusher:
     def __init__(
         self,
     ):
-
         self.tasks: List[_MetricTask] = []
         self.pusher_thread: Union[threading.Thread, None] = None
         self.stop_event = threading.Event()
@@ -697,3 +646,13 @@ def get_all_live_placement_group_names() -> List[str]:
             live_pg_names.append(pg_name)
 
     return live_pg_names
+
+
+def in_ray_driver_process() -> bool:
+    """Returns True if called in the Ray driver, False otherwise.
+
+    This function hangs when GCS is down due to the `ray.get_runtime_context()`
+    call.
+    """
+
+    return ray.get_runtime_context().worker.mode in [SCRIPT_MODE, LOCAL_MODE]

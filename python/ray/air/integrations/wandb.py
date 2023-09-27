@@ -18,7 +18,7 @@ from ray.air import session
 from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 
-from ray.train import _use_storage_context
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial

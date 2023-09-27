@@ -251,7 +251,7 @@ class Test(dict):
         }
         return f"{self.get_byod_base_image_tag()}-{dict_hash(custom_info)}"
 
-    def _use_byod_ml_image(self) -> bool:
+    def use_byod_ml_image(self) -> bool:
         """Returns whether to use the ML image for this test."""
         return self.get_byod_type() == "gpu"
 
@@ -259,7 +259,7 @@ class Test(dict):
         """
         Returns the byod repo to use for this test.
         """
-        if self._use_byod_ml_image():
+        if self.use_byod_ml_image():
             return DATAPLANE_ECR_ML_REPO
         return DATAPLANE_ECR_REPO
 

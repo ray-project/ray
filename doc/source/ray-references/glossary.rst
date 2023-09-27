@@ -268,7 +268,7 @@ documentation, sorted alphabetically.
         hyperparameters for a learning algorithm. A hyperparameter can be a parameter
         whose value is used to control the learning process (e.g., learning rate),
         define the model architecture (e.g, number of hidden layers), or influence data
-        pre-processing. In the case of Ray AIR, hyperparameters can also include
+        pre-processing. In the case of Ray Train, hyperparameters can also include
         compute processing scale-out parameters such as the number of distributed
         training workers.
 
@@ -589,7 +589,7 @@ documentation, sorted alphabetically.
 
     Trainer
         A Trainer is the top-level API to configure a single distributed training job.
-        :ref:`There are built-in Trainers for different frameworks<air-trainer-ref>`,
+        :ref:`There are built-in Trainers for different frameworks<train-api>`,
         like PyTorch, Tensorflow, and XGBoost. Each trainer shares a common interface
         and otherwise defines framework-specific configurations and entrypoints. The
         main job of a trainer is to coordinate N distributed training workers and set

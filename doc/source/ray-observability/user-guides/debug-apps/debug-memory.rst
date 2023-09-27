@@ -173,7 +173,6 @@ It is also possible tasks and actors use more memory than you expect. For exampl
 
 View the instructions below to learn how to memory profile individual actors and tasks.
 
-
 .. _memray-profiling:
 
 Memory Profiling Ray tasks and actors
