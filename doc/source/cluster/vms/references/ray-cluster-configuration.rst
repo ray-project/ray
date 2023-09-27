@@ -1234,29 +1234,37 @@ Valid examples:
 
 1. ``ray up`` on a frozen VM to be deployed from an OVF template:
 
-    frozen_vm:
-        name: single-frozen-vm
-        library_item: frozen-vm-template
-        cluster: vsanCluster
-        datastore: vsanDatastore
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: single-frozen-vm
+            library_item: frozen-vm-template
+            cluster: vsanCluster
+            datastore: vsanDatastore
 
 2. ``ray up`` on an existing frozen VM:
 
-    frozen_vm:
-        name: existing-single-frozen-vm
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: existing-single-frozen-vm
 
 3. ``ray up`` on a resource pool of frozen VMs to be deployed from an OVF template:
 
-    frozen_vm:
-        name: frozen-vm-prefix
-        library_item: frozen-vm-template
-        resource_pool: frozen-vm-resource-pool
-        datastore: vsanDatastore
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: frozen-vm-prefix
+            library_item: frozen-vm-template
+            resource_pool: frozen-vm-resource-pool
+            datastore: vsanDatastore
 
 4. ``ray up`` on an existing resource pool of frozen VMs:
 
-    frozen_vm:
-        resource_pool: frozen-vm-resource-pool
+    .. code-block:: yaml
+
+        frozen_vm:
+            resource_pool: frozen-vm-resource-pool
 
 Other cases not in above examples are invalid.
 
