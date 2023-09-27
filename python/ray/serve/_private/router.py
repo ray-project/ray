@@ -120,10 +120,18 @@ class Query:
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
 
-            # Gather `asyncio.Task` results concurrently.
-            if len(tasks) > 0:
-                resolved = await asyncio.gather(*tasks)
-                replacement_table.update(zip(tasks, resolved))
+            for task in tasks:
+                # NOTE(edoakes): this is a hack to enable the legacy behavior of passing
+                # `asyncio.Task` objects directly to downstream handle calls without
+                # `await`. Because the router now runs on a separate loop, the
+                # `asyncio.Task` can't directly be awaited here. So we use the
+                # thread-safe `concurrent.futures.Future` instead.
+                # This can be removed when `RayServeHandle` is fully deprecated.
+                if hasattr(task, "_ray_serve_object_ref_future"):
+                    future = task._ray_serve_object_ref_future
+                    replacement_table[task] = await asyncio.wrap_future(future)
+                else:
+                    replacement_table[task] = task
 
             # Gather `DeploymentResponse` object refs concurrently.
             if len(responses) > 0:

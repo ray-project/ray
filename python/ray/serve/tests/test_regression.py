@@ -204,7 +204,7 @@ def test_out_of_order_chaining(serve_instance):
             r2_ref = await self.m2.compute.remote(r1_task)
             await r2_ref
 
-    @serve.deployment
+    @serve.deployment(graceful_shutdown_timeout_s=0.0)
     class FirstModel:
         async def compute(self, _id):
             if _id == 0:
