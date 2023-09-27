@@ -172,9 +172,9 @@ Status ActorInfoAccessor::AsyncGetAllByFilter(
     request.mutable_filters()->set_job_id(job_id.value().Binary());
   }
   if (actor_state_name) {
-    rpc::ActorTableData::ActorState actora_sate =
+    rpc::ActorTableData::ActorState actor_state =
         StringToActorState(actor_state_name.value());
-    request.mutable_filters()->set_state(actora_sate);
+    request.mutable_filters()->set_state(actor_state);
   }
 
   client_impl_->GetGcsRpcClient().GetAllActorInfo(

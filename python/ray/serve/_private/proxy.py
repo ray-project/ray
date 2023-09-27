@@ -19,6 +19,7 @@ from starlette.middleware import Middleware
 from starlette.types import Message, Receive
 
 import ray
+from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 from ray.actor import ActorHandle
@@ -180,19 +181,9 @@ class GenericProxy(ABC):
                 extra={"log_to_stderr": False},
             )
 
-        def get_handle(deployment_name, app_name):
-            # Delayed import due to circular dependency.
-            # TODO(edoakes): use `get_deployment_handle` public API instead.
-            from ray.serve.context import _get_global_client
-
-            return _get_global_client().get_handle(
-                deployment_name,
-                app_name,
-                sync=False,
-                missing_ok=True,
-            )
-
-        self.proxy_router = proxy_router_class(get_handle, self.protocol)
+        self.proxy_router = proxy_router_class(
+            serve.get_deployment_handle, self.protocol
+        )
         self.long_poll_client = LongPollClient(
             controller_actor
             or ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
@@ -1397,7 +1388,7 @@ class RequestIdMiddleware:
 
 
 @ray.remote(num_cpus=0)
-class HTTPProxyActor:
+class ProxyActor:
     def __init__(
         self,
         host: str,
@@ -1412,19 +1403,17 @@ class HTTPProxyActor:
         grpc_options: Optional[gRPCOptions] = None,
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
-        configure_component_logger(
-            component_name="http_proxy", component_id=node_ip_address
-        )
+        configure_component_logger(component_name="proxy", component_id=node_ip_address)
         logger.info(
             f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
             f"starting on node {node_id}."
         )
 
         configure_component_memory_profiler(
-            component_name="http_proxy", component_id=node_ip_address
+            component_name="proxy", component_id=node_ip_address
         )
         self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_name="http_proxy", component_id=node_ip_address
+            component_name="proxy", component_id=node_ip_address
         )
 
         if http_middlewares is None:
