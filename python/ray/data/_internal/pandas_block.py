@@ -134,7 +134,15 @@ PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types
 class PandasBlockAccessor(TableBlockAccessor):
     ROW_TYPE = PandasRow
 
-    def __init__(self, table: "pandas.DataFrame"):
+    def __init__(self, table: Union["pandas.DataFrame", "pyarrow.Table"]):
+        from pyarrow import Table
+
+        if isinstance(table, Table):
+            # Python types do not get checked at runtime,
+            # if the user explicity specifies batch_format='arrow'
+            # batches can be interleaved with both pandas and arrow blocks
+            table = table.to_pandas()
+
         super().__init__(table)
 
     def column_names(self) -> List[str]:
