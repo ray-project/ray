@@ -42,6 +42,14 @@ SERVE_HEAD_URLs = {
 }
 
 
+def wait_for_head_to_connect_to_agent(timeout=5):
+    def wait():
+        assert requests.get(SERVE_HEAD_URLs["STATUS"], timeout=2).status_code == 200
+        return True
+
+    wait_for_condition(wait, timeout=timeout)
+
+
 def deploy_and_check_config(config: Dict, urls: Dict[str, str]):
     put_response = requests.put(urls["GET_OR_PUT"], json=config, timeout=30)
     assert put_response.status_code == 200
@@ -62,6 +70,8 @@ def deploy_config_multi_app(config: Dict, urls: Dict[str, str]):
 
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 def test_put_get(ray_start_stop):
+    wait_for_head_to_connect_to_agent()
+
     config1 = {
         "import_path": (
             "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
@@ -129,6 +139,9 @@ def test_put_get(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_put_get_multi_app(ray_start_stop, urls):
+    if urls is SERVE_HEAD_URLs:
+        wait_for_head_to_connect_to_agent()
+
     pizza_import_path = (
         "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
     )
@@ -234,6 +247,9 @@ def test_put_get_multi_app(ray_start_stop, urls):
     ],
 )
 def test_put_bad_schema(ray_start_stop, put_url: str):
+    if put_url in SERVE_HEAD_URLs.values():
+        wait_for_head_to_connect_to_agent()
+
     config = {"not_a_real_field": "value"}
 
     put_response = requests.put(put_url, json=config, timeout=5)
@@ -246,6 +262,9 @@ def test_put_duplicate_apps(ray_start_stop, urls):
     """If a config with duplicate app names is deployed, the PUT request should fail.
     The response should clearly indicate a validation error.
     """
+
+    if urls is SERVE_HEAD_URLs:
+        wait_for_head_to_connect_to_agent()
 
     config = {
         "applications": [
@@ -272,6 +291,9 @@ def test_put_duplicate_routes(ray_start_stop, urls):
     The response should clearly indicate a validation error.
     """
 
+    if urls is SERVE_HEAD_URLs:
+        wait_for_head_to_connect_to_agent()
+
     config = {
         "applications": [
             {
@@ -292,6 +314,8 @@ def test_put_duplicate_routes(ray_start_stop, urls):
 
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 def test_delete(ray_start_stop):
+    wait_for_head_to_connect_to_agent()
+
     config = {
         "import_path": "dir.subdir.a.add_and_sub.serve_dag",
         "runtime_env": {
@@ -363,6 +387,9 @@ def test_delete(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_delete_multi_app(ray_start_stop, urls):
+    if urls is SERVE_HEAD_URLs:
+        wait_for_head_to_connect_to_agent()
+
     py_module = (
         "https://github.com/ray-project/test_module/archive/"
         "aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
@@ -449,6 +476,9 @@ def test_delete_multi_app(ray_start_stop, urls):
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_get_status(ray_start_stop, urls):
+    if urls is SERVE_HEAD_URLs:
+        wait_for_head_to_connect_to_agent()
+
     print("Checking status info before any deployments.")
 
     status_response = requests.get(urls["STATUS"], timeout=30)
@@ -501,6 +531,10 @@ def test_get_status(ray_start_stop, urls):
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_get_serve_instance_details_not_started(ray_start_stop, urls):
     """Test REST API when Serve hasn't started yet."""
+
+    if urls is SERVE_HEAD_URLs:
+        wait_for_head_to_connect_to_agent()
+
     ServeInstanceDetails(**requests.get(urls["GET_OR_PUT_V2"]).json())
 
 
@@ -521,6 +555,9 @@ def test_get_serve_instance_details_not_started(ray_start_stop, urls):
 )
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_get_serve_instance_details(ray_start_stop, f_deployment_options, urls):
+    if urls is SERVE_HEAD_URLs:
+        wait_for_head_to_connect_to_agent()
+
     grpc_port = 9001
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -652,6 +689,8 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, urls):
 
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 def test_put_single_then_multi(ray_start_stop):
+    wait_for_head_to_connect_to_agent()
+
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     multi_app_config = {
@@ -693,6 +732,8 @@ def test_put_single_then_multi(ray_start_stop):
 
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 def test_put_multi_then_single(ray_start_stop):
+    wait_for_head_to_connect_to_agent()
+
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     multi_app_config = {
@@ -744,6 +785,8 @@ def test_put_multi_then_single(ray_start_stop):
 
 @pytest.mark.parametrize("name", ["", "my_app"])
 def test_put_single_with_name(ray_start_stop, name):
+    wait_for_head_to_connect_to_agent()
+
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     single_app_config = {"name": name, "import_path": world_import_path}
 
@@ -759,6 +802,8 @@ def test_put_single_with_name(ray_start_stop, name):
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 def test_serve_namespace(ray_start_stop):
     """Check that the driver can interact with Serve using the Python API."""
+
+    wait_for_head_to_connect_to_agent()
 
     config = {
         "applications": [
@@ -807,6 +852,8 @@ def test_put_with_http_options(ray_start_stop, option, override):
       - If Serve is running, HTTP options will be ignored, and warning will be logged
       urging users to restart Serve if they want their options to take effect
     """
+
+    wait_for_head_to_connect_to_agent()
 
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
@@ -875,6 +922,9 @@ def test_put_with_grpc_options(ray_start_stop):
     Ensure gRPC options can be accepted by the api. HTTP deployment continue to
     accept requests. gRPC deployment is also able to accept requests.
     """
+
+    wait_for_head_to_connect_to_agent()
+
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
     ]
