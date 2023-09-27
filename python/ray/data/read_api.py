@@ -1824,7 +1824,7 @@ def read_databricks_uc_tables(
                 token = ctx.apiToken().get()
         else:
             raise ValueError(
-                "You are not in databricks runtime, please set environment variable"
+                "You are not in databricks runtime, please set environment variable "
                 "'DATABRICKS_HOST' and 'DATABRICKS_TOKEN'."
             )
 

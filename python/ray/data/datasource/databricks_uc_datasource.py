@@ -64,6 +64,7 @@ class _DatabricksUCReader(Reader):
 
         state = response.json()["status"]["state"]
 
+        logger.info(f"Waiting for query {query} exeuction result.")
         try:
             while state in ["PENDING", "RUNNING"]:
                 time.sleep(1)
