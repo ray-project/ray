@@ -1,11 +1,9 @@
 import logging
 from enum import Enum
-from typing import Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
 
-from ray.dashboard.datacenter import DataOrganizer
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 
@@ -40,21 +38,16 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             rest_method: REST method to use when sending the request.
         """
 
-        head_agent_address = await self._get_head_agent()
-        if not head_agent_address:
-            return Response(
-                status=503,
-                text=(
-                    "Failed to find the Serve agent on the head node. "
-                    "Check the dashboard_agent logs to see if the agent "
-                    "failed to launch."
-                ),
-            )
+        head_agent_address = "http://localhost:52365"
 
         try:
+            req_data = await req.read()
+            headers = {"content-type": req.content_type}
             rest_method_executor = self.rest_method_executors[method]
-            target = f"{head_agent_address}{route}"
-            async with rest_method_executor(target) as resp:
+            url = f"{head_agent_address}{route}"
+            async with rest_method_executor(
+                url=url, data=req_data, headers=headers
+            ) as resp:
                 resp_text = await resp.text()
                 return Response(
                     text=resp_text,
@@ -67,7 +60,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             return Response(
                 status=503,
                 text=(
-                    f"Failed to hit serve agent at address {target} on "
+                    f"Failed to hit serve agent at address {url} on "
                     "the head node. Check the dashboard_agent logs to see "
                     "if the agent failed to launch. "
                     f"See traceback:\n{traceback.format_exc()}"
@@ -144,33 +137,6 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             route="/api/serve/applications/",
             method=RestMethod.PUT,
         )
-
-    async def _get_head_agent(self) -> Optional[str]:
-        """
-        Grabs the head node dashboard_agent's address.
-        """
-        # the number of agents which has an available HTTP port.
-        raw_agent_infos = await DataOrganizer.get_all_agent_infos()
-        agent_infos = {
-            key: value
-            for key, value in raw_agent_infos.items()
-            if value.get("httpPort", -1) > 0
-        }
-        if not agent_infos:
-            return None
-
-        # TODO(aguo): Get the head agent by node_id instead of node_ip once
-        # head_node_id is easily available in dashboard_head.py
-        head_node_ip = self._dashboard_head.ip
-        logger.info(f"head_node_ip: {head_node_ip}")
-        for agent_info in agent_infos.values():
-            logger.info(f"agent_info: {agent_info}")
-            if agent_info["ipAddress"] == head_node_ip:
-                node_ip = agent_info["ipAddress"]
-                http_port = agent_info["httpPort"]
-                return f"http://{node_ip}:{http_port}"
-
-        return None
 
     async def run(self, server):
         pass
