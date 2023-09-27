@@ -1,8 +1,6 @@
 import os
 from pathlib import Path
 
-import ray._private.ray_constants as ray_constants
-
 from ray.air.constants import (  # noqa: F401
     EVALUATION_DATASET_KEY,
     MODEL_KEY,
@@ -108,12 +106,3 @@ CHECKPOINT_METADATA_KEY = "checkpoint_metadata"
 
 # Key for AIR Checkpoint world rank in TrainingResult metadata
 CHECKPOINT_RANK_KEY = "checkpoint_rank"
-
-# Map of supported accelerators to the environment variable configuration
-# 1/sharing cores/devices across workers 2/runtime environment variable to configure.
-SUPPORTED_ACCELERATOR_DEVICES_TO_CONFIG = {
-    ray_constants.NEURON_CORES: (
-        ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
-        ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
-    )
-}
