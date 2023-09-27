@@ -1058,6 +1058,40 @@ def test_nonserializable_map_batches(shutdown_only):
         x.map_batches(lambda _: lock).take(1)
 
 
+def test_map_batches_with_nested_lists(shutdown_only):
+    ds = ray.data.from_items(
+        [
+            {"name": "Luna", "age": 4, "nicknames": ["Looney", "Loona"]},
+            {"name": "Rory", "age": 14, "nicknames": ["Rorey"]},
+            {"name": "Scout", "age": 9, "nicknames": ["Scoot"]},
+        ]
+    )
+
+    def identity(batch):
+        return batch
+
+    original_rows = list(ds.map_batches(identity).materialize().iter_rows())
+    mapped_ds_identical = list(ds.map_batches(identity).materialize().iter_rows())
+    for orig_row, mapped_row in zip(original_rows, mapped_ds_identical):
+        assert orig_row.keys() == mapped_row.keys()
+        for orig, mapped in zip(orig_row.values(), mapped_row.values()):
+            if isinstance(orig, np.ndarray):
+                assert np.array_equal(orig, mapped)
+            else:
+                assert orig == mapped
+
+    mapped_ds_identical_two = list(
+        ds.map_batches(identity).map_batches(identity).materialize().iter_rows()
+    )
+    for orig_row, row_two in zip(original_rows, mapped_ds_identical_two):
+        assert orig_row.keys() == row_two.keys()
+        for orig, mapped in zip(orig_row.values(), row_two.values()):
+            if isinstance(orig, np.ndarray):
+                assert np.array_equal(orig, mapped)
+            else:
+                assert orig == mapped
+
+
 if __name__ == "__main__":
     import sys
 
