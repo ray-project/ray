@@ -2,7 +2,7 @@ import gc
 import json
 import os
 import time
-from typing import Callable, Iterator
+from typing import Callable, Dict, Iterator
 
 from ray.data.dataset import Dataset
 from typing import Any
@@ -66,14 +66,19 @@ class Benchmark:
         }
         print(f"Result of case {name}: {self.result[name]}")
 
-    def run_iterate_ds(self, name: str, ds_iterator: Iterator[Any], **fn_run_args):
+    def run_iterate_ds(
+        self, name: str, ds_iterator: Iterator[Any], batch_size: int, **fn_run_args
+    ):
         gc.collect()
 
         print(f"Running case: {name}")
         start_time = time.perf_counter()
         record_count = 0
         for batch in ds_iterator:
-            record_count += len(batch)
+            # Note, we are using `batch_size` as an approximate way to get the total
+            # record count, because each batch type has its own method of getting
+            # batch length, also may depend on the underlying data structure, etc.
+            record_count += batch_size
             pass
         duration = time.perf_counter() - start_time
         self.result[name] = {
@@ -82,13 +87,15 @@ class Benchmark:
         }
         print(f"Result of case {name}: {self.result[name]}")
 
-    def run_fn(self, name: str, fn: Callable[..., Any], **fn_run_args):
+    def run_fn(
+        self, name: str, fn: Callable[..., Dict[str, float]], *fn_args, **fn_kwargs
+    ):
         gc.collect()
 
         print(f"Running case: {name}")
         start_time = time.perf_counter()
         # e.g. fn may output a dict of metrics
-        fn_output = fn(**fn_run_args)
+        fn_output = fn(*fn_args, **fn_kwargs)
         duration = time.perf_counter() - start_time
 
         curr_case_metrics = {

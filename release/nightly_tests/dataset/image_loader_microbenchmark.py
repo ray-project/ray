@@ -7,7 +7,6 @@ import numpy as np
 from PIL import Image
 from typing import TYPE_CHECKING, Iterator, Callable, Any
 import pandas as pd
-import json
 from benchmark import Benchmark
 
 import streaming
@@ -412,6 +411,7 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "tf_data",
                 iter(tf_dataset),
+                args.batch_size,
             )
 
         # tf.data, with transform.
@@ -422,6 +422,7 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "tf_data+transform",
                 iter(tf_dataset),
+                args.batch_size,
             )
 
         # torch, load images.
@@ -441,6 +442,7 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "torch",
                 iter(torch_dataset),
+                args.batch_size,
             )
 
         # torch, with transform.
@@ -448,7 +450,11 @@ if __name__ == "__main__":
             args.data_root, args.batch_size, transform=get_transform(True)
         )
         for i in range(args.num_epochs):
-            benchmark.run_iterate_ds("torch+transform", iter(torch_dataset))
+            benchmark.run_iterate_ds(
+                "torch+transform",
+                iter(torch_dataset),
+                args.batch_size,
+            )
 
         # ray.data, load images.
         ray_dataset = ray.data.read_images(
@@ -458,6 +464,7 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data",
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
+                args.batch_size,
             )
 
         # ray.data, with transform.
@@ -468,6 +475,7 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data+map_transform",
                 ray_dataset.iter_batches(batch_size=args.batch_size),
+                args.batch_size,
             )
 
         # Pass size to read_images when using map_batches to make sure that all
@@ -479,6 +487,7 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data+transform",
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
+                args.batch_size,
             )
 
         ray_dataset = ray.data.read_images(
@@ -488,6 +497,7 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data+transform+zerocopy",
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
+                args.batch_size,
             )
 
     if args.tf_data_root is not None:
@@ -496,6 +506,7 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "tf_data_tfrecords+transform",
                 iter(tf_dataset),
+                args.batch_size,
             )
 
         ray_dataset = ray.data.read_tfrecords(args.tf_data_root)
@@ -513,6 +524,7 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data_tfrecords+transform",
                 iter(tf_dataset),
+                args.batch_size,
             )
 
     if args.parquet_data_root is not None:
@@ -521,6 +533,7 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data_parquet+map_transform",
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
+                args.batch_size,
             )
         print(ray_dataset.stats())
 
@@ -536,7 +549,7 @@ if __name__ == "__main__":
         )
 
         for i in range(args.num_epochs):
-            benchmark.run_iterate_ds("mosaicml_mds", iter(mosaic_dl))
+            benchmark.run_iterate_ds("mosaicml_mds", iter(mosaic_dl), args.batch_size)
 
         # ray.data.
         if not use_s3:
@@ -549,21 +562,10 @@ if __name__ == "__main__":
                 benchmark.run_iterate_ds(
                     "ray_data_mds+map_transform",
                     ray_dataset.iter_torch_batches(batch_size=args.batch_size),
+                    args.batch_size,
                 )
-
-    metrics_dict = {}
-    for label, tput in metrics.items():
-        metrics_dict[label] = {
-            "THROUGHPUT": tput,
-        }
-    result_dict = {
-        "perf_metrics": metrics_dict,
-        "success": 1,
-    }
 
     test_output_json = os.environ.get(
         "TEST_OUTPUT_JSON", "/tmp/image_loader_microbenchmark.json"
     )
-
-    with open(test_output_json, "wt") as f:
-        json.dump(result_dict, f)
+    benchmark.write_result(test_output_json)
