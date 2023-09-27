@@ -138,7 +138,7 @@ def test_job_driver_inheritance_override(monkeypatch):
         # Test conflict resolution regular field
         job_id = client.submit_job(
             entrypoint=f"python {driver_script_path} --conflict=pip",
-            runtime_env={"pip": ["torch"]},
+            runtime_env={"pip": ["pip-install-test==0.5"]},
         )
         runtime_env = get_runtime_env_from_logs(client, job_id)
         print(runtime_env)
