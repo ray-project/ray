@@ -44,10 +44,6 @@ def ray_cluster():
     cluster.shutdown()
 
 
-def tls_enabled():
-    return os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true")
-
-
 @pytest.mark.skipif(
     sys.platform == "darwin",
     reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
