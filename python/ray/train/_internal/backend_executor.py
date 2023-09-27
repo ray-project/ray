@@ -6,7 +6,6 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Any
 import ray
 from ray.data import Dataset
 from ray._private.ray_constants import env_integer
-from ray.air.config import CheckpointConfig
 from ray.exceptions import RayActorError
 from ray.train import DataConfig
 from ray.air.checkpoint import Checkpoint
