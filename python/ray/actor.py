@@ -44,6 +44,7 @@ from ray.util.tracing.tracing_helper import (
 logger = logging.getLogger(__name__)
 
 # Hook to call with (actor, resources, strategy) on each local actor creation.
+# testing
 _actor_launch_hook = None
 
 
