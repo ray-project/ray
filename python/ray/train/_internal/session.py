@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
 import functools
-from pathlib import Path
-import shutil
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type, Union
 import warnings
 
@@ -29,14 +27,11 @@ from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train.constants import (
-    CHECKPOINT_METADATA_KEY,
-    CHECKPOINT_RANK_KEY,
     DETAILED_AUTOFILLED_KEYS,
     WORKER_HOSTNAME,
     WORKER_NODE_IP,
     WORKER_PID,
     TIME_TOTAL_S,
-    LAZY_CHECKPOINT_MARKER_FILE,
     RAY_CHDIR_TO_TRIAL_DIR,
 )
 from ray.train.error import SessionMisuseError
@@ -53,9 +48,6 @@ if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
-
-_INDEX_FILE_EXTENSION = ".files"
-_INDEX_FILE = ".RANK_{0}" + _INDEX_FILE_EXTENSION
 
 
 class TrainingResultType(Enum):
@@ -76,14 +68,6 @@ class TrialInfo:
     logdir: str
     driver_ip: str
     experiment_name: Optional[str] = None
-
-
-# TODO(justinvyu): [code_removal]
-@dataclass
-class TrainingResult:
-    type: TrainingResultType
-    data: Union[Dict, Checkpoint, str]
-    metadata: Optional[Dict] = None
 
 
 class _FutureTrainingResult:

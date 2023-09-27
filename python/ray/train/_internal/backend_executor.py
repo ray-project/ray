@@ -11,7 +11,7 @@ from ray.exceptions import RayActorError
 from ray.train import DataConfig
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.session import (
-    TrainingResult,
+    _TrainingResult,
     TrialInfo,
     get_session,
     init_session,
@@ -26,7 +26,6 @@ from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -94,13 +93,6 @@ class BackendExecutor:
 
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
-
-        self._checkpoint_keep_all_ranks = (
-            checkpoint_config and checkpoint_config._checkpoint_keep_all_ranks
-        )
-        self._checkpoint_upload_from_workers = (
-            checkpoint_config and checkpoint_config._checkpoint_upload_from_workers
-        )
 
     def start(
         self,
@@ -437,10 +429,6 @@ class BackendExecutor:
                     dataset_shard=self.dataset_shards[index],
                     metadata=metadata,
                     checkpoint=checkpoint,
-                    checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,
-                    checkpoint_upload_from_workers=(
-                        self._checkpoint_upload_from_workers
-                    ),
                     storage=storage,
                 )
             )
@@ -459,15 +447,15 @@ class BackendExecutor:
 
         self.worker_group.execute_async(train_async)
 
-    def get_next_results(self) -> Optional[List[TrainingResult]]:
-        """Fetches the next ``TrainingResult`` from each worker.
+    def get_next_results(self) -> Optional[List[_TrainingResult]]:
+        """Fetches the next ``_TrainingResult`` from each worker.
 
-        Each ``TrainingResult`` is expected to correspond to the same step from
-        each worker (e.g. the same call to ``session.report()``).
+        Each ``_TrainingResult`` is expected to correspond to the same step from
+        each worker (e.g. the same call to ``train.report()``).
 
         Returns:
-            A list of ``TrainingResult``s with the same
-            ``TrainingResultType``, or ``None`` if there are no more results.
+            A list of ``_TrainingResult``s or ``None`` if there are no more results
+            since the training function has exited on all workers.
         """
 
         def get_next():
@@ -504,16 +492,6 @@ class BackendExecutor:
                 return None
 
         return results
-
-    def _set_legacy_checkpoint_uri(self, uri: str):
-        """Tell remote sessions where to upload the chekcpoint."""
-
-        def set_uri():
-            session = _get_session("_set_legacy_checkpoint_uri")
-            session._set_legacy_checkpoint_uri(uri)
-
-        futures = self.worker_group.execute_async(set_uri)
-        self.get_with_failure_handling(futures)
 
     def pause_reporting(self):
         """Disable workers from enqueuing results from ``session.report()``.
