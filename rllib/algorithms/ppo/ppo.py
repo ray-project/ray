@@ -29,7 +29,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 # from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
-    synchronous_parallel_sample
+    synchronous_parallel_sample,
 )
 from ray.rllib.execution.train_ops import (
     train_one_step,
@@ -478,9 +478,9 @@ class PPO(Algorithm):
                 else:
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
-                        max_env_steps=self.config.train_batch_size
+                        max_env_steps=self.config.train_batch_size,
                     )
-            
+
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -497,7 +497,7 @@ class PPO(Algorithm):
             # TODO (sven): What's the plan for multi-agent setups when the
             # policy is gone?
             # TODO (simon): The default method has already this functionality,
-            # but this serves simply as a placeholder until it is decided on 
+            # but this serves simply as a placeholder until it is decided on
             # how to replace the functionalities of the policy.
 
             # is_module_trainable = self.workers.local_worker().is_policy_to_train
