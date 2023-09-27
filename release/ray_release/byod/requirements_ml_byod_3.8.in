@@ -6,6 +6,7 @@ crc32c
 cupy-cuda113
 datasets
 deepspeed
+diffusers
 evaluate
 fastapi
 filelock
