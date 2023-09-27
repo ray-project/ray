@@ -62,6 +62,12 @@ def map_batches_sleep(x, n):
     return x
 
 
+@pytest.fixture(autouse=True)
+def enable_get_object_locations_flag():
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.enable_get_object_locations_for_metrics = True
+
+
 def test_streaming_split_stats(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
