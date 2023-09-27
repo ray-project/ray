@@ -122,7 +122,6 @@ def test_check_health(shutdown_only):
     with pytest.raises(ValueError):
         check_health("bad_address_no_port")
 
-
     conn = ray.init()
     addr = conn.address_info["address"]
     assert check_health(addr)
