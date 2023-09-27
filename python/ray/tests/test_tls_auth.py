@@ -144,13 +144,10 @@ ray_client.connect("localhost:10001")
 import ray
 from ray.util.client import ray as ray_client
 ray_client.connect("localhost:10001")
-print(ray.is_initialized())
+assert ray.is_initialized()
      """,
         env=tls_env,
     )
-    # ignore logger warning on sigterm handler
-    out_msg = out.strip().split("\n")[0]
-    assert out_msg == "True"
 
 
 if __name__ == "__main__":
