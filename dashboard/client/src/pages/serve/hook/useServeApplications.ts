@@ -6,10 +6,7 @@ import { getServeApplications } from "../../../service/serve";
 import { ServeSystemActorStatus } from "../../../type/serve";
 import { ServeDetails } from "../ServeSystemDetails";
 
-const SERVE_HTTP_PROXY_STATUS_SORT_ORDER: Record<
-  ServeSystemActorStatus,
-  number
-> = {
+const SERVE_PROXY_STATUS_SORT_ORDER: Record<ServeSystemActorStatus, number> = {
   [ServeSystemActorStatus.UNHEALTHY]: 0,
   [ServeSystemActorStatus.STARTING]: 1,
   [ServeSystemActorStatus.HEALTHY]: 2,
@@ -35,7 +32,7 @@ export const useServeApplications = () => {
     setFilter([...filter]);
   };
 
-  const [httpProxiesPage, setHttpProxiesPage] = useState({
+  const [proxiesPage, setProxiesPage] = useState({
     pageSize: 10,
     pageNo: 1,
   });
@@ -66,12 +63,12 @@ export const useServeApplications = () => {
       )
     : [];
 
-  const httpProxies =
+  const proxies =
     data && data.proxies
       ? Object.values(data.proxies).sort(
           (a, b) =>
-            SERVE_HTTP_PROXY_STATUS_SORT_ORDER[b.status] -
-            SERVE_HTTP_PROXY_STATUS_SORT_ORDER[a.status],
+            SERVE_PROXY_STATUS_SORT_ORDER[b.status] -
+            SERVE_PROXY_STATUS_SORT_ORDER[a.status],
         )
       : [];
 
@@ -82,14 +79,14 @@ export const useServeApplications = () => {
         f.val ? app[f.key] && (app[f.key] ?? "").includes(f.val) : true,
       ),
     ),
-    httpProxies,
+    proxies,
     error,
     changeFilter,
     page,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
-    httpProxiesPage,
-    setHttpProxiesPage: (key: string, val: number) =>
-      setHttpProxiesPage({ ...httpProxiesPage, [key]: val }),
+    proxiesPage,
+    setProxiesPage: (key: string, val: number) =>
+      setProxiesPage({ ...proxiesPage, [key]: val }),
     ipLogMap,
     allServeApplications: serveApplicationsList,
   };
@@ -198,9 +195,9 @@ export const useServeReplicaDetails = (
   };
 };
 
-export const useServeHTTPProxyDetails = (httpProxyId: string | undefined) => {
+export const useServeProxyDetails = (proxyId: string | undefined) => {
   const { data, error, isLoading } = useSWR(
-    "useServeHTTPProxyDetails",
+    "useServeProxyDetails",
     async () => {
       const rsp = await getServeApplications();
 
@@ -211,13 +208,13 @@ export const useServeHTTPProxyDetails = (httpProxyId: string | undefined) => {
     { refreshInterval: API_REFRESH_INTERVAL_MS },
   );
 
-  const httpProxy = httpProxyId ? data?.proxies?.[httpProxyId] : undefined;
+  const proxy = proxyId ? data?.proxies?.[proxyId] : undefined;
 
   // Need to expose loading because it's not clear if undefined values
   // for proxies means loading or missing data.
   return {
     loading: isLoading,
-    httpProxy,
+    proxy,
     error,
   };
 };

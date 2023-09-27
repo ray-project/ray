@@ -218,7 +218,11 @@ class DashboardAgent:
             tasks.append(check_parent_task)
         await asyncio.gather(*tasks)
 
-        await self.server.wait_for_termination()
+        if self.server:
+            await self.server.wait_for_termination()
+        else:
+            while True:
+                await asyncio.sleep(3600)  # waits forever
 
         if self.http_server:
             await self.http_server.cleanup()

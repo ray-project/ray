@@ -113,7 +113,7 @@ compile_pip_dependencies() {
   pip install --no-cache-dir numpy torch
 
   pip-compile --resolver=backtracking -q \
-     --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
+     --pip-args --no-deps --strip-extras --no-header -o \
     "${WORKSPACE_DIR}/python/$TARGET" \
     "${WORKSPACE_DIR}/python/requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
@@ -128,23 +128,27 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
+    "${WORKSPACE_DIR}/doc/requirements-doc.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
   sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/$TARGET"
 
+  # Delete local installation
+  sed -i "/@ file/d" "${WORKSPACE_DIR}/python/$TARGET"
+
   # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
   # This is needed because we specify the requirements as torch==version, but
   # the resolver adds the device-specific version tag. If this is not removed,
   # pip install will complain about irresolvable constraints.
-  sed -iE 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
+  sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
 
   # Add python_version < 3.11 to scikit-image, scikit-optimize, scipy, networkx
   # as they need more recent versions in python 3.11.
   # These will be automatically resolved. Remove as
   # soon as we resolve to versions of scikit-image that are built for py311.
-  sed -iE 's/((scikit-image|scikit-optimize|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
+  sed -i -E 's/((scikit-image|scikit-optimize|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
 
   cat "${WORKSPACE_DIR}/python/$TARGET"
 
@@ -210,7 +214,6 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
-      -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
       -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
@@ -345,7 +348,6 @@ build_dashboard_front_end() {
 }
 
 build_sphinx_docs() {
-  _bazel_build_protobuf
   install_ray
 
   (
@@ -373,9 +375,7 @@ check_sphinx_links() {
 _bazel_build_before_install() {
   local target
   if [ "${OSTYPE}" = msys ]; then
-    # On Windows, we perform as full of a build as possible, to ensure the repository always remains buildable on Windows.
-    # (Pip install will not perform a full build.)
-    target="//:*"
+    target="//:ray_pkg"
   else
     # Just build Python on other platforms.
     # This because pip install captures & suppresses the build output, which causes a timeout on CI.
@@ -396,10 +396,6 @@ _bazel_build_before_install() {
   fi
 }
 
-
-_bazel_build_protobuf() {
-  bazel build "//:install_py_proto"
-}
 
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.

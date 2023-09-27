@@ -2,22 +2,21 @@ import os
 import sys
 import time
 from collections import defaultdict
-import requests
 
 import pytest
+import requests
 
 import ray
+from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.exceptions import RayActorError
-from ray._private.test_utils import SignalActor, wait_for_condition
-
-from ray import serve
-from ray.serve.context import get_global_client
-from ray.serve.handle import RayServeHandle
 from ray.serve._private.common import DeploymentID, ReplicaState
-from ray.serve._private.constants import SERVE_NAMESPACE, RAY_SERVE_ENABLE_NEW_ROUTING
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.utils import get_head_node_id
+from ray.serve.context import _get_global_client
+from ray.serve.handle import RayServeHandle
 
 
 @pytest.fixture
@@ -147,7 +146,7 @@ def test_replica_startup_status_transitions(ray_cluster):
     cluster.add_node(num_cpus=1)
     cluster.connect(namespace=SERVE_NAMESPACE)
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     signal = SignalActor.remote()
 
@@ -248,7 +247,7 @@ def test_replica_spread(ray_cluster):
     serve.run(D.bind())
 
     def get_num_nodes():
-        client = get_global_client()
+        client = _get_global_client()
         details = client.get_serve_details()
         dep = details["applications"]["default"]["deployments"]["D"]
         nodes = {r["node_id"] for r in dep["replicas"]}
@@ -267,9 +266,6 @@ def test_replica_spread(ray_cluster):
     wait_for_condition(lambda: get_num_nodes() == 1)
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
-)
 def test_handle_prefers_replicas_on_same_node(ray_cluster):
     """Verify that handle calls prefer replicas on the same node when possible.
 
@@ -325,9 +321,6 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
     assert ray.get(blocked_ref) == outer_node_id
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
-)
 @pytest.mark.parametrize("set_flag", [True, False])
 def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     """When the feature flag is turned on via env var, verify that http proxy routes to

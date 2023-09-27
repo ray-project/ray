@@ -21,32 +21,28 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
+from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
 )
-from ray._raylet import GcsClient
-from ray.serve.context import get_global_client
+from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.http_util import set_socket_reuse_port
+from ray.serve._private.utils import block_until_http_ready, format_actor_name
+from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
+from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
-from ray.serve._private.http_util import set_socket_reuse_port
-from ray.serve._private.utils import (
-    block_until_http_ready,
-    format_actor_name,
-)
-from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve.schema import ServeApplicationSchema
-
-from ray.util.state import list_actors
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
 from ray.tests.conftest import maybe_external_redis  # noqa: F401
 from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -72,7 +68,7 @@ def lower_slow_startup_threshold_and_reset():
 
     ray.init(num_cpus=2)
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     yield client
 
@@ -156,7 +152,7 @@ def test_v1_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
+        "ProxyActor",
         "ServeReplica:f",
     }
 
@@ -194,7 +190,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
+        "ProxyActor",
         "ServeReplica:app:f",
     }
 
@@ -233,7 +229,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
+        "ProxyActor",
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }
@@ -567,7 +563,7 @@ def test_no_http(ray_shutdown):
         ]
         assert len(live_actors) == 1
         controller = serve.context._global_client._controller
-        assert len(ray.get(controller.get_http_proxies.remote())) == 0
+        assert len(ray.get(controller.get_proxies.remote())) == 0
 
         # Test that the handle still works.
         @serve.deployment
@@ -649,12 +645,12 @@ def test_fixed_number_proxies(monkeypatch, ray_cluster):
     serve.run(A.bind())
 
     # Only the controller and two http proxy should be started.
-    controller_handle = get_global_client()._controller
+    controller_handle = _get_global_client()._controller
     wait_for_condition(
-        lambda: len(ray.get(controller_handle.get_http_proxies.remote())) == 2
+        lambda: len(ray.get(controller_handle.get_proxies.remote())) == 2
     )
 
-    proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
+    proxy_names_bytes = ray.get(controller_handle.get_proxy_names.remote())
     proxy_names = ActorNameList.FromString(proxy_names_bytes)
     assert len(proxy_names.names) == 2
 
@@ -666,7 +662,7 @@ def test_fixed_number_proxies(monkeypatch, ray_cluster):
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     @serve.deployment
     class A:
@@ -679,7 +675,7 @@ def test_serve_shutdown(ray_shutdown):
 
     serve.shutdown()
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     assert len(client.list_deployments()) == 0
 
@@ -761,7 +757,7 @@ def test_recovering_controller_no_redeploy():
     ray_context = ray.init(namespace="x")
     address = ray_context.address_info["address"]
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     @serve.deployment
     def f():
@@ -868,7 +864,7 @@ def test_run_graph_task_uses_zero_cpus():
 
     ray.init(num_cpus=2)
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
     config = ServeApplicationSchema.parse_obj(config)
@@ -905,32 +901,32 @@ def test_run_graph_task_uses_zero_cpus():
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
         {
-            "proxy_location": "NoServer",
+            "proxy_location": "Disabled",
             "http_options": None,
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
         {
-            "proxy_location": "NoServer",
+            "proxy_location": "Disabled",
             "http_options": {},
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
         {
-            "proxy_location": "NoServer",
+            "proxy_location": "Disabled",
             "http_options": HTTPOptions(host="foobar"),
             "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
         },
         {
-            "proxy_location": "NoServer",
+            "proxy_location": "Disabled",
             "http_options": {"host": "foobar"},
             "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
         },
         {
-            "proxy_location": "NoServer",
+            "proxy_location": "Disabled",
             "http_options": {"location": "HeadOnly"},
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
         {
-            "proxy_location": DeploymentMode.NoServer,
+            "proxy_location": ProxyLocation.Disabled,
             "http_options": HTTPOptions(location=DeploymentMode.HeadOnly),
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
@@ -939,7 +935,7 @@ def test_run_graph_task_uses_zero_cpus():
 def test_serve_start_proxy_location(ray_shutdown, options):
     expected_options = options.pop("expected")
     serve.start(**options)
-    client = get_global_client()
+    client = _get_global_client()
     assert ray.get(client._controller.get_http_config.remote()) == expected_options
 
 

@@ -1,15 +1,11 @@
-from typing import (
-    Dict,
-    Optional,
-    List,
-)
+from typing import Dict, List, Optional
 
-from ray.serve.deployment import Deployment
 from ray.serve._private.deploy_utils import get_deploy_args
-from ray.util.annotations import PublicAPI
+from ray.serve.deployment import Deployment
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated(message="Only used with `BuiltApplication` which has been deprecated.")
 class ImmutableDeploymentDict(dict):
     def __init__(self, deployments: Dict[str, Deployment]):
         super().__init__()
@@ -23,7 +19,7 @@ class ImmutableDeploymentDict(dict):
         )
 
 
-@PublicAPI(stability="alpha")
+@Deprecated(message="Use the `serve build` CLI command instead.")
 class BuiltApplication:
     """A static, pre-built Serve application.
 

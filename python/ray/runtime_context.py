@@ -254,11 +254,32 @@ class RuntimeContext(object):
         if self.worker.mode != ray._private.worker.WORKER_MODE:
             logger.warning(
                 "This method is only available when the process is a "
-                "worker. Current mode: {self.worker.mode}"
+                f"worker. Current mode: {self.worker.mode}"
             )
             return None
         actor_id = self.worker.actor_id
         return actor_id.hex() if not actor_id.is_nil() else None
+
+    def get_actor_name(self) -> Optional[str]:
+        """Get the current actor name of this worker.
+
+        This shouldn't be used in a driver process.
+        The name is in string format.
+
+        Returns:
+            The current actor name of this worker.
+            If a current worker is an actor, and
+            if actor name doesn't exist, it returns an empty string.
+            If a current worker is not an actor, it returns None.
+        """
+        # only worker mode has actor_id
+        if self.worker.mode != ray._private.worker.WORKER_MODE:
+            logger.warning(
+                "This method is only available when the process is a "
+                f"worker. Current mode: {self.worker.mode}"
+            )
+        actor_id = self.worker.actor_id
+        return self.worker.actor_name if not actor_id.is_nil() else None
 
     @property
     def namespace(self):
@@ -394,16 +415,17 @@ class RuntimeContext(object):
 
     def get_resource_ids(self) -> Dict[str, List[str]]:
         """
-        Get the current worker's GPU and accelerator ids.
+        Get the current worker's GPU, accelerator and TPU ids.
 
         Returns:
             A dictionary keyed by the resource name. The values are list
-             of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1']}`.
+            of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1'],
+            'TPU': ['0', '1']}`.
         """
         worker = self.worker
         worker.check_connected()
         ids_dict: Dict[str, List[str]] = {}
-        for name in [ray_constants.GPU, ray_constants.NEURON_CORES]:
+        for name in [ray_constants.GPU, ray_constants.NEURON_CORES, ray_constants.TPU]:
             resource_ids = worker.get_resource_ids_for_resource(
                 name, f"^{name}_group_[0-9A-Za-z]+$"
             )

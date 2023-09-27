@@ -1,25 +1,19 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass
 import threading
+import warnings
+from dataclasses import dataclass
 from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import get_or_create_event_loop
-from ray._raylet import StreamingObjectRefGenerator, GcsClient
-
 from ray import serve
+from ray._private.utils import get_or_create_event_loop
+from ray._raylet import GcsClient, StreamingObjectRefGenerator
 from ray.serve._private.common import DeploymentID, RequestProtocol
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
-)
 from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.router import RequestMetadata, Router
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import (
-    get_random_letters,
-    DEFAULT,
-)
-from ray.serve._private.router import Router, RequestMetadata
+from ray.serve._private.utils import DEFAULT, get_random_letters
 from ray.util import metrics
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -163,12 +157,11 @@ class _DeploymentHandleBase:
                 availability_zone = None
 
             self._router = Router(
-                serve.context.get_global_client()._controller,
+                serve.context._get_global_client()._controller,
                 self.deployment_id,
                 node_id,
                 availability_zone,
                 event_loop=event_loop,
-                _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
                 _prefer_local_node_routing=self.handle_options._prefer_local_routing,
                 _router_cls=self.handle_options._router_cls,
             )
@@ -235,6 +228,18 @@ class _DeploymentHandleBase:
         )
 
     def _remote(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> Coroutine:
+        if not self.__class__ == DeploymentHandle:
+            warnings.warn(
+                "Ray 2.7 introduces a new `DeploymentHandle` API that will "
+                "replace the existing `RayServeHandle` and `RayServeSyncHandle` "
+                "APIs in a future release. You are encouraged to migrate to the "
+                "new API to avoid breakages in the future. To opt in, either use "
+                "`handle.options(use_new_handle_api=True)` or set the global "
+                "environment variable `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`. "
+                "See https://docs.ray.io/en/latest/serve/model_composition.html "
+                "for more details."
+            )
+
         self._record_telemetry_if_needed()
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
@@ -282,7 +287,13 @@ class _DeploymentHandleBase:
         return self.__class__._deserialize, (serialized_constructor_args,)
 
 
-@PublicAPI(stability="beta")
+@Deprecated(
+    message=(
+        "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
+        "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
+        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
+    )
+)
 class RayServeHandle(_DeploymentHandleBase):
     """A handle used to make requests from one deployment to another.
 
@@ -375,7 +386,13 @@ class RayServeHandle(_DeploymentHandleBase):
         return asyncio.ensure_future(result_coro, loop=loop)
 
 
-@PublicAPI(stability="beta")
+@Deprecated(
+    message=(
+        "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
+        "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
+        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
+    )
+)
 class RayServeSyncHandle(_DeploymentHandleBase):
     """A handle used to make requests to the ingress deployment of an application.
 
@@ -533,7 +550,7 @@ class _DeploymentResponseBase:
             ray.cancel(self._assign_request_task.result())
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DeploymentResponse(_DeploymentResponseBase):
     """A future-like object wrapping the result of a unary deployment handle call.
 
@@ -652,7 +669,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DeploymentResponseGenerator(_DeploymentResponseBase):
     """A future-like object wrapping the result of a streaming deployment handle call.
 
@@ -828,7 +845,7 @@ class DeploymentHandle(_DeploymentHandleBase):
 
         .. code-block:: python
 
-            response = handle.options(
+            response: DeploymentResponse = handle.options(
                 method_name="other_method",
                 multiplexed_model_id="model:v1",
             ).remote()
@@ -845,7 +862,7 @@ class DeploymentHandle(_DeploymentHandleBase):
     def remote(
         self, *args, **kwargs
     ) -> Union[DeploymentResponse, DeploymentResponseGenerator]:
-        """Issue a call to the deployment.
+        """Issue a remote call to a method of the deployment.
 
         By default, the result is a `DeploymentResponse` that can be awaited to fetch
         the result of the call or passed to another `.remote()` call to compose multiple
@@ -866,6 +883,11 @@ class DeploymentHandle(_DeploymentHandleBase):
             composed_response = handle2.remote(handle1.remote())
             composed_result = await composed_response
 
+        Args:
+            *args: Positional arguments to be serialized and passed to the
+                remote method call.
+            **kwargs: Keyword arguments to be serialized and passed to the
+                remote method call.
         """
         loop = self._get_or_create_router()._event_loop
         result_coro = self._remote(args, kwargs)
