@@ -1215,7 +1215,7 @@ def test_long_poll_host_sends_counted(serve_instance):
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_send_counter",
+        metric="serve_long_poll_host_transmission_counter",
         expected=1,
         expected_tags={"namespace_or_state": "key_1"},
     )
@@ -1232,14 +1232,14 @@ def test_long_poll_host_sends_counted(serve_instance):
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_send_counter",
+        metric="serve_long_poll_host_transmission_counter",
         expected=1,
         expected_tags={"namespace_or_state": "key_2"},
     )
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_send_counter",
+        metric="serve_long_poll_host_transmission_counter",
         expected=2,
         expected_tags={"namespace_or_state": "key_1"},
     )
@@ -1250,7 +1250,7 @@ def test_long_poll_host_sends_counted(serve_instance):
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_send_counter",
+        metric="serve_long_poll_host_transmission_counter",
         expected=1,
         expected_tags={"namespace_or_state": "TIMEOUT"},
     )

@@ -202,9 +202,9 @@ class LongPollHost:
         )
 
         self._listen_for_change_request_timeout_s = listen_for_change_request_timeout_s
-        self.send_counter = metrics.Counter(
-            "serve_long_poll_host_send_counter",
-            description="The number of times the long poll host sent data.",
+        self.transmission_counter = metrics.Counter(
+            "serve_long_poll_host_transmission_counter",
+            description="The number of times the long poll host transmits data.",
             tag_keys=("namespace_or_state",),
         )
 
@@ -227,11 +227,15 @@ class LongPollHost:
         if isinstance(timeout_or_data, LongPollState):
             # The only LongPollState is TIME_OUT– the long poll
             # connection has timed out.
-            self.send_counter.inc(value=1, tags={"namespace_or_state": "TIMEOUT"})
+            self.transmission_counter.inc(
+                value=1, tags={"namespace_or_state": "TIMEOUT"}
+            )
         else:
             data = timeout_or_data
             for key in data.keys():
-                self.send_counter.inc(value=1, tags={"namespace_or_state": str(key)})
+                self.transmission_counter.inc(
+                    value=1, tags={"namespace_or_state": str(key)}
+                )
 
     async def listen_for_change(
         self,
