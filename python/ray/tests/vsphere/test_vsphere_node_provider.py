@@ -478,46 +478,50 @@ def test_validate_frozen_vm_configs():
     assert validate_frozen_vm_configs(config) is None
 
     # Test an invalid case missing everything for OVF deployment
-    config = {
-        "library_item": "frozen-vm-template",
-    }
-    try:
+    with pytest.raises(
+        ValueError,
+        match="'datastore' is not given when trying to deploy the frozen VM from OVF.",
+    ):
+        config = {
+            "library_item": "frozen-vm-template",
+        }
         validate_frozen_vm_configs(config)
-    except Exception as e:
-        assert isinstance(e, AssertionError)
 
     # Test an invalid case missing datastore for OVF deployment
-    config = {
-        "name": "single-frozen-vm",
-        "library_item": "frozen-vm-template",
-        "cluster": "vsanCluster",
-    }
-    try:
+    with pytest.raises(
+        ValueError,
+        match="'datastore' is not given when trying to deploy the frozen VM from OVF.",
+    ):
+        config = {
+            "name": "single-frozen-vm",
+            "library_item": "frozen-vm-template",
+            "cluster": "vsanCluster",
+        }
         validate_frozen_vm_configs(config)
-    except Exception as e:
-        assert isinstance(e, AssertionError)
 
     # Test an invalid case missing cluster and resource pool for OVF deployment
-    config = {
-        "name": "single-frozen-vm",
-        "library_item": "frozen-vm-template",
-        "datastore": "vsanDatastore",
-    }
-    try:
+    with pytest.raises(
+        ValueError,
+        match="both 'cluster' and 'resource_pool' are missing when trying to deploy "
+        "the frozen VM from OVF, at least one should be given.",
+    ):
+        config = {
+            "name": "single-frozen-vm",
+            "library_item": "frozen-vm-template",
+            "datastore": "vsanDatastore",
+        }
         validate_frozen_vm_configs(config)
-    except Exception as e:
-        assert isinstance(e, AssertionError)
 
     # Test an invalid case missing name for OVF deployment
-    config = {
-        "library_item": "frozen-vm-template",
-        "cluster": "vsanCluster",
-        "datastore": "vsanDatastore",
-    }
-    try:
+    with pytest.raises(
+        ValueError, match="'name' must be given when deploying the frozen VM from OVF."
+    ):
+        config = {
+            "library_item": "frozen-vm-template",
+            "cluster": "vsanCluster",
+            "datastore": "vsanDatastore",
+        }
         validate_frozen_vm_configs(config)
-    except Exception as e:
-        assert isinstance(e, AssertionError)
 
     # Test an valid case with redundant data
     config = {
