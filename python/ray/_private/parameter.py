@@ -98,6 +98,7 @@ class RayParams:
             Defaults to random available port.
         runtime_env_agent_port: The port at which the runtime env agent
             listens to for HTTP.
+            Defaults to random available port.
         plasma_store_socket_name: If provided, it specifies the socket
             name used by the plasma store.
         raylet_socket_name: If provided, it specifies the socket path
