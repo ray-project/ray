@@ -1037,15 +1037,9 @@ class ServeControllerAvatar:
     def __init__(
         self,
         controller_name: str,
-        detached: bool = True,
         dedicated_cpu: bool = False,
         http_proxy_port: int = 8000,
     ):
-        if detached is not True:
-            raise ValueError(
-                "`detached=False` is no longer supported. "
-                "In a future release, it will be removed altogether."
-            )
         try:
             self._controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
         except ValueError:
