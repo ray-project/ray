@@ -176,9 +176,11 @@ public class Serve {
       String replicaTag,
       String controllerName,
       Object servableObject,
-      Map<String, String> config) {
+      Map<String, String> config,
+      String appName) {
     INTERNAL_REPLICA_CONTEXT =
-        new ReplicaContext(deploymentName, replicaTag, controllerName, servableObject, config);
+        new ReplicaContext(
+            deploymentName, replicaTag, controllerName, servableObject, config, appName);
   }
 
   public static void setInternalReplicaContext(ReplicaContext replicaContext) {
