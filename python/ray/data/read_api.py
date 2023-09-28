@@ -1,7 +1,7 @@
-import os
 import collections
 import logging
 import math
+import os
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -369,7 +369,12 @@ def read_datasource(
             _get_reader, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        (requested_parallelism, min_safe_parallelism, inmemory_size, reader,) = ray.get(
+        (
+            requested_parallelism,
+            min_safe_parallelism,
+            inmemory_size,
+            reader,
+        ) = ray.get(
             get_reader.remote(
                 datasource,
                 ctx,
@@ -1809,15 +1814,17 @@ def read_databricks_uc_tables(
         A :class:`Dataset` containing the queried data.
     """
     from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
-    from ray.util.spark.utils import is_in_databricks_runtime, get_spark_session
     from ray.util.spark.databricks_hook import get_dbutils
+    from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
-    host = os.environ.get("DATABRICKS_HOST", None)
-    token = os.environ.get("DATABRICKS_TOKEN", None)
+    host = os.environ.get("DATABRICKS_HOST")
+    token = os.environ.get("DATABRICKS_TOKEN")
 
     if not host or not token:
         if is_in_databricks_runtime():
-            ctx = get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
+            ctx = (
+                get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
+            )
             if not host:
                 host = ctx.tags().get("browserHostName").get()
             if not token:

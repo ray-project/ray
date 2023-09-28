@@ -35,6 +35,7 @@ from ray.data.read_api import (  # noqa: F401
     range_tensor,
     read_binary_files,
     read_csv,
+    read_databricks_uc_tables,
     read_datasource,
     read_images,
     read_json,
@@ -46,7 +47,6 @@ from ray.data.read_api import (  # noqa: F401
     read_text,
     read_tfrecords,
     read_webdataset,
-    read_databricks_uc_tables,
 )
 
 # Module-level cached global functions for callable classes. It needs to be defined here
