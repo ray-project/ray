@@ -258,7 +258,7 @@ public class Serve {
         controllerName,
         Constants.SERVE_NAMESPACE);
 
-    ServeControllerClient client = new ServeControllerClient(optional.get(), controllerName, true);
+    ServeControllerClient client = new ServeControllerClient(optional.get(), controllerName);
 
     setGlobalClient(client);
     return client;
