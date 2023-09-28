@@ -503,7 +503,6 @@ def run(
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
     client = _private_api.serve_start(
-        detached=True,
         http_options=http_options,
         grpc_options=grpc_options,
     )

@@ -126,7 +126,6 @@ def start(
         http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
 
     _private_api.serve_start(
-        detached=detached,
         http_options=http_options,
         dedicated_cpu=dedicated_cpu,
         grpc_options=grpc_options,
@@ -515,7 +514,6 @@ def run(
         )
 
     client = _private_api.serve_start(
-        detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},
     )
 

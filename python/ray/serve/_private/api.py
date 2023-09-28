@@ -227,7 +227,6 @@ async def serve_start_async(
 
 
 def serve_start(
-    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
@@ -302,10 +301,6 @@ def serve_start(
         controller_name,
     )
     _set_global_client(client)
-    logger.info(
-        f"Started{' detached ' if detached else ' '}Serve instance in "
-        f'namespace "{SERVE_NAMESPACE}".'
-    )
     return client
 
 
