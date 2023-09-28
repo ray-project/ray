@@ -179,7 +179,7 @@ def job_cli_group():
     "--entrypoint-memory",
     required=False,
     type=float,
-    help="the amount of total available memory for workers requesting memory "
+    help="the amount of memory to reserve "
     "for the entrypoint command, separately from any tasks or actors that are "
     "launched by it",
 )
