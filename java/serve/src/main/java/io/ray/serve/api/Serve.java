@@ -81,7 +81,7 @@ public class Serve {
             .orElse(8000);
     PyActorHandle controllerAvatar =
         Ray.actor(
-                PyActorClass.of("ray.serve.controller", "ServeControllerAvatar"),
+                PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"),
                 controllerName,
                 detached,
                 dedicatedCpu,
@@ -176,9 +176,11 @@ public class Serve {
       String replicaTag,
       String controllerName,
       Object servableObject,
-      Map<String, String> config) {
+      Map<String, String> config,
+      String appName) {
     INTERNAL_REPLICA_CONTEXT =
-        new ReplicaContext(deploymentName, replicaTag, controllerName, servableObject, config);
+        new ReplicaContext(
+            deploymentName, replicaTag, controllerName, servableObject, config, appName);
   }
 
   public static void setInternalReplicaContext(ReplicaContext replicaContext) {

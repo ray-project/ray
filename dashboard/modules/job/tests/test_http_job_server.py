@@ -165,7 +165,8 @@ def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
         raise RuntimeError(
             f"Job failed\nlogs:\n{logs}, info: {client.get_job_info(job_id)}"
         )
-    return status == JobStatus.SUCCEEDED
+    assert status == JobStatus.SUCCEEDED
+    return True
 
 
 def _check_job_failed(client: JobSubmissionClient, job_id: str) -> bool:
