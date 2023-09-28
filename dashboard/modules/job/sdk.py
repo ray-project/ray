@@ -195,7 +195,7 @@ class JobSubmissionClient(SubmissionClient):
             self._check_connection_and_version(
                 min_version="2.2",
                 version_error_message="`entrypoint_num_cpus`, `entrypoint_num_gpus`, "
-                "`entrypoint_memory`, and `entrypoint_resources` kwargs "
+                "and `entrypoint_resources` kwargs "
                 "are not supported on the Ray cluster. Please ensure the cluster is "
                 "running Ray 2.2 or higher.",
             )
