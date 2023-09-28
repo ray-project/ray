@@ -2,12 +2,10 @@ import asyncio
 import logging
 import os
 import random
-import sys
 from asyncio.events import AbstractEventLoop
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
-from functools import wraps
 from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
 
 import ray
@@ -207,7 +205,7 @@ class LongPollHost:
         self.send_counter = metrics.Counter(
             "serve_long_poll_host_send_counter",
             description="The number of times the long poll host sent data.",
-            tag_keys=("long_poll_namespace",),
+            tag_keys=("namespace_or_state",),
         )
 
     def _get_num_notifier_events(self, key: Optional[KeyType] = None):
@@ -217,22 +215,24 @@ class LongPollHost:
         else:
             return sum(len(events) for events in self.notifier_events.values())
 
-    def count_bytes_returned(listen_for_change_func):
-        """Decorator that counts the bytes returned by listen_for_change().
+    def _count_send(
+        self, timeout_or_data: Union[LongPollState, Dict[KeyType, UpdatedObject]]
+    ):
+        """Helper method that tracks the data sent by listen_for_change.
 
-        Increments the ray_serve_long_poll_host_bytes_sent counter by the
-        number of bytes returned.
+        Records number of times long poll host sends data in the
+        ray_serve_long_poll_host_send_counter metric.
         """
 
-        @wraps(listen_for_change_func)
-        async def count_bytes(self, *args, **kwargs):
-            objects = await listen_for_change_func(self, *args, **kwargs)
-            self.bytes_sent_counter.inc(value=sys.getsizeof(objects))
-            return objects
+        if isinstance(timeout_or_data, LongPollState):
+            # The only LongPollState is TIME_OUT– the long poll
+            # connection has timed out.
+            self.send_counter.inc(value=1, tags={"namespace_or_state": "TIMEOUT"})
+        else:
+            data = timeout_or_data
+            for key in data.keys():
+                self.send_counter.inc(value=1, tag={"namespace_or_state": str(key)})
 
-        return count_bytes
-
-    @count_bytes_returned
     async def listen_for_change(
         self,
         keys_to_snapshot_ids: Dict[KeyType, int],
@@ -248,13 +248,14 @@ class LongPollHost:
 
         # If there are any keys with outdated snapshot ids,
         # return their updated values immediately.
-        updated_keys = {
+        updated_objects = {
             key: UpdatedObject(self.object_snapshots[key], self.snapshot_ids[key])
             for key in existent_keys
             if self.snapshot_ids[key] != keys_to_snapshot_ids[key]
         }
-        if len(updated_keys) > 0:
-            return updated_keys
+        if len(updated_objects) > 0:
+            self._count_send(updated_objects)
+            return updated_objects
 
         # Otherwise, register asyncio events to be waited.
         async_task_to_events = {}
@@ -288,15 +289,18 @@ class LongPollHost:
                 pass
 
         if len(done) == 0:
+            self._count_send(LongPollState.TIME_OUT)
             return LongPollState.TIME_OUT
         else:
             updated_object_key: str = async_task_to_watched_keys[done.pop()]
-            return {
+            updated_object = {
                 updated_object_key: UpdatedObject(
                     self.object_snapshots[updated_object_key],
                     self.snapshot_ids[updated_object_key],
                 )
             }
+            self._count_send(updated_object)
+            return updated_object
 
     async def listen_for_change_java(
         self,
