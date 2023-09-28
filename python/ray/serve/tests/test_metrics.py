@@ -1204,7 +1204,6 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         metric="serve_num_scheduling_tasks_in_backoff",
         expected=0,
     )
-    breakpoint()
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
 
