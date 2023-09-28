@@ -98,7 +98,7 @@ def start(
 
     if detached is not True:
         raise ValueError(
-            "`detached` is a deprecated option that should not be set. "
+            "`detached=False` is no longer supported. "
             "In a future release, it will be removed altogether."
         )
 
