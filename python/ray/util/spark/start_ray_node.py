@@ -10,7 +10,7 @@ import logging
 import threading
 from ray.util.spark.cluster_init import (
     RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
-    START_RAY_PARENT_PID,
+    RAY_ON_SPARK_START_RAY_PARENT_PID,
 )
 from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 
@@ -113,7 +113,7 @@ if __name__ == "__main__":
             os.close(lock_fd)
 
     def check_parent_alive() -> None:
-        orig_parent_pid = int(os.environ[START_RAY_PARENT_PID])
+        orig_parent_pid = int(os.environ[RAY_ON_SPARK_START_RAY_PARENT_PID])
         while True:
             time.sleep(0.5)
             if os.getppid() != orig_parent_pid:

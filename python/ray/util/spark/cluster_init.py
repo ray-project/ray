@@ -40,7 +40,7 @@ RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
 MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
-START_RAY_PARENT_PID = "START_RAY_PARENT_PID"
+RAY_ON_SPARK_START_RAY_PARENT_PID = "RAY_ON_SPARK_START_RAY_PARENT_PID"
 
 
 def _check_system_environment():
@@ -515,7 +515,7 @@ def _setup_ray_cluster(
         synchronous=False,
         extra_env={
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
-            START_RAY_PARENT_PID: str(os.getpid()),
+            RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
         },
     )
 
@@ -596,7 +596,7 @@ def _setup_ray_cluster(
 
         ray_worker_node_extra_envs = {
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
-            START_RAY_PARENT_PID: str(os.getpid()),
+            RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
         }
 
         if num_gpus_worker_node > 0:
