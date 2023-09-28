@@ -649,7 +649,7 @@ def get_all_live_placement_group_names() -> List[str]:
     return live_pg_names
 
 
-def get_current_actor_id(self) -> str:
+def get_current_actor_id() -> str:
     """Gets the ID of the calling actor.
 
     If this is called in a driver, returns "DRIVER."
