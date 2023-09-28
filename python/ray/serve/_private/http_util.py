@@ -15,6 +15,7 @@ from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.utils import serve_encoders
 from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -80,9 +81,6 @@ class Response:
             self.body = content.encode("utf-8")
             self.set_content_type("text-utf8")
         else:
-            # Delayed import since utils depends on http_util
-            from ray.serve._private.utils import serve_encoders
-
             self.body = json.dumps(
                 jsonable_encoder(content, custom_encoder=serve_encoders)
             ).encode()
