@@ -820,13 +820,25 @@ async def test_prefer_az_off(pow_2_scheduler, fake_query):
         tasks = []
         for _ in range(10):
             tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
-        return await asyncio.gather(*tasks)
+        replicas = await asyncio.gather(*tasks)
+        return {r.replica_id for r in replicas}
+
+    async def verify_replicas_batched(expected_replicas: Set[str]):
+        chosen_replicas = set()
+        for _ in range(100):
+            chosen_replicas = chosen_replicas.union(await choose_replicas())
+            print("Replicas chosen after batch of 10:", chosen_replicas)
+            if chosen_replicas == expected_replicas:
+                break
+        assert chosen_replicas == expected_replicas
 
     # Requests should be spread across all nodes
-    assert set(await choose_replicas()) == {r1, r2, r3}
+    # NOTE(zcin): Choose up to 1000 replicas in batches of 10 at a time.
+    # This deflakes the test, but also makes sure the test runs fast on average
+    await verify_replicas_batched({r1.replica_id, r2.replica_id, r3.replica_id})
 
     r1.set_queue_state_response(0, accepted=False)
-    assert set(await choose_replicas()) == {r2, r3}
+    await verify_replicas_batched({r2.replica_id, r3.replica_id})
 
 
 @pytest.mark.asyncio

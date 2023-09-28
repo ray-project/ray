@@ -102,7 +102,8 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
                         std::move(node_ids),
                         is_spilled,
                         object_info.spilled_url(),
-                        NodeID::FromBinary(object_info.spilled_node_id()));
+                        NodeID::FromBinary(object_info.spilled_node_id()),
+                        object_info.did_spill());
 }
 }  // namespace
 

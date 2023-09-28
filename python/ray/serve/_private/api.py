@@ -18,10 +18,10 @@ from ray.serve._private.constants import (
     SERVE_EXPERIMENTAL_DISABLE_PROXY,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.controller import ServeController
 from ray.serve._private.utils import format_actor_name, get_random_letters
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
-from ray.serve.controller import ServeController
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 

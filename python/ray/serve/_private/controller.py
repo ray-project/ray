@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import marshal
 import os
 import pickle
 import time
@@ -56,6 +57,13 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import (
+    ActorNameList,
+    DeploymentRoute,
+    DeploymentRouteList,
+)
+from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
+from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
     ApplicationDetails,
     HTTPOptionsSchema,
@@ -274,9 +282,6 @@ class ServeController:
 
     def get_all_endpoints_java(self) -> bytes:
         """Returns a dictionary of deployment name to config."""
-        from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
-        from ray.serve.generated.serve_pb2 import EndpointSet
-
         endpoints = self.get_all_endpoints()
         # NOTE(zcin): Java only supports 1.x deployments, so only return
         # a dictionary of deployment name -> endpoint info
@@ -296,8 +301,6 @@ class ServeController:
         """Returns the proxy actor name list serialized by protobuf."""
         if self.proxy_state_manager is None:
             return None
-
-        from ray.serve.generated.serve_pb2 import ActorNameList
 
         actor_name_list = ActorNameList(
             names=self.proxy_state_manager.get_proxy_names().values()
@@ -776,8 +779,6 @@ class ServeController:
 
         route = self.endpoint_state.get_endpoint_route(id)
 
-        from ray.serve.generated.serve_pb2 import DeploymentRoute
-
         deployment_route = DeploymentRoute(
             deployment_info=deployment_info.to_proto(), route=route
         )
@@ -812,8 +813,6 @@ class ServeController:
         Returns:
             DeploymentRouteList's protobuf serialized bytes
         """
-        from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
-
         deployment_route_list = DeploymentRouteList()
         for deployment_id, (
             deployment_info,
@@ -1018,8 +1017,6 @@ class ServeController:
         """
 
         if self.cpu_profiler is not None:
-            import marshal
-
             self.cpu_profiler.snapshot_stats()
             with open(self.cpu_profiler_log, "wb") as f:
                 marshal.dump(self.cpu_profiler.stats, f)
