@@ -357,7 +357,10 @@ class BackendExecutor:
         has_resource_requested = (
             self._additional_resources_per_worker.get(resource_name, None) is not None
         )
-        return bool(env_integer(enable_sharing_env, has_resource_requested))
+        return (
+            bool(env_integer(enable_sharing_env, has_resource_requested))
+            and has_resource_requested
+        )
 
     def _create_rank_world_size_mappings(self) -> List[Dict]:
         """Create rank and world size mappings for workers.
