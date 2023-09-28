@@ -38,14 +38,6 @@ class ActorWrapperCallStatus(str, Enum):
     FINISHED_SUCCEED = "FINISHED_SUCCEED"
     FINISHED_FAILED = "FINISHED_FAILED"
 
-    HEALTHY = "HEALTHY"
-    UNHEALTHY = "UNHEALTHY"
-    DRAINING = "DRAINING"
-    # The DRAINED status is a momentary state
-    # just before the proxy is removed
-    # so this status won't show up on the dashboard.
-    DRAINED = "DRAINED"
-
 
 class ActorWrapper(ABC):
     @property
@@ -163,8 +155,8 @@ class ProxyActorWrapper(ActorWrapper):
         If the ongoing ready check is finished, and the value can be retrieved and
         unpacked, set the worker_id and log_file_path attributes of the proxy actor
         and return FINISHED_SUCCEED status. If the ongoing ready check is not finished,
-        return PENDING status. If the RayActorError is raised, meaning that the actor is
-        dead, return FINISHED_FAILED status.
+        return PENDING status. If the RayActorError is raised, meaning that the actor
+        is dead, return FINISHED_FAILED status.
         """
         try:
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
@@ -178,29 +170,41 @@ class ProxyActorWrapper(ActorWrapper):
         except RayActorError:
             return ActorWrapperCallStatus.FINISHED_FAILED
 
-    def is_healthy(self) -> bool:
+    def is_healthy(self) -> ActorWrapperCallStatus:
         """Return whether the proxy actor is healthy or not.
 
-        # TODO: describe the the ref is reset
+        If the ongoing health check is finished, and the value can be retrieved,
+        reset _health_check_obj_ref to enable the next health check and return
+        FINISHED_SUCCEED status. If the ongoing ready check is not finished,
+        return PENDING status. If the RayActorError is raised, meaning that the actor
+        is dead, return FINISHED_FAILED status.
         """
-        finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
-        if finished:
-            self._health_check_obj_ref = None
-            return ray.get(finished[0])
+        try:
+            finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
+            if finished:
+                self._health_check_obj_ref = None
+                ray.get(finished[0])
+                return ActorWrapperCallStatus.FINISHED_SUCCEED
+            else:
+                return ActorWrapperCallStatus.PENDING
+        except RayActorError:
+            return ActorWrapperCallStatus.FINISHED_FAILED
 
-        return False
-
-    def is_drained(self) -> bool:
+    def is_drained(self) -> ActorWrapperCallStatus:
         """Return whether the proxy actor is drained or not.
 
-        # TODO: describe the the ref is reset
+        If the ongoing drained check is finished, and the value can be retrieved,
+        reset _is_drained_obj_ref to ensure drained check is finished and return
+        FINISHED_SUCCEED status. If the ongoing ready check is not finished,
+        return PENDING status.
         """
         finished, _ = ray.wait([self._is_drained_obj_ref], timeout=0)
         if finished:
             self._is_drained_obj_ref = None
-            return ray.get(finished[0])
-
-        return False
+            ray.get(finished[0])
+            return ActorWrapperCallStatus.FINISHED_SUCCEED
+        else:
+            return ActorWrapperCallStatus.PENDING
 
     def is_shutdown(self) -> bool:
         """Return whether the proxy actor is shutdown.
@@ -371,9 +375,13 @@ class ProxyState:
 
         if self._proxy_actor_wrapper.health_check_ongoing:
             try:
-                healthy = self._proxy_actor_wrapper.is_healthy()
-                if healthy:
+                healthy_call_status = self._proxy_actor_wrapper.is_healthy()
+                if healthy_call_status == ActorWrapperCallStatus.FINISHED_SUCCEED:
+                    # Call to reset _consecutive_health_check_failures
+                    # the status should be unchanged.
                     self.try_update_status(self._status)
+                elif healthy_call_status == ActorWrapperCallStatus.FINISHED_FAILED:
+                    self.set_status(ProxyStatus.UNHEALTHY)
                 elif (
                     time.time() - self._last_health_check_time
                     > PROXY_HEALTH_CHECK_TIMEOUT_S
@@ -386,14 +394,11 @@ class ProxyState:
                         f"{self._node_id} after {PROXY_HEALTH_CHECK_TIMEOUT_S}s"
                     )
                     self.try_update_status(ProxyStatus.UNHEALTHY)
-            except RayActorError:
-                # The proxy actor dies.
-                self.set_status(ProxyStatus.UNHEALTHY)
             except Exception as e:
                 logger.warning(f"Health check for proxy {self._actor_name} failed: {e}")
                 self.try_update_status(ProxyStatus.UNHEALTHY)
 
-        # If there's no active in-progress health check and it has been more than 10
+        # If there's no active in-progress health check, and it has been more than 10
         # seconds since the last health check, perform another health check.
         if self._proxy_actor_wrapper.health_check_ongoing:
             return
@@ -408,8 +413,8 @@ class ProxyState:
 
         if self._proxy_actor_wrapper.is_draining:
             try:
-                drained = self._proxy_actor_wrapper.is_drained()
-                if drained:
+                healthy_call_status = self._proxy_actor_wrapper.is_drained()
+                if healthy_call_status == ActorWrapperCallStatus.FINISHED_SUCCEED:
                     self.set_status(ProxyStatus.DRAINED)
             except Exception as e:
                 logger.warning(f"Drain check for proxy {self._actor_name} failed: {e}.")
