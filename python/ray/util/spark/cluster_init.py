@@ -1514,6 +1514,7 @@ class AutoscalingCluster:
         extra_env = {
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
+            RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
         }
 
         self.ray_head_node_cmd = ray_head_node_cmd
