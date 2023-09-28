@@ -250,9 +250,7 @@ def _zip_blocks_with_type_check(block: Block, other_block: Block) -> Block:
     """Check that block types are the same before zipping. If none of the block
     are pyarrow blocks, raise ValueError.
     """
-    if isinstance(block, type(other_block)):
-        return BlockAccessor.for_block(block).zip(other_block)
-    else:
+    if not isinstance(block, type(other_block)):
         from pyarrow import Table
 
         if not any(isinstance(blk, Table) for blk in (block, other_block)):

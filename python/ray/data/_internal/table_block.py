@@ -208,11 +208,12 @@ class TableBlockAccessor(BlockAccessor):
         if not isinstance(acc, type(self)):
             from pyarrow import Table
 
-            if isinstance(self._table, Table):
-                acc = BlockAccessor.for_block(acc.to_arrow())
-            else:
+            if not isinstance(self._table, Table):
                 block = self.to_arrow()
                 return BlockAccessor.for_block(block).zip(other)
+            else:
+                other = acc.to_arrow()
+                acc = BlockAccessor.for_block(other)
 
         if acc.num_rows() != self.num_rows():
             raise ValueError(
