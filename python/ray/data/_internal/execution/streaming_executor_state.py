@@ -283,10 +283,13 @@ class OpState:
                 f"{self.op.name} in-memory block size of "
                 f"{(self.first_block_size_bytes / 2**20):.2f} MB is significantly "
                 f"larger than the maximium target block size of "
-                f"{(target_max_block_size / 2**20):.2f} MB."
+                f"{(target_max_block_size / 2**20):.2f} MB. Consider increasing read "
+                f"parallelism in order to reduce the block size. See docs "
+                f"for more details and additional tips to improve performance: "
+                f"https://docs.ray.io/en/latest/data/performance-tips.html#tuning-read-parallelism"  # noqa: E501
             )
         else:
-            logger.get_logger().info(
+            logger.get_logger(log_to_stdout=False).info(
                 f"{self.op.name} in-memory block size: "
                 f"{(self.first_block_size_bytes / 2**20):.2f} MB"
             )
