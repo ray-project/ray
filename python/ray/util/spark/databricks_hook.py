@@ -1,8 +1,10 @@
 import os
 
+from ray._private.storage import _load_class
 from .start_hook_base import RayOnSparkStartHook
-from .utils import get_spark_session
+from .utils import get_spark_session, is_in_databricks_runtime
 import logging
+from functools import lru_cache
 import threading
 import time
 
@@ -65,6 +67,13 @@ DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS = 3
 DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES = (
     "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES"
 )
+DATABRICKS_RAY_CLUSTER_GLOBAL_MODE = "DATABRICKS_RAY_CLUSTER_GLOBAL_MODE"
+RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
+_DATABRICKS_DEFAULT_TMP_ROOT_DIR = "/local_disk0/tmp"
+
+
+def global_mode_enabled():
+    return os.environ.get(DATABRICKS_RAY_CLUSTER_GLOBAL_MODE, "false").lower() == "true"
 
 
 def _get_db_api_entry():
@@ -74,12 +83,18 @@ def _get_db_api_entry():
     return get_dbutils().entry_point
 
 
-_DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
+@lru_cache(maxsize=1)
+def _get_start_hook():
+    if RAY_ON_SPARK_START_HOOK in os.environ:
+        return _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
+    if is_in_databricks_runtime():
+        return DefaultDatabricksRayOnSparkStartHook()
+    return RayOnSparkStartHook()
 
 
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
-    def get_default_temp_dir(self):
-        return _DATABRICKS_DEFAULT_TMP_DIR
+    def get_default_temp_root_dir(self):
+        return os.environ.get("RAY_TMPDIR", _DATABRICKS_DEFAULT_TMP_ROOT_DIR)
 
     def on_ray_dashboard_created(self, port):
         display_databricks_driver_proxy_url(
@@ -89,9 +104,14 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
     def on_cluster_created(self, ray_cluster_handler):
         db_api_entry = _get_db_api_entry()
         try:
-            db_api_entry.registerBackgroundSparkJobGroup(
-                ray_cluster_handler.spark_job_group_id
-            )
+            # We only cancel spark job group when global mode is disabled,
+            # otherwise even when the parent REPL is detached or died, we
+            # keep the spark job group alive so that ray cluster is alive
+            # and can be connected again.
+            if not global_mode_enabled():
+                db_api_entry.registerBackgroundSparkJobGroup(
+                    ray_cluster_handler.spark_job_group_id
+                )
         except Exception:
             _logger.warning(
                 "Registering Ray cluster spark job as background job failed. "
@@ -159,4 +179,8 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
                 time.sleep(DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
 
-        threading.Thread(target=auto_shutdown_watcher, daemon=True).start()
+        # Only enable auto_shutdown_watcher for non-global mode cluster.
+        # This process is attached to the parent REPL, so it will be killed
+        # if parent REPL restarted.
+        if not global_mode_enabled():
+            threading.Thread(target=auto_shutdown_watcher, daemon=True).start()

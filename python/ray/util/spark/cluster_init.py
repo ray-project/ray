@@ -1,5 +1,6 @@
 import json
 import os
+import psutil
 import socket
 import sys
 import time
@@ -12,7 +13,9 @@ from typing import Optional, Dict, Type
 
 import ray
 from ray.util.annotations import PublicAPI
-from ray._private.storage import _load_class
+from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+from ray._private.services import canonicalize_bootstrap_address_or_die
+from ray._private.utils import get_user_temp_dir
 
 from .utils import (
     exec_cmd,
@@ -25,22 +28,23 @@ from .utils import (
     get_avail_mem_per_ray_worker_node,
     get_max_num_concurrent_tasks,
     gen_cmd_exec_failure_msg,
-    setup_sigterm_on_parent_death,
     calc_mem_ray_head_node,
 )
-from .start_hook_base import RayOnSparkStartHook
-from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
+from .databricks_hook import (
+    global_mode_enabled,
+    DATABRICKS_RAY_CLUSTER_GLOBAL_MODE,
+    _get_start_hook,
+)
 
 
 _logger = logging.getLogger("ray.util.spark")
 _logger.setLevel(logging.INFO)
 
-
-RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
-
 MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
+GLOBAL_RAY_CLUSTER_INFO_FILE = "global_ray_cluster_info.json"
+START_RAY_WORKER_NODE = "START_RAY_WORKER_NODE"
 
 
 def _check_system_environment():
@@ -69,7 +73,7 @@ class RayClusterOnSpark:
                  port on Spark driver node)
         head_proc: Ray head process
         spark_job_group_id: The Spark job id for a submitted ray job
-        num_workers_node: The number of workers in the ray cluster.
+        num_worker_nodes: The number of workers in the ray cluster.
     """
 
     def __init__(
@@ -77,24 +81,33 @@ class RayClusterOnSpark:
         address,
         head_proc,
         spark_job_group_id,
-        num_workers_node,
+        num_worker_nodes,
         temp_dir,
         cluster_unique_id,
         start_hook,
         ray_dashboard_port,
+        ray_head_port,
     ):
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
-        self.num_worker_nodes = num_workers_node
+        self.num_worker_nodes = num_worker_nodes
         self.temp_dir = temp_dir
         self.cluster_unique_id = cluster_unique_id
         self.start_hook = start_hook
         self.ray_dashboard_port = ray_dashboard_port
+        self.ray_head_port = ray_head_port
 
         self.is_shutdown = False
         self.spark_job_is_canceled = False
         self.background_job_exception = None
+
+        if global_mode_enabled():
+            self._store_global_ray_cluster_info()
+
+    def _store_global_ray_cluster_info(self):
+        with open(os.path.join(self.temp_dir, GLOBAL_RAY_CLUSTER_INFO_FILE), "w") as f:
+            f.write(json.dumps(self.to_dict()))
 
     def _cancel_background_spark_job(self):
         self.spark_job_is_canceled = True
@@ -143,8 +156,15 @@ class RayClusterOnSpark:
                     len([node for node in ray.nodes() if node["Alive"]]) - 1
                 )  # Minus 1 means excluding the head node.
 
-                if cur_alive_worker_count >= self.num_worker_nodes:
+                if cur_alive_worker_count == self.num_worker_nodes:
                     return
+
+                if cur_alive_worker_count > self.num_worker_nodes:
+                    raise RuntimeError(
+                        "Unexpected error happened, current alive worker count "
+                        f"{cur_alive_worker_count} is greater than requested "
+                        f"worker count {self.num_worker_nodes}."
+                    )
 
                 if cur_alive_worker_count > last_alive_worker_count:
                     last_alive_worker_count = cur_alive_worker_count
@@ -191,7 +211,7 @@ class RayClusterOnSpark:
         """
         if not self.is_shutdown:
             self.disconnect()
-            os.environ.pop("RAY_ADDRESS", None)
+            os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
             if cancel_background_job:
                 try:
                     self._cancel_background_spark_job()
@@ -209,6 +229,38 @@ class RayClusterOnSpark:
                     "An Error occurred during shutdown of ray head node: " f"{repr(e)}"
                 )
             self.is_shutdown = True
+
+    def to_dict(self):
+        ignore_fields = {
+            "head_proc",
+            "start_hook",
+            "is_shutdown",
+            "spark_job_is_canceled",
+            "background_job_exception",
+        }
+        cluster_info = {
+            str(k): v for k, v in self.__dict__.items() if k not in ignore_fields
+        }
+        return cluster_info
+
+    @classmethod
+    def from_dict(cls, cluster_info):
+        ray_head_port = cluster_info.pop("ray_head_port", None)
+        if ray_head_port is None:
+            raise ValueError(
+                "The cluster info dict doesn't contain ray_head_port field."
+            )
+        head_proc = None
+        for conn in psutil.net_connections():
+            if conn.laddr.port == ray_head_port:
+                head_proc = psutil.Process(conn.pid)
+                break
+        if head_proc is None:
+            raise RuntimeError(
+                f"Cannot find ray head process with port {ray_head_port}."
+            )
+        start_hook = _get_start_hook()
+        return cls(head_proc=head_proc, start_hook=start_hook, **cluster_info)
 
     def __enter__(self):
         return self
@@ -428,13 +480,7 @@ def _setup_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
-    if RAY_ON_SPARK_START_HOOK in os.environ:
-        start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
-    elif is_in_databricks_runtime():
-        start_hook = DefaultDatabricksRayOnSparkStartHook()
-    else:
-        start_hook = RayOnSparkStartHook()
-
+    start_hook = _get_start_hook()
     spark = get_spark_session()
 
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
@@ -476,11 +522,44 @@ def _setup_ray_cluster(
 
     cluster_unique_id = uuid.uuid4().hex[:8]
 
+    if (
+        is_in_databricks_runtime()
+        and global_mode_enabled()
+        and ray_temp_root_dir is not None
+    ):
+        _logger.warning(
+            "The `ray_temp_root_dir` argument is ignored when enabling global mode"
+            "on Databricks. We use /local_disk0/tmp as default ray temp root dir."
+        )
+        ray_temp_root_dir = None
     if ray_temp_root_dir is None:
-        ray_temp_root_dir = start_hook.get_default_temp_dir()
-    ray_temp_dir = os.path.join(
-        ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
-    )
+        ray_temp_root_dir = start_hook.get_default_temp_root_dir()
+    if global_mode_enabled():
+        ray_addr = None
+        try:
+            # It reads from environment variable RAY_ADDRESS, then check
+            # /local_disk0/tmp/ray/ray_current_cluster to see if the address
+            # is available, if yes then a global ray cluster is running, otherwise
+            # it will start a new glbal ray cluster.
+            ray_addr = canonicalize_bootstrap_address_or_die(
+                "auto", get_user_temp_dir()
+            )
+        except Exception:
+            # Surpress exceptions thrown when there's no valid ray address
+            pass
+        if ray_addr is not None:
+            raise RuntimeError(
+                "Global mode is enabled by setting "
+                f"{DATABRICKS_RAY_CLUSTER_GLOBAL_MODE} to true. Current active ray "
+                "cluster on spark haven't shut down. Please call "
+                "`ray.util.spark.shutdown_ray_cluster()` before initiating a "
+                "new Ray cluster on spark."
+            )
+        ray_temp_dir = os.path.join(ray_temp_root_dir, "ray")
+    else:
+        ray_temp_dir = os.path.join(
+            ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
+        )
     os.makedirs(ray_temp_dir, exist_ok=True)
     object_spilling_dir = os.path.join(ray_temp_dir, "spill")
     os.makedirs(object_spilling_dir, exist_ok=True)
@@ -510,12 +589,9 @@ def _setup_ray_cluster(
 
     _logger.info(f"Starting Ray head, command: {' '.join(ray_head_node_cmd)}")
 
-    # `preexec_fn=setup_sigterm_on_parent_death` ensures the ray head node being
-    # killed if parent process died unexpectedly.
     ray_head_proc, tail_output_deque = exec_cmd(
         ray_head_node_cmd,
         synchronous=False,
-        preexec_fn=setup_sigterm_on_parent_death,
         extra_env={RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""},
     )
 
@@ -595,7 +671,14 @@ def _setup_ray_cluster(
         ]
 
         ray_worker_node_extra_envs = {
-            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""
+            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
+            DATABRICKS_RAY_CLUSTER_GLOBAL_MODE: os.environ.get(
+                DATABRICKS_RAY_CLUSTER_GLOBAL_MODE, "false"
+            ),
+            START_RAY_WORKER_NODE: "true",
+            "RAY_TMPDIR": os.environ.get(
+                "RAY_TMPDIR", start_hook.get_default_temp_root_dir()
+            ),
         }
 
         if num_gpus_worker_node > 0:
@@ -624,20 +707,15 @@ def _setup_ray_cluster(
             f"Start Ray worker, command: {' '.join(ray_worker_node_cmd)}"
         )
 
-        # `preexec_fn=setup_sigterm_on_parent_death` handles the case:
-        # If a user cancels the PySpark job, the worker process gets killed, regardless
-        # of PySpark daemon and worker reuse settings.
-        # We use prctl to ensure the command process receives SIGTERM after spark job
-        # cancellation.
         # Note:
-        # When a pyspark job cancelled, the UDF python process are killed by signal
-        # "SIGKILL", This case neither "atexit" nor signal handler can capture SIGKILL
-        # signal. prctl is the only way to capture SIGKILL signal.
+        # When a pyspark job cancelled, the UDF python worker process are killed by
+        # signal "SIGKILL", then `start_ray_node` process will detect the parent died
+        # event (see `ray.util.spark.start_ray_node.check_parent_alive`) and then
+        # kill ray worker node process and execute cleanup routine.
         exec_cmd(
             ray_worker_node_cmd,
             synchronous=True,
             extra_env=ray_worker_node_extra_envs,
-            preexec_fn=setup_sigterm_on_parent_death,
         )
 
         # NB: Not reachable.
@@ -647,17 +725,18 @@ def _setup_ray_cluster(
 
     cluster_address = f"{ray_head_ip}:{ray_head_port}"
     # Set RAY_ADDRESS environment variable to the cluster address.
-    os.environ["RAY_ADDRESS"] = cluster_address
+    os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = cluster_address
 
     ray_cluster_handler = RayClusterOnSpark(
         address=cluster_address,
         head_proc=ray_head_proc,
         spark_job_group_id=spark_job_group_id,
-        num_workers_node=num_worker_nodes,
+        num_worker_nodes=num_worker_nodes,
         temp_dir=ray_temp_dir,
         cluster_unique_id=cluster_unique_id,
         start_hook=start_hook,
         ray_dashboard_port=ray_dashboard_port,
+        ray_head_port=ray_head_port,
     )
 
     def background_job_thread_fn():
@@ -841,6 +920,19 @@ def setup_ray_cluster(
     `ray.util.spark.shutdown_ray_cluster()`.
     Note: If the active ray cluster haven't shut down, you cannot create a new ray
     cluster.
+
+    To enable global mode on Databricks Runtime, you can set environment variable
+    `DATABRICKS_RAY_CLUSTER_GLOBAL_MODE` to true. In global mode, the ray cluster
+    will keep running as the spark cluster persists, and you can connect to the
+    same ray cluster from different notebooks by `ray.init()` without specifying
+    ray cluster address. Restarting python REPL will not kill the global ray
+    cluster, so you need to manually shut down by calling
+    `ray.util.spark.shutdown_ray_cluster()`.
+    Note: Global mode has below limitations and risks
+        limitations: Only one global mode ray cluster could be created
+        risks: If you forget to shutdown global mode ray cluster, ray head node and
+            worker nodes will keep running, which will block Databirkcs cluster
+            auto-termination.
 
     Args:
         num_worker_nodes: This argument represents how many ray worker nodes to start
@@ -1185,7 +1277,25 @@ def shutdown_ray_cluster() -> None:
 
     with _active_ray_cluster_rwlock:
         if _active_ray_cluster is None:
-            raise RuntimeError("No active ray cluster to shut down.")
+            if global_mode_enabled():
+                # If global mode enabled, we need to construct RayClusterOnSpark
+                # from saved GLOBAL_RAY_CLUSTER_INFO_FILE file, then shutdown the global
+                # ray cluster.
+                ray_temp_root_dir = _get_start_hook().get_default_temp_root_dir()
+                try:
+                    with open(
+                        os.path.join(
+                            ray_temp_root_dir, "ray", GLOBAL_RAY_CLUSTER_INFO_FILE
+                        )
+                    ) as f:
+                        cluster_info = json.load(f)
+                    _active_ray_cluster = RayClusterOnSpark.from_dict(cluster_info)
+                except Exception as e:
+                    raise RuntimeError(
+                        "No active global ray cluster to shut down."
+                    ) from e
+            else:
+                raise RuntimeError("No active ray cluster to shut down.")
 
         _active_ray_cluster.shutdown()
         _active_ray_cluster = None
