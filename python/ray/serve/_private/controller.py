@@ -156,7 +156,6 @@ class ServeController:
 
         self.proxy_state_manager = ProxyStateManager(
             controller_name,
-            detached,
             http_config,
             self._controller_node_id,
             self.cluster_node_info_cache,
