@@ -9,6 +9,7 @@ import io.ray.runtime.metric.Metrics;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.RequestMetadata;
@@ -27,6 +28,8 @@ public class RayServeReplicaImpl implements RayServeReplica {
   private static final Logger LOGGER = LoggerFactory.getLogger(RayServeReplicaImpl.class);
 
   private String deploymentName;
+
+  private DeploymentId deploymentId;
 
   private String replicaTag;
 
@@ -58,8 +61,10 @@ public class RayServeReplicaImpl implements RayServeReplica {
       Object callable,
       DeploymentConfig deploymentConfig,
       DeploymentVersion version,
-      BaseActorHandle actorHandle) {
+      BaseActorHandle actorHandle,
+      String appName) {
     this.deploymentName = Serve.getReplicaContext().getDeploymentName();
+    this.deploymentId = new DeploymentId(this.deploymentName, appName);
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
     this.config = deploymentConfig;
@@ -252,13 +257,15 @@ public class RayServeReplicaImpl implements RayServeReplica {
         LOGGER.error(
             "Replica {} was interrupted in sheep when draining pending queries", replicaTag);
       }
-      if (numOngoingRequests.get() == 0) {
-        break;
-      } else {
+      int numOngoingRequest = getNumOngoingRequests();
+      if (numOngoingRequest > 0) {
         LOGGER.info(
             "Waiting for an additional {}s to shut down because there are {} ongoing requests.",
             config.getGracefulShutdownWaitLoopS(),
-            numOngoingRequests.get());
+            numOngoingRequest);
+      } else {
+        LOGGER.info("Graceful shutdown complete; replica exiting.");
+        break;
       }
     }
 
@@ -290,10 +297,13 @@ public class RayServeReplicaImpl implements RayServeReplica {
     DeploymentVersion deploymentVersion =
         new DeploymentVersion(version.getCodeVersion(), config, version.getRayActorOptions());
     version = deploymentVersion;
-    if (userConfig == null) {
-      return deploymentVersion;
+    if (userConfig != null) {
+      updateUserConfig(userConfig);
     }
+    return version;
+  }
 
+  public void updateUserConfig(Object userConfig) {
     LOGGER.info(
         "Replica {} of deployment {} reconfigure userConfig: {}",
         replicaTag,
@@ -302,12 +312,11 @@ public class RayServeReplicaImpl implements RayServeReplica {
     try {
       ReflectUtil.getMethod(callable.getClass(), Constants.RECONFIGURE_METHOD, userConfig)
           .invoke(callable, userConfig);
-      return version;
     } catch (NoSuchMethodException e) {
       String errMsg =
           LogUtil.format(
               "userConfig specified but deployment {} missing {} method",
-              deploymentName,
+              deploymentId,
               Constants.RECONFIGURE_METHOD);
       LOGGER.error(errMsg);
       throw new RayServeException(errMsg, e);
@@ -316,7 +325,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
           LogUtil.format(
               "Replica {} of deployment {} failed to reconfigure userConfig {}",
               replicaTag,
-              deploymentName,
+              deploymentId,
               userConfig);
       LOGGER.error(errMsg);
       throw new RayServeException(errMsg, e);
@@ -324,7 +333,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
       LOGGER.info(
           "Replica {} of deployment {} finished reconfiguring userConfig: {}",
           replicaTag,
-          deploymentName,
+          deploymentId,
           userConfig);
     }
   }
