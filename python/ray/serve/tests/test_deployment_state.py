@@ -64,7 +64,6 @@ class MockReplicaActorWrapper:
     def __init__(
         self,
         actor_name: str,
-        detached: bool,
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_id: DeploymentID,
@@ -2570,7 +2569,6 @@ class TestActorReplicaWrapper:
         actor_replica = ActorReplicaWrapper(
             version=deployment_version("1"),
             actor_name="test",
-            detached=False,
             controller_name="test_controller",
             replica_tag="test_tag",
             deployment_id=DeploymentID("test_deployment", "test_app"),
@@ -2587,7 +2585,6 @@ class TestActorReplicaWrapper:
         actor_replica = ActorReplicaWrapper(
             version=deployment_version("1"),
             actor_name="test",
-            detached=False,
             controller_name="test_controller",
             replica_tag="test_tag",
             deployment_id=DeploymentID("test_deployment", "test_app"),

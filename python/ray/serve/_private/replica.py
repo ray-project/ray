@@ -87,7 +87,6 @@ def create_replica_wrapper(actor_class_name: str):
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
             controller_name: str,
-            detached: bool,
             app_name: str = None,
         ):
             self._replica_tag = replica_tag
