@@ -11,10 +11,7 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_NAMESPACE,
-)
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
@@ -433,12 +430,6 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     When the request timed out, gRPC proxy should return timeout response for both
     unary and streaming request.
     """
-    if streaming and not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        print(
-            "Skipping streaming condition because streaming feature flag is disabled."
-        )
-        return
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -503,12 +494,6 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
     When the request error out, gRPC proxy should return INTERNAL status and the error
     message in the response for both unary and streaming request.
     """
-    if streaming and not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        print(
-            "Skipping streaming condition because streaming feature flag is disabled."
-        )
-        return
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
