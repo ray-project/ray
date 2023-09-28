@@ -89,7 +89,7 @@ class JobInfo:
     #: The number of GPUs to reserve for the entrypoint command.
     entrypoint_num_gpus: Optional[Union[int, float]] = None
     #: The amount of memory for workers requesting memory for the entrypoint command.
-    entrypoint_memory: Optional[Union[int, float]] = None
+    entrypoint_memory: Optional[int] = None
     #: The quantity of various custom resources to reserve for the entrypoint command.
     entrypoint_resources: Optional[Dict[str, float]] = None
     #: Driver agent http address
@@ -346,7 +346,7 @@ class JobSubmitRequest:
     # The amount of total available memory for workers requesting memory
     # for the execution of the entrypoint command, separately from any Ray
     # tasks or actors that are created by it.
-    entrypoint_memory: Optional[Union[int, float]] = None
+    entrypoint_memory: Optional[int] = None
     # The quantity of various custom resources
     # to reserve for the entrypoint command, separately from any Ray tasks
     # or actors that are created by it.

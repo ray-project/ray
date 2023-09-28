@@ -137,7 +137,7 @@ class JobSubmissionClient(SubmissionClient):
         submission_id: Optional[str] = None,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
-        entrypoint_memory: Optional[Union[int, float]] = None,
+        entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
