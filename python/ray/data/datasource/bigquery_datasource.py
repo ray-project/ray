@@ -36,11 +36,12 @@ class _BigQueryDatasourceReader(Reader):
 
         if query is not None and dataset is not None:
             raise ValueError(
-                "Query and dataset kwargs cannot both be provided (must be mutually exclusive)."
+                "Query and dataset kwargs cannot both be provided "
+                + "(must be mutually exclusive)."
             )
-        
-        _check_import(self, module="google.cloud", package="bigquery") 
-        _check_import(self, module="google.cloud", package="bigquery_storage") 
+
+        _check_import(self, module="google.cloud", package="bigquery")
+        _check_import(self, module="google.cloud", package="bigquery_storage")
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         from google.cloud import bigquery, bigquery_storage
