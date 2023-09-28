@@ -77,10 +77,13 @@ For an in-depth guide on shuffle performance, see :ref:`Performance Tips and Tun
 Scheduling
 ==========
 
-Ray Data uses Ray Core for execution, and is subject to the same scheduling considerations as normal Ray Tasks and Actors. Ray Data uses the following custom scheduling settings by default for improved performance:
+Ray Data uses Ray Core for execution. Below is a summary of the scheduling strategy for Ray Data:
 
-* The ``SPREAD`` scheduling strategy ensures that data blocks and map tasks are evenly balanced across the cluster.
-* Dataset tasks ignore placement groups by default, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
+* Read operations use the ``SPREAD`` scheduling strategy if the file isn't located locally; otherwise, they're scheduled on the current node.
+* Map operations use the ``SPREAD`` scheduling strategy if the total argument size is less than 50MB.
+* The ``SPREAD`` scheduling strategy ensures an even distribution of data blocks and map tasks across the cluster.
+* All other operations use ``DEFAULT`` scheduling strategy.
+* Dataset tasks bypass placement groups by default. For more details, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
 
 .. _datasets_pg:
 
