@@ -830,7 +830,6 @@ class DeploymentReplica(VersionedReplica):
         self._deployment_id = deployment_id
         self._replica_tag = replica_tag
         self._start_time = None
-        self._prev_slow_startup_warning_time = None
         self._actor_details = ReplicaDetails(
             actor_name=self._actor._actor_name,
             replica_id=self._replica_tag,
@@ -896,7 +895,6 @@ class DeploymentReplica(VersionedReplica):
         """
         replica_scheduling_request = self._actor.start(deployment_info)
         self._start_time = time.time()
-        self._prev_slow_startup_warning_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
         return replica_scheduling_request
 
