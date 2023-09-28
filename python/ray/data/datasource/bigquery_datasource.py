@@ -7,10 +7,9 @@ from typing import Any, Dict, List, Optional
 
 import pyarrow.parquet as pq
 from google.api_core import exceptions
-from google.cloud import bigquery, bigquery_storage
-from google.cloud.bigquery_storage import types
 
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.types import ObjectRef
@@ -39,9 +38,13 @@ class _BigQueryDatasourceReader(Reader):
             raise ValueError(
                 "Query and dataset kwargs cannot both be provided (must be mutually exclusive)."
             )
+        
+        _check_import(self, module="google.cloud", package="bigquery") 
+        _check_import(self, module="google.cloud", package="bigquery_storage") 
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        # Executed by a worker node
+        from google.cloud import bigquery, bigquery_storage
+
         def _read_single_partition(stream) -> Block:
             client = bigquery_storage.BigQueryReadClient()
             reader = client.read_rows(stream.name)
@@ -64,9 +67,9 @@ class _BigQueryDatasourceReader(Reader):
 
         if parallelism == -1:
             parallelism = None
-        requested_session = types.ReadSession(
+        requested_session = bigquery_storage.types.ReadSession(
             table=table,
-            data_format=types.DataFormat.ARROW,
+            data_format=bigquery_storage.types.DataFormat.ARROW,
         )
         read_session = bqs_client.create_read_session(
             parent=f"projects/{self._project_id}",
@@ -108,6 +111,8 @@ class _BigQueryDatasourceReader(Reader):
         return None
 
     def _validate_dataset_table_exist(self, project_id: str, dataset: str) -> None:
+        from google.cloud import bigquery
+
         client = bigquery.Client(project=project_id)
         dataset_id = dataset.split(".")[0]
         try:
@@ -138,6 +143,8 @@ class BigQueryDatasource(Datasource):
         project_id: str,
         dataset: str,
     ) -> WriteResult:
+        from google.cloud import bigquery
+
         def _write_single_block(block: Block, project_id: str, dataset: str):
             block = BlockAccessor.for_block(block).to_arrow()
 
