@@ -205,10 +205,13 @@ class LongPollHost:
         )
 
         self._listen_for_change_request_timeout_s = listen_for_change_request_timeout_s
-        self.bytes_sent_counter = metrics.Counter(
-            "serve_long_poll_host_bytes_sent",
-            description="The number of bytes sent by the long poll host.",
-            tag_keys=("long_poll_host_name",),
+        self.send_counter = metrics.Counter(
+            "serve_long_poll_host_send_counter",
+            description="The number of times the long poll host sent data.",
+            tag_keys=(
+                "long_poll_namespace",
+                "long_poll_host_name",
+            ),
         ).set_default_tags({"long_poll_host_name": long_poll_host_name_metrics_tag})
 
     def _get_num_notifier_events(self, key: Optional[KeyType] = None):
