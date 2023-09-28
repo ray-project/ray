@@ -75,7 +75,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         except AttributeError:
             # mapper_outputs might contain heterogeneous block types
             # normalize all blocks from mapper outputs and retry
-            normalized_blocks = normalize_blocks(mapper_outputs)
+            normalized_blocks = normalize_blocks(mapper_outputs, check_types=False)
             return BlockAccessor.for_block(
                 normalized_blocks[0]
             ).aggregate_combined_blocks(
