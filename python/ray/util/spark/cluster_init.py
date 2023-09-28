@@ -16,7 +16,7 @@ from typing import Optional, Dict, Type
 
 import ray
 import ray._private.services
-from ray.autoscaler._private.spark.node_provider import RAY_ON_SPARK_HEAD_NODE_ID
+from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray._private.storage import _load_class
 
@@ -1410,7 +1410,7 @@ class AutoscalingCluster:
             worker_node_types: autoscaler node types config for worker nodes.
         """
         self._head_resources = head_resources.copy()
-        self._head_resources["NODE_ID_AS_RESOURCE"] = RAY_ON_SPARK_HEAD_NODE_ID
+        self._head_resources["NODE_ID_AS_RESOURCE"] = HEAD_NODE_ID
         self._config = self._generate_config(
             head_resources,
             worker_node_types,

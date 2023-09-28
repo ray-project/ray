@@ -176,7 +176,7 @@ _NODE_PROVIDERS = {
     "kuberay": _import_kuberay,
     "aliyun": _import_aliyun,
     "external": _import_external,  # Import an external module
-    "ray_on_spark": _import_spark,
+    "spark": _import_spark,
 }
 
 _PROVIDER_PRETTY_NAMES = {

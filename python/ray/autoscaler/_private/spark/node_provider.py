@@ -22,8 +22,8 @@ from ray.autoscaler.tags import (
 logger = logging.getLogger(__name__)
 # logger.setLevel("INFO")
 
-RAY_ON_SPARK_HEAD_NODE_ID = 0
-RAY_ON_SPARK_HEAD_NODE_TYPE = "ray.head.default"
+HEAD_NODE_ID = 0
+HEAD_NODE_TYPE = "ray.head.default"
 
 
 class SparkNodeProvider(NodeProvider):
@@ -34,11 +34,11 @@ class SparkNodeProvider(NodeProvider):
         self.lock = RLock()
 
         self._nodes = {
-            RAY_ON_SPARK_HEAD_NODE_ID: {
+            HEAD_NODE_ID: {
                 "tags": {
                     TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
-                    TAG_RAY_USER_NODE_TYPE: RAY_ON_SPARK_HEAD_NODE_TYPE,
-                    TAG_RAY_NODE_NAME: RAY_ON_SPARK_HEAD_NODE_ID,
+                    TAG_RAY_USER_NODE_TYPE: HEAD_NODE_TYPE,
+                    TAG_RAY_NODE_NAME: HEAD_NODE_ID,
                     TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 }
             },
@@ -46,10 +46,14 @@ class SparkNodeProvider(NodeProvider):
         self._next_node_id = 0
 
         self.ray_head_ip = self.provider_config["ray_head_ip"]
+        # The port of spark job server. We send http request to spark job server
+        # to launch spark jobs, ray worker nodes are launched by spark task in
+        # spark jobs.
         server_port = self.provider_config["spark_job_server_port"]
         self.server_url = f"http://{self.ray_head_ip}:{server_port}"
         self.ray_head_port = self.provider_config["ray_head_port"]
-        self.cluster_unique_id = self.provider_config["cluster_unique_id"]
+        # The unique id for the Ray on spark cluster.
+        self.cluster_id = self.provider_config["cluster_unique_id"]
 
     def get_next_node_id(self):
         with self.lock:
@@ -117,7 +121,7 @@ class SparkNodeProvider(NodeProvider):
 
     def _gen_spark_job_group_id(self, node_id):
         return (
-            f"ray-cluster-{self.ray_head_port}-{self.cluster_unique_id}"
+            f"ray-cluster-{self.ray_head_port}-{self.cluster_id}"
             f"-worker-node-{node_id}"
         )
 
@@ -145,7 +149,7 @@ class SparkNodeProvider(NodeProvider):
             node_id = str(self.get_next_node_id())
             resources["NODE_ID_AS_RESOURCE"] = int(node_id)
 
-            conf = self.provider_config
+            conf = self.provider_config.copy()
 
             num_cpus_per_node = resources.pop("CPU")
             num_gpus_per_node = resources.pop("GPU")
