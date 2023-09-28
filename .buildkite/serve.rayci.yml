@@ -8,7 +8,7 @@ steps:
     job_env: forge
 
   - label: ":ray-serve: serve: serve tests"
-    parallelism: 3
+    parallelism: 2
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve --except-tags post_wheel_build,gpu,xcommit
