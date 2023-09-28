@@ -106,6 +106,8 @@ class RayClusterOnSpark:
         self.is_shutdown = False
         self.spark_job_is_canceled = False
         self.background_job_exception = None
+
+        # Ray client context returns by `ray.init`
         self.ray_ctx = None
 
     def _cancel_background_spark_job(self):
@@ -549,7 +551,7 @@ def _setup_ray_cluster(
         spark_job_server = _start_spark_job_server(
             ray_head_ip, spark_job_server_port, spark
         )
-        autoscaler_cluster = AutoscalingCluster(
+        autoscaling_cluster = AutoscalingCluster(
             head_resources={
                 "CPU": num_cpus_head_node,
                 "GPU": num_gpus_head_node,
@@ -582,7 +584,7 @@ def _setup_ray_cluster(
             upscaling_speed=autoscale_upscaling_speed,
             idle_timeout_minutes=autoscale_idle_timeout_minutes,
         )
-        ray_head_proc, tail_output_deque = autoscaler_cluster.start(
+        ray_head_proc, tail_output_deque = autoscaling_cluster.start(
             ray_head_ip,
             ray_head_port,
             ray_temp_dir,
@@ -590,7 +592,7 @@ def _setup_ray_cluster(
             head_node_options,
             collect_log_to_path,
         )
-        ray_head_node_cmd = autoscaler_cluster.ray_head_node_cmd
+        ray_head_node_cmd = autoscaling_cluster.ray_head_node_cmd
     else:
         ray_head_node_cmd = [
             sys.executable,
@@ -1229,15 +1231,11 @@ def _start_ray_worker_nodes(
     #  3. Each task will acquire a file lock for 10s to ensure that the ray worker
     #     init will acquire a port connection to the ray head node that does not
     #     contend with other worker processes on the same Spark worker node.
-    #  4. When the ray cluster is shutdown, killing ray worker nodes is implemented by:
-    #     Installing a PR_SET_PDEATHSIG signal for the `ray start ...` child processes
-    #     so that when parent process (pyspark task) is killed, the child processes
-    #     (`ray start ...` processes) will receive a SIGTERM signal, killing it.
-    #     Shutting down the ray cluster is performed by calling
+    #  4. When the ray cluster is shutdown, killing ray worker nodes is implemented by
     #     `sparkContext.cancelJobGroup` to cancel the background spark job, sending a
-    #     SIGKILL signal to all spark tasks. Once the spark tasks are killed, this
-    #     triggers the sending of a SIGTERM to the child processes spawned by the
-    #     `ray_start ...` process.
+    #     SIGKILL signal to all spark tasks. Once the spark tasks are killed,
+    #     `ray_start_node` process detects parent died event then it kills ray
+    #     worker node.
 
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import TaskContext
@@ -1470,7 +1468,7 @@ class AutoscalingCluster:
             exec_cmd,
         )
 
-        _, autoscale_config = tempfile.mkstemp()
+        autoscale_config = os.path.join(ray_temp_dir, "autoscaling_config.json")
         with open(autoscale_config, "w") as f:
             f.write(json.dumps(self._config))
 

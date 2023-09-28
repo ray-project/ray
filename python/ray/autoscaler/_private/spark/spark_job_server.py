@@ -8,7 +8,7 @@ from pyspark.util import inheritable_thread_target
 
 from ray.util.spark.cluster_init import _start_ray_worker_nodes
 
-_logger = logging.getLogger("ray.autoscaler._private.spark.spark_job_server")
+_logger = logging.getLogger(__name__)
 _logger.setLevel(logging.WARN)
 
 
@@ -120,8 +120,16 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
 
 class SparkJobServer(ThreadingHTTPServer):
     """
-    The http server that is used to launch spark jobs for holding ray worker nodes
-    Note: The server must inherit ThreadingHTTPServer because request handler uses
+    The http server that is used to launch spark jobs for holding ray worker nodes.
+    Because we have to use "spark session" instance to create spark job,
+    and "spark session" instance only exists inside spark application driver
+    process, but Ray autoscaler is executed as sub-process of ray head node process,
+    so we create the spark job server inside spark application driver
+    process, and when ray autoscaler requests to create spark jobs, it sends
+    http request to the spark job server.
+
+    Note:
+    The server must inherit ThreadingHTTPServer because request handler uses
     the active spark session in current process to create spark jobs, so all request
     handler must be running in current process.
     """
@@ -131,6 +139,11 @@ class SparkJobServer(ThreadingHTTPServer):
     def __init__(self, server_address, spark):
         super().__init__(server_address, SparkJobServerRequestHandler)
         self.spark = spark
+
+        # Each task has status of pending, running, or terminated.
+        # the task_status_dict key is spark job group id,
+        # and value is the corresponding spark task status.
+        # each spark task holds a ray worker node.
         self.task_status_dict = {}
 
     def shutdown(self) -> None:

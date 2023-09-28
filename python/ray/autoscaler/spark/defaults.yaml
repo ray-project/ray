@@ -5,7 +5,7 @@
 cluster_name: spark
 max_workers: 8
 provider:
-    type: ray_on_spark
+    type: spark
     # This must be true since the nodes share the same ip!
     use_node_id_as_ip: True
     disable_node_updaters: True

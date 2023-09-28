@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 import requests
 
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
@@ -181,7 +182,9 @@ class SparkNodeProvider(NodeProvider):
                 },
             )
             if response.status_code != 200:
-                raise RuntimeError("Starting ray worker node failed.")
+                raise NodeLaunchException(
+                    f"Starting ray worker node {node_id} failed."
+                )
 
             self._nodes[node_id] = {
                 "tags": {
@@ -220,18 +223,22 @@ class SparkNodeProvider(NodeProvider):
             threading.Thread(target=update_node_status, args=(node_id,)).start()
 
     def terminate_node(self, node_id):
-        with self.lock:
-            logger.info(f"Spark node provider terminates node {node_id}")
-
-            requests.post(
+        num_retries = 3
+        for _ in range(num_retries):
+            response = requests.post(
                 url=self.server_url + "/terminate_node",
                 json={"spark_job_group_id": self._gen_spark_job_group_id(node_id)},
             )
+            if response.status_code == 200:
+                break
+            time.sleep(1)
+        else:
+            raise RuntimeError(f"Canceling node {node_id} failed!")
 
-            try:
+        with self.lock:
+            if node_id not in self._nodes:
                 self._nodes.pop(node_id)
-            except Exception as e:
-                raise e
+            logger.info(f"Spark node provider terminates node {node_id}")
 
     @staticmethod
     def bootstrap_config(cluster_config):
