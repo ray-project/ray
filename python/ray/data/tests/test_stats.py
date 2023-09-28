@@ -34,7 +34,19 @@ MEM_SPILLED_EXTRA_METRICS = (
 )
 
 
-def canonicalize(stats: str) -> str:
+CLUSTER_MEMORY_STATS = """
+Cluster memory:
+* Spilled to disk: M
+* Restored from disk: M
+"""
+
+DATASET_MEMORY_STATS = """
+Dataset memory:
+* Spilled to disk: M
+"""
+
+
+def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     # Dataset UUID expression.
     s0 = re.sub("([a-f\d]{32})", "U", stats)
     # Time expressions.
@@ -47,6 +59,10 @@ def canonicalize(stats: str) -> str:
     s4 = re.sub("[0-9]+(\.[0-9]+)?", "N", s3)
     # Replace tabs with spaces.
     s5 = re.sub("\t", "    ", s4)
+    if filter_global_stats:
+        s6 = s5.replace(CLUSTER_MEMORY_STATS, "")
+        s7 = s6.replace(DATASET_MEMORY_STATS, "")
+        return s7
     return s5
 
 
@@ -1317,7 +1333,7 @@ def test_spilled_stats(shutdown_only):
     )
 
     assert (
-        canonicalize(ds.stats())
+        canonicalize(ds.stats(), filter_global_stats=False)
         == f"""Stage N ReadRange->MapBatches(<lambda>): N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
