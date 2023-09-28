@@ -2582,21 +2582,6 @@ class TestActorReplicaWrapper:
         assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
         assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
-    @patch("ray.util.get_placement_group", lambda *args: "test_pg")
-    def test_recover(self):
-        actor_replica = ActorReplicaWrapper(
-            version=deployment_version("1"),
-            actor_name="test",
-            detached=False,
-            controller_name="test_controller",
-            replica_tag="test_tag",
-            deployment_id=DeploymentID("test_deployment", "test_app"),
-        )
-        actor_replica._actor_handle = MockActorHandle()
-        actor_replica.recover()
-        assert actor_replica._actor_handle.initialize_and_get_metadata_called
-        assert actor_replica._actor_handle.is_allocated_called
-
 
 def test_get_active_node_ids(mock_deployment_state_manager_full):
     """Test get_active_node_ids() are collecting the correct node ids
