@@ -1265,7 +1265,7 @@ Dataset iterator time breakdown:
     )
 
 
-def test_spilled_stats(shutdown_only):
+def test_spilled_stats(ray_start_cluster):
     # The object store is about 100MB.
     ray.init(object_store_memory=100e6)
     # The size of dataset is 1000*(80*80*4)*8B, about 200MB.
