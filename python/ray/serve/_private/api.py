@@ -224,7 +224,6 @@ async def serve_start_async(
     client = ServeControllerClient(
         controller,
         controller_name,
-        detached=detached,
     )
     _set_global_client(client)
     logger.info(
@@ -308,7 +307,6 @@ def serve_start(
     client = ServeControllerClient(
         controller,
         controller_name,
-        detached=detached,
     )
     _set_global_client(client)
     logger.info(
