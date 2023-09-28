@@ -237,7 +237,6 @@ async def serve_start_async(
 def serve_start(
     detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
@@ -276,8 +275,6 @@ def serve_start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        dedicated_cpu: Whether to reserve a CPU core for the internal
-          Serve controller actor.  Defaults to False.
         grpc_options: [Experimental] Configuration options for gRPC proxy.
           You can pass in a gRPCOptions object with fields:
 

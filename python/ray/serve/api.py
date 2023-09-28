@@ -128,7 +128,6 @@ def start(
     _private_api.serve_start(
         detached=detached,
         http_options=http_options,
-        dedicated_cpu=dedicated_cpu,
         grpc_options=grpc_options,
         **kwargs,
     )
