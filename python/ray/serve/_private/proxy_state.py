@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import GetTimeoutError, RayActorError
+from ray.exceptions import RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import NodeId, ProxyStatus
 from ray.serve._private.constants import (
@@ -25,7 +25,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.proxy import ProxyActor
-from ray.serve._private.utils import check_obj_ref_ready_nowait, format_actor_name
+from ray.serve._private.utils import format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
 from ray.serve.schema import ProxyDetails
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -243,6 +243,7 @@ class ProxyActorWrapper(ActorWrapper):
         node_ip_address: str,
         port: int,
         detached: bool,
+        proxy: Optional[ActorHandle],
     ) -> ActorWrapper:
         """Helper to start a single proxy.
 
@@ -252,7 +253,7 @@ class ProxyActorWrapper(ActorWrapper):
         opening on different HTTP ports. Setting up `TEST_WORKER_NODE_GRPC_PORT` env var
         will help head node and worker nodes to be opening on different gRPC ports.
         """
-        proxy = ProxyActor.options(
+        proxy = proxy or ProxyActor.options(
             num_cpus=config.num_cpus,
             name=name,
             namespace=SERVE_NAMESPACE,
@@ -670,7 +671,11 @@ class ProxyStateManager:
         return format_actor_name(SERVE_PROXY_NAME, self._controller_name, node_id)
 
     def _start_proxy(
-        self, name: str, node_id: str, node_ip_address: str
+        self,
+        name: str,
+        node_id: str,
+        node_ip_address: str,
+        proxy: Optional[ActorHandle],
     ) -> ActorWrapper:
         port = self._config.port
         grpc_options = self._grpc_options
@@ -704,6 +709,7 @@ class ProxyStateManager:
             node_ip_address=node_ip_address,
             port=port,
             detached=self._detached,
+            proxy=proxy,
         )
 
     def _start_proxies_if_needed(self, target_nodes) -> None:
@@ -722,11 +728,13 @@ class ProxyStateManager:
                     f"listening on '{self._config.host}:{self._config.port}'",
                     extra={"log_to_stderr": False},
                 )
-                proxy_actor_wrapper = self._start_proxy(
-                    name=name,
-                    node_id=node_id,
-                    node_ip_address=node_ip_address,
-                )
+                proxy = None
+            proxy_actor_wrapper = self._start_proxy(
+                name=name,
+                node_id=node_id,
+                node_ip_address=node_ip_address,
+                proxy=proxy,
+            )
 
             self._proxy_states[node_id] = ProxyState(
                 proxy_actor_wrapper=proxy_actor_wrapper,
