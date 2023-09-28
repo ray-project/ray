@@ -32,7 +32,6 @@ from ray.serve._private.deployment_state import (
     ReplicaStateContainer,
     VersionedReplica,
 )
-from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
 from ray.serve.tests.utils import MockKVStore, MockTimer
 
@@ -2471,7 +2470,7 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
     ), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
-        kv_store = RayInternalKVStore("test")
+        kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
         mock_create_deployment_scheduler.return_value = MockDeploymentScheduler(
             cluster_node_info_cache
