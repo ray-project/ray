@@ -191,18 +191,21 @@ class JobSubmissionClient(SubmissionClient):
                 "job_id kwarg is deprecated. Please use submission_id instead."
             )
 
-        if (
-            entrypoint_num_cpus
-            or entrypoint_num_gpus
-            or entrypoint_memory
-            or entrypoint_resources
-        ):
+        if entrypoint_num_cpus or entrypoint_num_gpus or entrypoint_resources:
             self._check_connection_and_version(
                 min_version="2.2",
                 version_error_message="`entrypoint_num_cpus`, `entrypoint_num_gpus`, "
                 "`entrypoint_memory`, and `entrypoint_resources` kwargs "
                 "are not supported on the Ray cluster. Please ensure the cluster is "
                 "running Ray 2.2 or higher.",
+            )
+
+        if entrypoint_memory:
+            self._check_connection_and_version(
+                min_version="2.8",
+                version_error_message="`entrypoint_memory kwarg"
+                "is not supported on the Ray cluster. Please ensure the cluster is "
+                "running Ray 2.8 or higher.",
             )
 
         runtime_env = runtime_env or {}
