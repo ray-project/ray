@@ -47,13 +47,11 @@ public class Serve {
    *
    * @param detached Whether not the instance should be detached from this script. If set, the
    *     instance will live on the Ray cluster until it is explicitly stopped with Serve.shutdown().
-   * @param dedicatedCpu Whether to reserve a CPU core for the internal Serve controller actor.
-   *     Defaults to False.
    * @param config Configuration options for Serve.
    * @return
    */
   public static synchronized ServeControllerClient start(
-      boolean detached, boolean dedicatedCpu, Map<String, String> config) {
+      boolean detached, Map<String, String> config) {
     // Initialize ray if needed.
     if (!Ray.isInitialized()) {
       System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
@@ -84,7 +82,6 @@ public class Serve {
                 PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"),
                 controllerName,
                 detached,
-                dedicatedCpu,
                 httpPort)
             .setName(controllerName + "_AVATAR")
             .setLifetime(detached ? ActorLifetime.DETACHED : ActorLifetime.NON_DETACHED)
