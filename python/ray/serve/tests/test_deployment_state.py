@@ -2582,6 +2582,7 @@ class TestActorReplicaWrapper:
         assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
         assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
+    @patch("ray.util.get_placement_group", lambda *args: "test_pg")
     def test_recover(self):
         actor_replica = ActorReplicaWrapper(
             version=deployment_version("1"),
