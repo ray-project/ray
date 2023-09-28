@@ -38,7 +38,6 @@ from ray.serve._private.constants import (
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     ASGIMessageQueue,
-    RawASGIResponse,
     Response,
     receive_http_body,
     set_socket_reuse_port,
@@ -1085,14 +1084,10 @@ class HTTPProxy(GenericProxy):
             )
             return ProxyResponse(status_code="500")
 
-        if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            await result(proxy_request.scope, proxy_request.receive, proxy_request.send)
-            return ProxyResponse(status_code=str(result.status_code))
-        else:
-            await Response(result).send(
-                proxy_request.scope, proxy_request.receive, proxy_request.send
-            )
-            return ProxyResponse(status_code=self.success_status_code)
+        await Response(result).send(
+            proxy_request.scope, proxy_request.receive, proxy_request.send
+        )
+        return ProxyResponse(status_code=self.success_status_code)
 
     async def proxy_asgi_receive(
         self, receive: Receive, queue: ASGIMessageQueue
