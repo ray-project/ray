@@ -558,7 +558,7 @@ class _TrainSession:
 
             # NOTE: This is where the coordinator AND workers increment their
             # checkpoint index.
-            self.storage.current_checkpoint_index += 1
+            self.storage._increase_checkpoint_index(training_result.metrics)
 
         # Add result to a thread-safe queue.
         self.result_queue.put(training_result, block=True)
