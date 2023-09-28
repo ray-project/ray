@@ -35,8 +35,6 @@ from ray.serve._private.utils import (  # in_interactive_shell,
     guarded_deprecation_warning,
     install_serve_encoders_to_fastapi,
 )
-
-# from ray.serve.built_application import BuiltApplication
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentMode,
@@ -577,44 +575,6 @@ def run(
         client._wait_for_deployment_created(ingress.name, name)
         handle = client.get_handle(ingress.name, name, missing_ok=True)
         return handle
-
-
-# def _build(target: Application, name: str = None) -> BuiltApplication:
-#    """Builds a Serve application into a static, built application.
-#
-#    Resolves the provided Application object into a list of deployments.
-#    This can be converted to a Serve config file that can be deployed via
-#    the Serve REST API or CLI.
-#
-#    All of the deployments must be importable. That is, they cannot be
-#    defined in __main__ or inline defined. The deployments will be
-#    imported in the config file using the same import path they were here.
-#
-#    Args:
-#        target: The Serve application to run consisting of one or more
-#            deployments.
-#        name: The name of the Serve application. When name is not provided, the
-#        deployment name won't be updated. (SINGLE_APP use case.)
-#
-#    Returns:
-#        The static built Serve application.
-#    """
-#    if in_interactive_shell():
-#        raise RuntimeError(
-#            "build cannot be called from an interactive shell like "
-#            "IPython or Jupyter because it requires all deployments to be "
-#            "importable to run the app after building."
-#        )
-#
-#    # If application is built using pipeline_build, ingress deployment
-#    # is the last deployment since Ray DAG traversal is done bottom-up.
-#    deployments = pipeline_build(target._get_internal_dag_node(), name)
-#    ingress = deployments[-1].name
-#
-#    # TODO(edoakes): this should accept host and port, but we don't
-#    # currently support them in the REST API.
-#    return BuiltApplication(deployments, ingress)
-#
 
 
 @PublicAPI(stability="stable")

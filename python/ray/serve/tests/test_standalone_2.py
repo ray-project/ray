@@ -210,14 +210,8 @@ def test_controller_deserialization_deployment_def(
         from ray import serve
         from ray._private.utils import import_attr
 
-        # from ray.serve.api import _build
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")
-        # app = _build(graph, SERVE_DEFAULT_APP_NAME)
-
-        # Override options for each deployment
-        # for name in app.deployments:
-        #    app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
 
         # Run the graph locally on the cluster
         serve.run(graph)
