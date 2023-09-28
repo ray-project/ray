@@ -122,42 +122,6 @@ async def receive_http_body(scope, receive, send):
     return b"".join(body_buffer)
 
 
-class RawASGIResponse(ASGIApp):
-    """Implement a raw ASGI response interface.
-
-    We have to build this because starlette's base response class is
-    still too smart and perform header inference.
-    """
-
-    def __init__(self, messages):
-        self.messages = messages
-
-    async def __call__(self, scope, receive, send):
-        for message in self.messages:
-            await send(message)
-
-    @property
-    def status_code(self):
-        return self.messages[0]["status"]
-
-
-class BufferedASGISender(Send):
-    """Implements the ASGI sender interface by buffering messages.
-
-    The messages can be built into an ASGI response.
-    """
-
-    def __init__(self) -> None:
-        self.messages = []
-
-    async def __call__(self, message):
-        assert message["type"] in ("http.response.start", "http.response.body")
-        self.messages.append(message)
-
-    def build_asgi_response(self) -> RawASGIResponse:
-        return RawASGIResponse(self.messages)
-
-
 class ASGIMessageQueue(Send):
     """Queue enables polling for received or sent messages.
 
