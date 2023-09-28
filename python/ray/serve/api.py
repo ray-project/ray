@@ -82,10 +82,6 @@ def start(
     These options can also be set in the config file deployed via REST API.
 
     Args:
-        detached: [DEPRECATED: in the future, this will always be `True`]
-          Whether or not the instance should be detached from this
-          script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown().
         proxy_location: Where to run proxies that handle ingress traffic to the
           cluster (defaults to every node in the cluster with at least one replica on
           it). See `ProxyLocation` for supported options.
