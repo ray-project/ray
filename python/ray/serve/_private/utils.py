@@ -38,7 +38,6 @@ try:
 except ImportError:
     pd = None
 
-ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 MESSAGE_PACK_OFFSET = 9
 
 
