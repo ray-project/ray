@@ -230,15 +230,11 @@ def serve_start(
     """Initialize a serve instance.
 
     By default, the instance will be scoped to the lifetime of the returned
-    Client object (or when the script exits). If detached is set to True, the
-    instance will instead persist until serve.shutdown() is called. This is
+    Client object (or when the script exits). This is
     only relevant if connecting to a long-running Ray cluster (e.g., with
     ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
-        detached: Whether not the instance should be detached from this
-          script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:

@@ -89,9 +89,8 @@ def test_memory_omitted_option(shutdown_ray_and_serve):
     assert ray.get(handle.remote()) == "world"
 
 
-@pytest.mark.parametrize("detached", [True, False])
 @pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
-def test_serve_namespace(shutdown_ray_and_serve, detached, ray_namespace):
+def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
 
     with ray.init(namespace=ray_namespace) as ray_context:
@@ -117,8 +116,7 @@ def test_serve_namespace(shutdown_ray_and_serve, detached, ray_namespace):
         assert requests.get("http://localhost:8000/f").text == "got f"
 
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_update_num_replicas(shutdown_ray_and_serve, detached):
+def test_update_num_replicas(shutdown_ray_and_serve):
     """Test updating num_replicas."""
 
     with ray.init() as ray_context:

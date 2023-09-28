@@ -251,7 +251,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-def test_detached_deployment(ray_cluster):
+def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
@@ -288,8 +288,7 @@ def test_detached_deployment(ray_cluster):
 
 
 def test_connect(ray_shutdown):
-    # Check that you can make API calls from within a deployment for both
-    # detached and non-detached instances.
+    # Check that you can make API calls from within a deployment.
     ray.init(num_cpus=16, namespace="serve")
     serve.start()
 
@@ -683,13 +682,8 @@ def test_serve_shutdown(ray_shutdown):
     assert len(client.list_deployments()) == 1
 
 
-def test_detached_namespace_default_ray_init(ray_shutdown):
-    # Can start detached instance when ray is not initialized.
-    serve.start()
-
-
-def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
-    # Can start detached instance in non-anonymous namespace.
+def test_instance_in_non_anonymous_namespace(ray_shutdown):
+    # Can start instance in non-anonymous namespace.
     ray.init(namespace="foo")
     serve.start()
 
