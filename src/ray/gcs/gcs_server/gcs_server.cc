@@ -185,9 +185,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init cluster resource scheduler.
   InitClusterResourceScheduler();
 
-  // Init gcs node manager.
-  InitGcsNodeManager(gcs_init_data);
-
   // Init cluster task manager.
   InitClusterTaskManager();
 
@@ -196,6 +193,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init synchronization service
   InitRaySyncer(gcs_init_data);
+
+  // Init gcs node manager.
+  InitGcsNodeManager(gcs_init_data);
 
   // Init gcs health check manager.
   InitGcsHealthCheckManager(gcs_init_data);
@@ -339,7 +339,6 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
       main_service_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
-      *gcs_node_manager_,
       kGCSNodeID,
       cluster_task_manager_);
 

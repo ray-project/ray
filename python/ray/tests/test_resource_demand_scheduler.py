@@ -3133,7 +3133,6 @@ def test_info_string():
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
         ],
-        idle_nodes=[],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
     )
@@ -3142,11 +3141,9 @@ def test_info_string():
 ======== Autoscaler status: 2020-12-28 01:02:03 ========
 Node status
 --------------------------------------------------------
-Active:
+Healthy:
  2 p3.2xlarge
  20 m4.4xlarge
-Idle:
- (no idle nodes)
 Pending:
  m4.4xlarge, 2 launching
  1.2.3.4: m4.4xlarge, waiting-for-ssh
@@ -3208,21 +3205,13 @@ def test_info_string_verbose():
         },
     )
     autoscaler_summary = AutoscalerSummary(
-        active_nodes=[],
-        idle_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
         pending_nodes=[
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
         ],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
-        node_activities={
-            "192.168.1.1": (
-                "m4.4xlarge",
-                ["CPU in use.", "GPU in use.", "Active workers."],
-            ),
-            "192.168.1.2": ("m4.4xlarge", ["GPU in use.", "Active workers."]),
-        },
     )
 
     expected = """
@@ -3232,9 +3221,7 @@ Node Provider non_terminated_nodes time: 1.618000s
 
 Node status
 --------------------------------------------------------
-Active:
- (no active nodes)
-Idle:
+Healthy:
  2 p3.2xlarge
  20 m4.4xlarge
 Pending:
@@ -3265,10 +3252,6 @@ Node: 192.168.1.1
   0.1/1 accelerator_type:V100
   1.00GiB/4.00GiB memory
   3.14GiB/4.00GiB object_store_memory
- Activity:
-  CPU in use.
-  GPU in use.
-  Active workers.
 
 Node: 192.168.1.2
  Usage:
@@ -3277,9 +3260,6 @@ Node: 192.168.1.2
   0.9/1 accelerator_type:V100
   1.00GiB/12.00GiB memory
   0B/4.00GiB object_store_memory
- Activity:
-  GPU in use.
-  Active workers.
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3329,7 +3309,6 @@ def test_info_string_verbose_node_types():
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
         ],
-        idle_nodes=[],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
         node_type_mapping={
@@ -3346,11 +3325,9 @@ Autoscaler iteration time: 3.141500s
 
 Node status
 --------------------------------------------------------
-Active:
+Healthy:
  2 p3.2xlarge
  20 m4.4xlarge
-Idle:
- (no idle nodes)
 Pending:
  m4.4xlarge, 2 launching
  1.2.3.4: m4.4xlarge, waiting-for-ssh
@@ -3420,8 +3397,7 @@ def test_info_string_verbose_no_breakdown():
         usage_by_node=None,
     )
     autoscaler_summary = AutoscalerSummary(
-        active_nodes=[],
-        idle_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
         pending_nodes=[
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
@@ -3437,9 +3413,7 @@ Node Provider non_terminated_nodes time: 1.618000s
 
 Node status
 --------------------------------------------------------
-Active:
- (no active nodes)
-Idle:
+Healthy:
  2 p3.2xlarge
  20 m4.4xlarge
 Pending:
@@ -3498,7 +3472,6 @@ def test_info_string_with_launch_failures():
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
         ],
-        idle_nodes=[],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
         node_availability_summary=NodeAvailabilitySummary(
@@ -3529,11 +3502,9 @@ def test_info_string_with_launch_failures():
 ======== Autoscaler status: 2020-12-28 01:02:03 ========
 Node status
 --------------------------------------------------------
-Active:
+Healthy:
  2 p3.2xlarge
  20 m4.4xlarge
-Idle:
- (no idle nodes)
 Pending:
  m4.4xlarge, 2 launching
  1.2.3.4: m4.4xlarge, waiting-for-ssh
@@ -3584,8 +3555,7 @@ def test_info_string_with_launch_failures_verbose():
         year=2012, month=12, day=21, hour=13, minute=3, second=1
     ).timestamp()
     autoscaler_summary = AutoscalerSummary(
-        active_nodes=[],
-        idle_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
         pending_nodes=[
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
@@ -3621,9 +3591,7 @@ def test_info_string_with_launch_failures_verbose():
 
 Node status
 --------------------------------------------------------
-Active:
- (no active nodes)
-Idle:
+Healthy:
  2 p3.2xlarge
  20 m4.4xlarge
 Pending:
@@ -3679,8 +3647,7 @@ def test_info_string_failed_node_cap():
         node_types=[],
     )
     autoscaler_summary = AutoscalerSummary(
-        active_nodes=[],
-        idle_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
         pending_nodes=[
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
@@ -3693,9 +3660,7 @@ def test_info_string_failed_node_cap():
 ======== Autoscaler status: 2020-12-28 01:02:03 ========
 Node status
 --------------------------------------------------------
-Active:
- (no active nodes)
-Idle:
+Healthy:
  2 p3.2xlarge
  20 m4.4xlarge
 Pending:

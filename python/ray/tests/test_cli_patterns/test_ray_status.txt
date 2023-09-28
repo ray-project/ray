@@ -1,9 +1,7 @@
 ======== Autoscaler status: .+
 Node status
 ---------------------------------------------------------------
-Active:
- \(no active nodes\)
-Idle:
+Healthy:
  1 node_.+
 Pending:
  \(no pending nodes\)

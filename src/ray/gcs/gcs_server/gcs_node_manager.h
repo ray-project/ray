@@ -34,7 +34,6 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-class GcsMonitorServerTest;
 namespace gcs {
 
 class GcsAutoscalerStateManagerTest;
