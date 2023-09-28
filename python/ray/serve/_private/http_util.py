@@ -4,7 +4,6 @@ import json
 import logging
 import pickle
 import socket
-from dataclasses import dataclass
 from typing import Any, List, Optional, Type
 
 import starlette
@@ -18,12 +17,6 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-@dataclass
-class HTTPRequestWrapper:
-    scope: Scope
-    body: bytes
 
 
 def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
