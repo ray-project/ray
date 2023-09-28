@@ -53,7 +53,7 @@ try:
 
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
-    routes = dashboard_optional_utils.ClassMethodRouteTable
+    routes = dashboard_optional_utils.DashboardHeadRouteTable
 except Exception:
     pass
 
@@ -406,7 +406,7 @@ def test_class_method_route_table(enable_test_module):
                 return True
         return False
 
-    all_routes = dashboard_optional_utils.ClassMethodRouteTable.routes()
+    all_routes = dashboard_optional_utils.DashboardHeadRouteTable.routes()
     assert any(_has_route(r, "HEAD", "/test/route_head") for r in all_routes)
     assert any(_has_route(r, "GET", "/test/route_get") for r in all_routes)
     assert any(_has_route(r, "POST", "/test/route_post") for r in all_routes)
@@ -416,18 +416,18 @@ def test_class_method_route_table(enable_test_module):
     assert any(_has_route(r, "*", "/test/route_view") for r in all_routes)
 
     # Test bind()
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.DashboardHeadRouteTable.bound_routes()
     assert len(bound_routes) == 0
-    dashboard_optional_utils.ClassMethodRouteTable.bind(
+    dashboard_optional_utils.DashboardHeadRouteTable.bind(
         test_agent_cls.__new__(test_agent_cls)
     )
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.DashboardHeadRouteTable.bound_routes()
     assert any(_has_route(r, "POST", "/test/route_post") for r in bound_routes)
     assert all(not _has_route(r, "PUT", "/test/route_put") for r in bound_routes)
 
     # Static def should be in bound routes.
     routes.static("/test/route_static", "/path")
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.DashboardHeadRouteTable.bound_routes()
     assert any(_has_static(r, "/path", "/test/route_static") for r in bound_routes)
 
     # Test duplicated routes should raise exception.

@@ -38,7 +38,7 @@ from ray.util.state.util import convert_string_to_type
 
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 class RateLimitedModule(ABC):

@@ -36,9 +36,9 @@ SERVE_AGENT_URLs = {
 }
 
 SERVE_HEAD_URLs = {
-    "GET_OR_PUT": "http://localhost:8265/api/serve_head/deployments/",
-    "STATUS": "http://localhost:8265/api/serve_head/deployments/status",
-    "GET_OR_PUT_V2": "http://localhost:8265/api/serve_head/applications/",
+    "GET_OR_PUT": "http://localhost:8265/api/serve/deployments/",
+    "STATUS": "http://localhost:8265/api/serve/deployments/status",
+    "GET_OR_PUT_V2": "http://localhost:8265/api/serve/applications/",
 }
 
 

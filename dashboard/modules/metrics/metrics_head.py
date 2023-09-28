@@ -27,9 +27,9 @@ from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 METRICS_OUTPUT_ROOT_ENV_VAR = "RAY_METRICS_OUTPUT_ROOT"
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")

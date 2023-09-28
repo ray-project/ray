@@ -18,7 +18,7 @@ from ray.exceptions import RayTaskError
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = optional_utils.ClassMethodRouteTable
+routes = optional_utils.DashboardAgentRouteTable
 
 
 def gracefully_handle_missing_serve_dependencies(func):
