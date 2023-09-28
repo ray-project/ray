@@ -207,7 +207,6 @@ def start(
         namespace=SERVE_NAMESPACE,
     )
     serve.start(
-        detached=True,
         proxy_location=proxy_location,
         http_options=dict(
             host=http_host,

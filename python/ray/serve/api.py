@@ -64,7 +64,6 @@ logger = logging.getLogger(__file__)
 
 @PublicAPI(stability="stable")
 def start(
-    detached: bool = True,
     proxy_location: Union[None, str, ProxyLocation] = None,
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
@@ -99,11 +98,6 @@ def start(
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
     """
-    if not detached:
-        warnings.warn(
-            "Setting `detached=False` in `serve.start` is deprecated and will be "
-            "removed in a future version."
-        )
 
     if dedicated_cpu:
         warnings.warn(

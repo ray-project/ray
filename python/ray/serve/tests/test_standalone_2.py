@@ -153,13 +153,12 @@ def test_update_num_replicas(shutdown_ray_and_serve, detached):
         assert len(updated_actors) == len(actors) - 1
 
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_refresh_controller_after_death(shutdown_ray_and_serve, detached):
+def test_refresh_controller_after_death(shutdown_ray_and_serve):
     """Check if serve.start() refreshes the controller handle if it's dead."""
 
     ray.init(namespace="ray_namespace")
     serve.shutdown()  # Ensure serve isn't running before beginning the test
-    serve.start(detached=detached)
+    serve.start()
 
     old_handle = _get_global_client()._controller
     ray.kill(old_handle, no_restart=True)
@@ -174,7 +173,7 @@ def test_refresh_controller_after_death(shutdown_ray_and_serve, detached):
     wait_for_condition(controller_died, handle=old_handle, timeout=15)
 
     # Call start again to refresh handle
-    serve.start(detached=detached)
+    serve.start()
 
     new_handle = _get_global_client()._controller
     assert new_handle is not old_handle

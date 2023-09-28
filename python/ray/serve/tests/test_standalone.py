@@ -287,12 +287,11 @@ def test_detached_deployment(ray_cluster):
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_connect(detached, ray_shutdown):
+def test_connect(ray_shutdown):
     # Check that you can make API calls from within a deployment for both
     # detached and non-detached instances.
     ray.init(num_cpus=16, namespace="serve")
-    serve.start(detached=detached)
+    serve.start()
 
     @serve.deployment
     def connect_in_deployment(*args):
