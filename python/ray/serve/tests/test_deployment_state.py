@@ -1,7 +1,7 @@
 import sys
-from typing import Any, Dict, List, Optional, Tuple
-from unittest.mock import patch, Mock
 from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -10,26 +10,11 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
-    ReplicaTag,
     ReplicaName,
     ReplicaState,
+    ReplicaTag,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.deployment_scheduler import (
-    ReplicaSchedulingRequest,
-)
-from ray.serve.tests.utils import MockTimer, MockKVStore
-from ray.serve._private.deployment_state import (
-    ActorReplicaWrapper,
-    DeploymentState,
-    DriverDeploymentState,
-    DeploymentStateManager,
-    DeploymentVersion,
-    DeploymentReplica,
-    ReplicaStartupStatus,
-    ReplicaStateContainer,
-    VersionedReplica,
-)
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -37,8 +22,21 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_CONCURRENT_QUERIES,
 )
+from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
+from ray.serve._private.deployment_state import (
+    ActorReplicaWrapper,
+    DeploymentReplica,
+    DeploymentState,
+    DeploymentStateManager,
+    DeploymentVersion,
+    DriverDeploymentState,
+    ReplicaStartupStatus,
+    ReplicaStateContainer,
+    VersionedReplica,
+)
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
+from ray.serve.tests.utils import MockKVStore, MockTimer
 
 
 class FakeRemoteFunction:
@@ -2259,7 +2257,6 @@ def mock_deployment_state_manager_full(
     ) as mock_long_poll, patch(
         "ray.get_runtime_context"
     ):
-
         kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
 
@@ -2509,7 +2506,6 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
     ), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
-
         kv_store = RayInternalKVStore("test")
         cluster_node_info_cache = MockClusterNodeInfoCache()
         mock_create_deployment_scheduler.return_value = MockDeploymentScheduler(
@@ -2595,7 +2591,6 @@ def test_resource_requirements_none():
     """Ensure resource_requirements doesn't break if a requirement is None"""
 
     class FakeActor:
-
         actor_resources = {"num_cpus": 2, "fake": None}
         placement_group_bundles = None
         available_resources = {}

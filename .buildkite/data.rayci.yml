@@ -39,19 +39,6 @@ steps:
     depends_on: datanbuild
     job_env: forge
 
-  - label: ":database: data: bulk executor tests"
-    instance_type: medium
-    parallelism: 3
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
-        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name databbuild
-        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
-        --except-tags data_integration,doctest
-    depends_on: databbuild
-    job_env: forge
-
   - label: ":database: data: flaky tests"
     instance_type: medium
     soft_fail: true

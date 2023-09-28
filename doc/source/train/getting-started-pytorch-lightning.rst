@@ -29,9 +29,9 @@ For reference, the final code is as follows:
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. Your `train_func` is the Python code that each distributed training :ref:`worker <train-overview-worker>` executes.
-2. Your `ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
-3. Your `TorchTrainer` launches the distributed training job.
+1. `train_func` is the Python code that executes on each distributed training worker.
+2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
+3. :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
 Compare a PyTorch Lightning training script with and without Ray Train.
 
@@ -84,6 +84,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
     .. group-tab:: PyTorch Lightning + Ray Train
 
         .. code-block:: python
+            :emphasize-lines: 8-10, 34, 43, 48-50, 52, 53, 55-60
 
             import torch
             from torchvision.models import resnet18
@@ -486,7 +487,7 @@ control over their native Lightning code.
 
             # [5] Explicitly define and run the training function
             ray_trainer = TorchTrainer(
-                train_func_per_worker,
+                train_func,
                 scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
                 run_config=RunConfig(
                     checkpoint_config=CheckpointConfig(

@@ -3,6 +3,7 @@ import json
 import logging
 import time
 import grpc
+from itertools import chain
 
 import aiohttp.web
 
@@ -261,7 +262,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
             per_node_resources = {}
             # TODO(rickyx): we should just return structure data rather than strings.
-            for node in cluster_status.healthy_nodes:
+            for node in chain(cluster_status.active_nodes, cluster_status.idle_nodes):
                 if not node.resource_usage:
                     continue
 

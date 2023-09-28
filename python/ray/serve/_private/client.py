@@ -8,31 +8,31 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
+    ApplicationStatus,
     DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
-    StatusOverview,
-    ApplicationStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
+    StatusOverview,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
-    CLIENT_POLLING_INTERVAL_S,
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
+    CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     RAY_SERVE_ENABLE_NEW_HANDLE_API,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
-from ray.serve.controller import ServeController
+from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import DeploymentHandle, RayServeHandle, RayServeSyncHandle
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
@@ -138,7 +138,6 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-
             status_bytes = ray.get(self._controller.get_deployment_status.remote(name))
 
             if status_bytes is None:
@@ -237,7 +236,6 @@ class ServeControllerClient:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-
             status_bytes = ray.get(self._controller.get_serve_status.remote(name))
             if status_bytes is None:
                 raise RuntimeError(
@@ -277,7 +275,6 @@ class ServeControllerClient:
         url: Optional[str] = None,
         _blocking: Optional[bool] = True,
     ):
-
         controller_deploy_args = get_deploy_args(
             name=name,
             replica_config=replica_config,
@@ -483,11 +480,13 @@ class ServeControllerClient:
         app_name: Optional[str] = "default",
         missing_ok: Optional[bool] = False,
         sync: bool = True,
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """Retrieve RayServeHandle for service deployment to invoke it from Python.
+        use_new_handle_api: bool = RAY_SERVE_ENABLE_NEW_HANDLE_API,
+    ) -> Union[DeploymentHandle, RayServeHandle, RayServeSyncHandle]:
+        """Construct a handle for the specified deployment.
 
         Args:
-            deployment_name: A registered service deployment.
+            deployment_name: Deployment name.
+            app_name: Application name.
             missing_ok: If true, then Serve won't check the deployment
                 is registered. False by default.
             sync: If true, then Serve will return a ServeHandle that
@@ -499,9 +498,7 @@ class ServeControllerClient:
         """
         cache_key = (deployment_name, app_name, missing_ok, sync)
         if cache_key in self.handle_cache:
-            cached_handle = self.handle_cache[cache_key]
-            if cached_handle._is_same_loop:
-                return cached_handle
+            return self.handle_cache[cache_key]
 
         all_deployments = ray.get(self._controller.list_deployment_ids.remote())
         if (
@@ -513,23 +510,20 @@ class ServeControllerClient:
                 "exist."
             )
 
-        if RAY_SERVE_ENABLE_NEW_HANDLE_API:
+        if use_new_handle_api:
             handle = DeploymentHandle(
                 deployment_name,
                 app_name,
-                _is_for_sync_context=sync,
             )
         elif sync:
             handle = RayServeSyncHandle(
                 deployment_name,
                 app_name,
-                _is_for_sync_context=sync,
             )
         else:
             handle = RayServeHandle(
                 deployment_name,
                 app_name,
-                _is_for_sync_context=sync,
             )
 
         self.handle_cache[cache_key] = handle

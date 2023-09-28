@@ -63,7 +63,7 @@ class MapOperator(OneToOneOperator, ABC):
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
         # Object store allocation stats.
-        self._metrics = _ObjectStoreMetrics(alloc=0, freed=0, cur=0, peak=0)
+        self._metrics = _ObjectStoreMetrics(alloc=0, freed=0, cur=0, peak=0, spilled=0)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
@@ -275,6 +275,17 @@ class MapOperator(OneToOneOperator, ABC):
         def _task_done_callback(task_index, inputs):
             # We should only destroy the input bundle when the whole task is done.
             # Otherwise, if the task crashes in the middle, we can't rerun it.
+            blocks = [input[0] for input in inputs.blocks]
+            metadata = [input[1] for input in inputs.blocks]
+            ctx = ray.data.context.DataContext.get_current()
+            if ctx.enable_get_object_locations_for_metrics:
+                locations = ray.experimental.get_object_locations(blocks)
+            else:
+                locations = {ref: {"did_spill": False} for ref in blocks}
+            for block, meta in zip(blocks, metadata):
+                if locations[block]["did_spill"]:
+                    self._metrics.spilled += meta.size_bytes
+
             inputs.destroy_if_owned()
             freed = inputs.size_bytes()
             self._metrics.freed += freed
@@ -374,12 +385,14 @@ class _ObjectStoreMetrics:
     freed: int
     cur: int
     peak: int
+    spilled: int
 
     def to_metrics_dict(self) -> Dict[str, int]:
         return {
             "obj_store_mem_alloc": self.alloc,
             "obj_store_mem_freed": self.freed,
             "obj_store_mem_peak": self.peak,
+            "obj_store_mem_spilled": self.spilled,
         }
 
 

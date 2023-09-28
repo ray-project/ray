@@ -47,6 +47,7 @@ RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
 MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
+RAY_ON_SPARK_START_RAY_PARENT_PID = "RAY_ON_SPARK_START_RAY_PARENT_PID"
 
 
 def _check_system_environment():
@@ -613,7 +614,10 @@ def _setup_ray_cluster(
         ray_head_proc, tail_output_deque = exec_cmd(
             ray_head_node_cmd,
             synchronous=False,
-            extra_env={RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""},
+            extra_env={
+                RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
+                RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
+            },
         )
         spark_job_server = None
 
@@ -1272,6 +1276,7 @@ def _start_ray_worker_nodes(
 
         ray_worker_node_extra_envs = {
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
+            RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
         }
 

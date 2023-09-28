@@ -1,11 +1,14 @@
 import os
+from typing import List
 
 from ci.ray_ci.container import Container, _DOCKER_ECR_REPO
 from ci.ray_ci.builder_container import PYTHON_VERSIONS
-from ci.ray_ci.utils import docker_pull, RAY_VERSION
+from ci.ray_ci.utils import docker_pull, RAY_VERSION, POSTMERGE_PIPELINE
 
 
 PLATFORM = ["cu118"]
+GPU_PLATFORM = "cu118"
+DEFAULT_PYTHON_VERSION = "py38"
 
 
 class DockerContainer(Container):
@@ -48,13 +51,66 @@ class DockerContainer(Container):
         if self.python_version == "py37":
             constraints_file = "requirements_compiled_py37.txt"
 
-        version_tag = os.environ["BUILDKITE_COMMIT"][:6]
-        project = f"rayproject/{self.image_type}"
-        ray_image = f"{project}:{version_tag}-{self.python_version}-{self.platform}"
-
-        self.run_script(
-            [
-                "./ci/build/build-ray-docker.sh "
-                f"{wheel_name} {base_image} {constraints_file} {ray_image}"
+        ray_images = self._get_image_names()
+        ray_image = ray_images[0]
+        cmds = [
+            "./ci/build/build-ray-docker.sh "
+            f"{wheel_name} {base_image} {constraints_file} {ray_image}"
+        ]
+        if self._should_upload():
+            cmds += [
+                "pip install -q aws_requests_auth boto3",
+                "python .buildkite/copy_files.py --destination docker_login",
             ]
-        )
+            for alias in self._get_image_names():
+                cmds += [
+                    f"docker tag {ray_image} {alias}",
+                    f"docker push {alias}",
+                ]
+        self.run_script(cmds)
+
+    def _should_upload(self) -> bool:
+        return os.environ.get("BUILDKITE_PIPELINE_ID") == POSTMERGE_PIPELINE
+
+    def _get_image_version_tags(self) -> List[str]:
+        branch = os.environ.get("BUILDKITE_BRANCH")
+        sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
+        if branch == "master":
+            return [sha_tag, "nightly"]
+
+        if branch and branch.startswith("releases/"):
+            release_name = branch[len("releases/") :]
+            return [f"{release_name}.{sha_tag}"]
+
+        return [sha_tag]
+
+    def _get_image_names(self) -> List[str]:
+        # Image name is composed by ray version tag, python version and platform.
+        # See https://docs.ray.io/en/latest/ray-overview/installation.html for
+        # more information on the image tags.
+        versions = self._get_image_version_tags()
+
+        platforms = [f"-{self.platform}"]
+        if self.platform == "cpu" and self.image_type == "ray":
+            # no tag is alias to cpu for ray image
+            platforms.append("")
+        elif self.platform == GPU_PLATFORM:
+            # gpu is alias to cu118 for ray image
+            platforms.append("-gpu")
+            if self.image_type == "ray-ml":
+                # no tag is alias to gpu for ray-ml image
+                platforms.append("")
+
+        py_versions = [f"-{self.python_version}"]
+        if self.python_version == DEFAULT_PYTHON_VERSION:
+            py_versions.append("")
+
+        alias_images = []
+        ray_repo = f"rayproject/{self.image_type}"
+        for version in versions:
+            for platform in platforms:
+                for py_version in py_versions:
+                    alias = f"{ray_repo}:{version}{py_version}{platform}"
+                    alias_images.append(alias)
+
+        return alias_images
