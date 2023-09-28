@@ -88,8 +88,7 @@ class JobInfo:
     entrypoint_num_cpus: Optional[Union[int, float]] = None
     #: The number of GPUs to reserve for the entrypoint command.
     entrypoint_num_gpus: Optional[Union[int, float]] = None
-    #: The amount of total available memory for workers requesting memory
-    # for the entrypoint command.
+    #: The amount of memory for workers requesting memory for the entrypoint command.
     entrypoint_memory: Optional[Union[int, float]] = None
     #: The quantity of various custom resources to reserve for the entrypoint command.
     entrypoint_resources: Optional[Dict[str, float]] = None
