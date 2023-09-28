@@ -93,8 +93,6 @@ def start(
         http_options: HTTP config options for the proxies. These can be passed as an
           unstructured dictionary or the structured `HTTPOptions` class. See
           `HTTPOptions` for supported options.
-        dedicated_cpu: [DEPRECATED] Whether to reserve a CPU core for the
-          Serve controller actor.
         grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
@@ -105,10 +103,10 @@ def start(
             "removed in a future version."
         )
 
-    if dedicated_cpu:
-        warnings.warn(
-            "Setting `dedicated_cpu=True` in `serve.start` is deprecated and will be "
-            "removed in a future version."
+    if dedicated_cpu is not False:
+        raise ValueError(
+            "`dedicated_cpu` is a deprecated option that should not be set. "
+            "In a future release, it will be removed altogether."
         )
 
     if proxy_location is None:
