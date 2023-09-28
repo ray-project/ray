@@ -115,7 +115,6 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        detached: bool = False,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -1061,7 +1060,6 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
-                detached=detached,
             )
 
     def check_alive(self) -> None:

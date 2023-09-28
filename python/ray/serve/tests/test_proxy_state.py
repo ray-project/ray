@@ -76,7 +76,6 @@ def setup_controller():
         ).remote(
             SERVE_CONTROLLER_NAME,
             http_config=None,
-            detached=True,
         )
     controller_actor_id = controller._ray_actor_id.hex()
 

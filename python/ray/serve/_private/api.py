@@ -167,7 +167,6 @@ def _start_controller(
     controller = ServeController.options(**controller_actor_options).remote(
         controller_name,
         http_config=http_options,
-        detached=detached,
         grpc_options=grpc_options,
     )
 
