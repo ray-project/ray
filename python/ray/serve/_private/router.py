@@ -39,11 +39,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.utils import (
-    JavaActorHandleProxy,
-    MetricsPusher,
-    in_ray_driver_process,
-)
+from ray.serve._private.utils import JavaActorHandleProxy, MetricsPusher
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
 from ray.util import metrics
@@ -349,6 +345,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         prefer_local_az_routing: bool = False,
         self_node_id: Optional[str] = None,
         self_availability_zone: Optional[str] = None,
+        self_actor_id: str = "",
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
@@ -393,9 +390,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
         self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
-        # Prepare scheduler metrics.
-        self._actor_id: str = self._get_actor_id()
-
         self.num_scheduling_tasks_gauge = metrics.Gauge(
             "serve_num_scheduling_tasks",
             description="The number of request scheduling tasks in the router.",
@@ -404,7 +398,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             {
                 "app": self._deployment_id.app,
                 "deployment": self._deployment_id.name,
-                "actor_id": self._actor_id,
+                "actor_id": self_actor_id,
             }
         )
         self.num_scheduling_tasks_gauge.set(0)
@@ -421,7 +415,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             {
                 "app": self._deployment_id.app,
                 "deployment": self._deployment_id.name,
-                "actor_id": self._actor_id,
+                "actor_id": self_actor_id,
             }
         )
         self.num_scheduling_tasks_in_backoff_gauge.set(
@@ -454,34 +448,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
         return self._replicas
-
-    def _get_actor_id(self) -> str:
-        """Gets the ID of the actor where this scheduler runs.
-
-        NOTE: this call hangs when the GCS is down. As long as this method is
-        called only when the scheduler is initialized, that should be
-        okay because a ServeHandle (and its scheduler) relies
-        on the Serve controller for intialization, and the Serve controller
-        is runs only when the GCS is up.
-
-        Return:
-            The ID of the actor where this scheduler runs. If the scheduler
-            runs in the driver, returns "DRIVER". If the method fails, returns
-            an empty string.
-        """
-
-        if in_ray_driver_process():
-            return "DRIVER"
-        else:
-            try:
-                actor_id = ray.get_runtime_context().get_actor_id()
-                if actor_id is None:
-                    return ""
-                else:
-                    return actor_id
-            except Exception:
-                logger.exception("Got exception while attempting to get actor ID.")
-                return ""
 
     @property
     def app_name(self) -> str:
@@ -926,6 +892,7 @@ class Router:
         deployment_id: DeploymentID,
         self_node_id: str,
         self_availability_zone: Optional[str],
+        self_actor_id: str = "",
         event_loop: asyncio.BaseEventLoop = None,
         _prefer_local_node_routing: bool = False,
         _router_cls: Optional[str] = None,
@@ -950,6 +917,7 @@ class Router:
                 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_node_id,
                 self_availability_zone,
+                self_actor_id=self_actor_id,
             )
 
         logger.info(

@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import logging
 import threading
 import warnings
 from dataclasses import dataclass
@@ -9,16 +10,21 @@ import ray
 from ray import serve
 from ray._raylet import GcsClient, StreamingObjectRefGenerator
 from ray.serve._private.common import DeploymentID, RequestProtocol
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.router import RequestMetadata, Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     get_random_letters,
+    in_ray_driver_process,
     is_running_in_asyncio_loop,
 )
 from ray.util import metrics
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
+
 
 _global_async_loop = None
 _global_async_loop_creation_lock = threading.Lock()
@@ -167,6 +173,7 @@ class _DeploymentHandleBase:
                 self.deployment_id,
                 node_id,
                 availability_zone,
+                self_actor_id=self._get_actor_id(),
                 event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
                 _prefer_local_node_routing=self.handle_options._prefer_local_routing,
                 _router_cls=self.handle_options._router_cls,
@@ -263,6 +270,33 @@ class _DeploymentHandleBase:
             router.assign_request(request_metadata, *args, **kwargs),
             loop=event_loop,
         )
+
+    def _get_actor_id(self) -> str:
+        """Gets the ID of the actor where this handle runs.
+
+        NOTE: this call hangs when the GCS is down. As long as this method is
+        called only when the handle is initialized, that should be
+        okay because a ServeHandle relies on the Serve controller for
+        intialization, and the Serve controller runs only when the GCS is up.
+
+        Return:
+            The ID of the actor where this handle runs. If the handle
+            runs in the driver, returns "DRIVER". If the method fails, returns
+            an empty string.
+        """
+
+        if in_ray_driver_process():
+            return "DRIVER"
+        else:
+            try:
+                actor_id = ray.get_runtime_context().get_actor_id()
+                if actor_id is None:
+                    return ""
+                else:
+                    return actor_id
+            except Exception:
+                logger.exception("Got exception while attempting to get actor ID.")
+                return ""
 
     def __getattr__(self, name):
         return self.options(method_name=name)
