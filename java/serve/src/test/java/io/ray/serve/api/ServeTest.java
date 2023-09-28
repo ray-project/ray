@@ -31,6 +31,7 @@ public class ServeTest {
           replicaName.getReplicaTag(),
           controllerName,
           servableObject,
+          null,
           null);
 
       ReplicaContext replicaContext = Serve.getReplicaContext();
@@ -96,7 +97,7 @@ public class ServeTest {
       Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Mock replica context.
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, null, null);
 
       // Get client.
       ServeControllerClient client = Serve.getGlobalClient();

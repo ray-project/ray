@@ -62,6 +62,12 @@ def map_batches_sleep(x, n):
     return x
 
 
+@pytest.fixture(autouse=True)
+def enable_get_object_locations_flag():
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.enable_get_object_locations_for_metrics = True
+
+
 def test_streaming_split_stats(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
@@ -1303,12 +1309,8 @@ def test_stats_actor_cap_num_stats(ray_start_cluster):
 def test_spilled_stats(shutdown_only):
     # The object store is about 100MB.
     ray.init(object_store_memory=100e6)
-    # The size of dataset is 1000*(80*80*4)*8B, about 200MB.
-    ds = (
-        ray.data.range_tensor(1000, shape=(80, 80, 4), parallelism=100)
-        .map_batches(lambda x: x)
-        .materialize()
-    )
+    # The size of dataset is 1000*80*80*4*8B, about 200MB.
+    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
     assert (
         canonicalize(ds.stats())
@@ -1334,9 +1336,9 @@ Dataset memory:
     assert ds._plan.stats().dataset_bytes_spilled > 100e6
 
     ds = (
-        ray.data.range_tensor(1000, shape=(80, 80, 4), parallelism=100)
+        ray.data.range(1000 * 80 * 80 * 4)
         .map_batches(lambda x: x)
-        .limit(1000)
+        .random_shuffle()
         .map_batches(lambda x: x)
         .materialize()
     )
@@ -1345,7 +1347,7 @@ Dataset memory:
 
     # The size of dataset is around 50MB, there should be no spillage
     ds = (
-        ray.data.range_tensor(250, shape=(80, 80, 4), parallelism=100)
+        ray.data.range(250 * 80 * 80 * 4, parallelism=1)
         .map_batches(lambda x: x)
         .materialize()
     )
