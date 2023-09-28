@@ -190,7 +190,7 @@ We recommend doing heavy computation within Ray tasks, actors, or Ray libraries,
 No extra configuration is needed to do this.
 
 However, if you need to do computation directly in the entrypoint script and would like to reserve CPU and GPU resources for the entrypoint script, you may specify the ``entrypoint_num_cpus``, ``entrypoint_num_gpus``, ``entrypoint_memory`` and ``entrypoint_resources`` arguments to ``submit_job``.  These arguments function
-identically to the ``num_cpus``, ``num_gpus``, ``memory``, and ``resources`` arguments to ``@ray.remote()`` decorator for tasks and actors as described in :ref:`resource-requirements`.
+identically to the ``num_cpus``, ``num_gpus``, ``resources``, and ``_memory`` arguments to ``@ray.remote()`` decorator for tasks and actors as described in :ref:`resource-requirements`.
 
 .. code-block:: python
 
@@ -218,7 +218,7 @@ To be precise, the environment variable ``CUDA_VISIBLE_DEVICES`` will not be set
 
 .. note::
     
-    As with the ``num_cpus``, ``num_gpus``, ``memory``, and ``resources`` arguments to ``@ray.remote()`` described in :ref:`resource-requirements`, these arguments only refer to logical resources used for scheduling purposes. The actual CPU and GPU utilization is not controlled or limited by Ray.
+    As with the ``num_cpus``, ``num_gpus``, ``resources``, and ``_memory`` arguments to ``@ray.remote()`` described in :ref:`resource-requirements`, these arguments only refer to logical resources used for scheduling purposes. The actual CPU and GPU utilization is not controlled or limited by Ray.
 
 
 .. note::
