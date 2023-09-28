@@ -2256,7 +2256,6 @@ def mock_deployment_state_manager_full(
 
             return DeploymentStateManager(
                 "name",
-                True,
                 kv_store,
                 mock_long_poll,
                 actor_names,
@@ -2478,7 +2477,6 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(
             DeploymentID("name", "my_app"),
-            True,
             kv_store,
             mock_long_poll,
             all_current_actor_names,

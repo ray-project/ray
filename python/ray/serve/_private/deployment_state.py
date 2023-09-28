@@ -2123,7 +2123,6 @@ class DeploymentStateManager:
     def __init__(
         self,
         controller_name: str,
-        detached: bool,
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
@@ -2131,7 +2130,6 @@ class DeploymentStateManager:
         cluster_node_info_cache: ClusterNodeInfoCache,
     ):
         self._controller_name = controller_name
-        self._detached = detached
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
