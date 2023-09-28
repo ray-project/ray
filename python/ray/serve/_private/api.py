@@ -112,7 +112,6 @@ def _check_http_options(
 def _start_controller(
     detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, str]:
@@ -137,7 +136,7 @@ def _start_controller(
         controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
 
     controller_actor_options = {
-        "num_cpus": 1 if dedicated_cpu else 0,
+        "num_cpus": 0,
         "name": controller_name,
         "lifetime": "detached" if detached else None,
         "max_restarts": -1,
@@ -303,7 +302,7 @@ def serve_start(
         pass
 
     controller, controller_name = _start_controller(
-        detached, http_options, dedicated_cpu, grpc_options, **kwargs
+        detached, http_options, grpc_options, **kwargs
     )
 
     client = ServeControllerClient(
