@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torchvision.models import resnet50, ResNet50_Weights
 
-from ....nightly_tests.dataset.benchmark import Benchmark
+from benchmark import Benchmark
 import ray
 from ray.data import ActorPoolStrategy
 
@@ -140,12 +140,6 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
 
 
 if __name__ == "__main__":
-    ray.init(
-        runtime_env={
-            "working_dir": os.path.dirname(__file__),
-        }
-    )
-
     benchmark = Benchmark("gpu-batch-inference")
     benchmark.run_fn("batch-inference", main)
 

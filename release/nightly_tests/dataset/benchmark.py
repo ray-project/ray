@@ -90,7 +90,7 @@ class Benchmark:
             # record count, because each batch type has its own method of getting
             # batch length, also may depend on the underlying data structure, etc.
             record_count += batch_size
-            pass
+
         duration = time.perf_counter() - start_time
         self.result[name] = {
             BenchmarkMetric.RUNTIME.value: duration,
