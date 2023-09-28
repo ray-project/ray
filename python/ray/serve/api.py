@@ -96,7 +96,7 @@ def start(
           class See `gRPCOptions` for supported options.
     """
 
-    if detached != True:
+    if detached is not True:
         raise ValueError(
             "`detached` is a deprecated option that should not be set. "
             "In a future release, it will be removed altogether."
