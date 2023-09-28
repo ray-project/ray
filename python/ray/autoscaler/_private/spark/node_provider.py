@@ -236,7 +236,7 @@ class SparkNodeProvider(NodeProvider):
             raise RuntimeError(f"Canceling node {node_id} failed!")
 
         with self.lock:
-            if node_id not in self._nodes:
+            if node_id in self._nodes:
                 self._nodes.pop(node_id)
             logger.info(f"Spark node provider terminates node {node_id}")
 
