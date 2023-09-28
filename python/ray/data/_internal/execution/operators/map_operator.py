@@ -293,8 +293,8 @@ class MapOperator(OneToOneOperator, ABC):
             self._num_output_blocks += task.get_num_output_blocks()
             num_tasks = 1
             if len(self.input_dependencies) == 1:
-                # The number of outputs reported by upstream operator. Do not use
-                # self.num_outputs_total() because we update that value with this estimate
+                # The number of outputs reported by upstream operator. We later
+                #  update self.num_outputs_total() with this estimate
                 num_tasks = self.input_dependencies[0].num_outputs_total()
             self._estimated_output_blocks = round(
                 num_tasks * self._num_output_blocks / self._num_tasks_finished
