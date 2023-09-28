@@ -3,8 +3,6 @@ import sys
 import pytest
 import requests
 import starlette.requests
-from pydantic import BaseModel
-from starlette.testclient import TestClient
 
 import ray
 from ray import serve
