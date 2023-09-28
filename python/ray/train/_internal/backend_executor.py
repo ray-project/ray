@@ -345,8 +345,7 @@ class BackendExecutor:
         """Whether to share resource IDs on all workers
         based on enable_sharing_env.
 
-        This will return true if resources are requested, or
-        `enable_sharing_env` is set to 1.
+        This will return true if resources are requested and greater than 0.
         Also, user can disable by configuring the `enable_sharing_env` to "0".
 
         Args:
@@ -355,11 +354,10 @@ class BackendExecutor:
                 to check.
         """
         has_resource_requested = (
-            self._additional_resources_per_worker.get(resource_name, None) is not None
+            self._additional_resources_per_worker.get(resource_name, 0) > 0
         )
-        return (
-            bool(env_integer(enable_sharing_env, has_resource_requested))
-            and has_resource_requested
+        return has_resource_requested and ray_constants.env_bool(
+            enable_sharing_env, True
         )
 
     def _create_rank_world_size_mappings(self) -> List[Dict]:
