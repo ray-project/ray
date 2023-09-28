@@ -98,12 +98,15 @@ class ActorWrapper(ABC):
 
 
 class ProxyActorWrapper(ActorWrapper):
-    def __init__(self, actor_handle: ActorHandle):
+    def __init__(self, actor_handle: ActorHandle, node_id: str):
         self._actor_handle = actor_handle
+        self._node_id = node_id
         self._ready_obj_ref = None
         self._health_check_obj_ref = None
         self._is_drained_obj_ref = None
         self._update_draining_obj_ref = None
+        self.worker_id = None
+        self.log_file_path = None
 
     @property
     def actor_id(self) -> str:
@@ -151,31 +154,32 @@ class ProxyActorWrapper(ActorWrapper):
             _after=self._update_draining_obj_ref
         )
 
-    def is_ready(self) -> Tuple[ActorWrapperStatus, str, str]:
+    def is_ready(self) -> bool:
         """Return the payload from proxy ready check when ready.
 
-        The return type for this method is a tuple of worker id and log file path
-        returned from the proxy actor's ready() method. If the proxy actor is not
-        ready, then this method will return None.
+        If the ongoing ready check is finished, and the value can be retrieved and
+        unpacked, set the worker_id and log_file_path attributes of the proxy actor
+        and return Ture as ready. Otherwise, return False.
         """
         try:
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
             if finished:
-                return json.loads(ray.get(finished[0]))
+                worker_id, log_file_path = json.loads(ray.get(finished[0]))
+                self.worker_id = worker_id
+                self.log_file_path = log_file_path
+                return True
         except RayActorError:
-            self.set_status(ProxyStatus.UNHEALTHY)
             logger.warning(
                 "Unexpected actor death when checking readiness of "
                 f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
             )
         except Exception:
-            self.try_update_status(ProxyStatus.UNHEALTHY)
             logger.warning(
                 "Unexpected error occurred when checking readiness of "
                 f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
             )
 
-        return None
+        return False
 
     def is_healthy(self) -> bool:
         """Return whether the proxy actor is healthy or not.
@@ -201,16 +205,21 @@ class ProxyActorWrapper(ActorWrapper):
 
         return False
 
-    def check_health(self):
-        """Check the health of the proxy actor."""
+    def is_shutdown(self) -> bool:
+        """Return whether the proxy actor is shutdown.
+
+        For a proxy actor to be considered shutdown, it must be marked as
+        _shutting_down and the actor must be dead. If the actor is dead, the health
+        check will return RayActorError.
+        """
         try:
-            ray.get(self._actor_handle.check_health.remote(), timeout=0.001)
+            ray.get(self._actor_handle.check_health.remote(), timeout=0)
         except RayActorError:
             # The actor is dead, so it's ready for shutdown.
             return True
-        except GetTimeoutError:
-            # The actor is still alive, so it's not ready for shutdown.
-            return False
+
+        # The actor is still alive, so it's not ready for shutdown.
+        return False
 
     def update_draining(self, draining: bool):
         """Update the draining status of the proxy actor."""
@@ -262,7 +271,7 @@ class ProxyActorWrapper(ActorWrapper):
             keep_alive_timeout_s=config.keep_alive_timeout_s,
             grpc_options=grpc_options,
         )
-        return cls(actor_handle=proxy)
+        return cls(actor_handle=proxy, node_id=node_id)
 
 
 class ProxyState:
@@ -452,15 +461,9 @@ class ProxyState:
         ) * PROXY_READY_CHECK_TIMEOUT_S
         if self._status == ProxyStatus.STARTING:
             try:
-                ready_payload = self._proxy_actor_wrapper.is_ready()
-                if ready_payload is not None:
-                    worker_id, log_file_path = ready_payload
+                ready = self._proxy_actor_wrapper.is_ready()
+                if ready:
                     self.try_update_status(ProxyStatus.HEALTHY)
-                    self.update_actor_details(
-                        worker_id=worker_id,
-                        log_file_path=log_file_path,
-                        status=self._status,
-                    )
                 elif time.time() - self._last_health_check_time > ready_check_timeout:
                     # Ready check hasn't returned and the timeout is up, consider it
                     # failed.
@@ -508,25 +511,11 @@ class ProxyState:
         self._proxy_actor_wrapper.kill()
 
     def is_ready_for_shutdown(self) -> bool:
-        """Return whether the proxy actor is shutdown.
-
-        For a proxy actor to be considered shutdown, it must be marked as
-        _shutting_down and the actor must be dead. If the actor is dead, the health
-        check will return RayActorError.
-        """
+        """Return whether the proxy actor is shutdown."""
         if not self._shutting_down:
             return False
 
-        try:
-            self._proxy_actor_wrapper.check_healt()
-        except RayActorError:
-            # The actor is dead, so it's ready for shutdown.
-            return True
-        except GetTimeoutError:
-            # The actor is still alive, so it's not ready for shutdown.
-            return False
-
-        return False
+        return self._proxy_actor_wrapper.is_ready_for_shutdown()
 
 
 class ProxyStateManager:
