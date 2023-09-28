@@ -33,8 +33,11 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class ActorWrapperStatus(str, Enum):
-    STARTING = "STARTING"
+class ActorWrapperCallStatus(str, Enum):
+    PENDING = "PENDING"
+    FINISHED_SUCCEED = "FINISHED_SUCCEED"
+    FINISHED_FAILED = "FINISHED_FAILED"
+
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
     DRAINING = "DRAINING"
@@ -154,12 +157,14 @@ class ProxyActorWrapper(ActorWrapper):
             _after=self._update_draining_obj_ref
         )
 
-    def is_ready(self) -> bool:
+    def is_ready(self) -> ActorWrapperCallStatus:
         """Return the payload from proxy ready check when ready.
 
         If the ongoing ready check is finished, and the value can be retrieved and
         unpacked, set the worker_id and log_file_path attributes of the proxy actor
-        and return Ture as ready. Otherwise, return False.
+        and return FINISHED_SUCCEED status. If the ongoing ready check is not finished,
+        return PENDING status. If the RayActorError is raised, meaning that the actor is
+        dead, return FINISHED_FAILED status.
         """
         try:
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
@@ -167,19 +172,11 @@ class ProxyActorWrapper(ActorWrapper):
                 worker_id, log_file_path = json.loads(ray.get(finished[0]))
                 self.worker_id = worker_id
                 self.log_file_path = log_file_path
-                return True
+                return ActorWrapperCallStatus.FINISHED_SUCCEED
+            else:
+                return ActorWrapperCallStatus.PENDING
         except RayActorError:
-            logger.warning(
-                "Unexpected actor death when checking readiness of "
-                f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
-            )
-        except Exception:
-            logger.warning(
-                "Unexpected error occurred when checking readiness of "
-                f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
-            )
-
-        return False
+            return ActorWrapperCallStatus.FINISHED_FAILED
 
     def is_healthy(self) -> bool:
         """Return whether the proxy actor is healthy or not.
@@ -461,9 +458,15 @@ class ProxyState:
         ) * PROXY_READY_CHECK_TIMEOUT_S
         if self._status == ProxyStatus.STARTING:
             try:
-                ready = self._proxy_actor_wrapper.is_ready()
-                if ready:
+                ready_call_status = self._proxy_actor_wrapper.is_ready()
+                if ready_call_status == ActorWrapperCallStatus.FINISHED_SUCCEED:
                     self.try_update_status(ProxyStatus.HEALTHY)
+                elif ready_call_status == ActorWrapperCallStatus.FINISHED_FAILED:
+                    self.set_status(ProxyStatus.UNHEALTHY)
+                    logger.warning(
+                        "Unexpected actor death when checking readiness of "
+                        f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
+                    )
                 elif time.time() - self._last_health_check_time > ready_check_timeout:
                     # Ready check hasn't returned and the timeout is up, consider it
                     # failed.
