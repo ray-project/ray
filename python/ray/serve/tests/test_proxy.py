@@ -13,7 +13,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
@@ -611,10 +610,6 @@ class TestHTTPProxy:
         )
         mocked_serve_request_context.set.assert_called_with(expected_request_context)
 
-    @pytest.mark.skipif(
-        not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-        reason="Not supported w/ streaming.",
-    )
     @pytest.mark.asyncio
     async def test_send_request_to_replica_streaming(self):
         """Test HTTPProxy send_request_to_replica_streaming returns the correct

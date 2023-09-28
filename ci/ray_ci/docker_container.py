@@ -8,6 +8,7 @@ from ci.ray_ci.utils import docker_pull, RAY_VERSION, POSTMERGE_PIPELINE
 
 PLATFORM = ["cu118"]
 GPU_PLATFORM = "cu118"
+DEFAULT_PYTHON_VERSION = "py38"
 
 
 class DockerContainer(Container):
@@ -100,11 +101,16 @@ class DockerContainer(Container):
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 
+        py_versions = [f"-{self.python_version}"]
+        if self.python_version == DEFAULT_PYTHON_VERSION:
+            py_versions.append("")
+
         alias_images = []
         ray_repo = f"rayproject/{self.image_type}"
         for version in versions:
             for platform in platforms:
-                alias = f"{ray_repo}:{version}-{self.python_version}{platform}"
-                alias_images.append(alias)
+                for py_version in py_versions:
+                    alias = f"{ray_repo}:{version}{py_version}{platform}"
+                    alias_images.append(alias)
 
         return alias_images

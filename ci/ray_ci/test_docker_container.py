@@ -50,9 +50,13 @@ class TestDockerContainer(RayCITestBase):
         container = DockerContainer("py38", "cpu", "ray")
         assert container._get_image_names() == [
             "rayproject/ray:123456-py38-cpu",
+            "rayproject/ray:123456-cpu",
             "rayproject/ray:123456-py38",
+            "rayproject/ray:123456",
             "rayproject/ray:nightly-py38-cpu",
+            "rayproject/ray:nightly-cpu",
             "rayproject/ray:nightly-py38",
+            "rayproject/ray:nightly",
         ]
 
         container = DockerContainer("py37", "cu118", "ray-ml")
@@ -69,7 +73,9 @@ class TestDockerContainer(RayCITestBase):
             container = DockerContainer("py38", "cpu", "ray")
             assert container._get_image_names() == [
                 "rayproject/ray:1.0.0.123456-py38-cpu",
+                "rayproject/ray:1.0.0.123456-cpu",
                 "rayproject/ray:1.0.0.123456-py38",
+                "rayproject/ray:1.0.0.123456",
             ]
 
 
