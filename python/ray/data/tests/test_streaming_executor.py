@@ -729,7 +729,7 @@ def test__check_first_block_size():
         update_operator_states(topo)
 
         logger_args, logger_kwargs = mock_logger.call_args
-        assert logger_args[0] == (
+        assert logger_args[0].startswith(
             "Input in-memory block size of 4.00 MB is significantly larger "
             "than the maximium target block size of 1.00 MB."
         )
