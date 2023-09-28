@@ -16,13 +16,21 @@ from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
 
 STANDARD_EXTRA_METRICS = (
-    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N, "
+    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
+    "'obj_store_mem_peak': N, 'obj_store_mem_spilled': Z, "
     "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}}"
 )
 
 LARGE_ARGS_EXTRA_METRICS = (
-    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N, "
+    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
+    "'obj_store_mem_peak': N, 'obj_store_mem_spilled': Z, "
     "'ray_remote_args': {'num_cpus': Z.N, 'scheduling_strategy': 'DEFAULT'}}"
+)
+
+MEM_SPILLED_EXTRA_METRICS = (
+    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
+    "'obj_store_mem_peak': N, 'obj_store_mem_spilled': N, "
+    "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}}"
 )
 
 
@@ -52,6 +60,12 @@ def map_batches_sleep(x, n):
     simply sleeps for `n` seconds before returning the input batch."""
     time.sleep(n)
     return x
+
+
+@pytest.fixture(autouse=True)
+def enable_get_object_locations_flag():
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.enable_get_object_locations_for_metrics = True
 
 
 def test_streaming_split_stats(ray_start_regular_shared):
@@ -420,6 +434,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   ),\n"
         "   global_bytes_spilled=M,\n"
         "   global_bytes_restored=M,\n"
+        "   dataset_bytes_spilled=M,\n"
         "   parents=[],\n"
         ")"
     )
@@ -451,6 +466,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      obj_store_mem_alloc: N,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_peak: N,\n"
+        "      obj_store_mem_spilled: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   stage_stats=[\n"
@@ -480,6 +496,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   ),\n"
         "   global_bytes_spilled=M,\n"
         "   global_bytes_restored=M,\n"
+        "   dataset_bytes_spilled=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
         "         dataset_uuid=U,\n"
@@ -513,6 +530,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "         ),\n"
         "         global_bytes_spilled=M,\n"
         "         global_bytes_restored=M,\n"
+        "         dataset_bytes_spilled=M,\n"
         "         parents=[],\n"
         "      ),\n"
         "   ],\n"
@@ -1286,6 +1304,55 @@ def test_stats_actor_cap_num_stats(ray_start_cluster):
     assert ray.get(actor.get.remote(0))[0] == {}
     # The start_time has 3 entries because we just added it above with record_start().
     assert ray.get(actor._get_stats_dict_size.remote()) == (3, 2, 2)
+
+
+def test_spilled_stats(shutdown_only):
+    # The object store is about 100MB.
+    ray.init(object_store_memory=100e6)
+    # The size of dataset is 1000*80*80*4*8B, about 200MB.
+    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+
+    assert (
+        canonicalize(ds.stats())
+        == f"""Stage N ReadRange->MapBatches(<lambda>): N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {MEM_SPILLED_EXTRA_METRICS}
+
+Cluster memory:
+* Spilled to disk: M
+* Restored from disk: M
+
+Dataset memory:
+* Spilled to disk: M
+"""
+    )
+
+    # Around 100MB should be spilled (200MB - 100MB)
+    assert ds._plan.stats().dataset_bytes_spilled > 100e6
+
+    ds = (
+        ray.data.range(1000 * 80 * 80 * 4)
+        .map_batches(lambda x: x)
+        .random_shuffle()
+        .map_batches(lambda x: x)
+        .materialize()
+    )
+    # two map_batches operators, twice the spillage
+    assert ds._plan.stats().dataset_bytes_spilled > 200e6
+
+    # The size of dataset is around 50MB, there should be no spillage
+    ds = (
+        ray.data.range(250 * 80 * 80 * 4, parallelism=1)
+        .map_batches(lambda x: x)
+        .materialize()
+    )
+
+    assert ds._plan.stats().dataset_bytes_spilled == 0
 
 
 if __name__ == "__main__":

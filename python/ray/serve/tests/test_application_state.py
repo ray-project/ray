@@ -1,27 +1,27 @@
-import pytest
 import sys
 from typing import Dict, List, Tuple
-from unittest.mock import patch, PropertyMock, Mock
+from unittest.mock import Mock, PropertyMock, patch
+
+import pytest
 
 from ray.exceptions import RayTaskError
-
-from ray.serve.exceptions import RayServeException
 from ray.serve._private.application_state import (
     ApplicationState,
     ApplicationStateManager,
     override_deployment_info,
 )
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.common import (
-    DeploymentID,
     ApplicationStatus,
+    DeploymentID,
+    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
-    DeploymentInfo,
 )
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.utils import get_random_letters
-from ray.serve.schema import ServeApplicationSchema, DeploymentSchema
+from ray.serve.exceptions import RayServeException
+from ray.serve.schema import DeploymentSchema, ServeApplicationSchema
 from ray.serve.tests.utils import MockKVStore
 
 
@@ -129,9 +129,9 @@ class MockDeploymentStateManager:
 
 
 @pytest.fixture
-def mocked_application_state_manager() -> Tuple[
-    ApplicationStateManager, MockDeploymentStateManager
-]:
+def mocked_application_state_manager() -> (
+    Tuple[ApplicationStateManager, MockDeploymentStateManager]
+):
     kv_store = MockKVStore()
 
     deployment_state_manager = MockDeploymentStateManager(kv_store)
@@ -154,7 +154,6 @@ def deployment_params(name: str, route_prefix: str = None, docs_path: str = None
         "route_prefix": route_prefix,
         "docs_path": docs_path,
         "ingress": False,
-        "is_driver_deployment": False,
     }
 
 
@@ -845,24 +844,6 @@ class TestOverrideDeploymentInfo:
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/bob"
         assert updated_info.version == "123"
-
-    def test_override_is_driver_deployment(self, info):
-        config = ServeApplicationSchema(
-            name="default",
-            import_path="test.import.path",
-            deployments=[
-                DeploymentSchema(
-                    name="A",
-                    is_driver_deployment=True,
-                )
-            ],
-        )
-
-        updated_infos = override_deployment_info("default", {"A": info}, config)
-        updated_info = updated_infos["A"]
-        assert updated_info.route_prefix == "/"
-        assert updated_info.version == "123"
-        assert updated_info.is_driver_deployment
 
     def test_override_ray_actor_options_1(self, info):
         """Test runtime env specified in config at deployment level."""
