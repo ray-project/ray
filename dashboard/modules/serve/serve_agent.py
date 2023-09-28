@@ -26,6 +26,14 @@ def gracefully_handle_missing_serve_dependencies(func):
     async def check(self, *args, **kwargs):
         try:
             from ray import serve  # noqa: F401
+
+            logger.info(
+                "The Serve REST API on the dashboard agent is deprecated. "
+                "Send requests to the Serve REST API directly to the "
+                "dashboard instead. If you're using default ports, this means "
+                "you should send the request to the same route on port 8265 "
+                "instead of 52365."
+            )
         except ImportError:
             return Response(
                 status=501,
