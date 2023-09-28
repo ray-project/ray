@@ -2,28 +2,29 @@ import ray._private.worker
 
 try:
     from ray.serve.api import (
-        build,
-        deployment,
-        get_deployment,
-        get_replica_context,
-        ingress,
-        list_deployments,
-        run,
-        shutdown,
-        start,
-        delete,
         Application,
         BuiltApplication,
         Deployment,
-        multiplexed,
-        get_multiplexed_model_id,
-        status,
+        build,
+        delete,
+        deployment,
         get_app_handle,
+        get_deployment,
         get_deployment_handle,
+        get_multiplexed_model_id,
+        get_replica_context,
+        ingress,
+        list_deployments,
+        multiplexed,
+        run,
+        shutdown,
+        start,
+        status,
     )
-    from ray.serve.air_integrations import PredictorDeployment
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
+
+    from ray.serve.air_integrations import PredictorDeployment  # isort:skip
 except ModuleNotFoundError as e:
     e.msg += (
         '. You can run `pip install "ray[serve]"` to install all Ray Serve'

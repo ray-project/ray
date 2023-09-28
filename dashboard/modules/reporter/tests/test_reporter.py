@@ -10,11 +10,13 @@ import pytest
 from collections import defaultdict
 from multiprocessing import Process
 from unittest.mock import MagicMock
+from google.protobuf import text_format
 
 import psutil
 import ray
 from mock import patch
 from ray._private import ray_constants
+from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
@@ -24,6 +26,7 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
+from ray.core.generated.metrics_pb2 import Metric
 
 try:
     import prometheus_client
@@ -151,8 +154,65 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
     wait_for_condition(_check_workers, timeout=10)
 
 
+def test_fix_grpc_metrics():
+    """
+    A real metric output from gcs_server, with name prefixed with "grpc.io/" and 1
+    distribution time series. It has 45 buckets, first of which bounds = 0.0.
+    """
+    metric_textproto = (
+        'metric_descriptor { name: "grpc.io/server/server_latency" description: "Time '
+        "between first byte of request received to last byte of response sent, or "
+        'terminal error" unit: "ms" label_keys { key: "grpc_server_method" } label_keys'
+        ' { key: "Component" } label_keys { key: "WorkerId" } label_keys { key: '
+        '"Version" } label_keys { key: "NodeAddress" } label_keys { key: "SessionName" '
+        "} } timeseries { start_timestamp { seconds: 1693693592 } label_values { value:"
+        ' "ray.rpc.NodeInfoGcsService/RegisterNode" } label_values { value: '
+        '"gcs_server" } label_values { } label_values { value: "3.0.0.dev0" } '
+        'label_values { value: "127.0.0.1" } label_values { value: '
+        '"session_2023-09-02_15-26-32_589652_23265" } points { timestamp { seconds: '
+        "1693693602 } distribution_value { count: 1 sum: 0.266 bucket_options { "
+        "explicit { bounds: 0.0 bounds: 0.01 bounds: 0.05 bounds: 0.1 bounds: 0.3 "
+        "bounds: 0.6 bounds: 0.8 bounds: 1.0 bounds: 2.0 bounds: 3.0 bounds: 4.0 "
+        "bounds: 5.0 bounds: 6.0 bounds: 8.0 bounds: 10.0 bounds: 13.0 bounds: 16.0 "
+        "bounds: 20.0 bounds: 25.0 bounds: 30.0 bounds: 40.0 bounds: 50.0 bounds: 65.0 "
+        "bounds: 80.0 bounds: 100.0 bounds: 130.0 bounds: 160.0 bounds: 200.0 bounds: "
+        "250.0 bounds: 300.0 bounds: 400.0 bounds: 500.0 bounds: 650.0 bounds: 800.0 "
+        "bounds: 1000.0 bounds: 2000.0 bounds: 5000.0 bounds: 10000.0 bounds: 20000.0 "
+        "bounds: 50000.0 bounds: 100000.0 } } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { count: 1 } buckets { } buckets { } buckets { } buckets {"
+        " } buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } } } }"
+    )
+
+    metric = Metric()
+    text_format.Parse(metric_textproto, metric)
+
+    expected_fixed_metric = Metric()
+    expected_fixed_metric.CopyFrom(metric)
+    expected_fixed_metric.metric_descriptor.name = "grpc_io_server_server_latency"
+    expected_fixed_metric.timeseries[0].points[
+        0
+    ].distribution_value.bucket_options.explicit.bounds[0] = 0.0000001
+
+    fix_grpc_metric(metric)
+    assert metric == expected_fixed_metric
+
+
+@pytest.fixture
+def enable_grpc_metrics_collection():
+    os.environ["RAY_enable_grpc_metrics_collection_for"] = "gcs"
+    yield
+    os.environ.pop("RAY_enable_grpc_metrics_collection_for", None)
+
+
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
-def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
+def test_prometheus_physical_stats_record(
+    enable_grpc_metrics_collection, enable_test_module, shutdown_only
+):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
     addr = addresses["raylet_ip_address"]
@@ -184,6 +244,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
             "ray_node_network_received" in metric_names,
             "ray_node_network_send_speed" in metric_names,
             "ray_node_network_receive_speed" in metric_names,
+            "ray_grpc_io_client_sent_bytes_per_rpc_bucket" in metric_names,
         ]
         if sys.platform == "linux" or sys.platform == "linux2":
             predicates.append("ray_node_mem_shared_bytes" in metric_names)

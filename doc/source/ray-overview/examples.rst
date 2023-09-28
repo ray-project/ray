@@ -106,7 +106,7 @@ Ray Examples
         :link: /ray-air/examples/gptj_serving
         :link-type: doc
 
-        How to use Ray AIR to do online serving with the Hugging Face Transformers GPT-J model
+        How to use Ray Serve to do online serving with the Hugging Face Transformers GPT-J model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item cv training gen-ai
@@ -1048,7 +1048,7 @@ Ray Examples
         :class-item: gallery-item rl rllib
         :link: https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb
 
-        Create a custom environment and train a single agent RL using Ray 2.0 with Tune and Air.
+        Create a custom environment and train a single agent RL using Ray 2.0 with Tune.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl rllib

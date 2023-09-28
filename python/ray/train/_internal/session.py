@@ -845,52 +845,49 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     """Report metrics and optionally save a checkpoint.
 
     Each invocation of this method will automatically increment the underlying
-    iteration number. The physical meaning of this "iteration" is defined by
-    user (or more specifically the way they call ``report``).
+    ``training_iteration`` number. The physical meaning of this "iteration" is
+    defined by user depending on how often they call ``report``.
     It does not necessarily map to one epoch.
 
-    This API is the canonical way to report metrics from Tune and Train, and
-    replaces the legacy ``tune.report``, ``with tune.checkpoint_dir``,
-    ``train.report`` and ``train.save_checkpoint`` calls.
+    This method acts as a synchronous barrier for all distributed training workers.
+    All workers must call `ray.train.report` the same number of times.
 
-    Note on directory checkpoints: AIR will take ownership of checkpoints passed
-    to ``report()`` by moving them to a new path. The original directory will no
-    longer be accessible to the caller after the report call.
+    If a checkpoint is provided, it will be
+    :ref:`persisted to storage <persistent-storage-guide>`.
 
     Example:
+
         .. testcode::
 
-            import tensorflow as tf
+            import tempfile
 
             from ray import train
-            from ray.train import Checkpoint, ScalingConfig
-            from ray.train.tensorflow import TensorflowTrainer
+            from ray.train import Checkpoint
+            from ray.train.torch import TorchTrainer
 
-            ######## Using it in the *per worker* train loop (TrainSession) #######
-            def train_func():
-                model = tf.keras.applications.resnet50.ResNet50()
-                model.save("my_model", overwrite=True)
-                train.report(
-                    metrics={"foo": "bar"},
-                    checkpoint=Checkpoint.from_directory("my_model")
-                )
-                # Air guarantees by this point, you can safely write new stuff to
-                # "my_model" directory.
 
-            scaling_config = ScalingConfig(num_workers=2)
-            trainer = TensorflowTrainer(
-                train_loop_per_worker=train_func, scaling_config=scaling_config
+            def train_func(config):
+                start_epoch = 0
+                checkpoint = train.get_checkpoint()
+                if checkpoint:
+                    with checkpoint.as_directory() as checkpoint_dir:
+                        # Load back training state
+                        ...
+
+                for epoch in range(start_epoch, config.get("num_epochs", 10)):
+                    # Do training...
+
+                    metrics = {"loss": ...}
+
+                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                       # Save the checkpoint...
+
+                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+                        train.report(metrics, checkpoint=checkpoint)
+
+            trainer = TorchTrainer(
+                train_func, scaling_config=train.ScalingConfig(num_workers=2)
             )
-            result = trainer.fit()
-            # If you navigate to result.checkpoint's path, you will find the
-            # content of ``model.save()`` under it.
-            # If you have `SyncConfig` configured, the content should also
-            # show up in the corresponding cloud storage path.
-
-        .. testoutput::
-            :hide:
-
-            ...
 
     Args:
         metrics: The metrics you want to report.
@@ -905,53 +902,43 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 def get_checkpoint() -> Optional[Checkpoint]:
     """Access the session's last checkpoint to resume from if applicable.
 
+    Example:
+
+        .. testcode::
+
+            import tempfile
+
+            from ray import train
+            from ray.train import Checkpoint
+            from ray.train.torch import TorchTrainer
+
+
+            def train_func(config):
+                start_epoch = 0
+                checkpoint = train.get_checkpoint()
+                if checkpoint:
+                    with checkpoint.as_directory() as checkpoint_dir:
+                        # Load back training state
+                        ...
+
+                for epoch in range(start_epoch, config.get("num_epochs", 10)):
+                    # Do training...
+
+                    metrics = {"loss": ...}
+
+                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                       # Save the checkpoint...
+
+                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+                        train.report(metrics, checkpoint=checkpoint)
+
+            trainer = TorchTrainer(
+                train_func, scaling_config=train.ScalingConfig(num_workers=2)
+            )
+
     Returns:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
-
-    .. testcode::
-
-        import tensorflow as tf
-
-        ######## Using it in the *per worker* train loop (TrainSession) ######
-        from ray import train
-        from ray.train import Checkpoint, ScalingConfig
-        from ray.train.tensorflow import TensorflowTrainer
-
-        def train_func():
-            ckpt = train.get_checkpoint()
-            if ckpt:
-                with ckpt.as_directory() as loaded_checkpoint_dir:
-                    model = tf.keras.models.load_model(loaded_checkpoint_dir)
-            else:
-                model = tf.keras.applications.resnet50.ResNet50()
-
-            model.save("my_model", overwrite=True)
-            train.report(
-                metrics={"iter": 1},
-                checkpoint=Checkpoint.from_directory("my_model")
-            )
-
-        scaling_config = ScalingConfig(num_workers=2)
-        trainer = TensorflowTrainer(
-            train_loop_per_worker=train_func, scaling_config=scaling_config
-        )
-        result = trainer.fit()
-
-        # trainer2 will pick up from the checkpoint saved by trainer1.
-        trainer2 = TensorflowTrainer(
-            train_loop_per_worker=train_func,
-            scaling_config=scaling_config,
-            # this is ultimately what is accessed through
-            # ``ray.train.get_checkpoint()``
-            resume_from_checkpoint=result.checkpoint,
-        )
-        result2 = trainer2.fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
     """
 
     return _get_session().loaded_checkpoint

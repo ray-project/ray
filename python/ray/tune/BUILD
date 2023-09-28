@@ -250,6 +250,14 @@ py_test(
 )
 
 py_test(
+    name = "test_searcher_utils",
+    size = "small",
+    srcs = ["tests/test_searcher_utils.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
     name = "test_searchers",
     size = "large",
     srcs = ["tests/test_searchers.py"],

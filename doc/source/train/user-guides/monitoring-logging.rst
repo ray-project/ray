@@ -57,19 +57,6 @@ the end of each training epoch.
                 )
                 trainer.fit()
 
-The session concept exists on several levels: The execution layer (called `Tune Session`) and the Data Parallel training layer
-(called `Train Session`).
-The following figure shows how these two sessions look like in a Data Parallel training scenario.
-
-.. image:: ../../ray-air/images/session.svg
-   :width: 650px
-   :align: center
-
-..
-  https://docs.google.com/drawings/d/1g0pv8gqgG29aPEPTcd4BC0LaRNbW1sAkv3H6W1TCp0c/edit
-
-
-
 .. _train-aggregating-results:
 
 How to obtain and aggregate results from different workers?

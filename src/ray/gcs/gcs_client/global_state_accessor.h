@@ -96,10 +96,17 @@ class GlobalStateAccessor {
 
   /// Get information of all actors from GCS Service.
   ///
+  /// \param  actor_id To filter actors by actor_id.
+  /// \param  job_id To filter actors by job_id.
+  /// \param  actor_state_name To filter actors based on actor state.
   /// \return All actor info. To support multi-language, we serialize each ActorTableData
   /// and return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::vector<std::string> GetAllActorInfo() ABSL_LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllActorInfo(
+      const std::optional<ActorID> &actor_id = std::nullopt,
+      const std::optional<JobID> &job_id = std::nullopt,
+      const std::optional<std::string> &actor_state_name = std::nullopt)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get information of an actor from GCS Service.
   ///

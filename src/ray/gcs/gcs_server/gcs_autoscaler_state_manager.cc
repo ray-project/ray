@@ -220,7 +220,11 @@ void GcsAutoscalerStateManager::GetNodeStates(
       return;
     }
 
-    // THe node is alive. We need to check if the node is idle.
+    for (auto &activity : gcs_node_info.state_snapshot().node_activity()) {
+      node_state_proto->add_node_activity(activity);
+    }
+
+    // The node is alive. We need to check if the node is idle.
     auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
         scheduling::NodeID(node_state_proto->node_id()));
     if (node_resource_data.is_draining) {

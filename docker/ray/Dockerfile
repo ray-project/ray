@@ -1,5 +1,7 @@
 ARG BASE_IMAGE
-FROM rayproject/ray-deps:nightly"$BASE_IMAGE"
+ARG FULL_BASE_IMAGE=rayproject/ray-deps:nightly"$BASE_IMAGE"
+FROM $FULL_BASE_IMAGE
+
 ARG WHEEL_PATH
 ARG FIND_LINKS_PATH=".whl"
 ARG CONSTRAINTS_FILE="requirements_compiled.txt"

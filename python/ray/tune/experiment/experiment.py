@@ -468,7 +468,7 @@ class Experiment:
 
         Args:
             run_obj: Trainable to run.
-            storage_path: The path to Ray AIR's result storage.
+            storage_path: The path to the specified result storage.
             name: The name of the experiment specified by user.
 
         Returns:

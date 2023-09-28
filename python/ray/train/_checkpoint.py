@@ -55,7 +55,8 @@ class _CheckpointMetaClass(type):
 class Checkpoint(metaclass=_CheckpointMetaClass):
     """A reference to data persisted as a directory in local or remote storage.
 
-    Access checkpoint contents locally using ``checkpoint.to_directory()``.
+    Access the checkpoint contents locally using ``checkpoint.to_directory()``
+    or ``checkpoint.as_directory``.
 
     Example creating a checkpoint using ``Checkpoint.from_directory``:
 
@@ -69,6 +70,17 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
     Example creating a checkpoint from a remote URI:
 
         >>> checkpoint = Checkpoint("s3://bucket/path/to/checkpoint")
+        >>> checkpoint.filesystem  # doctest: +ELLIPSIS
+        <pyarrow._s3fs.S3FileSystem object...
+        >>> checkpoint.path
+        'bucket/path/to/checkpoint'
+
+    Example creating a checkpoint with a custom filesystem:
+
+        >>> checkpoint = Checkpoint(
+        ...     path="bucket/path/to/checkpoint",
+        ...     filesystem=pyarrow.fs.S3FileSystem(),
+        ... )
         >>> checkpoint.filesystem  # doctest: +ELLIPSIS
         <pyarrow._s3fs.S3FileSystem object...
         >>> checkpoint.path
@@ -147,10 +159,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         """Create checkpoint object from a local directory.
 
         Args:
-            path: Local directory containing checkpoint data. The caller should not
-                modify the contents of this directory after creating the Checkpoint.
-                If passing this checkpoint to `train.report`, Ray will take control
-                of the checkpoint directory.
+            path: Local directory containing checkpoint data.
 
         Returns:
             A ray.train.Checkpoint object.
@@ -158,11 +167,16 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         return cls(path, filesystem=pyarrow.fs.LocalFileSystem())
 
     def to_directory(self, path: Optional[Union[str, os.PathLike]] = None) -> str:
-        """Write checkpoint data to directory.
+        """Write checkpoint data to a local directory.
+
+        *If multiple processes on the same node call this method simultaneously,*
+        only a single process will perform the download, while the others
+        wait for the download to finish. Once the download finishes, all processes
+        receive the same local directory to read from.
 
         Args:
-            path: Target directory to restore data in. If not specified,
-                will create a temporary directory.
+            path: Target directory to download data to. If not specified,
+                this method will use a temporary directory.
 
         Returns:
             str: Directory containing checkpoint data.
@@ -197,17 +211,29 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
     @contextlib.contextmanager
     def as_directory(self) -> Iterator[str]:
-        """Return checkpoint directory path in a context.
+        """Returns checkpoint contents in a local directory as a context.
 
         This function makes checkpoint data available as a directory while avoiding
         unnecessary copies and left-over temporary data.
 
-        If the current path is local, it will return the existing path. If it is
-        not, it will create a temporary directory,
-        which will be deleted after the context is exited.
+        *If the checkpoint points to a local directory*, this method just returns the
+        local directory path without making a copy, and nothing will be cleaned up
+        after exiting the context.
+
+        *If the checkpoint points to a remote directory*, this method will download the
+        checkpoint to a local temporary directory and return the path
+        to the temporary directory.
+
+        *If multiple processes on the same node call this method simultaneously,*
+        only a single process will perform the download, while the others
+        wait for the download to finish. Once the download finishes, all processes
+        receive the same local (temporary) directory to read from.
+
+        Once all processes have finished working with the checkpoint,
+        the temporary directory is cleaned up.
 
         Users should treat the returned checkpoint directory as read-only and avoid
-        changing any data within it, as it might get deleted when exiting the context.
+        changing any data within it, as it may be deleted when exiting the context.
 
         Example:
 
