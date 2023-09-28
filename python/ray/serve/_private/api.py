@@ -218,6 +218,7 @@ async def serve_start_async(
         controller_name,
     )
     _set_global_client(client)
+    logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
 
 
@@ -292,6 +293,7 @@ def serve_start(
         controller_name,
     )
     _set_global_client(client)
+    logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
 
 
