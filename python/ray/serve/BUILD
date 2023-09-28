@@ -13,7 +13,7 @@ doctest(
     tags = ["team:serve"]
 )
 
-# This is a dummy test dependency that causes the below tests to be
+# This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
     name = "serve_lib",
@@ -25,10 +25,7 @@ py_library(
     ],
 )
 
-serve_tests_srcs = glob(
-  ["tests/**/*.py"],
-  exclude=["tests/unit/**"],
-)
+serve_tests_srcs = glob(["tests/**/*.py"])
 
 filegroup(
     name = "test_config_files",
@@ -46,6 +43,14 @@ py_test(
 py_test(
     name = "test_built_application",
     size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_application_state",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -117,6 +122,14 @@ py_test(
 
 py_test(
     name = "test_http_util",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_grpc_util",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -314,6 +327,23 @@ py_test(
     deps = [":serve_lib"],
 )
 
+
+py_test(
+    name = "test_request_metadata",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_replica_scheduler",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
 
 py_test(
     name = "test_regression",
@@ -631,6 +661,14 @@ py_test(
 py_test(
     name = "test_grpc",
     size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_common",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

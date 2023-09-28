@@ -7,14 +7,7 @@ steps:
     depends_on: servebuild
     job_env: forge
 
-  - label: ":ray-serve: serve: unit tests"
-    instance_type: small
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/unit/... serve
-    depends_on: servebuild
-    job_env: forge
-
-  - label: ":ray-serve: serve: integration tests"
+  - label: ":ray-serve: serve: serve tests"
     parallelism: 2
     instance_type: large
     commands:
