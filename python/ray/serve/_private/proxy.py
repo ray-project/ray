@@ -1589,6 +1589,7 @@ class ProxyActor:
         grpc_server = create_serve_grpc_server(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
+
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a

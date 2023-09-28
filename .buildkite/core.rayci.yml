@@ -2,7 +2,7 @@ group: core tests
 steps:
   - label: ":ray: core: python tests"
     instance_type: large
-    parallelism: 6
+    parallelism: 4
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
@@ -12,7 +12,7 @@ steps:
 
   - label: ":ray: core: redis tests"
     instance_type: large
-    parallelism: 6
+    parallelism: 4
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3

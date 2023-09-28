@@ -1,24 +1,17 @@
-import asyncio
 import functools
 import logging
-import sys
 from typing import Any, Callable, Dict, Optional, Union
 
-import grpc
 from fastapi import Depends, FastAPI
 
-import ray
 from ray import cloudpickle, serve
-from ray._private.tls_utils import add_port_to_grpc_server
-from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.constants import DEFAULT_GRPC_PORT, SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers_utils import load_http_adapter
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import RayServeHandle
 from ray.util.annotations import PublicAPI
 
@@ -131,104 +124,3 @@ class DAGDriver(ASGIAppReplicaWrapper):
     async def get_pickled_dag_node(self) -> bytes:
         """Returns the serialized root dag node."""
         return self.dags[self.MATCH_ALL_ROUTE_PREFIX].pickled_dag_node
-
-
-@PublicAPI(stability="alpha")
-class gRPCIngress:
-    """
-    gRPC Ingress that starts gRPC server based on the port
-    """
-
-    def __init__(self, port: int = DEFAULT_GRPC_PORT):
-        """Create a gRPC Ingress.
-
-        Args:
-            port: Set the port that the gRPC server will listen to.
-        """
-
-        self.server = grpc.aio.server()
-        self.port = port
-
-        self._attach_grpc_server_with_schema()
-
-        self.setup_complete = asyncio.Event()
-        self.running_task = get_or_create_event_loop().create_task(self.run())
-        ServeUsageTag.GRPC_INGRESS_USED.record("1")
-
-    async def run(self):
-        """Start gRPC Server"""
-        logger.info(
-            "Starting gRPC server with on node:{} "
-            "listening on port {}".format(ray.util.get_node_ip_address(), self.port)
-        )
-        address = "[::]:{}".format(self.port)
-        try:
-            # Depending on whether RAY_USE_TLS is on, `add_port_to_grpc_server`
-            # can create a secure or insecure channel
-            self.grpc_port = add_port_to_grpc_server(self.server, address)
-        except Exception:
-            # TODO(SongGuyang): Catch the exception here because there is
-            # port conflict issue which brought from static port. We should
-            # remove this after we find better port resolution.
-            logger.exception(
-                "Failed to add port to grpc server. GRPC service will be disabled"
-            )
-            self.server = None
-            self.grpc_port = None
-
-        self.setup_complete.set()
-        await self.server.start()
-        await self.server.wait_for_termination()
-
-    def _attach_grpc_server_with_schema(self):
-        """Attach the gRPC server with schema implementation
-
-        Protobuf Schema gRPC should generate bind function
-        (e.g. add_PredictAPIsServiceServicer_to_server) to bind gRPC server
-        and schema interface
-        """
-        # protobuf Schema gRPC should generate bind function
-        # (e.g. add_PredictAPIsServiceServicer_to_server) to bind gRPC server
-        # and schema interface
-        bind_function_name = "add_{}_to_server"
-        for index in range(len(self.__class__.__bases__)):
-            module_name = self.__class__.__bases__[index].__module__
-            servicer_name = self.__class__.__bases__[index].__name__
-            try:
-                getattr(
-                    sys.modules[module_name], bind_function_name.format(servicer_name)
-                )(self, self.server)
-                return
-            except AttributeError:
-                pass
-        raise RayServeException(
-            "Fail to attach the gRPC server with schema implementation"
-        )
-
-
-@serve.deployment(is_driver_deployment=True, ray_actor_options={"num_cpus": 0})
-class DefaultgRPCDriver(serve_pb2_grpc.PredictAPIsServiceServicer, gRPCIngress):
-    """
-    gRPC Driver that responsible for redirecting the gRPC requests
-    and hold dag handle
-    """
-
-    def __init__(self, dag: RayServeDAGHandle, port=DEFAULT_GRPC_PORT):
-        """Create a grpc driver based on the PredictAPIsService schema.
-
-        Args:
-            dags: a handle to a Ray Serve DAG.
-            port: Port to use to listen to receive the request
-        """
-        self.dag = dag
-        # TODO(Sihan) we will add a gRPCOption class
-        # once we have more options to use
-        super().__init__(port)
-
-    async def Predict(self, request, context):
-        """
-        gRPC Predict function implementation
-        """
-        res = await (await self.dag.remote(dict(request.input)))
-
-        return serve_pb2.PredictResponse(prediction=res)
