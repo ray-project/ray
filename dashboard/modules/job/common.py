@@ -409,7 +409,7 @@ class JobSubmitRequest:
             )
 
         if self.entrypoint_memory is not None and not isinstance(
-            self.entrypoint_memory, int 
+            self.entrypoint_memory, int
         ):
             raise TypeError(
                 "entrypoint_memory must be an integer, "
