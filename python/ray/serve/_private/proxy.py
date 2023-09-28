@@ -719,9 +719,7 @@ class gRPCProxy(GenericProxy):
             async for response in proxy_response.streaming_response:
                 yield response
 
-        if not stream:
-            return unary_unary
-        return unary_stream
+        return unary_stream if stream else unary_unary
 
     async def send_request_to_replica_unary(
         self,
