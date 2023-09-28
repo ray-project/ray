@@ -503,7 +503,7 @@ class ApplicationState:
                 f"Unexpected error occured while applying config for application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return (None, BuildAppStatus.FAILED, error_msg)
+            return None, BuildAppStatus.FAILED, error_msg
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]

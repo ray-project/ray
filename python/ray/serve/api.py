@@ -26,7 +26,7 @@ from ray.serve._private.http_util import (
     make_fastapi_class_based_view,
 )
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import (  # in_interactive_shell,
+from ray.serve._private.utils import (
     DEFAULT,
     Default,
     ensure_serialization_context,
