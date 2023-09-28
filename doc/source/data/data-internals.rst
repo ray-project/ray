@@ -79,11 +79,11 @@ Scheduling
 
 Ray Data uses Ray Core for execution. Below is a summary of the scheduling strategy for Ray Data:
 
+* The ``SPREAD`` scheduling strategy ensures an even distribution of data blocks and map tasks across the cluster.
+* Dataset tasks bypass placement groups by default. For more details, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
 * Read operations use the ``SPREAD`` scheduling strategy if the file isn't located locally; otherwise, they're scheduled on the current node.
 * Map operations use the ``SPREAD`` scheduling strategy if the total argument size is less than 50 MB.
-* The ``SPREAD`` scheduling strategy ensures an even distribution of data blocks and map tasks across the cluster.
 * All other operations use ``DEFAULT`` scheduling strategy.
-* Dataset tasks bypass placement groups by default. For more details, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
 
 .. _datasets_pg:
 
