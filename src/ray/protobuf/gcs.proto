@@ -410,7 +410,7 @@ message JobsAPIInfo {
   // doesn't finish executing
   optional int32 driver_exit_code = 14;
   // The amount of reservable memory resource in bytes for the entrypoint command.
-  optional double entrypoint_memory = 15;
+  optional uint64 entrypoint_memory = 15;
 }
 
 message WorkerTableData {

@@ -213,7 +213,7 @@ def submit(
     entrypoint: Tuple[str],
     entrypoint_num_cpus: Optional[Union[int, float]],
     entrypoint_num_gpus: Optional[Union[int, float]],
-    entrypoint_memory: Optional[Union[int, float]],
+    entrypoint_memory: Optional[int],
     entrypoint_resources: Optional[str],
     no_wait: bool,
     verify: Union[bool, str],
