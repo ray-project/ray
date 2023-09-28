@@ -176,7 +176,6 @@ class ServeController:
 
         self.deployment_state_manager = DeploymentStateManager(
             controller_name,
-            detached,
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
