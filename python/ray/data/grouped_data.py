@@ -1,5 +1,4 @@
 from typing import List, Optional, Tuple, Union
-from weakref import finalize
 
 from ._internal.table_block import TableBlockAccessor
 from ray.data._internal import sort
@@ -71,7 +70,7 @@ class _GroupbyOp(ShuffleOp):
         except AttributeError:
             # mapper_outputs might contain heterogeneous block types
             # normalize blocks in mapper_outputs and retry
-            normalized_blocks = normalize_blocks(mapper_outputs)
+            normalized_blocks = normalize_blocks(mapper_outputs, check_types=False)
             return BlockAccessor.for_block(
                 normalized_blocks[0]
             ).aggregate_combined_blocks(

@@ -125,7 +125,7 @@ class _SortOp(ShuffleOp):
         except AttributeError:
             # mapper_outputs might contain heterogeneous block types
             # normalize blocks in mapper_outputs and retry
-            normalized_blocks = normalize_blocks(mapper_outputs)
+            normalized_blocks = normalize_blocks(mapper_outputs, check_types=False)
             return BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
                 normalized_blocks, sort_key
             )
