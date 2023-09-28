@@ -242,20 +242,20 @@ class LongPollHost:
 
         This method will returns a dictionary of updated objects. It returns
         immediately if the snapshot_ids are outdated, otherwise it will block
-        until there's one updates.
+        until there's an update.
         """
         watched_keys = keys_to_snapshot_ids.keys()
         existent_keys = set(watched_keys).intersection(set(self.snapshot_ids.keys()))
 
-        # If there are any outdated keys (by comparing snapshot ids)
-        # return immediately.
-        client_outdated_keys = {
+        # If there are any keys with outdated snapshot ids,
+        # return their updated values immediately.
+        client_updated_keys = {
             key: UpdatedObject(self.object_snapshots[key], self.snapshot_ids[key])
             for key in existent_keys
             if self.snapshot_ids[key] != keys_to_snapshot_ids[key]
         }
-        if len(client_outdated_keys) > 0:
-            return client_outdated_keys
+        if len(client_updated_keys) > 0:
+            return client_updated_keys
 
         # Otherwise, register asyncio events to be waited.
         async_task_to_events = {}

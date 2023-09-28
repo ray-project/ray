@@ -14,6 +14,7 @@ import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve._private.long_poll import LongPollHost, UpdatedObject
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import gRPCOptions
 from ray.serve.drivers import DAGDriver
@@ -24,11 +25,6 @@ from ray.serve.tests.utils import (
     ping_fruit_stand,
     ping_grpc_call_method,
     ping_grpc_list_applications,
-)
-
-from ray.serve._private.long_poll import (
-    LongPollHost,
-    UpdatedObject,
 )
 
 
