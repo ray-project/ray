@@ -6,7 +6,6 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 import pyarrow.parquet as pq
-from google.api_core import exceptions
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
@@ -39,9 +38,6 @@ class _BigQueryDatasourceReader(Reader):
                 "Query and dataset kwargs cannot both be provided "
                 + "(must be mutually exclusive)."
             )
-
-        _check_import(self, module="google.cloud", package="bigquery")
-        _check_import(self, module="google.cloud", package="bigquery_storage")
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         from google.cloud import bigquery, bigquery_storage
@@ -112,6 +108,7 @@ class _BigQueryDatasourceReader(Reader):
         return None
 
     def _validate_dataset_table_exist(self, project_id: str, dataset: str) -> None:
+        from google.api_core import exceptions
         from google.cloud import bigquery
 
         client = bigquery.Client(project=project_id)
@@ -135,6 +132,9 @@ class _BigQueryDatasourceReader(Reader):
 
 class BigQueryDatasource(Datasource):
     def create_reader(self, **kwargs) -> Reader:
+        _check_import(self, module="google.cloud", package="bigquery")
+        _check_import(self, module="google.cloud", package="bigquery_storage")
+        _check_import(self, module="google.api_core", package="exceptions")
         return _BigQueryDatasourceReader(**kwargs)
 
     def write(
@@ -144,6 +144,7 @@ class BigQueryDatasource(Datasource):
         project_id: str,
         dataset: str,
     ) -> WriteResult:
+        from google.api_core import exceptions
         from google.cloud import bigquery
 
         def _write_single_block(block: Block, project_id: str, dataset: str):
