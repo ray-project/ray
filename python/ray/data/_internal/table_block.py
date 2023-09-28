@@ -206,9 +206,14 @@ class TableBlockAccessor(BlockAccessor):
     def zip(self, other: "Block") -> "Block":
         acc = BlockAccessor.for_block(other)
         if not isinstance(acc, type(self)):
-            raise ValueError(
-                "Cannot zip {} with block of type {}".format(type(self), type(other))
-            )
+            from pyarrow import Table
+
+            if isinstance(self._table, Table):
+                acc = BlockAccessor.for_block(acc.to_arrow())
+            else:
+                block = self.to_arrow()
+                return BlockAccessor.for_block(block).zip(other)
+
         if acc.num_rows() != self.num_rows():
             raise ValueError(
                 "Cannot zip self (length {}) with block of length {}".format(

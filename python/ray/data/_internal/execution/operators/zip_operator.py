@@ -236,7 +236,7 @@ def _zip_one_block(
         # Swap blocks if ordering was inverted during block alignment splitting.
         block, other_block = other_block, block
     # Zip block and other blocks.
-    result = _try_zip_with_pyarrow_fallback(block, other_block)
+    result = _zip_blocks_with_type_check(block, other_block)
     br = BlockAccessor.for_block(result)
     return result, br.get_metadata(input_files=[], exec_stats=stats.build())
 
@@ -246,19 +246,20 @@ def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:
     return block.num_rows(), block.size_bytes()
 
 
-def _try_zip_with_pyarrow_fallback(block: Block, other_block: Block) -> Block:
-    """Try zipping blocks together. If zip fails on ValueError exception due to
-    mismatched block formats we convert `block` or `other_block` to arrow format
-    and zip again.
+def _zip_blocks_with_type_check(block: Block, other_block: Block) -> Block:
+    """Check that block types are the same before zipping. If none of the block
+    are pyarrow blocks, raise ValueError.
     """
-    try:
+    if isinstance(block, type(other_block)):
         return BlockAccessor.for_block(block).zip(other_block)
-    except ValueError:
-        import pyarrow
+    else:
+        from pyarrow import Table
 
-        if isinstance(other_block, pyarrow.Table):
-            block = BlockAccessor.for_block(block).to_arrow()
-            return BlockAccessor.for_block(block).zip(other_block)
-        else:
-            other_block = BlockAccessor.for_block(other_block).to_arrow()
-            return BlockAccessor.for_block(block).zip(other_block)
+        if not any(isinstance(blk, Table) for blk in (block, other_block)):
+            raise ValueError(
+                "Cannot zip {} with block of type {}".format(
+                    type(block), type(other_block)
+                )
+            )
+
+    return BlockAccessor.for_block(block).zip(other_block)
