@@ -191,7 +191,6 @@ class LongPollHost:
         listen_for_change_request_timeout_s: Tuple[
             int, int
         ] = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S,
-        long_poll_host_name: str = "",
     ):
         # Map object_key -> int
         self.snapshot_ids: DefaultDict[KeyType, int] = defaultdict(
@@ -208,11 +207,8 @@ class LongPollHost:
         self.send_counter = metrics.Counter(
             "serve_long_poll_host_send_counter",
             description="The number of times the long poll host sent data.",
-            tag_keys=(
-                "long_poll_namespace",
-                "long_poll_host_name",
-            ),
-        ).set_default_tags({"long_poll_host_name": long_poll_host_name})
+            tag_keys=("long_poll_namespace",),
+        )
 
     def _get_num_notifier_events(self, key: Optional[KeyType] = None):
         """Used for testing."""

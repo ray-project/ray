@@ -151,7 +151,7 @@ class ServeController:
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
 
-        self.long_poll_host = LongPollHost(long_poll_host_name="ServeController")
+        self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
 
         self.proxy_state_manager = ProxyStateManager(
