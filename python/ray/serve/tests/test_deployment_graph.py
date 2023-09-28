@@ -317,7 +317,7 @@ class DictParent:
         return await (await self._d[key].remote())
 
 
-def test_passing_handle_in_obj(serve_instance, use_build):
+def test_passing_handle_in_obj(serve_instance):
     child1 = Echo.bind("ed")
     child2 = Echo.bind("simon")
     parent = DictParent.bind({"child1": child1, "child2": child2})
