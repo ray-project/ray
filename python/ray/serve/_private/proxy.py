@@ -30,7 +30,6 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
-    RAY_SERVE_REQUEST_ID_HEADER,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
@@ -1258,12 +1257,6 @@ class HTTPProxy(GenericProxy):
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
             if key.decode() == "x-request-id":
                 request_context_info["request_id"] = value.decode()
-            if (
-                key.decode() == RAY_SERVE_REQUEST_ID_HEADER.lower()
-                and "request_id" not in request_context_info
-            ):
-                # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
-                request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
         )
@@ -1353,27 +1346,19 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope, receive, send):
         headers = MutableHeaders(scope=scope)
-        if RAY_SERVE_REQUEST_ID_HEADER not in headers and "x-request-id" not in headers:
-            # If X-Request-ID and RAY_SERVE_REQUEST_ID_HEADER are both not set, we
+        if "x-request-id" not in headers:
+            # If X-Request-ID is not set, we
             # generate a new request ID.
             request_id = generate_request_id()
             headers.append("x-request-id", request_id)
-            headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
         elif "x-request-id" in headers:
             request_id = headers["x-request-id"]
-        else:
-            # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
-            request_id = headers[RAY_SERVE_REQUEST_ID_HEADER]
 
         async def send_with_request_id(message: Dict):
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
-                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
-                headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
                 headers.append("X-Request-ID", request_id)
             if message["type"] == "websocket.accept":
-                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
-                message[RAY_SERVE_REQUEST_ID_HEADER] = request_id
                 message["X-Request-ID"] = request_id
             await send(message)
 
