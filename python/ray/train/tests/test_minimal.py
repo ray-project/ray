@@ -1,7 +1,9 @@
+import os
+
 import pytest
 
 import ray
-from ray import train
+from ray import train, tune
 from ray.train import ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -15,6 +17,14 @@ def ray_start_4_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def chdir_tmpdir(tmp_path):
+    original_path = os.getcwd()
+    os.chdir(tmp_path)
+    yield
+    os.chdir(original_path)
 
 
 class TestConfig(BackendConfig):
@@ -75,6 +85,24 @@ def test_failure():
 
     with pytest.raises(ModuleNotFoundError):
         import transformers  # noqa: F401
+
+
+def test_minimal_train_and_tune(ray_start_4_cpus, chdir_tmpdir):
+    def train_fn(config):
+        for i in range(5):
+            with create_dict_checkpoint({"dummy": "data"}) as checkpoint:
+                train.report({"loss": i}, checkpoint=checkpoint)
+
+    tuner = tune.Tuner(train_fn, run_config=train.RunConfig(storage_path=os.getcwd()))
+    results = tuner.fit()
+    assert not results.errors
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=train.ScalingConfig(num_workers=2),
+        run_config=train.RunConfig(storage_path=os.getcwd()),
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":
