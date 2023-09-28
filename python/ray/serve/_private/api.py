@@ -187,7 +187,6 @@ def _start_controller(
 async def serve_start_async(
     detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
@@ -218,7 +217,7 @@ async def serve_start_async(
     controller, controller_name = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(detached, http_options, dedicated_cpu, grpc_options, **kwargs)
+        .remote(detached, http_options, grpc_options, **kwargs)
     )
 
     client = ServeControllerClient(
