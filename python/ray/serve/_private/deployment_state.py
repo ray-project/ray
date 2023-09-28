@@ -1155,7 +1155,6 @@ class DeploymentState:
         self,
         id: DeploymentID,
         controller_name: str,
-        detached: bool,
         long_poll_host: LongPollHost,
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
@@ -1163,7 +1162,6 @@ class DeploymentState:
     ):
         self._id = id
         self._controller_name: str = controller_name
-        self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
@@ -2161,7 +2159,6 @@ class DeploymentStateManager:
         return DeploymentState(
             deployment_id,
             self._controller_name,
-            self._detached,
             self._long_poll_host,
             self._deployment_scheduler,
             self._cluster_node_info_cache,

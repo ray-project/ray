@@ -357,7 +357,6 @@ def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
         deployment_state = DeploymentState(
             DeploymentID("name", "my_app"),
             "name",
-            True,
             mock_long_poll,
             MockDeploymentScheduler(cluster_node_info_cache),
             cluster_node_info_cache,
