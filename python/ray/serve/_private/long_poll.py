@@ -249,13 +249,13 @@ class LongPollHost:
 
         # If there are any keys with outdated snapshot ids,
         # return their updated values immediately.
-        client_updated_keys = {
+        updated_keys = {
             key: UpdatedObject(self.object_snapshots[key], self.snapshot_ids[key])
             for key in existent_keys
             if self.snapshot_ids[key] != keys_to_snapshot_ids[key]
         }
-        if len(client_updated_keys) > 0:
-            return client_updated_keys
+        if len(updated_keys) > 0:
+            return updated_keys
 
         # Otherwise, register asyncio events to be waited.
         async_task_to_events = {}
