@@ -105,7 +105,7 @@ def start(
 
     if dedicated_cpu is not False:
         raise ValueError(
-            "`dedicated_cpu` is a deprecated option that should not be set. "
+            "`dedicated_cpu` is no longer supported. "
             "In a future release, it will be removed altogether."
         )
 
