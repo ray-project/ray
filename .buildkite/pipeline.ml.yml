@@ -67,20 +67,6 @@
       --test_env=WANDB_API_KEY --test_env=COMET_API_KEY
       python/ray/train/...
 
-- label: ":brain: RLlib: Benchmarks (Torch 2.x)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    # Install torch 2.x locally until we move to torch 2.x in the CI.
-    - pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=torch_2.x_only_benchmark
-      rllib/...
-
 - label: ":brain: RLlib: Learning tests TF2-static-graph"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   parallelism: 3
