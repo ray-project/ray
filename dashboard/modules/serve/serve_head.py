@@ -1,4 +1,5 @@
 import logging
+import traceback
 from enum import Enum
 from typing import Optional
 
@@ -66,8 +67,6 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
                     content_type=resp.content_type,
                 )
         except Exception:
-            import traceback
-
             return Response(
                 status=503,
                 text=(
