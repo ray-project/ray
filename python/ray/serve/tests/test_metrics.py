@@ -2,7 +2,7 @@ import os
 import sys
 from functools import partial
 from multiprocessing import Pool
-from typing import DefaultDict, Dict, List
+from typing import DefaultDict, Dict, List, Optional
 
 import grpc
 import pytest
@@ -1199,8 +1199,8 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
 
-def test_long_poll_host_bytes_counted(serve_instance):
-    """Check that the bytes sent by the long_poll are counted."""
+def test_long_poll_host_sends_counted(serve_instance):
+    """Check that the transmissions by the long_poll are counted."""
 
     host = ray.remote(LongPollHost).remote(
         listen_for_change_request_timeout_s=(0.01, 0.01)
@@ -1212,58 +1212,105 @@ def test_long_poll_host_bytes_counted(serve_instance):
 
     # Check that the result's size is reported.
     result_1: Dict[str, UpdatedObject] = ray.get(object_ref)
-    result_1_size = sys.getsizeof(result_1)
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_bytes_sent",
-        expected=result_1_size,
+        metric="serve_long_poll_host_send_counter",
+        expected=1,
+        expected_tags={"namespace_or_state": "key_1"},
     )
 
     # Write two new values.
+    ray.get(host.notify_changed.remote("key_1", 1000))
     ray.get(host.notify_changed.remote("key_2", 1000))
     object_ref = host.listen_for_change.remote(
         {"key_1": result_1["key_1"].snapshot_id, "key_2": -1}
     )
 
-    # Check that the next result's size is added to the first result.
+    # Check that the new objects are transmitted.
     result_2: Dict[str, UpdatedObject] = ray.get(object_ref)
-    result_2_size = sys.getsizeof(result_2)
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_bytes_sent",
-        expected=result_2_size + result_1_size,
+        metric="serve_long_poll_host_send_counter",
+        expected=1,
+        expected_tags={"namespace_or_state": "key_2"},
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="serve_long_poll_host_send_counter",
+        expected=2,
+        expected_tags={"namespace_or_state": "key_1"},
     )
 
-    # Check that a timeout result is counted in the bytes sent by the host.
+    # Check that a timeout result is counted.
     object_ref = host.listen_for_change.remote({"key_2": result_2["key_2"].snapshot_id})
-    timeout_result = ray.get(object_ref)
-    timeout_result_size = sys.getsizeof(timeout_result)
+    _ = ray.get(object_ref)
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_bytes_sent",
-        expected=timeout_result_size + result_2_size + result_1_size,
+        metric="serve_long_poll_host_send_counter",
+        expected=1,
+        expected_tags={"namespace_or_state": "TIMEOUT"},
     )
 
 
-def get_metric_float(metric: str) -> float:
+def extract_tags(line: str) -> Dict[str, str]:
+    """Extracts any tags from the metrics line."""
+
+    try:
+        tags_string = line.replace("{", "}").split("}")[1]
+    except IndexError:
+        # No tags were found in this line.
+        return {}
+
+    detected_tags = {}
+    for tag_pair in tags_string.split(","):
+        sanitized_pair = tag_pair.replace('"', "")
+        tag, value = sanitized_pair.split("=")
+        detected_tags[tag] = value
+
+    return detected_tags
+
+
+def contains_tags(line: str, expected_tags: Optional[Dict[str, str]] = None) -> bool:
+    """Checks if the metrics line contains the expected tags.
+
+    Does nothing if expected_tags is None.
+    """
+
+    if expected_tags is not None:
+        detected_tags = extract_tags(line)
+
+        # Check if expected_tags is a subset of detected_tags
+        return expected_tags.items() <= detected_tags.items()
+    else:
+        return True
+
+
+def get_metric_float(
+    metric: str, expected_tags: Optional[Dict[str, str]] = None
+) -> float:
     """Gets the float value of metric.
 
-    Fails if metric is not available or is not a float.
+    If tags is specified, searched for metric with matching tags.
+
+    Returns -1 if the metric isn't available.
     """
 
     metrics = requests.get("http://127.0.0.1:9999").text
     metric_value = -1
     for line in metrics.split("\n"):
-        if metric in line:
+        if metric in line and contains_tags(line, expected_tags):
             metric_value = line.split(" ")[-1]
     return metric_value
 
 
-def check_metric_float_eq(metric: str, expected: float) -> bool:
-    metric_value = get_metric_float(metric)
+def check_metric_float_eq(
+    metric: str, expected: float, expected_tags: Optional[Dict[str, str]] = None
+) -> bool:
+    metric_value = get_metric_float(metric, expected_tags)
     assert float(metric_value) == expected
     return True
 

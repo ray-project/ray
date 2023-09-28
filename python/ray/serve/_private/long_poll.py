@@ -231,7 +231,7 @@ class LongPollHost:
         else:
             data = timeout_or_data
             for key in data.keys():
-                self.send_counter.inc(value=1, tag={"namespace_or_state": str(key)})
+                self.send_counter.inc(value=1, tags={"namespace_or_state": str(key)})
 
     async def listen_for_change(
         self,
