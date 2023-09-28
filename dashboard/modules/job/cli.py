@@ -178,7 +178,7 @@ def job_cli_group():
 @click.option(
     "--entrypoint-memory",
     required=False,
-    type=float,
+    type=int,
     help="the amount of memory to reserve "
     "for the entrypoint command, separately from any tasks or actors that are "
     "launched by it",
