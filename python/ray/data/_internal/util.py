@@ -24,6 +24,7 @@ import numpy as np
 import ray
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -488,6 +489,16 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
             input_files=None, exec_stats=stats.build()
         ),
     )
+
+
+def normalize_blocks(blocks: Iterable[Block]) -> Iterable[Block]:
+    seen = set()
+    # Check if all blocks are homogenous
+    if not any(len(seen) > 1 or seen.add(type(block)) for block in blocks):
+        return blocks
+
+    # Convert heterogeneous block types to arrow blocks
+    return [BlockAccessor.for_block(block).to_arrow() for block in blocks]
 
 
 def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":

@@ -7,6 +7,7 @@ from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
+from ray.data._internal.util import normalize_blocks
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
 
@@ -68,9 +69,17 @@ class SortTaskSpec(ExchangeTaskSpec):
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
-        return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
-            mapper_outputs, sort_key
-        )
+        try:
+            return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
+                mapper_outputs, sort_key
+            )
+        except AttributeError:
+            # mapper_outputs might contain heterogeneous block types
+            # normalize blocks in mapper_outputs and retry
+            normalized_blocks = normalize_blocks(mapper_outputs)
+            return BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
+                normalized_blocks, sort_key
+            )
 
     @staticmethod
     def sample_boundaries(

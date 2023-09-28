@@ -5,6 +5,7 @@ import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
+from ray.data._internal.util import normalize_blocks
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 
 
@@ -82,7 +83,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         # TODO: Support fusion with other downstream operators.
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
-        for block in mapper_outputs:
+        for block in normalize_blocks(mapper_outputs):
             builder.add_block(block)
         new_block = builder.build()
         accessor = BlockAccessor.for_block(new_block)

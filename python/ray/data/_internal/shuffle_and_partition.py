@@ -3,6 +3,8 @@ from typing import Callable, Iterable, List, Optional, Union
 
 import numpy as np
 
+from python.ray.data._internal.util import normalize_blocks
+
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
@@ -80,7 +82,7 @@ class _ShufflePartitionOp(ShuffleOp):
     ) -> (Block, BlockMetadata):
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
-        for block in mapper_outputs:
+        for block in normalize_blocks(mapper_outputs):
             builder.add_block(block)
         new_block = builder.build()
         accessor = BlockAccessor.for_block(new_block)

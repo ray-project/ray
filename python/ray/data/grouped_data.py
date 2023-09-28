@@ -1,4 +1,5 @@
 from typing import List, Optional, Tuple, Union
+from weakref import finalize
 
 from ._internal.table_block import TableBlockAccessor
 from ray.data._internal import sort
@@ -11,6 +12,7 @@ from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.sort import SortKey
+from ray.data._internal.util import normalize_blocks
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.aggregate._aggregate import _AggregateOnKeyBase
 from ray.data.block import (
@@ -62,9 +64,19 @@ class _GroupbyOp(ShuffleOp):
         partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
         """Aggregate sorted and partially combined blocks."""
-        return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-            list(mapper_outputs), key, aggs, finalize=not partial_reduce
-        )
+        try:
+            return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
+                list(mapper_outputs), key, aggs, finalize=not partial_reduce
+            )
+        except AttributeError:
+            # mapper_outputs might contain heterogeneous block types
+            # normalize blocks in mapper_outputs and retry
+            normalized_blocks = normalize_blocks(mapper_outputs)
+            return BlockAccessor.for_block(
+                normalized_blocks[0]
+            ).aggregate_combined_blocks(
+                normalized_blocks, key, aggs, finalize=not partial_reduce
+            )
 
     @staticmethod
     def _prune_unused_columns(
