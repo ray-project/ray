@@ -4,43 +4,19 @@
 
 import asyncio
 import logging
-import time
 from pprint import pprint
-from typing import Callable, Dict, Union
+from typing import Dict, Union
 
 import aiohttp
-import numpy as np
 from starlette.requests import Request
 
 import ray
 from ray import serve
+from ray.serve._private.benchmarks.common import run_throughput_benchmark
 from ray.serve.handle import RayServeHandle
 
 NUM_CLIENTS = 8
 CALLS_PER_BATCH = 100
-
-
-async def timeit(name: str, fn: Callable, multiplier: int = 1):
-    # warmup
-    start = time.time()
-    while time.time() - start < 0.1:
-        await fn()
-    # real run
-    stats = []
-    for _ in range(1):
-        start = time.time()
-        count = 0
-        while time.time() - start < 0.1:
-            await fn()
-            count += 1
-        end = time.time()
-        stats.append(multiplier * count / (end - start))
-    print(
-        "\t{} {} +- {} requests/s".format(
-            name, round(np.mean(stats), 2), round(np.std(stats), 2)
-        )
-    )
-    return round(np.mean(stats), 2)
 
 
 async def fetch(session, data):
@@ -146,10 +122,16 @@ async def trial(
             for _ in range(CALLS_PER_BATCH):
                 await fetch(session, data)
 
-        single_client_avg_tps = await timeit(
-            "single client {} data".format(data_size),
+        single_client_avg_tps, single_client_std_tps = await run_throughput_benchmark(
             single_client,
             multiplier=CALLS_PER_BATCH,
+        )
+        print(
+            "\t{} {} +- {} requests/s".format(
+                "single client {} data".format(data_size),
+                single_client_avg_tps,
+                single_client_std_tps,
+            )
         )
         key = f"num_client:1/{trial_key_base}"
         results[key] = single_client_avg_tps
@@ -160,8 +142,7 @@ async def trial(
     async def many_clients():
         ray.get([a.do_queries.remote(CALLS_PER_BATCH, data) for a in clients])
 
-    multi_client_avg_tps = await timeit(
-        "{} clients {} data".format(len(clients), data_size),
+    multi_client_avg_tps, _ = await run_throughput_benchmark(
         many_clients,
         multiplier=CALLS_PER_BATCH * len(clients),
     )
