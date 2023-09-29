@@ -224,7 +224,7 @@ def test_controller_deserialization_deployment_def(
         address="auto",
         namespace="serve",
         runtime_env={
-            "working_dir": os.path.join(os.path.dirname(__file__), "storage_tests")
+            "working_dir": os.path.join(os.path.dirname(__file__), "common")
         },
     )
     serve.start()
