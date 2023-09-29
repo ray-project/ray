@@ -74,7 +74,7 @@ class TrainingIterator:
         datasets,
         metadata,
         data_config,
-        checkpoint,
+        checkpoint: Optional[Checkpoint] = None,
     ):
         tune_session: _TrainSession = get_session()
         assert tune_session, "`_start_training` should only be called from within Tune"
@@ -95,6 +95,8 @@ class TrainingIterator:
         try:
             return func()
         except TrainingWorkerError:
+            # TODO(ml-team): This Train fault-tolerance code doesn't get used
+            # since max_retries=0
             # Workers have already been restarted.
             logger.info(
                 "Workers have been successfully restarted. Resuming "
