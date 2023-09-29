@@ -6,6 +6,7 @@ import starlette.requests
 from fastapi import File, Request
 from pydantic import BaseModel, Field
 
+from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.utils import require_packages
 from ray.util.annotations import PublicAPI
 
@@ -61,10 +62,16 @@ def json_to_multi_ndarray(payload: Dict[str, NdArray]) -> Dict[str, np.ndarray]:
 
 
 @PublicAPI(stability="beta")
-def starlette_request(
+async def starlette_request(
     request: starlette.requests.Request,
 ) -> starlette.requests.Request:
-    """Returns the raw request object."""
+    """Returns a buffered (serializable) version of the Starlette Request."""
+
+    async def empty_send():
+        pass
+
+    request._send = empty_send
+    request._receive = make_buffered_asgi_receive(await request.body())
     return request
 
 

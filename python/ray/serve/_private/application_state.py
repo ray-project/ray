@@ -612,11 +612,6 @@ class ApplicationState:
     def get_checkpoint_data(self) -> ApplicationTargetState:
         return self._target_state
 
-    def get_deployment(self, name: str) -> DeploymentInfo:
-        """Get deployment info for deployment by name."""
-        deployment_id = DeploymentID(name, self._name)
-        return self._deployment_state_manager.get_deployment(deployment_id)
-
     def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
         """Return all deployment status information"""
         deployments = [
@@ -794,11 +789,6 @@ class ApplicationStateManager:
                 deployment_timestamp=0,
             )
         return self._application_states[name].get_application_status_info()
-
-    def get_deployment_timestamp(self, name: str) -> float:
-        if name not in self._application_states:
-            return -1
-        return self._application_states[name].deployment_timestamp
 
     def get_docs_path(self, app_name: str) -> Optional[str]:
         return self._application_states[app_name].docs_path
@@ -983,11 +973,6 @@ def override_deployment_info(
         deployment_route_prefix = options.pop("route_prefix", DEFAULT.VALUE)
         if deployment_route_prefix is not DEFAULT.VALUE:
             override_options["route_prefix"] = deployment_route_prefix
-
-        # Override is_driver_deployment if specified in deployment config
-        is_driver_deployment = options.pop("is_driver_deployment", None)
-        if is_driver_deployment is not None:
-            override_options["is_driver_deployment"] = is_driver_deployment
 
         # Merge app-level and deployment-level runtime_envs.
         replica_config = info.replica_config

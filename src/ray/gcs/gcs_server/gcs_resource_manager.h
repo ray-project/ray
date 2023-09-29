@@ -21,6 +21,7 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -33,7 +34,10 @@ namespace ray {
 class GcsMonitorServerTest;
 
 using raylet::ClusterTaskManager;
+
 namespace gcs {
+class GcsNodeManager;
+
 /// Ideally, the logic related to resource calculation should be moved from
 /// `gcs_resoruce_manager` to `cluster_resource_manager`, and all logic related to
 /// resource modification should directly depend on `cluster_resource_manager`, while
@@ -59,6 +63,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   explicit GcsResourceManager(
       instrumented_io_context &io_context,
       ClusterResourceManager &cluster_resource_manager,
+      GcsNodeManager &gcs_node_manager,
       NodeID local_node_id,
       std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
@@ -114,7 +119,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   std::string DebugString() const;
 
   /// Add resources changed listener.
-  void AddResourcesChangedListener(std::function<void()> listener);
+  void AddResourcesChangedListener(std::function<void()> &&listener);
 
   // Update node normal task resources.
   void UpdateNodeNormalTaskResources(const NodeID &node_id,
@@ -204,6 +209,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   ClusterResourceManager &cluster_resource_manager_;
+  GcsNodeManager &gcs_node_manager_;
   NodeID local_node_id_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// Num of alive nodes in the cluster.

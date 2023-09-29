@@ -13,11 +13,10 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.http_proxy import (
+from ray.serve._private.proxy import (
     HEALTH_CHECK_SUCCESS_MESSAGE,
     GenericProxy,
     HTTPProxy,
@@ -251,7 +250,7 @@ class TestgRPCProxy:
         mocked_send_request_to_replica_streaming.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.http_proxy.ray.serve.context._serve_request_context")
+    @patch("ray.serve._private.proxy.ray.serve.context._serve_request_context")
     async def test_setup_request_context_and_handle(self, mocked_serve_request_context):
         """Test gRPCProxy setup_request_context_and_handle sets the correct request
         context and returns the correct handle and request id.
@@ -365,7 +364,7 @@ class TestHTTPProxy:
         assert http_proxy.success_status_code == "200"
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.http_proxy.Response")
+    @patch("ray.serve._private.proxy.Response")
     async def test_not_found(self, mocked_util):
         """Test HTTPProxy set up the correct not found response."""
         mocked_response = AsyncMock()
@@ -385,7 +384,7 @@ class TestHTTPProxy:
         mocked_response.send.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.http_proxy.Response")
+    @patch("ray.serve._private.proxy.Response")
     async def test_draining_response(self, mocked_util):
         """Test HTTPProxy set up the correct draining response."""
         mocked_response = AsyncMock()
@@ -404,7 +403,7 @@ class TestHTTPProxy:
         mocked_response.send.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.http_proxy.Response")
+    @patch("ray.serve._private.proxy.Response")
     async def test_timeout_response(self, mocked_util):
         mocked_response = AsyncMock()
         """Test HTTPProxy set up the correct timeout response."""
@@ -426,7 +425,7 @@ class TestHTTPProxy:
         mocked_response.send.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.http_proxy.starlette.responses.JSONResponse")
+    @patch("ray.serve._private.proxy.starlette.responses.JSONResponse")
     async def test_routes_response(self, mock_json_response):
         """Test HTTPProxy set up the correct routes response."""
         mocked_response = AsyncMock()
@@ -445,7 +444,7 @@ class TestHTTPProxy:
         mocked_response.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.http_proxy.starlette.responses.PlainTextResponse")
+    @patch("ray.serve._private.proxy.starlette.responses.PlainTextResponse")
     async def test_health_response(self, mock_plain_text_response):
         """Test HTTPProxy set up the correct health response."""
         mocked_response = AsyncMock()
@@ -492,7 +491,7 @@ class TestHTTPProxy:
         mocked_proxy_request.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.http_proxy.receive_http_body")
+    @patch("ray.serve._private.proxy.receive_http_body")
     async def test_send_request_to_replica_unary(self, mock_receive_http_body):
         """Test HTTPProxy send_request_to_replica_unary returns the correct response."""
 
@@ -567,7 +566,7 @@ class TestHTTPProxy:
         proxy_request.send.assert_called_with(asgi_message)
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.http_proxy.ray.serve.context._serve_request_context")
+    @patch("ray.serve._private.proxy.ray.serve.context._serve_request_context")
     async def test_setup_request_context_and_handle(self, mocked_serve_request_context):
         """Test HTTPProxy setup_request_context_and_handle sets the correct request
         context and returns the correct handle and request id.
@@ -611,10 +610,6 @@ class TestHTTPProxy:
         )
         mocked_serve_request_context.set.assert_called_with(expected_request_context)
 
-    @pytest.mark.skipif(
-        not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-        reason="Not supported w/ streaming.",
-    )
     @pytest.mark.asyncio
     async def test_send_request_to_replica_streaming(self):
         """Test HTTPProxy send_request_to_replica_streaming returns the correct
@@ -659,7 +654,7 @@ class TestTimeoutKeepAliveConfig:
     def get_proxy_actor(self) -> ActorHandle:
         proxy_actor_name = None
         for actor in ray._private.state.actors().values():
-            if actor["ActorClassName"] == "HTTPProxyActor":
+            if actor["ActorClassName"] == "ProxyActor":
                 proxy_actor_name = actor["Name"]
         return ray.get_actor(proxy_actor_name, namespace=SERVE_NAMESPACE)
 

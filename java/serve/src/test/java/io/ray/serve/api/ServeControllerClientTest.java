@@ -31,7 +31,7 @@ public class ServeControllerClientTest {
           Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config, null);
 
       // Mock endpoints.
       EndpointSet endpointSet =

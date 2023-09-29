@@ -15,7 +15,6 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.actor import ActorHandle
-from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 
 
 async def send_signal_on_cancellation(signal_actor: ActorHandle):
@@ -25,10 +24,6 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
         await signal_actor.send.remote()
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
-)
 @pytest.mark.parametrize("use_fastapi", [False, True])
 def test_cancel_on_http_client_disconnect_during_execution(
     serve_instance, use_fastapi: bool
@@ -77,10 +72,6 @@ def test_cancel_on_http_client_disconnect_during_execution(
     ray.get(outer_signal_actor.wait.remote(), timeout=10)
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
-)
 def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
     """Test the client disconnecting while the proxy is assigning the request."""
     signal_actor = SignalActor.remote()
@@ -115,10 +106,6 @@ def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
         assert h.remote().result() == i
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
-)
 def test_cancel_sync_handle_call_during_execution(serve_instance):
     """Test cancelling handle request during execution (sync context)."""
     running_signal_actor = SignalActor.remote()
@@ -144,10 +131,6 @@ def test_cancel_sync_handle_call_during_execution(serve_instance):
         r.result()
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
-)
 def test_cancel_sync_handle_call_during_assignment(serve_instance):
     """Test cancelling handle request during assignment (sync context)."""
     signal_actor = SignalActor.remote()
@@ -184,10 +167,6 @@ def test_cancel_sync_handle_call_during_assignment(serve_instance):
         assert h.remote().result() == i
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
-)
 def test_cancel_async_handle_call_during_execution(serve_instance):
     """Test cancelling handle request during execution (async context)."""
     running_signal_actor = SignalActor.remote()
@@ -220,10 +199,6 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
     h.remote().result()  # Would raise if test failed.
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
-)
 def test_cancel_async_handle_call_during_assignment(serve_instance):
     """Test cancelling handle request during assignment (async context)."""
     signal_actor = SignalActor.remote()
@@ -271,10 +246,6 @@ def test_cancel_async_handle_call_during_assignment(serve_instance):
     h.remote().result()  # Would raise if test failed.
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
-)
 def test_cancel_generator_sync(serve_instance):
     """Test cancelling streaming handle request during execution."""
     signal_actor = SignalActor.remote()
@@ -301,10 +272,6 @@ def test_cancel_generator_sync(serve_instance):
     ray.get(signal_actor.wait.remote(), timeout=10)
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
-)
 def test_cancel_generator_async(serve_instance):
     """Test cancelling streaming handle request during execution."""
     signal_actor = SignalActor.remote()
@@ -337,10 +304,6 @@ def test_cancel_generator_async(serve_instance):
     h.remote().result()  # Would raise if test failed.
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
-)
 def test_only_relevant_task_is_cancelled(serve_instance):
     """Test cancelling one request doesn't affect others."""
     signal_actor = SignalActor.remote()
@@ -368,10 +331,6 @@ def test_only_relevant_task_is_cancelled(serve_instance):
     assert r2.result() == "ok"
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
-)
 def test_out_of_band_task_is_not_cancelled(serve_instance):
     """
     Test cancelling a request doesn't cancel tasks submitted

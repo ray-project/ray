@@ -9,7 +9,6 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     SERVE_LOGGER_NAME,
 )
@@ -61,10 +60,7 @@ class LongestPrefixRouter(ProxyRouter):
             else:
                 handle = self._get_handle(endpoint.name, endpoint.app).options(
                     # Streaming codepath isn't supported for Java.
-                    stream=(
-                        RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
-                        and not info.app_is_cross_language
-                    ),
+                    stream=not info.app_is_cross_language,
                     use_new_handle_api=True,
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                 )
@@ -148,10 +144,7 @@ class EndpointRouter(ProxyRouter):
             else:
                 handle = self._get_handle(endpoint.name, endpoint.app).options(
                     # Streaming codepath isn't supported for Java.
-                    stream=(
-                        RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
-                        and not info.app_is_cross_language
-                    ),
+                    stream=not info.app_is_cross_language,
                     use_new_handle_api=True,
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                 )

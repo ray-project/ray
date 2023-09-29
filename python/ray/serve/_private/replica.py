@@ -44,11 +44,8 @@ from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIMessageQueue,
     ASGIReceiveProxy,
-    BufferedASGISender,
-    HTTPRequestWrapper,
     RawASGIResponse,
     Response,
-    make_buffered_asgi_receive,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
@@ -229,7 +226,6 @@ def create_replica_wrapper(actor_class_name: str):
             """
             return self.replica.get_num_pending_and_running_requests()
 
-        @ray.method(num_returns=2)
         async def handle_request(
             self,
             pickled_request_metadata: bytes,
@@ -245,26 +241,12 @@ def create_replica_wrapper(actor_class_name: str):
                 result = await self.replica.call_user_method_grpc_unary(
                     request_metadata=request_metadata, request=request_args[0]
                 )
-                return b"", result
-            elif request_metadata.is_http_request:
-                # The sole argument passed from `http_proxy.py` is the ASGI scope.
-                assert len(request_args) == 1
-                request: HTTPRequestWrapper = pickle.loads(request_args[0])
+            else:
+                result = await self.replica.call_user_method(
+                    request_metadata, request_args, request_kwargs
+                )
 
-                scope = request.scope
-                buffered_send = BufferedASGISender()
-                buffered_receive = make_buffered_asgi_receive(request.body)
-                request_args = (scope, buffered_receive, buffered_send)
-
-            result = await self.replica.call_user_method(
-                request_metadata, request_args, request_kwargs
-            )
-
-            if request_metadata.is_http_request:
-                result = buffered_send.build_asgi_response()
-
-            # Returns a small object for router to track request status.
-            return b"", result
+            return result
 
         async def _handle_http_request_generator(
             self,

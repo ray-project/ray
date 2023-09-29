@@ -87,7 +87,8 @@ def _check_job(
     client: JobSubmissionClient, job_id: str, status: JobStatus, timeout: int = 10
 ) -> bool:
     res_status = client.get_job_status(job_id)
-    return res_status == status
+    assert res_status == status
+    return True
 
 
 @pytest.fixture(

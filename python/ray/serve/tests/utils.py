@@ -8,11 +8,8 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_NAMESPACE,
-)
-from ray.serve._private.http_proxy import DRAINED_MESSAGE
+from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.proxy import DRAINED_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
@@ -211,9 +208,6 @@ def ping_grpc_model_multiplexing(channel, app_name):
 
 
 def ping_grpc_streaming(channel, app_name):
-    if not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        return
-
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", app_name),)
