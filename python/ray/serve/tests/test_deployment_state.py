@@ -34,7 +34,7 @@ from ray.serve._private.deployment_state import (
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
-from ray.serve.tests.utils import MockKVStore, MockTimer
+from ray.serve.tests.common.utils import MockKVStore, MockTimer
 
 
 class FakeRemoteFunction:
