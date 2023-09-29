@@ -391,6 +391,10 @@ pre {
     padding: 5px 0;
 }
 
+.highlight pre {
+    color: green; /* Change to your desired color */
+}
+
 .top-nav-content .menu:hover > ul > li span {
     display: block;
 }
@@ -410,6 +414,10 @@ pre {
     height: 40px;
     border: none;
     white-space: nowrap;
+}
+
+code {
+    color: #ff4d1f; /* Change to your desired color */
 }
 
 @media (max-width: 1000px) {
