@@ -60,10 +60,20 @@ def validate_endpoint(log_deprecation_warning: bool):
             return await func(self, *args, **kwargs)
 
         return check
+
     return decorator
 
 
-def create_serve_rest_api(dashboard_module_superclass: Union[dashboard_utils.DashboardHeadModule, dashboard_utils.DashboardAgentModule], dashboard_route_table: Union[dashboard_optional_utils.DashboardHeadRouteTable, dashboard_optional_utils.DashboardAgentRouteTable], log_deprecation_warning: bool=False):
+def create_serve_rest_api(
+    dashboard_module_superclass: Union[
+        dashboard_utils.DashboardHeadModule, dashboard_utils.DashboardAgentModule
+    ],
+    dashboard_route_table: Union[
+        dashboard_optional_utils.DashboardHeadRouteTable,
+        dashboard_optional_utils.DashboardAgentRouteTable,
+    ],
+    log_deprecation_warning: bool = False,
+):
 
     # NOTE (shrekris-anyscale): This class uses delayed imports for all
     # Ray Serve-related modules. That way, users can use the Ray dashboard agent for
@@ -303,7 +313,9 @@ def create_serve_rest_api(dashboard_module_superclass: Union[dashboard_utils.Das
             from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
             try:
-                config: ServeDeploySchema = ServeDeploySchema.parse_obj(await req.json())
+                config: ServeDeploySchema = ServeDeploySchema.parse_obj(
+                    await req.json()
+                )
             except ValidationError as e:
                 return Response(
                     status=400,
@@ -398,5 +410,5 @@ def create_serve_rest_api(dashboard_module_superclass: Union[dashboard_utils.Das
         @staticmethod
         def is_minimal_module():
             return False
-    
+
     return ServeRestApiImpl(dashboard_module_superclass)
