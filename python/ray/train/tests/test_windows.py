@@ -48,3 +48,9 @@ def test_storage_path(ray_start_4_cpus, chdir_tmpdir):
         run_config=train.RunConfig(storage_path=os.getcwd()),
     )
     trainer.fit()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
