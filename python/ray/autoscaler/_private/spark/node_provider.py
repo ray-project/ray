@@ -2,6 +2,7 @@ import json
 import logging
 import threading
 import time
+import sys
 from threading import RLock
 from typing import Any, Dict, Optional
 
@@ -81,9 +82,7 @@ class SparkNodeProvider(NodeProvider):
             url=self.server_url + "/query_task_status",
             json={"spark_job_group_id": spark_job_group_id},
         )
-        self._check_job_server_response_failure(
-            response, f"Querying node {node_id} status failed"
-        )
+        response.raise_for_status()
 
         decoded_resp = response.content.decode("utf-8")
         json_res = json.loads(decoded_resp)
@@ -128,16 +127,6 @@ class SparkNodeProvider(NodeProvider):
             f"ray-cluster-{self.ray_head_port}-{self.cluster_id}"
             f"-worker-node-{node_id}"
         )
-
-    @staticmethod
-    def _check_job_server_response_failure(response, high_level_error):
-        if response.status_code != 200:
-            # Spark job server is locally launched, if spark job server request failed,
-            # It is unlikely network error but probably unrecoverable error,
-            # so we make it fast-fail.
-            raise NodeLaunchException(
-                f"{high_level_error}, reason: {response.reason}."
-            )
 
     def create_node_with_resources_and_labels(
         self, node_config, tags, count, resources, labels
@@ -192,9 +181,18 @@ class SparkNodeProvider(NodeProvider):
                     "collect_log_to_path": conf["collect_log_to_path"],
                 },
             )
-            self._check_job_server_response_failure(
-                response, f"Starting ray worker node {node_id} failed"
-            )
+
+            try:
+                # Spark job server is locally launched, if spark job server request failed,
+                # It is unlikely network error but probably unrecoverable error,
+                # so we make it fast-fail.
+                response.raise_for_status()
+            except Exception:
+                raise NodeLaunchException(
+                    "Node creation failure",
+                    f"Starting ray worker node {node_id} failed",
+                    sys.exc_info(),
+                )
 
             self._nodes[node_id] = {
                 "tags": {
@@ -237,9 +235,7 @@ class SparkNodeProvider(NodeProvider):
             url=self.server_url + "/terminate_node",
             json={"spark_job_group_id": self._gen_spark_job_group_id(node_id)},
         )
-        self._check_job_server_response_failure(
-            response, f"Canceling node {node_id} failed"
-        )
+        response.raise_for_status()
 
         with self.lock:
             if node_id in self._nodes:
