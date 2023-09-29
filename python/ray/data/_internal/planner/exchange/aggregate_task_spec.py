@@ -68,19 +68,10 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
-        try:
-            return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-                list(mapper_outputs), key, aggs, finalize=not partial_reduce
-            )
-        except AttributeError:
-            # mapper_outputs might contain heterogeneous block types
-            # normalize all blocks from mapper outputs and retry
-            normalized_blocks = normalize_blocks(mapper_outputs, check_types=False)
-            return BlockAccessor.for_block(
-                normalized_blocks[0]
-            ).aggregate_combined_blocks(
-                normalized_blocks, key, aggs, finalize=not partial_reduce
-            )
+        normalized_blocks = normalize_blocks(mapper_outputs, check_types=False)
+        return BlockAccessor.for_block(normalized_blocks[0]).aggregate_combined_blocks(
+            normalized_blocks, key, aggs, finalize=not partial_reduce
+        )
 
     @staticmethod
     def _prune_unused_columns(
