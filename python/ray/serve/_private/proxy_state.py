@@ -77,8 +77,8 @@ class ActorWrapper(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def check_health(self):
-        """Check the health of the proxy actor."""
+    def is_shutdown(self):
+        """Return whether the proxy actor is shutdown."""
         raise NotImplementedError
 
     @abstractmethod
