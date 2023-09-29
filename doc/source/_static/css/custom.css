@@ -243,8 +243,8 @@ pre {
     /* Wrap code blocks instead of horizontal scrolling. */
     white-space: pre-wrap;
     box-shadow: none;
-    border-color: var(--border-color-gray);
-    background-color: var(--background-color-light-gray);
+    /* border-color: var(--border-color-gray); */
+    /* background-color: var(--background-color-light-gray); */
     border-radius:0.25em;
 }
 
