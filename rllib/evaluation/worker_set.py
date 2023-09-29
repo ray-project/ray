@@ -265,7 +265,17 @@ class WorkerSet:
         worker_id = self.__worker_manager.actor_ids()[0]
 
         # Try to figure out spaces from the first remote worker.
-        if issubclass(self.env_runner_cls, EnvRunner):
+        # Traditional RolloutWorker.
+        if issubclass(self.env_runner_cls, RolloutWorker):
+            remote_spaces = self.foreach_worker(
+                lambda worker: worker.foreach_policy(
+                    lambda p, pid: (pid, p.observation_space, p.action_space)
+                ),
+                remote_worker_ids=[worker_id],
+                local_worker=False,
+            )
+        # Generic EnvRunner.
+        else:
             remote_spaces = self.foreach_worker(
                 lambda worker: worker.marl_module.foreach_module(
                     lambda m, mid: (
@@ -275,15 +285,7 @@ class WorkerSet:
                     ),
                 )
             )
-        else:
-            # Traditional RolloutWorker.
-            remote_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_policy(
-                    lambda p, pid: (pid, p.observation_space, p.action_space)
-                ),
-                remote_worker_ids=[worker_id],
-                local_worker=False,
-            )
+
         if not remote_spaces:
             raise ValueError(
                 "Could not get observation and action spaces from remote "

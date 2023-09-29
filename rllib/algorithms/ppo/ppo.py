@@ -23,7 +23,6 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     PPOLearnerHyperparameters,
     LEARNER_RESULTS_KL_KEY,
 )
-from ray.rllib.algorithms.ppo.utils.env_runner import PPOEnvRunner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 # from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
@@ -145,9 +144,6 @@ class PPOConfig(PGConfig):
         # enable the rl module api by default
         self.rl_module(_enable_rl_module_api=True)
         self.training(_enable_learner_api=True)
-
-        # Use the `EnvRunner API` for RLModules.
-        self.env_runner_cls = PPOEnvRunner
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -445,7 +441,8 @@ class PPO(Algorithm):
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
-            if self.config._enable_learner_api:
+            # New Episode-returning EnvRunner API.
+            if self.config.env_runner_cls is not RolloutWorker:
                 if self.workers.num_remote_workers() <= 0:
                     train_samples = [self.workers.local_worker().sample()]
                 else:
@@ -469,6 +466,7 @@ class PPO(Algorithm):
                             train_batches.append(episode.to_sample_batch())
                 train_batch = concat_samples(train_batches)
                 del train_batch[SampleBatch.INFOS]
+            # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
             else:
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(

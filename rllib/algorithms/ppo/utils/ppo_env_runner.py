@@ -25,21 +25,20 @@ _, tf, _ = try_import_tf()
 
 # TODO (simon): MultiAgent Version.
 # TODO (sven): Connectors.
-# TODO (simon): Sample should return tuple or not. Batch postprocessing
-# on local worker in training step (TIMING) or as callback
-# `postprocess_trajectory`.
+# TODO (simon): Batch postprocessing on local worker in training step (TIMING) or as
+#  callback `postprocess_trajectory`.
 # TODO (simon): Include callbacks.
 # TODO (simon): Framework-agnostic.
+
 class PPOEnvRunner(EnvRunner):
     """An environment runner to collect data from vectorized gymnasium environments."""
 
     def __init__(self, config: AlgorithmConfig, **kwargs):
-        """Initializes a PPOEnvRunner.
+        """Initializes a PPOEnvRunner instance.
 
         Args:
             config: The config to use for setup of this EnvRunner.
         """
-
         super().__init__(config=config)
 
         # Get the worker index on which this instance is running.
@@ -189,9 +188,7 @@ class PPOEnvRunner(EnvRunner):
         # Loop through env in enumerate.(self._episodes):
         ts = 0
         pbar = tqdm(total=num_timesteps, desc=f"Sampling {num_timesteps} timesteps ...")
-        import ray
 
-        ray.__version__
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
@@ -208,7 +205,6 @@ class PPOEnvRunner(EnvRunner):
                     SampleBatch.OBS: tf.convert_to_tensor(obs),
                 }
 
-                breakpoint()
                 # Explore or not.
                 if explore:
                     # TODO (simon) Implement this for MARL.
@@ -229,7 +225,6 @@ class PPOEnvRunner(EnvRunner):
                         lambda m, mid: (mid, m.get_inference_action_dist_cls()),
                     )
 
-                breakpoint()
                 action_dist_cls = {mid: dist_cls for mid, dist_cls in action_dist_cls}
                 action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
@@ -244,7 +239,6 @@ class PPOEnvRunner(EnvRunner):
                     # states = tree.map_structure(lambda s: s.numpy(),
                     # fwd_out[STATE_OUT])
 
-            breakpoint()
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
             pbar.update(self.num_envs)
@@ -364,134 +358,135 @@ class PPOEnvRunner(EnvRunner):
             # Extract info for vector sub_env.
             # info = {k: v[i] for k, v in infos.items()}
             episodes[i].add_initial_observation(
+                initial_observation=obs[i],
                 initial_info=infos[i],
                 initial_state={k: s[i] for k, s in states.items()},
                 initial_render_image=render_images[i],
             )
 
         eps = 0
-        with tqdm(
+        pbar = tqdm(
             total=num_episodes, desc=f"Sampling {num_episodes} episodes ..."
-        ) as pbar:
-            while eps < num_episodes:
-                if random_actions:
-                    actions = self.env.action_space.sample()
-                else:
-                    batch = {
-                        STATE_IN: tree.map_structure(
-                            lambda s: tf.convert_to_tensor(s), states
-                        ),
-                        SampleBatch.OBS: tf.convert_to_tensor(obs),
-                    }
+        )
+        while eps < num_episodes:
+            if random_actions:
+                actions = self.env.action_space.sample()
+            else:
+                batch = {
+                    STATE_IN: tree.map_structure(
+                        lambda s: tf.convert_to_tensor(s), states
+                    ),
+                    SampleBatch.OBS: tf.convert_to_tensor(obs),
+                }
 
-                    if explore:
-                        # TODO (simon) Implement this for MARL.
-                        fwd_out = self.marl_module[
-                            DEFAULT_POLICY_ID
-                        ].forward_exploration(batch)
-                        # `self.module` is a MARL module.
-                        action_dist_cls = self.marl_module.foreach_module(
-                            lambda m, mid: (mid, m.get_exploration_action_dist_cls()),
-                        )
-                    else:
-                        # TODO (simon) Implement this for MARL.
-                        fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_inference(
-                            batch
-                        )
-                        # `self.module` is a MARL module.
-                        action_dist_cls = self.marl_module.foreach_module(
-                            lambda m, mid: (mid, m.get_inference_action_dist_cls()),
-                        )
-
-                    action_dist_cls = {
-                        mid: dist_cls for mid, dist_cls in action_dist_cls
-                    }
-                    action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(
-                        fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                if explore:
+                    # TODO (simon) Implement this for MARL.
+                    fwd_out = self.marl_module[
+                        DEFAULT_POLICY_ID
+                    ].forward_exploration(batch)
+                    # `self.module` is a MARL module.
+                    action_dist_cls = self.marl_module.foreach_module(
+                        lambda m, mid: (mid, m.get_exploration_action_dist_cls()),
                     )
-                    actions = action_dist.sample()
-                    action_logp = convert_to_numpy(action_dist.logp(actions))
-                    actions = convert_to_numpy(actions)
-                    fwd_out = convert_to_numpy(fwd_out)
+                else:
+                    # TODO (simon) Implement this for MARL.
+                    fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_inference(
+                        batch
+                    )
+                    # `self.module` is a MARL module.
+                    action_dist_cls = self.marl_module.foreach_module(
+                        lambda m, mid: (mid, m.get_inference_action_dist_cls()),
+                    )
 
-                    if STATE_OUT in fwd_out:
-                        states = fwd_out[STATE_OUT]
-                        # states = tree.map_structure(
-                        #     lambda s: s.numpy(), fwd_out[STATE_OUT]
-                        # )
+                action_dist_cls = {
+                    mid: dist_cls for mid, dist_cls in action_dist_cls
+                }
+                action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
+                actions = action_dist.sample()
+                action_logp = convert_to_numpy(action_dist.logp(actions))
+                actions = convert_to_numpy(actions)
+                fwd_out = convert_to_numpy(fwd_out)
 
-                obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
-                if with_render_data:
-                    render_images = [e.render() for e in self.env.envs]
+                if STATE_OUT in fwd_out:
+                    states = fwd_out[STATE_OUT]
+                    # states = tree.map_structure(
+                    #     lambda s: s.numpy(), fwd_out[STATE_OUT]
+                    # )
 
-                for i in range(self.num_envs):
-                    # Extract info and state for vector sub_env.
-                    # info = {k: v[i] for k, v in infos.items()}
-                    s = {k: s[i] for k, s in states.items()}
-                    # The last entry in self.observations[i] is already the reset
-                    # obs of the new episode.
-                    if explore:
-                        extra_model_output = {
-                            SampleBatch.ACTION_DIST_INPUTS: fwd_out[
-                                SampleBatch.ACTION_DIST_INPUTS
-                            ][i],
-                            SampleBatch.ACTION_LOGP: action_logp[i],
-                            SampleBatch.VF_PREDS: fwd_out[SampleBatch.VF_PREDS][i],
-                        }
-                        # In inference we have only the action logits.
-                    else:
-                        extra_model_output = {
-                            SampleBatch.ACTION_DIST_INPUTS: fwd_out[
-                                SampleBatch.ACTION_DIST_INPUTS
-                            ][i],
-                            SampleBatch.ACTION_LOGP: action_logp[i],
-                        }
-                    if terminateds[i] or truncateds[i]:
-                        eps += 1
-                        pbar.update(1)
+            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            if with_render_data:
+                render_images = [e.render() for e in self.env.envs]
 
-                        episodes[i].add_timestep(
-                            infos["final_observation"][i],
-                            actions[i],
-                            rewards[i],
-                            infos[i],
-                            state=s,
-                            is_terminated=terminateds[i],
-                            is_truncated=truncateds[i],
-                            extra_model_output=extra_model_output,
-                        )
-                        done_episodes_to_return.append(episodes[i])
+            for i in range(self.num_envs):
+                # Extract info and state for vector sub_env.
+                # info = {k: v[i] for k, v in infos.items()}
+                s = {k: s[i] for k, s in states.items()}
+                # The last entry in self.observations[i] is already the reset
+                # obs of the new episode.
+                if explore:
+                    extra_model_output = {
+                        SampleBatch.ACTION_DIST_INPUTS: fwd_out[
+                            SampleBatch.ACTION_DIST_INPUTS
+                        ][i],
+                        SampleBatch.ACTION_LOGP: action_logp[i],
+                        SampleBatch.VF_PREDS: fwd_out[SampleBatch.VF_PREDS][i],
+                    }
+                    # In inference we have only the action logits.
+                else:
+                    extra_model_output = {
+                        SampleBatch.ACTION_DIST_INPUTS: fwd_out[
+                            SampleBatch.ACTION_DIST_INPUTS
+                        ][i],
+                        SampleBatch.ACTION_LOGP: action_logp[i],
+                    }
+                if terminateds[i] or truncateds[i]:
+                    eps += 1
+                    pbar.update(1)
 
-                        # Also early-out if we reach the number of episodes within this
-                        # for-loop.
-                        if eps == num_episodes:
-                            break
+                    episodes[i].add_timestep(
+                        infos[i]["final_observation"],
+                        actions[i],
+                        rewards[i],
+                        infos[i],
+                        state=s,
+                        is_terminated=terminateds[i],
+                        is_truncated=truncateds[i],
+                        extra_model_output=extra_model_output,
+                    )
+                    done_episodes_to_return.append(episodes[i])
 
-                        # Reset h-states to the model's initial ones b/c we are starting
-                        # a new episode.
-                        for k, v in (
-                            self.marl_module[DEFAULT_POLICY_ID]
-                            .get_initial_state()
-                            .items()
-                        ):
-                            states[k][i] = v.numpy()
+                    # Also early-out if we reach the number of episodes within this
+                    # for-loop.
+                    if eps == num_episodes:
+                        break
 
-                        episodes[i] = Episode(
-                            observations=[obs[i]],
-                            infos=[infos[i]],
-                            states=s,
-                            render_images=[render_images[i]],
-                        )
-                    else:
-                        episodes[i].add_timestep(
-                            obs[i],
-                            actions[i],
-                            rewards[i],
-                            infos[i],
-                            state=s,
-                            render_image=render_images[i],
-                            extra_model_output=extra_model_output,
-                        )
+                    # Reset h-states to the model's initial ones b/c we are starting
+                    # a new episode.
+                    for k, v in (
+                        self.marl_module[DEFAULT_POLICY_ID]
+                        .get_initial_state()
+                        .items()
+                    ):
+                        states[k][i] = v.numpy()
+
+                    episodes[i] = Episode(
+                        observations=[obs[i]],
+                        infos=[infos[i]],
+                        states=s,
+                        render_images=[render_images[i]],
+                    )
+                else:
+                    episodes[i].add_timestep(
+                        obs[i],
+                        actions[i],
+                        rewards[i],
+                        infos[i],
+                        state=s,
+                        render_image=render_images[i],
+                        extra_model_output=extra_model_output,
+                    )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         self._ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)

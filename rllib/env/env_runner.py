@@ -3,6 +3,9 @@ from typing import Any, Dict
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.framework import try_import_tf
+
+tf1, _, _ = try_import_tf()
 
 
 @ExperimentalAPI
@@ -32,6 +35,15 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """
         self.config = config
         super().__init__(**kwargs)
+
+        # This eager check is necessary for certain all-framework tests
+        # that use tf's eager_mode() context generator.
+        if (
+            tf1
+            and (config.framework_str == "tf2" or config.enable_tf1_exec_eagerly)
+            and not tf1.executing_eagerly()
+        ):
+            tf1.enable_eager_execution()
 
     @abc.abstractmethod
     def assert_healthy(self):
