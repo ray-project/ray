@@ -141,3 +141,10 @@ steps:
     depends_on: rllibbuild
     soft_fail: true
     job_env: forge
+
+  - label: ":brain: rllib: benchmarks"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --only-tags torch_2.x_only_benchmark
+    depends_on: rllibbuild
+    job_env: forge
