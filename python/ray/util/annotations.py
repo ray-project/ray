@@ -52,11 +52,9 @@ def PublicAPI(*args, **kwargs):
                 f"**PublicAPI ({stability}):** This API is in {stability} "
                 "and may change before becoming stable."
             )
-        else:
-            message = "PublicAPI: This API is stable across Ray releases."
+            _append_doc(obj, message=message)
+            _mark_annotated(obj)
 
-        _append_doc(obj, message=message)
-        _mark_annotated(obj)
         return obj
 
     return wrap
