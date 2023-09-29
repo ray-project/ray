@@ -171,14 +171,12 @@ class ActorReplicaWrapper:
     def __init__(
         self,
         actor_name: str,
-        detached: bool,
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_id: DeploymentID,
         version: DeploymentVersion,
     ):
         self._actor_name = actor_name
-        self._detached = detached
         self._controller_name = controller_name
 
         self._replica_tag = replica_tag
@@ -376,7 +374,6 @@ class ActorReplicaWrapper:
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
                 self._controller_name,
-                self._detached,
                 self.app_name,
             )
         # TODO(simon): unify the constructor arguments across language
@@ -416,7 +413,7 @@ class ActorReplicaWrapper:
         actor_options = {
             "name": self._actor_name,
             "namespace": SERVE_NAMESPACE,
-            "lifetime": "detached" if self._detached else None,
+            "lifetime": "detached",
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
@@ -818,14 +815,12 @@ class DeploymentReplica(VersionedReplica):
     def __init__(
         self,
         controller_name: str,
-        detached: bool,
         replica_tag: ReplicaTag,
         deployment_id: DeploymentID,
         version: DeploymentVersion,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
-            detached,
             controller_name,
             replica_tag,
             deployment_id,
@@ -1158,7 +1153,6 @@ class DeploymentState:
         self,
         id: DeploymentID,
         controller_name: str,
-        detached: bool,
         long_poll_host: LongPollHost,
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
@@ -1166,7 +1160,6 @@ class DeploymentState:
     ):
         self._id = id
         self._controller_name: str = controller_name
-        self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
@@ -1250,7 +1243,6 @@ class DeploymentState:
             replica_name: ReplicaName = ReplicaName.from_str(replica_actor_name)
             new_deployment_replica = DeploymentReplica(
                 self._controller_name,
-                self._detached,
                 replica_name.replica_tag,
                 replica_name.deployment_id,
                 self._target_state.version,
@@ -1684,7 +1676,6 @@ class DeploymentState:
                     )
                     new_deployment_replica = DeploymentReplica(
                         self._controller_name,
-                        self._detached,
                         replica_name.replica_tag,
                         self._id,
                         self._target_state.version,
@@ -2130,7 +2121,6 @@ class DeploymentStateManager:
     def __init__(
         self,
         controller_name: str,
-        detached: bool,
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
@@ -2138,7 +2128,6 @@ class DeploymentStateManager:
         cluster_node_info_cache: ClusterNodeInfoCache,
     ):
         self._controller_name = controller_name
-        self._detached = detached
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
@@ -2166,7 +2155,6 @@ class DeploymentStateManager:
         return DeploymentState(
             deployment_id,
             self._controller_name,
-            self._detached,
             self._long_poll_host,
             self._deployment_scheduler,
             self._cluster_node_info_cache,
