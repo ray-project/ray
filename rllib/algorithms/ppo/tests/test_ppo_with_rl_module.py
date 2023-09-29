@@ -76,6 +76,7 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether PPO can be built with all frameworks."""
+        from ray.rllib.algorithms.ppo.utils.ppo_env_runner import PPOEnvRunner
 
         # Build a PPOConfig object.
         config = (
@@ -95,6 +96,7 @@ class TestPPO(unittest.TestCase):
                 # Test with compression.
                 # compress_observations=True,
                 enable_connectors=True,
+                env_runner_cls=PPOEnvRunner,
             )
             .callbacks(MyCallbacks)
             .rl_module(_enable_rl_module_api=True)
@@ -102,7 +104,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, frameworks=("tf2")):
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in [
                 # "CliffWalking-v0",

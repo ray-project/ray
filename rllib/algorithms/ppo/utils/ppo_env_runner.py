@@ -30,6 +30,7 @@ _, tf, _ = try_import_tf()
 # TODO (simon): Include callbacks.
 # TODO (simon): Framework-agnostic.
 
+
 class PPOEnvRunner(EnvRunner):
     """An environment runner to collect data from vectorized gymnasium environments."""
 
@@ -365,9 +366,7 @@ class PPOEnvRunner(EnvRunner):
             )
 
         eps = 0
-        pbar = tqdm(
-            total=num_episodes, desc=f"Sampling {num_episodes} episodes ..."
-        )
+        pbar = tqdm(total=num_episodes, desc=f"Sampling {num_episodes} episodes ...")
         while eps < num_episodes:
             if random_actions:
                 actions = self.env.action_space.sample()
@@ -381,9 +380,9 @@ class PPOEnvRunner(EnvRunner):
 
                 if explore:
                     # TODO (simon) Implement this for MARL.
-                    fwd_out = self.marl_module[
-                        DEFAULT_POLICY_ID
-                    ].forward_exploration(batch)
+                    fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_exploration(
+                        batch
+                    )
                     # `self.module` is a MARL module.
                     action_dist_cls = self.marl_module.foreach_module(
                         lambda m, mid: (mid, m.get_exploration_action_dist_cls()),
@@ -398,9 +397,7 @@ class PPOEnvRunner(EnvRunner):
                         lambda m, mid: (mid, m.get_inference_action_dist_cls()),
                     )
 
-                action_dist_cls = {
-                    mid: dist_cls for mid, dist_cls in action_dist_cls
-                }
+                action_dist_cls = {mid: dist_cls for mid, dist_cls in action_dist_cls}
                 action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                 )
@@ -449,7 +446,7 @@ class PPOEnvRunner(EnvRunner):
                         infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
-                        infos[i],
+                        infos[i]["final_info"],
                         state=s,
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
@@ -465,9 +462,7 @@ class PPOEnvRunner(EnvRunner):
                     # Reset h-states to the model's initial ones b/c we are starting
                     # a new episode.
                     for k, v in (
-                        self.marl_module[DEFAULT_POLICY_ID]
-                        .get_initial_state()
-                        .items()
+                        self.marl_module[DEFAULT_POLICY_ID].get_initial_state().items()
                     ):
                         states[k][i] = v.numpy()
 

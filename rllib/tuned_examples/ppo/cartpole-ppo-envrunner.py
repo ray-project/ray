@@ -4,6 +4,7 @@ from ray.rllib.algorithms.ppo.utils.ppo_env_runner import PPOEnvRunner
 config = (
     PPOConfig()
     .environment("CartPole-v1")
+    .framework(framework="tf2")
     .rollouts(
         num_rollout_workers=1,
         env_runner_cls=PPOEnvRunner,
