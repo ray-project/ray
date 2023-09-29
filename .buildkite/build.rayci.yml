@@ -61,14 +61,3 @@ steps:
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
     depends_on:
       - forge
-
-  - label: ":tapioca: build: anyscale-ml py38 cu118 docker"
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version py38 
-        --platform cu118 --image-type ray-ml
-    depends_on: 
-      - manylinux
-      - forge
-      - ray-mlpy38cu118base
-    job_env: forge
