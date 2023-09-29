@@ -3352,8 +3352,8 @@ class Dataset:
     @ConsumptionAPI
     def write_bigquery(
         self,
-        dataset: str,
         project_id: str,
+        dataset: str,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
