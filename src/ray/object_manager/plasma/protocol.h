@@ -134,6 +134,10 @@ Status SendSealReply(const std::shared_ptr<Client> &client,
 
 Status ReadSealReply(uint8_t *data, size_t size, ObjectID *object_id);
 
+Status SendUnsealRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);
+
+Status ReadUnsealRequest(uint8_t *data, size_t size, ObjectID *object_id);
+
 /* Plasma Get message functions. */
 
 Status SendGetRequest(const std::shared_ptr<StoreConn> &store_conn,

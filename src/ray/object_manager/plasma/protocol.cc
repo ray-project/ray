@@ -375,6 +375,20 @@ Status ReadSealReply(uint8_t *data, size_t size, ObjectID *object_id) {
   return PlasmaErrorStatus(message->error());
 }
 
+Status SendUnsealRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = fb::CreatePlasmaUnsealRequest(fbb, fbb.CreateString(object_id.Binary()));
+  return PlasmaSend(store_conn, MessageType::PlasmaUnsealRequest, &fbb, message);
+}
+
+Status ReadUnsealRequest(uint8_t *data, size_t size, ObjectID *object_id) {
+  RAY_DCHECK(data);
+  auto message = flatbuffers::GetRoot<fb::PlasmaUnsealRequest>(data);
+  RAY_DCHECK(VerifyFlatbuffer(message, data, size));
+  *object_id = ObjectID::FromBinary(message->object_id()->str());
+  return Status::OK();
+}
+
 // Release messages.
 
 Status SendReleaseRequest(const std::shared_ptr<StoreConn> &store_conn,

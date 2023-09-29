@@ -60,6 +60,8 @@ class IObjectStore {
   ///   - otherise, pointer to the sealed object.
   virtual const LocalObject *SealObject(const ObjectID &object_id) = 0;
 
+  virtual const LocalObject *UnsealObject(const ObjectID &object_id) = 0;
+
   /// Delete an existing object.
   ///
   /// \param object_id Object ID of the object to be sealed.
@@ -82,6 +84,8 @@ class ObjectStore : public IObjectStore {
   const LocalObject *GetObject(const ObjectID &object_id) const override;
 
   const LocalObject *SealObject(const ObjectID &object_id) override;
+
+  const LocalObject *UnsealObject(const ObjectID &object_id) override;
 
   bool DeleteObject(const ObjectID &object_id) override;
 

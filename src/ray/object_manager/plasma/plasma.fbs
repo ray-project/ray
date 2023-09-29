@@ -42,6 +42,7 @@ enum MessageType:long {
   // Seal an object.
   PlasmaSealRequest,
   PlasmaSealReply,
+  PlasmaUnsealRequest,
   // Get an object that is stored on the local Plasma store.
   PlasmaGetRequest,
   PlasmaGetReply,
@@ -185,6 +186,11 @@ table PlasmaAbortReply {
 }
 
 table PlasmaSealRequest {
+  // ID of the object to be sealed.
+  object_id: string;
+}
+
+table PlasmaUnsealRequest {
   // ID of the object to be sealed.
   object_id: string;
 }

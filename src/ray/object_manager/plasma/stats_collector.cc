@@ -59,6 +59,20 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   num_bytes_unsealed_ += kObjectSize;
 }
 
+void ObjectStatsCollector::OnObjectUnsealed(const LocalObject &obj) {
+  RAY_CHECK(!obj.Sealed());
+  const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
+
+  const auto &kAllocation = obj.GetAllocation();
+
+  bytes_by_loc_seal_.Swap({kAllocation.fallback_allocated, /* sealed */ true},
+                          {kAllocation.fallback_allocated, /* sealed */ false},
+                          kObjectSize);
+
+  num_objects_unsealed_++;
+  num_bytes_unsealed_ += kObjectSize;
+}
+
 void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
   RAY_CHECK(obj.Sealed());
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();

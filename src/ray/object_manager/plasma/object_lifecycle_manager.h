@@ -60,6 +60,8 @@ class IObjectLifecycleManager {
   ///   - otherise, pointer to the sealed object.
   virtual const LocalObject *SealObject(const ObjectID &object_id) = 0;
 
+  virtual void UnsealObject(const ObjectID &object_id) = 0;
+
   /// Abort object creation by id. It deletes the object regardless of reference
   /// counting.
   ///
@@ -111,6 +113,8 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
   const LocalObject *GetObject(const ObjectID &object_id) const override;
 
   const LocalObject *SealObject(const ObjectID &object_id) override;
+
+  void UnsealObject(const ObjectID &object_id) override;
 
   flatbuf::PlasmaError AbortObject(const ObjectID &object_id) override;
 

@@ -721,7 +721,7 @@ class Worker:
                 serialized_value, object_ref=object_ref, owner_address=owner_address
             ),
             # The initial local reference is already acquired internally.
-            skip_adding_local_ref=True,
+            skip_adding_local_ref=False,
         )
 
     def raise_errors(self, data_metadata_pairs, object_refs):

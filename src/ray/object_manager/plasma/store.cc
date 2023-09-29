@@ -279,6 +279,12 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
   }
 }
 
+void PlasmaStore::UnsealObjects(const std::vector<ObjectID> &object_ids) {
+  for (size_t i = 0; i < object_ids.size(); ++i) {
+    object_lifecycle_mgr_.UnsealObject(object_ids[i]);
+  }
+}
+
 int PlasmaStore::AbortObject(const ObjectID &object_id,
                              const std::shared_ptr<Client> &client) {
   auto &object_ids = client->GetObjectIDs();
@@ -433,6 +439,10 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     RAY_RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id));
     SealObjects({object_id});
     RAY_RETURN_NOT_OK(SendSealReply(client, object_id, PlasmaError::OK));
+  } break;
+  case fb::MessageType::PlasmaUnsealRequest: {
+    RAY_RETURN_NOT_OK(ReadUnsealRequest(input, input_size, &object_id));
+    UnsealObjects({object_id});
   } break;
   case fb::MessageType::PlasmaEvictRequest: {
     // This code path should only be used for testing.

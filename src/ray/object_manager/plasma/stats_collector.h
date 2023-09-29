@@ -37,9 +37,9 @@ class ObjectStatsCollector {
   // Marked virtual for test mocking
   virtual void OnObjectCreated(const LocalObject &object);
 
-  // Called after an object is sealed.
-  // Marked virtual for test mocking
   virtual void OnObjectSealed(const LocalObject &object);
+
+  virtual void OnObjectUnsealed(const LocalObject &obj);
 
   // Called BEFORE an object is deleted.
   // Marked virtual for test mocking

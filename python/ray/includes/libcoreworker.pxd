@@ -236,6 +236,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
+        CRayStatus UnsealObject(const CObjectID &object_id)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus GetIfLocal(

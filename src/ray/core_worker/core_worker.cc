@@ -1350,6 +1350,11 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   return Status::OK();
 }
 
+Status CoreWorker::UnsealObject(const ObjectID &object_id) {
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Unseal(object_id));
+  return Status::OK();
+}
+
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {

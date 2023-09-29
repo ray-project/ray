@@ -19,11 +19,11 @@ ARR_SIZE = 10
 def put(ptr, seq_num, val):
     assert ptr[0] < seq_num
 
-    seq_num_ptr = ctypes.c_char_p(ptr.ctypes.data)
-    ctypes.memset(seq_num_ptr, seq_num, 1)
-
     data_ptr = ctypes.c_char_p(ptr[1:].ctypes.data)
     ctypes.memmove(data_ptr, val.ctypes.data, len(val))
+
+    seq_num_ptr = ctypes.c_char_p(ptr.ctypes.data)
+    ctypes.memset(seq_num_ptr, seq_num, 1)
 
 
 def get(ptr, seq_num):

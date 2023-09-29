@@ -146,7 +146,6 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   } else if (status.IsObjectExists()) {
     RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
                      << object_id << ".";
-    status = Status::OK();
   } else {
     RAY_RETURN_NOT_OK(status);
   }
@@ -155,6 +154,10 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
 
 Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
   return store_client_.Seal(object_id);
+}
+
+Status CoreWorkerPlasmaStoreProvider::Unseal(const ObjectID &object_id) {
+  return store_client_.Unseal(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {

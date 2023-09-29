@@ -663,6 +663,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       const ObjectID &generator_id = ObjectID::Nil(),
                       const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
+  Status UnsealObject(const ObjectID &object_id);
+
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
   ///

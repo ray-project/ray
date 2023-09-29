@@ -173,6 +173,9 @@ class PlasmaStore {
   void SealObjects(const std::vector<ObjectID> &object_ids)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  void UnsealObjects(const std::vector<ObjectID> &object_ids)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Record the fact that a particular client is no longer using an object.
   /// This function is idempotent thus can be called multiple times.
   ///

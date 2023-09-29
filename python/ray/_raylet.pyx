@@ -3259,6 +3259,12 @@ cdef class CoreWorker:
                             generator_id=CObjectID.Nil(),
                             owner_address=c_owner_address))
 
+    def unseal_object(self, ObjectRef object_ref):
+        cdef:
+            CObjectID c_object_id = (<ObjectRef> object_ref).native()
+
+        check_status(CCoreWorkerProcess.GetCoreWorker().UnsealObject(c_object_id))
+
     def put_serialized_object_and_increment_local_ref(self, serialized_object,
                                                       ObjectRef object_ref=None,
                                                       c_bool pin_object=True,
