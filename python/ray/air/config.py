@@ -47,6 +47,10 @@ MAX = "max"
 MIN = "min"
 _DEPRECATED_VALUE = "DEPRECATED"
 
+DATASET_CONFIG_DEPRECATION_MSG = """
+Use `ray.train.DataConfig` instead of DatasetConfig to configure data ingest for training. See https://docs.ray.io/en/releases-2.6.3/ray-air/check-ingest.html#migrating-from-the-legacy-datasetconfig-api for more details.
+"""  # noqa: E501
+
 
 logger = logging.getLogger(__name__)
 
@@ -293,11 +297,7 @@ class ScalingConfig:
 
 
 @dataclass
-@Deprecated(
-    message="Use `ray.train.DataConfig` instead of DatasetConfig to "
-    "configure data ingest for training. "
-    "See https://docs.ray.io/en/master/ray-air/check-ingest.html#migrating-from-the-legacy-datasetconfig-api for more details."  # noqa: E501
-)
+@Deprecated(DATASET_CONFIG_DEPRECATION_MSG)
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
@@ -374,15 +374,7 @@ class DatasetConfig:
         return make_table_html_repr(obj=self, title=title)
 
     def __post_init__(self):
-        if self.use_stream_api is not None or self.stream_window_size is not None:
-            raise DeprecationWarning(
-                "DatasetConfig.use_stream_api and DatasetConfig.stream_window_size "
-                "have been removed as of Ray 2.3. Instead, use "
-                "DatasetConfig.max_object_store_memory_fraction with a value "
-                "0 or greater "
-                "(https://docs.ray.io/en/latest/ray-air/package-ref.html"
-                "#ray.air.config.DatasetConfig)."
-            )
+        raise DeprecationWarning(DATASET_CONFIG_DEPRECATION_MSG)
 
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
