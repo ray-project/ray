@@ -189,6 +189,8 @@ class PPOEnvRunner(EnvRunner):
         # Loop through env in enumerate.(self._episodes):
         ts = 0
         pbar = tqdm(total=num_timesteps, desc=f"Sampling {num_timesteps} timesteps ...")
+        import ray
+
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
@@ -204,6 +206,8 @@ class PPOEnvRunner(EnvRunner):
                     ),
                     SampleBatch.OBS: tf.convert_to_tensor(obs),
                 }
+
+                breakpoint()
                 # Explore or not.
                 if explore:
                     # TODO (simon) Implement this for MARL.
@@ -214,6 +218,7 @@ class PPOEnvRunner(EnvRunner):
                     action_dist_cls = self.marl_module.foreach_module(
                         lambda m, mid: (mid, m.get_exploration_action_dist_cls()),
                     )
+
                 else:
                     fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_inference(
                         batch
@@ -223,13 +228,14 @@ class PPOEnvRunner(EnvRunner):
                         lambda m, mid: (mid, m.get_inference_action_dist_cls()),
                     )
 
+                breakpoint()
                 action_dist_cls = {mid: dist_cls for mid, dist_cls in action_dist_cls}
                 action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                 )
                 actions = action_dist.sample()
                 action_logp = convert_to_numpy(action_dist.logp(actions))
-                actions = actions.numpy()
+                actions = convert_to_numpy(actions)
                 fwd_out = convert_to_numpy(fwd_out)
 
                 if STATE_OUT in fwd_out:
@@ -237,6 +243,7 @@ class PPOEnvRunner(EnvRunner):
                     # states = tree.map_structure(lambda s: s.numpy(),
                     # fwd_out[STATE_OUT])
 
+            breakpoint()
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
             pbar.update(self.num_envs)
@@ -403,7 +410,7 @@ class PPOEnvRunner(EnvRunner):
                     )
                     actions = action_dist.sample()
                     action_logp = convert_to_numpy(action_dist.logp(actions))
-                    actions = actions.numpy()
+                    actions = convert_to_numpy(actions)
                     fwd_out = convert_to_numpy(fwd_out)
 
                     if STATE_OUT in fwd_out:

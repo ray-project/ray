@@ -68,7 +68,7 @@ class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # TODO (simon): Remove before merge.
-        ray.init(local_mode=True)
+        ray.init(local_mode=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -112,7 +112,9 @@ class TestPPO(unittest.TestCase):
                 print("Env={}".format(env))
                 for lstm in [False]:
                     print("LSTM={}".format(lstm))
-                    config.training(model=get_model_config(fw, lstm=lstm))
+                    config.training(model=get_model_config(fw, lstm=lstm)).framework(
+                        eager_tracing=True
+                    )
 
                     algo = config.build(env=env)
                     # TODO: Maybe add an API to get the Learner(s) instances within
