@@ -76,7 +76,6 @@ class MARWILConfig(AlgorithmConfig):
         self.bc_logstd_coeff = 0.0
         self.moving_average_sqd_adv_norm_update_rate = 1e-8
         self.moving_average_sqd_adv_norm_start = 100.0
-        self.use_gae = True
         self.vf_coeff = 1.0
         self.grad_clip = None
 
@@ -118,7 +117,6 @@ class MARWILConfig(AlgorithmConfig):
         bc_logstd_coeff: Optional[float] = NotProvided,
         moving_average_sqd_adv_norm_update_rate: Optional[float] = NotProvided,
         moving_average_sqd_adv_norm_start: Optional[float] = NotProvided,
-        use_gae: Optional[bool] = NotProvided,
         vf_coeff: Optional[float] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         **kwargs,
@@ -133,9 +131,6 @@ class MARWILConfig(AlgorithmConfig):
                 entropy for exploration.
             moving_average_sqd_adv_norm_start: Starting value for the
                 squared moving average advantage norm (c^2).
-            use_gae: If True, use the Generalized Advantage Estimator (GAE)
-                with a value function, see https://arxiv.org/pdf/1506.02438.pdf in
-                case an input line ends with a non-terminal timestep.
             vf_coeff: Balancing value estimation loss and policy optimization loss.
                 moving_average_sqd_adv_norm_update_rate: Update rate for the
                 squared moving average advantage norm (c^2).
@@ -156,8 +151,6 @@ class MARWILConfig(AlgorithmConfig):
             )
         if moving_average_sqd_adv_norm_start is not NotProvided:
             self.moving_average_sqd_adv_norm_start = moving_average_sqd_adv_norm_start
-        if use_gae is not NotProvided:
-            self.use_gae = use_gae
         if vf_coeff is not NotProvided:
             self.vf_coeff = vf_coeff
         if grad_clip is not NotProvided:

@@ -65,7 +65,11 @@ def _validate_tpu_config(node: dict):
         )
     if "acceleratorType" in node:
         accelerator_type = node["acceleratorType"]
-        accelerator.assert_tpu_accelerator_type(accelerator_type)
+        if not accelerator.valid_tpu_accelerator_type(accelerator_type):
+            raise ValueError(
+                "`acceleratorType` should match v(generation)-(cores/chips). "
+                f"Got {accelerator_type}."
+            )
     else:  # "acceleratorConfig" in node
         accelerator_config = node["acceleratorConfig"]
         if "type" not in accelerator_config or "topology" not in accelerator_config:

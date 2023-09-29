@@ -13,7 +13,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
@@ -232,23 +231,6 @@ class TestgRPCProxy:
                 except StopAsyncIteration:
                     break
         mocked_proxy_request_stream.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_send_request_to_replica_unary(self):
-        """Test gRPCProxy send_request_to_replica_unary redirects to
-        send_request_to_replica_streaming.
-        """
-        grpc_proxy = self.create_grpc_proxy()
-        mocked_send_request_to_replica_streaming = AsyncMock()
-        with patch.object(
-            grpc_proxy,
-            "send_request_to_replica_streaming",
-            mocked_send_request_to_replica_streaming,
-        ):
-            await grpc_proxy.send_request_to_replica_unary(
-                handle=MagicMock(), proxy_request=MagicMock()
-            )
-        mocked_send_request_to_replica_streaming.assert_called_once()
 
     @pytest.mark.asyncio
     @patch("ray.serve._private.proxy.ray.serve.context._serve_request_context")
@@ -611,10 +593,6 @@ class TestHTTPProxy:
         )
         mocked_serve_request_context.set.assert_called_with(expected_request_context)
 
-    @pytest.mark.skipif(
-        not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-        reason="Not supported w/ streaming.",
-    )
     @pytest.mark.asyncio
     async def test_send_request_to_replica_streaming(self):
         """Test HTTPProxy send_request_to_replica_streaming returns the correct

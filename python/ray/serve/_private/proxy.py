@@ -29,7 +29,6 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_REQUEST_ID_HEADER,
     SERVE_LOGGER_NAME,
@@ -39,8 +38,6 @@ from ray.serve._private.constants import (
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     ASGIMessageQueue,
-    HTTPRequestWrapper,
-    RawASGIResponse,
     Response,
     receive_http_body,
     set_socket_reuse_port,
@@ -117,7 +114,6 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 
 INITIAL_BACKOFF_PERIOD_SEC = 0.05
 MAX_BACKOFF_PERIOD_SEC = 5
-BACKOFF_FACTOR = 2
 DRAINED_MESSAGE = "This node is being drained."
 HEALTH_CHECK_SUCCESS_MESSAGE = "success"
 
@@ -174,12 +170,6 @@ class GenericProxy(ABC):
 
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
-
-        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-            logger.info(
-                "Experimental streaming feature flag enabled.",
-                extra={"log_to_stderr": False},
-            )
 
         self.proxy_router = proxy_router_class(
             serve.get_deployment_handle, self.protocol
@@ -457,7 +447,7 @@ class GenericProxy(ABC):
             )
 
             # Streaming codepath isn't supported for Java.
-            if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
+            if not app_is_cross_language:
                 proxy_response = await self.send_request_to_replica_streaming(
                     request_id=request_id,
                     handle=handle,
@@ -728,19 +718,15 @@ class gRPCProxy(GenericProxy):
             async for response in proxy_response.streaming_response:
                 yield response
 
-        if not stream:
-            return unary_unary
-        return unary_stream
+        return unary_stream if stream else unary_unary
 
     async def send_request_to_replica_unary(
         self,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
     ) -> ProxyResponse:
-        return await self.send_request_to_replica_streaming(
-            request_id=proxy_request.request_id,
-            handle=handle,
-            proxy_request=proxy_request,
+        raise NotImplementedError(
+            "Unary codepath is only for Java and gRPC is not implemented for Java."
         )
 
     def setup_request_context_and_handle(
@@ -993,18 +979,19 @@ class HTTPProxy(GenericProxy):
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
     ) -> ProxyResponse:
+        """Send the request to a downstream replica using a unary (non-streaming) call.
+
+        This codepath is ONLY used for Java applications.
+        """
+        # Convert HTTP requests to Java-accepted format (single byte string).
+        query_string = proxy_request.scope.get("query_string")
         http_body_bytes = await receive_http_body(
             proxy_request.scope, proxy_request.receive, proxy_request.send
         )
-
-        # NOTE(edoakes): it's important that we defer building the starlette
-        # request until it reaches the replica to avoid unnecessary
-        # serialization cost, so we use a simple dataclass here.
-        request = HTTPRequestWrapper(proxy_request.scope, http_body_bytes)
-
-        # Perform a pickle here to improve latency. Stdlib pickle for simple
-        # dataclasses are 10-100x faster than cloudpickle.
-        request = pickle.dumps(request)
+        if query_string:
+            arg = query_string.decode().split("=", 1)[1]
+        else:
+            arg = http_body_bytes.decode()
 
         retries = 0
         loop = get_or_create_event_loop()
@@ -1012,7 +999,7 @@ class HTTPProxy(GenericProxy):
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             should_backoff = False
-            result_ref = handle.remote(request)
+            result_ref = handle.remote(arg)
             client_disconnection_task = loop.create_task(proxy_request.receive())
             done, _ = await asyncio.wait(
                 [
@@ -1094,14 +1081,10 @@ class HTTPProxy(GenericProxy):
             )
             return ProxyResponse(status_code="500")
 
-        if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            await result(proxy_request.scope, proxy_request.receive, proxy_request.send)
-            return ProxyResponse(status_code=str(result.status_code))
-        else:
-            await Response(result).send(
-                proxy_request.scope, proxy_request.receive, proxy_request.send
-            )
-            return ProxyResponse(status_code=self.success_status_code)
+        await Response(result).send(
+            proxy_request.scope, proxy_request.receive, proxy_request.send
+        )
+        return ProxyResponse(status_code=self.success_status_code)
 
     async def proxy_asgi_receive(
         self, receive: Receive, queue: ASGIMessageQueue
@@ -1605,6 +1588,7 @@ class ProxyActor:
         grpc_server = create_serve_grpc_server(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
+
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a
