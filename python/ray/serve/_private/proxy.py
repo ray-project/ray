@@ -1172,7 +1172,7 @@ class HTTPProxy(GenericProxy):
             handle_arg = await self._format_handle_arg_for_java(proxy_request)
             result_callback = convert_object_to_asgi_messages
         else:
-            proxy_request.request_object(proxy_handle=self.self_actor_handle)
+            handle_arg = proxy_request.request_object(proxy_handle=self.self_actor_handle)
             result_callback = pickle.loads
 
         # Proxy the receive interface by placing the received messages on a queue.
