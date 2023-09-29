@@ -16,6 +16,7 @@ from typing import (
     Union,
 )
 
+import tree
 from packaging import version
 
 import ray
@@ -53,8 +54,10 @@ from ray.rllib.utils.gym import (
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
-    NOT_SERIALIZABLE,
     deserialize_type,
+    gym_space_from_dict,
+    gym_space_to_dict,
+    NOT_SERIALIZABLE,
     serialize_type,
 )
 from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
@@ -638,8 +641,26 @@ class AlgorithmConfig(_Config):
                 if isinstance(value, str):
                     value = deserialize_type(value, error=True)
                 self.callbacks(callbacks_class=value)
+            elif key == "action_space":
+                self.action_space = gym_space_from_dict(value)
             elif key == "env_config":
+                # Some values in env_config might be encoded space dicts. We should
+                # deserialize these here.
+                def deserialize_env_config(s):
+                    if "space" in s:
+                        return gym_space_from_dict(s)
+                    return s
+                    
+                if isinstance(value, dict) and "__struct" in value:
+                    value = tree.map_structure_up_to(
+                        value.pop("__struct"), deserialize_env_config, value
+                    )
                 self.environment(env_config=value)
+            elif key == "env_runner_cls":
+                # For backward compatibility reasons, only resolve possible
+                # classpath if value is a str type.
+                if isinstance(value, str):
+                    self.env_runner_cls = deserialize_type(value)
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
@@ -654,6 +675,8 @@ class AlgorithmConfig(_Config):
                 if isinstance(value, dict) and value.get("custom_model"):
                     value["custom_model"] = deserialize_type(value["custom_model"])
                 self.training(**{key: value})
+            elif key == "observation_space":
+                self.observation_space = gym_space_from_dict(value)
             elif key == "optimizer":
                 self.training(**{key: value})
             elif key == "replay_buffer_config":
@@ -3544,6 +3567,7 @@ class AlgorithmConfig(_Config):
         # Serialize classes to classpaths:
         config["callbacks"] = serialize_type(config["callbacks"])
         config["sample_collector"] = serialize_type(config["sample_collector"])
+        config["env_runner_cls"] = serialize_type(config["env_runner_cls"])
         if isinstance(config["env"], type):
             config["env"] = serialize_type(config["env"])
         if "replay_buffer_config" in config and (
@@ -3560,6 +3584,21 @@ class AlgorithmConfig(_Config):
             config["model"]["custom_model"] = serialize_type(
                 config["model"]["custom_model"]
             )
+
+        # Serialize possible spaces to dicts.
+        config["action_space"] = gym_space_to_dict(config["action_space"])
+        config["observation_space"] = gym_space_to_dict(config["observation_space"])
+        # Some `env_configs` might contain spaces.
+        if isinstance(config["env_config"], dict):
+            struct = tree.map_structure(
+                lambda s: None, config["env_config"]
+            )
+            value = tree.map_structure(
+                lambda s: gym_space_to_dict(s) if isinstance(s, gym.Space) else s,
+                config["env_config"],
+            )
+            config["env_config"] = value
+            config["env_config"]["__struct"] = struct
 
         # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
         ma_config = config.get("multiagent")

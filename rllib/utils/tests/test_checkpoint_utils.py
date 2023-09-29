@@ -237,7 +237,13 @@ class TestCheckpointUtils(unittest.TestCase):
         pickle-checkpoint-recovered Policy (given same initial config).
         """
         # Base config used for both pickle-based checkpoint and msgpack-based one.
-        config = SimpleQConfig().environment("CartPole-v1")
+        from ray.rllib.examples.env.random_env import RandomEnv
+        import gymnasium as gym
+
+        config = SimpleQConfig().environment(RandomEnv, env_config={
+            "observation_space": gym.spaces.Discrete(3),
+            "action_space": gym.spaces.Discrete(3),
+        })
         # Build algorithm/policy objects.
         algo1 = config.build()
         pol1 = algo1.get_policy()
