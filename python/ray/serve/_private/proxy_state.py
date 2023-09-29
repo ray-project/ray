@@ -93,9 +93,8 @@ class ActorWrapper(ABC):
 
 
 class ProxyActorWrapper(ActorWrapper):
-    def __init__(self, actor_handle: ActorHandle, node_id: str):
+    def __init__(self, actor_handle: ActorHandle):
         self._actor_handle = actor_handle
-        self._node_id = node_id
         self._ready_obj_ref = None
         self._health_check_obj_ref = None
         self._is_drained_obj_ref = None
@@ -273,7 +272,7 @@ class ProxyActorWrapper(ActorWrapper):
             keep_alive_timeout_s=config.keep_alive_timeout_s,
             grpc_options=grpc_options,
         )
-        return cls(actor_handle=proxy, node_id=node_id)
+        return cls(actor_handle=proxy)
 
 
 class ProxyState:
