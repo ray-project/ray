@@ -203,7 +203,7 @@ class JobSubmissionClient(SubmissionClient):
         if entrypoint_memory:
             self._check_connection_and_version(
                 min_version="2.8",
-                version_error_message="`entrypoint_memory` kwarg"
+                version_error_message="`entrypoint_memory` kwarg "
                 "is not supported on the Ray cluster. Please ensure the cluster is "
                 "running Ray 2.8 or higher.",
             )
