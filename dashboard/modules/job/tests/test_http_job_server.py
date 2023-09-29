@@ -334,7 +334,18 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
         runtime_env=runtime_env_option["runtime_env"],
     )
 
-    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=60)
+    try:
+        wait_for_condition(
+            _check_job_succeeded, client=client, job_id=job_id, timeout=60
+        )
+    except RuntimeError as e:
+        # If the job is still pending, include job logs and info in error.
+        if client.get_job_status(job_id) == JobStatus.PENDING:
+            logs = client.get_job_logs(job_id)
+            info = client.get_job_info(job_id)
+            raise RuntimeError(
+                f"Job was stuck in PENDING.\nLogs: {logs}\nInfo: {info}"
+            ) from e
 
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs

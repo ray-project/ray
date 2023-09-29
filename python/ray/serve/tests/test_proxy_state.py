@@ -45,7 +45,6 @@ def _make_proxy_state_manager(
     return (
         ProxyStateManager(
             SERVE_CONTROLLER_NAME,
-            detached=True,
             config=http_options,
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
@@ -77,7 +76,6 @@ def setup_controller():
         ).remote(
             SERVE_CONTROLLER_NAME,
             http_config=None,
-            detached=True,
         )
     controller_actor_id = controller._ray_actor_id.hex()
 

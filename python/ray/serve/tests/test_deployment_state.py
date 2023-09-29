@@ -64,7 +64,6 @@ class MockReplicaActorWrapper:
     def __init__(
         self,
         actor_name: str,
-        detached: bool,
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_id: DeploymentID,
@@ -358,7 +357,6 @@ def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
         deployment_state = DeploymentState(
             DeploymentID("name", "my_app"),
             "name",
-            True,
             mock_long_poll,
             MockDeploymentScheduler(cluster_node_info_cache),
             cluster_node_info_cache,
@@ -2258,7 +2256,6 @@ def mock_deployment_state_manager_full(
 
             return DeploymentStateManager(
                 "name",
-                True,
                 kv_store,
                 mock_long_poll,
                 actor_names,
@@ -2480,7 +2477,6 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(
             DeploymentID("name", "my_app"),
-            True,
             kv_store,
             mock_long_poll,
             all_current_actor_names,
@@ -2558,7 +2554,7 @@ def test_resource_requirements_none():
         available_resources = {}
 
     # Make a DeploymentReplica just to accesss its resource_requirement function
-    replica = DeploymentReplica(None, None, "random_tag", None, None)
+    replica = DeploymentReplica(None, "random_tag", None, None)
     replica._actor = FakeActor()
 
     # resource_requirements() should not error
@@ -2570,7 +2566,6 @@ class TestActorReplicaWrapper:
         actor_replica = ActorReplicaWrapper(
             version=deployment_version("1"),
             actor_name="test",
-            detached=False,
             controller_name="test_controller",
             replica_tag="test_tag",
             deployment_id=DeploymentID("test_deployment", "test_app"),
@@ -2587,7 +2582,6 @@ class TestActorReplicaWrapper:
         actor_replica = ActorReplicaWrapper(
             version=deployment_version("1"),
             actor_name="test",
-            detached=False,
             controller_name="test_controller",
             replica_tag="test_tag",
             deployment_id=DeploymentID("test_deployment", "test_app"),
