@@ -174,12 +174,12 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
-  RAY_RETURN_NOT_OK(
-      raylet_client_->FetchOrReconstruct(batch_ids,
-                                         owner_addresses,
-                                         fetch_only,
-                                         /*mark_worker_blocked*/ !in_direct_call,
-                                         task_id));
+  //RAY_RETURN_NOT_OK(
+  //    raylet_client_->FetchOrReconstruct(batch_ids,
+  //                                       owner_addresses,
+  //                                       fetch_only,
+  //                                       /*mark_worker_blocked*/ !in_direct_call,
+  //                                       task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
   RAY_RETURN_NOT_OK(store_client_.Get(batch_ids,
@@ -286,7 +286,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining,
                                                  batch_ids,
-                                                 /*timeout_ms=*/0,
+                                                 /*timeout_ms=*/-1,
                                                  /*fetch_only=*/true,
                                                  ctx.CurrentTaskIsDirectCall(),
                                                  ctx.GetCurrentTaskID(),
