@@ -39,6 +39,7 @@ from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     ASGIMessageQueue,
     Response,
+    convert_object_to_asgi_messages,
     receive_http_body,
     set_socket_reuse_port,
     validate_http_proxy_callback_return,
@@ -447,18 +448,12 @@ class GenericProxy(ABC):
                 proxy_request=proxy_request,
             )
 
-            # Streaming codepath isn't supported for Java.
-            if not app_is_cross_language:
-                proxy_response = await self.send_request_to_replica_streaming(
-                    request_id=request_id,
-                    handle=handle,
-                    proxy_request=proxy_request,
-                )
-            else:
-                proxy_response = await self.send_request_to_replica_unary(
-                    handle=handle,
-                    proxy_request=proxy_request,
-                )
+            proxy_response = await self.send_request_to_replica_streaming(
+                request_id=request_id,
+                handle=handle,
+                proxy_request=proxy_request,
+                app_is_cross_language=app_is_cross_language,
+            )
 
             self.request_counter.inc(
                 tags={
@@ -583,6 +578,7 @@ class GenericProxy(ABC):
         request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
+        app_is_cross_language: bool = False,
     ) -> ProxyResponse:
         """Send the request to the replica and handle streaming response.
 
@@ -834,6 +830,7 @@ class gRPCProxy(GenericProxy):
         request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
+        app_is_cross_language: bool = False,
     ) -> ProxyResponse:
         start = time.time()
         try:
@@ -1148,12 +1145,36 @@ class HTTPProxy(GenericProxy):
         )
         return handle, request_context_info["request_id"]
 
+    async def _format_handle_arg_for_java(
+        self,
+        proxy_request: ProxyRequest,
+    ) -> bytes:
+        # Convert HTTP requests to Java-accepted format (single byte string).
+        query_string = proxy_request.scope.get("query_string")
+        http_body_bytes = await receive_http_body(
+            proxy_request.scope, proxy_request.receive, proxy_request.send
+        )
+        if query_string:
+            arg = query_string.decode().split("=", 1)[1]
+        else:
+            arg = http_body_bytes.decode()
+
+        return arg
+
     async def send_request_to_replica_streaming(
         self,
         request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
+        app_is_cross_language: bool = False,
     ) -> ProxyResponse:
+        if app_is_cross_language:
+            handle_arg = await self._format_handle_arg_for_java(proxy_request)
+            result_callback = convert_object_to_asgi_messages
+        else:
+            proxy_request.request_object(proxy_handle=self.self_actor_handle)
+            result_callback = pickle.loads
+
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
@@ -1162,7 +1183,7 @@ class HTTPProxy(GenericProxy):
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
-        handle_wrapper = ProxyHandleWrapper(handle)
+        handle_wrapper = ProxyHandleWrapper(handle, result_callback=result_callback)
         stop_checking_disconnected_event = asyncio.Event()
 
         status_code = ""
@@ -1172,14 +1193,14 @@ class HTTPProxy(GenericProxy):
         is_websocket_connection = False
         try:
             async for asgi_message_batch in handle_wrapper.stream_request(
-                proxy_request.request_object(proxy_handle=self.self_actor_handle),
+                handle_arg,
                 timeout_s=self.request_timeout_s,
                 disconnected_task=proxy_asgi_receive_task,
                 stop_checking_disconnected_event=stop_checking_disconnected_event,
             ):
                 # See the ASGI spec for message details:
                 # https://asgi.readthedocs.io/en/latest/specs/www.html.
-                for asgi_message in pickle.loads(asgi_message_batch):
+                for asgi_message in asgi_message_batch:
                     if asgi_message["type"] == "http.response.start":
                         # HTTP responses begin with exactly one
                         # "http.response.start" message containing the "status"

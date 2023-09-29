@@ -43,6 +43,36 @@ def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
     return mock_receive
 
 
+def convert_response_to_asgi_messages(
+    content: Optional[Any] = None, status_code: int = 200
+) -> List[Message]:
+    body = None
+    content_type = None
+    if content is None:
+        body = b""
+        content_type = b"text/plain"
+    elif isinstance(content, bytes):
+        body = content
+        content_type = b"text/plain"
+    elif isinstance(content, str):
+        body = content.encode("utf-8")
+        content_type = b"text/plain; charset=utf-8"
+    else:
+        body = json.dumps(
+            jsonable_encoder(content, custom_encoder=serve_encoders)
+        ).encode()
+        content_type = b"application/json"
+
+    return [
+        {
+            "type": "http.response.start",
+            "status": status_code,
+            "headers": [[b"content-type", content_type]],
+        },
+        {"type": "http.response.body", "body": body},
+    ]
+
+
 class Response:
     """ASGI compliant response class.
 
@@ -61,43 +91,14 @@ class Response:
             content: Any JSON serializable object.
             status_code (int, optional): Default status code is 200.
         """
-        self.status_code = status_code
-        self.raw_headers = []
-
-        if content is None:
-            self.body = b""
-            self.set_content_type("text")
-        elif isinstance(content, bytes):
-            self.body = content
-            self.set_content_type("text")
-        elif isinstance(content, str):
-            self.body = content.encode("utf-8")
-            self.set_content_type("text-utf8")
-        else:
-            self.body = json.dumps(
-                jsonable_encoder(content, custom_encoder=serve_encoders)
-            ).encode()
-            self.set_content_type("json")
-
-    def set_content_type(self, content_type):
-        if content_type == "text":
-            self.raw_headers.append([b"content-type", b"text/plain"])
-        elif content_type == "text-utf8":
-            self.raw_headers.append([b"content-type", b"text/plain; charset=utf-8"])
-        elif content_type == "json":
-            self.raw_headers.append([b"content-type", b"application/json"])
-        else:
-            raise ValueError("Invalid content type {}".format(content_type))
+        self._messages = convert_response_to_asgi_messages(
+            content=content,
+            status_code=status_code,
+        )
 
     async def send(self, scope, receive, send):
-        await send(
-            {
-                "type": "http.response.start",
-                "status": self.status_code,
-                "headers": self.raw_headers,
-            }
-        )
-        await send({"type": "http.response.body", "body": self.body})
+        for message in self._messages:
+            await send(message)
 
 
 async def receive_http_body(scope, receive, send):
