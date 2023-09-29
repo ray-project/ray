@@ -115,7 +115,7 @@ def test_get_wheel_filename():
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             # TODO(https://github.com/ray-project/ray/issues/31362)
-            if py_version == (3, 11) and sys_platform != "linux":
+            if py_version == (3) and sys_platform != "linux":
                 continue
 
             filename = get_wheel_filename(sys_platform, ray_version, py_version)
