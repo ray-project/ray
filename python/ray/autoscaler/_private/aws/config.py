@@ -35,6 +35,13 @@ SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
 DEFAULT_AMI_NAME = "Deep Learning Base GPU AMI (Ubuntu 20.04) 20230911"
 
+# Obtained by running the following command for each of the regions below:
+# aws ec2 describe-images \
+#   --owners amazon \
+#   --filters "Name=name,Values=Deep Learning Base GPU AMI (Ubuntu 20.04) 20230911" \
+#   --query "Images[0].ImageId" \
+#   --output text \
+#   --region ...
 # TODO(alex) : write a unit test to make sure we update AMI version used in
 # ray/autoscaler/aws/example-full.yaml whenever we update this dict.
 DEFAULT_AMI = {
