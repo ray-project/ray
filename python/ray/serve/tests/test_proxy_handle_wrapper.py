@@ -35,9 +35,10 @@ class TestUnary:
                 raise RuntimeError("oopsies")
 
         h = serve.run(D.bind()).options(
+            stream=False,
             use_new_handle_api=True,
         )
-        p = ProxyHandleWrapper(h.options(stream=False))
+        p = ProxyHandleWrapper(h)
 
         responses = [r async for r in p.stream_request("Alice")]
         assert len(responses) == 1
@@ -70,6 +71,7 @@ class TestUnary:
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
+            stream=False,
             use_new_handle_api=True,
         )
         h.remote("")
@@ -79,7 +81,7 @@ class TestUnary:
 
         await async_wait_for_condition(one_waiter)
 
-        p = ProxyHandleWrapper(h.options(stream=False))
+        p = ProxyHandleWrapper(h)
 
         with pytest.raises(TimeoutError):
             await p.stream_request("", timeout_s=0.1).__anext__()
@@ -96,10 +98,11 @@ class TestUnary:
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
+            stream=False,
             use_new_handle_api=True,
         )
 
-        p = ProxyHandleWrapper(h.options(stream=False))
+        p = ProxyHandleWrapper(h)
 
         with pytest.raises(TimeoutError):
             await p.stream_request("", timeout_s=0.1).__anext__()
@@ -117,6 +120,7 @@ class TestUnary:
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
+            stream=False,
             use_new_handle_api=True,
         )
         h.remote("")
@@ -126,7 +130,7 @@ class TestUnary:
 
         await async_wait_for_condition(one_waiter)
 
-        p = ProxyHandleWrapper(h.options(stream=False))
+        p = ProxyHandleWrapper(h)
         gen = p.stream_request("", disconnected_task=disconnect_task)
 
         async def get_next():
@@ -154,10 +158,11 @@ class TestUnary:
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
+            stream=False,
             use_new_handle_api=True,
         )
 
-        p = ProxyHandleWrapper(h.options(stream=False))
+        p = ProxyHandleWrapper(h)
         gen = p.stream_request("", disconnected_task=disconnect_task)
 
         async def get_next():
@@ -178,7 +183,7 @@ class TestUnary:
 
 @pytest.mark.asyncio
 class TestStreaming:
-    async def test_basic_streaming(self):
+    async def test_basic_streaming(self, serve_instance):
         @serve.deployment
         class D:
             def __call__(self, name: str) -> str:
@@ -198,9 +203,10 @@ class TestStreaming:
                 raise RuntimeError("oopsies")
 
         h = serve.run(D.bind()).options(
+            stream=True,
             use_new_handle_api=True,
         )
-        p = ProxyHandleWrapper(h.options(stream=True))
+        p = ProxyHandleWrapper(h)
 
         responses = [r async for r in p.stream_request("Alice")]
         assert len(responses) == 5
@@ -236,6 +242,7 @@ class TestStreaming:
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
+            stream=True,
             use_new_handle_api=True,
         )
         h.remote("")
@@ -245,7 +252,7 @@ class TestStreaming:
 
         await async_wait_for_condition(one_waiter)
 
-        p = ProxyHandleWrapper(h.options(stream=True))
+        p = ProxyHandleWrapper(h)
 
         with pytest.raises(TimeoutError):
             await p.stream_request("", timeout_s=0.1).__anext__()
@@ -263,10 +270,11 @@ class TestStreaming:
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
+            stream=True,
             use_new_handle_api=True,
         )
 
-        p = ProxyHandleWrapper(h.options(stream=True))
+        p = ProxyHandleWrapper(h)
 
         gen = p.stream_request("", timeout_s=0.1)
         assert (await gen.__anext__()) == "hi"
@@ -287,6 +295,7 @@ class TestStreaming:
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
+            stream=True,
             use_new_handle_api=True,
         )
         h.remote("")
@@ -296,7 +305,7 @@ class TestStreaming:
 
         await async_wait_for_condition(one_waiter)
 
-        p = ProxyHandleWrapper(h.options(stream=True))
+        p = ProxyHandleWrapper(h)
         gen = p.stream_request("", disconnected_task=disconnect_task)
 
         async def get_next():
@@ -325,10 +334,11 @@ class TestStreaming:
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
+            stream=True,
             use_new_handle_api=True,
         )
 
-        p = ProxyHandleWrapper(h.options(stream=True))
+        p = ProxyHandleWrapper(h)
         gen = p.stream_request("", disconnected_task=disconnect_task)
         assert (await gen.__anext__()) == "hi"
 
