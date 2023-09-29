@@ -1,43 +1,29 @@
 import inspect
 import logging
-import os
 from types import FunctionType
 from typing import Any, Dict, Tuple, Union
 
 from pydantic.main import ModelMetaclass
 
 import ray
-from ray._private.usage import usage_lib
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray.serve.deployment import Application, Deployment
-from ray.serve.exceptions import RayServeException
-from ray.serve.config import gRPCOptions, HTTPOptions
+from ray._private.usage import usage_lib
+from ray.actor import ActorHandle
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
-    SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.client import ServeControllerClient
-
-from ray.serve._private.utils import (
-    format_actor_name,
-    get_random_letters,
-)
-from ray.serve.controller import ServeController
-from ray.serve.context import (
-    _get_global_client,
-    _set_global_client,
-)
-from ray.actor import ActorHandle
-
+from ray.serve._private.controller import ServeController
+from ray.serve._private.utils import format_actor_name, get_random_letters
+from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.context import _get_global_client, _set_global_client
+from ray.serve.deployment import Application, Deployment
+from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(__file__)
-
-FLAG_DISABLE_HTTP_PROXY = (
-    os.environ.get(SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY, "0") == "1"
-)
 
 
 def get_deployment(name: str, app_name: str = ""):
@@ -161,49 +147,41 @@ def _start_controller(
         "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
     }
 
-    if FLAG_DISABLE_HTTP_PROXY:
-        controller = ServeController.options(**controller_actor_options).remote(
-            controller_name,
-            http_config=http_options,
-            detached=detached,
-            _disable_http_proxy=True,
-        )
-    else:
-        # Legacy http proxy actor check
-        http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
-        for key in http_deprecated_args:
-            if key in kwargs:
-                raise ValueError(
-                    f"{key} is deprecated, please use serve.start(http_options="
-                    f'{{"{key}": {kwargs[key]}}}) instead.'
-                )
+    # Legacy http proxy actor check
+    http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
+    for key in http_deprecated_args:
+        if key in kwargs:
+            raise ValueError(
+                f"{key} is deprecated, please use serve.start(http_options="
+                f'{{"{key}": {kwargs[key]}}}) instead.'
+            )
 
-        if isinstance(http_options, dict):
-            http_options = HTTPOptions.parse_obj(http_options)
-        if http_options is None:
-            http_options = HTTPOptions()
+    if isinstance(http_options, dict):
+        http_options = HTTPOptions.parse_obj(http_options)
+    if http_options is None:
+        http_options = HTTPOptions()
 
-        if isinstance(grpc_options, dict):
-            grpc_options = gRPCOptions(**grpc_options)
+    if isinstance(grpc_options, dict):
+        grpc_options = gRPCOptions(**grpc_options)
 
-        controller = ServeController.options(**controller_actor_options).remote(
-            controller_name,
-            http_config=http_options,
-            detached=detached,
-            grpc_options=grpc_options,
-        )
+    controller = ServeController.options(**controller_actor_options).remote(
+        controller_name,
+        http_config=http_options,
+        detached=detached,
+        grpc_options=grpc_options,
+    )
 
-        proxy_handles = ray.get(controller.get_http_proxies.remote())
-        if len(proxy_handles) > 0:
-            try:
-                ray.get(
-                    [handle.ready.remote() for handle in proxy_handles.values()],
-                    timeout=HTTP_PROXY_TIMEOUT,
-                )
-            except ray.exceptions.GetTimeoutError:
-                raise TimeoutError(
-                    f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
-                )
+    proxy_handles = ray.get(controller.get_proxies.remote())
+    if len(proxy_handles) > 0:
+        try:
+            ray.get(
+                [handle.ready.remote() for handle in proxy_handles.values()],
+                timeout=HTTP_PROXY_TIMEOUT,
+            )
+        except ray.exceptions.GetTimeoutError:
+            raise TimeoutError(
+                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
+            )
     return controller, controller_name
 
 

@@ -449,7 +449,7 @@ def _get_file_infos_common_path_prefix(
     # This can happen when path is a directory, but not a file.
     have_missing_path = False
     for path in paths:
-        if path not in path_to_size:
+        if path_to_size[path] is None:
             logger.debug(
                 f"Finding path {path} not have file size metadata. "
                 "Fall back to get files metadata in parallel for all paths."

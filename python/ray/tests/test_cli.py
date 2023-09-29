@@ -40,6 +40,7 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
 import ray.autoscaler._private.aws.config as aws_config
+import ray.autoscaler._private.constants as autoscaler_constants
 import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
@@ -922,19 +923,27 @@ def test_ray_status(shutdown_only, monkeypatch, enable_v2):
 
     wait_for_condition(output_ready)
 
+    # Wait one whole reporting cycle
+    time.sleep(autoscaler_constants.AUTOSCALER_UPDATE_INTERVAL_S)
+    if enable_v2:
+        filename_expected = "test_ray_status.txt"
+    else:
+        filename_expected = "test_ray_status_v1.txt"
+
     result = runner.invoke(scripts.status, [])
-    _check_output_via_pattern("test_ray_status.txt", result)
+    _check_output_via_pattern(filename_expected, result)
 
     result_arg = runner.invoke(scripts.status, ["--address", address])
-    _check_output_via_pattern("test_ray_status.txt", result_arg)
+
+    _check_output_via_pattern(filename_expected, result_arg)
 
     # Try to check status with RAY_ADDRESS set
     monkeypatch.setenv("RAY_ADDRESS", address)
     result_env = runner.invoke(scripts.status)
-    _check_output_via_pattern("test_ray_status.txt", result_env)
+    _check_output_via_pattern(filename_expected, result_env)
 
     result_env_arg = runner.invoke(scripts.status, ["--address", address])
-    _check_output_via_pattern("test_ray_status.txt", result_env_arg)
+    _check_output_via_pattern(filename_expected, result_env_arg)
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported on Windows")
@@ -945,7 +954,11 @@ def test_ray_status_multinode(ray_start_cluster, enable_v2):
     ray.init(address=cluster.address)
     for _ in range(3):
         cluster.add_node(num_cpus=2)
+    wait_for_condition(lambda: len(list_nodes()) == 4)
     runner = CliRunner()
+
+    # Wait one whole reporting cycle
+    time.sleep(autoscaler_constants.AUTOSCALER_UPDATE_INTERVAL_S)
 
     def output_ready():
         result = runner.invoke(scripts.status)
@@ -959,7 +972,10 @@ def test_ray_status_multinode(ray_start_cluster, enable_v2):
     wait_for_condition(output_ready)
 
     result = runner.invoke(scripts.status, [])
-    _check_output_via_pattern("test_ray_status_multinode.txt", result)
+    if enable_v2:
+        _check_output_via_pattern("test_ray_status_multinode.txt", result)
+    else:
+        _check_output_via_pattern("test_ray_status_multinode_v1.txt", result)
 
 
 @pytest.mark.skipif(

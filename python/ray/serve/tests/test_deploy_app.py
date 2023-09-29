@@ -2,23 +2,20 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from typing import Dict, List
 from functools import partial
+from typing import Dict, List
 
 import pytest
 import requests
 
 import ray
-import ray.actor
 import ray._private.state
-from ray.tests.conftest import call_ray_stop_only  # noqa: F401
-from ray.util.state import list_actors, list_tasks
-from ray._private.test_utils import (
-    wait_for_condition,
-    SignalActor,
-)
-
+import ray.actor
 from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.client import ServeControllerClient
+from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
@@ -26,13 +23,8 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ServeInstanceDetails,
 )
-from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import (
-    DeploymentID,
-    ApplicationStatus,
-    DeploymentStatus,
-)
-from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
+from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.util.state import list_actors, list_tasks
 
 
 @pytest.fixture
@@ -1247,7 +1239,7 @@ def test_deploy_with_no_applications(client: ServeControllerClient):
             ]
         )
         actor_names = [actor["class_name"] for actor in actors]
-        return "ServeController" in actor_names and "HTTPProxyActor" in actor_names
+        return "ServeController" in actor_names and "ProxyActor" in actor_names
 
     wait_for_condition(serve_running)
 
