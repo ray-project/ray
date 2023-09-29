@@ -31,7 +31,6 @@ py_test_module_list(
     "test_long_poll.py",
     "test_schema.py",
     "test_util.py",
-    "test_logs.py",
     "test_cross_language.py",
     "test_http_adapters.py",
     "test_deployment_graph_driver.py",
