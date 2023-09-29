@@ -2,10 +2,12 @@ import json
 import logging
 from abc import ABC
 from copy import deepcopy
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 from zlib import crc32
 
-from ray.serve._private.config import DeploymentConfig
+from pydantic import BaseModel
+
+from ray.serve._private.config import InternalDeploymentConfig
 from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_letters
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
 
@@ -16,11 +18,11 @@ class DeploymentVersion:
     def __init__(
         self,
         code_version: Optional[str],
-        deployment_config: DeploymentConfig,
-        ray_actor_options: Optional[Dict],
-        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
-        placement_group_strategy: Optional[str] = None,
-        max_replicas_per_node: Optional[int] = None,
+        deployment_config: InternalDeploymentConfig,
+        # ray_actor_options: Optional[Dict],
+        # placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        # placement_group_strategy: Optional[str] = None,
+        # max_replicas_per_node: Optional[int] = None,
     ):
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
@@ -34,10 +36,6 @@ class DeploymentVersion:
         # Options for this field may be mutated over time, so any logic that uses this
         # should access this field directly.
         self.deployment_config = deployment_config
-        self.ray_actor_options = ray_actor_options
-        self.placement_group_bundles = placement_group_bundles
-        self.placement_group_strategy = placement_group_strategy
-        self.max_replicas_per_node = max_replicas_per_node
         self.compute_hashes()
 
     @classmethod
@@ -61,10 +59,7 @@ class DeploymentVersion:
         """
         return (
             self.code_version != new_version.code_version
-            or self.ray_actor_options_hash != new_version.ray_actor_options_hash
-            or self.placement_group_options_hash
-            != new_version.placement_group_options_hash
-            or self.max_replicas_per_node != new_version.max_replicas_per_node
+            or self.restart_actor_hash != new_version.restart_actor_hash
         )
 
     def requires_actor_reconfigure(self, new_version):
@@ -84,19 +79,6 @@ class DeploymentVersion:
         )
 
     def compute_hashes(self):
-        # If these change, the controller will rolling upgrade existing replicas.
-        serialized_ray_actor_options = _serialize(self.ray_actor_options or {})
-        self.ray_actor_options_hash = crc32(serialized_ray_actor_options)
-        combined_placement_group_options = {}
-        if self.placement_group_bundles is not None:
-            combined_placement_group_options["bundles"] = self.placement_group_bundles
-        if self.placement_group_strategy is not None:
-            combined_placement_group_options["strategy"] = self.placement_group_strategy
-        serialized_placement_group_options = _serialize(
-            combined_placement_group_options
-        )
-        self.placement_group_options_hash = crc32(serialized_placement_group_options)
-
         # If this changes, DeploymentReplica.reconfigure() will call reconfigure on the
         # actual replica actor
         self.reconfigure_actor_hash = crc32(
@@ -105,17 +87,20 @@ class DeploymentVersion:
             )
         )
 
+        # If these change, the controller will rolling upgrade existing replicas.
+        self.restart_actor_hash = crc32(
+            self._get_serialized_options([DeploymentOptionUpdateType.HeavyWeight])
+        )
+
         # Used by __eq__ in deployment state to either reconfigure the replicas or
         # stop and restart them
         self._hash = crc32(
             self.code_version.encode("utf-8")
-            + serialized_ray_actor_options
-            + serialized_placement_group_options
-            + str(self.max_replicas_per_node).encode("utf-8")
             + self._get_serialized_options(
                 [
                     DeploymentOptionUpdateType.NeedsReconfigure,
                     DeploymentOptionUpdateType.NeedsActorReconfigure,
+                    DeploymentOptionUpdateType.HeavyWeight,
                 ]
             )
         )
@@ -141,7 +126,7 @@ class DeploymentVersion:
     def from_proto(cls, proto: DeploymentVersionProto):
         return DeploymentVersion(
             proto.code_version,
-            DeploymentConfig.from_proto(proto.deployment_config),
+            InternalDeploymentConfig.from_proto(proto.deployment_config),
             json.loads(proto.ray_actor_options),
             placement_group_bundles=(
                 json.loads(proto.placement_group_bundles)
@@ -173,9 +158,11 @@ class DeploymentVersion:
         for option_name, field in fields.items():
             option_weight = field.field_info.extra.get("update_type")
             if option_weight in update_types:
-                reconfigure_dict[option_name] = getattr(
-                    self.deployment_config, option_name
-                )
+                value = getattr(self.deployment_config, option_name)
+                if isinstance(value, BaseModel):
+                    reconfigure_dict[option_name] = value.dict()
+                else:
+                    reconfigure_dict[option_name] = value
 
         if (
             isinstance(self.deployment_config.user_config, bytes)

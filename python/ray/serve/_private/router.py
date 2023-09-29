@@ -994,26 +994,27 @@ class Router:
         )
 
         # Start the metrics pusher if autoscaling is enabled.
-        deployment_route = DeploymentRoute.FromString(
-            ray.get(controller_handle.get_deployment_info.remote(*deployment_id))
-        )
-        deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
+        # deployment_route = DeploymentRoute.FromString(
+        #     ray.get(controller_handle.get_deployment_info.remote(*deployment_id))
+        # )
+        # deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
         self.metrics_pusher = None
-        if deployment_info.deployment_config.autoscaling_config:
-            self.autoscaling_enabled = True
-            self.push_metrics_to_controller = (
-                controller_handle.record_handle_metrics.remote
-            )
-            self.metrics_pusher = MetricsPusher()
-            self.metrics_pusher.register_task(
-                self._collect_handle_queue_metrics,
-                HANDLE_METRIC_PUSH_INTERVAL_S,
-                self.push_metrics_to_controller,
-            )
+        # if deployment_info.deployment_config.autoscaling_config:
+        # self.autoscaling_enabled = True
+        # self.push_metrics_to_controller = (
+        #     controller_handle.record_handle_metrics.remote
+        # )
+        # self.metrics_pusher = MetricsPusher()
+        # self.metrics_pusher.register_task(
+        #     self._collect_handle_queue_metrics,
+        #     HANDLE_METRIC_PUSH_INTERVAL_S,
+        #     self.push_metrics_to_controller,
+        # )
 
-            self.metrics_pusher.start()
-        else:
-            self.autoscaling_enabled = False
+        # self.metrics_pusher.start()
+        # else:
+        # self.autoscaling_enabled = False
+        self.autoscaling_enabled = False
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
         return {self.deployment_id: self.num_queued_queries}

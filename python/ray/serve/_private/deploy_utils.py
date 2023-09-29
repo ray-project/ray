@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Union
 import ray
 import ray.util.serialization_addons
 from ray.serve._private.common import DeploymentID, DeploymentInfo
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.schema import ServeApplicationSchema
 
@@ -16,9 +16,9 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 def get_deploy_args(
     name: str,
-    replica_config: ReplicaConfig,
+    replica_config: ReplicaInitConfig,
     ingress: bool = False,
-    deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
+    deployment_config: Optional[Union[InternalDeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
     docs_path: Optional[str] = None,
@@ -32,26 +32,28 @@ def get_deploy_args(
         deployment_config = {}
 
     curr_job_env = ray.get_runtime_context().runtime_env
-    if "runtime_env" in replica_config.ray_actor_options:
+    if "runtime_env" in deployment_config.ray_actor_options.dict(exclude_unset=True):
         # It is illegal to set field working_dir to None.
         if curr_job_env.get("working_dir") is not None:
-            replica_config.ray_actor_options["runtime_env"].setdefault(
+            deployment_config.ray_actor_options.runtime_env.setdefault(
                 "working_dir", curr_job_env.get("working_dir")
             )
     else:
-        replica_config.ray_actor_options["runtime_env"] = curr_job_env
+        deployment_config.ray_actor_options.runtime_env = curr_job_env
 
     if isinstance(deployment_config, dict):
-        deployment_config = DeploymentConfig.parse_obj(deployment_config)
-    elif not isinstance(deployment_config, DeploymentConfig):
+        deployment_config = InternalDeploymentConfig.parse_obj(deployment_config)
+    elif not isinstance(deployment_config, InternalDeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
     deployment_config.version = version
+    # print("get deploy args deployment_config", deployment_config.dict())
 
     controller_deploy_args = {
         "deployment_name": name,
-        "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
-        "replica_config_proto_bytes": replica_config.to_proto_bytes(),
+        "deployment_config": deployment_config,
+        # "replica_config_proto_bytes": replica_config.to_proto_bytes(),
+        "replica_config": replica_config,
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "docs_path": docs_path,
@@ -63,8 +65,9 @@ def get_deploy_args(
 
 def deploy_args_to_deployment_info(
     deployment_name: str,
-    deployment_config_proto_bytes: bytes,
-    replica_config_proto_bytes: bytes,
+    deployment_config: InternalDeploymentConfig,
+    # replica_config_proto_bytes: bytes,
+    replica_config: ReplicaInitConfig,
     deployer_job_id: Union[str, bytes],
     route_prefix: Optional[str],
     docs_path: Optional[str],
@@ -76,11 +79,7 @@ def deploy_args_to_deployment_info(
     constructs a DeploymentInfo object.
     """
 
-    deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
     version = deployment_config.version
-    replica_config = ReplicaConfig.from_proto_bytes(
-        replica_config_proto_bytes, deployment_config.needs_pickle()
-    )
 
     # Java API passes in JobID as bytes
     if isinstance(deployer_job_id, bytes):

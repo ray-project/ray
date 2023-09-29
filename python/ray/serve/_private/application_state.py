@@ -20,7 +20,7 @@ from ray.serve._private.common import (
     EndpointInfo,
     EndpointTag,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import InternalDeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
@@ -527,25 +527,25 @@ class ApplicationState:
         Raises: RayServeException if more than one route prefix or docs
             path is found among deployments.
         """
-        num_route_prefixes = 0
+        route_prefixes = dict()
         num_docs_paths = 0
         route_prefix = None
         docs_path = None
-        for info in deployment_infos.values():
+        for name, info in deployment_infos.items():
             # Update route prefix of application, which may be updated
             # through a redeployed config.
             if info.route_prefix is not None:
                 route_prefix = info.route_prefix
-                num_route_prefixes += 1
+                route_prefixes[name] = info.route_prefix
             if info.docs_path is not None:
                 docs_path = info.docs_path
                 num_docs_paths += 1
 
-        if num_route_prefixes > 1:
+        if len(route_prefixes) > 1:
             raise RayServeException(
-                f'Found multiple route prefixes from application "{self._name}",'
-                " Please specify only one route prefix for the application "
-                "to avoid this issue."
+                f'Found multiple route prefixes from application "{self._name}": '
+                f"{route_prefixes}. Please specify only one route prefix for the "
+                "application to avoid this issue."
             )
         # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
         # if user sets the docs path to None in their FastAPI app.
@@ -594,6 +594,7 @@ class ApplicationState:
                 target_config=self._target_state.config,
             )
         elif task_status == BuildAppStatus.FAILED:
+            logger.exception(msg)
             self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
         # If we're waiting on the build app task to finish, we don't
@@ -953,7 +954,8 @@ def override_deployment_info(
         TypeError: If config options have invalid types.
     """
 
-    deployment_infos = deepcopy(deployment_infos)
+    # deployment_infos = deepcopy(deployment_infos)
+    # print("deep copied")
     if override_config is None:
         return deployment_infos
 
@@ -961,8 +963,8 @@ def override_deployment_info(
     deployment_override_options = config_dict.get("deployments", [])
 
     # Override options for each deployment listed in the config.
-    for options in deployment_override_options:
-        deployment_name = options["name"]
+    for override_options in deployment_override_options:
+        deployment_name = override_options["name"]
         info = deployment_infos[deployment_name]
 
         if (
@@ -977,53 +979,41 @@ def override_deployment_info(
             )
 
         # What to pass to info.update
-        override_options = dict()
+        override_deployment_info = dict()
 
         # Override route prefix if specified in deployment config
-        deployment_route_prefix = options.pop("route_prefix", DEFAULT.VALUE)
+        deployment_route_prefix = override_options.pop("route_prefix", DEFAULT.VALUE)
         if deployment_route_prefix is not DEFAULT.VALUE:
-            override_options["route_prefix"] = deployment_route_prefix
+            override_deployment_info["route_prefix"] = deployment_route_prefix
 
         # Merge app-level and deployment-level runtime_envs.
-        replica_config = info.replica_config
         app_runtime_env = override_config.runtime_env
-        if "ray_actor_options" in options:
+        if "ray_actor_options" in override_options:
             # If specified, get ray_actor_options from config
-            override_actor_options = options.pop("ray_actor_options", {})
+            override_actor_options = override_options.pop("ray_actor_options", {})
         else:
             # Otherwise, get options from application code (and default to {}
             # if the code sets options to None).
-            override_actor_options = replica_config.ray_actor_options or {}
-
-        override_placement_group_bundles = options.pop(
-            "placement_group_bundles", replica_config.placement_group_bundles
-        )
-        override_placement_group_strategy = options.pop(
-            "placement_group_strategy", replica_config.placement_group_strategy
-        )
-
-        override_max_replicas_per_node = options.pop(
-            "max_replicas_per_node", replica_config.max_replicas_per_node
-        )
+            override_actor_options = (
+                info.deployment_config.ray_actor_options.dict() or {}
+            )
 
         merged_env = override_runtime_envs_except_env_vars(
             app_runtime_env, override_actor_options.get("runtime_env", {})
         )
+        # Temporary
+        if merged_env == {"env_vars": {}}:
+            merged_env = {}
         override_actor_options.update({"runtime_env": merged_env})
-        replica_config.update_ray_actor_options(override_actor_options)
-        replica_config.update_placement_group_options(
-            override_placement_group_bundles, override_placement_group_strategy
-        )
-        replica_config.update_max_replicas_per_node(override_max_replicas_per_node)
-        override_options["replica_config"] = replica_config
+        override_options["ray_actor_options"] = override_actor_options
 
         # Override deployment config options
-        original_options = info.deployment_config.dict()
-        options.pop("name", None)
-        original_options.update(options)
-        override_options["deployment_config"] = DeploymentConfig(**original_options)
+        new_options = dict(info.deployment_config.dict(), **override_options)
+        override_deployment_info["deployment_config"] = InternalDeploymentConfig(
+            **new_options
+        )
 
-        deployment_infos[deployment_name] = info.update(**override_options)
+        deployment_infos[deployment_name] = info.update(**override_deployment_info)
 
     # Overwrite ingress route prefix
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)

@@ -10,7 +10,7 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitConfig
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -381,7 +381,7 @@ def deployment(
             "`serve.run` instead."
         )
 
-    deployment_config = DeploymentConfig.from_default(
+    deployment_config = InternalDeploymentConfig.create_from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
@@ -390,38 +390,24 @@ def deployment(
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
+        ray_actor_options=ray_actor_options,
+        placement_group_bundles=placement_group_bundles,
+        placement_group_strategy=placement_group_strategy,
+        max_replicas_per_node=max_replicas_per_node,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
     def decorator(_func_or_class):
-        replica_config = ReplicaConfig.create(
+        replica_init_config = ReplicaInitConfig.create(
             _func_or_class,
             init_args=(init_args if init_args is not DEFAULT.VALUE else None),
             init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
-            ray_actor_options=(
-                ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
-            ),
-            placement_group_bundles=(
-                placement_group_bundles
-                if placement_group_bundles is not DEFAULT.VALUE
-                else None
-            ),
-            placement_group_strategy=(
-                placement_group_strategy
-                if placement_group_strategy is not DEFAULT.VALUE
-                else None
-            ),
-            max_replicas_per_node=(
-                max_replicas_per_node
-                if max_replicas_per_node is not DEFAULT.VALUE
-                else None
-            ),
         )
 
         return Deployment(
             name if name is not DEFAULT.VALUE else _func_or_class.__name__,
             deployment_config,
-            replica_config,
+            replica_init_config,
             version=(version if version is not DEFAULT.VALUE else None),
             route_prefix=route_prefix,
             _internal=True,

@@ -98,14 +98,13 @@ def get_test_config() -> Dict:
 
 def check_single_app():
     """Checks the application deployed through the config from get_test_config()"""
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
-        == "4 pizzas please!"
-    )
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).text
-        == "9 pizzas please!"
-    )
+
+    def check_req(json, expected):
+        assert requests.post("http://localhost:8000/", json=json).text == expected
+        return True
+
+    wait_for_condition(check_req, json=["ADD", 2], expected="4 pizzas please!")
+    wait_for_condition(check_req, json=["MUL", 3], expected="9 pizzas please!")
 
 
 def get_test_deploy_config() -> Dict:
@@ -145,22 +144,23 @@ def check_multi_app():
     get_test_deploy_config().
     """
 
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
-        == "4 pizzas please!"
-    )
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["MUL", 3]).text
-        == "9 pizzas please!"
-    )
+    def check_req(route, json, expected):
+        assert (
+            requests.post(f"http://localhost:8000/{route}", json=json).text == expected
+        )
+        return True
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
-        == "5 pizzas please!"
+        check_req, route="app1", json=["ADD", 2], expected="4 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 3]).text
-        == "12 pizzas please!"
+        check_req, route="app1", json=["MUL", 3], expected="9 pizzas please!"
+    )
+    wait_for_condition(
+        check_req, route="app2", json=["ADD", 2], expected="5 pizzas please!"
+    )
+    wait_for_condition(
+        check_req, route="app2", json=["MUL", 3], expected="12 pizzas please!"
     )
 
 
@@ -1027,7 +1027,9 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
 
 
 def test_deploy_one_app_failed(client: ServeControllerClient):
-    """Deploy two applications with separate runtime envs."""
+    """Deploy two applications where one fails. THe other application
+    should be running and serving traffic, unaffected.
+    """
 
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fail_import_path = "ray.serve.tests.test_config_files.fail.node"

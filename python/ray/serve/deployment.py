@@ -7,14 +7,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from ray.dag.class_node import ClassNode
 from ray.dag.dag_node import DAGNodeBase
 from ray.dag.function_node import FunctionNode
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitConfig
 from ray.serve._private.constants import MIGRATION_MESSAGE, SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, BaseRayActorOptionsConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import DeploymentSchema, RayActorOptionsSchema
+from ray.serve.schema import ApplyServeDeploymentModel
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -112,8 +112,8 @@ class Deployment:
     def __init__(
         self,
         name: str,
-        deployment_config: DeploymentConfig,
-        replica_config: ReplicaConfig,
+        deployment_config: InternalDeploymentConfig,
+        replica_config: ReplicaInitConfig,
         version: Optional[str] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         _internal=False,
@@ -194,7 +194,7 @@ class Deployment:
     @property
     def ray_actor_options(self) -> Optional[Dict]:
         """Actor options such as resources required for each replica."""
-        return self._replica_config.ray_actor_options
+        return self._deployment_config.ray_actor_options
 
     @property
     def init_args(self) -> Tuple[Any]:
@@ -232,7 +232,7 @@ class Deployment:
                 self.func_or_class,
                 args,  # Used to bind and resolve DAG only, can take user input
                 kwargs,  # Used to bind and resolve DAG only, can take user input
-                self._replica_config.ray_actor_options or dict(),
+                self._deployment_config.ray_actor_options.dict() or dict(),
                 other_args_to_resolve={
                     "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
@@ -243,7 +243,7 @@ class Deployment:
                 self.func_or_class,
                 args,
                 kwargs,
-                cls_options=self._replica_config.ray_actor_options or dict(),
+                cls_options=self._deployment_config.ray_actor_options.dict() or dict(),
                 other_args_to_resolve={
                     "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
@@ -281,14 +281,10 @@ class Deployment:
         if len(init_kwargs) == 0 and self._replica_config.init_kwargs is not None:
             init_kwargs = self._replica_config.init_kwargs
 
-        replica_config = ReplicaConfig.create(
+        replica_config = ReplicaInitConfig.create(
             self._replica_config.deployment_def,
             init_args=init_args,
             init_kwargs=init_kwargs,
-            ray_actor_options=self._replica_config.ray_actor_options,
-            placement_group_bundles=self._replica_config.placement_group_bundles,
-            placement_group_strategy=self._replica_config.placement_group_strategy,
-            max_replicas_per_node=self._replica_config.max_replicas_per_node,
         )
 
         return _get_global_client().deploy(
@@ -399,12 +395,6 @@ class Deployment:
             and value is not DEFAULT.VALUE
         ]
 
-        new_deployment_config = deepcopy(self._deployment_config)
-        if not _internal:
-            new_deployment_config.user_configured_option_names.update(
-                user_configured_option_names
-            )
-
         if num_replicas not in [DEFAULT.VALUE, None] and autoscaling_config not in [
             DEFAULT.VALUE,
             None,
@@ -431,21 +421,8 @@ class Deployment:
                 "into `serve.run` instead."
             )
 
-        if num_replicas not in [DEFAULT.VALUE, None]:
-            new_deployment_config.num_replicas = num_replicas
-        if user_config is not DEFAULT.VALUE:
-            new_deployment_config.user_config = user_config
-        if max_concurrent_queries is not DEFAULT.VALUE:
-            new_deployment_config.max_concurrent_queries = max_concurrent_queries
-
         if func_or_class is None:
             func_or_class = self._replica_config.deployment_def
-
-        if name is DEFAULT.VALUE:
-            name = self._name
-
-        if version is DEFAULT.VALUE:
-            version = self._version
 
         if init_args is DEFAULT.VALUE:
             init_args = self._replica_config.init_args
@@ -457,52 +434,37 @@ class Deployment:
             # Default is to keep the previous value
             route_prefix = self._route_prefix
 
-        if ray_actor_options is DEFAULT.VALUE:
-            ray_actor_options = self._replica_config.ray_actor_options
-
-        if placement_group_bundles is DEFAULT.VALUE:
-            placement_group_bundles = self._replica_config.placement_group_bundles
-
-        if placement_group_strategy is DEFAULT.VALUE:
-            placement_group_strategy = self._replica_config.placement_group_strategy
-
-        if max_replicas_per_node is DEFAULT.VALUE:
-            max_replicas_per_node = self._replica_config.max_replicas_per_node
-
-        if autoscaling_config is not DEFAULT.VALUE:
-            new_deployment_config.autoscaling_config = autoscaling_config
-
-        if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
-            new_deployment_config.graceful_shutdown_wait_loop_s = (
-                graceful_shutdown_wait_loop_s
-            )
-
-        if graceful_shutdown_timeout_s is not DEFAULT.VALUE:
-            new_deployment_config.graceful_shutdown_timeout_s = (
-                graceful_shutdown_timeout_s
-            )
-
-        if health_check_period_s is not DEFAULT.VALUE:
-            new_deployment_config.health_check_period_s = health_check_period_s
-
-        if health_check_timeout_s is not DEFAULT.VALUE:
-            new_deployment_config.health_check_timeout_s = health_check_timeout_s
-
-        new_replica_config = ReplicaConfig.create(
+        new_replica_config = ReplicaInitConfig.create(
             func_or_class,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
+            init_args=(init_args if init_args is not DEFAULT.VALUE else None),
+            init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
+        )
+        new_deployment_config = InternalDeploymentConfig.create_from(
+            deepcopy(self._deployment_config),
+            num_replicas=num_replicas,
+            version=version,
+            user_config=user_config,
+            max_concurrent_queries=max_concurrent_queries,
+            autoscaling_config=autoscaling_config,
+            graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
+            graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
+            health_check_period_s=health_check_period_s,
+            health_check_timeout_s=health_check_timeout_s,
             ray_actor_options=ray_actor_options,
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
             max_replicas_per_node=max_replicas_per_node,
         )
+        if not _internal:
+            new_deployment_config.user_configured_option_names.update(
+                user_configured_option_names
+            )
 
         return Deployment(
-            name,
+            name if name != DEFAULT.VALUE else self._name,
             new_deployment_config,
             new_replica_config,
-            version=version,
+            version=new_deployment_config.version,
             route_prefix=route_prefix,
             _internal=True,
         )
@@ -601,7 +563,7 @@ class Deployment:
 
 def deployment_to_schema(
     d: Deployment, include_route_prefix: bool = True
-) -> DeploymentSchema:
+) -> ApplyServeDeploymentModel:
     """Converts a live deployment object to a corresponding structured schema.
 
     Args:
@@ -612,51 +574,54 @@ def deployment_to_schema(
             route_prefix at the application level.
     """
 
-    if d.ray_actor_options is not None:
-        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
-    else:
-        ray_actor_options_schema = None
+    # if d.ray_actor_options is not None:
+    #     ray_actor_options_schema = BaseRayActorOptionsConfig.parse_obj(
+    #         d.ray_actor_options
+    #     )
+    # else:
+    #     ray_actor_options_schema = None
 
-    deployment_options = {
-        "name": d.name,
-        "num_replicas": None
-        if d._deployment_config.autoscaling_config
-        else d.num_replicas,
-        "max_concurrent_queries": d.max_concurrent_queries,
-        "user_config": d.user_config,
-        "autoscaling_config": d._deployment_config.autoscaling_config,
-        "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,  # noqa: E501
-        "graceful_shutdown_timeout_s": d._deployment_config.graceful_shutdown_timeout_s,
-        "health_check_period_s": d._deployment_config.health_check_period_s,
-        "health_check_timeout_s": d._deployment_config.health_check_timeout_s,
-        "ray_actor_options": ray_actor_options_schema,
-        "placement_group_strategy": d._replica_config.placement_group_strategy,
-        "placement_group_bundles": d._replica_config.placement_group_bundles,
-        "max_replicas_per_node": d._replica_config.max_replicas_per_node,
-    }
-
-    if include_route_prefix:
-        deployment_options["route_prefix"] = d.route_prefix
+    # deployment_options = {
+    #     "name": d.name,
+    #     "num_replicas": None
+    #     if d._deployment_config.autoscaling_config
+    #     else d.num_replicas,
+    #     "max_concurrent_queries": d._deployment_config.max_concurrent_queries,
+    #     "user_config": d._deployment_config.user_config,
+    #     "autoscaling_config": d._deployment_config.autoscaling_config,
+    #     "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,  # noqa: E501
+    #     "graceful_shutdown_timeout_s": d._deployment_config.graceful_shutdown_timeout_s,
+    #     "health_check_period_s": d._deployment_config.health_check_period_s,
+    #     "health_check_timeout_s": d._deployment_config.health_check_timeout_s,
+    #     "ray_actor_options": ray_actor_options_schema,
+    #     "placement_group_strategy": d._deployment_config.placement_group_strategy,
+    #     "placement_group_bundles": d._deployment_config.placement_group_bundles,
+    #     "max_replicas_per_node": d._deployment_config.max_replicas_per_node,
 
     # Let non-user-configured options be set to defaults. If the schema
     # is converted back to a deployment, this lets Serve continue tracking
     # which options were set by the user. Name is a required field in the
     # schema, so it should be passed in explicitly.
-    for option in list(deployment_options.keys()):
-        if (
-            option != "name"
-            and option not in d._deployment_config.user_configured_option_names
-        ):
-            del deployment_options[option]
+    # for option in list(deployment_options.keys()):
+    #     if (
+    #         option != "name"
+    #         and option not in d._deployment_config.user_configured_option_names
+    #     ):
+    #         del deployment_options[option]
+    # }
 
-    # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
-    # because internally we use these two field for autoscale and deploy.
-    # We can improve the code after we separate the user faced deployment config and
-    # internal deployment config.
-    return DeploymentSchema(**deployment_options)
+    deployment_options = {
+        "name": d.name,
+        **d._deployment_config.dict(exclude_unset=True),
+    }
+
+    if include_route_prefix:
+        deployment_options["route_prefix"] = d.route_prefix
+
+    return ApplyServeDeploymentModel(**deployment_options)
 
 
-def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+def schema_to_deployment(s: ApplyServeDeploymentModel) -> Deployment:
     """Creates a deployment with parameters specified in schema.
 
     The returned deployment CANNOT be deployed immediately. It's func_or_class
@@ -664,49 +629,18 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     func_or_class value must be overwritten with a valid function or class
     before the deployment can be deployed.
     """
+    # deployment_config.user_configured_option_names = (
+    #     s.get_user_configured_option_names()
+    # )
 
-    if s.ray_actor_options is DEFAULT.VALUE:
-        ray_actor_options = None
-    else:
-        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
-
-    if s.placement_group_bundles is DEFAULT.VALUE:
-        placement_group_bundles = None
-    else:
-        placement_group_bundles = s.placement_group_bundles
-
-    if s.placement_group_strategy is DEFAULT.VALUE:
-        placement_group_strategy = None
-    else:
-        placement_group_strategy = s.placement_group_strategy
-
-    if s.max_replicas_per_node is DEFAULT.VALUE:
-        max_replicas_per_node = None
-    else:
-        max_replicas_per_node = s.max_replicas_per_node
-
-    deployment_config = DeploymentConfig.from_default(
-        num_replicas=s.num_replicas,
-        user_config=s.user_config,
-        max_concurrent_queries=s.max_concurrent_queries,
-        autoscaling_config=s.autoscaling_config,
-        graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
-        graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
-        health_check_period_s=s.health_check_period_s,
-        health_check_timeout_s=s.health_check_timeout_s,
-    )
-    deployment_config.user_configured_option_names = (
-        s.get_user_configured_option_names()
-    )
-
-    replica_config = ReplicaConfig.create(
-        deployment_def="",
+    replica_config = ReplicaInitConfig.create(
         init_args=(),
         init_kwargs={},
-        ray_actor_options=ray_actor_options,
-        placement_group_bundles=placement_group_bundles,
-        placement_group_strategy=placement_group_strategy,
-        max_replicas_per_node=max_replicas_per_node,
+        deployment_def="",
+    )
+
+    deployment_config = InternalDeploymentConfig(
+        **s.dict(exclude_unset=True, exclude={"name"}),
     )
 
     return Deployment(

@@ -17,11 +17,11 @@ from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusInfo,
 )
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import DeploymentSchema, ServeApplicationSchema
+from ray.serve.schema import ApplyServeDeploymentModel, ServeApplicationSchema
 from ray.serve.tests.utils import MockKVStore
 
 
@@ -86,8 +86,10 @@ class MockDeploymentStateManager:
         if deployment_id in self.deployment_statuses:
             # Return dummy deployment info object
             return DeploymentInfo(
-                deployment_config=DeploymentConfig(num_replicas=1, user_config={}),
-                replica_config=ReplicaConfig.create(lambda x: x),
+                deployment_config=InternalDeploymentConfig(
+                    num_replicas=1, user_config={}
+                ),
+                replica_config=ReplicaInitConfig.create(lambda x: x),
                 start_time_ms=0,
                 deployer_job_id="",
             )
@@ -144,12 +146,16 @@ def mocked_application_state_manager() -> (
 def deployment_params(name: str, route_prefix: str = None, docs_path: str = None):
     return {
         "deployment_name": name,
-        "deployment_config_proto_bytes": DeploymentConfig(
+        # "deployment_config_proto_bytes": InternalDeploymentConfig(
+        #     num_replicas=1, user_config={}, version=get_random_letters()
+        # ).to_proto_bytes(),
+        # "replica_config_proto_bytes": ReplicaInitConfig.create(
+        #     lambda x: x
+        # ).to_proto_bytes(),
+        "deployment_config": InternalDeploymentConfig(
             num_replicas=1, user_config={}, version=get_random_letters()
-        ).to_proto_bytes(),
-        "replica_config_proto_bytes": ReplicaConfig.create(
-            lambda x: x
-        ).to_proto_bytes(),
+        ),
+        "replica_config": ReplicaInitConfig.create(lambda x: x),
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
         "docs_path": docs_path,
@@ -744,8 +750,8 @@ class TestOverrideDeploymentInfo:
         return DeploymentInfo(
             route_prefix="/",
             version="123",
-            deployment_config=DeploymentConfig(num_replicas=1),
-            replica_config=ReplicaConfig.create(lambda x: x),
+            deployment_config=InternalDeploymentConfig(num_replicas=1),
+            replica_config=ReplicaInitConfig.create(lambda x: x),
             start_time_ms=0,
             deployer_job_id="",
         )
@@ -755,7 +761,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             deployments=[
-                DeploymentSchema(
+                ApplyServeDeploymentModel(
                     name="A",
                     num_replicas=3,
                     max_concurrent_queries=200,
@@ -784,7 +790,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             deployments=[
-                DeploymentSchema(
+                ApplyServeDeploymentModel(
                     name="A",
                     autoscaling_config={
                         "min_replicas": 1,
@@ -807,7 +813,7 @@ class TestOverrideDeploymentInfo:
         config = ServeApplicationSchema(
             name="default",
             import_path="test.import.path",
-            deployments=[DeploymentSchema(name="A", route_prefix="/alice")],
+            deployments=[ApplyServeDeploymentModel(name="A", route_prefix="/alice")],
         )
 
         updated_infos = override_deployment_info("default", {"A": info}, config)
@@ -821,7 +827,7 @@ class TestOverrideDeploymentInfo:
             import_path="test.import.path",
             route_prefix="/bob",
             deployments=[
-                DeploymentSchema(
+                ApplyServeDeploymentModel(
                     name="A",
                 )
             ],
@@ -837,7 +843,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             route_prefix="/bob",
-            deployments=[DeploymentSchema(name="A", route_prefix="/alice")],
+            deployments=[ApplyServeDeploymentModel(name="A", route_prefix="/alice")],
         )
 
         updated_infos = override_deployment_info("default", {"A": info}, config)
@@ -851,7 +857,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             deployments=[
-                DeploymentSchema(
+                ApplyServeDeploymentModel(
                     name="A",
                     ray_actor_options={"runtime_env": {"working_dir": "s3://B"}},
                 )
@@ -863,7 +869,7 @@ class TestOverrideDeploymentInfo:
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
         assert (
-            updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
+            updated_info.deployment_config.ray_actor_options.runtime_env["working_dir"]
             == "s3://B"
         )
 
@@ -874,7 +880,7 @@ class TestOverrideDeploymentInfo:
             import_path="test.import.path",
             runtime_env={"working_dir": "s3://C"},
             deployments=[
-                DeploymentSchema(
+                ApplyServeDeploymentModel(
                     name="A",
                 )
             ],
@@ -885,7 +891,7 @@ class TestOverrideDeploymentInfo:
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
         assert (
-            updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
+            updated_info.deployment_config.ray_actor_options.runtime_env["working_dir"]
             == "s3://C"
         )
 
@@ -898,7 +904,7 @@ class TestOverrideDeploymentInfo:
             import_path="test.import.path",
             runtime_env={"working_dir": "s3://C"},
             deployments=[
-                DeploymentSchema(
+                ApplyServeDeploymentModel(
                     name="A",
                     ray_actor_options={"runtime_env": {"working_dir": "s3://B"}},
                 )
@@ -910,7 +916,7 @@ class TestOverrideDeploymentInfo:
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
         assert (
-            updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
+            updated_info.deployment_config.ray_actor_options.runtime_env["working_dir"]
             == "s3://B"
         )
 
@@ -921,11 +927,11 @@ class TestOverrideDeploymentInfo:
         info = DeploymentInfo(
             route_prefix="/",
             version="123",
-            deployment_config=DeploymentConfig(num_replicas=1),
-            replica_config=ReplicaConfig.create(
-                lambda x: x,
+            deployment_config=InternalDeploymentConfig(
+                num_replicas=1,
                 ray_actor_options={"runtime_env": {"working_dir": "s3://A"}},
             ),
+            replica_config=ReplicaInitConfig.create(lambda x: x),
             start_time_ms=0,
             deployer_job_id="",
         )
@@ -934,7 +940,7 @@ class TestOverrideDeploymentInfo:
             import_path="test.import.path",
             runtime_env={"working_dir": "s3://C"},
             deployments=[
-                DeploymentSchema(
+                ApplyServeDeploymentModel(
                     name="A",
                 )
             ],
@@ -945,7 +951,7 @@ class TestOverrideDeploymentInfo:
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
         assert (
-            updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
+            updated_info.deployment_config.ray_actor_options.runtime_env["working_dir"]
             == "s3://A"
         )
 
@@ -959,11 +965,11 @@ class TestOverrideDeploymentInfo:
         info = DeploymentInfo(
             route_prefix="/",
             version="123",
-            deployment_config=DeploymentConfig(num_replicas=1),
-            replica_config=ReplicaConfig.create(
-                lambda x: x,
+            deployment_config=InternalDeploymentConfig(
+                num_replicas=1,
                 ray_actor_options={"runtime_env": {"working_dir": "s3://A"}},
             ),
+            replica_config=ReplicaInitConfig.create(lambda x: x),
             start_time_ms=0,
             deployer_job_id="",
         )
@@ -972,7 +978,7 @@ class TestOverrideDeploymentInfo:
             import_path="test.import.path",
             runtime_env={"working_dir": "s3://C"},
             deployments=[
-                DeploymentSchema(
+                ApplyServeDeploymentModel(
                     name="A",
                     ray_actor_options={"runtime_env": {"working_dir": "s3://B"}},
                 )
@@ -984,7 +990,7 @@ class TestOverrideDeploymentInfo:
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
         assert (
-            updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
+            updated_info.deployment_config.ray_actor_options.runtime_env["working_dir"]
             == "s3://B"
         )
 

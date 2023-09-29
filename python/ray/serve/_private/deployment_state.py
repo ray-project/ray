@@ -31,7 +31,7 @@ from ray.serve._private.common import (
     ReplicaTag,
     RunningReplicaInfo,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import InternalDeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
@@ -61,7 +61,7 @@ from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,
     ReplicaDetails,
-    _deployment_info_to_schema,
+    _deployment_info_to_read_model,
 )
 from ray.util.placement_group import PlacementGroup
 
@@ -108,12 +108,7 @@ class DeploymentTargetState:
                 num_replicas = info.deployment_config.num_replicas
 
         version = DeploymentVersion(
-            info.version,
-            deployment_config=info.deployment_config,
-            ray_actor_options=info.replica_config.ray_actor_options,
-            placement_group_bundles=info.replica_config.placement_group_bundles,
-            placement_group_strategy=info.replica_config.placement_group_strategy,
-            max_replicas_per_node=info.replica_config.max_replicas_per_node,
+            info.version, deployment_config=info.deployment_config
         )
 
         return cls(info, num_replicas, version, deleting)
@@ -271,7 +266,7 @@ class ActorReplicaWrapper:
         return self._version
 
     @property
-    def deployment_config(self) -> DeploymentConfig:
+    def deployment_config(self) -> InternalDeploymentConfig:
         """Deployment config. This can return an incorrect config during state recovery.
 
         If the controller hasn't yet recovered the up-to-date version
@@ -332,7 +327,7 @@ class ActorReplicaWrapper:
         The replica will be in the STARTING and PENDING_ALLOCATION states
         until the deployment scheduler schedules the underlying actor.
         """
-        self._actor_resources = deployment_info.replica_config.resource_dict
+        self._actor_resources = deployment_info.deployment_config._resource_dict
         # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
         self._deployment_is_cross_language = (
@@ -373,7 +368,8 @@ class ActorReplicaWrapper:
                 deployment_info.replica_config.serialized_init_kwargs
                 if deployment_info.replica_config.serialized_init_kwargs
                 else cloudpickle.dumps({}),
-                deployment_info.deployment_config.to_proto_bytes(),
+                # deployment_info.deployment_config.to_proto_bytes(),
+                deployment_info.deployment_config,
                 self._version,
                 self._controller_name,
                 self._detached,
@@ -418,7 +414,7 @@ class ActorReplicaWrapper:
             "namespace": SERVE_NAMESPACE,
             "lifetime": "detached" if self._detached else None,
         }
-        actor_options.update(deployment_info.replica_config.ray_actor_options)
+        actor_options.update(deployment_info.deployment_config.ray_actor_options)
 
         return ReplicaSchedulingRequest(
             deployment_id=self._deployment_id,
@@ -428,13 +424,13 @@ class ActorReplicaWrapper:
             actor_options=actor_options,
             actor_init_args=init_args,
             placement_group_bundles=(
-                deployment_info.replica_config.placement_group_bundles
+                deployment_info.deployment_config.placement_group_bundles
             ),
             placement_group_strategy=(
-                deployment_info.replica_config.placement_group_strategy
+                deployment_info.deployment_config.placement_group_strategy
             ),
             max_replicas_per_node=(
-                deployment_info.replica_config.max_replicas_per_node
+                deployment_info.deployment_config.max_replicas_per_node
             ),
             on_scheduled=self.on_scheduled,
         )
@@ -1366,18 +1362,18 @@ class DeploymentState:
         target_state = DeploymentTargetState.from_deployment_info(target_info)
         self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
-        if self._target_state.version == target_state.version:
-            # Record either num replica or autoscaling config lightweight update
-            if (
-                self._target_state.version.deployment_config.autoscaling_config
-                != target_state.version.deployment_config.autoscaling_config
-            ):
-                ServeUsageTag.AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED.record("True")
-            elif (
-                self._target_state.version.deployment_config.num_replicas
-                != target_state.version.deployment_config.num_replicas
-            ):
-                ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
+        # if self._target_state.version == target_state.version:
+        #     # Record either num replica or autoscaling config lightweight update
+        #     if (
+        #         self._target_state.version.deployment_config.autoscaling_config
+        #         != target_state.version.deployment_config.autoscaling_config
+        #     ):
+        #         ServeUsageTag.AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED.record("True")
+        #     elif (
+        #         self._target_state.version.deployment_config.num_replicas
+        #         != target_state.version.deployment_config.num_replicas
+        #     ):
+        #         ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
         self._target_state = target_state
         self._curr_status_info = DeploymentStatusInfo(
@@ -1428,8 +1424,8 @@ class DeploymentState:
             if (
                 not self._target_state.deleting
                 and existing_info.deployment_config == deployment_info.deployment_config
-                and existing_info.replica_config.ray_actor_options
-                == deployment_info.replica_config.ray_actor_options
+                # and existing_info.deployment_config.ray_actor_options
+                # == deployment_info.replica_config.ray_actor_options
                 and deployment_info.version is not None
                 and existing_info.version == deployment_info.version
             ):
@@ -2411,7 +2407,7 @@ class DeploymentStateManager:
                 name=id.name,
                 status=status_info.status,
                 message=status_info.message,
-                deployment_config=_deployment_info_to_schema(
+                deployment_config=_deployment_info_to_read_model(
                     id.name, self.get_deployment(id)
                 ),
                 replicas=self._deployment_states[id].list_replica_details(),
@@ -2542,17 +2538,13 @@ class DeploymentStateManager:
 
         num_gpu_deployments = 0
         for deployment_state in self._deployment_states.values():
+            info = deployment_state.target_info
             if (
-                deployment_state.target_info is not None
-                and deployment_state.target_info.replica_config is not None
-                and deployment_state.target_info.replica_config.ray_actor_options
-                is not None
-                and (
-                    deployment_state.target_info.replica_config.ray_actor_options.get(
-                        "num_gpus", 0
-                    )
-                    > 0
-                )
+                info is not None
+                and info.deployment_config is not None
+                and info.deployment_config.ray_actor_options is not None
+                and info.deployment_config.ray_actor_options.num_gpus is not None
+                and info.deployment_config.ray_actor_options.num_gpus > 0
             ):
                 num_gpu_deployments += 1
         ServeUsageTag.NUM_GPU_DEPLOYMENTS.record(str(num_gpu_deployments))
