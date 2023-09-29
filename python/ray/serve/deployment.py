@@ -1,38 +1,21 @@
-from copy import deepcopy
 import inspect
 import logging
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
 import warnings
+from copy import deepcopy
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.dag.dag_node import DAGNodeBase
 from ray.dag.class_node import ClassNode
+from ray.dag.dag_node import DAGNodeBase
 from ray.dag.function_node import FunctionNode
-from ray.util.annotations import Deprecated, PublicAPI
-
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.constants import MIGRATION_MESSAGE, SERVE_LOGGER_NAME
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import (
-    RayActorOptionsSchema,
-    DeploymentSchema,
-)
-from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
-from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import (
-    DEFAULT,
-    Default,
-    guarded_deprecation_warning,
-)
-
+from ray.serve.schema import DeploymentSchema, RayActorOptionsSchema
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -133,7 +116,6 @@ class Deployment:
         replica_config: ReplicaConfig,
         version: Optional[str] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        is_driver_deployment: Optional[bool] = False,
         _internal=False,
     ) -> None:
         if not _internal:
@@ -157,12 +139,6 @@ class Deployment:
             if "{" in route_prefix or "}" in route_prefix:
                 raise ValueError("route_prefix may not contain wildcards.")
 
-        if is_driver_deployment is True:
-            if deployment_config.num_replicas != 1:
-                raise ValueError("num_replicas should not be set for driver deployment")
-            if deployment_config.autoscaling_config:
-                raise ValueError("autoscaling should not be set for driver deployment")
-
         docs_path = None
         if (
             inspect.isclass(replica_config.deployment_def)
@@ -177,7 +153,6 @@ class Deployment:
         self._deployment_config = deployment_config
         self._replica_config = replica_config
         self._route_prefix = route_prefix
-        self._is_driver_deployment = is_driver_deployment
         self._docs_path = docs_path
 
     @property
@@ -231,7 +206,7 @@ class Deployment:
 
     @property
     def url(self) -> Optional[str]:
-        if self._route_prefix is None or self._is_driver_deployment:
+        if self._route_prefix is None:
             # this deployment is not exposed over HTTP
             return None
 
@@ -403,7 +378,6 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-        is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
@@ -514,9 +488,6 @@ class Deployment:
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
 
-        if is_driver_deployment is DEFAULT.VALUE:
-            is_driver_deployment = self._is_driver_deployment
-
         new_replica_config = ReplicaConfig.create(
             func_or_class,
             init_args=init_args,
@@ -534,7 +505,6 @@ class Deployment:
             version=version,
             route_prefix=route_prefix,
             _internal=True,
-            is_driver_deployment=is_driver_deployment,
         )
 
     @Deprecated(
@@ -562,7 +532,6 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-        is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> None:
         """Overwrite this deployment's options in-place.
@@ -596,7 +565,6 @@ class Deployment:
             health_check_period_s=health_check_period_s,
             health_check_timeout_s=health_check_timeout_s,
             _internal=_internal,
-            is_driver_deployment=is_driver_deployment,
         )
 
         self._name = validated._name
@@ -665,7 +633,6 @@ def deployment_to_schema(
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
-        "is_driver_deployment": d._is_driver_deployment,
     }
 
     if include_route_prefix:
@@ -718,11 +685,6 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         max_replicas_per_node = s.max_replicas_per_node
 
-    if s.is_driver_deployment is DEFAULT.VALUE:
-        is_driver_deployment = False
-    else:
-        is_driver_deployment = s.is_driver_deployment
-
     deployment_config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
@@ -753,5 +715,4 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         replica_config=replica_config,
         route_prefix=s.route_prefix,
         _internal=True,
-        is_driver_deployment=is_driver_deployment,
     )

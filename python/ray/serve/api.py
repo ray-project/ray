@@ -10,37 +10,17 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
-
-from ray.serve.built_application import BuiltApplication
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve.config import (
-    gRPCOptions,
-    AutoscalingConfig,
-    DeploymentMode,
-    ProxyLocation,
-    HTTPOptions,
-)
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    SERVE_DEFAULT_APP_NAME,
     MIGRATION_MESSAGE,
+    SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve.context import (
-    ReplicaContext,
-    _get_global_client,
-    _get_internal_replica_context,
-    _set_global_client,
-)
-from ray.serve.deployment import Application, Deployment
-from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
-from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -50,16 +30,34 @@ from ray.serve._private.utils import (
     DEFAULT,
     Default,
     ensure_serialization_context,
+    extract_self_if_method_call,
+    get_random_letters,
+    guarded_deprecation_warning,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
-    guarded_deprecation_warning,
-    get_random_letters,
-    extract_self_if_method_call,
 )
+from ray.serve.built_application import BuiltApplication
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentMode,
+    HTTPOptions,
+    ProxyLocation,
+    gRPCOptions,
+)
+from ray.serve.context import (
+    ReplicaContext,
+    _get_global_client,
+    _get_internal_replica_context,
+    _set_global_client,
+)
+from ray.serve.deployment import Application, Deployment
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
+from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import ServeInstanceDetails, ServeStatus
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
-from ray.serve._private import api as _private_api
-
+from ray.serve._private import api as _private_api  # isort:skip
 
 logger = logging.getLogger(__file__)
 
@@ -70,7 +68,7 @@ def start(
     proxy_location: Union[None, str, ProxyLocation] = None,
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
-    grpc_options: Optional[gRPCOptions] = None,
+    grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -85,10 +83,6 @@ def start(
     These options can also be set in the config file deployed via REST API.
 
     Args:
-        detached: [DEPRECATED: in the future, this will always be `True`]
-          Whether or not the instance should be detached from this
-          script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown().
         proxy_location: Where to run proxies that handle ingress traffic to the
           cluster (defaults to every node in the cluster with at least one replica on
           it). See `ProxyLocation` for supported options.
@@ -97,13 +91,15 @@ def start(
           `HTTPOptions` for supported options.
         dedicated_cpu: [DEPRECATED] Whether to reserve a CPU core for the
           Serve controller actor.
-        grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. See
-          `gRPCOptions` for supported options.
+        grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
+          be passed as an unstructured dictionary or the structured `gRPCOptions`
+          class See `gRPCOptions` for supported options.
     """
-    if not detached:
-        warnings.warn(
-            "Setting `detached=False` in `serve.start` is deprecated and will be "
-            "removed in a future version."
+
+    if detached is not True:
+        raise ValueError(
+            "`detached=False` is no longer supported. "
+            "In a future release, it will be removed altogether."
         )
 
     if dedicated_cpu:
@@ -127,7 +123,6 @@ def start(
         http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
 
     _private_api.serve_start(
-        detached=detached,
         http_options=http_options,
         dedicated_cpu=dedicated_cpu,
         grpc_options=grpc_options,
@@ -282,7 +277,6 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-    is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -337,8 +331,6 @@ def deployment(
             no more work to be done before shutting down. Defaults to 2s.
         graceful_shutdown_timeout_s: Duration to wait for a replica to gracefully
             shut down before being forcefully killed. Defaults to 20s.
-        is_driver_deployment: [EXPERIMENTAL] when set, exactly one replica of this
-            deployment runs on every node (like a daemon set).
         max_replicas_per_node: [EXPERIMENTAL] The max number of deployment replicas can
             run on a single node. Valid values are None (no limitation)
             or an integer in the range of [1, 100].
@@ -385,9 +377,6 @@ def deployment(
             "`serve.run` instead."
         )
 
-    if is_driver_deployment is DEFAULT.VALUE:
-        is_driver_deployment = False
-
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
@@ -431,7 +420,6 @@ def deployment(
             replica_config,
             version=(version if version is not DEFAULT.VALUE else None),
             route_prefix=route_prefix,
-            is_driver_deployment=is_driver_deployment,
             _internal=True,
         )
 
@@ -523,7 +511,6 @@ def run(
         )
 
     client = _private_api.serve_start(
-        detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},
     )
 
@@ -566,7 +553,6 @@ def run(
             "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
-            "is_driver_deployment": deployment._is_driver_deployment,
             "docs_path": deployment._docs_path,
             "ingress": deployment._name == ingress._name,
         }
@@ -871,9 +857,7 @@ def get_app_handle(name: str) -> DeploymentHandle:
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = _get_internal_replica_context() is None
-    return client.get_handle(ingress, name, sync=sync).options(
-        use_new_handle_api=True,
-    )
+    return client.get_handle(ingress, name, sync=sync, use_new_handle_api=True)
 
 
 @DeveloperAPI
@@ -913,6 +897,6 @@ def get_deployment_handle(
     ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = internal_replica_context is None
-    return client.get_handle(deployment_name, app_name, sync=sync).options(
-        use_new_handle_api=True
+    return client.get_handle(
+        deployment_name, app_name, sync=sync, use_new_handle_api=True
     )

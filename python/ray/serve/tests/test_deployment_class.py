@@ -1,8 +1,9 @@
-import sys
-import pytest
-import random
 import itertools
+import random
+import sys
 from typing import Dict, List
+
+import pytest
 
 from ray import serve
 from ray.serve._private.config import DeploymentConfig
@@ -75,7 +76,6 @@ class TestGetDictCombos:
 
 
 class TestDeploymentOptions:
-
     # Deployment options mapped to sample input
     deployment_options = {
         "name": "test",

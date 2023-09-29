@@ -3,15 +3,15 @@ import gc
 import sys
 
 import numpy as np
-import requests
 import pytest
+import requests
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 import ray
-from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray._private.test_utils import SignalActor
+from ray.exceptions import GetTimeoutError
 from ray.serve.context import _get_global_client
 from ray.serve.drivers import DAGDriver
 
@@ -204,7 +204,7 @@ def test_out_of_order_chaining(serve_instance):
             r2_ref = await self.m2.compute.remote(r1_task)
             await r2_ref
 
-    @serve.deployment
+    @serve.deployment(graceful_shutdown_timeout_s=0.0)
     class FirstModel:
         async def compute(self, _id):
             if _id == 0:

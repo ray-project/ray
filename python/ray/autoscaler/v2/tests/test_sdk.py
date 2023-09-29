@@ -693,7 +693,7 @@ def test_get_cluster_status(ray_start_cluster):
     def verify_nodes():
         cluster_status = get_cluster_status()
         assert_nodes(
-            cluster_status.healthy_nodes,
+            cluster_status.idle_nodes,
             [
                 ExpectedNodeInfo(
                     worker_node_ids[0],
@@ -726,7 +726,13 @@ def test_get_cluster_status(ray_start_cluster):
     def verify_nodes_busy():
         cluster_status = get_cluster_status()
         assert_nodes(
-            cluster_status.healthy_nodes,
+            cluster_status.idle_nodes,
+            [
+                ExpectedNodeInfo(head_node_id, "IDLE", lambda idle_ms: idle_ms > 0),
+            ],
+        )
+        assert_nodes(
+            cluster_status.active_nodes,
             [
                 ExpectedNodeInfo(
                     worker_node_ids[0],
@@ -735,7 +741,6 @@ def test_get_cluster_status(ray_start_cluster):
                     total_resources={"CPU": 2.0},
                     available_resources={"CPU": 0.0},
                 ),
-                ExpectedNodeInfo(head_node_id, "IDLE", lambda idle_ms: idle_ms > 0),
             ],
         )
         return True

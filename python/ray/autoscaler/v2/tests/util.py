@@ -83,10 +83,9 @@ class NodeCountCheck(Check):
         self.count = count
 
     def check(self, status: ClusterStatus):
-        if len(status.healthy_nodes) != self.count:
-            raise CheckFailure(
-                f"Expected {self.count} nodes, got {len(status.healthy_nodes)}"
-            )
+        healthy_nodes = len(status.active_nodes) + len(status.idle_nodes)
+        if healthy_nodes != self.count:
+            raise CheckFailure(f"Expected {self.count} nodes, got {healthy_nodes}")
 
     def __str__(self) -> str:
         return f"NodeCountCheck: {self.count}"

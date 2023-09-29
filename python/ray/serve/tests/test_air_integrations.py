@@ -6,20 +6,20 @@ import numpy as np
 import pandas as pd
 import pytest
 import requests
-from starlette.requests import Request
 from fastapi import Depends, FastAPI
+from starlette.requests import Request
 
 import ray
 import ray.cloudpickle as ray_pickle
 from ray import serve
-from ray.train import Checkpoint
+from ray.data.extensions import TensorArray
+from ray.serve._private.deployment_graph_build import build
 from ray.serve.air_integrations import _BatchingManager
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.deployment_graph_build import build
 from ray.serve.http_adapters import json_to_ndarray
+from ray.train import Checkpoint
 from ray.train.predictor import DataBatchType, Predictor
-from ray.data.extensions import TensorArray
 
 
 class TestBatchingFunctionFunctions:
