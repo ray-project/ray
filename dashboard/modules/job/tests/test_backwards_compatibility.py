@@ -96,18 +96,17 @@ def test_error_message():
                 **unsupported_submit_kwargs,
             )
 
-    for unsupported_submit_kwargs in [{"entrypoint_memory": 4}]:
-        with pytest.raises(
-            Exception,
-            match="Ray version 2.0.1 is running on the cluster. "
-            "`entrypoint_memory` kwarg"
-            " is not supported on the Ray cluster. Please ensure the cluster is "
-            "running Ray 2.8 or higher.",
-        ):
-            client.submit_job(
-                entrypoint="echo hello",
-                **unsupported_submit_kwargs,
-            )
+    with pytest.raises(
+        Exception,
+        match="Ray version 2.0.1 is running on the cluster. "
+        "`entrypoint_memory` kwarg"
+        " is not supported on the Ray cluster. Please ensure the cluster is "
+        "running Ray 2.8 or higher.",
+    ):
+        client.submit_job(
+            entrypoint="echo hello",
+            entrypoint_memory=4,
+        )
 
     assert True
 
