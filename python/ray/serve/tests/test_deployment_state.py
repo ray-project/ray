@@ -2554,7 +2554,7 @@ def test_resource_requirements_none():
         available_resources = {}
 
     # Make a DeploymentReplica just to accesss its resource_requirement function
-    replica = DeploymentReplica(None, None, "random_tag", None, None)
+    replica = DeploymentReplica(None, "random_tag", None, None)
     replica._actor = FakeActor()
 
     # resource_requirements() should not error
