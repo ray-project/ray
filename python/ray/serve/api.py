@@ -83,10 +83,6 @@ def start(
     These options can also be set in the config file deployed via REST API.
 
     Args:
-        detached: [DEPRECATED: in the future, this will always be `True`]
-          Whether or not the instance should be detached from this
-          script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown().
         proxy_location: Where to run proxies that handle ingress traffic to the
           cluster (defaults to every node in the cluster with at least one replica on
           it). See `ProxyLocation` for supported options.
@@ -97,10 +93,11 @@ def start(
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
     """
-    if not detached:
-        warnings.warn(
-            "Setting `detached=False` in `serve.start` is deprecated and will be "
-            "removed in a future version."
+
+    if detached is not True:
+        raise ValueError(
+            "`detached=False` is no longer supported. "
+            "In a future release, it will be removed altogether."
         )
 
     if dedicated_cpu is not False:
@@ -124,7 +121,6 @@ def start(
         http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
 
     _private_api.serve_start(
-        detached=detached,
         http_options=http_options,
         grpc_options=grpc_options,
         **kwargs,
@@ -512,7 +508,6 @@ def run(
         )
 
     client = _private_api.serve_start(
-        detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},
     )
 
