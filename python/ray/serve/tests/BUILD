@@ -10,18 +10,8 @@ py_library(
   srcs = glob(["common/*.py"]),
   visibility = [
     "//python/ray/serve/tests:__subpackages__",
+  ]
 )
-
-# Unit tests:
-    # "test_application_state.py",
-    # "test_grpc_util.py",
-    # "test_deployment_state.py",
-    # "test_deployment_class.py",
-    # "test_config.py",
-    # "test_request_metadata.py",
-    # "test_common.py",
-    # "test_endpoint_state.py",
-    # "test_proxy_request_response.py",
 
 # Small tests.
 py_test_module_list(
@@ -37,7 +27,6 @@ py_test_module_list(
     "test_deployment_version.py",
     "test_kv_store.py",
     "test_persistence.py",
-    "test_replica_scheduler.py",
     "test_cluster_node_info_cache.py",
     "test_long_poll.py",
     "test_schema.py",
@@ -50,11 +39,11 @@ py_test_module_list(
     "test_deployment_graph_ingress_deployment.py",
     "test_deployment_graph_handle_serde.py",
     "test_websockets.py",
-    "test_deployment_node.py",
+    "test_deployment_node.py"
   ],
   size = "small",
   tags = ["exclusive", "team:serve"],
-  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"]
 )
 
 # Medium tests.
@@ -138,17 +127,17 @@ py_test_module_list(
   size = "large",
   tags = ["exclusive", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
-  data = glob(["tests/test_config_files/**/*"]),
+  data = glob(["test_config_files/**/*"]),
 )
 
 # GPU tests.
 py_test_module_list(
   files = [
-    "test_air_integrations_gpu",
+    "test_air_integrations_gpu.py",
   ],
   size = "small",
   tags = ["exclusive", "team:serve", "gpu"],
-  deps = [":serve_lib", ":conftest", ":common"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
 
@@ -156,19 +145,20 @@ py_test_module_list(
 py_test(
    name = "test_controller_crashes",
    size = "large",
-   srcs = glob(["tests/test_controller_crashes.py",
-               "tests/test_api.py",
-               "tests/test_failure.py"]),
-   tags = ["exclusive", "team:serve", ":conftest", ":common"],
-   deps = [":serve_lib"],
+   srcs = ["test_controller_crashes.py",
+               "test_api.py",
+               "test_failure.py"],
+   tags = ["exclusive", "team:serve",],
+   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
 py_test(
-    "test_new_handle_api_set_via_env_var.py",
+    name = "test_new_handle_api_set_via_env_var",
     size = "medium",
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib", ":conftest", ":common"],
+    srcs = ["test_new_handle_api_set_via_env_var.py"],
     env = {"RAY_SERVE_ENABLE_NEW_HANDLE_API": "1"},
+    tags = ["exclusive", "team:serve"],
+    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
 py_test(
@@ -179,11 +169,13 @@ py_test(
     args = ["--path", "doc/source/serve/tutorials/rllib.md"],
     data = ["//doc/source/serve/tutorials:markdowns"],
     tags = ["exclusive", "team:serve", "no_main"],
+    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
 py_test(
     name = "test_serve_ha",
+    srcs = ["test_serve_ha.py"],
     size = "medium",
     tags = ["exclusive", "team:serve", "xcommit"],
-    deps = [":serve_lib", ":conftest", ":common"],
+    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )

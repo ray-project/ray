@@ -6,8 +6,8 @@ doctest(
         exclude=[
             "tests/**",
             # FIXME: Failing on Windows
-            "gradio_integrations.py"
-            "_private/benchmarks/**",
+            "gradio_integrations.py",
+            "_private/benchmarks/**"
         ]
     ),
     tags = ["team:serve"]
