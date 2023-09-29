@@ -38,13 +38,17 @@
 }
 
 div.navbar-brand-box {
-    padding-top: 4em;
+    padding-top: 0em;
 }
 
 /* For Algolia search box
     * overflow-y: to flow-over horizontally into main content
     * height: to prevent topbar overlap
 */
+h1.site-logo {
+    font-size: 0.8rem;
+}
+
 #site-navigation {
   overflow-y: auto;
   height: calc(100vh - var(--sidebar-top));
