@@ -3,26 +3,17 @@ import sys
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.utils import get_head_node_id
-from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
-    PlacementGroupSchedulingStrategy,
-)
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 class SpreadDeploymentSchedulingPolicy:
     """A scheduling policy that spreads replicas with best effort."""
-
-    pass
-
-
-class DriverDeploymentSchedulingPolicy:
-    """A scheduling policy that schedules exactly one replica on each node."""
 
     pass
 
@@ -71,9 +62,7 @@ class DeploymentScheduler(ABC):
     def on_deployment_created(
         self,
         deployment_id: DeploymentID,
-        scheduling_policy: Union[
-            SpreadDeploymentSchedulingPolicy, DriverDeploymentSchedulingPolicy
-        ],
+        scheduling_policy: SpreadDeploymentSchedulingPolicy,
     ) -> None:
         """Called whenever a new deployment is created."""
         raise NotImplementedError
@@ -149,9 +138,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     def on_deployment_created(
         self,
         deployment_id: DeploymentID,
-        scheduling_policy: Union[
-            SpreadDeploymentSchedulingPolicy, DriverDeploymentSchedulingPolicy
-        ],
+        scheduling_policy: SpreadDeploymentSchedulingPolicy,
     ) -> None:
         """Called whenever a new deployment is created."""
         assert deployment_id not in self._pending_replicas
@@ -231,16 +218,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             if not pending_replicas:
                 continue
 
-            deployment_scheduling_policy = self._deployments[deployment_id]
-            if isinstance(
-                deployment_scheduling_policy, SpreadDeploymentSchedulingPolicy
-            ):
-                self._schedule_spread_deployment(deployment_id)
-            else:
-                assert isinstance(
-                    deployment_scheduling_policy, DriverDeploymentSchedulingPolicy
-                )
-                self._schedule_driver_deployment(deployment_id)
+            self._schedule_spread_deployment(deployment_id)
 
         deployment_to_replicas_to_stop = {}
         for downscale in downscales.values():
@@ -299,43 +277,6 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             replica_scheduling_request.on_scheduled(
                 actor_handle, placement_group=placement_group
             )
-
-    def _schedule_driver_deployment(self, deployment_id: DeploymentID) -> None:
-        if self._recovering_replicas[deployment_id]:
-            # Wait until recovering is done before scheduling new replicas
-            # so that we can make sure we don't schedule two replicas on the same node.
-            return
-
-        all_active_nodes = self._cluster_node_info_cache.get_active_node_ids()
-        scheduled_nodes = set()
-        for node_id in self._launching_replicas[deployment_id].values():
-            assert node_id is not None
-            scheduled_nodes.add(node_id)
-        for node_id in self._running_replicas[deployment_id].values():
-            assert node_id is not None
-            scheduled_nodes.add(node_id)
-        unscheduled_nodes = all_active_nodes - scheduled_nodes
-
-        for pending_replica_name in list(self._pending_replicas[deployment_id].keys()):
-            if not unscheduled_nodes:
-                return
-
-            replica_scheduling_request = self._pending_replicas[deployment_id][
-                pending_replica_name
-            ]
-
-            target_node_id = unscheduled_nodes.pop()
-            actor_handle = replica_scheduling_request.actor_def.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    target_node_id, soft=False
-                ),
-                **replica_scheduling_request.actor_options,
-            ).remote(*replica_scheduling_request.actor_init_args)
-            del self._pending_replicas[deployment_id][pending_replica_name]
-            self._launching_replicas[deployment_id][
-                pending_replica_name
-            ] = target_node_id
-            replica_scheduling_request.on_scheduled(actor_handle, placement_group=None)
 
     def _get_replicas_to_stop(
         self, deployment_id: DeploymentID, max_num_to_stop: int
