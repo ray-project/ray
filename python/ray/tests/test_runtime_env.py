@@ -112,12 +112,14 @@ def test_get_wheel_filename():
     """Test the code that generates the filenames of the `latest` wheels."""
     # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
-    for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
-            filename = get_wheel_filename(sys_platform, ray_version, py_version)
-            prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
-            url = f"{prefix}{filename}"
-            assert requests.head(url).status_code == 200, url
+    for arch in ["x86_64", "aarch64", "arm64"]:
+        for sys_platform in ["darwin", "linux", "win32"]:
+            for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
+                filename = get_wheel_filename(
+                    sys_platform, ray_version, py_version, arch)
+                prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
+                url = f"{prefix}{filename}"
+                assert requests.head(url).status_code == 200, url
 
 
 def test_get_master_wheel_url():
