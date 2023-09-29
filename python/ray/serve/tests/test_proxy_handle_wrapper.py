@@ -62,6 +62,26 @@ class TestUnary:
         with pytest.raises(RuntimeError, match="oopsies"):
             await p.stream_request("", method_name="error").__anext__()
 
+    async def test_result_callback(self, serve_instance):
+        @serve.deployment
+        class D:
+            def __call__(self, name: str) -> str:
+                return f"Hello {name}!"
+
+        h = serve.run(D.bind()).options(
+            stream=False,
+            use_new_handle_api=True,
+        )
+
+        def result_callback(result: str) -> str:
+            return f"Callback called on: {result}"
+
+        p = ProxyHandleWrapper(h, result_callback=result_callback)
+
+        responses = [r async for r in p.stream_request("Alice")]
+        assert len(responses) == 1
+        assert set(responses) == {"Callback called on: Hello Alice!"}
+
     async def test_timeout_while_assigning(self, serve_instance):
         signal_actor = SignalActor.remote()
 
@@ -137,8 +157,8 @@ class TestUnary:
             return await gen.__anext__()
 
         gen_next = asyncio.ensure_future(get_next())
-        with pytest.raises(asyncio.exceptions.TimeoutError):
-            await asyncio.wait_for(gen_next, timeout=0.1)
+        done, _ = await asyncio.wait([gen_next], timeout=0.1)
+        assert len(done) == 0
 
         # Set the disconnect event, causing the disconnect task to finish.
         disconnect_event.set()
@@ -169,8 +189,8 @@ class TestUnary:
             return await gen.__anext__()
 
         gen_next = asyncio.ensure_future(get_next())
-        with pytest.raises(asyncio.exceptions.TimeoutError):
-            await asyncio.wait_for(gen_next, timeout=0.1)
+        done, _ = await asyncio.wait([gen_next], timeout=0.1)
+        assert len(done) == 0
 
         # Set the disconnect event, causing the disconnect task to finish.
         disconnect_event.set()
@@ -183,7 +203,7 @@ class TestUnary:
 
 @pytest.mark.asyncio
 class TestStreaming:
-    async def test_basic_streaming(self, serve_instance):
+    async def test_basic(self, serve_instance):
         @serve.deployment
         class D:
             def __call__(self, name: str) -> str:
@@ -231,6 +251,27 @@ class TestStreaming:
         assert await gen.__anext__() == "Hello Alice!"
         with pytest.raises(RuntimeError, match="oopsies"):
             await gen.__anext__()
+
+    async def test_result_callback(self, serve_instance):
+        @serve.deployment
+        class D:
+            def __call__(self, name: str) -> str:
+                for _ in range(5):
+                    yield f"Hello {name}!"
+
+        h = serve.run(D.bind()).options(
+            stream=True,
+            use_new_handle_api=True,
+        )
+
+        def result_callback(result: str) -> str:
+            return f"Callback called on: {result}"
+
+        p = ProxyHandleWrapper(h, result_callback=result_callback)
+
+        responses = [r async for r in p.stream_request("Alice")]
+        assert len(responses) == 5
+        assert set(responses) == {"Callback called on: Hello Alice!"}
 
     async def test_timeout_while_assigning(self, serve_instance):
         signal_actor = SignalActor.remote()
@@ -312,8 +353,8 @@ class TestStreaming:
             return await gen.__anext__()
 
         gen_next = asyncio.ensure_future(get_next())
-        with pytest.raises(asyncio.exceptions.TimeoutError):
-            await asyncio.wait_for(gen_next, timeout=0.1)
+        done, _ = await asyncio.wait([gen_next], timeout=0.1)
+        assert len(done) == 0
 
         # Set the disconnect event, causing the disconnect task to finish.
         disconnect_event.set()
@@ -346,13 +387,56 @@ class TestStreaming:
             return await gen.__anext__()
 
         gen_next = asyncio.ensure_future(get_next())
-        with pytest.raises(asyncio.exceptions.TimeoutError):
-            await asyncio.wait_for(gen_next, timeout=0.1)
+        done, _ = await asyncio.wait([gen_next], timeout=0.1)
+        assert len(done) == 0
 
         # Set the disconnect event, causing the disconnect task to finish.
         disconnect_event.set()
         with pytest.raises(asyncio.CancelledError):
             await gen_next
+
+        assert await signal_actor.cur_num_waiters.remote() == 1
+        await signal_actor.send.remote()
+
+    async def test_stop_checking_disconnected_event(self, serve_instance):
+        signal_actor = SignalActor.remote()
+        disconnect_event, disconnect_task = disconnect_task_and_event()
+        stop_checking_disconnected_event = asyncio.Event()
+
+        @serve.deployment
+        class D:
+            async def __call__(self, _: str) -> str:
+                yield "hi"
+                await signal_actor.wait.remote()
+
+        h = serve.run(D.bind()).options(
+            stream=True,
+            use_new_handle_api=True,
+        )
+
+        p = ProxyHandleWrapper(h)
+        gen = p.stream_request(
+            "",
+            disconnected_task=disconnect_task,
+            stop_checking_disconnected_event=stop_checking_disconnected_event,
+        )
+        assert (await gen.__anext__()) == "hi"
+
+        stop_checking_disconnected_event.set()
+
+        async def get_next():
+            return await gen.__anext__()
+
+        gen_next = asyncio.ensure_future(get_next())
+        done, _ = await asyncio.wait([gen_next], timeout=0.1)
+        assert len(done) == 0
+
+        # Set the disconnect event, causing the disconnect task to finish.
+        # However, the `stop_checking_disconnected_event` is also set so this
+        # should still time out.
+        disconnect_event.set()
+        done, _ = await asyncio.wait([gen_next], timeout=0.1)
+        assert len(done) == 0
 
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()

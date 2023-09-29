@@ -42,14 +42,10 @@ class ProxyHandleWrapper(AbstractProxyHandleWrapper):
         self,
         handle: DeploymentHandle,
         *,
-        get_current_time_fn: Optional[Callable[[], float]] = None,
+        result_callback: Optional[Callable[[Any], Any]] = None,
     ):
-        if get_current_time_fn is None:
-            self._get_current_time_fn = time.time
-        else:
-            self._get_current_time_fn = get_current_time_fn
-
         self._handle = handle
+        self._result_callback = result_callback
 
     async def _consume_streaming_generator_with_timeout(
         self,
@@ -57,6 +53,7 @@ class ProxyHandleWrapper(AbstractProxyHandleWrapper):
         *,
         timeout_s: Optional[float] = None,
         disconnected_task: Optional[asyncio.Task] = None,
+        stop_checking_disconnected_event: Optional[asyncio.Event] = None,
     ) -> AsyncIterator[Any]:
         """Yield the results from the generator with an optional timeout.
 
@@ -71,21 +68,24 @@ class ProxyHandleWrapper(AbstractProxyHandleWrapper):
         async def await_next_result() -> Any:
             return await response.__anext__()
 
-        # TODO: need to somehow stop listening for disconnects. Pass an event?
-
-        start_time_s = self._get_current_time_fn()
+        start_time_s = time.time()
         while True:
             next_result_task = asyncio.ensure_future(await_next_result())
             tasks = [next_result_task]
-            if disconnected_task is not None:
+            if (
+                disconnected_task is not None
+                and stop_checking_disconnected_event is None
+                or not stop_checking_disconnected_event.is_set()
+            ):
                 tasks.append(disconnected_task)
+
             done, _ = await asyncio.wait(
                 tasks,
                 return_when=FIRST_COMPLETED,
                 timeout=calculate_remaining_timeout(
                     timeout_s=timeout_s,
                     start_time_s=start_time_s,
-                    curr_time_s=self._get_current_time_fn(),
+                    curr_time_s=time.time(),
                 ),
             )
             if next_result_task in done:
@@ -147,6 +147,7 @@ class ProxyHandleWrapper(AbstractProxyHandleWrapper):
         disconnected_task: Optional[asyncio.Task] = None,
         method_name: Optional[str] = None,
         multiplexed_model_id: Optional[str] = None,
+        stop_checking_disconnected_event: Optional[asyncio.Event] = None,
     ) -> AsyncIterator[Any]:
         handle = self._handle
         if method_name is not None:
@@ -162,11 +163,19 @@ class ProxyHandleWrapper(AbstractProxyHandleWrapper):
                 response,
                 timeout_s=timeout_s,
                 disconnected_task=disconnected_task,
+                stop_checking_disconnected_event=stop_checking_disconnected_event,
             ):
+                if self._result_callback is not None:
+                    result = self._result_callback(result)
+
                 yield result
         else:
-            yield await self._await_unary_response_with_timeout(
+            result = await self._await_unary_response_with_timeout(
                 response,
                 timeout_s=timeout_s,
                 disconnected_task=disconnected_task,
             )
+            if self._result_callback is not None:
+                result = self._result_callback(result)
+
+            yield result
