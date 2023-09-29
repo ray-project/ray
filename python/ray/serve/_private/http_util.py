@@ -4,7 +4,6 @@ import json
 import logging
 import pickle
 import socket
-from dataclasses import dataclass
 from typing import Any, List, Optional, Type
 
 import starlette
@@ -15,15 +14,10 @@ from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.utils import serve_encoders
 from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-@dataclass
-class HTTPRequestWrapper:
-    scope: Scope
-    body: bytes
 
 
 def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
@@ -80,9 +74,6 @@ class Response:
             self.body = content.encode("utf-8")
             self.set_content_type("text-utf8")
         else:
-            # Delayed import since utils depends on http_util
-            from ray.serve._private.utils import serve_encoders
-
             self.body = json.dumps(
                 jsonable_encoder(content, custom_encoder=serve_encoders)
             ).encode()
@@ -120,42 +111,6 @@ async def receive_http_body(scope, receive, send):
         body_buffer.append(message["body"])
 
     return b"".join(body_buffer)
-
-
-class RawASGIResponse(ASGIApp):
-    """Implement a raw ASGI response interface.
-
-    We have to build this because starlette's base response class is
-    still too smart and perform header inference.
-    """
-
-    def __init__(self, messages):
-        self.messages = messages
-
-    async def __call__(self, scope, receive, send):
-        for message in self.messages:
-            await send(message)
-
-    @property
-    def status_code(self):
-        return self.messages[0]["status"]
-
-
-class BufferedASGISender(Send):
-    """Implements the ASGI sender interface by buffering messages.
-
-    The messages can be built into an ASGI response.
-    """
-
-    def __init__(self) -> None:
-        self.messages = []
-
-    async def __call__(self, message):
-        assert message["type"] in ("http.response.start", "http.response.body")
-        self.messages.append(message)
-
-    def build_asgi_response(self) -> RawASGIResponse:
-        return RawASGIResponse(self.messages)
 
 
 class ASGIMessageQueue(Send):

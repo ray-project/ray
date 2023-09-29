@@ -129,7 +129,8 @@ def test_trainable_error_with_trainer(ray_start_4_cpus, tmp_path, fail_fast):
         # The cause of the error should be the trainable error
         assert isinstance(exc_info.value.__cause__, _TestSpecificError)
 
-        # TODO(justinvyu): re-enable it after changing the `Trainer.restore` API
+        # TODO(justinvyu): Re-enable after fixing the Trainer.restore(...) error
+        # message to give the correct path. Currently it recommends the local path.
         # Since the trainable failed, we should get a message about restore + setting
         # FailureConfig for retry on runtime errors for a new run.
         # assert TrainingFailedError._RESTORE_MSG.format(
@@ -184,7 +185,8 @@ def test_driver_error_with_trainer(ray_start_4_cpus, tmp_path, error_on):
     # TODO(ml-team): Assert the cause error type once driver error propagation is fixed
     assert "_TestSpecificError" in str(exc_info.value.__cause__)
 
-    # TODO(justinvyu): re-enable it after changing the `Trainer.restore` API
+    # TODO(justinvyu): Re-enable after fixing the Trainer.restore(...) error
+    # message to give the correct path. Currently it recommends the local path.
     # The error message should just recommend restore
     # FailureConfig doesn't apply since this is not a trainable error
     # assert TrainingFailedError._RESTORE_MSG.format(

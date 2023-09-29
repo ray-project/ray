@@ -213,7 +213,6 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         async with self._controller_start_lock:
             client = await serve_start_async(
-                detached=True,
                 http_options={
                     "host": config.host,
                     "port": config.port,
@@ -291,7 +290,6 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         async with self._controller_start_lock:
             client = await serve_start_async(
-                detached=True,
                 http_options=full_http_options,
                 grpc_options=grpc_options,
             )

@@ -317,14 +317,12 @@ class ProxyStateManager:
     def __init__(
         self,
         controller_name: str,
-        detached: bool,
         config: HTTPOptions,
         head_node_id: str,
         cluster_node_info_cache: ClusterNodeInfoCache,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_name = controller_name
-        self._detached = detached
         if config is not None:
             self._config = config
         else:
@@ -483,7 +481,7 @@ class ProxyStateManager:
             num_cpus=self._config.num_cpus,
             name=name,
             namespace=SERVE_NAMESPACE,
-            lifetime="detached" if self._detached else None,
+            lifetime="detached",
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
