@@ -104,10 +104,11 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     s = PowerOfTwoChoicesReplicaScheduler(
         get_or_create_event_loop(),
         DeploymentID("TEST_DEPLOYMENT", "TEST_APP"),
-        request.param.get("prefer_local_node", False),
-        request.param.get("prefer_local_az", False),
-        SCHEDULER_NODE_ID,
-        request.param.get("az", None),
+        prefer_local_node_routing=request.param.get("prefer_local_node", False),
+        prefer_local_az_routing=request.param.get("prefer_local_az", False),
+        self_node_id=SCHEDULER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_availability_zone=request.param.get("az", None),
     )
 
     # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S

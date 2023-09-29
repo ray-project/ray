@@ -38,7 +38,6 @@ try:
 except ImportError:
     pd = None
 
-ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 MESSAGE_PACK_OFFSET = 9
 
 
@@ -649,14 +648,29 @@ def get_all_live_placement_group_names() -> List[str]:
     return live_pg_names
 
 
-def in_ray_driver_process() -> bool:
-    """Returns True if called in the Ray driver, False otherwise.
+def get_current_actor_id() -> str:
+    """Gets the ID of the calling actor.
+
+    If this is called in a driver, returns "DRIVER."
+
+    If otherwise called outside of an actor, returns an empty string.
 
     This function hangs when GCS is down due to the `ray.get_runtime_context()`
     call.
     """
 
-    return ray.get_runtime_context().worker.mode in [SCRIPT_MODE, LOCAL_MODE]
+    worker_mode = ray.get_runtime_context().worker.mode
+    if worker_mode in {SCRIPT_MODE, LOCAL_MODE}:
+        return "DRIVER"
+    else:
+        try:
+            actor_id = ray.get_runtime_context().get_actor_id()
+            if actor_id is None:
+                return ""
+            else:
+                return actor_id
+        except Exception:
+            return ""
 
 
 def is_running_in_asyncio_loop() -> bool:
