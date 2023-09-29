@@ -14,6 +14,7 @@ from ray.serve._private.router import RequestMetadata, Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    get_current_actor_id,
     get_random_letters,
     is_running_in_asyncio_loop,
 )
@@ -166,6 +167,7 @@ class _DeploymentHandleBase:
                 serve.context._get_global_client()._controller,
                 self.deployment_id,
                 node_id,
+                get_current_actor_id(),
                 availability_zone,
                 event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
                 _prefer_local_node_routing=self.handle_options._prefer_local_routing,

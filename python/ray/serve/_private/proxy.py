@@ -116,7 +116,6 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 
 INITIAL_BACKOFF_PERIOD_SEC = 0.05
 MAX_BACKOFF_PERIOD_SEC = 5
-BACKOFF_FACTOR = 2
 DRAINED_MESSAGE = "This node is being drained."
 HEALTH_CHECK_SUCCESS_MESSAGE = "success"
 
@@ -1598,6 +1597,7 @@ class ProxyActor:
         grpc_server = create_serve_grpc_server(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
+
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a
