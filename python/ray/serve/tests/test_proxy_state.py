@@ -834,11 +834,11 @@ def test_unhealthy_retry_correct_number_of_times():
     )
 
     # Ensure _health_check_obj_ref is set again
-    def check_health_obj_ref_not_none():
+    def health_check_ongoing():
         proxy_state.update()
-        return proxy_state._proxy_actor_wrapper.health_check_obj_ref is not None
+        return proxy_state._proxy_actor_wrapper.health_check_ongoing()
 
-    wait_for_condition(check_health_obj_ref_not_none)
+    wait_for_condition(health_check_ongoing)
 
     # Fail the next 3 check_health calls should change the status to UNHEALTHY
     for _ in range(3):

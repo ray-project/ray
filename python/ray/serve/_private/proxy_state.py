@@ -289,7 +289,6 @@ class ProxyState:
         self._actor_name = actor_name
         self._node_id = node_id
         self._status = ProxyStatus.STARTING
-        self._health_check_obj_ref = None
         self._last_health_check_time: float = time.time()
         self._shutting_down = False
         self._consecutive_health_check_failures: int = 0
@@ -523,7 +522,7 @@ class ProxyState:
         if not self._shutting_down:
             return False
 
-        return self._proxy_actor_wrapper.is_ready_for_shutdown()
+        return self._proxy_actor_wrapper.is_shutdown()
 
 
 class ProxyStateManager:
