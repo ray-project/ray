@@ -80,33 +80,6 @@
       --test_tag_filters=learning_tests_discrete,learning_tests_continuous,crashing_cartpole,stateless_cartpole,-fake_gpus,-torch_only,-multi_gpu,-no_tf_eager_tracing
       --test_arg=--framework=tf2 rllib/...
 
-- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs TF2-static-graph"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph,-multi_gpu
-      --test_arg=--framework=tf
-      rllib/...
-
-# TODO: (sven) tf2 (eager) multi-GPU
-- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs PyTorch"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=fake_gpus,-tf_only,-tf2_only,-multi_gpu
-      --test_arg=--framework=torch
-      rllib/...
-
 - label: ":brain: RLlib: Memory leak tests TF2-eager-tracing"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   instance_size: medium
