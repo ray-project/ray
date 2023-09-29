@@ -24,45 +24,29 @@ class TorchDatasource(Datasource):
     def create_reader(
         self,
         dataset: "torch.utils.data.Dataset",
-        shuffle: bool = False,
     ):
-        return _TorchDatasourceReader(dataset, shuffle)
+        return _TorchDatasourceReader(dataset)
 
 
 class _TorchDatasourceReader(Reader):
     def __init__(
         self,
         dataset: "torch.utils.data.Dataset",
-        shuffle: bool,
     ):
         self._dataset = dataset
-        self._shuffle = shuffle
 
     def get_read_tasks(self, parallelism):
         import torch
 
         rows = len(self._dataset)
-        subsets = None
-        if self._shuffle:
-            lengths = [rows // parallelism] * parallelism
-            remainder = rows - sum(lengths)
-            # spread remainder across lengths
-            for i in range(remainder):
-                lengths[i] += 1
-            subsets = torch.utils.data.random_split(
+        rows_per_worker = math.ceil(rows / parallelism)
+        subsets = [
+            torch.utils.data.Subset(
                 self._dataset,
-                # use lengths array instead of fractions to avoid floating point error
-                lengths,
+                range(i * rows_per_worker, min((i + 1) * rows_per_worker, rows)),
             )
-        else:
-            rows_per_worker = math.ceil(rows / parallelism)
-            subsets = [
-                torch.utils.data.Subset(
-                    self._dataset,
-                    range(i * rows_per_worker, min((i + 1) * rows_per_worker, rows)),
-                )
-                for i in range(parallelism)
-            ]
+            for i in range(parallelism)
+        ]
 
         read_tasks = []
         for i in range(parallelism):
