@@ -186,30 +186,10 @@ def test_from_torch(shutdown_only, tmp_path):
     torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
 
-    ray_dataset = ray.data.from_torch(torch_dataset, parallelism=1)
+    ray_dataset = ray.data.from_torch(torch_dataset)
 
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
-
-
-def test_from_torch_parallel(ray_start_regular_shared, tmp_path):
-    # parallel read may reorder blocks, cannot directly assert equality on outputs
-    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
-    expected_data = list(torch_dataset)
-
-    ray_dataset = ray.data.from_torch(torch_dataset, use_parallel=True, parallelism=3)
-    actual_data = extract_values("item", list(ray_dataset.take_all()))
-    assert len(actual_data) == len(expected_data)
-    assert Counter([row[1] for row in actual_data]) == Counter(
-        [row[1] for row in expected_data]
-    )
-
-    ray_dataset = ray.data.from_torch(torch_dataset, use_parallel=True, shuffle=True, parallelism=3)
-    actual_data = extract_values("item", list(ray_dataset.take_all()))
-    assert len(actual_data) == len(expected_data)
-    assert Counter([row[1] for row in actual_data]) == Counter(
-        [row[1] for row in expected_data]
-    )
 
 
 class NodeLoggerOutputDatasource(Datasource):

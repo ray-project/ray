@@ -2284,27 +2284,12 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
-    use_parallel: bool = False,
-    parallelism: int = -1,
-    shuffle: bool = False,
-    force_local: bool = False,
-) -> Union[MaterializedDataset, Dataset]:
+) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
 
     .. note::
-        The parallel/streaming implementation requires that the underlying files 
-        of the dataset must be accesible from every node in the cluster.
-        (for example the files are stored on cloud storage or a shared filesystem).
-        Use `force_local=True` if the files are not accessible from all nodes.
-        For iterable-style datasets, this function is not parallelized.
-
-    .. note::
-        The dataset must be serializable to make use of the parallel/streaming read.
-
-    .. note::
-        Without the parallel/streaming implementation, this function loads the entire 
-        dataset into the head node’s memory before moving the data to the distributed object store.
+        The dataset must be serializable.
 
     Examples:
         >>> import ray
@@ -2318,47 +2303,24 @@ def from_torch(
 
     Args:
         dataset: A `Torch Dataset`_.
-        use_parallel: Whether or not to use the parallel and streaming implementation.
-        parallelism: The amount of parallelism to use for
-            the dataset. Defaults to -1, which automatically determines the optimal
-            parallelism for your configuration. You should not need to manually set
-            this value in most cases. For details on how the parallelism is
-            automatically determined and guidance on how to tune it, see
-            :ref:`Tuning read parallelism <read_parallelism>`. Parallelism is
-            upper bounded by the total number of rows in the Torch dataset.
-        shuffle: If True, the dataset will be randomly partitioned for a parallel read. 
-            Otherwise, the dataset will be partitioned into contiguous blocks.
-        force_local: If True, all read tasks will run on a local node.
 
     Returns:
         A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
-    if use_parallel:
-        import torch
 
-        # There is no efficient way to read a subset of an iterable-style dataset.
-        # Each task will read all elements up until the last in its subset.
-        if isinstance(dataset, torch.utils.data.IterableDataset):
-            if parallelism not in (-1, 1):
-                raise ValueError(
-                    "Parallelism must be set to -1 or 1 for an `IterableDataset`"
-                )
-            parallelism = 1
-        ray_remote_args = {}
-        if force_local:
-            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            )
-        return read_datasource(
-            TorchDatasource(),
-            dataset=dataset,
-            parallelism=parallelism,
-            shuffle=shuffle,
-            ray_remote_args=ray_remote_args,
+    # Files may not be accessible from all nodes, run the read task on current node.
+    ray_remote_args = {
+        "scheduling_strategy": NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
         )
-    else:
-        return from_items(list(dataset))
+    }
+    return read_datasource(
+        TorchDatasource(),
+        dataset=dataset,
+        parallelism=1,
+        ray_remote_args=ray_remote_args,
+    )
 
 
 def _get_reader(
