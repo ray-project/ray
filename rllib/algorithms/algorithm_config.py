@@ -647,7 +647,7 @@ class AlgorithmConfig(_Config):
                 # Some values in env_config might be encoded space dicts. We should
                 # deserialize these here.
                 def deserialize_env_config(s):
-                    if "space" in s:
+                    if isinstance(s, dict) and "space" in s:
                         return gym_space_from_dict(s)
                     return s
                     
