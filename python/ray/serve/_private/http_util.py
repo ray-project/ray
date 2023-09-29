@@ -43,24 +43,22 @@ def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
     return mock_receive
 
 
-def convert_response_to_asgi_messages(
-    content: Optional[Any] = None, status_code: int = 200
+def convert_object_to_asgi_messages(
+    obj: Optional[Any] = None, status_code: int = 200
 ) -> List[Message]:
     body = None
     content_type = None
-    if content is None:
+    if obj is None:
         body = b""
         content_type = b"text/plain"
-    elif isinstance(content, bytes):
-        body = content
+    elif isinstance(obj, bytes):
+        body = obj
         content_type = b"text/plain"
-    elif isinstance(content, str):
-        body = content.encode("utf-8")
+    elif isinstance(obj, str):
+        body = obj.encode("utf-8")
         content_type = b"text/plain; charset=utf-8"
     else:
-        body = json.dumps(
-            jsonable_encoder(content, custom_encoder=serve_encoders)
-        ).encode()
+        body = json.dumps(jsonable_encoder(obj, custom_encoder=serve_encoders)).encode()
         content_type = b"application/json"
 
     return [
@@ -91,8 +89,8 @@ class Response:
             content: Any JSON serializable object.
             status_code (int, optional): Default status code is 200.
         """
-        self._messages = convert_response_to_asgi_messages(
-            content=content,
+        self._messages = convert_object_to_asgi_messages(
+            obj=content,
             status_code=status_code,
         )
 
