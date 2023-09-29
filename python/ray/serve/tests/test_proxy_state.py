@@ -78,7 +78,6 @@ def setup_controller():
             SERVE_CONTROLLER_NAME,
             http_config=None,
             detached=True,
-            _disable_proxy=True,
         )
     controller_actor_id = controller._ray_actor_id.hex()
 

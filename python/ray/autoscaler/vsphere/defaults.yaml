@@ -33,11 +33,35 @@ provider:
 
 # Credentials configured here will take precedence over credentials set in the
 # environment variables.
-#   vsphere_config:
+    vsphere_config:
 #       credentials:
 #           user: vc_username
 #           password: vc_password
 #           server: vc_address
+        # The frozen VM related configurations. If "library_item" is unset, then either an existing frozen VM should be
+        # specified by "name" of a resource pool name of Frozen VMs on every ESXi host should be specified by
+        # "resource_pool". If "library_item" is set, then "name" must be set to indicate the name or the name prefix of
+        # the frozen VM, and "resource_pool" can be set to indicate that a set of frozen VMs should be created on each
+        # ESXi host.
+        frozen_vm:
+            # The name of the frozen VM, or the prefix for a set of frozen VMs. Can only be unset when
+            # "frozen_vm.resource_pool" is set and pointing to an existing resource pool of Frozen VMs.
+            name: frozen-vm
+            # The library item of the OVF template of the frozen VM. If set, the frozen VM or a set of frozen VMs will
+            # be deployed from an OVF template specified by library item.
+            library_item:
+            # The resource pool name of the frozen VMs, can point to an existing resource pool of frozen VMs.
+            # Otherwise, "frozen_vm.library_item" must be specified and a set of frozen VMs will be deployed
+            # on each ESXi host. The frozen VMs will be named as "{frozen_vm.name}-{the vm's ip address}"
+            resource_pool:
+            # The vSphere cluster name, only makes sense when "frozen_vm.library_item" is set and
+            # "frozen_vm.resource_pool" is unset. Indicates to deploy a single frozen VM on the vSphere cluster
+            # from OVF template.
+            cluster:
+            # The target vSphere datastore name for storing the vmdk of the frozen VM to be deployed from OVF template.
+            # Will take effect only when "frozen_vm.library_item" is set. If "frozen_vm.resource_pool" is also set,
+            # this datastore must be a shared datastore among the ESXi hosts.
+            datastore:
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -59,8 +83,6 @@ available_node_types:
             # The resource pool where the head node should live, if unset, will be
             # the frozen VM's resource pool.
             resource_pool:
-            # Mandatory: The frozen VM name from which the head node will be instant-cloned.
-            frozen_vm_name: frozen-vm
             # The datastore to store the vmdk of the head node vm, if unset, will be
             # the frozen VM's datastore.
             datastore:
@@ -75,8 +97,6 @@ available_node_types:
             # The resource pool where the worker node should live, if unset, will be
             # the frozen VM's resource pool.
             resource_pool:
-            # Mandatory: The frozen VM name from which the work node will be instant-cloned.
-            frozen_vm_name: frozen-vm
             # The datastore to store the vmdk(s) of the worker node vm(s), if unset, will be
             # the frozen VM's datastore.
             datastore:
