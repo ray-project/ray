@@ -490,16 +490,16 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     )
 
 
-def normalize_blocks(blocks: Iterable["Block"]) -> List["Block"]:
+def normalize_blocks(blocks: Iterable["Block"]) -> Iterable["Block"]:
     seen = set()
-    # Check if blocks are homogenous
+    # Check if blocks types are homogeneous
     if all(seen.add(type(block)) or len(seen) == 1 for block in blocks):
         # All blocks have the same type, return as-is
         return blocks
 
     from ray.data.block import BlockAccessor
 
-    # Convert heterogeneous block types to arrow blocks
+    # Convert any heterogeneous block types to arrow blocks
     return [BlockAccessor.for_block(block).to_arrow() for block in blocks]
 
 
