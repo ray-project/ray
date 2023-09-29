@@ -14,8 +14,8 @@ TORCH_DATASOURCE_READER_BATCH_SIZE = 32
 
 @DeveloperAPI
 class TorchDatasource(Datasource):
-    """Torch datasource, for reading from `map-style
-    Torch datasets <https://pytorch.org/docs/stable/data.html#map-style-datasets/>`_.
+    """Torch datasource, for reading from `Torch
+    datasets <https://pytorch.org/docs/stable/data.html/>`_.
     This datasource implements a streaming read using a single read task.
     """
 
