@@ -41,6 +41,22 @@ div.navbar-brand-box {
     padding-top: 4em;
 }
 
+td p {
+    margin-left: 0.75rem;
+}
+
+table.longtable.table.autosummary {
+    table-layout: fixed;
+}
+
+.table.autosummary td {
+    width: 100%;
+}
+
+tr.row-odd {
+    background-color: #f9fafb;
+}
+
 /* For Algolia search box
     * overflow-y: to flow-over horizontally into main content
     * height: to prevent topbar overlap
