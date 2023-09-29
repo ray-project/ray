@@ -626,6 +626,10 @@ decorator==5.1.1 \
 deepspeed==0.10.0 \
     --hash=sha256:afb06a97fde2a33d0cbd60a8357a70087c037b9f647ca48377728330c35eff3e
     # via -r release/ray_release/byod/requirements_ml_byod_3.8.in
+diffusers==0.21.3 \
+    --hash=sha256:aaa9220b3e44bc3d252c75115eafa260f0e3db770572f3db7dda3dfbbe6a4edd \
+    --hash=sha256:eb5a0d9d98f68b785bf74714b1c8f82a00ab92edbea7b80d1ed829b4051f05f8
+    # via -r release/ray_release/byod/requirements_ml_byod_3.8.in
 dill==0.3.7 \
     --hash=sha256:76b122c08ef4ce2eedcd4d1abd8e641114bfc6c2867f49f3c41facf65bf19f5e \
     --hash=sha256:cc1c8b182eb3013e24bd475ff2e9295af86c1a38eb1aff128dac8962a9ce3c03
@@ -732,6 +736,7 @@ filelock==3.12.2 \
     --hash=sha256:cbb791cdea2a72f23da6ac5b5269ab0a0d161e9ef0100e653b69049a7706d1ec
     # via
     #   -r release/ray_release/byod/requirements_ml_byod_3.8.in
+    #   diffusers
     #   huggingface-hub
     #   torch
     #   transformers
@@ -1019,6 +1024,7 @@ huggingface-hub==0.16.4 \
     --hash=sha256:608c7d4f3d368b326d1747f91523dbd1f692871e8e2e7a4750314a2dd8b63e14
     # via
     #   datasets
+    #   diffusers
     #   evaluate
     #   transformers
 idna==3.4 \
@@ -1028,6 +1034,10 @@ idna==3.4 \
     #   anyio
     #   requests
     #   yarl
+importlib-metadata==6.8.0 \
+    --hash=sha256:3ebb78df84a805d7698245025b975d9d67053cd94c79245ba4b3eb694abe68bb \
+    --hash=sha256:dbace7892d8c0c4ac1ad096662232f831d4e64f4c4545bd53016a3e9d4654743
+    # via diffusers
 importlib-resources==5.12.0 \
     --hash=sha256:4be82589bf5c1d7999aedf2a45159d10cb3ca4f19b2271f8792bc8e6da7b22f6 \
     --hash=sha256:7b1deeebbf351c7578e09bf2f63fa2ce8b5ffec296e0d349139d43cca061a81a
@@ -1467,6 +1477,7 @@ numpy==1.24.3 \
     #   cupy-cuda113
     #   datasets
     #   deepspeed
+    #   diffusers
     #   evaluate
     #   matplotlib
     #   modin
@@ -1677,6 +1688,7 @@ pillow==9.5.0 \
     --hash=sha256:fe7e1c262d3392afcf5071df9afa574544f28eac825284596ac6db56e6d11062 \
     --hash=sha256:fed1e1cf6a42577953abbe8e6cf2fe2f566daebde7c34724ec8803c4c0cda579
     # via
+    #   diffusers
     #   matplotlib
     #   torchvision
 pkgutil-resolve-name==1.3.10 \
@@ -2165,13 +2177,16 @@ regex==2023.6.3 \
     --hash=sha256:f415f802fbcafed5dcc694c13b1292f07fe0befdb94aa8a52905bd115ff41e88 \
     --hash=sha256:fb5ec16523dc573a4b277663a2b5a364e2099902d3944c9419a40ebd56a118f9 \
     --hash=sha256:fea75c3710d4f31389eed3c02f62d0b66a9da282521075061ce875eb5300cf23
-    # via transformers
+    # via
+    #   diffusers
+    #   transformers
 requests==2.31.0 \
     --hash=sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003f \
     --hash=sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1
     # via
     #   azure-core
     #   datasets
+    #   diffusers
     #   evaluate
     #   fsspec
     #   gcsfs
@@ -2356,7 +2371,9 @@ safetensors==0.3.1 \
     --hash=sha256:dcf527ecc5f58907fd9031510378105487f318cc91ecdc5aee3c7cc8f46030a8 \
     --hash=sha256:ddd0ddd502cf219666e7d30f23f196cb87e829439b52b39f3e7da7918c3416df \
     --hash=sha256:e2f083112cf97aa9611e2a05cc170a2795eccec5f6ff837f4565f950670a9d83
-    # via transformers
+    # via
+    #   diffusers
+    #   transformers
 scikit-learn==1.3.0 \
     --hash=sha256:0e8102d5036e28d08ab47166b48c8d5e5810704daecf3a476a4282d562be9a28 \
     --hash=sha256:151ac2bf65ccf363664a689b8beafc9e6aae36263db114b4ca06fbbbf827444a \
@@ -2974,7 +2991,9 @@ yarl==1.9.2 \
 zipp==3.15.0 \
     --hash=sha256:112929ad649da941c23de50f356a2b5570c954b65150642bccdd66bf194d224b \
     --hash=sha256:48904fc76a60e542af151aded95726c1a5c34ed43ab4134b597665c86d7ad556
-    # via importlib-resources
+    # via
+    #   importlib-metadata
+    #   importlib-resources
 zstd==1.5.5.1 \
     --hash=sha256:022f935a8666e08f0fff6204938a84d9fe4fcd8235a205787275933a07a164fb \
     --hash=sha256:03444e357b7632c64480a81ce7095242dab9d7f8aed317326563ef6c663263eb \

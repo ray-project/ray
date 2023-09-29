@@ -1,14 +1,13 @@
 import asyncio
 import os
 import sys
-from typing import Dict, Optional
+from typing import Optional
 
 import pytest
 import requests
 import starlette.responses
 from fastapi import FastAPI
 from pydantic import BaseModel, ValidationError
-from starlette.requests import Request
 
 import ray
 from ray import serve
@@ -674,19 +673,6 @@ def test_application_route_prefix_override1(serve_instance, ingress_route):
         assert requests.get(f"http://localhost:8000{ingress_route}").text == "hello"
 
 
-def test_invalid_driver_deployment_class():
-    """Test invalid driver deployment class"""
-
-    @serve.deployment(is_driver_deployment=True)
-    def f():
-        pass
-
-    with pytest.raises(ValueError):
-        f.options(num_replicas=2)
-    with pytest.raises(ValueError):
-        f.options(autoscaling_config={"min_replicas": "1"})
-
-
 class TestAppBuilder:
     @serve.deployment
     class A:
@@ -834,40 +820,6 @@ def test_no_slash_route_prefix(serve_instance):
         ValueError, match=r"The route_prefix must start with a forward slash \('/'\)"
     ):
         serve.run(f.bind(), route_prefix="no_slash")
-
-
-def test_pass_starlette_request_over_handle(serve_instance):
-    @serve.deployment
-    class Downstream:
-        async def __call__(self, request: Request) -> Dict[str, str]:
-            r = await request.json()
-            r["foo"] = request.headers["foo"]
-            r.update(request.query_params)
-            return r
-
-    @serve.deployment
-    class Upstream:
-        def __init__(self, downstream: RayServeHandle):
-            self._downstream = downstream
-
-        async def __call__(self, request: Request) -> Dict[str, str]:
-            ref = await self._downstream.remote(request)
-            return await ref
-
-    serve.run(Upstream.bind(Downstream.bind()))
-
-    r = requests.get(
-        "http://127.0.0.1:8000/",
-        json={"hello": "world"},
-        headers={"foo": "bar"},
-        params={"baz": "quux"},
-    )
-    r.raise_for_status()
-    assert r.json() == {
-        "hello": "world",
-        "foo": "bar",
-        "baz": "quux",
-    }
 
 
 def test_status_basic(serve_instance):

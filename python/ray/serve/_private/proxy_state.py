@@ -241,7 +241,6 @@ class ProxyActorWrapper(ActorWrapper):
         node_id: str,
         node_ip_address: str,
         port: int,
-        detached: bool,
         proxy: Optional[ActorHandle],
     ) -> ActorWrapper:
         """Helper to start a single proxy.
@@ -256,7 +255,7 @@ class ProxyActorWrapper(ActorWrapper):
             num_cpus=config.num_cpus,
             name=name,
             namespace=SERVE_NAMESPACE,
-            lifetime="detached" if detached else None,
+            lifetime="detached",
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
@@ -535,7 +534,6 @@ class ProxyStateManager:
     def __init__(
         self,
         controller_name: str,
-        detached: bool,
         config: HTTPOptions,
         head_node_id: str,
         cluster_node_info_cache: ClusterNodeInfoCache,
@@ -544,7 +542,6 @@ class ProxyStateManager:
         proxy_actor_wrapper_class: Type[ActorWrapper] = ProxyActorWrapper,
     ):
         self._controller_name = controller_name
-        self._detached = detached
         if config is not None:
             self._config = config
         else:
@@ -706,7 +703,6 @@ class ProxyStateManager:
             node_id=node_id,
             node_ip_address=node_ip_address,
             port=port,
-            detached=self._detached,
             proxy=proxy,
         )
 

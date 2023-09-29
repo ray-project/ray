@@ -8,6 +8,7 @@ from ci.ray_ci.utils import docker_pull, RAY_VERSION, POSTMERGE_PIPELINE
 
 PLATFORM = ["cu118"]
 GPU_PLATFORM = "cu118"
+DEFAULT_PYTHON_VERSION = "py38"
 
 
 class DockerContainer(Container):
@@ -71,14 +72,23 @@ class DockerContainer(Container):
     def _should_upload(self) -> bool:
         return os.environ.get("BUILDKITE_PIPELINE_ID") == POSTMERGE_PIPELINE
 
+    def _get_image_version_tags(self) -> List[str]:
+        branch = os.environ.get("BUILDKITE_BRANCH")
+        sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
+        if branch == "master":
+            return [sha_tag, "nightly"]
+
+        if branch and branch.startswith("releases/"):
+            release_name = branch[len("releases/") :]
+            return [f"{release_name}.{sha_tag}"]
+
+        return [sha_tag]
+
     def _get_image_names(self) -> List[str]:
         # Image name is composed by ray version tag, python version and platform.
         # See https://docs.ray.io/en/latest/ray-overview/installation.html for
         # more information on the image tags.
-        versions = [f"{os.environ['BUILDKITE_COMMIT'][:6]}"]
-        if os.environ.get("BUILDKITE_BRANCH") == "master":
-            # TODO(can): add ray version if this is a release branch
-            versions.append("nightly")
+        versions = self._get_image_version_tags()
 
         platforms = [f"-{self.platform}"]
         if self.platform == "cpu" and self.image_type == "ray":
@@ -91,11 +101,16 @@ class DockerContainer(Container):
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 
+        py_versions = [f"-{self.python_version}"]
+        if self.python_version == DEFAULT_PYTHON_VERSION:
+            py_versions.append("")
+
         alias_images = []
         ray_repo = f"rayproject/{self.image_type}"
         for version in versions:
             for platform in platforms:
-                alias = f"{ray_repo}:{version}-{self.python_version}{platform}"
-                alias_images.append(alias)
+                for py_version in py_versions:
+                    alias = f"{ray_repo}:{version}{py_version}{platform}"
+                    alias_images.append(alias)
 
         return alias_images
