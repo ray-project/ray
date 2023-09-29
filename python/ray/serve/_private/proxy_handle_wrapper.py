@@ -24,6 +24,7 @@ class AbstractProxyHandleWrapper(ABC):
         *,
         timeout_s: Optional[float],
         disconnected_task: asyncio.Task,
+        stop_checking_disconnected_event: Optional[asyncio.Event] = None,
     ) -> AsyncIterator[Any]:
         """Yields the outputs.
 
