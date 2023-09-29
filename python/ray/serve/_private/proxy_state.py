@@ -242,6 +242,7 @@ class ProxyActorWrapper(ActorWrapper):
         node_ip_address: str,
         port: int,
         proxy: Optional[ActorHandle],
+        proxy_actor_class: Type[ProxyActor] = ProxyActor,
     ) -> ActorWrapper:
         """Helper to start a single proxy.
 
@@ -251,7 +252,7 @@ class ProxyActorWrapper(ActorWrapper):
         opening on different HTTP ports. Setting up `TEST_WORKER_NODE_GRPC_PORT` env var
         will help head node and worker nodes to be opening on different gRPC ports.
         """
-        proxy = proxy or ProxyActor.options(
+        proxy = proxy or proxy_actor_class.options(
             num_cpus=config.num_cpus,
             name=name,
             namespace=SERVE_NAMESPACE,
@@ -704,6 +705,7 @@ class ProxyStateManager:
             node_ip_address=node_ip_address,
             port=port,
             proxy=proxy,
+            proxy_actor_class=self._proxy_actor_class,
         )
 
     def _start_proxies_if_needed(self, target_nodes) -> None:

@@ -833,7 +833,7 @@ def test_unhealthy_retry_correct_number_of_times():
     # Ensure _health_check_obj_ref is set again
     def health_check_ongoing():
         proxy_state.update()
-        return proxy_state._proxy_actor_wrapper.health_check_ongoing()
+        return proxy_state._proxy_actor_wrapper.health_check_ongoing
 
     wait_for_condition(health_check_ongoing)
 
