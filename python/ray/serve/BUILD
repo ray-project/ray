@@ -10,7 +10,7 @@ doctest(
             "_private/benchmarks/**"
         ]
     ),
-    tags = ["team:serve"]
+    tags = ["team:serve"],
     size = "small",
 )
 
