@@ -264,6 +264,7 @@ class RuntimeEnv(dict):
         # with the test.
         "docker",
         "worker_process_setup_hook",
+        "nsight",
     }
 
     extensions_fields: Set[str] = {
@@ -282,6 +283,7 @@ class RuntimeEnv(dict):
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
         worker_process_setup_hook: Optional[Union[Callable, str]] = None,
+        nsight: Optional[Dict[str, List[str]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         **kwargs,
@@ -297,6 +299,8 @@ class RuntimeEnv(dict):
             runtime_env["pip"] = pip
         if conda is not None:
             runtime_env["conda"] = conda
+        if nsight is not None:
+            runtime_env["nsight"] = nsight
         if container is not None:
             runtime_env["container"] = container
         if env_vars is not None:
@@ -329,6 +333,13 @@ class RuntimeEnv(dict):
                 "https://conda.io/projects/conda/en/latest/"
                 "user-guide/tasks/manage-environments.html"
                 "#create-env-file-manually"
+            )
+        
+        if self.get("nsight") and sys.platform != "linux":
+            raise ValueError(
+                "nsight client is only avaliable in Linux.\n"
+                "More information can be found in "
+                "https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html"
             )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
@@ -438,6 +449,9 @@ class RuntimeEnv(dict):
         if "java_jars" in self:
             return list(self["java_jars"])
         return []
+    
+    def nsight(self) -> Optional[List[str]]:
+        return self.get("nsight", None)
 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})
