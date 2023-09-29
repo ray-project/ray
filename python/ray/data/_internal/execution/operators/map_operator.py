@@ -84,6 +84,7 @@ class MapOperator(OneToOneOperator, ABC):
         # Used for estimating the # of output blocks.
         self._num_tasks_finished = 0
         self._num_output_blocks = 0
+        self._num_inputs_received = 0
         super().__init__(name, input_op)
 
     @classmethod
@@ -204,6 +205,7 @@ class MapOperator(OneToOneOperator, ABC):
             # queue.
             bundle = self._block_ref_bundler.get_next_bundle()
             self._add_bundled_input(bundle)
+        self._num_inputs_received += 1
 
     def _get_runtime_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -291,13 +293,14 @@ class MapOperator(OneToOneOperator, ABC):
             # Update estimate for blocks outputted
             self._num_tasks_finished += 1
             self._num_output_blocks += task.get_num_output_blocks()
-            num_tasks = 1
-            if len(self.input_dependencies) == 1:
-                # The number of outputs reported by upstream operator. We later
-                #  update self.num_outputs_total() with this estimate
-                num_tasks = self.input_dependencies[0].num_outputs_total()
+            # Estimate number of tasks from inputs received and tasks submitted so far
+            estimated_num_tasks = (
+                self.input_dependencies[0].num_outputs_total()
+                / self._num_inputs_received
+                * self._next_data_task_idx
+            )
             self._estimated_output_blocks = round(
-                num_tasks * self._num_output_blocks / self._num_tasks_finished
+                estimated_num_tasks * self._num_output_blocks / self._num_tasks_finished
             )
             if task_done_callback:
                 task_done_callback()
