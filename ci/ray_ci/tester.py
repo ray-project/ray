@@ -41,6 +41,12 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Except tests with the given tags."),
 )
 @click.option(
+    "--only-tags",
+    default="",
+    type=str,
+    help=("Only include tests with the given tags."),
+)
+@click.option(
     "--run-flaky-tests",
     is_flag=True,
     show_default=True,
@@ -65,6 +71,7 @@ def main(
     worker_id: int,
     parallelism_per_worker: int,
     except_tags: str,
+    only_tags: str,
     run_flaky_tests: bool,
     test_env: List[str],
     build_name: Optional[str],
@@ -85,6 +92,7 @@ def main(
             targets,
             team,
             except_tags,
+            only_tags,
         )
     success = container.run_tests(test_targets, test_env)
     sys.exit(0 if success else 1)
@@ -108,22 +116,32 @@ def _get_container(
     )
 
 
-def _get_all_test_query(targets: List[str], team: str, except_tags: str) -> str:
+def _get_all_test_query(
+    targets: List[str],
+    team: str,
+    except_tags: Optional[str] = None,
+    only_tags: Optional[str] = None,
+) -> str:
     """
     Get all test targets that are owned by a particular team, except those that
     have the given tags
     """
     test_query = " union ".join([f"tests({target})" for target in targets])
-    team_query = f"attr(tags, 'team:{team}\\\\b', {test_query})"
-    if not except_tags:
-        # return all tests owned by the team if no except_tags are given
-        return team_query
+    query = f"attr(tags, 'team:{team}\\\\b', {test_query})"
 
-    # otherwise exclude tests with the given tags
-    except_query = " union ".join(
-        [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
-    )
-    return f"{team_query} except ({except_query})"
+    if except_tags:
+        except_query = " union ".join(
+            [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
+        )
+        query = f"{query} except ({except_query})"
+
+    if only_tags:
+        only_query = " union ".join(
+            [f"attr(tags, {t}, {test_query})" for t in only_tags.split(",")]
+        )
+        query = f"{query} intersect ({only_query})"
+
+    return query
 
 
 def _get_test_targets(
@@ -131,16 +149,18 @@ def _get_test_targets(
     targets: str,
     team: str,
     except_tags: Optional[str] = "",
+    only_tags: Optional[str] = "",
     yaml_dir: Optional[str] = None,
 ) -> List[str]:
     """
     Get all test targets that are not flaky
     """
 
+    query = _get_all_test_query(targets, team, except_tags, only_tags)
     test_targets = (
         container.run_script_with_output(
             [
-                f'bazel query "{_get_all_test_query(targets, team, except_tags)}"',
+                f'bazel query "{query}"',
             ]
         )
         .decode("utf-8")
