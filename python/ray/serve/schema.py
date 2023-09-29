@@ -1,29 +1,30 @@
+import json
 from collections import Counter
 from dataclasses import dataclass, field
-import json
-from pydantic import BaseModel, Field, Extra, root_validator, validator
-from typing import Union, List, Dict, Set, Optional
+from typing import Dict, List, Optional, Set, Union
+
+from pydantic import BaseModel, Extra, Field, root_validator, validator
 
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
-    DeploymentStatusInfo,
-    ApplicationStatusInfo,
     ApplicationStatus,
-    DeploymentStatus,
+    ApplicationStatusInfo,
     DeploymentInfo,
-    StatusOverview,
+    DeploymentStatus,
+    DeploymentStatusInfo,
+    ProxyStatus,
     ReplicaState,
     ServeDeployMode,
-    ProxyStatus,
+    StatusOverview,
 )
-from ray.serve.config import ProxyLocation
-from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
-from ray.util.annotations import PublicAPI
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
+from ray.serve.config import ProxyLocation
+from ray.util.annotations import PublicAPI
 
 
 def _route_prefix_format(cls, v):
@@ -259,12 +260,6 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
     )
 
-    is_driver_deployment: bool = Field(
-        default=DEFAULT.VALUE,
-        description="Indicate Whether the deployment is driver deployment "
-        "Driver deployments are spawned one per node.",
-    )
-
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
         if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(
@@ -311,7 +306,6 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_period_s=info.deployment_config.health_check_period_s,
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
-        is_driver_deployment=info.is_driver_deployment,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -421,7 +415,6 @@ class ServeApplicationSchema(BaseModel):
 
     @validator("import_path")
     def import_path_format_valid(cls, v: str):
-
         if v is None:
             return
 
@@ -477,9 +470,7 @@ class ServeApplicationSchema(BaseModel):
 
         config = self.dict(**kwargs)
         for idx, deployment in enumerate(config["deployments"]):
-
             if isinstance(deployment.get("ray_actor_options"), dict):
-
                 # JSON-serialize ray_actor_options' resources dictionary
                 if isinstance(deployment["ray_actor_options"].get("resources"), dict):
                     deployment["ray_actor_options"]["resources"] = json.dumps(
@@ -901,7 +892,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     grpc_options: Optional[gRPCOptionsSchema] = Field(description="gRPC Proxy options.")
     proxies: Dict[str, ProxyDetails] = Field(
         description=(
-            "Mapping from node_id to details about the HTTP Proxy running on that node."
+            "Mapping from node_id to details about the Proxy running on that node."
         )
     )
     deploy_mode: ServeDeployMode = Field(

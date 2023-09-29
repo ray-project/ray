@@ -131,6 +131,12 @@ def parse_args():
     )
     args = parser.parse_args()
 
+    ray.init(
+        runtime_env={
+            "working_dir": os.path.dirname(__file__),
+        }
+    )
+
     if args.data_root is None and not args.use_mosaic:
         # use default datasets if data root is not provided
         if args.file_type == "image":
