@@ -836,7 +836,8 @@ Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             std::shared_ptr<Buffer> *data,
                                             fb::ObjectSource source,
                                             int device_num) {
-  return impl_->CreateAndSpillIfNeeded(object_id,
+  auto start_us = current_sys_time_us();
+  auto status = impl_->CreateAndSpillIfNeeded(object_id,
                                        owner_address,
                                        data_size,
                                        metadata,
@@ -844,6 +845,8 @@ Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                        data,
                                        source,
                                        device_num);
+  RAY_LOG(INFO) << "create time: " << current_sys_time_us() - start_us;
+  return status;
 }
 
 Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,
@@ -868,11 +871,17 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                          int64_t timeout_ms,
                          std::vector<ObjectBuffer> *object_buffers,
                          bool is_from_worker) {
-  return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
+  auto start_us = current_sys_time_us();
+  auto status = impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
+  RAY_LOG(INFO) << "get time: " << current_sys_time_us() - start_us;
+  return status;
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) {
-  return impl_->Release(object_id);
+  auto start_us = current_sys_time_us();
+  auto status = impl_->Release(object_id);
+  RAY_LOG(INFO) << "release time: " << current_sys_time_us() - start_us;
+  return status;
 }
 
 Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
@@ -881,9 +890,19 @@ Status PlasmaClient::Contains(const ObjectID &object_id, bool *has_object) {
 
 Status PlasmaClient::Abort(const ObjectID &object_id) { return impl_->Abort(object_id); }
 
-Status PlasmaClient::Seal(const ObjectID &object_id) { return impl_->Seal(object_id); }
+Status PlasmaClient::Seal(const ObjectID &object_id) {
+  auto start_us = current_sys_time_us();
+  auto status = impl_->Seal(object_id);
+  RAY_LOG(INFO) << "seal time: " << current_sys_time_us() - start_us;
+  return status;
+}
 
-Status PlasmaClient::Unseal(const ObjectID &object_id) { return impl_->Unseal(object_id); }
+Status PlasmaClient::Unseal(const ObjectID &object_id) {
+  auto start_us = current_sys_time_us();
+  auto status = impl_->Unseal(object_id);
+  RAY_LOG(INFO) << "unseal time: " << current_sys_time_us() - start_us;
+  return status;
+}
 
 Status PlasmaClient::Delete(const ObjectID &object_id) {
   return impl_->Delete(std::vector<ObjectID>{object_id});
