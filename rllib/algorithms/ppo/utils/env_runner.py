@@ -191,6 +191,7 @@ class PPOEnvRunner(EnvRunner):
         pbar = tqdm(total=num_timesteps, desc=f"Sampling {num_timesteps} timesteps ...")
         import ray
 
+        ray.__version__
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
