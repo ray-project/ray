@@ -233,23 +233,6 @@ class TestgRPCProxy:
         mocked_proxy_request_stream.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_send_request_to_replica_unary(self):
-        """Test gRPCProxy send_request_to_replica_unary redirects to
-        send_request_to_replica_streaming.
-        """
-        grpc_proxy = self.create_grpc_proxy()
-        mocked_send_request_to_replica_streaming = AsyncMock()
-        with patch.object(
-            grpc_proxy,
-            "send_request_to_replica_streaming",
-            mocked_send_request_to_replica_streaming,
-        ):
-            await grpc_proxy.send_request_to_replica_unary(
-                handle=MagicMock(), proxy_request=MagicMock()
-            )
-        mocked_send_request_to_replica_streaming.assert_called_once()
-
-    @pytest.mark.asyncio
     @patch("ray.serve._private.proxy.ray.serve.context._serve_request_context")
     async def test_setup_request_context_and_handle(self, mocked_serve_request_context):
         """Test gRPCProxy setup_request_context_and_handle sets the correct request
