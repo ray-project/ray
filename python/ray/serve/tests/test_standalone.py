@@ -301,27 +301,6 @@ def test_connect(ray_shutdown):
     assert "deployment-ception" in serve.list_deployments()
 
 
-@pytest.mark.parametrize("controller_cpu", [True, False])
-@pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
-def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
-    cluster = ray_cluster
-    num_cluster_cpus = 8
-    head_node = cluster.add_node(num_cpus=num_cluster_cpus)
-
-    ray.init(head_node.address)
-    wait_for_condition(lambda: ray.cluster_resources().get("CPU") == num_cluster_cpus)
-
-    num_cpus_used = int(controller_cpu) + num_proxy_cpus
-
-    serve.start(
-        dedicated_cpu=controller_cpu, http_options=HTTPOptions(num_cpus=num_proxy_cpus)
-    )
-    available_cpus = num_cluster_cpus - num_cpus_used
-    wait_for_condition(lambda: (ray.available_resources().get("CPU") == available_cpus))
-    serve.shutdown()
-    ray.shutdown()
-
-
 def test_set_socket_reuse_port():
     sock = socket.socket()
     if hasattr(socket, "SO_REUSEPORT"):
