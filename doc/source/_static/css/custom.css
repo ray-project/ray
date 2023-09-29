@@ -148,6 +148,14 @@ dt:target, span.highlighted {
     background-color: white;
 }
 
+div.navbar-brand-box {
+    padding-top: 0em;
+}
+
+#site-navigation h1.site-logo {
+    font-size: 0.8rem;
+}
+
 div.sphx-glr-bigcontainer {
     display: inline-block;
     width: 100%;
