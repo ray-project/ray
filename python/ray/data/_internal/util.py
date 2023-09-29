@@ -789,4 +789,9 @@ def make_async_gen(
 def _fallback_to_pandas_exceptions() -> Tuple[Type[Exception], ...]:
     import pyarrow as pa
 
-    return (TypeError, pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError)
+    return (
+        TypeError,
+        pa.lib.ArrowNotImplementedError,
+        pa.lib.ArrowInvalid,
+        pa.lib.ArrowTypeError,
+    )
