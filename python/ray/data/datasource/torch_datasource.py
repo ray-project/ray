@@ -17,8 +17,7 @@ TORCH_DATASOURCE_READER_BATCH_SIZE = 32
 class TorchDatasource(Datasource):
     """Torch datasource, for reading from `map-style
     Torch datasets <https://pytorch.org/docs/stable/data.html#map-style-datasets/>`_.
-    This datasource implements a parallel read that partitions the dataset based on
-    input parallelism and creates read tasks for each partitions.
+    This datasource implements a streaming read using a single read task.
     """
 
     def create_reader(
@@ -36,38 +35,24 @@ class _TorchDatasourceReader(Reader):
         self._dataset = dataset
 
     def get_read_tasks(self, parallelism):
+        assert parallelism == 1
         import torch
 
-        rows = len(self._dataset)
-        rows_per_worker = math.ceil(rows / parallelism)
-        subsets = [
-            torch.utils.data.Subset(
-                self._dataset,
-                range(i * rows_per_worker, min((i + 1) * rows_per_worker, rows)),
-            )
-            for i in range(parallelism)
-        ]
+        meta = BlockMetadata(
+            num_rows=len(self._dataset),
+            size_bytes=None,
+            schema=None,
+            input_files=None,
+            exec_stats=None,
+        )
+        read_task = ReadTask(
+            lambda subset=self._dataset: _read_subset(
+                subset,
+            ),
+            metadata=meta,
+        )
 
-        read_tasks = []
-        for i in range(parallelism):
-            num_rows = len(subsets[i])
-            meta = BlockMetadata(
-                num_rows=num_rows,
-                size_bytes=None,
-                schema=None,
-                input_files=None,
-                exec_stats=None,
-            )
-            read_tasks.append(
-                ReadTask(
-                    lambda subset=subsets[i]: _read_subset(
-                        subset,
-                    ),
-                    metadata=meta,
-                ),
-            )
-
-        return read_tasks
+        return [read_task]
 
     def estimate_inmemory_data_size(self):
         return None
