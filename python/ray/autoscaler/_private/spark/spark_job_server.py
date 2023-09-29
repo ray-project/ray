@@ -66,7 +66,6 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         f"Spark job {spark_job_group_id} hosting Ray worker node exit."
                     )
 
-            # TODO: register databricks background spark job group.
             threading.Thread(
                 target=inheritable_thread_target(start_ray_worker_thread_fn),
                 args=(),
