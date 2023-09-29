@@ -985,12 +985,12 @@ class HTTPProxy(GenericProxy):
         """
         # Convert HTTP requests to Java-accepted format (single byte string).
         query_string = proxy_request.scope.get("query_string")
+        http_body_bytes = await receive_http_body(
+            proxy_request.scope, proxy_request.receive, proxy_request.send
+        )
         if query_string:
             arg = query_string.decode().split("=", 1)[1]
         else:
-            http_body_bytes = await receive_http_body(
-                proxy_request.scope, proxy_request.receive, proxy_request.send
-            )
             arg = http_body_bytes.decode()
 
         retries = 0
