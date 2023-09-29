@@ -14,7 +14,7 @@ public class ManagePythonDeployment {
         "ray.job.code-search-path",
         System.getProperty("java.class.path") + File.pathSeparator + "/path/to/code/");
 
-    Serve.start(false, null);
+    Serve.start(null);
 
     Deployment deployment =
         Serve.deployment()
