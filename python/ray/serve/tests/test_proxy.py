@@ -13,7 +13,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
-    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.proxy import (
@@ -231,50 +230,6 @@ class TestgRPCProxy:
                 except StopAsyncIteration:
                     break
         mocked_proxy_request_stream.assert_called_once()
-
-    @pytest.mark.asyncio
-    @patch("ray.serve._private.proxy.ray.serve.context._serve_request_context")
-    async def test_setup_request_context_and_handle(self, mocked_serve_request_context):
-        """Test gRPCProxy setup_request_context_and_handle sets the correct request
-        context and returns the correct handle and request id.
-        """
-        grpc_proxy = self.create_grpc_proxy()
-        handle = MagicMock()
-        request_id = "fake-request-id"
-        app_name = "fake-app-name"
-        route_path = "/fake-route-path"
-        multiplexed_model_id = "fake-multiplexed-model-id"
-        stream = False
-        method_name = "fake-method_name"
-        proxy_request = AsyncMock()
-        proxy_request.request_id = request_id
-        proxy_request.multiplexed_model_id = multiplexed_model_id
-        proxy_request.stream = stream
-        proxy_request.method_name = "fake-method_name"
-        (
-            returned_handle,
-            returned_request_id,
-        ) = grpc_proxy.setup_request_context_and_handle(
-            app_name=app_name,
-            handle=handle,
-            route_path=route_path,
-            proxy_request=proxy_request,
-        )
-
-        assert returned_request_id == request_id
-        handle.options.assert_called_with(
-            stream=stream,
-            multiplexed_model_id=multiplexed_model_id,
-            method_name=method_name,
-        )
-        expected_request_context = ray.serve.context._RequestContext(
-            route=route_path,
-            request_id=request_id,
-            app_name=app_name,
-            multiplexed_model_id=multiplexed_model_id,
-        )
-        mocked_serve_request_context.set.assert_called_with(expected_request_context)
-        proxy_request.send_request_id.assert_called_with(request_id=request_id)
 
     @pytest.mark.asyncio
     async def test_streaming_generator_helper(self):
@@ -547,51 +502,6 @@ class TestHTTPProxy:
 
         assert returned_status_code == status_code
         proxy_request.send.assert_called_with(asgi_message)
-
-    @pytest.mark.asyncio
-    @patch("ray.serve._private.proxy.ray.serve.context._serve_request_context")
-    async def test_setup_request_context_and_handle(self, mocked_serve_request_context):
-        """Test HTTPProxy setup_request_context_and_handle sets the correct request
-        context and returns the correct handle and request id.
-        """
-        http_proxy = self.create_http_proxy()
-        handle = MagicMock()
-        request_id = "fake-request-id"
-        app_name = "fake-app-name"
-        route_path = "/fake-route-path"
-        multiplexed_model_id = "fake-multiplexed-model-id"
-        scope = {
-            "headers": [
-                (b"x-request-id", request_id.encode()),
-                (SERVE_MULTIPLEXED_MODEL_ID.encode(), multiplexed_model_id.encode()),
-            ]
-        }
-        proxy_request = ASGIProxyRequest(
-            scope=scope,
-            receive=AsyncMock(),
-            send=AsyncMock(),
-        )
-        (
-            returned_handle,
-            returned_request_id,
-        ) = http_proxy.setup_request_context_and_handle(
-            app_name=app_name,
-            handle=handle,
-            route_path=route_path,
-            proxy_request=proxy_request,
-        )
-
-        assert returned_request_id == request_id
-        handle.options.assert_called_with(
-            multiplexed_model_id=multiplexed_model_id,
-        )
-        expected_request_context = ray.serve.context._RequestContext(
-            route=route_path,
-            request_id=request_id,
-            app_name=app_name,
-            multiplexed_model_id=multiplexed_model_id,
-        )
-        mocked_serve_request_context.set.assert_called_with(expected_request_context)
 
     @pytest.mark.asyncio
     async def test_send_request_to_replica_streaming(self):

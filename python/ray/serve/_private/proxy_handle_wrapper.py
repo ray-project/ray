@@ -24,8 +24,6 @@ class AbstractProxyHandleWrapper(ABC):
         *,
         timeout_s: Optional[float],
         disconnected_task: asyncio.Task,
-        method_name: Optional[str] = None,
-        multiplexed_model_id: Optional[str] = None,
     ) -> AsyncIterator[Any]:
         """Yields the outputs.
 
@@ -72,9 +70,8 @@ class ProxyHandleWrapper(AbstractProxyHandleWrapper):
         while True:
             next_result_task = asyncio.ensure_future(await_next_result())
             tasks = [next_result_task]
-            if (
-                disconnected_task is not None
-                and stop_checking_disconnected_event is None
+            if disconnected_task is not None and (
+                stop_checking_disconnected_event is None
                 or not stop_checking_disconnected_event.is_set()
             ):
                 tasks.append(disconnected_task)
@@ -145,19 +142,11 @@ class ProxyHandleWrapper(AbstractProxyHandleWrapper):
         *,
         timeout_s: Optional[float] = None,
         disconnected_task: Optional[asyncio.Task] = None,
-        method_name: Optional[str] = None,
-        multiplexed_model_id: Optional[str] = None,
         stop_checking_disconnected_event: Optional[asyncio.Event] = None,
     ) -> AsyncIterator[Any]:
-        handle = self._handle
-        if method_name is not None:
-            handle = handle.options(method_name=method_name)
-        if multiplexed_model_id is not None:
-            handle = handle.options(multiplexed_model_id=multiplexed_model_id)
-
         response: Union[
             DeploymentResponse, DeploymentResponseGenerator
-        ] = handle.remote(request_arg)
+        ] = self._handle.remote(request_arg)
         if isinstance(response, DeploymentResponseGenerator):
             async for result in self._consume_streaming_generator_with_timeout(
                 response,

@@ -51,6 +51,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
+from ray.serve._private.proxy_handle_wrapper import ProxyHandleWrapper
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     ProxyRequest,
@@ -1273,51 +1274,72 @@ class HTTPProxy(GenericProxy):
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
+        handle_wrapper = ProxyHandleWrapper(handle)
+        stop_checking_disconnected_event = asyncio.Event()
 
         status_code = ""
-        start = time.time()
+        response_started = False
+        expecting_trailers = False
+        # XXX: we need to not cancel the request in case of websockets :'(
+        is_websocket_connection = False
         try:
-            obj_ref_generator = None
-            try:
-                obj_ref_generator = await self._assign_request_with_timeout(
-                    handle=handle,
-                    proxy_request=proxy_request,
-                    disconnected_task=proxy_asgi_receive_task,
-                    timeout_s=self.request_timeout_s,
-                )
-                if obj_ref_generator is None:
-                    logger.info(
-                        f"Client from {proxy_request.client} disconnected, "
-                        "cancelling the request.",
-                        extra={"log_to_stderr": False},
-                    )
-                    return ProxyResponse(status_code=DISCONNECT_ERROR_CODE)
-            except TimeoutError:
-                logger.warning(
-                    f"Request {request_id} timed out after {self.request_timeout_s}s."
-                )
-                if obj_ref_generator is not None:
-                    ray.cancel(obj_ref_generator)
+            async for asgi_message_batch in handle_wrapper.stream_request(
+                proxy_request.request_object(proxy_handle=self.self_actor_handle),
+                timeout_s=self.request_timeout_s,
+                disconnected_task=proxy_asgi_receive_task,
+                stop_checking_disconnected_event=stop_checking_disconnected_event,
+            ):
+                # See the ASGI spec for message details:
+                # https://asgi.readthedocs.io/en/latest/specs/www.html.
+                for asgi_message in pickle.loads(asgi_message_batch):
+                    if asgi_message["type"] == "http.response.start":
+                        # HTTP responses begin with exactly one
+                        # "http.response.start" message containing the "status"
+                        # field. Other response types (e.g., WebSockets) may not.
+                        status_code = str(asgi_message["status"])
+                        expecting_trailers = asgi_message.get("trailers", False)
+                    elif asgi_message["type"] == "websocket.accept":
+                        is_websocket_connection = True
+                    elif (
+                        asgi_message["type"] == "http.response.body"
+                        and not asgi_message.get("more_body", False)
+                        and not expecting_trailers
+                    ):
+                        # If the body is completed and we aren't expecting trailers, the
+                        # response is done so we should stop listening for disconnects.
+                        stop_checking_disconnected_event.set()
+                    elif asgi_message["type"] == "http.response.trailers":
+                        # If we are expecting trailers, the response is only done when
+                        # the trailers message has been sent.
+                        if not asgi_message.get("more_trailers", False):
+                            stop_checking_disconnected_event.set()
+                    elif asgi_message["type"] == "websocket.disconnect":
+                        status_code = str(asgi_message["code"])
+                        stop_checking_disconnected_event.set()
+
+                    await proxy_request.send(asgi_message)
+                    response_started = True
+        except TimeoutError:
+            status_code = TIMEOUT_ERROR_CODE
+            logger.warning(
+                f"Request {request_id} timed out after {self.request_timeout_s}s."
+            )
+            # We should only send timeout response if we have not sent
+            # any messages to the client yet. Header (including status code)
+            # messages can only be sent once.
+            if not response_started:
                 await self.timeout_response(
                     proxy_request=proxy_request, request_id=request_id
                 )
-                return ProxyResponse(status_code=TIMEOUT_ERROR_CODE)
-
-            status_code = await self._consume_and_send_asgi_message_generator(
-                obj_ref_generator,
-                disconnected_task=proxy_asgi_receive_task,
-                request_id=request_id,
-                proxy_request=proxy_request,
-                timeout_s=calculate_remaining_timeout(
-                    timeout_s=self.request_timeout_s,
-                    start_time_s=start,
-                    curr_time_s=time.time(),
-                ),
+        except asyncio.CancelledError:
+            status_code = DISCONNECT_ERROR_CODE
+            logger.info(
+                f"Client for request {request_id} disconnected, cancelling request."
             )
-
         except Exception as e:
             logger.exception(e)
             status_code = "500"
+
         finally:
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()

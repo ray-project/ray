@@ -25,12 +25,6 @@ class TestUnary:
             def __call__(self, name: str) -> str:
                 return f"Hello {name}!"
 
-            def other_method(self, name: str) -> str:
-                return f"Hello {name} from other method!"
-
-            def get_mmid(self, name: str) -> str:
-                return f"Hello {name}: {serve.get_multiplexed_model_id()}!"
-
             def error(self, name: str):
                 raise RuntimeError("oopsies")
 
@@ -44,23 +38,9 @@ class TestUnary:
         assert len(responses) == 1
         assert set(responses) == {"Hello Alice!"}
 
-        responses = [
-            r async for r in p.stream_request("Alice", method_name="other_method")
-        ]
-        assert len(responses) == 1
-        assert set(responses) == {"Hello Alice from other method!"}
-
-        responses = [
-            r
-            async for r in p.stream_request(
-                "Alice", method_name="get_mmid", multiplexed_model_id="fake_model_id"
-            )
-        ]
-        assert len(responses) == 1
-        assert set(responses) == {"Hello Alice: fake_model_id!"}
-
+        p = ProxyHandleWrapper(h.options(method_name="error"))
         with pytest.raises(RuntimeError, match="oopsies"):
-            await p.stream_request("", method_name="error").__anext__()
+            await p.stream_request("").__anext__()
 
     async def test_result_callback(self, serve_instance):
         @serve.deployment
@@ -232,22 +212,8 @@ class TestStreaming:
         assert len(responses) == 5
         assert set(responses) == {"Hello Alice!"}
 
-        responses = [
-            r async for r in p.stream_request("Alice", method_name="other_method")
-        ]
-        assert len(responses) == 5
-        assert set(responses) == {"Hello Alice from other method!"}
-
-        responses = [
-            r
-            async for r in p.stream_request(
-                "Alice", method_name="get_mmid", multiplexed_model_id="fake_model_id"
-            )
-        ]
-        assert len(responses) == 5
-        assert set(responses) == {"Hello Alice: fake_model_id!"}
-
-        gen = p.stream_request("Alice", method_name="error")
+        p = ProxyHandleWrapper(h.options(method_name="error"))
+        gen = p.stream_request("Alice")
         assert await gen.__anext__() == "Hello Alice!"
         with pytest.raises(RuntimeError, match="oopsies"):
             await gen.__anext__()
