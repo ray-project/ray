@@ -214,7 +214,7 @@ if build_one_lib and build_one_lib in all_toc_libs:
 
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "lovelace"
+pygments_style = "github-dark"
 
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
@@ -479,6 +479,8 @@ autodoc_mock_imports = [
     "ray.serve.generated",
 ]
 
+
+pygments_style = "monokai"
 
 for mock_target in autodoc_mock_imports:
     assert mock_target not in sys.modules, (
