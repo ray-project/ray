@@ -238,8 +238,9 @@ def create_serve_rest_api(
 
             if "name" in config.dict(exclude_unset=True):
                 error_msg = (
-                    "Specifying the name of an application is only allowed for apps that "
-                    "are listed as part of a multi-app config file. "
+                    "Specifying the name of an application is only allowed "
+                    "for apps that are listed as part of a multi-app config "
+                    "file. "
                 ) + MULTI_APP_MIGRATION_MESSAGE
                 logger.warning(error_msg)
                 return Response(
@@ -358,9 +359,10 @@ def create_serve_rest_api(
 
             if divergent_http_options:
                 logger.warning(
-                    f"Serve is already running on this Ray cluster and it's not possible "
-                    f"to update its HTTP options without restarting it. Following options "
-                    f"are attempted to be updated: {divergent_http_options}."
+                    "Serve is already running on this Ray cluster and "
+                    "it's not possible to update its HTTP options without "
+                    "restarting it. Following options are attempted to be "
+                    f"updated: {divergent_http_options}."
                 )
 
         async def get_serve_controller(self):
