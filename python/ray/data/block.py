@@ -19,7 +19,11 @@ import numpy as np
 
 import ray
 from ray import ObjectRefGenerator
-from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
+from ray.data._internal.util import (
+    _check_pyarrow_version,
+    _fallback_to_pandas_exceptions,
+    _truncated_repr,
+)
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
 
@@ -359,13 +363,11 @@ class BlockAccessor:
             )
 
         elif isinstance(batch, collections.abc.Mapping):
-            import pyarrow as pa
-
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             try:
                 return ArrowBlockAccessor.numpy_to_block(batch)
-            except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
+            except _fallback_to_pandas_exceptions():
                 import pandas as pd
 
                 # TODO(ekl) once we support Python objects within Arrow blocks, we

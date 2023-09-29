@@ -15,6 +15,8 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Tuple,
+    Type,
     TypeVar,
     Union,
 )
@@ -782,3 +784,9 @@ def make_async_gen(
         num_threads_alive = num_workers - num_threads_finished
         if num_threads_alive > 0:
             output_queue.release(num_threads_alive)
+
+
+def _fallback_to_pandas_exceptions() -> Tuple[Type[Exception], ...]:
+    import pyarrow as pa
+
+    return (TypeError, pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError)
