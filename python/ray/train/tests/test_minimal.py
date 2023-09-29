@@ -51,7 +51,10 @@ def test_run(ray_start_4_cpus):
     def train_func():
         checkpoint = train.get_checkpoint()
         checkpoint_dict = load_dict_checkpoint(checkpoint)
-        train.report(metrics=checkpoint_dict, checkpoint=checkpoint)
+        if train.get_context().get_world_rank() == 0:
+            train.report(metrics=checkpoint_dict, checkpoint=checkpoint)
+        else:
+            train.report(metrics=checkpoint_dict)
         return checkpoint_dict[key]
 
     with create_dict_checkpoint({key: value}) as checkpoint:
@@ -90,8 +93,11 @@ def test_failure():
 def test_minimal_train_and_tune(ray_start_4_cpus, chdir_tmpdir):
     def train_fn(config):
         for i in range(5):
-            with create_dict_checkpoint({"dummy": "data"}) as checkpoint:
-                train.report({"loss": i}, checkpoint=checkpoint)
+            if train.get_context().get_world_rank() == 0:
+                with create_dict_checkpoint({"dummy": "data"}) as checkpoint:
+                    train.report({"loss": i}, checkpoint=checkpoint)
+            else:
+                train.report({"loss": i})
 
     tuner = tune.Tuner(train_fn, run_config=train.RunConfig(storage_path=os.getcwd()))
     results = tuner.fit()
