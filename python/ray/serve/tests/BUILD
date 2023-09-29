@@ -148,7 +148,7 @@ py_test(
    srcs = ["test_controller_crashes.py",
                "test_api.py",
                "test_failure.py"],
-   tags = ["exclusive", "team:serve",],
+   tags = ["exclusive", "team:serve"],
    deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
