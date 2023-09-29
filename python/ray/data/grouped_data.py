@@ -63,7 +63,7 @@ class _GroupbyOp(ShuffleOp):
         partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
         """Aggregate sorted and partially combined blocks."""
-        normalized_blocks = normalize_blocks(mapper_outputs, check_types=False)
+        normalized_blocks = normalize_blocks(mapper_outputs)
         return BlockAccessor.for_block(normalized_blocks[0]).aggregate_combined_blocks(
             normalized_blocks, key, aggs, finalize=not partial_reduce
         )

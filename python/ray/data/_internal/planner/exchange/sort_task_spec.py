@@ -69,7 +69,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
-        normalized_blocks = normalize_blocks(mapper_outputs, check_types=False)
+        normalized_blocks = normalize_blocks(mapper_outputs)
         return BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
             normalized_blocks, sort_key
         )
