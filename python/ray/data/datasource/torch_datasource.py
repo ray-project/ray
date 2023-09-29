@@ -1,4 +1,3 @@
-import math
 from typing import TYPE_CHECKING
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -36,7 +35,6 @@ class _TorchDatasourceReader(Reader):
 
     def get_read_tasks(self, parallelism):
         assert parallelism == 1
-        import torch
 
         meta = BlockMetadata(
             num_rows=len(self._dataset),
