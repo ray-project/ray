@@ -18,6 +18,8 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
+# TODO (sven): Deprecate once all algos are only available via the new API stack
+#  (learner API).
 class MultiGPULearnerThread(LearnerThread):
     """Learner that can use multiple GPUs and parallel loading.
 
@@ -83,11 +85,6 @@ class MultiGPULearnerThread(LearnerThread):
         """
         # Deprecated: No need to specify as we don't need the actual
         # minibatch-buffer anyways.
-        if log_once("multi_gpu_learner_thread_deprecation_warning"):
-            deprecation_warning(
-                old="ray.rllib.execution.multi_gpu_learner_thread."
-                "MultiGPULearnerThread"
-            )
         if minibatch_buffer_size:
             deprecation_warning(
                 old="MultiGPULearnerThread.minibatch_buffer_size",
