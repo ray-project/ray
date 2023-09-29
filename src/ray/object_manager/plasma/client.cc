@@ -473,9 +473,9 @@ Status PlasmaClient::Impl::GetBuffers(
       // This client created the object but hasn't sealed it. If we call Get
       // with no timeout, we will deadlock, because this client won't be able to
       // call Seal.
-      RAY_CHECK(timeout_ms != -1)
-          << "Plasma client called get on an unsealed object that it created";
-      RAY_LOG(WARNING)
+      //RAY_CHECK(timeout_ms != -1)
+      //    << "Plasma client called get on an unsealed object that it created";
+      RAY_LOG(DEBUG)
           << "Attempting to get an object that this client created but hasn't sealed.";
       all_present = false;
     } else {
@@ -696,8 +696,8 @@ Status PlasmaClient::Impl::Unseal(const ObjectID &object_id) {
   /// Send the unseal request to Plasma.
   RAY_RETURN_NOT_OK(SendUnsealRequest(store_conn_, object_id));
 
-  //// Hack to keep the buffer pinned.
-  //IncrementObjectCount(object_id, nullptr, false);
+  // Hack to keep the buffer pinned.
+  IncrementObjectCount(object_id, nullptr, false);
 
   return Status::OK();
 }
