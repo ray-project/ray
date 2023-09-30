@@ -41,7 +41,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         # TODO: Support fusion with other upstream operators.
         stats = BlockExecStats.builder()
         if upstream_map_fn:
-            mapped_blocks = list(upstream_map_fn([block]))
+            mapped_blocks = normalize_blocks(list(upstream_map_fn([block])))
             if len(mapped_blocks) > 1:
                 builder = BlockAccessor.for_block(mapped_blocks[0]).builder()
                 for b in mapped_blocks:
