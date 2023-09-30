@@ -14,6 +14,7 @@ from ray.data._internal.shuffle_and_partition import (
 )
 from ray.data._internal.sort import SortKey, sort_impl
 from ray.data._internal.split import _split_at_index, _split_at_indices
+from ray.data._internal.util import normalize_blocks
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -302,6 +303,11 @@ def _do_zip(
     if inverted:
         # Swap blocks if ordering was inverted during block alignment splitting.
         block, other_block = other_block, block
+
+    # Normailze blocks if they're not of the same type
+    if not isinstance(other_block, type(block)):
+        block, other_block = normalize_blocks([block, other_block])
+
     # Zip block and other blocks.
     result = BlockAccessor.for_block(block).zip(other_block)
     br = BlockAccessor.for_block(result)
