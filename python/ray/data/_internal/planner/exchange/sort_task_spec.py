@@ -97,7 +97,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples = sample_bar.fetch_until_complete(sample_results)
         sample_bar.close()
         del sample_results
-        samples = [s for s in samples if len(s) > 0]
+        samples = normalize_blocks([s for s in samples if len(s) > 0])
         # The dataset is empty
         if len(samples) == 0:
             return [None] * (num_reducers - 1)
