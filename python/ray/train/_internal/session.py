@@ -577,6 +577,8 @@ class _TrainSession:
         if self.ignore_report:
             return
 
+        metrics = self._auto_fill_metrics(metrics)
+
         persisted_checkpoint = None
         if checkpoint:
             # NOTE: This is where the coordinator AND workers increment their
@@ -592,8 +594,6 @@ class _TrainSession:
             and self.storage.sync_config.sync_artifacts_on_checkpoint
         )
         self.storage.persist_artifacts(force=force_artifact_sync)
-
-        metrics = self._auto_fill_metrics(metrics)
 
         # Set additional user metadata from the Trainer.
         if persisted_checkpoint and self.metadata:

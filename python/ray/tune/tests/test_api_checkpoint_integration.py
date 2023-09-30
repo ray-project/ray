@@ -1,9 +1,13 @@
 import os
+import tempfile
+from pathlib import Path
 
 import pytest
 import sys
 
 import ray
+from ray import train
+from ray.air import ScalingConfig
 from ray.train import CheckpointConfig
 from ray.air.execution import FixedResourceManager
 from ray.air.constants import TRAINING_ITERATION
@@ -24,12 +28,16 @@ def ray_start_4_cpus_2_gpus_extra():
     ray.shutdown()
 
 
-@pytest.mark.parametrize("trainable_type", ["class"])  # , "function", "data_parallel"])
+@pytest.mark.parametrize("trainable_type", ["class", "function", "data_parallel"])
 @pytest.mark.parametrize("patch_iter", [False, True])
 def test_checkpoint_freq_dir_name(
     ray_start_4_cpus_2_gpus_extra, trainable_type, patch_iter, tmp_path
 ):
-    """Test that trial checkpoints"""
+    """Test that trial checkpoint IDs are correctly set across trainable types.
+
+    This includes a current workaround to set checkpoint IDs according to reported
+    metrics.
+    """
 
     def num_checkpoints(trial):
         return sum(
@@ -43,11 +51,15 @@ def test_checkpoint_freq_dir_name(
             if item.startswith("checkpoint_")
         )
 
+    checkpoint_config = None
+
     if trainable_type == "class":
 
         class MyTrainable(Trainable):
             def step(self):
-                return {"metric": self.iteration + 100}
+                # `training_iteration` is increased after the report, so we
+                # +1 here.
+                return {"step": self.iteration + 1}
 
             def save_checkpoint(self, checkpoint_dir):
                 return {"test": self.iteration}
@@ -56,6 +68,33 @@ def test_checkpoint_freq_dir_name(
                 pass
 
         register_trainable("test_checkpoint_freq", MyTrainable)
+        checkpoint_config = CheckpointConfig(checkpoint_frequency=3)
+
+    elif trainable_type in {"function", "data_parallel"}:
+
+        def train_fn(config):
+            for step in range(1, 10):
+                if step > 0 and step % 3 == 0:
+                    with tempfile.TemporaryDirectory() as checkpoint_dir:
+                        (Path(checkpoint_dir) / "data.ckpt").write_text(str(step))
+                        train.report(
+                            {"step": step},
+                            checkpoint=train.Checkpoint.from_directory(checkpoint_dir),
+                        )
+                else:
+                    train.report({"step": step})
+
+        if trainable_type == "function":
+            register_trainable("test_checkpoint_freq", train_fn)
+        elif trainable_type == "data_parallel":
+            from ray.train.data_parallel_trainer import DataParallelTrainer
+
+            trainer = DataParallelTrainer(
+                train_loop_per_worker=train_fn,
+                scaling_config=ScalingConfig(num_workers=1),
+            )
+            register_trainable("test_checkpoint_freq", trainer.as_trainable())
+
     else:
         raise RuntimeError("Invalid trainable type")
 
@@ -64,18 +103,20 @@ def test_checkpoint_freq_dir_name(
         class CustomStorageContext(StorageContext):
             def _update_checkpoint_index(self, metrics):
                 self.current_checkpoint_index = metrics.get(
-                    "training_iteration", self.current_checkpoint_index + 1
+                    "step", self.current_checkpoint_index + 1
                 )
 
         storage = mock_storage_context(
-            delete_syncer=False, storage_context_cls=CustomStorageContext
+            delete_syncer=False,
+            storage_context_cls=CustomStorageContext,
+            storage_path=tmp_path,
         )
     else:
-        storage = mock_storage_context(delete_syncer=False)
+        storage = mock_storage_context(delete_syncer=False, storage_path=tmp_path)
 
     trial = Trial(
         "test_checkpoint_freq",
-        checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
+        checkpoint_config=checkpoint_config,
         storage=storage,
     )
     runner = TuneController(
