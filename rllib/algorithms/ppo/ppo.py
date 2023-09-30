@@ -26,7 +26,6 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 # from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
 from ray.rllib.execution.rollout_ops import (
@@ -411,13 +410,14 @@ class PPO(Algorithm):
     def setup(self, config: AlgorithmConfig):
         super().setup(config=config)
 
-        # Share RLModule between EnvRunner and single (local) Learner instance.
-        # To avoid possibly expensive weight synching step.
-        if self.config.share_module_between_env_runner_and_learner:
-            assert self.workers.local_worker().module is None
-            self.workers.local_worker().module = self.learner_group._learner.module[
-                DEFAULT_POLICY_ID
-            ]
+        if self.config._enable_learner_api and self.config.env_runner_cls is not None:
+            # Share RLModule between EnvRunner and single (local) Learner instance.
+            # To avoid possibly expensive weight synching step.
+            if self.config.share_module_between_env_runner_and_learner:
+                assert self.workers.local_worker().module is None
+                self.workers.local_worker().module = self.learner_group._learner.module[
+                    DEFAULT_POLICY_ID
+                ]
 
     @classmethod
     @override(Algorithm)
@@ -447,7 +447,7 @@ class PPO(Algorithm):
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             # New Episode-returning EnvRunner API.
-            if self.config.env_runner_cls is not RolloutWorker:
+            if self.config.env_runner_cls is not None:
                 if self.workers.num_remote_workers() <= 0:
                     train_samples = [self.workers.local_worker().sample()]
                 else:
@@ -634,7 +634,7 @@ class PPO(Algorithm):
 
     @override(Algorithm)
     def evaluate(self, duration_fn: Optional[Callable[[int], int]] = None) -> dict:
-        if self.config.env_runner_cls is not RolloutWorker:
+        if self.config.env_runner_cls is not None:
             # Call the `_before_evaluate` hook.
             self._before_evaluate()
 
@@ -690,7 +690,7 @@ class PPO(Algorithm):
                 unit = self.config.evaluation_duration_unit
                 eval_cfg = self.evaluation_config
                 rollout = eval_cfg.rollout_fragment_length
-                # num_envs = eval_cfg.num_envs_per_worker
+                # rllnum_envs = eval_cfg.num_envs_per_worker
                 auto = self.config.evaluation_duration == "auto"
                 duration = (
                     self.config.evaluation_duration
@@ -698,15 +698,6 @@ class PPO(Algorithm):
                     else (self.config.evaluation_num_workers or 1)
                     * (1 if unit == "episodes" else rollout)
                 )
-                agent_steps_this_iter = 0
-                env_steps_this_iter = 0
-
-                # Default done-function returns True, whenever num episodes
-                # have been completed.
-                if duration_fn is None:
-
-                    def duration_fn(num_units_done):
-                        return duration - num_units_done
 
                 logger.info(
                     f"Evaluating current state of {self} for {duration} {unit}."
@@ -745,16 +736,14 @@ class PPO(Algorithm):
                     batch = concat_samples(batches)
                     del batch[SampleBatch.INFOS]
                     batch = batch.as_multi_agent()
-                    agent_steps_this_iter += batch.agent_steps()
-                    env_steps_this_iter += batch.env_steps()
                     if self.reward_estimators:
                         all_batches.append(batch)
-                    # TODO (sven): EnvRunner has momentarily no get_metrics.
                     # metrics = collect_metrics(
                     #     self.workers,
                     #     keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
                     #     timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
                     # )
+                    metrics = self.workers.local_worker().get_metrics()
 
                 # Evaluation worker set only has local worker.
                 elif self.evaluation_workers.num_remote_workers() == 0:
@@ -785,8 +774,6 @@ class PPO(Algorithm):
                     batch = concat_samples(batches)
                     del batch[SampleBatch.INFOS]
                     batch = batch.as_multi_agent()
-                    agent_steps_this_iter += batch.agent_steps()
-                    env_steps_this_iter += batch.env_steps()
                     if self.reward_estimators:
                         all_batches.append(batch)
 
@@ -922,6 +909,15 @@ class PPO(Algorithm):
                 # if not self.config.custom_evaluation_function:
                 #     metrics = dict({"sampler_results": metrics}, **metrics)
 
+                if metrics is None:
+                    metrics = self.evaluation_workers.foreach_worker(
+                        func=lambda w: w.get_metrics(),
+                        timeout_seconds=(
+                            self.evaluation_config.metrics_episode_collection_timeout_s
+                        ),
+                    )
+
+                print(f"Batch: {batch}")
                 metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = batch.agent_steps()
                 metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = batch.env_steps()
                 # TODO: Remove this key at some point. Here for backward compatibility.

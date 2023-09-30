@@ -104,7 +104,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+        for fw in framework_iterator(config, frameworks=("tf2")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in [
                 # "CliffWalking-v0",

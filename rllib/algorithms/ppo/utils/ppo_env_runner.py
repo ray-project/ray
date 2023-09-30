@@ -299,7 +299,9 @@ class PPOEnvRunner(EnvRunner):
 
                     done_episodes_to_return.append(self._episodes[i])
                     # Create a new episode object.
-                    self._episodes[i] = Episode(observations=[obs[i]], states=s)
+                    self._episodes[i] = Episode(
+                        observations=[obs[i]], infos=[infos[i]], states=s
+                    )
                 else:
                     self._episodes[i].add_timestep(
                         obs[i],
@@ -407,7 +409,7 @@ class PPOEnvRunner(EnvRunner):
                 fwd_out = convert_to_numpy(fwd_out)
 
                 if STATE_OUT in fwd_out:
-                    states = fwd_out[STATE_OUT]
+                    states = convert_to_numpy(fwd_out[STATE_OUT])
                     # states = tree.map_structure(
                     #     lambda s: s.numpy(), fwd_out[STATE_OUT]
                     # )
@@ -452,6 +454,16 @@ class PPOEnvRunner(EnvRunner):
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
                     )
+
+                    if explore:
+                        # Make postprocessing here.Calculate advantages and
+                        # value targets.
+                        episodes[i] = compute_gae_for_episode(
+                            episodes[i],
+                            self.config,
+                            self.marl_module,
+                        )
+
                     done_episodes_to_return.append(episodes[i])
 
                     # Also early-out if we reach the number of episodes within this
@@ -466,13 +478,17 @@ class PPOEnvRunner(EnvRunner):
                     ):
                         states[k][i] = v.numpy()
 
+                    # Create a new episode object.
                     episodes[i] = Episode(
                         observations=[obs[i]],
                         infos=[infos[i]],
                         states=s,
-                        render_images=[render_images[i]],
+                        render_images=None
+                        if render_images[i] is None
+                        else [render_images[i]],
                     )
                 else:
+                    print(f"Render images before timestep: {render_images[i]}")
                     episodes[i].add_timestep(
                         obs[i],
                         actions[i],

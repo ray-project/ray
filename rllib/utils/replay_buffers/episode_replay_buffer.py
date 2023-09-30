@@ -504,7 +504,6 @@ class _Episode:
         # due to the reset and last-obs logic of an MDP.
         assert len(self.observations) == len(self.rewards) + 1 == len(self.actions) + 1
         assert len(self.rewards) == (self.t - self.t_started)
-
         # Convert all lists to numpy arrays, if we are terminated.
         if self.is_done:
             self.observations = np.array(self.observations)
@@ -512,6 +511,7 @@ class _Episode:
             self.rewards = np.array(self.rewards)
             # TODO (simon): Check, if this is suitable for infos.
             self.infos = np.array(self.infos)
+            print(f"Render images: {self.render_images}")
             self.render_images = np.array(self.render_images, dtype=np.uint8)
             for k, v in self.extra_model_outputs.items():
                 self.extra_model_outputs[k] = np.array(v)
