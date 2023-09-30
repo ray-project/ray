@@ -491,9 +491,13 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
 
 
 def normalize_blocks(blocks: Iterable["Block"]) -> Iterable["Block"]:
-    seen = set()
+    """Normalize blocks checking if input blocks have more than one type.
+    If only one type exist return blocks as-is, otherwise convert blocks to
+    arrow blocks.
+    """
+    seen_types = set()
     # Check if blocks types are homogeneous
-    if all(seen.add(type(block)) or len(seen) == 1 for block in blocks):
+    if all(seen_types.add(type(block)) or len(seen_types) == 1 for block in blocks):
         # All blocks have the same type, return as-is
         return blocks
 
