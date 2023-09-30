@@ -384,8 +384,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \return Pending placement groups.
   const absl::btree_multimap<
       int64_t,
-      std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-      &GetPendingPlacementGroups() const;
+      std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>> &
+  GetPendingPlacementGroups() const;
 
   /// Get a read only view of the infeasible placement groups.
   ///
