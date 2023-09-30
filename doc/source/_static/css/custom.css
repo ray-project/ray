@@ -415,9 +415,10 @@ pre {
     padding: 5px 0;
 }
 
-.highlight pre {
-    color: green; /* Change to your desired color */
+.sig-name {
+    color: #ff4d1f;
 }
+
 
 .top-nav-content .menu:hover > ul > li span {
     display: block;
