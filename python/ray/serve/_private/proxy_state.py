@@ -112,7 +112,7 @@ class ProxyActorWrapper(ActorWrapper):
         """Return the actor handle of the proxy actor.
 
         This is used in _start_controller() in _private/controller.py to check whether
-        the proxies exist as well as used in some tests.
+        the proxies exist. It is also used in some tests to access proxy's actor handle.
         """
         return self._actor_handle
 
@@ -208,9 +208,7 @@ class ProxyActorWrapper(ActorWrapper):
     def is_shutdown(self) -> bool:
         """Return whether the proxy actor is shutdown.
 
-        For a proxy actor to be considered shutdown, it must be marked as
-        _shutting_down and the actor must be dead. If the actor is dead, the health
-        check will return RayActorError.
+        If the actor is dead, the health check will return RayActorError.
         """
         try:
             ray.get(self._actor_handle.check_health.remote(), timeout=0)
@@ -241,17 +239,24 @@ class ProxyActorWrapper(ActorWrapper):
         node_id: str,
         node_ip_address: str,
         port: int,
-        proxy: Optional[ActorHandle],
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
     ) -> ActorWrapper:
-        """Helper to start a single proxy.
+        """Helper to start or reuse existing proxy and wrap in the proxy actor wrapper.
 
-        Takes the name of the proxy, the node id, and the node ip address. and creates a
-        new ProxyActor actor handle for the proxy. In addition, setting up
-        `TEST_WORKER_NODE_HTTP_PORT` env var will help head node and worker nodes to be
-        opening on different HTTP ports. Setting up `TEST_WORKER_NODE_GRPC_PORT` env var
-        will help head node and worker nodes to be opening on different gRPC ports.
+        Takes the name of the proxy, the node id, and the node ip address. and look up
+         or creates a new ProxyActor actor handle for the proxy. Then return the proxy
+         actor wrapper initialized with the actor handle.
         """
+        proxy = None
+        try:
+            proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
+        except ValueError:
+            logger.info(
+                f"Starting proxy with name '{name}' on node '{node_id}' "
+                f"listening on '{config.host}:{port}'",
+                extra={"log_to_stderr": False},
+            )
+
         proxy = proxy or proxy_actor_class.options(
             num_cpus=config.num_cpus,
             name=name,
@@ -509,7 +514,11 @@ class ProxyState:
         self._proxy_actor_wrapper.kill()
 
     def is_ready_for_shutdown(self) -> bool:
-        """Return whether the proxy actor is shutdown."""
+        """Return whether the proxy actor is shutdown.
+
+        For a proxy actor to be considered shutdown, it must be marked as
+        _shutting_down and the actor must be shut down.
+        """
         if not self._shutting_down:
             return False
 
@@ -606,7 +615,6 @@ class ProxyStateManager:
             proxy_state.update(draining)
 
         self._stop_proxies_if_needed()
-
         self._start_proxies_if_needed(target_nodes)
 
     def _get_target_nodes(self, proxy_nodes) -> List[Tuple[str, str]]:
@@ -661,8 +669,13 @@ class ProxyStateManager:
         name: str,
         node_id: str,
         node_ip_address: str,
-        proxy: Optional[ActorHandle],
     ) -> ActorWrapper:
+        """Helper to start or reuse existing proxy and wrap in the proxy actor wrapper.
+
+        Compute the HTTP port based on `TEST_WORKER_NODE_HTTP_PORT` env var and gRPC
+        port based on `TEST_WORKER_NODE_GRPC_PORT` env var. Passed all the required
+        variables into the proxy actor wrapper class and return the proxy actor wrapper.
+        """
         port = self._config.port
         grpc_options = self._grpc_options
 
@@ -686,6 +699,7 @@ class ProxyStateManager:
                 f"{int(os.getenv('TEST_WORKER_NODE_GRPC_PORT'))}"
             )
             grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
+
         return self._proxy_actor_wrapper_class.start_proxy(
             config=self._config,
             grpc_options=grpc_options,
@@ -694,7 +708,6 @@ class ProxyStateManager:
             node_id=node_id,
             node_ip_address=node_ip_address,
             port=port,
-            proxy=proxy,
             proxy_actor_class=self._proxy_actor_class,
         )
 
@@ -706,20 +719,10 @@ class ProxyStateManager:
                 continue
 
             name = self._generate_actor_name(node_id=node_id)
-            try:
-                proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
-            except ValueError:
-                logger.info(
-                    f"Starting proxy with name '{name}' on node '{node_id}' "
-                    f"listening on '{self._config.host}:{self._config.port}'",
-                    extra={"log_to_stderr": False},
-                )
-                proxy = None
             proxy_actor_wrapper = self._start_proxy(
                 name=name,
                 node_id=node_id,
                 node_ip_address=node_ip_address,
-                proxy=proxy,
             )
 
             self._proxy_states[node_id] = ProxyState(

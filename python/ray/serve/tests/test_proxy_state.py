@@ -1,9 +1,6 @@
 import asyncio
-import concurrent
 import json
-import threading
 import time
-from random import random
 from typing import Any, List, Tuple
 from unittest.mock import patch
 
@@ -23,7 +20,6 @@ from ray.serve._private.controller import ServeController
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import (
-    ActorWrapper,
     ProxyActorWrapper,
     ProxyState,
     ProxyStateManager,
@@ -32,46 +28,6 @@ from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import DeploymentMode, HTTPOptions
 
 HEAD_NODE_ID = "node_id-index-head"
-
-
-class FakeProxyActorWrapper(ActorWrapper):
-    def __init__(self, actor_handle):
-        super().__init__(actor_handle=actor_handle)
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        thread = threading.Thread(
-            daemon=True,
-            target=self.loop.run_forever,
-        )
-        thread.start()
-        self.completed_tasks = {}
-
-    def start_new_ready_check(self):
-        pass
-
-    def start_new_health_check(self):
-        pass
-
-    def start_new_drained_check(self):
-        pass
-
-    def is_ready(self) -> Any:
-        pass
-
-    def is_healthy(self) -> bool:
-        pass
-
-    def is_drained(self) -> bool:
-        pass
-
-    def check_health(self):
-        pass
-
-    def update_draining(self, draining: bool):
-        pass
-
-    def kill_proxy(self):
-        pass
 
 
 class MockClusterNodeInfoCache:
