@@ -48,16 +48,17 @@ def test_zip_different_num_blocks_combinations(
 
 
 def test_zip_different_types(ray_start_regular_shared):
-    df = pd.DataFrame({"spam": [0]})  # Reproducing issue #31550
+    # Reproducing issue #31550
+    df = pd.DataFrame({"spam": [0]})
     ds1 = ray.data.from_pandas(df)
     ds2 = ray.data.from_items([{"ham": [0]}])
+
     zipped_ds = ds1.zip(ds2)
     assert zipped_ds.schema().names == ["spam", "ham"]
-    assert zipped_ds.take() == [{"ham": [0], "spam": 0}]
-
+    assert zipped_ds.take() == named_values(["spam", "ham"], [(0, [0])])
     zipped_ds = ds2.zip(ds1)
     assert zipped_ds.schema().names == ["ham", "spam"]
-    assert zipped_ds.take() == [{"ham": [0], "spam": 0}]
+    assert zipped_ds.take() == named_values(["ham", "spam"], [([0], 0)])
 
 
 @pytest.mark.parametrize(
