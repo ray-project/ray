@@ -1,7 +1,7 @@
 import os
 import sys
 import pytest
-from ray.util.concurrent.futures.ray_executor import RayExecutor, _RoundRobinActorPool
+from ray.util.concurrent.futures.ray_executor import RayExecutor, _RoundRobinActorPool, _BalancedActorPool, ActorPoolType
 import time
 import ray
 from ray.util.state import list_actors
@@ -95,6 +95,15 @@ class TestShared:
             assert ex._context is not None
             assert type(ex._context) == RayContext
             assert ex._context.address_info["address"] == call_ray_start
+
+    def test_balanced_actor_pool_must_have_actor(self):
+        with pytest.raises(ValueError):
+            _BalancedActorPool(num_actors=0)
+
+    def test_balanced_actor_pool_can_get_task_count(self):
+        pool = _BalancedActorPool(num_actors=2)
+        task_counts = pool._get_actor_task_counts()
+        assert list(task_counts.values()) == [0, 0]
 
     def test_round_robin_actor_pool_must_have_actor(self):
         with pytest.raises(ValueError):
@@ -219,7 +228,7 @@ class TestShared:
             return 123
 
         with RayExecutor(
-            address=call_ray_start, max_workers=1, max_tasks_per_child=1
+            address=call_ray_start, max_workers=1, max_tasks_per_child=1, actor_pool_type=ActorPoolType.ROUND_ROBIN
         ) as ex:
             pool = ex.actor_pool
             assert pool.index == 0
@@ -241,7 +250,7 @@ class TestShared:
             return 123
 
         with RayExecutor(
-            address=call_ray_start, max_workers=1, max_tasks_per_child=1
+            address=call_ray_start, max_workers=1, max_tasks_per_child=1, actor_pool_type=ActorPoolType.ROUND_ROBIN
         ) as ex:
             pool = ex.actor_pool
             assert pool.index == 0
