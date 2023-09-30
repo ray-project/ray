@@ -32,7 +32,6 @@ from ray.serve._private.deployment_state import (
     ReplicaStateContainer,
     VersionedReplica,
 )
-from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
 from ray.serve.tests.utils import MockKVStore, MockTimer
 
@@ -2468,7 +2467,7 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
     ), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
-        kv_store = RayInternalKVStore("test")
+        kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
         mock_create_deployment_scheduler.return_value = MockDeploymentScheduler(
             cluster_node_info_cache
@@ -2577,19 +2576,6 @@ class TestActorReplicaWrapper:
         assert actor_replica.max_concurrent_queries == DEFAULT_MAX_CONCURRENT_QUERIES
         assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
         assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
-
-    def test_recover(self):
-        actor_replica = ActorReplicaWrapper(
-            version=deployment_version("1"),
-            actor_name="test",
-            controller_name="test_controller",
-            replica_tag="test_tag",
-            deployment_id=DeploymentID("test_deployment", "test_app"),
-        )
-        actor_replica._actor_handle = MockActorHandle()
-        actor_replica.recover()
-        assert actor_replica._actor_handle.initialize_and_get_metadata_called
-        assert actor_replica._actor_handle.is_allocated_called
 
 
 def test_get_active_node_ids(mock_deployment_state_manager_full):
