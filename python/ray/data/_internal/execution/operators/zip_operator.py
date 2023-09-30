@@ -237,7 +237,7 @@ def _zip_one_block(
         # Swap blocks if ordering was inverted during block alignment splitting.
         block, other_block = other_block, block
 
-    # Normailze blocks if they're not of the same type
+    # Normalize blocks if they're not of the same type
     if not isinstance(other_block, type(block)):
         block, other_block = normalize_blocks([block, other_block])
 
