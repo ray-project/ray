@@ -26,12 +26,14 @@ def load_dict_checkpoint(checkpoint: Checkpoint) -> Dict[str, Any]:
 
 
 def mock_storage_context(
-    exp_name: str = "exp_name", delete_syncer: bool = True
+    exp_name: str = "exp_name",
+    delete_syncer: bool = True,
+    storage_context_cls: Type = StorageContext,
 ) -> StorageContext:
     storage_path = tempfile.mkdtemp()
     exp_name = exp_name
     trial_name = "trial_name"
-    storage = StorageContext(
+    storage = storage_context_cls(
         storage_path=storage_path,
         experiment_dir_name=exp_name,
         trial_dir_name=trial_name,

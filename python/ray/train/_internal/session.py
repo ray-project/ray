@@ -556,10 +556,6 @@ class _TrainSession:
             # NOTE: This populates `train.get_checkpoint`
             self.loaded_checkpoint = training_result.checkpoint
 
-            # NOTE: This is where the coordinator AND workers increment their
-            # checkpoint index.
-            self.storage._increase_checkpoint_index(training_result.metrics)
-
         # Add result to a thread-safe queue.
         self.result_queue.put(training_result, block=True)
 
@@ -583,6 +579,10 @@ class _TrainSession:
 
         persisted_checkpoint = None
         if checkpoint:
+            # NOTE: This is where the coordinator AND workers increment their
+            # checkpoint index.
+            self.storage._update_checkpoint_index(metrics)
+
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
 

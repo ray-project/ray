@@ -454,6 +454,12 @@ class DataParallelTrainer(BaseTrainer):
                     for checkpoint in worker_checkpoints
                 )
 
+                # NOTE: This is where the coordinator AND workers increment their
+                # checkpoint index.
+                tune_session.storage._update_checkpoint_index(
+                    first_worker_result.metrics
+                )
+
                 checkpoint = (
                     Checkpoint(
                         filesystem=tune_session.storage.storage_filesystem,

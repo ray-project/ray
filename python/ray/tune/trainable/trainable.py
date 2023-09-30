@@ -546,13 +546,14 @@ class Trainable:
                 metrics = self._last_result.copy() if self._last_result else {}
 
                 if self._storage:
+                    # The checkpoint index is updated with the current result.
+                    # NOTE: This is no longer using "iteration" as the folder indexing
+                    # to be consistent with fn trainables.
+                    self._storage._update_checkpoint_index(metrics)
+
                     persisted_checkpoint = self._storage.persist_current_checkpoint(
                         local_checkpoint
                     )
-                    # The checkpoint index needs to be incremented.
-                    # NOTE: This is no longer using "iteration" as the folder indexing
-                    # to be consistent with fn trainables.
-                    self._storage._increase_checkpoint_index(metrics)
 
                     checkpoint_result = _TrainingResult(
                         checkpoint=persisted_checkpoint, metrics=metrics
