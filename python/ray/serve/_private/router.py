@@ -216,31 +216,19 @@ class ActorReplicaWrapper:
         if query.metadata.is_streaming:
             raise RuntimeError("Streaming not supported for Java.")
 
-        # Java only supports a single argument.
-        arg = query.args[0]
-
-        # Convert HTTP requests to Java-accepted format (single string).
-        if query.metadata.is_http_request:
-            assert isinstance(arg, bytes)
-            loaded_http_input = pickle.loads(arg)
-            query_string = loaded_http_input.scope.get("query_string")
-            if query_string:
-                arg = query_string.decode().split("=", 1)[1]
-            elif loaded_http_input.body:
-                arg = loaded_http_input.body.decode()
-
-        # Default call method in java is "call," not "__call__" like Python.
-        call_method = query.metadata.call_method
-        if call_method == "__call__":
-            call_method = "call"
+        if len(query.args) != 1:
+            raise ValueError("Java handle calls only support a single argument.")
 
         return self._actor_handle.handle_request.remote(
             RequestMetadataProto(
                 request_id=query.metadata.request_id,
                 endpoint=query.metadata.endpoint,
-                call_method=call_method,
+                # Default call method in java is "call," not "__call__" like Python.
+                call_method="call"
+                if query.metadata.call_method == "__call__"
+                else query.metadata.call_method,
             ).SerializeToString(),
-            [arg],
+            query.args,
         )
 
     def _send_query_python(
@@ -248,15 +236,13 @@ class ActorReplicaWrapper:
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
         """Send the query to a Python replica."""
         if query.metadata.is_streaming:
-            obj_ref = self._actor_handle.handle_request_streaming.options(
+            method = self._actor_handle.handle_request_streaming.options(
                 num_returns="streaming"
-            ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
-        else:
-            obj_ref = self._actor_handle.handle_request.remote(
-                pickle.dumps(query.metadata), *query.args, **query.kwargs
             )
+        else:
+            method = self._actor_handle.handle_request
 
-        return obj_ref
+        return method.remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
 
     def send_query(
         self, query: Query
