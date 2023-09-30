@@ -210,7 +210,6 @@ def start(
         namespace=SERVE_NAMESPACE,
     )
     serve.start(
-        detached=True,
         proxy_location=proxy_location,
         http_options=dict(
             host=http_host,
@@ -506,7 +505,6 @@ def run(
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
     client = _private_api.serve_start(
-        detached=True,
         http_options=http_options,
         grpc_options=grpc_options,
     )
