@@ -1220,6 +1220,29 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
         assert set(locations) == {node1_id, node2_id}
 
 
+@pytest.mark.parametrize("num_parts", [1, 30])
+def test_inconsistent_batch_formats(ray_start_regular_shared, num_parts):
+    def identity(batch):
+        return batch
+
+    xs = list(range(100))
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+        num_parts
+    )
+    grouped_ds = (
+        ds.groupby("A")
+        .map_groups(identity)
+        .map_batches(identity, batch_format="pandas")  # Reproducing issue #39206
+    )
+    agg_ds = grouped_ds.groupby("A").max("B")
+    assert agg_ds.count() == 3
+    assert list(agg_ds.sort("A").iter_rows()) == [
+        {"A": 0, "max(B)": 99},
+        {"A": 1, "max(B)": 97},
+        {"A": 2, "max(B)": 98},
+    ]
+
+
 if __name__ == "__main__":
     import sys
 
