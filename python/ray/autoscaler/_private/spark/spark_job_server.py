@@ -13,6 +13,11 @@ _logger.setLevel(logging.WARN)
 
 
 class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
+
+    def setup(self) -> None:
+        super().setup()
+        self._handler_lock = threading.RLock()
+
     def _set_headers(self):
         self.send_response(200)
         self.send_header("Content-type", "application/json")
@@ -108,7 +113,8 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
         path = self.path
         post_body = self.rfile.read(content_len).decode("utf-8")
         post_body_json = json.loads(post_body)
-        response_body_json = self.handle_POST(path, post_body_json)
+        with self._handler_lock:
+            response_body_json = self.handle_POST(path, post_body_json)
         response_body = json.dumps(response_body_json)
         self.wfile.write(response_body.encode("utf-8"))
 

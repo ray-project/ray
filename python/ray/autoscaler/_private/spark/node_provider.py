@@ -65,13 +65,26 @@ class SparkNodeProvider(NodeProvider):
         with self.lock:
             nodes = []
             for node_id in self._nodes:
-                tags = self.node_tags(node_id)
-                ok = True
-                for k, v in tag_filters.items():
-                    if tags.get(k) != v:
-                        ok = False
-                if ok:
-                    nodes.append(node_id)
+                if node_id == 0:
+                    status = "running"
+                else:
+                    status = self._query_node_status(node_id)
+
+                if status == "running":
+                    if self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] == STATUS_SETTING_UP:
+                        self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+                        logger.info(
+                            f"Spark node provider node {node_id} starts running."
+                        )
+
+                if status != "terminated":
+                    tags = self.node_tags(node_id)
+                    ok = True
+                    for k, v in tag_filters.items():
+                        if tags.get(k) != v:
+                            ok = False
+                    if ok:
+                        nodes.append(node_id)
 
             return nodes
 
@@ -205,30 +218,6 @@ class SparkNodeProvider(NodeProvider):
             logger.info(
                 f"Spark node provider creates node {node_id}."
             )
-
-            def update_node_status(_node_id):
-                node_started = False
-                while True:
-                    time.sleep(5)
-                    status = self._query_node_status(_node_id)
-                    if status == "running":
-                        if not node_started:
-                            node_started = True
-                            with self.lock:
-                                self._nodes[_node_id]["tags"][
-                                    TAG_RAY_NODE_STATUS
-                                ] = STATUS_UP_TO_DATE
-                                logger.info(
-                                    f"Spark node provider node {_node_id} "
-                                    "starts running."
-                                )
-                    elif status == "terminated":
-                        with self.lock:
-                            if _node_id in self._nodes:
-                                self._nodes.pop(_node_id)
-                        break
-
-            threading.Thread(target=update_node_status, args=(node_id,)).start()
 
     def terminate_node(self, node_id):
         response = requests.post(
