@@ -254,11 +254,32 @@ class RuntimeContext(object):
         if self.worker.mode != ray._private.worker.WORKER_MODE:
             logger.warning(
                 "This method is only available when the process is a "
-                "worker. Current mode: {self.worker.mode}"
+                f"worker. Current mode: {self.worker.mode}"
             )
             return None
         actor_id = self.worker.actor_id
         return actor_id.hex() if not actor_id.is_nil() else None
+
+    def get_actor_name(self) -> Optional[str]:
+        """Get the current actor name of this worker.
+
+        This shouldn't be used in a driver process.
+        The name is in string format.
+
+        Returns:
+            The current actor name of this worker.
+            If a current worker is an actor, and
+            if actor name doesn't exist, it returns an empty string.
+            If a current worker is not an actor, it returns None.
+        """
+        # only worker mode has actor_id
+        if self.worker.mode != ray._private.worker.WORKER_MODE:
+            logger.warning(
+                "This method is only available when the process is a "
+                f"worker. Current mode: {self.worker.mode}"
+            )
+        actor_id = self.worker.actor_id
+        return self.worker.actor_name if not actor_id.is_nil() else None
 
     @property
     def namespace(self):

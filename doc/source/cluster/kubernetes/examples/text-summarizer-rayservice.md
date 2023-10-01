@@ -20,7 +20,7 @@ Please note that the YAML file in this example uses `serveConfigV2`, which is su
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.text-summarizer.yaml
 
 # Step 3.2: Create a RayService
-kubectl apply -f ray-service.text-sumarizer.yaml
+kubectl apply -f ray-service.text-summarizer.yaml
 ```
 
 This RayService configuration contains some important settings:
@@ -66,7 +66,7 @@ python text_summarizer_req.py
 
 ```sh
 # path: ray-operator/config/samples/
-kubectl delete -f ray-service.text-sumarizer.yaml
+kubectl delete -f ray-service.text-summarizer.yaml
 ```
 
 ## Step 7: Uninstall your kuberay operator

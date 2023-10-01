@@ -16,7 +16,7 @@ from ray._private.storage import _load_class
 
 from .utils import (
     exec_cmd,
-    check_port_open,
+    is_port_in_use,
     get_random_unused_port,
     get_spark_session,
     get_spark_application_driver_host,
@@ -25,7 +25,6 @@ from .utils import (
     get_avail_mem_per_ray_worker_node,
     get_max_num_concurrent_tasks,
     gen_cmd_exec_failure_msg,
-    setup_sigterm_on_parent_death,
     calc_mem_ray_head_node,
 )
 from .start_hook_base import RayOnSparkStartHook
@@ -41,6 +40,7 @@ RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
 MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
+RAY_ON_SPARK_START_RAY_PARENT_PID = "RAY_ON_SPARK_START_RAY_PARENT_PID"
 
 
 def _check_system_environment():
@@ -107,11 +107,13 @@ class RayClusterOnSpark:
             raise RuntimeError(
                 "The ray cluster has been shut down or it failed to start."
             )
+
         try:
-            # connect to the ray cluster.
-            ray_ctx = ray.init(address=self.address)
-            webui_url = ray_ctx.address_info.get("webui_url", None)
-            if webui_url:
+            ray.init(address=self.address)
+
+            if self.ray_dashboard_port is not None and is_port_in_use(
+                self.address.split(":")[0], self.ray_dashboard_port
+            ):
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
             else:
                 try:
@@ -123,11 +125,6 @@ class RayClusterOnSpark:
                         "pip install ray[default]."
                     )
 
-        except Exception:
-            self.shutdown()
-            raise
-
-        try:
             last_alive_worker_count = 0
             last_progress_move_time = time.time()
             while True:
@@ -513,19 +510,19 @@ def _setup_ray_cluster(
 
     _logger.info(f"Starting Ray head, command: {' '.join(ray_head_node_cmd)}")
 
-    # `preexec_fn=setup_sigterm_on_parent_death` ensures the ray head node being
-    # killed if parent process died unexpectedly.
     ray_head_proc, tail_output_deque = exec_cmd(
         ray_head_node_cmd,
         synchronous=False,
-        preexec_fn=setup_sigterm_on_parent_death,
-        extra_env={RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""},
+        extra_env={
+            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
+            RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
+        },
     )
 
     # wait ray head node spin up.
     time.sleep(_RAY_HEAD_STARTUP_TIMEOUT)
 
-    if not check_port_open(ray_head_ip, ray_head_port):
+    if not is_port_in_use(ray_head_ip, ray_head_port):
         if ray_head_proc.poll() is None:
             # Ray head GCS service is down. Kill ray head node.
             ray_head_proc.terminate()
@@ -598,7 +595,8 @@ def _setup_ray_cluster(
         ]
 
         ray_worker_node_extra_envs = {
-            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""
+            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
+            RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
         }
 
         if num_gpus_worker_node > 0:
@@ -627,20 +625,15 @@ def _setup_ray_cluster(
             f"Start Ray worker, command: {' '.join(ray_worker_node_cmd)}"
         )
 
-        # `preexec_fn=setup_sigterm_on_parent_death` handles the case:
-        # If a user cancels the PySpark job, the worker process gets killed, regardless
-        # of PySpark daemon and worker reuse settings.
-        # We use prctl to ensure the command process receives SIGTERM after spark job
-        # cancellation.
         # Note:
-        # When a pyspark job cancelled, the UDF python process are killed by signal
-        # "SIGKILL", This case neither "atexit" nor signal handler can capture SIGKILL
-        # signal. prctl is the only way to capture SIGKILL signal.
+        # When a pyspark job cancelled, the UDF python worker process are killed by
+        # signal "SIGKILL", then `start_ray_node` process will detect the parent died
+        # event (see `ray.util.spark.start_ray_node.check_parent_alive`) and then
+        # kill ray worker node process and execute cleanup routine.
         exec_cmd(
             ray_worker_node_cmd,
             synchronous=True,
             extra_env=ray_worker_node_extra_envs,
-            preexec_fn=setup_sigterm_on_parent_death,
         )
 
         # NB: Not reachable.

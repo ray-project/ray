@@ -12,6 +12,7 @@ You can utilize these search algorithms as follows:
 .. code-block:: python
 
     from ray import train, tune
+    from ray.train import RunConfig
     from ray.tune.search.optuna import OptunaSearch
 
     def train_fn(config):
@@ -69,7 +70,7 @@ See ``Result logdir: ...`` in the output logs for this location.
 
 Note that if you have two Tune runs with the same experiment folder,
 the previous state checkpoint will be overwritten. You can
-avoid this by making sure ``air.RunConfig(name=...)`` is set to a unique
+avoid this by making sure ``RunConfig(name=...)`` is set to a unique
 identifier:
 
 .. code-block:: python
@@ -81,7 +82,7 @@ identifier:
             num_samples=5,
             search_alg=search_alg,
         ),
-        run_config=air.RunConfig(
+        run_config=RunConfig(
             name="my-experiment-1",
             storage_path="~/my_results",
         )
@@ -162,7 +163,7 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 BlendSearch (tune.search.flaml.BlendSearch)
 -------------------------------------------
 
-BlendSearch is an economical hyperparameter optimization algorithm that combines combines local search with global search.
+BlendSearch is an economical hyperparameter optimization algorithm that combines local search with global search.
 It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
 It allows the users to specify a low-cost initial point as input if such point exists.
 

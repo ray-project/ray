@@ -63,7 +63,7 @@ kubectl exec -it $HEAD_POD -- ray summary actors
 #     CLASS_NAME                          STATE_COUNTS
 # 0   ServeController                     ALIVE: 1
 # 1   ServeReplica:fruit_app_OrangeStand  ALIVE: 1
-# 2   HTTPProxyActor                      ALIVE: 3
+# 2   ProxyActor                          ALIVE: 3
 # 3   ServeReplica:math_app_DAGDriver     ALIVE: 1
 # 4   ServeReplica:math_app_Multiplier    ALIVE: 1
 # 5   ServeReplica:math_app_create_order  ALIVE: 1
@@ -87,6 +87,7 @@ kubectl exec -it $HEAD_POD -- ray summary actors
 * {ref}`kuberay-raysvc-issue7`
 * {ref}`kuberay-raysvc-issue8`
 * {ref}`kuberay-raysvc-issue9`
+* {ref}`kuberay-raysvc-issue10`
 
 (kuberay-raysvc-issue1)=
 ### Issue 1: Ray Serve script is incorrect.
@@ -332,6 +333,24 @@ the multi-app API endpoint `/api/serve/applications/`.
 To resolve this issue, you can replace `serveConfig` with `serveConfigV2` and modify `rayVersion` which has no effect when the Ray version is 2.0.0 or later to 2.100.0.
 This will trigger a new RayCluster preparation instead of an in-place update.
 
-If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotatoin being the same for both old and new RayClusters.
+If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotation being the same for both old and new RayClusters.
 You can remove the annotation and KubeRay will automatically generate a unique key for each RayCluster custom resource.
-You can refer to [kuberay#1297](https://github.com/ray-project/kuberay/issues/1297) for more details.
+See [kuberay#1297](https://github.com/ray-project/kuberay/issues/1297) for more details.
+
+(kuberay-raysvc-issue10)=
+### Issue 10: Upgrade RayService with GCS fault tolerance enabled without downtime
+
+KubeRay uses the value of the annotation [ray.io/external-storage-namespace](kuberay-external-storage-namespace) to assign the environment variable `RAY_external_storage_namespace` to all Ray Pods managed by the RayCluster.
+This value represents the storage namespace in Redis where the Ray cluster metadata resides.
+In the process of a head Pod recovery, the head Pod attempts to reconnect to the Redis server using the `RAY_external_storage_namespace` value to recover the cluster data.
+
+However, specifying the `RAY_external_storage_namespace` value in RayService can potentially lead to downtime during zero-downtime upgrades.
+Specifically, the new RayCluster accesses the same Redis storage namespace as the old one for cluster metadata.
+This configuration can lead the KubeRay operator to assume that the Ray Serve applications are operational, as indicated by the existing metadata in Redis.
+Consequently, the operator might deem it safe to retire the old RayCluster and redirect traffic to the new one, even though the latter may still require time to initialize the Ray Serve applications.
+
+The recommended solution is to remove the `ray.io/external-storage-namespace` annotation from the RayService CRD.
+If the annotation isn't set, KubeRay automatically uses each RayCluster custom resource's UID as the `RAY_external_storage_namespace` value.
+Hence, both the old and new RayClusters have different `RAY_external_storage_namespace` values, and the new RayCluster is unable to access the old cluster metadata.
+Another solution is to set the `RAY_external_storage_namespace` value manually to a unique value for each RayCluster custom resource.
+See [kuberay#1296](https://github.com/ray-project/kuberay/issues/1296) for more details.
