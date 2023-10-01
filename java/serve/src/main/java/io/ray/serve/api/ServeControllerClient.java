@@ -1,31 +1,40 @@
 package io.ray.serve.api;
 
 import com.google.common.base.Preconditions;
+import com.google.protobuf.ByteString;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.exception.RayActorException;
+import io.ray.api.exception.RayTimeoutException;
 import io.ray.api.function.PyActorMethod;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.controller.ServeController;
+import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
+import io.ray.serve.generated.ApplicationStatus;
+import io.ray.serve.generated.DeploymentArgs;
+import io.ray.serve.generated.DeploymentArgsList;
 import io.ray.serve.generated.DeploymentRouteList;
 import io.ray.serve.generated.DeploymentStatus;
 import io.ray.serve.generated.DeploymentStatusInfo;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.ListApplicationsResponse;
 import io.ray.serve.generated.StatusOverview;
 import io.ray.serve.handle.DeploymentHandle;
+import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.MessageFormatter;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -60,16 +69,21 @@ public class ServeControllerClient {
                 .get();
   }
 
+  public DeploymentHandle getHandle(String deploymentName) {
+    return getHandle(deploymentName, Constants.SERVE_DEFAULT_APP_NAME, false);
+  }
+
   /**
    * Retrieve DeploymentHandle for service deployment to invoke it from Java.
    *
    * @param deploymentName A registered service deployment.
+   * @param appName application name
    * @param missingOk If true, then Serve won't check the deployment is registered.
    * @return
    */
   @SuppressWarnings("unchecked")
-  public DeploymentHandle getHandle(String deploymentName, boolean missingOk) {
-    String cacheKey = deploymentName + "#" + missingOk;
+  public DeploymentHandle getHandle(String deploymentName, String appName, boolean missingOk) {
+    String cacheKey = StringUtils.join(new Object[] {deploymentName, appName, missingOk}, "#");
     if (handleCache.containsKey(cacheKey)) {
       return handleCache.get(cacheKey);
     }
@@ -98,7 +112,7 @@ public class ServeControllerClient {
           MessageFormatter.format("Deployment {} does not exist.", deploymentName));
     }
 
-    DeploymentHandle handle = new DeploymentHandle(deploymentName, null, null, null);
+    DeploymentHandle handle = new DeploymentHandle(deploymentName, appName, null, null);
     handleCache.put(cacheKey, handle);
     return handle;
   }
@@ -216,68 +230,21 @@ public class ServeControllerClient {
    */
   public synchronized void shutdown() {
     if (Ray.isInitialized() && !shutdown) {
-      ((PyActorHandle) controller).task(PyActorMethod.of("shutdown")).remote();
-      waitForDeploymentsShutdown(60);
 
-      controller.kill();
-
-      long started = System.currentTimeMillis();
-      while (true) {
-        Optional<BaseActorHandle> controllerHandle =
-            Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
-        if (!controllerHandle.isPresent()) {
-          // actor name is removed
-          break;
-        }
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - started > 5000) {
-          LOGGER.warn(
-              "Waited 5s for Serve to shutdown gracefully but the controller is still not cleaned up. You can ignore this warning if you are shutting down the Ray cluster.");
-          break;
-        }
+      try {
+        ((PyActorHandle) controller)
+            .task(PyActorMethod.of("graceful_shutdown"))
+            .remote()
+            .get(30 * 1000);
+      } catch (RayActorException e) {
+        // Controller has been shut down.
+        return;
+      } catch (RayTimeoutException e) {
+        LOGGER.warn(
+            "Controller failed to shut down within 30s. Check controller logs for more details.");
       }
-
       shutdown = true;
     }
-  }
-
-  /**
-   * Waits for all deployments to be shut down and deleted.
-   *
-   * <p>Throw RayServeException if this doesn't happen before timeoutS.
-   *
-   * @param timeoutS
-   */
-  private void waitForDeploymentsShutdown(long timeoutS) {
-    long start = System.currentTimeMillis();
-    List<DeploymentStatusInfo> deploymentStatuses = null;
-    while (System.currentTimeMillis() - start < timeoutS * 1000) {
-      StatusOverview statusOverview = getServeStatus();
-      if (statusOverview == null
-          || statusOverview.getDeploymentStatuses() == null
-          || statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList() == null
-          || statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList().isEmpty()) {
-        return;
-      }
-      deploymentStatuses = statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList();
-      LOGGER.debug("Waiting for shutdown, {} deployments still alive.", deploymentStatuses.size());
-      try {
-        Thread.sleep(CLIENT_POLLING_INTERVAL_S * 1000);
-      } catch (InterruptedException e) {
-      }
-    }
-    List<String> liveNames = new ArrayList<>();
-    if (deploymentStatuses != null) {
-      for (DeploymentStatusInfo status : deploymentStatuses) {
-        liveNames.add(status.getName());
-      }
-    }
-
-    throw new RayServeException(
-        MessageFormatter.format(
-            "Shutdown didn't complete after {}s. Deployments still alive: {}.",
-            timeoutS,
-            liveNames));
   }
 
   public String getRootUrl() {
@@ -351,13 +318,6 @@ public class ServeControllerClient {
         MessageFormatter.format("Deployment {} wasn't deleted after {}s.", name, timeoutS));
   }
 
-  private StatusOverview getServeStatus() {
-    return ServeProtoUtil.bytesToProto(
-        (byte[])
-            ((PyActorHandle) controller).task(PyActorMethod.of("get_serve_status")).remote().get(),
-        StatusOverview::parseFrom);
-  }
-
   private DeploymentStatusInfo getDeploymentStatus(String name) {
     return ServeProtoUtil.bytesToProto(
         (byte[])
@@ -370,5 +330,147 @@ public class ServeControllerClient {
 
   public BaseActorHandle getController() {
     return controller;
+  }
+
+  public void deployApplication(String name, List<Deployment> deployments, boolean blocking) {
+
+    DeploymentArgsList.Builder deploymentArgsListBuilder = DeploymentArgsList.newBuilder();
+
+    for (Deployment deployment : deployments) {
+      DeploymentArgs deploymentArgs =
+          DeploymentArgs.newBuilder()
+              .setDeploymentName(deployment.getName())
+              .setReplicaConfig(ByteString.copyFrom(deployment.getReplicaConfig().toProtoBytes()))
+              .setDeploymentConfig(
+                  ByteString.copyFrom(deployment.getDeploymentConfig().toProtoBytes()))
+              .setRoutePrefix(deployment.getRoutePrefix())
+              .setIngress(deployment.isIngress())
+              .setDeployerJobId(
+                  ByteString.copyFrom(Ray.getRuntimeContext().getCurrentJobId().getBytes()))
+              .build();
+      deploymentArgsListBuilder.addDeploymentArgs(deploymentArgs);
+    }
+
+    ((PyActorHandle) controller)
+        .task(
+            PyActorMethod.of("deploy_application_xlang"),
+            name,
+            deploymentArgsListBuilder.build().toByteArray())
+        .remote()
+        .get();
+
+    if (blocking) {
+      waitForApplicationRunning(name, null);
+      for (Deployment deployment : deployments) {
+        logDeploymentReady(
+            deployment.getName(),
+            deployment.getVersion(),
+            deployment.getUrl(),
+            "component=serve deployment=" + deployment.getName());
+      }
+    }
+  }
+
+  /**
+   * Waits for the named application to enter "RUNNING" status.
+   *
+   * @param name application name
+   * @param timeoutS unit: second
+   */
+  private void waitForApplicationRunning(String name, Long timeoutS) {
+    long start = System.currentTimeMillis();
+    while (timeoutS == null || System.currentTimeMillis() - start < timeoutS * 1000) {
+
+      StatusOverview status = getServeStatus(name);
+      if (status.getAppStatus().getStatus() == ApplicationStatus.APPLICATION_STATUS_RUNNING) {
+        return;
+      } else if (status.getAppStatus().getStatus()
+          == ApplicationStatus.APPLICATION_STATUS_DEPLOY_FAILED) {
+        throw new RayServeException(
+            MessageFormatter.format(
+                "Deploying application {} is failed: {}",
+                name,
+                status.getAppStatus().getMessage()));
+      }
+
+      LOGGER.debug(
+          "Waiting for {} to be RUNNING, current status: {}.",
+          name,
+          status.getAppStatus().getStatus());
+      try {
+        Thread.sleep(CLIENT_POLLING_INTERVAL_S * 1000);
+      } catch (InterruptedException e) {
+      }
+    }
+
+    throw new RayServeException(
+        MessageFormatter.format(
+            "Application {} did not become RUNNING after {}s.", name, timeoutS));
+  }
+
+  private void logDeploymentReady(String name, String version, String url, String tag) {
+    String urlPart = url != null ? MessageFormatter.format(" at `{}`", url) : "";
+    LOGGER.info(
+        "Deployment '{}{}' is ready {}. {}",
+        name,
+        StringUtils.isNotBlank(version) ? "':'" + version : "",
+        urlPart,
+        tag);
+  }
+
+  public void deleteApps(List<String> names, boolean blocking) {
+    if (CollectionUtil.isEmpty(names)) {
+      return;
+    }
+
+    LOGGER.info("Deleting app {}", names);
+
+    ListApplicationsResponse apps =
+        ListApplicationsResponse.newBuilder().addAllApplicationNames(names).build();
+    ((PyActorHandle) controller)
+        .task(PyActorMethod.of("delete_apps_xlang"), apps.toByteArray())
+        .remote()
+        .get();
+
+    if (blocking) {
+      long start = System.currentTimeMillis();
+      List<String> undeleted = new ArrayList<>(names);
+
+      while (System.currentTimeMillis() - start < 60 * 1000) {
+
+        Iterator<String> iterator = undeleted.iterator();
+        while (iterator.hasNext()) {
+
+          String name = iterator.next();
+          StatusOverview status = getServeStatus(name);
+          if (status.getAppStatus().getStatus()
+              == ApplicationStatus.APPLICATION_STATUS_NOT_STARTED) {
+            iterator.remove();
+          }
+        }
+
+        if (undeleted.isEmpty()) {
+          return;
+        }
+
+        try {
+          Thread.sleep(CLIENT_POLLING_INTERVAL_S * 1000);
+        } catch (InterruptedException e) {
+        }
+      }
+      throw new RayServeException(
+          MessageFormatter.format(
+              "Some of these applications weren't deleted after 60s: {}", names));
+    }
+  }
+
+  public StatusOverview getServeStatus(String name) {
+    byte[] statusBytes =
+        (byte[])
+            ((PyActorHandle) controller)
+                .task(PyActorMethod.of("get_serve_status"), name)
+                .remote()
+                .get();
+    return ServeProtoUtil.bytesToProto(statusBytes, StatusOverview::parseFrom);
   }
 }

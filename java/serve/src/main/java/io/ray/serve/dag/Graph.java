@@ -33,8 +33,7 @@ public class Graph {
     if (StringUtils.isBlank(ingressDeployment.getRoutePrefix())
         || StringUtils.equals(
             ingressDeployment.getRoutePrefix(), "/" + ingressDeployment.getName())) {
-      deployments.set(
-          deployments.size() - 1, ingressDeployment.options().setRoutePrefix("/").create());
+      ingressDeployment.setRoutePrefix("/");
     }
 
     for (int i = 0; i < deployments.size() - 1; i++) {
@@ -48,7 +47,7 @@ public class Graph {
                   + "{} on non-ingress deployment of the "
                   + "serve DAG. ",
               deployment.getRoutePrefix()));
-      deployments.set(i, deployment.options().setRoutePrefix(null).create());
+      deployment.setRoutePrefix("");
     }
     return deployments;
   }
@@ -86,7 +85,8 @@ public class Graph {
               .setName(deploymentName)
               .setInitArgs(replacedDeploymentInitArgs)
               .setRoutePrefix(routePrefix)
-              .create();
+              .create(false);
+
       return new DeploymentNode(
           deployment,
           appName,
@@ -126,6 +126,8 @@ public class Graph {
             "Only one deployment in an Serve Application or DAG can have non-None route prefix. {} ingress deployments found: {}",
             ingressDeployments.size(),
             ingressDeployments));
+
+    ingressDeployments.get(0).setIngress(true);
     return ingressDeployments.get(0);
   }
 

@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
@@ -28,11 +29,13 @@ public class Deployment {
 
   private final String version;
 
-  private final String routePrefix;
+  private String routePrefix;
 
   private final String url;
 
-  // TODO placement group parameters.
+  private boolean ingress;
+
+  // TODO support placement group.
 
   public Deployment(
       String name,
@@ -41,7 +44,7 @@ public class Deployment {
       String version,
       String routePrefix) {
 
-    if (routePrefix != null) {
+    if (StringUtils.isNotBlank(routePrefix)) {
       Preconditions.checkArgument(routePrefix.startsWith("/"), "route_prefix must start with '/'.");
       Preconditions.checkArgument(
           routePrefix.equals("/") || !routePrefix.endsWith("/"),
@@ -63,17 +66,6 @@ public class Deployment {
     this.url = routePrefix != null ? Serve.getGlobalClient().getRootUrl() + routePrefix : null;
   }
 
-  /**
-   * Deploy or update this deployment.
-   *
-   * @param blocking
-   */
-  @Deprecated
-  public void deploy(boolean blocking) {
-    Serve.getGlobalClient()
-        .deploy(name, replicaConfig, deploymentConfig, version, routePrefix, url, blocking);
-  }
-
   /** Delete this deployment. */
   public void delete() {
     Serve.getGlobalClient().deleteDeployment(name, true);
@@ -84,8 +76,9 @@ public class Deployment {
    *
    * @return ServeHandle
    */
+  @Deprecated
   public DeploymentHandle getHandle() {
-    return Serve.getGlobalClient().getHandle(name, true);
+    return Serve.getGlobalClient().getHandle(name, "", true);
   }
 
   /**
@@ -164,5 +157,17 @@ public class Deployment {
 
   public String getUrl() {
     return url;
+  }
+
+  public void setRoutePrefix(String routePrefix) {
+    this.routePrefix = routePrefix;
+  }
+
+  public boolean isIngress() {
+    return ingress;
+  }
+
+  public void setIngress(boolean ingress) {
+    this.ingress = ingress;
   }
 }

@@ -306,3 +306,16 @@ message ModelOutput {
 service RayServeBenchmarkService {
   rpc grpc_call(RawData) returns (ModelOutput);
 }
+
+message DeploymentArgs {
+  string deployment_name = 1;
+  bytes deployment_config = 2;
+  bytes replica_config = 3;
+  bytes deployer_job_id = 4;
+  string route_prefix = 5;
+  bool ingress = 6;
+}
+
+message DeploymentArgsList {
+  repeated DeploymentArgs deployment_args = 1;
+}

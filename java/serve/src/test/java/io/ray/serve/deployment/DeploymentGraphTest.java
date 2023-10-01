@@ -1,8 +1,12 @@
 package io.ray.serve.deployment;
 
 import io.ray.api.Ray;
+import io.ray.serve.BaseServeTest2;
 import io.ray.serve.api.Serve;
+import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.generated.ApplicationStatus;
+import io.ray.serve.generated.StatusOverview;
 import io.ray.serve.handle.DeploymentHandle;
 import io.ray.serve.handle.DeploymentResponse;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -13,7 +17,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-public class DeploymentGraphTest {
+public class DeploymentGraphTest extends BaseServeTest2 {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(DeploymentGraphTest.class);
 
@@ -106,5 +110,21 @@ public class DeploymentGraphTest {
         Serve.deployment().setDeploymentDef(Combiner.class.getName()).bind(modelA, modelB);
     DeploymentHandle handle = Serve.run(driver).get();
     Assert.assertEquals(handle.remote("test").result(), "A:test,B:test");
+  }
+
+  @Test
+  public void statusTest() {
+    Application deployment =
+        Serve.deployment().setDeploymentDef(Counter.class.getName()).setNumReplicas(1).bind("2");
+    Serve.run(deployment);
+
+    StatusOverview status = Serve.status(Constants.SERVE_DEFAULT_APP_NAME);
+    Assert.assertEquals(
+        status.getAppStatus().getStatus(), ApplicationStatus.APPLICATION_STATUS_RUNNING);
+
+    Serve.delete(Constants.SERVE_DEFAULT_APP_NAME);
+    status = Serve.status(Constants.SERVE_DEFAULT_APP_NAME);
+    Assert.assertEquals(
+        status.getAppStatus().getStatus(), ApplicationStatus.APPLICATION_STATUS_NOT_STARTED);
   }
 }

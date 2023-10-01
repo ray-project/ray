@@ -58,11 +58,12 @@ from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
+    DeploymentArgsList,
     DeploymentRoute,
     DeploymentRouteList,
 )
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
-from ray.serve.generated.serve_pb2 import EndpointSet
+from ray.serve.generated.serve_pb2 import EndpointSet, ListApplicationsResponse
 from ray.serve.schema import (
     ApplicationDetails,
     HTTPOptionsSchema,
@@ -632,6 +633,28 @@ class ServeController:
 
         self.application_state_manager.apply_deployment_args(name, deployment_args_list)
 
+    def deploy_application_xlang(
+        self, name: str, deployment_args_list_bytes: bytes
+    ) -> None:
+        deployment_args_list_proto = DeploymentArgsList.FromString(
+            deployment_args_list_bytes
+        )
+        deployment_args_list = [
+            {
+                "deployment_name": deployment_args.deployment_name,
+                "deployment_config_proto_bytes": deployment_args.deployment_config,
+                "replica_config_proto_bytes": deployment_args.replica_config,
+                "deployer_job_id": deployment_args.deployer_job_id,
+                "route_prefix": None
+                if deployment_args.route_prefix == ""
+                else deployment_args.route_prefix,
+                "ingress": deployment_args.ingress,
+                "docs_path": None,
+            }
+            for deployment_args in deployment_args_list_proto.deployment_args
+        ]
+        self.deploy_application(name, deployment_args_list)
+
     def deploy_config(
         self,
         config: Union[ServeApplicationSchema, ServeDeploySchema],
@@ -968,6 +991,10 @@ class ServeController:
         """
         for name in names:
             self.application_state_manager.delete_application(name)
+
+    def delete_apps_xlang(self, apps_bytes: bytes):
+        apps = ListApplicationsResponse.FromString(apps_bytes)
+        self.delete_apps(apps.application_names)
 
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
         """Record multiplexed model ids for a replica of deployment

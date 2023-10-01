@@ -1,6 +1,7 @@
 package io.ray.serve.docdemo;
 
 import io.ray.serve.api.Serve;
+import io.ray.serve.deployment.Application;
 import io.ray.serve.deployment.Deployment;
 import io.ray.serve.handle.DeploymentResponse;
 import java.util.ArrayList;
@@ -16,13 +17,13 @@ public class StrategyCalcOnRayServe {
   public void deploy() {
     Serve.start(null);
 
-    Deployment deployment =
+    Application deployment =
         Serve.deployment()
             .setName("strategy")
             .setDeploymentDef(StrategyOnRayServe.class.getName())
             .setNumReplicas(4)
-            .create();
-    deployment.deploy(true);
+            .bind();
+    Serve.run(deployment);
   }
   // docs-deploy-end
 

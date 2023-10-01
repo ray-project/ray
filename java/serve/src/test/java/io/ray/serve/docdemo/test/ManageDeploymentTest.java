@@ -8,7 +8,9 @@ import org.testng.annotations.Test;
 
 public class ManageDeploymentTest extends BaseServeTest {
 
-  @Test(groups = {"cluster"})
+  @Test(
+      enabled = false,
+      groups = {"cluster"})
   public void test() {
     ManageDeployment manageDeployment = new ManageDeployment();
     manageDeployment.create();

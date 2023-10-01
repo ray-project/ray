@@ -82,14 +82,16 @@ public class DeploymentCreator {
 
   // TODO is_driver_deployment\placement_group_bundles\placement_group_strategy
 
-  public Deployment create() {
+  public Deployment create(boolean check) {
 
-    Preconditions.checkArgument(
-        numReplicas == null || numReplicas != 0, "num_replicas is expected to larger than 0");
+    if (check) {
+      Preconditions.checkArgument(
+          numReplicas == null || numReplicas != 0, "num_replicas is expected to larger than 0");
 
-    Preconditions.checkArgument(
-        numReplicas == null || autoscalingConfig == null,
-        "Manually setting num_replicas is not allowed when autoscalingConfig is provided.");
+      Preconditions.checkArgument(
+          numReplicas == null || autoscalingConfig == null,
+          "Manually setting num_replicas is not allowed when autoscalingConfig is provided.");
+    }
 
     if (version != null) {
       LOGGER.warn(
@@ -120,6 +122,10 @@ public class DeploymentCreator {
         replicaConfig,
         version,
         routePrefix);
+  }
+
+  public Deployment create() {
+    return create(true);
   }
 
   public Application bind() {

@@ -176,8 +176,9 @@ public class DeploymentConfig implements Serializable {
     return version;
   }
 
-  public void setVersion(String version) {
+  public DeploymentConfig setVersion(String version) {
     this.version = version;
+    return this;
   }
 
   public String getPrevVersion() {
@@ -198,7 +199,8 @@ public class DeploymentConfig implements Serializable {
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
-            .setDeploymentLanguage(deploymentLanguage);
+            .setDeploymentLanguage(deploymentLanguage)
+            .setVersion(version);
     if (null != userConfig) {
       builder.setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()));
     }
