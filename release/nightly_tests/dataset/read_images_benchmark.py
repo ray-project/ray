@@ -1,8 +1,9 @@
+import argparse
 import os
 import random
 import shutil
 import tempfile
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from PIL import Image
 
@@ -13,10 +14,12 @@ from benchmark import Benchmark
 
 
 def read_images(
-    root: str, size: Optional[Tuple[int, int]] = None, mode: Optional[str] = None
+    paths: Union[str, List[str]],
+    size: Optional[Tuple[int, int]] = None,
+    mode: Optional[str] = None,
 ) -> Dataset:
 
-    return ray.data.read_images(paths=root, size=size, mode=mode)
+    return ray.data.read_images(paths=paths, size=size, mode=mode)
 
 
 def generate_images(
@@ -73,16 +76,16 @@ def run_images_benchmark(benchmark: Benchmark):
         ),
     ]
 
-    benchmark.run("images-100-256-rbg-jpg", read_images, root=test_input[0])
-    benchmark.run("images-100-2048-rbg-jpg", read_images, root=test_input[1])
+    benchmark.run("images-100-256-rbg-jpg", read_images, paths=test_input[0])
+    benchmark.run("images-100-2048-rbg-jpg", read_images, paths=test_input[1])
     benchmark.run(
         "images-100-2048-to-256-rbg-jpg",
         read_images,
-        root=test_input[1],
+        paths=test_input[1],
         size=(256, 256),
     )
     benchmark.run(
-        "images-1000-mix", read_images, root=test_input[2], size=(256, 256), mode="RGB"
+        "images-1000-mix", read_images, paths=test_input[2], size=(256, 256), mode="RGB"
     )
 
     for root in test_input:
@@ -93,15 +96,47 @@ def run_images_benchmark(benchmark: Benchmark):
     benchmark.run(
         "images-imagenet-1g",
         read_images,
-        root="s3://air-example-data-2/1G-image-data-synthetic-raw",
+        paths="s3://air-example-data-2/1G-image-data-synthetic-raw",
     )
 
 
+def run_images_benchmark_multinode(benchmark: Benchmark):
+    """Read 100M images. The images do not share the same immediate parent directory."""
+
+    hundred_thousand_image_paths = [
+        f"s3://air-example-data-2/dog_{i}/dog_0.jpg" for i in range(100_000)
+    ]
+    hundred_million_image_paths = []
+    for _ in range(100_000_000 // 100_000):
+        hundred_million_image_paths.extend(hundred_thousand_image_paths)
+
+    benchmark.run("100M-images-read", read_images, paths=hundred_million_image_paths)
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Helper script to upload files to S3 bucket"
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--single-node",
+        action="store_true",
+        help="Run single-node read_images benchmark.",
+    )
+    group.add_argument(
+        "--multi-node",
+        action="store_true",
+        help="Run multi-node read_images benchmark.",
+    )
+
+    args = parser.parse_args()
     ray.init()
 
     benchmark = Benchmark("read-images")
 
-    run_images_benchmark(benchmark)
+    if args.single_node:
+        run_images_benchmark(benchmark)
+    elif args.multi_node:
+        run_images_benchmark_multinode(benchmark)
 
     benchmark.write_result()
