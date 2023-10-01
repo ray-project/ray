@@ -63,7 +63,7 @@ public class DeploymentGraphTest extends BaseServeTest2 {
     }
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void bindTest() {
     Application deployment =
         Serve.deployment().setDeploymentDef(Counter.class.getName()).setNumReplicas(1).bind("2");
@@ -101,7 +101,7 @@ public class DeploymentGraphTest extends BaseServeTest2 {
     }
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void testPassHandle() {
     Application modelA = Serve.deployment().setDeploymentDef(ModelA.class.getName()).bind();
     Application modelB = Serve.deployment().setDeploymentDef(ModelB.class.getName()).bind();
@@ -112,7 +112,7 @@ public class DeploymentGraphTest extends BaseServeTest2 {
     Assert.assertEquals(handle.remote("test").result(), "A:test,B:test");
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void statusTest() {
     Application deployment =
         Serve.deployment().setDeploymentDef(Counter.class.getName()).setNumReplicas(1).bind("2");
