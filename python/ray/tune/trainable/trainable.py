@@ -29,6 +29,7 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
 )
 from ray.train import Checkpoint
+from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -554,6 +555,8 @@ class Trainable:
                     persisted_checkpoint = self._storage.persist_current_checkpoint(
                         local_checkpoint
                     )
+
+                    metrics[CHECKPOINT_DIR_NAME] = self.storage.checkpoint_dir_name
 
                     checkpoint_result = _TrainingResult(
                         checkpoint=persisted_checkpoint, metrics=metrics

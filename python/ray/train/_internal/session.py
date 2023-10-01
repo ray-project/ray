@@ -38,6 +38,7 @@ from ray.train.constants import (
     TIME_TOTAL_S,
     LAZY_CHECKPOINT_MARKER_FILE,
     RAY_CHDIR_TO_TRIAL_DIR,
+    CHECKPOINT_DIR_NAME,
 )
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -587,6 +588,10 @@ class _TrainSession:
 
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+
+            metrics[CHECKPOINT_DIR_NAME] = self.storage.checkpoint_dir_name
+        else:
+            metrics[CHECKPOINT_DIR_NAME] = None
 
         # Persist trial artifacts to storage.
         force_artifact_sync = (
