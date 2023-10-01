@@ -53,12 +53,6 @@ CLEANABLE_SUBDIRS = [
     RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR,
 ]
 
-# In automated builds, we do a few adjustments before building. For instance,
-# the bazel environment is set up slightly differently, and symlinks are
-# replaced with junctions in Windows. This variable is set e.g. in our conda
-# feedstock.
-is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
-
 exe_suffix = ".exe" if sys.platform == "win32" else ""
 
 # .pyd is the extension Python requires on Windows for shared libraries.
@@ -435,90 +429,6 @@ def download_pickle5(pickle5_dir):
                 wzf.close()
 
 
-def patch_isdir():
-    """
-    Python on Windows is having hard times at telling if a symlink is
-    a directory - it can "guess" wrong at times, which bites when
-    finding packages. Replace with a fixed version which unwraps links first.
-    """
-    orig_isdir = os.path.isdir
-
-    def fixed_isdir(path):
-        while os.path.islink(path):
-            try:
-                link = os.readlink(path)
-            except OSError:
-                break
-            path = os.path.abspath(os.path.join(os.path.dirname(path), link))
-        return orig_isdir(path)
-
-    os.path.isdir = fixed_isdir
-
-
-def replace_symlinks_with_junctions():
-    """
-    Per default Windows requires admin access to create symlinks, while
-    junctions (which behave similarly) can be created by users.
-
-    This function replaces symlinks (which might be broken when checked
-    out without admin rights) with junctions so Ray can be built both
-    with and without admin access.
-    """
-    assert is_native_windows_or_msys()
-
-    # Update this list if new symlinks are introduced to the source tree
-    _LINKS = {
-        r"ray\dashboard": "../../dashboard",
-        r"ray\rllib": "../../rllib",
-    }
-    root_dir = os.path.dirname(__file__)
-    for link, default in _LINKS.items():
-        path = os.path.join(root_dir, link)
-        try:
-            out = subprocess.check_output(
-                "DIR /A:LD /B", shell=True, cwd=os.path.dirname(path)
-            )
-        except subprocess.CalledProcessError:
-            out = b""
-        if os.path.basename(path) in out.decode("utf8").splitlines():
-            logger.info(f"'{link}' is already converted to junction point")
-        else:
-            logger.info(f"Converting '{link}' to junction point...")
-            if os.path.isfile(path):
-                with open(path) as inp:
-                    target = inp.read()
-                os.unlink(path)
-            elif os.path.isdir(path):
-                target = default
-                try:
-                    # unlink() works on links as well as on regular files,
-                    # and links to directories are considered directories now
-                    os.unlink(path)
-                except OSError as err:
-                    # On Windows attempt to unlink a regular directory results
-                    # in a PermissionError with errno set to errno.EACCES.
-                    if err.errno != errno.EACCES:
-                        raise
-                    # For regular directories deletion is done with rmdir call.
-                    os.rmdir(path)
-            else:
-                raise ValueError(f"Unexpected type of entry: '{path}'")
-            target = os.path.abspath(os.path.join(os.path.dirname(path), target))
-            logger.info("Setting {} -> {}".format(link, target))
-            subprocess.check_call(
-                f'MKLINK /J "{os.path.basename(link)}" "{target}"',
-                shell=True,
-                cwd=os.path.dirname(path),
-            )
-
-
-if is_automated_build and is_native_windows_or_msys():
-    # Automated replacements should only happen in automatic build
-    # contexts for now
-    patch_isdir()
-    replace_symlinks_with_junctions()
-
-
 def build(build_python, build_java, build_cpp):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = (
@@ -616,26 +526,6 @@ def build(build_python, build_java, build_cpp):
             FutureWarning,
         )
 
-    if not is_automated_build:
-        bazel_precmd_flags = []
-    if is_automated_build:
-        root_dir = os.path.join(
-            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root"
-        )
-        out_dir = os.path.join(os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
-
-        for d in (root_dir, out_dir):
-            if not os.path.exists(d):
-                os.makedirs(d)
-
-        bazel_precmd_flags = [
-            "--output_user_root=" + root_dir,
-            "--output_base=" + out_dir,
-        ]
-
-        if is_native_windows_or_msys():
-            bazel_flags.append("--enable_runfiles=false")
-
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
@@ -650,7 +540,7 @@ def build(build_python, build_java, build_cpp):
 
     return bazel_invoke(
         subprocess.check_call,
-        bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
+        ["build"] + bazel_flags + ["--"] + bazel_targets,
         env=bazel_env,
     )
 
