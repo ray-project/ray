@@ -55,7 +55,7 @@ public class ServeTest {
       // The default port 8000 is occupied by other processes on the ci platform.
       Map<String, String> config = Maps.newHashMap();
       config.put(RayServeConfig.PROXY_HTTP_PORT, "8341");
-      Serve.start(false, config);
+      Serve.start(config);
 
       Optional<PyActorHandle> controller = Ray.getActor(Constants.SERVE_CONTROLLER_NAME);
       Assert.assertTrue(controller.isPresent());

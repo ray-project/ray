@@ -50,10 +50,9 @@ import psutil
 
 try:
     import aiohttp.web
-
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
-    routes = dashboard_optional_utils.ClassMethodRouteTable
+    head_routes = dashboard_optional_utils.DashboardHeadRouteTable
 except Exception:
     pass
 
@@ -376,7 +375,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-def test_class_method_route_table(enable_test_module):
+def test_method_route_table(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
     agent_cls_list = dashboard_utils.get_all_modules(
         dashboard_utils.DashboardAgentModule
@@ -406,34 +405,46 @@ def test_class_method_route_table(enable_test_module):
                 return True
         return False
 
-    all_routes = dashboard_optional_utils.ClassMethodRouteTable.routes()
-    assert any(_has_route(r, "HEAD", "/test/route_head") for r in all_routes)
-    assert any(_has_route(r, "GET", "/test/route_get") for r in all_routes)
-    assert any(_has_route(r, "POST", "/test/route_post") for r in all_routes)
-    assert any(_has_route(r, "PUT", "/test/route_put") for r in all_routes)
-    assert any(_has_route(r, "PATCH", "/test/route_patch") for r in all_routes)
-    assert any(_has_route(r, "DELETE", "/test/route_delete") for r in all_routes)
-    assert any(_has_route(r, "*", "/test/route_view") for r in all_routes)
+    # Check agent routes
+    unbound_agent_routes = dashboard_optional_utils.DashboardAgentRouteTable.routes()
+    assert any(_has_route(r, "HEAD", "/test/route_head") for r in unbound_agent_routes)
+    assert any(_has_route(r, "POST", "/test/route_post") for r in unbound_agent_routes)
+    assert any(
+        _has_route(r, "PATCH", "/test/route_patch") for r in unbound_agent_routes
+    )
+
+    # Check head routes
+    unbound_head_routes = dashboard_optional_utils.DashboardHeadRouteTable.routes()
+    assert any(_has_route(r, "GET", "/test/route_get") for r in unbound_head_routes)
+    assert any(_has_route(r, "PUT", "/test/route_put") for r in unbound_head_routes)
+    assert any(
+        _has_route(r, "DELETE", "/test/route_delete") for r in unbound_head_routes
+    )
+    assert any(_has_route(r, "*", "/test/route_view") for r in unbound_head_routes)
 
     # Test bind()
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
-    assert len(bound_routes) == 0
-    dashboard_optional_utils.ClassMethodRouteTable.bind(
+    bound_agent_routes = (
+        dashboard_optional_utils.DashboardAgentRouteTable.bound_routes()
+    )
+    assert len(bound_agent_routes) == 0
+    dashboard_optional_utils.DashboardAgentRouteTable.bind(
         test_agent_cls.__new__(test_agent_cls)
     )
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
-    assert any(_has_route(r, "POST", "/test/route_post") for r in bound_routes)
-    assert all(not _has_route(r, "PUT", "/test/route_put") for r in bound_routes)
+    bound_agent_routes = (
+        dashboard_optional_utils.DashboardAgentRouteTable.bound_routes()
+    )
+    assert any(_has_route(r, "POST", "/test/route_post") for r in bound_agent_routes)
+    assert all(not _has_route(r, "PUT", "/test/route_put") for r in bound_agent_routes)
 
     # Static def should be in bound routes.
-    routes.static("/test/route_static", "/path")
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
-    assert any(_has_static(r, "/path", "/test/route_static") for r in bound_routes)
+    head_routes.static("/test/route_static", "/path")
+    bound_head_routes = dashboard_optional_utils.DashboardHeadRouteTable.bound_routes()
+    assert any(_has_static(r, "/path", "/test/route_static") for r in bound_head_routes)
 
     # Test duplicated routes should raise exception.
     try:
 
-        @routes.get("/test/route_get")
+        @head_routes.get("/test/route_get")
         def _duplicated_route(req):
             pass
 
@@ -445,7 +456,7 @@ def test_class_method_route_table(enable_test_module):
 
     # Test exception in handler
     post_handler = None
-    for r in bound_routes:
+    for r in bound_agent_routes:
         if _has_route(r, "POST", "/test/route_post"):
             post_handler = r.handler
             break
