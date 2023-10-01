@@ -35,7 +35,7 @@ class SparkNodeProvider(NodeProvider):
         self.lock = RLock()
 
         self._nodes = {
-            HEAD_NODE_ID: {
+            str(HEAD_NODE_ID): {
                 "tags": {
                     TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
                     TAG_RAY_USER_NODE_TYPE: HEAD_NODE_TYPE,
@@ -65,7 +65,7 @@ class SparkNodeProvider(NodeProvider):
         with self.lock:
             nodes = []
             for node_id in self._nodes:
-                if node_id == 0:
+                if node_id == str(HEAD_NODE_ID):
                     status = "running"
                 else:
                     status = self._query_node_status(node_id)
