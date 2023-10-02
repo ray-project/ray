@@ -1,12 +1,13 @@
 package io.ray.serve.deployment;
 
-import com.google.common.collect.ImmutableMap;
 import io.ray.api.Ray;
 import io.ray.serve.BaseServeTest;
 import io.ray.serve.api.Serve;
 import io.ray.serve.config.AutoscalingConfig;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
@@ -24,13 +25,15 @@ public class DeploymentTest extends BaseServeTest {
   public void deployTest() {
     // Deploy deployment.
     String deploymentName = "exampleEcho";
+    Map<String, String> userConfig = new HashMap<>();
+    userConfig.put("suffix", "_text");
 
     Deployment deployment =
         Serve.deployment()
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig(ImmutableMap.of("suffix", "_test"))
+            .setUserConfig(userConfig)
             .setInitArgs(new Object[] {"echo_"})
             .create();
 
@@ -43,13 +46,15 @@ public class DeploymentTest extends BaseServeTest {
   public void httpExposeDeploymentTest() throws IOException {
     // Deploy deployment.
     String deploymentName = "exampleEcho";
+    Map<String, String> userConfig = new HashMap<>();
+    userConfig.put("suffix", "_text");
 
     Deployment deployment =
         Serve.deployment()
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig(ImmutableMap.of("suffix", "_test"))
+            .setUserConfig(userConfig)
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
@@ -73,13 +78,15 @@ public class DeploymentTest extends BaseServeTest {
   @Test
   public void updateDeploymentTest() {
     String deploymentName = "exampleEcho";
+    Map<String, String> userConfig = new HashMap<>();
+    userConfig.put("suffix", "_text");
 
     Deployment deployment =
         Serve.deployment()
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig(ImmutableMap.of("suffix", "_test"))
+            .setUserConfig(userConfig)
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
@@ -93,6 +100,8 @@ public class DeploymentTest extends BaseServeTest {
   @Test
   public void autoScaleTest() {
     String deploymentName = "exampleEcho";
+    Map<String, String> userConfig = new HashMap<>();
+    userConfig.put("suffix", "_text");
     AutoscalingConfig autoscalingConfig = new AutoscalingConfig();
     autoscalingConfig.setMinReplicas(2);
     autoscalingConfig.setMaxReplicas(5);
@@ -102,7 +111,7 @@ public class DeploymentTest extends BaseServeTest {
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setAutoscalingConfig(autoscalingConfig)
-            .setUserConfig(ImmutableMap.of("suffix", "_test"))
+            .setUserConfig(userConfig)
             .setVersion("v1")
             .setInitArgs(new Object[] {"echo_"})
             .create();
@@ -113,12 +122,14 @@ public class DeploymentTest extends BaseServeTest {
   @Test
   public void userConfigTest() {
     String deploymentName = "exampleEcho";
+    Map<String, String> userConfig = new HashMap<>();
+    userConfig.put("suffix", "_text");
     Deployment deployment =
         Serve.deployment()
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig(ImmutableMap.of("suffix", "_test"))
+            .setUserConfig(userConfig)
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
