@@ -19,7 +19,7 @@ from ray.serve.context import _get_global_client
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     ApplyServeDeploymentModel,
-    RayActorOptionsSchema,
+    BaseRayActorOptionsModel,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeStatusSchema,
@@ -139,10 +139,10 @@ class TestRayActorOptionsSchema:
         }
 
     def test_valid_ray_actor_options_schema(self):
-        # Ensure a valid RayActorOptionsSchema can be generated
+        # Ensure a valid BaseRayActorOptionsModel can be generated
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        BaseRayActorOptionsModel.parse_obj(ray_actor_options_schema)
 
     def test_ge_zero_ray_actor_options_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
@@ -151,7 +151,7 @@ class TestRayActorOptionsSchema:
         ge_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
         for field in ge_zero_fields:
             with pytest.raises(ValidationError):
-                RayActorOptionsSchema.parse_obj({field: -1})
+                BaseRayActorOptionsModel.parse_obj({field: -1})
 
     @pytest.mark.parametrize("env", get_valid_runtime_envs())
     def test_ray_actor_options_valid_runtime_env(self, env):
@@ -159,7 +159,7 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        BaseRayActorOptionsModel.parse_obj(ray_actor_options_schema)
 
     @pytest.mark.parametrize("env", get_invalid_runtime_envs())
     def test_ray_actor_options_invalid_runtime_env(self, env):
@@ -168,7 +168,7 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
         with pytest.raises(ValueError):
-            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+            BaseRayActorOptionsModel.parse_obj(ray_actor_options_schema)
 
     def test_extra_fields_invalid_ray_actor_options(self):
         # Undefined fields should be forbidden in the schema
@@ -184,17 +184,17 @@ class TestRayActorOptionsSchema:
         }
 
         # Schema should be createable with valid fields
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        BaseRayActorOptionsModel.parse_obj(ray_actor_options_schema)
 
         # Schema should NOT raise error when extra field is included
         ray_actor_options_schema["extra_field"] = None
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        BaseRayActorOptionsModel.parse_obj(ray_actor_options_schema)
 
     def test_dict_defaults_ray_actor_options(self):
         # Dictionary fields should have empty dictionaries as defaults, not None
 
         ray_actor_options_schema = {}
-        schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        schema = BaseRayActorOptionsModel.parse_obj(ray_actor_options_schema)
         d = schema.dict()
         assert d["runtime_env"] == {}
         assert d["resources"] == {}

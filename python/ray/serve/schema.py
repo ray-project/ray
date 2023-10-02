@@ -9,7 +9,6 @@ from pydantic import (
     Field,
     NonNegativeFloat,
     PositiveFloat,
-    PositiveInt,
     root_validator,
     validator,
 )
@@ -34,10 +33,13 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.serve.config import (
-    AutoscalingConfig,
+    AutoscalingConfigAnnotatedType,
     BaseDeploymentModel,
     BaseRayActorOptionsModel,
+    MaxConcurrentQueriesAnnotatedType,
+    NumReplicasAnnotatedType,
     ProxyLocation,
+    UserConfigAnnotatedType,
 )
 from ray.util.annotations import PublicAPI
 
@@ -87,10 +89,10 @@ class ApplyServeDeploymentModel(BaseDeploymentModel):
     )
 
     # Override default values
-    num_replicas: Optional[PositiveInt] = DEFAULT.VALUE
-    max_concurrent_queries: PositiveInt = DEFAULT.VALUE
-    user_config: Optional[Dict] = DEFAULT.VALUE
-    autoscaling_config: Optional[AutoscalingConfig] = DEFAULT.VALUE
+    num_replicas: NumReplicasAnnotatedType = DEFAULT.VALUE
+    max_concurrent_queries: MaxConcurrentQueriesAnnotatedType = DEFAULT.VALUE
+    user_config: UserConfigAnnotatedType = DEFAULT.VALUE
+    autoscaling_config: AutoscalingConfigAnnotatedType = DEFAULT.VALUE
     graceful_shutdown_wait_loop_s: NonNegativeFloat = DEFAULT.VALUE
     graceful_shutdown_timeout_s: NonNegativeFloat = DEFAULT.VALUE
     health_check_period_s: PositiveFloat = DEFAULT.VALUE

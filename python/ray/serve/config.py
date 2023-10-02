@@ -13,6 +13,7 @@ from pydantic import (
     PositiveInt,
     validator,
 )
+from typing_extensions import Annotated
 
 from ray._private.utils import import_attr
 from ray.serve._private.constants import (
@@ -203,6 +204,82 @@ class BaseRayActorOptionsModel(BaseModel):
     )
 
 
+NumReplicasAnnotatedType = Annotated[
+    PositiveInt,
+    Field(
+        description=(
+            "The number of processes that handle requests to this "
+            "deployment. Uses a default if null."
+        )
+    ),
+]
+MaxConcurrentQueriesAnnotatedType = Annotated[
+    PositiveInt,
+    Field(
+        description=(
+            "The max number of pending queries in a single replica. "
+            "Uses a default if null."
+        ),
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    ),
+]
+UserConfigAnnotatedType = Annotated[
+    Optional[Dict],
+    Field(
+        description=(
+            "Config to pass into this deployment's "
+            "reconfigure method. This can be updated dynamically "
+            "without restarting replicas"
+        ),
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    ),
+]
+AutoscalingConfigAnnotatedType = Annotated[
+    Optional[AutoscalingConfig],
+    Field(
+        description=(
+            "Config specifying autoscaling parameters for the "
+            "deployment's number of replicas. If null, the deployment "
+            "won't autoscale; the number of replicas will be fixed at "
+            "`num_replicas`."
+        ),
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    ),
+]
+GracefulShutdownWaitLoopSAnnotatedType = Annotated[
+    NonNegativeFloat,
+    Field(
+        description=(
+            "Duration that deployment replicas will wait until there "
+            "is no more work to be done before shutting down. Uses a "
+            "default if null."
+        ),
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    ),
+]
+GracefulShutdownTimeoutSAnnotatedType = Annotated[
+    NonNegativeFloat,
+    Field(
+        description=(
+            "Serve controller waits for this duration before "
+            "forcefully killing the replica for shutdown. Uses a "
+            "default if null."
+        ),
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    ),
+]
+HealthCheckPeriodSAnnotatedType = Annotated[
+    NonNegativeFloat,
+    Field(
+        description=(
+            "Frequency at which the controller will health check "
+            "replicas. Uses a default if null."
+        ),
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    ),
+]
+
+
 @PublicAPI(stability="stable")
 class BaseDeploymentModel(BaseModel, allow_population_by_field_name=True):
     """
@@ -211,65 +288,20 @@ class BaseDeploymentModel(BaseModel, allow_population_by_field_name=True):
     options specified in code.
     """
 
-    num_replicas: Optional[PositiveInt] = Field(
-        default=1,
-        description=(
-            "The number of processes that handle requests to this "
-            "deployment. Uses a default if null."
-        ),
+    num_replicas: NumReplicasAnnotatedType = 1
+    max_concurrent_queries: MaxConcurrentQueriesAnnotatedType = (
+        DEFAULT_MAX_CONCURRENT_QUERIES
     )
-    max_concurrent_queries: PositiveInt = Field(
-        default=DEFAULT_MAX_CONCURRENT_QUERIES,
-        description=(
-            "The max number of pending queries in a single replica. "
-            "Uses a default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    user_config: UserConfigAnnotatedType = None
+    autoscaling_config: AutoscalingConfigAnnotatedType = None
+    graceful_shutdown_wait_loop_s: GracefulShutdownWaitLoopSAnnotatedType = (
+        DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S
     )
-    user_config: Optional[Dict] = Field(
-        default=None,
-        description=(
-            "Config to pass into this deployment's "
-            "reconfigure method. This can be updated dynamically "
-            "without restarting replicas"
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    graceful_shutdown_timeout_s: GracefulShutdownTimeoutSAnnotatedType = (
+        DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
     )
-    autoscaling_config: Optional[AutoscalingConfig] = Field(
-        default=None,
-        description=(
-            "Config specifying autoscaling parameters for the "
-            "deployment's number of replicas. If null, the deployment "
-            "won't autoscale; the number of replicas will be fixed at "
-            "`num_replicas`."
-        ),
-        update_type=DeploymentOptionUpdateType.LightWeight,
-    )
-    graceful_shutdown_wait_loop_s: NonNegativeFloat = Field(
-        default=DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
-        description=(
-            "Duration that deployment replicas will wait until there "
-            "is no more work to be done before shutting down. Uses a "
-            "default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
-    )
-    graceful_shutdown_timeout_s: NonNegativeFloat = Field(
-        default=DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
-        description=(
-            "Serve controller waits for this duration before "
-            "forcefully killing the replica for shutdown. Uses a "
-            "default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
-    )
-    health_check_period_s: PositiveFloat = Field(
-        default=DEFAULT_HEALTH_CHECK_PERIOD_S,
-        description=(
-            "Frequency at which the controller will health check "
-            "replicas. Uses a default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    health_check_period_s: HealthCheckPeriodSAnnotatedType = (
+        DEFAULT_HEALTH_CHECK_PERIOD_S
     )
     health_check_timeout_s: PositiveFloat = Field(
         default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
