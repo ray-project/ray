@@ -1,9 +1,6 @@
 import asyncio
 import json
 import os
-import subprocess
-import sys
-import tempfile
 import time
 from copy import deepcopy
 from unittest.mock import patch
@@ -20,7 +17,7 @@ from ray.serve._private.utils import (
     calculate_remaining_timeout,
     dict_keys_snake_to_camel_case,
     get_all_live_placement_group_names,
-    get_deployment_import_path,
+    get_current_actor_id,
     get_head_node_id,
     is_running_in_asyncio_loop,
     merge_dict,
@@ -30,7 +27,7 @@ from ray.serve._private.utils import (
     serve_encoders,
     snake_to_camel_case,
 )
-from ray.serve.tests.utils import MockTimer
+from ray.serve.tests.common.utils import MockTimer
 
 
 def test_serialize():
@@ -111,70 +108,6 @@ def gen_class():
         pass
 
     return A
-
-
-class TestGetDeploymentImportPath:
-    def test_invalid_inline_defined(self):
-        @serve.deployment
-        def inline_f():
-            pass
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(inline_f, enforce_importable=True)
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(gen_func(), enforce_importable=True)
-
-        @serve.deployment
-        class InlineCls:
-            pass
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(InlineCls, enforce_importable=True)
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(gen_class(), enforce_importable=True)
-
-    def test_get_import_path_basic(self):
-        d = decorated_f.options()
-
-        # CI may change the parent path, so check only that the suffix matches.
-        assert get_deployment_import_path(d).endswith(
-            "ray.serve.tests.test_util.decorated_f"
-        )
-
-    def test_get_import_path_nested_actor(self):
-        d = DecoratedActor.options(name="actor")
-
-        # CI may change the parent path, so check only that the suffix matches.
-        assert get_deployment_import_path(d).endswith(
-            "ray.serve.tests.test_util.DecoratedActor"
-        )
-
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="File path incorrect on Windows."
-    )
-    def test_replace_main(self):
-        temp_fname = "testcase.py"
-        expected_import_path = "testcase.main_f"
-
-        code = (
-            "from ray import serve\n"
-            "from ray.serve._private.utils import get_deployment_import_path\n"
-            "@serve.deployment\n"
-            "def main_f(*args):\n"
-            "\treturn 'reached main_f'\n"
-            "assert get_deployment_import_path(main_f, replace_main=True) == "
-            f"'{expected_import_path}'"
-        )
-
-        with tempfile.TemporaryDirectory() as dirpath:
-            full_fname = os.path.join(dirpath, temp_fname)
-
-            with open(full_fname, "w+") as f:
-                f.write(code)
-
-            subprocess.check_output(["python", full_fname])
 
 
 class TestOverrideRuntimeEnvsExceptEnvVars:
@@ -763,6 +696,20 @@ async def test_is_running_in_asyncio_loop_true():
 
     # Verify that it also works in a task.
     assert await asyncio.ensure_future(check()) is True
+
+
+def test_get_current_actor_id(ray_instance):
+    @ray.remote
+    class A:
+        def call_get_current_actor_id(self):
+            return get_current_actor_id()
+
+    a = A.remote()
+    actor_id = ray.get(a.call_get_current_actor_id.remote())
+    assert len(actor_id) > 0
+    assert actor_id != "DRIVER"
+
+    assert get_current_actor_id() == "DRIVER"
 
 
 if __name__ == "__main__":
