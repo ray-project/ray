@@ -14,12 +14,11 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     StatusOverview,
 )
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, BaseRayActorOptionsModel
 from ray.serve.context import _get_global_client
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     ApplyServeDeploymentModel,
-    BaseRayActorOptionsModel,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeStatusSchema,

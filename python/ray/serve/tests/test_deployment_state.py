@@ -1248,7 +1248,7 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     cluster_node_info_cache.alive_node_ids = {str(i) for i in range(10)}
 
     b_info_1, b_version_1 = deployment_info(
-        num_replicas=10, version="1", user_config="1"
+        num_replicas=10, version="1", user_config={"val": "1"}
     )
     updating = deployment_state.deploy(b_info_1)
     assert updating
@@ -1270,7 +1270,7 @@ def test_new_version_deploy_throttling(mock_deployment_state):
 
     # Now deploy a new version. Two old replicas should be stopped.
     b_info_2, b_version_2 = deployment_info(
-        num_replicas=10, version="2", user_config="2"
+        num_replicas=10, version="2", user_config={"val": "2"}
     )
     updating = deployment_state.deploy(b_info_2)
     assert updating
@@ -1476,7 +1476,7 @@ def test_reconfigure_throttling(mock_deployment_state):
     cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(
-        num_replicas=2, version="1", user_config="1"
+        num_replicas=2, version="1", user_config={"val": "1"}
     )
     updating = deployment_state.deploy(b_info_1)
     assert updating
@@ -1498,7 +1498,7 @@ def test_reconfigure_throttling(mock_deployment_state):
 
     # Now deploy a new user_config. One replica should be updated.
     b_info_2, b_version_2 = deployment_info(
-        num_replicas=2, version="1", user_config="2"
+        num_replicas=2, version="1", user_config={"val": "2"}
     )
     updating = deployment_state.deploy(b_info_2)
     assert updating

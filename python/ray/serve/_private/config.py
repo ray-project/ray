@@ -9,10 +9,7 @@ from ray import cloudpickle
 from ray._private import ray_option_utils
 from ray._private.serialization import pickle_dumps
 from ray._private.utils import resources_from_ray_options
-from ray.serve._private.constants import (
-    DEFAULT_MAX_CONCURRENT_QUERIES,
-    MAX_REPLICAS_PER_NODE_MAX_VALUE,
-)
+from ray.serve._private.constants import MAX_REPLICAS_PER_NODE_MAX_VALUE
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig, BaseDeploymentModel
 from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
@@ -57,16 +54,6 @@ class InternalDeploymentConfig(BaseDeploymentModel):
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
-
-    # Dynamic default for max_concurrent_queries
-    @validator("max_concurrent_queries", always=True)
-    def set_max_queries_by_mode(cls, v, values):  # noqa 805
-        if v is None:
-            v = DEFAULT_MAX_CONCURRENT_QUERIES
-        else:
-            if v <= 0:
-                raise ValueError("max_concurrent_queries must be >= 0")
-        return v
 
     @validator("user_config", always=True)
     def user_config_json_serializable(cls, v):

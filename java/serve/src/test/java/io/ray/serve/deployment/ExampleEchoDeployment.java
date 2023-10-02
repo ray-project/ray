@@ -25,7 +25,7 @@ public class ExampleEchoDeployment {
   public Object reconfigure(Object userConfig) {
     LOGGER.info("recieve userconfig: {}", userConfig);
     if (null != userConfig) {
-      this.suffix = userConfig.toString();
+      this.suffix = userConfig.get("suffix");
     }
     return null;
   }

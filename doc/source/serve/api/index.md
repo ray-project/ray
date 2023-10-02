@@ -467,7 +467,7 @@ Content-Type: application/json
    schema.HTTPOptionsSchema
    schema.ServeApplicationSchema
    schema.ApplyServeDeploymentModel
-   schema.BaseRayActorOptionsModel
+   config.BaseRayActorOptionsModel
 ```
 
 (serve-rest-api-response-schema)=

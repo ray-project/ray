@@ -1,7 +1,7 @@
 import logging
 import warnings
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import pydantic
 from pydantic import (
@@ -15,6 +15,7 @@ from pydantic import (
 )
 from typing_extensions import Annotated
 
+from ray._private.runtime_env.packaging import parse_uri
 from ray._private.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -29,7 +30,7 @@ from ray.serve._private.constants import (
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
+from ray.serve._private.utils import DeploymentOptionUpdateType
 from ray.util.annotations import Deprecated, PublicAPI
 from ray.util.placement_group import PlacementGroupStrategy
 
@@ -203,14 +204,39 @@ class BaseRayActorOptionsModel(BaseModel):
         ),
     )
 
+    @validator("runtime_env")
+    def runtime_env_contains_remote_uris(cls, v):
+        # Ensure that all uris in py_modules and working_dir are remote
+
+        if v is None:
+            return
+
+        uris = v.get("py_modules", [])
+        if "working_dir" in v:
+            uris.append(v["working_dir"])
+
+        for uri in uris:
+            if uri is not None:
+                try:
+                    parse_uri(uri)
+                except ValueError as e:
+                    raise ValueError(
+                        "runtime_envs in the Serve config support only "
+                        "remote URIs in working_dir and py_modules. Got "
+                        f"error when parsing URI: {e}"
+                    )
+
+        return v
+
 
 NumReplicasAnnotatedType = Annotated[
-    PositiveInt,
+    Optional[PositiveInt],
     Field(
         description=(
             "The number of processes that handle requests to this "
             "deployment. Uses a default if null."
-        )
+        ),
+        update_type=DeploymentOptionUpdateType.LightWeight,
     ),
 ]
 MaxConcurrentQueriesAnnotatedType = Annotated[
@@ -278,6 +304,63 @@ HealthCheckPeriodSAnnotatedType = Annotated[
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     ),
 ]
+HealthCheckTimeoutSAnnotatedType = Annotated[
+    PositiveFloat,
+    Field(
+        description=(
+            "Timeout that the controller will wait for a response "
+            "from the replica's health check before marking it "
+            "unhealthy. Uses a default if null."
+        ),
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    ),
+]
+RayActorOptionsAnnotatedType = Annotated[
+    BaseRayActorOptionsModel,
+    Field(
+        description="Options set for each replica actor.",
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    ),
+]
+PlacementGroupBundlesAnnotatedType = Annotated[
+    Optional[List[Dict[str, float]]],
+    Field(
+        description=(
+            "Define a set of placement group bundles to be "
+            "scheduled *for each replica* of this deployment. The replica actor will "
+            "be scheduled in the first bundle provided, so the resources specified in "
+            "`ray_actor_options` must be a subset of the first bundle's resources. All "
+            "actors and tasks created by the replica actor will be scheduled in the "
+            "placement group by default (`placement_group_capture_child_tasks` is set "
+            "to True)."
+        ),
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    ),
+]
+PlacementGroupStrategyAnnotatedType = Annotated[
+    Optional[PlacementGroupStrategy],
+    Field(
+        description=(
+            "Strategy to use for the replica placement group "
+            "specified via `placement_group_bundles`. Defaults to `PACK`."
+        ),
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    ),
+]
+MaxReplicasPerNodeAnnotatedType = Annotated[
+    Optional[int],
+    Field(
+        description=(
+            "[EXPERIMENTAL] The max number of deployment replicas can "
+            "run on a single node. Valid values are None (no limitation) "
+            "or an integer in the range of [1, 100]. "
+            "Defaults to no limitation."
+        ),
+        ge=1,
+        le=MAX_REPLICAS_PER_NODE_MAX_VALUE,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    ),
+]
 
 
 @PublicAPI(stability="stable")
@@ -303,62 +386,13 @@ class BaseDeploymentModel(BaseModel, allow_population_by_field_name=True):
     health_check_period_s: HealthCheckPeriodSAnnotatedType = (
         DEFAULT_HEALTH_CHECK_PERIOD_S
     )
-    health_check_timeout_s: PositiveFloat = Field(
-        default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-        description=(
-            "Timeout that the controller will wait for a response "
-            "from the replica's health check before marking it "
-            "unhealthy. Uses a default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    health_check_timeout_s: HealthCheckTimeoutSAnnotatedType = (
+        DEFAULT_HEALTH_CHECK_TIMEOUT_S
     )
-    ray_actor_options: BaseRayActorOptionsModel = Field(
-        default=BaseRayActorOptionsModel(),
-        description="Options set for each replica actor.",
-        update_type=DeploymentOptionUpdateType.HeavyWeight,
-    )
-    placement_group_bundles: Optional[List[Dict[str, float]]] = Field(
-        default=None,
-        description=(
-            "Define a set of placement group bundles to be "
-            "scheduled *for each replica* of this deployment. The replica actor will "
-            "be scheduled in the first bundle provided, so the resources specified in "
-            "`ray_actor_options` must be a subset of the first bundle's resources. All "
-            "actors and tasks created by the replica actor will be scheduled in the "
-            "placement group by default (`placement_group_capture_child_tasks` is set "
-            "to True)."
-        ),
-        update_type=DeploymentOptionUpdateType.HeavyWeight,
-    )
-    placement_group_strategy: Optional[PlacementGroupStrategy] = Field(
-        default=None,
-        description=(
-            "Strategy to use for the replica placement group "
-            "specified via `placement_group_bundles`. Defaults to `PACK`."
-        ),
-        update_type=DeploymentOptionUpdateType.HeavyWeight,
-    )
-    max_replicas_per_node: Optional[int] = Field(
-        default=None,
-        description=(
-            "[EXPERIMENTAL] The max number of deployment replicas can "
-            "run on a single node. Valid values are None (no limitation) "
-            "or an integer in the range of [1, 100]. "
-            "Defaults to no limitation."
-        ),
-        ge=1,
-        le=MAX_REPLICAS_PER_NODE_MAX_VALUE,
-        update_type=DeploymentOptionUpdateType.HeavyWeight,
-    )
-
-    def get_user_configured_option_names(self) -> Set[str]:
-        """Get set of names for all user-configured options.
-        Any field not set to DEFAULT.VALUE is considered a user-configured option.
-        """
-
-        return {
-            field for field, value in self.dict().items() if value is not DEFAULT.VALUE
-        }
+    ray_actor_options: RayActorOptionsAnnotatedType = BaseRayActorOptionsModel()
+    placement_group_bundles: PlacementGroupBundlesAnnotatedType = None
+    placement_group_strategy: PlacementGroupStrategyAnnotatedType = None
+    max_replicas_per_node: MaxReplicasPerNodeAnnotatedType = None
 
 
 @PublicAPI(stability="stable")

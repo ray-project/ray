@@ -3,15 +3,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Union
 
-from pydantic import (
-    BaseModel,
-    Extra,
-    Field,
-    NonNegativeFloat,
-    PositiveFloat,
-    root_validator,
-    validator,
-)
+from pydantic import BaseModel, Extra, Field, root_validator, validator
 
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
@@ -28,17 +20,23 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
-    MAX_REPLICAS_PER_NODE_MAX_VALUE,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.serve.config import (
     AutoscalingConfigAnnotatedType,
     BaseDeploymentModel,
-    BaseRayActorOptionsModel,
+    GracefulShutdownTimeoutSAnnotatedType,
+    GracefulShutdownWaitLoopSAnnotatedType,
+    HealthCheckPeriodSAnnotatedType,
+    HealthCheckTimeoutSAnnotatedType,
     MaxConcurrentQueriesAnnotatedType,
+    MaxReplicasPerNodeAnnotatedType,
     NumReplicasAnnotatedType,
+    PlacementGroupBundlesAnnotatedType,
+    PlacementGroupStrategyAnnotatedType,
     ProxyLocation,
+    RayActorOptionsAnnotatedType,
     UserConfigAnnotatedType,
 )
 from ray.util.annotations import PublicAPI
@@ -93,16 +91,16 @@ class ApplyServeDeploymentModel(BaseDeploymentModel):
     max_concurrent_queries: MaxConcurrentQueriesAnnotatedType = DEFAULT.VALUE
     user_config: UserConfigAnnotatedType = DEFAULT.VALUE
     autoscaling_config: AutoscalingConfigAnnotatedType = DEFAULT.VALUE
-    graceful_shutdown_wait_loop_s: NonNegativeFloat = DEFAULT.VALUE
-    graceful_shutdown_timeout_s: NonNegativeFloat = DEFAULT.VALUE
-    health_check_period_s: PositiveFloat = DEFAULT.VALUE
-    health_check_timeout_s: PositiveFloat = DEFAULT.VALUE
-    ray_actor_options: BaseRayActorOptionsModel = DEFAULT.VALUE
-    placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE
-    placement_group_strategy: Optional[str] = DEFAULT.VALUE
-    max_replicas_per_node: Optional[int] = Field(
-        default=DEFAULT.VALUE, ge=1, le=MAX_REPLICAS_PER_NODE_MAX_VALUE
+    graceful_shutdown_wait_loop_s: GracefulShutdownWaitLoopSAnnotatedType = (
+        DEFAULT.VALUE
     )
+    graceful_shutdown_timeout_s: GracefulShutdownTimeoutSAnnotatedType = DEFAULT.VALUE
+    health_check_period_s: HealthCheckPeriodSAnnotatedType = DEFAULT.VALUE
+    health_check_timeout_s: HealthCheckTimeoutSAnnotatedType = DEFAULT.VALUE
+    ray_actor_options: RayActorOptionsAnnotatedType = DEFAULT.VALUE
+    placement_group_bundles: PlacementGroupBundlesAnnotatedType = DEFAULT.VALUE
+    placement_group_strategy: PlacementGroupStrategyAnnotatedType = DEFAULT.VALUE
+    max_replicas_per_node: MaxReplicasPerNodeAnnotatedType = DEFAULT.VALUE
 
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
@@ -115,31 +113,6 @@ class ApplyServeDeploymentModel(BaseDeploymentModel):
             )
 
         return values
-
-    @validator("ray_actor_options")
-    def runtime_env_contains_remote_uris(cls, v):
-        # Ensure that all uris in py_modules and working_dir are remote
-
-        runtime_env = v.runtime_env
-        if runtime_env is None:
-            return
-
-        uris = runtime_env.get("py_modules", [])
-        if "working_dir" in runtime_env:
-            uris.append(runtime_env["working_dir"])
-
-        for uri in uris:
-            if uri is not None:
-                try:
-                    parse_uri(uri)
-                except ValueError as e:
-                    raise ValueError(
-                        "runtime_envs in the Serve config support only "
-                        "remote URIs in working_dir and py_modules. Got "
-                        f"error when parsing URI: {e}"
-                    )
-
-        return v
 
     deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
         _route_prefix_format
@@ -165,8 +138,12 @@ def _deployment_info_to_schema(info: DeploymentInfo) -> ReadServeDeploymentModel
     """Converts a DeploymentInfo object to ReadServeDeploymentModel."""
 
     schema = ReadServeDeploymentModel(
+        num_replicas=info.deployment_config.num_replicas
+        if info.deployment_config.autoscaling_config is None
+        else None,
         max_concurrent_queries=info.deployment_config.max_concurrent_queries,
         user_config=info.deployment_config.user_config,
+        autoscaling_config=info.deployment_config.autoscaling_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
         ),
@@ -175,11 +152,6 @@ def _deployment_info_to_schema(info: DeploymentInfo) -> ReadServeDeploymentModel
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
     )
-
-    if info.deployment_config.autoscaling_config is not None:
-        schema.autoscaling_config = info.deployment_config.autoscaling_config
-    else:
-        schema.num_replicas = info.deployment_config.num_replicas
 
     return schema
 

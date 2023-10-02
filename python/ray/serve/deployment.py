@@ -11,10 +11,10 @@ from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import MIGRATION_MESSAGE, SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, BaseRayActorOptionsModel
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import ApplyServeDeploymentModel, BaseRayActorOptionsModel
+from ray.serve.schema import ApplyServeDeploymentModel
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

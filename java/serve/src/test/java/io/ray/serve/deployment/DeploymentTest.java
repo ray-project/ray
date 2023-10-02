@@ -1,5 +1,6 @@
 package io.ray.serve.deployment;
 
+import com.google.common.collect.ImmutableMap;
 import io.ray.api.Ray;
 import io.ray.serve.BaseServeTest;
 import io.ray.serve.api.Serve;
@@ -29,7 +30,7 @@ public class DeploymentTest extends BaseServeTest {
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig("_test")
+            .setUserConfig(ImmutableMap.of("suffix", "_test"))
             .setInitArgs(new Object[] {"echo_"})
             .create();
 
@@ -48,7 +49,7 @@ public class DeploymentTest extends BaseServeTest {
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig("_test")
+            .setUserConfig(ImmutableMap.of("suffix", "_test"))
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
@@ -78,7 +79,7 @@ public class DeploymentTest extends BaseServeTest {
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig("_test")
+            .setUserConfig(ImmutableMap.of("suffix", "_test"))
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
@@ -101,7 +102,7 @@ public class DeploymentTest extends BaseServeTest {
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setAutoscalingConfig(autoscalingConfig)
-            .setUserConfig("_test")
+            .setUserConfig(ImmutableMap.of("suffix", "_test"))
             .setVersion("v1")
             .setInitArgs(new Object[] {"echo_"})
             .create();
@@ -117,7 +118,7 @@ public class DeploymentTest extends BaseServeTest {
             .setName(deploymentName)
             .setDeploymentDef(ExampleEchoDeployment.class.getName())
             .setNumReplicas(1)
-            .setUserConfig("_test")
+            .setUserConfig(ImmutableMap.of("suffix", "_test"))
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
