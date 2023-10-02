@@ -14,63 +14,19 @@ To contribute to the Ray repository, follow the instructions below to build from
 .. contents::
   :local:
 
-Fork the repository
+Step 1: Fork the Ray repository
 --------------------
 
-To build Ray locally you will need to have the Git repository, so first, fork it on GitHub. Then you can clone it to your machine:
+Forking an open source repository is a best practice when looking to contribute, as it allows you to make and test changes without affecting the original project, ensuring a clean and organized collaboration process.
+You can propose changes to the main project by submitting a pull request to the main project's repository.
 
-.. tab-set::
+1. Navigate to the `Ray GitHub repo <https://github.com/ray-project/ray>`_.
 
-    .. tab-item:: Git SSH
-
-        To clone the repository using Git with SSH (the default) run:
-
-        .. code-block:: shell
-
-            git clone git@github.com:[your username]/ray.git
-
-    .. tab-item:: Git HTTPS
-
-        To clone the repository using Git with HTTPS run:
-
-        .. code-block:: shell
-
-            git clone https://github.com/[your username]/ray.git
-
-Then you can enter into the Ray git repository directory:
-
-.. code-block:: shell
-
-    cd ray
-
-Next make sure you connect your repository to the upstream (main project) Ray repository. This will allow you to push your code to your repository when proposing changes (in pull requests) while also pulling updates from the main project.
-
-.. tab-set::
-
-    .. tab-item:: Git SSH
-
-        To connect your repository using SSH (the default) run the command:
-
-        .. code-block:: shell
-
-            git remote add upstream git@github.com:ray-project/ray.git
-
-    .. tab-item:: Git HTTPS
-
-        To connect your repository using HTTPS run the command:
-
-        .. code-block:: shell
-
-            git remote add upstream https://github.com/ray-project/ray.git
-
-Every time you want to update your local version you can pull the changes from the main repository:
-
-.. code-block:: shell
-
-    # Checkout the local master branch
-    git checkout master
-    # Pull the latest changes from the main repository
-    git pull upstream master
+2. Follow these `GitHub instructions <https://docs.github.com/en/get-started/quickstart/fork-a-repo>`_, and do the following:
+    
+    a. `Fork the repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#forking-a-repository>`_ with your preferred method.
+    b. `Clone <https://docs.github.com/en/get-started/quickstart/fork-a-repo#cloning-your-forked-repository>`_ to your local machine.
+    c. `Connect your repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#configuring-git-to-sync-your-fork-with-the-upstream-repository>`_ to the upstream (main project) Ray repo to sync changes.
 
 Prepare the Python environment
 ------------------------------
