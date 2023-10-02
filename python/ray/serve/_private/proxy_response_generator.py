@@ -12,7 +12,7 @@ from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class _ProxyDeploymentResponseGeneratorBase(ABC):
+class _ProxyResponseGeneratorBase(ABC):
     def __init__(
         self,
         *,
@@ -22,9 +22,12 @@ class _ProxyDeploymentResponseGeneratorBase(ABC):
     ):
         """Implements a generator wrapping a deployment response.
 
-        Implements timeouts and disconnect detection.
-
-        The `result_callback` will be called on each result before it's returned.
+        Args:
+            - timeout_s: an end-to-end timeout for the request. If this expires and the
+              response is not completed, the request will be cancelled.
+            - disconnected_task: a task whose completion signals that the client has
+              disconnected. When this happens, the request will be cancelled.
+            - result_callback: will be called on each result before it's returned.
         """
         self._timeout_s = timeout_s
         self._start_time_s = time.time()
@@ -47,10 +50,17 @@ class _ProxyDeploymentResponseGeneratorBase(ABC):
         pass
 
     def stop_checking_for_disconnect(self):
+        """Once this is called, the disconnected_task will be ignored."""
         self._should_check_disconnected = False
 
 
-class ProxyDeploymentResponseGenerator(_ProxyDeploymentResponseGeneratorBase):
+class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
+    """Wraps a unary DeploymentResponse or streaming DeploymentResponseGenerator.
+
+    In the case of a unary DeploymentResponse, __anext__ will only ever return one
+    result.
+    """
+
     def __init__(
         self,
         response: Union[DeploymentResponse, DeploymentResponseGenerator],
@@ -68,15 +78,6 @@ class ProxyDeploymentResponseGenerator(_ProxyDeploymentResponseGeneratorBase):
         self._response = response
 
     async def __anext__(self):
-        """Yield the results from the generator with an optional timeout.
-
-        Raises:
-            - `TimeoutError` if `timeout_s` is exceeded before the request finishes.
-            - `asyncio.CancelledError` if `disconnected_task` exits before the request
-              finishes.
-
-        If either of the above cases occur, the request will be cancelled.
-        """
         if self._done:
             raise StopAsyncIteration
 
@@ -95,11 +96,11 @@ class ProxyDeploymentResponseGenerator(_ProxyDeploymentResponseGeneratorBase):
 
         return result
 
-    async def _get_next_streaming_result(self) -> Any:
-        async def await_next_result() -> Any:
-            return await self._response.__anext__()
+    async def _await_response_anext(self) -> Any:
+        return await self._response.__anext__()
 
-        next_result_task = asyncio.ensure_future(await_next_result())
+    async def _get_next_streaming_result(self) -> Any:
+        next_result_task = asyncio.ensure_future(self._await_response_anext())
         tasks = [next_result_task]
         if self._should_check_disconnected:
             tasks.append(self._disconnected_task)
@@ -124,21 +125,11 @@ class ProxyDeploymentResponseGenerator(_ProxyDeploymentResponseGeneratorBase):
             self._response.cancel()
             raise TimeoutError()
 
+    async def _await_response(self) -> Any:
+        return await self._response
+
     async def _get_unary_result(self) -> Any:
-        """Await the response and return its result with an optional timeout.
-
-        Raises:
-            - `TimeoutError` if `timeout_s` is exceeded before the request finishes.
-            - `asyncio.CancelledError` if `disconnected_task` exits before the request
-              finishes.
-
-        If either of the above cases occur, the request will be cancelled.
-        """
-
-        async def await_response() -> Any:
-            return await self._response
-
-        result_task = asyncio.ensure_future(await_response())
+        result_task = asyncio.ensure_future(self._await_response())
         tasks = [result_task]
         if self._should_check_disconnected:
             tasks.append(self._disconnected_task)
