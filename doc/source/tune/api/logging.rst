@@ -56,7 +56,7 @@ See the :doc:`tutorial here </tune/examples/tune-mlflow>`.
 
 .. autosummary::
 
-    air.integrations.mlflow.MLflowLoggerCallback
+    tune.logger.mlflow.MLflowLoggerCallback
 
 Wandb Integration
 -----------------
@@ -67,7 +67,19 @@ See the :doc:`tutorial here </tune/examples/tune-wandb>`.
 
 .. autosummary::
 
-    air.integrations.wandb.WandbLoggerCallback
+    tune.logger.wandb.WandbLoggerCallback
+
+
+Comet Integration
+------------------------------
+
+Tune also provides a logger for `Comet <https://www.comet.com/>`_.
+You can install Comet via ``pip install comet-ml``.
+See the :doc:`tutorial here </tune/examples/tune-comet>`.
+
+.. autosummary::
+
+    tune.logger.comet.CometLoggerCallback
 
 Aim Integration
 ---------------

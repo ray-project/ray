@@ -62,5 +62,5 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 
-RUN ./ci/env/install-dependencies.sh init
+RUN ./ci/env/install-dependencies.sh
 RUN RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh

@@ -78,6 +78,7 @@ assert requests.post("http://localhost:8000/", json=5).json() == 9
 # These imports can go to the top of the file.
 import ray
 from ray.serve.http_adapters import json_request
+from ray.serve.handle import DeploymentHandle, DeploymentResponse
 
 add_2 = AddCls.bind(2)
 add_3 = AddCls.bind(3)
@@ -89,11 +90,10 @@ with InputNode() as request_number:
 
 graph = DAGDriver.bind(add_3_output, http_adapter=json_request)
 
-handle = serve.run(graph)
+handle: DeploymentHandle = serve.run(graph).options(use_new_handle_api=True)
 
-ref = handle.predict.remote(5)
-result = ray.get(ref)
-print(result)
+response: DeploymentResponse = handle.predict.remote(5)
+print(response.result())
 # __test_graph_end__
 
-assert result == 9
+assert response.result() == 9

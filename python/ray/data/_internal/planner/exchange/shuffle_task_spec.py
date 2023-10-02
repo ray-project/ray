@@ -1,10 +1,9 @@
 import math
-from typing import List, Optional, Tuple, Union
+from typing import Callable, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import MapTransformFn
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 
@@ -22,7 +21,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         self,
         random_shuffle: bool = False,
         random_seed: Optional[int] = None,
-        upstream_map_fn: Optional[MapTransformFn] = None,
+        upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]] = None,
     ):
         super().__init__(
             map_args=[upstream_map_fn, random_shuffle, random_seed],
@@ -34,7 +33,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         idx: int,
         block: Block,
         output_num_blocks: int,
-        upstream_map_fn: Optional[MapTransformFn],
+        upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]],
         random_shuffle: bool,
         random_seed: Optional[int],
     ) -> List[Union[BlockMetadata, Block]]:

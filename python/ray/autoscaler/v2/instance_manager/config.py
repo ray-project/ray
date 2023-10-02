@@ -112,6 +112,13 @@ class NodeProviderConfig(object):
             )
         )
 
+    def get_node_labels(self, instance_type_name: str) -> Dict[str, str]:
+        return copy.deepcopy(
+            self._node_configs["available_node_types"][instance_type_name].get(
+                "labels", {}
+            )
+        )
+
     def get_config(self, config_name, default=None) -> Any:
         return self._node_configs.get(config_name, default)
 

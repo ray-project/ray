@@ -26,7 +26,7 @@ from packaging import version
 import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
@@ -340,8 +340,15 @@ class Policy(metaclass=ABCMeta):
 
         # Policy checkpoint: Return a single Policy instance.
         else:
+            msgpack = None
+            if checkpoint_info.get("format") == "msgpack":
+                msgpack = try_import_msgpack(error=True)
+
             with open(checkpoint_info["state_file"], "rb") as f:
-                state = pickle.load(f)
+                if msgpack is not None:
+                    state = msgpack.load(f)
+                else:
+                    state = pickle.load(f)
             return Policy.from_state(state)
 
     @staticmethod
@@ -1843,7 +1850,6 @@ def get_gym_space_from_struct_of_tensors(
     value: Union[Mapping, Tuple, List, TensorType],
     batched_input=True,
 ) -> gym.Space:
-
     start_idx = 1 if batched_input else 0
     struct = tree.map_structure(
         lambda x: gym.spaces.Box(
