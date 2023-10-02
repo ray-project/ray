@@ -13,7 +13,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
-    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.proxy import (
@@ -233,50 +232,6 @@ class TestgRPCProxy:
         mocked_proxy_request_stream.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.proxy.ray.serve.context._serve_request_context")
-    async def test_setup_request_context_and_handle(self, mocked_serve_request_context):
-        """Test gRPCProxy setup_request_context_and_handle sets the correct request
-        context and returns the correct handle and request id.
-        """
-        grpc_proxy = self.create_grpc_proxy()
-        handle = MagicMock()
-        request_id = "fake-request-id"
-        app_name = "fake-app-name"
-        route_path = "/fake-route-path"
-        multiplexed_model_id = "fake-multiplexed-model-id"
-        stream = False
-        method_name = "fake-method_name"
-        proxy_request = AsyncMock()
-        proxy_request.request_id = request_id
-        proxy_request.multiplexed_model_id = multiplexed_model_id
-        proxy_request.stream = stream
-        proxy_request.method_name = "fake-method_name"
-        (
-            returned_handle,
-            returned_request_id,
-        ) = grpc_proxy.setup_request_context_and_handle(
-            app_name=app_name,
-            handle=handle,
-            route_path=route_path,
-            proxy_request=proxy_request,
-        )
-
-        assert returned_request_id == request_id
-        handle.options.assert_called_with(
-            stream=stream,
-            multiplexed_model_id=multiplexed_model_id,
-            method_name=method_name,
-        )
-        expected_request_context = ray.serve.context._RequestContext(
-            route=route_path,
-            request_id=request_id,
-            app_name=app_name,
-            multiplexed_model_id=multiplexed_model_id,
-        )
-        mocked_serve_request_context.set.assert_called_with(expected_request_context)
-        proxy_request.send_request_id.assert_called_with(request_id=request_id)
-
-    @pytest.mark.asyncio
     async def test_streaming_generator_helper(self):
         """Test gRPCProxy _streaming_generator_helper returns a generator."""
         grpc_proxy = self.create_grpc_proxy()
@@ -474,32 +429,6 @@ class TestHTTPProxy:
         mocked_proxy_request.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.proxy.receive_http_body")
-    async def test_send_request_to_replica_unary(self, mock_receive_http_body):
-        """Test HTTPProxy send_request_to_replica_unary returns the correct response."""
-
-        http_body_bytes = b""
-        mock_receive_http_body.return_value = http_body_bytes
-
-        async def receive_message():
-            await asyncio.sleep(1000)
-
-        handle = FakeActorHandler("fake-deployment-handle")
-        proxy_request = ASGIProxyRequest(
-            scope={},
-            receive=receive_message,
-            send=AsyncMock(),
-        )
-        http_proxy = self.create_http_proxy()
-        returned_response = await http_proxy.send_request_to_replica_unary(
-            handle=handle,
-            proxy_request=proxy_request,
-        )
-
-        assert isinstance(returned_response, ProxyResponse)
-        assert returned_response.status_code == http_proxy.success_status_code
-
-    @pytest.mark.asyncio
     async def test_proxy_asgi_receive(self):
         """Test HTTPProxy proxy_asgi_receive receives messages."""
         http_proxy = self.create_http_proxy()
@@ -516,119 +445,6 @@ class TestHTTPProxy:
         )
 
         queue.close.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_consume_and_send_asgi_message_generator(self):
-        """Test HTTPProxy _consume_and_send_asgi_message_generator consumes the correct
-        generator, sends the message, and returns the correct status code.
-        """
-        http_proxy = self.create_http_proxy()
-        status_code = "status_code"
-        asgi_message = {"type": "http.response.start", "status": status_code}
-        asgi_messages = [asgi_message]
-        obj_ref_generator = FakeRefGenerator(messages=asgi_messages)
-        proxy_request = ASGIProxyRequest(
-            scope={},
-            receive=AsyncMock(),
-            send=AsyncMock(),
-        )
-
-        async def disconnected():
-            await asyncio.sleep(10000)
-
-        returned_status_code = (
-            await http_proxy._consume_and_send_asgi_message_generator(
-                obj_ref_generator=obj_ref_generator,
-                disconnected_task=asyncio.ensure_future(disconnected()),
-                request_id="fake_request_id",
-                proxy_request=proxy_request,
-            )
-        )
-
-        assert returned_status_code == status_code
-        proxy_request.send.assert_called_with(asgi_message)
-
-    @pytest.mark.asyncio
-    @patch("ray.serve._private.proxy.ray.serve.context._serve_request_context")
-    async def test_setup_request_context_and_handle(self, mocked_serve_request_context):
-        """Test HTTPProxy setup_request_context_and_handle sets the correct request
-        context and returns the correct handle and request id.
-        """
-        http_proxy = self.create_http_proxy()
-        handle = MagicMock()
-        request_id = "fake-request-id"
-        app_name = "fake-app-name"
-        route_path = "/fake-route-path"
-        multiplexed_model_id = "fake-multiplexed-model-id"
-        scope = {
-            "headers": [
-                (b"x-request-id", request_id.encode()),
-                (SERVE_MULTIPLEXED_MODEL_ID.encode(), multiplexed_model_id.encode()),
-            ]
-        }
-        proxy_request = ASGIProxyRequest(
-            scope=scope,
-            receive=AsyncMock(),
-            send=AsyncMock(),
-        )
-        (
-            returned_handle,
-            returned_request_id,
-        ) = http_proxy.setup_request_context_and_handle(
-            app_name=app_name,
-            handle=handle,
-            route_path=route_path,
-            proxy_request=proxy_request,
-        )
-
-        assert returned_request_id == request_id
-        handle.options.assert_called_with(
-            multiplexed_model_id=multiplexed_model_id,
-        )
-        expected_request_context = ray.serve.context._RequestContext(
-            route=route_path,
-            request_id=request_id,
-            app_name=app_name,
-            multiplexed_model_id=multiplexed_model_id,
-        )
-        mocked_serve_request_context.set.assert_called_with(expected_request_context)
-
-    @pytest.mark.asyncio
-    async def test_send_request_to_replica_streaming(self):
-        """Test HTTPProxy send_request_to_replica_streaming returns the correct
-        response.
-        """
-        http_proxy = self.create_http_proxy()
-        status_code = "200"
-        request_id = "fake-request-id"
-        handle = MagicMock()
-        scope = {"headers": [(b"x-request-id", request_id.encode())]}
-        proxy_request = ASGIProxyRequest(
-            scope=scope,
-            receive=AsyncMock(),
-            send=AsyncMock(),
-        )
-        response = FakeRefGenerator()
-        mocked_assign_request_with_timeout = AsyncMock(return_value=response)
-        mocked_consume_and_send_asgi_message_generator = AsyncMock(
-            return_value=status_code
-        )
-        with patch.object(
-            http_proxy,
-            "_assign_request_with_timeout",
-            mocked_assign_request_with_timeout,
-        ), patch.object(
-            http_proxy,
-            "_consume_and_send_asgi_message_generator",
-            mocked_consume_and_send_asgi_message_generator,
-        ):
-            returned_response = await http_proxy.send_request_to_replica_streaming(
-                request_id=request_id,
-                handle=handle,
-                proxy_request=proxy_request,
-            )
-        assert isinstance(returned_response, ProxyResponse)
-        assert returned_response.status_code == status_code
 
 
 class TestTimeoutKeepAliveConfig:
