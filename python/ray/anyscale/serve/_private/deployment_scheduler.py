@@ -1,17 +1,15 @@
 import copy
 import sys
 from collections import defaultdict
-from typing import Dict, List, Set, Union
+from typing import Dict, List, Set
 
 import ray
 from ray.anyscale._private.constants import ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.deployment_scheduler import (
-    DefaultDeploymentScheduler,
     DeploymentDownscaleRequest,
     DeploymentScheduler,
-    DriverDeploymentSchedulingPolicy,
     ReplicaSchedulingRequest,
     SpreadDeploymentSchedulingPolicy,
 )
@@ -50,11 +48,6 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
     """
 
     def __init__(self, cluster_node_info_cache: ClusterNodeInfoCache):
-        # Delegate driver deployment scheduling to the default deployment scheduler.
-        self._default_deployment_scheduler = DefaultDeploymentScheduler(
-            cluster_node_info_cache
-        )
-
         # {deployment_id: scheduling_policy}
         self._deployments = {}
         # Replicas that are waiting to be scheduled.
@@ -80,16 +73,8 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
     def on_deployment_created(
         self,
         deployment_id: DeploymentID,
-        scheduling_policy: Union[
-            SpreadDeploymentSchedulingPolicy, DriverDeploymentSchedulingPolicy
-        ],
+        scheduling_policy: SpreadDeploymentSchedulingPolicy,
     ) -> None:
-        if isinstance(scheduling_policy, DriverDeploymentSchedulingPolicy):
-            self._default_deployment_scheduler.on_deployment_created(
-                deployment_id, scheduling_policy
-            )
-            return
-
         assert deployment_id not in self._pending_replicas
         assert deployment_id not in self._launching_replicas
         assert deployment_id not in self._recovering_replicas
@@ -97,10 +82,6 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         self._deployments[deployment_id] = scheduling_policy
 
     def on_deployment_deleted(self, deployment_id: DeploymentID) -> None:
-        if deployment_id not in self._deployments:
-            self._default_deployment_scheduler.on_deployment_deleted(deployment_id)
-            return
-
         assert not self._pending_replicas[deployment_id]
         self._pending_replicas.pop(deployment_id, None)
 
@@ -118,12 +99,6 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
     def on_replica_stopping(
         self, deployment_id: DeploymentID, replica_name: str
     ) -> None:
-        if deployment_id not in self._deployments:
-            self._default_deployment_scheduler.on_replica_stopping(
-                deployment_id, replica_name
-            )
-            return
-
         self._pending_replicas[deployment_id].pop(replica_name, None)
         self._launching_replicas[deployment_id].pop(replica_name, None)
         self._recovering_replicas[deployment_id].discard(replica_name)
@@ -132,12 +107,6 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
     def on_replica_running(
         self, deployment_id: DeploymentID, replica_name: str, node_id: str
     ) -> None:
-        if deployment_id not in self._deployments:
-            self._default_deployment_scheduler.on_replica_running(
-                deployment_id, replica_name, node_id
-            )
-            return
-
         assert replica_name not in self._pending_replicas[deployment_id]
 
         self._launching_replicas[deployment_id].pop(replica_name, None)
@@ -148,12 +117,6 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
     def on_replica_recovering(
         self, deployment_id: DeploymentID, replica_name: str
     ) -> None:
-        if deployment_id not in self._deployments:
-            self._default_deployment_scheduler.on_replica_recovering(
-                deployment_id, replica_name
-            )
-            return
-
         assert replica_name not in self._pending_replicas[deployment_id]
         assert replica_name not in self._launching_replicas[deployment_id]
         assert replica_name not in self._running_replicas[deployment_id]
@@ -166,27 +129,6 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]],
         downscales: Dict[DeploymentID, DeploymentDownscaleRequest],
     ) -> Dict[DeploymentID, Set[str]]:
-        upscales = copy.copy(upscales)
-        downscales = copy.copy(downscales)
-
-        # Delegate the scheduling of driver
-        # deployments to the default deployment scheduler.
-        delegate_upscales = {}
-        for deployment_id in list(upscales.keys()):
-            if deployment_id not in self._deployments:
-                delegate_upscales[deployment_id] = upscales[deployment_id]
-                del upscales[deployment_id]
-
-        delegate_downscales = {}
-        for deployment_id in list(downscales.keys()):
-            if deployment_id not in self._deployments:
-                delegate_downscales[deployment_id] = downscales[deployment_id]
-                del downscales[deployment_id]
-
-        deployment_to_replicas_to_stop = self._default_deployment_scheduler.schedule(
-            delegate_upscales, delegate_downscales
-        )
-
         # Schedule spread deployments.
         for upscale in upscales.values():
             for replica_scheduling_request in upscale:
@@ -203,6 +145,7 @@ class AnyscaleDeploymentScheduler(DeploymentScheduler):
             )
             self._schedule_spread_deployment(deployment_id)
 
+        deployment_to_replicas_to_stop = {}
         for downscale in downscales.values():
             deployment_to_replicas_to_stop[
                 downscale.deployment_id
