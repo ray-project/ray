@@ -1328,6 +1328,11 @@ def _start_ray_worker_nodes(
             )
         except Exception as e:
             if autoscale_mode:
+                # In autoscaling mode, when Ray worker node is down, autoscaler will
+                # try to start new Ray worker node if necessary,
+                # but we use spark job to launch Ray worker node process,
+                # to avoid trigger spark task retries, we swallow exception here
+                # to make spark task exit normally.
                 _logger.warning(f"Ray worker node process exit, reason: {repr(e)}.")
             else:
                 raise
