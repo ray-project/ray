@@ -28,7 +28,7 @@ steps:
 
   - label: ":brain: rllib: learning tests tf2-eager-tracing"
     tags: rllib
-    parallelism: 3
+    parallelism: 2
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
