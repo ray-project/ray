@@ -473,37 +473,6 @@ class TestHTTPProxy:
         queue.close.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_consume_and_send_asgi_message_generator(self):
-        """Test HTTPProxy _consume_and_send_asgi_message_generator consumes the correct
-        generator, sends the message, and returns the correct status code.
-        """
-        http_proxy = self.create_http_proxy()
-        status_code = "status_code"
-        asgi_message = {"type": "http.response.start", "status": status_code}
-        asgi_messages = [asgi_message]
-        obj_ref_generator = FakeRefGenerator(messages=asgi_messages)
-        proxy_request = ASGIProxyRequest(
-            scope={},
-            receive=AsyncMock(),
-            send=AsyncMock(),
-        )
-
-        async def disconnected():
-            await asyncio.sleep(10000)
-
-        returned_status_code = (
-            await http_proxy._consume_and_send_asgi_message_generator(
-                obj_ref_generator=obj_ref_generator,
-                disconnected_task=asyncio.ensure_future(disconnected()),
-                request_id="fake_request_id",
-                proxy_request=proxy_request,
-            )
-        )
-
-        assert returned_status_code == status_code
-        proxy_request.send.assert_called_with(asgi_message)
-
-    @pytest.mark.asyncio
     async def test_send_request_to_replica_streaming(self):
         """Test HTTPProxy send_request_to_replica_streaming returns the correct
         response.
@@ -520,17 +489,10 @@ class TestHTTPProxy:
         )
         response = FakeRefGenerator()
         mocked_assign_request_with_timeout = AsyncMock(return_value=response)
-        mocked_consume_and_send_asgi_message_generator = AsyncMock(
-            return_value=status_code
-        )
         with patch.object(
             http_proxy,
             "_assign_request_with_timeout",
             mocked_assign_request_with_timeout,
-        ), patch.object(
-            http_proxy,
-            "_consume_and_send_asgi_message_generator",
-            mocked_consume_and_send_asgi_message_generator,
         ):
             returned_response = await http_proxy.send_request_to_replica_streaming(
                 request_id=request_id,
