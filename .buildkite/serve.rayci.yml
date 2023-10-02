@@ -7,18 +7,11 @@ steps:
     depends_on: servebuild
     job_env: forge
 
-  - label: ":ray-serve: serve: unit tests"
-    instance_type: small
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/unit:all serve
-    depends_on: servebuild
-    job_env: forge
-
-  - label: ":ray-serve: serve: integration tests"
+  - label: ":ray-serve: serve: serve tests"
     parallelism: 2
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests:all serve --except-tags post_wheel_build,gpu,xcommit
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve --except-tags post_wheel_build,gpu,xcommit
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
     depends_on: servebuild
     job_env: forge
