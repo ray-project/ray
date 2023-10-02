@@ -1406,7 +1406,7 @@ def get_wheel_filename(
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
-    
+
     architecture = architecture or platform.processor()
 
     if py_version_str in ["311", "310", "39", "38"] and architecture == "arm64":

@@ -116,7 +116,8 @@ def test_get_wheel_filename():
         for sys_platform in ["darwin", "linux", "win32"]:
             for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
                 filename = get_wheel_filename(
-                    sys_platform, ray_version, py_version, arch)
+                    sys_platform, ray_version, py_version, arch
+                )
                 prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
                 url = f"{prefix}{filename}"
                 assert requests.head(url).status_code == 200, url
@@ -313,7 +314,7 @@ def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
             for line in f.readlines():
                 num_workers_prefix = "- num PYTHON workers: "
                 if num_workers_prefix in line:
-                    return int(line[len(num_workers_prefix):])
+                    return int(line[len(num_workers_prefix) :])
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
