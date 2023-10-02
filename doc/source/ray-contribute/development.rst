@@ -36,28 +36,28 @@ It is recommended to create a virtual environment in order to prevent version co
 
     .. tab-item:: conda
 
-        Set up a ``conda`` environment named ``ray``:
+        Set up a ``conda`` environment named ``myenv``:
 
         .. code-block:: shell
 
-            conda create -c conda-forge python=3.9 -n ray
+            conda create -c conda-forge python=3.9 -n myenv
 
 
         Activate your virtual environment to tell the shell/terminal to use this particular Python:
 
         .. code-block:: shell
 
-            conda activate ray
+            conda activate myenv
 
         You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
     .. tab-item:: venv
 
-        Use Python's integrated ``venv`` module to create a virtual environment called ``venv`` in the current directory:
+        Use Python's integrated ``venv`` module to create a virtual environment called ``myenv`` in the current directory:
 
         .. code-block:: shell
 
-            python -m venv venv
+            python -m venv myenv
 
         This contains a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
@@ -65,7 +65,7 @@ It is recommended to create a virtual environment in order to prevent version co
 
         .. code-block:: shell
 
-            source venv/bin/activate
+            source myenv/bin/activate
 
         You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
