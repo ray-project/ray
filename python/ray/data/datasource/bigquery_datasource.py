@@ -11,6 +11,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
+from ray.util.annotations import PublicAPI
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
