@@ -100,6 +100,11 @@ class TestPPO(unittest.TestCase):
             )
             .callbacks(MyCallbacks)
             .rl_module(_enable_rl_module_api=True)
+            .evaluation(
+                evaluation_num_workers=1,
+                evaluation_duration=2,
+                evaluation_duration_unit="episodes",
+            )
         )
 
         num_iterations = 2
@@ -139,6 +144,7 @@ class TestPPO(unittest.TestCase):
                         check_train_results(results)
                         print(results)
 
+                    algo.evaluate()
                     algo.stop()
 
     # def test_ppo_exploration_setup(self):

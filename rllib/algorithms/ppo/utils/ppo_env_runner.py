@@ -242,7 +242,11 @@ class PPOEnvRunner(EnvRunner):
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
-            pbar.update(self.num_envs)
+
+            # Record only every 10 * self.num_envs as otherwise
+            # logging is too fast for `ray.tqdm`.
+            if ts % (self.num_envs * 10) == 0:
+                pbar.update(self.num_envs * 10)
 
             for i in range(self.num_envs):
                 # Extract state for vector sub_env.
@@ -488,7 +492,6 @@ class PPOEnvRunner(EnvRunner):
                         else [render_images[i]],
                     )
                 else:
-                    print(f"Render images before timestep: {render_images[i]}")
                     episodes[i].add_timestep(
                         obs[i],
                         actions[i],

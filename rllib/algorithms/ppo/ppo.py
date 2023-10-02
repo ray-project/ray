@@ -28,6 +28,7 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 # from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
+from ray.rllib.evaluation.metrics import summarize_episodes
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -634,6 +635,7 @@ class PPO(Algorithm):
 
     @override(Algorithm)
     def evaluate(self, duration_fn: Optional[Callable[[int], int]] = None) -> dict:
+        # Run evaluation with the new EnvRunner API.
         if self.config.env_runner_cls is not None:
             # Call the `_before_evaluate` hook.
             self._before_evaluate()
@@ -669,10 +671,7 @@ class PPO(Algorithm):
                         "dict of metrics, got {}.".format(metrics)
                     )
             else:
-                if (
-                    self.evaluation_workers is None
-                    and self.workers.local_worker().input_reader is None
-                ):
+                if self.evaluation_workers is None:
                     raise ValueError(
                         "Cannot evaluate w/o an evaluation worker set in "
                         "the Algorithm or w/o an env on the local worker!\n"
@@ -687,10 +686,13 @@ class PPO(Algorithm):
                 # How many episodes/timesteps do we need to run?
                 # In "auto" mode (only for parallel eval + training): Run as long
                 # as training lasts.
+                evaluation_duration_unit = self.config.evaluation_duration_unit
+
                 unit = self.config.evaluation_duration_unit
                 eval_cfg = self.evaluation_config
                 rollout = eval_cfg.rollout_fragment_length
                 # rllnum_envs = eval_cfg.num_envs_per_worker
+                # TODO (simon):
                 auto = self.config.evaluation_duration == "auto"
                 duration = (
                     self.config.evaluation_duration
@@ -714,6 +716,7 @@ class PPO(Algorithm):
                         sample = self.workers.local_worker().sample(
                             num_timesteps=self.config.evaluation_duration
                         )
+                    # Run m number of episodes if unit is "episodes".
                     else:
                         sample = self.workers.local_worker().sample(
                             num_episodes=self.config.evaluation_duration
@@ -743,6 +746,8 @@ class PPO(Algorithm):
                     #     keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
                     #     timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
                     # )
+                    # TODO (simon): Do we still need this here? We call below for all
+                    # workers (local worker included) the get_metrics
                     metrics = self.workers.local_worker().get_metrics()
 
                 # Evaluation worker set only has local worker.
@@ -752,6 +757,7 @@ class PPO(Algorithm):
                         sample = self.evaluation_workers.local_worker().sample(
                             num_timesteps=self.config.evaluation_duration
                         )
+                    # Run m number of episodes if unit is "episodes".
                     else:
                         sample = self.evaluation_workers.local_worker().sample(
                             num_episodes=self.config.evaluation_duration
@@ -785,17 +791,19 @@ class PPO(Algorithm):
                     if (
                         self.config.evaluation_duration
                         < self.evaluation_workers.num_healthy_remote_workers()
+                        * self.evaluation_config.num_envs_per_worker
                     ):
                         selected_eval_worker_ids = [
                             worker_id
                             for unit, worker_id in enumerate(
                                 self.evaluation_workers.healthy_worker_ids()
                             )
-                            if unit <= self.config.evaluation_duration
+                            if unit * self.evaluation_config.num_envs_per_worker
+                            <= self.config.evaluation_duration
                         ]
                         units = 1
                         remaining_units = 0
-                    # In the other case dirtribute evenly with possible rest.
+                    # In the other case distribute evenly with possible rest.
                     else:
                         selected_eval_worker_ids = (
                             self.evaluation_workers.healthy_worker_ids()
@@ -898,17 +906,6 @@ class PPO(Algorithm):
                     # Wait for next iteration.
                     pass
 
-                # if metrics is None:
-                #     metrics = collect_metrics(
-                #         self.evaluation_workers,
-                #         keep_custom_metrics=self.config.keep_per_episode_custom_metrics,
-                #         timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
-                #     )
-
-                # TODO: Don't dump sampler results into top-level.
-                # if not self.config.custom_evaluation_function:
-                #     metrics = dict({"sampler_results": metrics}, **metrics)
-
                 if metrics is None:
                     metrics = self.evaluation_workers.foreach_worker(
                         func=lambda w: w.get_metrics(),
@@ -916,8 +913,18 @@ class PPO(Algorithm):
                             self.evaluation_config.metrics_episode_collection_timeout_s
                         ),
                     )
+                    episodes = []
+                    for episode in metrics:
+                        episodes.extend(episode)
+                    metrics = summarize_episodes(
+                        episodes,
+                        keep_custom_metrics=self.evaluation_config.keep_per_episode_custom_metrics,
+                    )
 
-                print(f"Batch: {batch}")
+                # TODO: Don't dump sampler results into top-level.
+                if not self.config.custom_evaluation_function:
+                    metrics = dict({"sampler_results": metrics}, **metrics)
+
                 metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = batch.agent_steps()
                 metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = batch.env_steps()
                 # TODO: Remove this key at some point. Here for backward compatibility.
@@ -957,5 +964,6 @@ class PPO(Algorithm):
 
             # Also return the results here for convenience.
             return self.evaluation_metrics
+        # Run evaluation with the old Sampler API.
         else:
-            super().evaluate(duration_fn=duration_fn)
+            return super().evaluate(duration_fn=duration_fn)
