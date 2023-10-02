@@ -475,7 +475,10 @@ class DataParallelTrainer(BaseTrainer):
                 )
 
                 metrics = first_worker_result.metrics.copy()
-                metrics[CHECKPOINT_DIR_NAME] = tune_session.storage.checkpoint_dir_name
+                if at_least_one_reported_checkpoint:
+                    metrics[
+                        CHECKPOINT_DIR_NAME
+                    ] = tune_session.storage.checkpoint_dir_name
 
                 tracked_training_result = _TrainingResult(
                     checkpoint=checkpoint,
