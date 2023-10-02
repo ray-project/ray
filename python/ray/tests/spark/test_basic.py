@@ -103,8 +103,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 num_cpus_worker_node // self.num_cpus_per_spark_task
             )
             (
-                mem_per_worker,
-                object_store_mem_per_worker,
+                mem_worker_node,
+                object_store_mem_worker_node,
                 _,
             ) = _calc_mem_per_ray_worker_node(
                 num_task_slots=num_ray_task_slots,
@@ -123,9 +123,9 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 for worker_res in worker_res_list:
                     assert (
                         worker_res["CPU"] == num_cpus_worker_node
-                        and worker_res["memory"] == mem_per_worker
+                        and worker_res["memory"] == mem_worker_node
                         and worker_res["object_store_memory"]
-                        == object_store_mem_per_worker
+                        == object_store_mem_worker_node
                     )
 
     def test_public_api(self):
@@ -217,8 +217,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 num_cpus_worker_node // self.num_cpus_per_spark_task
             )
             (
-                mem_per_worker,
-                object_store_mem_per_worker,
+                mem_worker_node,
+                object_store_mem_worker_node,
                 _,
             ) = _calc_mem_per_ray_worker_node(
                 num_task_slots=num_ray_task_slots,
@@ -253,9 +253,9 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_worker_nodes and all(
                     worker_res_list[i]["CPU"] == num_cpus_worker_node
-                    and worker_res_list[i]["memory"] == mem_per_worker
+                    and worker_res_list[i]["memory"] == mem_worker_node
                     and worker_res_list[i]["object_store_memory"]
-                    == object_store_mem_per_worker
+                    == object_store_mem_worker_node
                     for i in range(num_worker_nodes)
                 )
 

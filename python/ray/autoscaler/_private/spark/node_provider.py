@@ -50,8 +50,8 @@ class SparkNodeProvider(NodeProvider):
         # The port of spark job server. We send http request to spark job server
         # to launch spark jobs, ray worker nodes are launched by spark task in
         # spark jobs.
-        server_port = self.provider_config["spark_job_server_port"]
-        self.server_url = f"http://{self.ray_head_ip}:{server_port}"
+        spark_job_server_port = self.provider_config["spark_job_server_port"]
+        self.spark_job_server_url = f"http://{self.ray_head_ip}:{spark_job_server_port}"
         self.ray_head_port = self.provider_config["ray_head_port"]
         # The unique id for the Ray on spark cluster.
         self.cluster_id = self.provider_config["cluster_unique_id"]
@@ -99,7 +99,7 @@ class SparkNodeProvider(NodeProvider):
         spark_job_group_id = self._gen_spark_job_group_id(node_id)
 
         response = requests.post(
-            url=self.server_url + "/query_task_status",
+            url=self.spark_job_server_url + "/query_task_status",
             json={"spark_job_group_id": spark_job_group_id},
         )
         response.raise_for_status()
@@ -181,7 +181,7 @@ class SparkNodeProvider(NodeProvider):
                 conf["worker_node_options"], resources
             )
             response = requests.post(
-                url=self.server_url + "/create_node",
+                url=self.spark_job_server_url + "/create_node",
                 json={
                     "spark_job_group_id": self._gen_spark_job_group_id(node_id),
                     "spark_job_group_desc": (
@@ -229,7 +229,7 @@ class SparkNodeProvider(NodeProvider):
     def terminate_node(self, node_id):
         if node_id in self._nodes:
             response = requests.post(
-                url=self.server_url + "/terminate_node",
+                url=self.spark_job_server_url + "/terminate_node",
                 json={"spark_job_group_id": self._gen_spark_job_group_id(node_id)},
             )
             response.raise_for_status()

@@ -128,7 +128,9 @@ class SparkJobServer(ThreadingHTTPServer):
     The http server that is used to launch spark jobs for holding ray worker nodes.
     Because we have to use "spark session" instance to create spark job,
     and "spark session" instance only exists inside spark application driver
-    process, but Ray autoscaler is executed as sub-process of ray head node process,
+    process, and ray on spark cluster head node process is a subprocess of
+    spark application driver process,
+    but Ray autoscaler is executed as sub-process of ray head node process,
     so we create the spark job server inside spark application driver
     process, and when ray autoscaler requests to create spark jobs, it sends
     http request to the spark job server.
@@ -139,13 +141,17 @@ class SparkJobServer(ThreadingHTTPServer):
     handler must be running in current process.
     """
 
-    spark = None
-
     def __init__(self, server_address, spark):
         super().__init__(server_address, SparkJobServerRequestHandler)
         self.spark = spark
 
-        # Each task has status of pending, running, or terminated.
+        # For ray on spark autoscaling mode,
+        # for each ray worker node, we create an individual spark job
+        # to launch it, the corresponding spark job has only one
+        # spark task that starts ray worker node, and the spark job
+        # is assigned with a unique spark job group ID that is used
+        # to cancel this spark job (i.e., kill corresponding ray worker node).
+        # Each spark task has status of pending, running, or terminated.
         # the task_status_dict key is spark job group id,
         # and value is the corresponding spark task status.
         # each spark task holds a ray worker node.
