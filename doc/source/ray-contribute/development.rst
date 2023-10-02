@@ -21,17 +21,16 @@ Forking an open source repository is a best practice when looking to contribute,
 You can propose changes to the main project by submitting a pull request to the main project's repository.
 
 1. Navigate to the `Ray GitHub repo <https://github.com/ray-project/ray>`_.
-
 2. Follow these `GitHub instructions <https://docs.github.com/en/get-started/quickstart/fork-a-repo>`_, and do the following:
     
     a. `Fork the repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#forking-a-repository>`_ with your preferred method.
     b. `Clone <https://docs.github.com/en/get-started/quickstart/fork-a-repo#cloning-your-forked-repository>`_ to your local machine.
     c. `Connect your repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#configuring-git-to-sync-your-fork-with-the-upstream-repository>`_ to the upstream (main project) Ray repo to sync changes.
 
-Prepare the Python environment
+Step 2: Prepare a Python virtual environment
 ------------------------------
 
-You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``.
+It is recommended to create a virtual environment in order to prevent version conflicts and to develop with an isolated, project-specific Python setup.
 
 .. tab-set::
 
