@@ -686,8 +686,6 @@ class PPO(Algorithm):
                 # How many episodes/timesteps do we need to run?
                 # In "auto" mode (only for parallel eval + training): Run as long
                 # as training lasts.
-                evaluation_duration_unit = self.config.evaluation_duration_unit
-
                 unit = self.config.evaluation_duration_unit
                 eval_cfg = self.evaluation_config
                 rollout = eval_cfg.rollout_fragment_length
@@ -918,7 +916,9 @@ class PPO(Algorithm):
                         episodes.extend(episode)
                     metrics = summarize_episodes(
                         episodes,
-                        keep_custom_metrics=self.evaluation_config.keep_per_episode_custom_metrics,
+                        keep_custom_metrics=(
+                            self.evaluation_config.keep_per_episode_custom_metrics
+                        ),
                     )
 
                 # TODO: Don't dump sampler results into top-level.
