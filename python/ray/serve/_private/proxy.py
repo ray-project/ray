@@ -1172,7 +1172,9 @@ class HTTPProxy(GenericProxy):
             handle_arg = await self._format_handle_arg_for_java(proxy_request)
             result_callback = convert_object_to_asgi_messages
         else:
-            handle_arg = proxy_request.request_object(proxy_handle=self.self_actor_handle)
+            handle_arg = proxy_request.request_object(
+                proxy_handle=self.self_actor_handle
+            )
             result_callback = pickle.loads
 
         # Proxy the receive interface by placing the received messages on a queue.
@@ -1189,8 +1191,6 @@ class HTTPProxy(GenericProxy):
         status_code = ""
         response_started = False
         expecting_trailers = False
-        # XXX: we need to not cancel the request in case of websockets :'(
-        is_websocket_connection = False
         try:
             async for asgi_message_batch in handle_wrapper.stream_request(
                 handle_arg,
@@ -1208,7 +1208,10 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["status"])
                         expecting_trailers = asgi_message.get("trailers", False)
                     elif asgi_message["type"] == "websocket.accept":
-                        is_websocket_connection = True
+                        # Websocket code explicitly handles client disconnects,
+                        # so let the ASGI disconnect message propagate instead of
+                        # cancelling the handler.
+                        stop_checking_disconnected_event.set()
                     elif (
                         asgi_message["type"] == "http.response.body"
                         and not asgi_message.get("more_body", False)
