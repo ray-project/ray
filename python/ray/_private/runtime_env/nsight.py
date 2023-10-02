@@ -1,5 +1,6 @@
 import os
 import logging
+import subprocess
 from typing import List, Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -15,13 +16,20 @@ from ray._private.utils import (
 
 default_logger = logging.getLogger(__name__)
 
+def check_if_nsys_installed():
+    try:
+        result = subprocess.run(["nsys", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
 class NsightPlugin(RuntimeEnvPlugin):
     name = "nsight"
 
     def __init__(self, resource_dir: str):
+        self.nsys_cmd = []
         self._resources_dir = os.path.join(resource_dir, "nsight")
         try_to_create_directory(self._resources_dir)
-        print(self._resources_dir)
     
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -56,6 +64,10 @@ class NsightPlugin(RuntimeEnvPlugin):
         nsight_flags = runtime_env.get("nsight")
         if not nsight_flags:
             return 0
+        if not check_if_nsys_installed():
+            logger.warning("Nsys is not installed, running worker process without `nsys profile`")
+            return 0
+
         self.nsys_cmd = ["nsys", "profile", "--sample=cpu", "--cudabacktrace=true", \
         "--stop-on-exit=true", 	"-o", f"{self._resources_dir}/worker_process_%p"]
         self.nsys_cmd += ["-t " + ",".join(nsight_flags)]
