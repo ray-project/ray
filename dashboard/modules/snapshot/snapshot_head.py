@@ -24,7 +24,7 @@ from ray.runtime_env import RuntimeEnv
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 SNAPSHOT_API_TIMEOUT_SECONDS = 30
 

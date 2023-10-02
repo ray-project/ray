@@ -23,7 +23,7 @@ from ray._private.ray_constants import (
 )
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardAgentRouteTable
 
 # 64 KB
 BLOCK_SIZE = 1 << 16
