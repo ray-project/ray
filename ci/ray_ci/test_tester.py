@@ -68,6 +68,16 @@ def test_get_test_targets() -> None:
                 "//python/ray/tests:flaky_test_01",
             ]
 
+            assert _get_test_targets(
+                TesterContainer("core"),
+                "targets",
+                "core",
+                yaml_dir=tmp,
+                get_flaky_tests=True,
+            ) == [
+                "//python/ray/tests:flaky_test_01",
+            ]
+
 
 def test_get_all_test_query() -> None:
     assert _get_all_test_query(["a", "b"], "core") == (
