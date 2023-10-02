@@ -128,7 +128,7 @@ MongoDB
    Dataset.write_mongo
 
 BigQuery
--------
+--------
 
 .. autosummary::
    :toctree: doc/
