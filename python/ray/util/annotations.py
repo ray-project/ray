@@ -53,8 +53,8 @@ def PublicAPI(*args, **kwargs):
                 "and may change before becoming stable."
             )
             _append_doc(obj, message=message)
-            _mark_annotated(obj)
 
+        _mark_annotated(obj)
         return obj
 
     return wrap
