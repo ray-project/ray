@@ -35,7 +35,6 @@ class _ProxyResponseGeneratorBase(ABC):
         self._timeout_s = timeout_s
         self._start_time_s = time.time()
         self._disconnected_task = disconnected_task
-        self._should_check_disconnected = disconnected_task is not None
         self._result_callback = result_callback
 
     def __aiter__(self):
@@ -54,7 +53,7 @@ class _ProxyResponseGeneratorBase(ABC):
 
     def stop_checking_for_disconnect(self):
         """Once this is called, the disconnected_task will be ignored."""
-        self._should_check_disconnected = False
+        self._disconnected_task = None
 
 
 class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
@@ -79,6 +78,9 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
         )
         self._done = False
         self._response = response
+
+    def cancelled(self) -> bool:
+        return self._response.cancelled()
 
     async def __anext__(self):
         if self._done:
@@ -105,7 +107,7 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
     async def _get_next_streaming_result(self) -> Any:
         next_result_task = asyncio.create_task(self._await_response_anext())
         tasks = [next_result_task]
-        if self._should_check_disconnected:
+        if self._disconnected_task is not None:
             tasks.append(self._disconnected_task)
 
         done, _ = await asyncio.wait(
@@ -134,7 +136,7 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
     async def _get_unary_result(self) -> Any:
         result_task = asyncio.create_task(self._await_response())
         tasks = [result_task]
-        if self._should_check_disconnected:
+        if self._disconnected_task is not None:
             tasks.append(self._disconnected_task)
 
         done, _ = await asyncio.wait(

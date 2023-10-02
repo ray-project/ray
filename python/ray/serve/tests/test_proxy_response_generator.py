@@ -95,6 +95,8 @@ class TestUnary:
         with pytest.raises(TimeoutError):
             await gen.__anext__()
 
+        assert gen.cancelled()
+
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
 
@@ -115,6 +117,8 @@ class TestUnary:
 
         with pytest.raises(TimeoutError):
             await gen.__anext__()
+
+        assert gen.cancelled()
 
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
@@ -153,6 +157,8 @@ class TestUnary:
         with pytest.raises(asyncio.CancelledError):
             await gen_next
 
+        assert gen.cancelled()
+
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
 
@@ -183,6 +189,8 @@ class TestUnary:
         disconnect_event.set()
         with pytest.raises(asyncio.CancelledError):
             await gen_next
+
+        assert gen.cancelled()
 
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
@@ -268,6 +276,8 @@ class TestStreaming:
         with pytest.raises(TimeoutError):
             await gen.__anext__()
 
+        assert gen.cancelled()
+
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
 
@@ -289,6 +299,8 @@ class TestStreaming:
         assert (await gen.__anext__()) == "hi"
         with pytest.raises(TimeoutError):
             await gen.__anext__()
+
+        assert gen.cancelled()
 
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
@@ -328,6 +340,8 @@ class TestStreaming:
         with pytest.raises(asyncio.CancelledError):
             await gen_next
 
+        assert gen.cancelled()
+
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
 
@@ -360,6 +374,8 @@ class TestStreaming:
         disconnect_event.set()
         with pytest.raises(asyncio.CancelledError):
             await gen_next
+
+        assert gen.cancelled()
 
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
@@ -400,6 +416,8 @@ class TestStreaming:
         disconnect_event.set()
         done, _ = await asyncio.wait([gen_next], timeout=0.1)
         assert len(done) == 0
+
+        assert not gen.cancelled()
 
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
