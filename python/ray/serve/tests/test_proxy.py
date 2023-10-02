@@ -2,7 +2,7 @@ import asyncio
 import pickle
 import sys
 from typing import AsyncGenerator
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import grpc
 import pytest
@@ -23,11 +23,6 @@ from ray.serve._private.proxy import (
 )
 from ray.serve._private.proxy_request_response import ASGIProxyRequest, ProxyResponse
 from ray.serve.generated import serve_pb2
-
-if sys.version_info >= (3, 8, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
 
 
 class FakeRef:
@@ -86,7 +81,6 @@ class FakeActorHandler:
         return FakeRef()
 
 
-@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 class TestgRPCProxy:
     """Test methods implemented on gRPCProxy"""
 
@@ -264,7 +258,6 @@ class TestgRPCProxy:
         assert response.streaming_response is not None
 
 
-@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 class TestHTTPProxy:
     """Test methods implemented on HTTPProxy"""
 
