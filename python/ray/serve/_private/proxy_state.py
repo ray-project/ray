@@ -731,7 +731,7 @@ class ProxyStateManager:
             )
             grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
 
-        return self._actor_proxy_wrapper_class.start_proxy(
+        return self._actor_proxy_wrapper_class(
             config=self._config,
             grpc_options=grpc_options,
             controller_name=self._controller_name,
