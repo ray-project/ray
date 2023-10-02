@@ -19,6 +19,7 @@ from pyspark.sql import SparkSession
 import time
 import logging
 from contextlib import contextmanager
+from ray._private.test_utils import wait_for_condition
 
 
 pytestmark = [
@@ -260,12 +261,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 )
 
                 # Test scale down
-                for _ in range(60):
-                    time.sleep(1)
-                    if len(self.get_ray_worker_resources_list()) == 0:
-                        break
-                else:
-                    assert False, "Ray cluster scales down failed."
+                wait_for_condition(
+                    lambda: len(self.get_ray_worker_resources_list()) == 0,
+                    timeout=60,
+                    retry_interval_ms=1000,
+                )
 
 
 class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):

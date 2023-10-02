@@ -13,6 +13,7 @@ from ray.tests.spark.test_basic import (
     _RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
 )
 from ray.util.spark.utils import _calc_mem_per_ray_worker_node
+from ray._private.test_utils import wait_for_condition
 
 import ray
 
@@ -174,12 +175,11 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 )
 
                 # Test scale down
-                for _ in range(60):
-                    time.sleep(1)
-                    if len(self.get_ray_worker_resources_list()) == 0:
-                        break
-                else:
-                    assert False, "Ray cluster scales down failed."
+                wait_for_condition(
+                    lambda: len(self.get_ray_worker_resources_list()) == 0,
+                    timeout=60,
+                    retry_interval_ms=1000,
+                )
 
 
 class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):
