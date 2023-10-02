@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from ray import cloudpickle
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
@@ -14,7 +14,7 @@ from ray.serve.config import (
 )
 from ray.serve.generated.serve_pb2_grpc import add_UserDefinedServiceServicer_to_server
 from ray.serve.schema import (
-    DeploymentSchema,
+    ApplyServeDeploymentModel,
     HTTPOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -65,20 +65,20 @@ def test_autoscaling_config_validation():
 class TestDeploymentConfig:
     def test_deployment_config_validation(self):
         # Test config ignoring unknown keys (required for forward-compatibility)
-        DeploymentConfig(new_version_key=-1)
+        InternalDeploymentConfig(new_version_key=-1)
 
         # Test num_replicas validation.
-        DeploymentConfig(num_replicas=1)
+        InternalDeploymentConfig(num_replicas=1)
         with pytest.raises(ValidationError, match="type_error"):
-            DeploymentConfig(num_replicas="hello")
+            InternalDeploymentConfig(num_replicas="hello")
         with pytest.raises(ValidationError, match="value_error"):
-            DeploymentConfig(num_replicas=-1)
+            InternalDeploymentConfig(num_replicas=-1)
 
         # Test dynamic default for max_concurrent_queries.
-        assert DeploymentConfig().max_concurrent_queries == 100
+        assert InternalDeploymentConfig().max_concurrent_queries == 100
 
     def test_deployment_config_update(self):
-        b = DeploymentConfig(num_replicas=1, max_concurrent_queries=1)
+        b = InternalDeploymentConfig(num_replicas=1, max_concurrent_queries=1)
 
         # Test updating a key works.
         b.num_replicas = 2
@@ -96,28 +96,30 @@ class TestDeploymentConfig:
         """Check from_default() method behavior."""
 
         # Valid parameters
-        dc = DeploymentConfig.from_default(num_replicas=5, is_cross_language=True)
+        dc = InternalDeploymentConfig.from_default(
+            num_replicas=5, is_cross_language=True
+        )
         assert dc.num_replicas == 5
         assert dc.is_cross_language is True
 
         # Invalid parameters should raise TypeError
         with pytest.raises(TypeError):
-            DeploymentConfig.from_default(num_replicas=5, is_xlang=True)
+            InternalDeploymentConfig.from_default(num_replicas=5, is_xlang=True)
 
         # Validation should still be performed
         with pytest.raises(ValidationError):
-            DeploymentConfig.from_default(num_replicas="hello world")
+            InternalDeploymentConfig.from_default(num_replicas="hello world")
 
     def test_from_default_ignore_default(self):
         """Check that from_default() ignores DEFAULT.VALUE kwargs."""
 
-        default = DeploymentConfig()
+        default = InternalDeploymentConfig()
 
         # Valid parameter with DEFAULT.VALUE passed in should be ignored
-        dc = DeploymentConfig.from_default(num_replicas=DEFAULT.VALUE)
+        dc = InternalDeploymentConfig.from_default(num_replicas=DEFAULT.VALUE)
 
         # Validators should run no matter what
-        dc = DeploymentConfig.from_default(max_concurrent_queries=None)
+        dc = InternalDeploymentConfig.from_default(max_concurrent_queries=None)
         assert dc.max_concurrent_queries is not None
         assert dc.max_concurrent_queries == default.max_concurrent_queries
 
@@ -130,16 +132,16 @@ class TestReplicaConfig:
         def function(_):
             pass
 
-        ReplicaConfig.create(Class)
-        ReplicaConfig.create(function)
+        ReplicaInitInfo.create(Class)
+        ReplicaInitInfo.create(function)
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class())
+            ReplicaInitInfo.create(Class())
 
     def test_ray_actor_options_validation(self):
         class Class:
             pass
 
-        ReplicaConfig.create(
+        ReplicaInitInfo.create(
             Class,
             tuple(),
             dict(),
@@ -152,29 +154,29 @@ class TestReplicaConfig:
             },
         )
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options=1.0)
+            ReplicaInitInfo.create(Class, ray_actor_options=1.0)
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options=False)
+            ReplicaInitInfo.create(Class, ray_actor_options=False)
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options={"num_cpus": "hello"})
+            ReplicaInitInfo.create(Class, ray_actor_options={"num_cpus": "hello"})
         with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"num_cpus": -1})
+            ReplicaInitInfo.create(Class, ray_actor_options={"num_cpus": -1})
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options={"num_gpus": "hello"})
+            ReplicaInitInfo.create(Class, ray_actor_options={"num_gpus": "hello"})
         with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"num_gpus": -1})
+            ReplicaInitInfo.create(Class, ray_actor_options={"num_gpus": -1})
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
+            ReplicaInitInfo.create(Class, ray_actor_options={"memory": "hello"})
         with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
+            ReplicaInitInfo.create(Class, ray_actor_options={"memory": -1})
         with pytest.raises(TypeError):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class, ray_actor_options={"object_store_memory": "hello"}
             )
         with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": -1})
+            ReplicaInitInfo.create(Class, ray_actor_options={"object_store_memory": -1})
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options={"resources": []})
+            ReplicaInitInfo.create(Class, ray_actor_options={"resources": []})
 
         disallowed_ray_actor_options = {
             "max_concurrency",
@@ -194,13 +196,13 @@ class TestReplicaConfig:
 
         for option in disallowed_ray_actor_options:
             with pytest.raises(ValueError):
-                ReplicaConfig.create(Class, ray_actor_options={option: None})
+                ReplicaInitInfo.create(Class, ray_actor_options={option: None})
 
     def test_max_replicas_per_node_validation(self):
         class Class:
             pass
 
-        ReplicaConfig.create(
+        ReplicaInitInfo.create(
             Class,
             tuple(),
             dict(),
@@ -209,7 +211,7 @@ class TestReplicaConfig:
 
         # Invalid type
         with pytest.raises(TypeError, match="Get invalid type"):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class,
                 tuple(),
                 dict(),
@@ -221,7 +223,7 @@ class TestReplicaConfig:
             ValueError,
             match="Valid values are None or an integer in the range of \[1, 100\]",
         ):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class,
                 tuple(),
                 dict(),
@@ -232,7 +234,7 @@ class TestReplicaConfig:
             ValueError,
             match="Valid values are None or an integer in the range of \[1, 100\]",
         ):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class,
                 tuple(),
                 dict(),
@@ -243,7 +245,7 @@ class TestReplicaConfig:
             ValueError,
             match="Valid values are None or an integer in the range of \[1, 100\]",
         ):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class,
                 tuple(),
                 dict(),
@@ -255,7 +257,7 @@ class TestReplicaConfig:
             pass
 
         # Specify placement_group_bundles without num_cpus or placement_group_strategy.
-        ReplicaConfig.create(
+        ReplicaInitInfo.create(
             Class,
             tuple(),
             dict(),
@@ -263,7 +265,7 @@ class TestReplicaConfig:
         )
 
         # Specify placement_group_bundles with integer value.
-        ReplicaConfig.create(
+        ReplicaInitInfo.create(
             Class,
             tuple(),
             dict(),
@@ -271,7 +273,7 @@ class TestReplicaConfig:
         )
 
         # Specify placement_group_bundles and placement_group_strategy.
-        ReplicaConfig.create(
+        ReplicaInitInfo.create(
             Class,
             tuple(),
             dict(),
@@ -280,7 +282,7 @@ class TestReplicaConfig:
         )
 
         # Specify placement_group_bundles and placement_group_strategy and num_cpus.
-        ReplicaConfig.create(
+        ReplicaInitInfo.create(
             Class,
             tuple(),
             dict(),
@@ -293,7 +295,7 @@ class TestReplicaConfig:
         with pytest.raises(
             ValueError, match="`placement_group_bundles` must also be provided"
         ):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class,
                 tuple(),
                 dict(),
@@ -304,7 +306,7 @@ class TestReplicaConfig:
         with pytest.raises(
             ValueError, match="Invalid placement group strategy 'FAKE_NEWS'"
         ):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class,
                 tuple(),
                 dict(),
@@ -320,7 +322,7 @@ class TestReplicaConfig:
                 "of resource dictionaries."
             ),
         ):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class,
                 tuple(),
                 dict(),
@@ -335,7 +337,7 @@ class TestReplicaConfig:
                 "subset of the first bundle."
             ),
         ):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class,
                 tuple(),
                 dict(),
@@ -351,7 +353,7 @@ class TestReplicaConfig:
                 "subset of the first bundle."
             ),
         ):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class,
                 tuple(),
                 dict(),
@@ -367,7 +369,7 @@ class TestReplicaConfig:
                 "subset of the first bundle."
             ),
         ):
-            ReplicaConfig.create(
+            ReplicaInitInfo.create(
                 Class,
                 tuple(),
                 dict(),
@@ -380,7 +382,7 @@ class TestReplicaConfig:
             return "Check this out!"
 
         f_serialized = cloudpickle.dumps(f)
-        config = ReplicaConfig(
+        config = ReplicaInitInfo(
             "f", f_serialized, cloudpickle.dumps(()), cloudpickle.dumps({}), {}
         )
 
@@ -411,7 +413,7 @@ def test_config_schemas_forward_compatible():
             ServeApplicationSchema(
                 import_path="module.app",
                 deployments=[
-                    DeploymentSchema(
+                    ApplyServeDeploymentModel(
                         name="deployment",
                         new_version_config_key="this config is from newer version"
                         " of Ray",
@@ -438,18 +440,18 @@ def test_http_options():
 
 def test_with_proto():
     # Test roundtrip
-    config = DeploymentConfig(num_replicas=100, max_concurrent_queries=16)
-    assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+    config = InternalDeploymentConfig(num_replicas=100, max_concurrent_queries=16)
+    assert config == InternalDeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
     # Test user_config object
-    config = DeploymentConfig(user_config={"python": ("native", ["objects"])})
-    assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+    config = InternalDeploymentConfig(user_config={"python": ("native", ["objects"])})
+    assert config == InternalDeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
 
 def test_zero_default_proto():
     # Test that options set to zero (protobuf default value) still retain their
     # original value after being serialized and deserialized.
-    config = DeploymentConfig(
+    config = InternalDeploymentConfig(
         autoscaling_config={
             "min_replicas": 1,
             "max_replicas": 2,
@@ -458,7 +460,7 @@ def test_zero_default_proto():
         }
     )
     serialized_config = config.to_proto_bytes()
-    deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
+    deserialized_config = InternalDeploymentConfig.from_proto_bytes(serialized_config)
     new_delay_s = deserialized_config.autoscaling_config.downscale_delay_s
     assert new_delay_s == 0
 

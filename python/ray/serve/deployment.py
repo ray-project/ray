@@ -7,14 +7,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from ray.dag.class_node import ClassNode
 from ray.dag.dag_node import DAGNodeBase
 from ray.dag.function_node import FunctionNode
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import MIGRATION_MESSAGE, SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import DeploymentSchema, RayActorOptionsSchema
+from ray.serve.schema import ApplyServeDeploymentModel, BaseRayActorOptionsModel
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -112,8 +112,8 @@ class Deployment:
     def __init__(
         self,
         name: str,
-        deployment_config: DeploymentConfig,
-        replica_config: ReplicaConfig,
+        deployment_config: InternalDeploymentConfig,
+        replica_config: ReplicaInitInfo,
         version: Optional[str] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         _internal=False,
@@ -281,7 +281,7 @@ class Deployment:
         if len(init_kwargs) == 0 and self._replica_config.init_kwargs is not None:
             init_kwargs = self._replica_config.init_kwargs
 
-        replica_config = ReplicaConfig.create(
+        replica_config = ReplicaInitInfo.create(
             self._replica_config.deployment_def,
             init_args=init_args,
             init_kwargs=init_kwargs,
@@ -488,7 +488,7 @@ class Deployment:
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
 
-        new_replica_config = ReplicaConfig.create(
+        new_replica_config = ReplicaInitInfo.create(
             func_or_class,
             init_args=init_args,
             init_kwargs=init_kwargs,
@@ -601,7 +601,7 @@ class Deployment:
 
 def deployment_to_schema(
     d: Deployment, include_route_prefix: bool = True
-) -> DeploymentSchema:
+) -> ApplyServeDeploymentModel:
     """Converts a live deployment object to a corresponding structured schema.
 
     Args:
@@ -613,7 +613,9 @@ def deployment_to_schema(
     """
 
     if d.ray_actor_options is not None:
-        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+        ray_actor_options_schema = BaseRayActorOptionsModel.parse_obj(
+            d.ray_actor_options
+        )
     else:
         ray_actor_options_schema = None
 
@@ -653,10 +655,10 @@ def deployment_to_schema(
     # because internally we use these two field for autoscale and deploy.
     # We can improve the code after we separate the user faced deployment config and
     # internal deployment config.
-    return DeploymentSchema(**deployment_options)
+    return ApplyServeDeploymentModel(**deployment_options)
 
 
-def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+def schema_to_deployment(s: ApplyServeDeploymentModel) -> Deployment:
     """Creates a deployment with parameters specified in schema.
 
     The returned deployment CANNOT be deployed immediately. It's func_or_class
@@ -685,7 +687,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         max_replicas_per_node = s.max_replicas_per_node
 
-    deployment_config = DeploymentConfig.from_default(
+    deployment_config = InternalDeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
         max_concurrent_queries=s.max_concurrent_queries,
@@ -699,7 +701,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         s.get_user_configured_option_names()
     )
 
-    replica_config = ReplicaConfig.create(
+    replica_config = ReplicaInitInfo.create(
         deployment_def="",
         init_args=(),
         init_kwargs={},

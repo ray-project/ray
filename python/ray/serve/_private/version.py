@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional
 from zlib import crc32
 
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import InternalDeploymentConfig
 from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_letters
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
 
@@ -16,7 +16,7 @@ class DeploymentVersion:
     def __init__(
         self,
         code_version: Optional[str],
-        deployment_config: DeploymentConfig,
+        deployment_config: InternalDeploymentConfig,
         ray_actor_options: Optional[Dict],
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
@@ -139,7 +139,7 @@ class DeploymentVersion:
     def from_proto(cls, proto: DeploymentVersionProto):
         return DeploymentVersion(
             proto.code_version,
-            DeploymentConfig.from_proto(proto.deployment_config),
+            InternalDeploymentConfig.from_proto(proto.deployment_config),
             json.loads(proto.ray_actor_options),
             placement_group_bundles=(
                 json.loads(proto.placement_group_bundles)

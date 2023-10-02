@@ -13,7 +13,7 @@ from ray.serve._private.common import (
     ReplicaState,
     ReplicaTag,
 )
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -297,10 +297,10 @@ def deployment_info(
     info = DeploymentInfo(
         version=version,
         start_time_ms=0,
-        deployment_config=DeploymentConfig(
+        deployment_config=InternalDeploymentConfig(
             num_replicas=num_replicas, user_config=user_config, **config_opts
         ),
-        replica_config=ReplicaConfig.create(lambda x: x),
+        replica_config=ReplicaInitInfo.create(lambda x: x),
         deployer_job_id="",
     )
 
@@ -317,7 +317,7 @@ def deployment_info(
 
 
 def deployment_version(code_version) -> DeploymentVersion:
-    return DeploymentVersion(code_version, DeploymentConfig(), {})
+    return DeploymentVersion(code_version, InternalDeploymentConfig(), {})
 
 
 class MockClusterNodeInfoCache:
@@ -367,7 +367,9 @@ def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
     if version is None:
-        version = DeploymentVersion(get_random_letters(), DeploymentConfig(), {})
+        version = DeploymentVersion(
+            get_random_letters(), InternalDeploymentConfig(), {}
+        )
 
     class MockVersionedReplica(VersionedReplica):
         def __init__(self, version: DeploymentVersion):

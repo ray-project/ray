@@ -242,7 +242,7 @@ def test_deployment_error_handling(serve_instance):
         pass
 
     with pytest.raises(
-        ValidationError, match="1 validation error for RayActorOptionsSchema.*"
+        ValidationError, match="1 validation error for BaseRayActorOptionsModel.*"
     ):
         # This is an invalid configuration since dynamic upload of working
         # directories is not supported. The error this causes in the controller

@@ -20,7 +20,7 @@ from ray.serve._private.common import (
     EndpointInfo,
     EndpointTag,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import InternalDeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
@@ -1011,7 +1011,9 @@ def override_deployment_info(
         original_options = info.deployment_config.dict()
         options.pop("name", None)
         original_options.update(options)
-        override_options["deployment_config"] = DeploymentConfig(**original_options)
+        override_options["deployment_config"] = InternalDeploymentConfig(
+            **original_options
+        )
 
         deployment_infos[deployment_name] = info.update(**override_options)
 

@@ -30,7 +30,7 @@ from ray.serve._private.common import (
     StreamingHTTPRequest,
     gRPCRequest,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import InternalDeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     HEALTH_CHECK_METHOD,
@@ -130,7 +130,7 @@ def create_replica_wrapper(actor_class_name: str):
             init_args = cloudpickle.loads(serialized_init_args)
             init_kwargs = cloudpickle.loads(serialized_init_kwargs)
 
-            deployment_config = DeploymentConfig.from_proto_bytes(
+            deployment_config = InternalDeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes
             )
 
@@ -394,9 +394,9 @@ def create_replica_wrapper(actor_class_name: str):
 
         async def initialize_and_get_metadata(
             self,
-            deployment_config: DeploymentConfig = None,
+            deployment_config: InternalDeploymentConfig = None,
             _after: Optional[Any] = None,
-        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        ) -> Tuple[InternalDeploymentConfig, DeploymentVersion]:
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying this call until after the `_after` call has returned.
             try:
@@ -420,8 +420,8 @@ def create_replica_wrapper(actor_class_name: str):
 
         async def reconfigure(
             self,
-            deployment_config: DeploymentConfig,
-        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            deployment_config: InternalDeploymentConfig,
+        ) -> Tuple[InternalDeploymentConfig, DeploymentVersion]:
             try:
                 await self.replica.reconfigure(deployment_config)
                 return await self._get_metadata()
@@ -430,7 +430,7 @@ def create_replica_wrapper(actor_class_name: str):
 
         async def _get_metadata(
             self,
-        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        ) -> Tuple[InternalDeploymentConfig, DeploymentVersion]:
             return self.replica.version.deployment_config, self.replica.version
 
         def _save_cpu_profile_data(self) -> str:
@@ -490,7 +490,7 @@ class RayServeReplica:
         self.callable = _callable
         self.is_function = is_function
         self.version = version
-        self.deployment_config: DeploymentConfig = version.deployment_config
+        self.deployment_config: InternalDeploymentConfig = version.deployment_config
         self.rwlock = aiorwlock.RWLock()
         self.delete_lock = asyncio.Lock()
 
@@ -648,7 +648,7 @@ class RayServeReplica:
         else:
             await Response(result).send(scope, receive, send)
 
-    async def reconfigure(self, deployment_config: DeploymentConfig):
+    async def reconfigure(self, deployment_config: InternalDeploymentConfig):
         old_user_config = self.deployment_config.user_config
         self.deployment_config = deployment_config
         self.version = DeploymentVersion.from_deployment_version(

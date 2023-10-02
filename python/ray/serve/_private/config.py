@@ -3,34 +3,23 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.json_format import MessageToDict
-from pydantic import (
-    BaseModel,
-    Field,
-    NonNegativeFloat,
-    NonNegativeInt,
-    PositiveFloat,
-    validator,
-)
+from pydantic import Field, validator
 
 from ray import cloudpickle
 from ray._private import ray_option_utils
 from ray._private.serialization import pickle_dumps
 from ray._private.utils import resources_from_ray_options
 from ray.serve._private.constants import (
-    DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
-    DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
-    DEFAULT_HEALTH_CHECK_PERIOD_S,
-    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_CONCURRENT_QUERIES,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, BaseDeploymentModel
 from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
-from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
+from ray.util.placement_group import PlacementGroupStrategy
 
 
 def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
@@ -46,64 +35,8 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return False
 
 
-class DeploymentConfig(BaseModel):
-    """Internal datastructure wrapping config options for a deployment.
-
-    Args:
-        num_replicas (Optional[int]): The number of processes to start up that
-            handles requests to this deployment. Defaults to 1.
-        max_concurrent_queries (Optional[int]): The maximum number of queries
-            that is sent to a replica of this deployment without receiving
-            a response. Defaults to 100.
-        user_config (Optional[Any]): Arguments to pass to the reconfigure
-            method of the deployment. The reconfigure method is called if
-            user_config is not None. Must be JSON-serializable.
-        graceful_shutdown_wait_loop_s (Optional[float]): Duration
-            that deployment replicas wait until there is no more work to
-            be done before shutting down.
-        graceful_shutdown_timeout_s (Optional[float]):
-            Controller waits for this duration to forcefully kill the replica
-            for shutdown.
-        health_check_period_s (Optional[float]):
-            Frequency at which the controller health checks replicas.
-        health_check_timeout_s (Optional[float]):
-            Timeout that the controller waits for a response from the
-            replica's health check before marking it unhealthy.
-        user_configured_option_names (Set[str]):
-            The names of options manually configured by the user.
-    """
-
-    num_replicas: NonNegativeInt = Field(
-        default=1, update_type=DeploymentOptionUpdateType.LightWeight
-    )
-    max_concurrent_queries: Optional[int] = Field(
-        default=None, update_type=DeploymentOptionUpdateType.NeedsReconfigure
-    )
-    user_config: Any = Field(
-        default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
-    )
-
-    graceful_shutdown_timeout_s: NonNegativeFloat = Field(
-        default=DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
-    )
-    graceful_shutdown_wait_loop_s: NonNegativeFloat = Field(
-        default=DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
-        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
-    )
-
-    health_check_period_s: PositiveFloat = Field(
-        default=DEFAULT_HEALTH_CHECK_PERIOD_S,
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
-    )
-    health_check_timeout_s: PositiveFloat = Field(
-        default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
-    )
-
-    autoscaling_config: Optional[AutoscalingConfig] = Field(
-        default=None, update_type=DeploymentOptionUpdateType.LightWeight
-    )
+class InternalDeploymentConfig(BaseDeploymentModel):
+    """Internal datastructure wrapping config options for a deployment."""
 
     # This flag is used to let replica know they are deployed from
     # a different language.
@@ -162,6 +95,12 @@ class DeploymentConfig(BaseModel):
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
         )
+        # TODO(zcin): This is temporary before these options are moved
+        # from ReplicaConfig to DeploymentConfig
+        del data["ray_actor_options"]
+        del data["placement_group_bundles"]
+        del data["placement_group_strategy"]
+        del data["max_replicas_per_node"]
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
@@ -245,7 +184,7 @@ class DeploymentConfig(BaseModel):
         return config
 
 
-class ReplicaConfig:
+class ReplicaInitInfo:
     """Internal datastructure wrapping config options for a deployment's replicas.
 
     Provides five main properties (see property docstrings for more info):
@@ -457,13 +396,14 @@ class ReplicaConfig:
             )
 
     def _validate_placement_group_options(self) -> None:
+        valid_placement_group_strategies = [s.value for s in PlacementGroupStrategy]
         if (
             self.placement_group_strategy is not None
-            and self.placement_group_strategy not in VALID_PLACEMENT_GROUP_STRATEGIES
+            and self.placement_group_strategy not in valid_placement_group_strategies
         ):
             raise ValueError(
                 f"Invalid placement group strategy '{self.placement_group_strategy}'. "
-                f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+                f"Supported strategies are: {valid_placement_group_strategies}."
             )
 
         if (
@@ -590,7 +530,7 @@ class ReplicaConfig:
 
     @classmethod
     def from_proto(cls, proto: ReplicaConfigProto, needs_pickle: bool = True):
-        return ReplicaConfig(
+        return ReplicaInitInfo(
             proto.deployment_def_name,
             proto.deployment_def,
             proto.init_args if proto.init_args != b"" else None,
