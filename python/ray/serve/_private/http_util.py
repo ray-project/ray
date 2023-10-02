@@ -46,6 +46,11 @@ def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
 def convert_object_to_asgi_messages(
     obj: Optional[Any] = None, status_code: int = 200
 ) -> List[Message]:
+    """Serializes the provided object and converts it to ASGI messages.
+
+    These ASGI messages can be sent via an ASGI `send` interface to comprise an HTTP
+    response.
+    """
     body = None
     content_type = None
     if obj is None:

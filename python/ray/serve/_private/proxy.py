@@ -51,13 +51,13 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.proxy_handle_wrapper import ProxyHandleWrapper
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     ProxyRequest,
     ProxyResponse,
     gRPCProxyRequest,
 )
+from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import (
     EndpointRouter,
     LongestPrefixRouter,
@@ -1013,7 +1013,7 @@ class HTTPProxy(GenericProxy):
         self,
         proxy_request: ProxyRequest,
     ) -> bytes:
-        # Convert HTTP requests to Java-accepted format (single byte string).
+        """Convert an HTTP request to the Java-accepted format (single byte string)."""
         query_string = proxy_request.scope.get("query_string")
         http_body_bytes = await receive_http_body(
             proxy_request.scope, proxy_request.receive, proxy_request.send
@@ -1034,11 +1034,13 @@ class HTTPProxy(GenericProxy):
     ) -> ProxyResponse:
         if app_is_cross_language:
             handle_arg = await self._format_handle_arg_for_java(proxy_request)
+            # Response is returned as raw bytes, convert it to ASGI messages.
             result_callback = convert_object_to_asgi_messages
         else:
             handle_arg = proxy_request.request_object(
                 proxy_handle=self.self_actor_handle
             )
+            # Messages are returned as pickled dictionaries.
             result_callback = pickle.loads
 
         # Proxy the receive interface by placing the received messages on a queue.
@@ -1049,19 +1051,19 @@ class HTTPProxy(GenericProxy):
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
-        handle_wrapper = ProxyHandleWrapper(handle, result_callback=result_callback)
-        stop_checking_disconnected_event = asyncio.Event()
+
+        response_generator = ProxyResponseGenerator(
+            handle.remote(handle_arg),
+            timeout_s=self.request_timeout_s,
+            disconnected_task=proxy_asgi_receive_task,
+            result_callback=result_callback,
+        )
 
         status_code = ""
         response_started = False
         expecting_trailers = False
         try:
-            async for asgi_message_batch in handle_wrapper.stream_request(
-                handle_arg,
-                timeout_s=self.request_timeout_s,
-                disconnected_task=proxy_asgi_receive_task,
-                stop_checking_disconnected_event=stop_checking_disconnected_event,
-            ):
+            async for asgi_message_batch in response_generator:
                 # See the ASGI spec for message details:
                 # https://asgi.readthedocs.io/en/latest/specs/www.html.
                 for asgi_message in asgi_message_batch:
@@ -1075,7 +1077,7 @@ class HTTPProxy(GenericProxy):
                         # Websocket code explicitly handles client disconnects,
                         # so let the ASGI disconnect message propagate instead of
                         # cancelling the handler.
-                        stop_checking_disconnected_event.set()
+                        response_generator.stop_checking_for_disconnect()
                     elif (
                         asgi_message["type"] == "http.response.body"
                         and not asgi_message.get("more_body", False)
@@ -1083,15 +1085,15 @@ class HTTPProxy(GenericProxy):
                     ):
                         # If the body is completed and we aren't expecting trailers, the
                         # response is done so we should stop listening for disconnects.
-                        stop_checking_disconnected_event.set()
+                        response_generator.stop_checking_for_disconnect()
                     elif asgi_message["type"] == "http.response.trailers":
                         # If we are expecting trailers, the response is only done when
                         # the trailers message has been sent.
                         if not asgi_message.get("more_trailers", False):
-                            stop_checking_disconnected_event.set()
+                            response_generator.stop_checking_for_disconnect()
                     elif asgi_message["type"] == "websocket.disconnect":
                         status_code = str(asgi_message["code"])
-                        stop_checking_disconnected_event.set()
+                        response_generator.stop_checking_for_disconnect()
 
                     await proxy_request.send(asgi_message)
                     response_started = True

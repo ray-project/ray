@@ -1,14 +1,15 @@
 import asyncio
-from typing import Tuple
+from typing import AsyncIterator, Tuple
 
 import pytest
 
 from ray import serve
 from ray._private.test_utils import SignalActor, async_wait_for_condition
-from ray.serve._private.proxy_handle_wrapper import ProxyHandleWrapper
+from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 
 
 def disconnect_task_and_event() -> Tuple[asyncio.Event, asyncio.Task]:
+    """Return an event and a task waiting on it for testing disconnect logic."""
     event = asyncio.Event()
 
     async def wait_for_event():
@@ -25,22 +26,30 @@ class TestUnary:
             def __call__(self, name: str) -> str:
                 return f"Hello {name}!"
 
-            def error(self, name: str):
+            def error(self):
                 raise RuntimeError("oopsies")
 
         h = serve.run(D.bind()).options(
             stream=False,
             use_new_handle_api=True,
         )
-        p = ProxyHandleWrapper(h)
+        gen = ProxyResponseGenerator(h.remote("Alice"))
 
-        responses = [r async for r in p.stream_request("Alice")]
+        # Test simple response.
+        responses = [r async for r in gen]
         assert len(responses) == 1
         assert set(responses) == {"Hello Alice!"}
 
-        p = ProxyHandleWrapper(h.options(method_name="error"))
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
+
+        # Test response raising exception.
+        gen = ProxyResponseGenerator(h.error.remote())
         with pytest.raises(RuntimeError, match="oopsies"):
-            await p.stream_request("").__anext__()
+            await gen.__anext__()
+
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
 
     async def test_result_callback(self, serve_instance):
         @serve.deployment
@@ -56,9 +65,9 @@ class TestUnary:
         def result_callback(result: str) -> str:
             return f"Callback called on: {result}"
 
-        p = ProxyHandleWrapper(h, result_callback=result_callback)
+        gen = ProxyResponseGenerator(h.remote("Alice"), result_callback=result_callback)
 
-        responses = [r async for r in p.stream_request("Alice")]
+        responses = [r async for r in gen]
         assert len(responses) == 1
         assert set(responses) == {"Callback called on: Hello Alice!"}
 
@@ -67,24 +76,24 @@ class TestUnary:
 
         @serve.deployment(max_concurrent_queries=1)
         class D:
-            async def __call__(self, _: str) -> str:
+            async def __call__(self):
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
             stream=False,
             use_new_handle_api=True,
         )
-        h.remote("")
+        h.remote()
 
         async def one_waiter():
             return await signal_actor.cur_num_waiters.remote() == 1
 
         await async_wait_for_condition(one_waiter)
 
-        p = ProxyHandleWrapper(h)
+        gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
 
         with pytest.raises(TimeoutError):
-            await p.stream_request("", timeout_s=0.1).__anext__()
+            await gen.__anext__()
 
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
@@ -94,7 +103,7 @@ class TestUnary:
 
         @serve.deployment
         class D:
-            async def __call__(self, _: str) -> str:
+            async def __call__(self):
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
@@ -102,10 +111,10 @@ class TestUnary:
             use_new_handle_api=True,
         )
 
-        p = ProxyHandleWrapper(h)
+        gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
 
         with pytest.raises(TimeoutError):
-            await p.stream_request("", timeout_s=0.1).__anext__()
+            await gen.__anext__()
 
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
@@ -116,22 +125,21 @@ class TestUnary:
 
         @serve.deployment(max_concurrent_queries=1)
         class D:
-            async def __call__(self, _: str) -> str:
+            async def __call__(self):
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
             stream=False,
             use_new_handle_api=True,
         )
-        h.remote("")
+        h.remote()
 
         async def one_waiter():
             return await signal_actor.cur_num_waiters.remote() == 1
 
         await async_wait_for_condition(one_waiter)
 
-        p = ProxyHandleWrapper(h)
-        gen = p.stream_request("", disconnected_task=disconnect_task)
+        gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
 
         async def get_next():
             return await gen.__anext__()
@@ -154,7 +162,7 @@ class TestUnary:
 
         @serve.deployment
         class D:
-            async def __call__(self, _: str) -> str:
+            async def __call__(self):
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
@@ -162,8 +170,7 @@ class TestUnary:
             use_new_handle_api=True,
         )
 
-        p = ProxyHandleWrapper(h)
-        gen = p.stream_request("", disconnected_task=disconnect_task)
+        gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
 
         async def get_next():
             return await gen.__anext__()
@@ -186,19 +193,19 @@ class TestStreaming:
     async def test_basic(self, serve_instance):
         @serve.deployment
         class D:
-            def __call__(self, name: str) -> str:
+            def __call__(self, name: str) -> AsyncIterator[str]:
                 for _ in range(5):
                     yield f"Hello {name}!"
 
-            def other_method(self, name: str) -> str:
+            def other_method(self, name: str) -> AsyncIterator[str]:
                 for _ in range(5):
                     yield f"Hello {name} from other method!"
 
-            def get_mmid(self, name: str) -> str:
+            def get_mmid(self, name: str) -> AsyncIterator[str]:
                 for _ in range(5):
                     yield f"Hello {name}: {serve.get_multiplexed_model_id()}!"
 
-            def error(self, name: str):
+            def error(self, name: str) -> AsyncIterator[str]:
                 yield f"Hello {name}!"
                 raise RuntimeError("oopsies")
 
@@ -206,22 +213,27 @@ class TestStreaming:
             stream=True,
             use_new_handle_api=True,
         )
-        p = ProxyHandleWrapper(h)
+        gen = ProxyResponseGenerator(h.remote("Alice"))
 
-        responses = [r async for r in p.stream_request("Alice")]
+        # Test simple response.
+        responses = [r async for r in gen]
         assert len(responses) == 5
         assert set(responses) == {"Hello Alice!"}
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
 
-        p = ProxyHandleWrapper(h.options(method_name="error"))
-        gen = p.stream_request("Alice")
+        # Test exception in the middle of response stream.
+        gen = ProxyResponseGenerator(h.error.remote("Alice"))
         assert await gen.__anext__() == "Hello Alice!"
         with pytest.raises(RuntimeError, match="oopsies"):
+            await gen.__anext__()
+        with pytest.raises(StopAsyncIteration):
             await gen.__anext__()
 
     async def test_result_callback(self, serve_instance):
         @serve.deployment
         class D:
-            def __call__(self, name: str) -> str:
+            def __call__(self, name: str) -> AsyncIterator[str]:
                 for _ in range(5):
                     yield f"Hello {name}!"
 
@@ -233,9 +245,9 @@ class TestStreaming:
         def result_callback(result: str) -> str:
             return f"Callback called on: {result}"
 
-        p = ProxyHandleWrapper(h, result_callback=result_callback)
+        gen = ProxyResponseGenerator(h.remote("Alice"), result_callback=result_callback)
 
-        responses = [r async for r in p.stream_request("Alice")]
+        responses = [r async for r in gen]
         assert len(responses) == 5
         assert set(responses) == {"Callback called on: Hello Alice!"}
 
@@ -244,7 +256,7 @@ class TestStreaming:
 
         @serve.deployment(max_concurrent_queries=1)
         class D:
-            async def __call__(self, _: str) -> str:
+            async def __call__(self) -> AsyncIterator[str]:
                 yield "hi"
                 await signal_actor.wait.remote()
 
@@ -252,17 +264,17 @@ class TestStreaming:
             stream=True,
             use_new_handle_api=True,
         )
-        h.remote("")
+        h.remote()
 
         async def one_waiter():
             return await signal_actor.cur_num_waiters.remote() == 1
 
         await async_wait_for_condition(one_waiter)
 
-        p = ProxyHandleWrapper(h)
+        gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
 
         with pytest.raises(TimeoutError):
-            await p.stream_request("", timeout_s=0.1).__anext__()
+            await gen.__anext__()
 
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
@@ -272,7 +284,7 @@ class TestStreaming:
 
         @serve.deployment
         class D:
-            async def __call__(self, _: str) -> str:
+            async def __call__(self) -> AsyncIterator[str]:
                 yield "hi"
                 await signal_actor.wait.remote()
 
@@ -281,9 +293,7 @@ class TestStreaming:
             use_new_handle_api=True,
         )
 
-        p = ProxyHandleWrapper(h)
-
-        gen = p.stream_request("", timeout_s=0.1)
+        gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
         assert (await gen.__anext__()) == "hi"
         with pytest.raises(TimeoutError):
             await gen.__anext__()
@@ -297,7 +307,7 @@ class TestStreaming:
 
         @serve.deployment(max_concurrent_queries=1)
         class D:
-            async def __call__(self, _: str) -> str:
+            async def __call__(self) -> AsyncIterator[str]:
                 yield "hi"
                 await signal_actor.wait.remote()
 
@@ -305,15 +315,14 @@ class TestStreaming:
             stream=True,
             use_new_handle_api=True,
         )
-        h.remote("")
+        h.remote()
 
         async def one_waiter():
             return await signal_actor.cur_num_waiters.remote() == 1
 
         await async_wait_for_condition(one_waiter)
 
-        p = ProxyHandleWrapper(h)
-        gen = p.stream_request("", disconnected_task=disconnect_task)
+        gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
 
         async def get_next():
             return await gen.__anext__()
@@ -336,7 +345,7 @@ class TestStreaming:
 
         @serve.deployment
         class D:
-            async def __call__(self, _: str) -> str:
+            async def __call__(self) -> AsyncIterator[str]:
                 yield "hi"
                 await signal_actor.wait.remote()
 
@@ -345,8 +354,7 @@ class TestStreaming:
             use_new_handle_api=True,
         )
 
-        p = ProxyHandleWrapper(h)
-        gen = p.stream_request("", disconnected_task=disconnect_task)
+        gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
         assert (await gen.__anext__()) == "hi"
 
         async def get_next():
@@ -364,14 +372,13 @@ class TestStreaming:
         assert await signal_actor.cur_num_waiters.remote() == 1
         await signal_actor.send.remote()
 
-    async def test_stop_checking_disconnected_event(self, serve_instance):
+    async def test_stop_checking_for_disconnect(self, serve_instance):
         signal_actor = SignalActor.remote()
         disconnect_event, disconnect_task = disconnect_task_and_event()
-        stop_checking_disconnected_event = asyncio.Event()
 
         @serve.deployment
         class D:
-            async def __call__(self, _: str) -> str:
+            async def __call__(self) -> AsyncIterator[str]:
                 yield "hi"
                 await signal_actor.wait.remote()
 
@@ -380,15 +387,13 @@ class TestStreaming:
             use_new_handle_api=True,
         )
 
-        p = ProxyHandleWrapper(h)
-        gen = p.stream_request(
-            "",
+        gen = ProxyResponseGenerator(
+            h.remote(),
             disconnected_task=disconnect_task,
-            stop_checking_disconnected_event=stop_checking_disconnected_event,
         )
         assert (await gen.__anext__()) == "hi"
 
-        stop_checking_disconnected_event.set()
+        gen.stop_checking_for_disconnect()
 
         async def get_next():
             return await gen.__anext__()
@@ -398,7 +403,7 @@ class TestStreaming:
         assert len(done) == 0
 
         # Set the disconnect event, causing the disconnect task to finish.
-        # However, the `stop_checking_disconnected_event` is also set so this
+        # However, because stop_checking_for_disconnect was called this
         # should still time out.
         disconnect_event.set()
         done, _ = await asyncio.wait([gen_next], timeout=0.1)
