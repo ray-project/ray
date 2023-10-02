@@ -20,7 +20,7 @@ Fork the Ray repository
 Forking an open source repository is a best practice when looking to contribute, as it allows you to make and test changes without affecting the original project, ensuring a clean and organized collaboration process.
 You can propose changes to the main project by submitting a pull request to the main project's repository.
 
-1. Navigate to the `Ray GitHub repo <https://github.com/ray-project/ray>`_.
+1. Navigate to the `Ray GitHub repository <https://github.com/ray-project/ray>`_.
 2. Follow these `GitHub instructions <https://docs.github.com/en/get-started/quickstart/fork-a-repo>`_, and do the following:
     
     a. `Fork the repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#forking-a-repository>`_ with your preferred method.
@@ -30,7 +30,7 @@ You can propose changes to the main project by submitting a pull request to the 
 Prepare a Python virtual environment
 ------------------------------
 
-It is recommended to create a virtual environment in order to prevent version conflicts and to develop with an isolated, project-specific Python setup.
+It's recommended to create a virtual environment to prevent version conflicts and to develop with an isolated, project-specific Python setup.
 
 .. tab-set::
 
