@@ -1,5 +1,5 @@
 from ray.dag.input_node import InputNode
-from ray.serve.tests.resources.test_modules import (
+from ray.serve.tests.common.test_modules import (
     NESTED_HANDLE_KEY,
     Combine,
     Model,
