@@ -552,7 +552,7 @@ class Trainable:
                     # The checkpoint index needs to be incremented.
                     # NOTE: This is no longer using "iteration" as the folder indexing
                     # to be consistent with fn trainables.
-                    self._storage.current_checkpoint_index += 1
+                    self._storage._increase_checkpoint_index(metrics)
 
                     checkpoint_result = _TrainingResult(
                         checkpoint=persisted_checkpoint, metrics=metrics

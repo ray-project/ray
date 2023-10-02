@@ -251,7 +251,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-def test_detached_deployment(ray_cluster):
+def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
@@ -287,12 +287,10 @@ def test_detached_deployment(ray_cluster):
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_connect(detached, ray_shutdown):
-    # Check that you can make API calls from within a deployment for both
-    # detached and non-detached instances.
+def test_connect(ray_shutdown):
+    # Check that you can make API calls from within a deployment.
     ray.init(num_cpus=16, namespace="serve")
-    serve.start(detached=detached)
+    serve.start()
 
     @serve.deployment
     def connect_in_deployment(*args):
@@ -301,27 +299,6 @@ def test_connect(detached, ray_shutdown):
     handle = serve.run(connect_in_deployment.bind())
     ray.get(handle.remote())
     assert "deployment-ception" in serve.list_deployments()
-
-
-@pytest.mark.parametrize("controller_cpu", [True, False])
-@pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
-def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
-    cluster = ray_cluster
-    num_cluster_cpus = 8
-    head_node = cluster.add_node(num_cpus=num_cluster_cpus)
-
-    ray.init(head_node.address)
-    wait_for_condition(lambda: ray.cluster_resources().get("CPU") == num_cluster_cpus)
-
-    num_cpus_used = int(controller_cpu) + num_proxy_cpus
-
-    serve.start(
-        dedicated_cpu=controller_cpu, http_options=HTTPOptions(num_cpus=num_proxy_cpus)
-    )
-    available_cpus = num_cluster_cpus - num_cpus_used
-    wait_for_condition(lambda: (ray.available_resources().get("CPU") == available_cpus))
-    serve.shutdown()
-    ray.shutdown()
 
 
 def test_set_socket_reuse_port():
@@ -684,13 +661,8 @@ def test_serve_shutdown(ray_shutdown):
     assert len(client.list_deployments()) == 1
 
 
-def test_detached_namespace_default_ray_init(ray_shutdown):
-    # Can start detached instance when ray is not initialized.
-    serve.start()
-
-
-def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
-    # Can start detached instance in non-anonymous namespace.
+def test_instance_in_non_anonymous_namespace(ray_shutdown):
+    # Can start instance in non-anonymous namespace.
     ray.init(namespace="foo")
     serve.start()
 

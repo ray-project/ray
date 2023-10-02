@@ -220,9 +220,8 @@ void GcsAutoscalerStateManager::GetNodeStates(
       return;
     }
 
-    for (auto &activity : gcs_node_info.state_snapshot().node_activity()) {
-      node_state_proto->add_node_activity(activity);
-    }
+    node_state_proto->mutable_node_activity()->CopyFrom(
+        gcs_node_info.state_snapshot().node_activity());
 
     // The node is alive. We need to check if the node is idle.
     auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
