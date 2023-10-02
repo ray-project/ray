@@ -138,7 +138,6 @@ if __name__ == "__main__":
         # End of dry run.
 
         skip_prefix_list = [
-            ".buildkite/",
             "doc/",
             "examples/",
             "dev/",
