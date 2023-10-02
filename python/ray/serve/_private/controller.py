@@ -1033,7 +1033,6 @@ class ServeControllerAvatar:
     def __init__(
         self,
         controller_name: str,
-        dedicated_cpu: bool = False,
         http_proxy_port: int = 8000,
     ):
         try:
@@ -1044,7 +1043,7 @@ class ServeControllerAvatar:
             http_config = HTTPOptions()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
-                num_cpus=1 if dedicated_cpu else 0,
+                num_cpus=0,
                 name=controller_name,
                 lifetime="detached",
                 max_restarts=-1,
