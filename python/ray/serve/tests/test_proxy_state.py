@@ -20,7 +20,7 @@ from ray.serve._private.controller import ServeController
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import (
-    ProxyActorWrapper,
+    ActorProxyWrapper,
     ProxyState,
     ProxyStateManager,
 )
@@ -46,7 +46,7 @@ def _make_proxy_state_manager(
     head_node_id: str = HEAD_NODE_ID,
     cluster_node_info_cache=MockClusterNodeInfoCache(),
     proxy_actor_class=ProxyActor,
-    proxy_actor_wrapper_class=ProxyActorWrapper,
+    actor_proxy_wrapper_class=ActorProxyWrapper,
 ) -> (ProxyStateManager, ClusterNodeInfoCache):
     return (
         ProxyStateManager(
@@ -55,7 +55,7 @@ def _make_proxy_state_manager(
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
             proxy_actor_class=proxy_actor_class,
-            proxy_actor_wrapper_class=proxy_actor_wrapper_class,
+            actor_proxy_wrapper_class=actor_proxy_wrapper_class,
         ),
         cluster_node_info_cache,
     )
@@ -118,7 +118,7 @@ def _create_proxy_state(
         kwargs["node_id"] = node_id
     proxy = proxy_actor_class.options(lifetime="detached").remote(**kwargs)
     state = ProxyState(
-        proxy_actor_wrapper=ProxyActorWrapper(actor_handle=proxy),
+        actor_proxy_wrapper=ActorProxyWrapper(actor_handle=proxy),
         actor_name="alice",
         node_id=node_id,
         node_ip="mock_node_ip",
@@ -789,7 +789,7 @@ def test_unhealthy_retry_correct_number_of_times():
     # Ensure _health_check_obj_ref is set again
     def health_check_ongoing():
         proxy_state.update()
-        return proxy_state._proxy_actor_wrapper.health_check_ongoing
+        return proxy_state._actor_proxy_wrapper.health_check_ongoing
 
     wait_for_condition(health_check_ongoing)
 
