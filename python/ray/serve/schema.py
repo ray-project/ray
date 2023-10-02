@@ -87,6 +87,7 @@ class ApplyServeDeploymentModel(BaseDeploymentModel):
     )
 
     # Override default values
+    num_replicas: Optional[PositiveInt] = DEFAULT.VALUE
     max_concurrent_queries: PositiveInt = DEFAULT.VALUE
     user_config: Optional[Dict] = DEFAULT.VALUE
     autoscaling_config: Optional[AutoscalingConfig] = DEFAULT.VALUE

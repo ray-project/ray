@@ -211,21 +211,19 @@ class BaseDeploymentModel(BaseModel, allow_population_by_field_name=True):
     options specified in code.
     """
 
-    num_replicas: Optional[int] = Field(
+    num_replicas: Optional[PositiveInt] = Field(
         default=1,
         description=(
             "The number of processes that handle requests to this "
             "deployment. Uses a default if null."
         ),
-        gt=0,
     )
-    max_concurrent_queries: int = Field(
+    max_concurrent_queries: PositiveInt = Field(
         default=DEFAULT_MAX_CONCURRENT_QUERIES,
         description=(
             "The max number of pending queries in a single replica. "
             "Uses a default if null."
         ),
-        gt=0,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
     user_config: Optional[Dict] = Field(

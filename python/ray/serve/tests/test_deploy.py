@@ -829,7 +829,7 @@ def test_deployment_properties():
         init_args=("hello", 123),
         version="version",
         num_replicas=2,
-        user_config="hi",
+        user_config={"val": "hi"},
         max_concurrent_queries=100,
         route_prefix="/hello",
         ray_actor_options={"num_cpus": 2},
@@ -839,7 +839,7 @@ def test_deployment_properties():
     assert D.init_args == ("hello", 123)
     assert D.version == "version"
     assert D.num_replicas == 2
-    assert D.user_config == "hi"
+    assert D.user_config == {"val": "hi"}
     assert D.max_concurrent_queries == 100
     assert D.route_prefix == "/hello"
     assert D.ray_actor_options == {"num_cpus": 2}
