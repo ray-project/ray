@@ -197,14 +197,6 @@ class TestStreaming:
                 for _ in range(5):
                     yield f"Hello {name}!"
 
-            def other_method(self, name: str) -> AsyncIterator[str]:
-                for _ in range(5):
-                    yield f"Hello {name} from other method!"
-
-            def get_mmid(self, name: str) -> AsyncIterator[str]:
-                for _ in range(5):
-                    yield f"Hello {name}: {serve.get_multiplexed_model_id()}!"
-
             def error(self, name: str) -> AsyncIterator[str]:
                 yield f"Hello {name}!"
                 raise RuntimeError("oopsies")

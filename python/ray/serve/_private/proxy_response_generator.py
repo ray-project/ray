@@ -24,10 +24,13 @@ class _ProxyResponseGeneratorBase(ABC):
 
         Args:
             - timeout_s: an end-to-end timeout for the request. If this expires and the
-              response is not completed, the request will be cancelled.
+              response is not completed, the request will be cancelled. If `None`,
+              there's no timeout.
             - disconnected_task: a task whose completion signals that the client has
-              disconnected. When this happens, the request will be cancelled.
-            - result_callback: will be called on each result before it's returned.
+              disconnected. When this happens, the request will be cancelled. If `None`,
+              disconnects will not be detected.
+            - result_callback: will be called on each result before it's returned. If
+              `None`, the unmodified result is returned.
         """
         self._timeout_s = timeout_s
         self._start_time_s = time.time()
@@ -100,7 +103,7 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
         return await self._response.__anext__()
 
     async def _get_next_streaming_result(self) -> Any:
-        next_result_task = asyncio.ensure_future(self._await_response_anext())
+        next_result_task = asyncio.create_task(self._await_response_anext())
         tasks = [next_result_task]
         if self._should_check_disconnected:
             tasks.append(self._disconnected_task)
@@ -129,7 +132,7 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
         return await self._response
 
     async def _get_unary_result(self) -> Any:
-        result_task = asyncio.ensure_future(self._await_response())
+        result_task = asyncio.create_task(self._await_response())
         tasks = [result_task]
         if self._should_check_disconnected:
             tasks.append(self._disconnected_task)
