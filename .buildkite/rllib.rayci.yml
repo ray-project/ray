@@ -1,6 +1,6 @@
 group: rllib tests
 steps:
-  - label: ":brain: rllib: learning tests TF2-static-graph"
+  - label: ":brain: rllib: learning tests tf2-static-graph"
     tags: rllib
     parallelism: 3
     instance_type: large
@@ -13,7 +13,7 @@ steps:
     depends_on: rllibbuild
     job_env: forge
 
-  - label: ":brain: rllib: learning tests Pytorch"
+  - label: ":brain: rllib: learning tests pytorch"
     tags: rllib
     parallelism: 3
     instance_type: large
@@ -72,11 +72,4 @@ steps:
         --skip-ray-installation # reuse the same docker image as the previous run
     depends_on: rllibbuild
     soft_fail: true
-    job_env: forge
-
-  - label: ":brain: rllib: benchmarks"
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --only-tags torch_2.x_only_benchmark
-    depends_on: rllibbuild
     job_env: forge
