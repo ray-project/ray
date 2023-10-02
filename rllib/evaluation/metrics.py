@@ -81,6 +81,8 @@ def collect_metrics(
         remote_worker_ids: Optional list of IDs of remote workers to collect
             metrics from.
         timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
+        keep_custom_metrics: Whether to keep custom metrics in the result dict as
+            they are (True) or to aggregate them (False).
 
     Returns:
         A result dict of metrics.
@@ -143,6 +145,8 @@ def summarize_episodes(
             (not newly collected in this iteration) in order to achieve the size of
             the smoothing window.
         new_episodes: All the episodes that were completed in this iteration.
+        keep_custom_metrics: Whether to keep custom metrics in the result dict as
+            they are (True) or to aggregate them (False).
 
     Returns:
         A result dict of metrics.

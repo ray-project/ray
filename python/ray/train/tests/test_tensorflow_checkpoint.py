@@ -6,15 +6,12 @@ import tensorflow as tf
 from typing import List
 import unittest
 
-import ray
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import (
     TensorflowCheckpoint,
     TensorflowTrainer,
-    TensorflowPredictor,
 )
-from ray.air import session
-from ray.air.config import ScalingConfig
+from ray import train
+from ray.train import ScalingConfig
 from ray.data import Preprocessor
 
 
@@ -35,13 +32,6 @@ def get_model():
             tf.keras.layers.Dense(1),
         ]
     )
-
-
-def test_model_definition_raises_deprecation_warning():
-    model = get_model()
-    checkpoint = TensorflowCheckpoint.from_model(model)
-    with pytest.raises(DeprecationWarning):
-        checkpoint.get_model(model_definition=get_model)
 
 
 def compare_weights(w1: List[ndarray], w2: List[ndarray]) -> bool:
@@ -65,41 +55,20 @@ class TestFromModel(unittest.TestCase):
         checkpoint = TensorflowCheckpoint.from_model(
             self.model, preprocessor=DummyPreprocessor(1)
         )
-        loaded_model = checkpoint.get_model(model=get_model)
+        loaded_model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
 
         assert compare_weights(loaded_model.get_weights(), self.model.get_weights())
         assert preprocessor.multiplier == 1
 
-    def test_from_model_no_definition(self):
-        checkpoint = TensorflowCheckpoint.from_model(
-            self.model, preprocessor=self.preprocessor
-        )
-        with self.assertRaises(ValueError):
-            checkpoint.get_model()
-
     def test_from_saved_model(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             model_dir_path = os.path.join(tmp_dir, "my_model")
-            self.model.save(model_dir_path)
+            self.model.save(model_dir_path, save_format="tf")
             checkpoint = TensorflowCheckpoint.from_saved_model(
                 model_dir_path, preprocessor=DummyPreprocessor(1)
             )
             loaded_model = checkpoint.get_model()
-            preprocessor = checkpoint.get_preprocessor()
-            assert compare_weights(self.model.get_weights(), loaded_model.get_weights())
-            assert preprocessor.multiplier == 1
-
-    def test_from_saved_model_warning_with_model_definition(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model_dir_path = os.path.join(tmp_dir, "my_model")
-            self.model.save(model_dir_path)
-            checkpoint = TensorflowCheckpoint.from_saved_model(
-                model_dir_path,
-                preprocessor=DummyPreprocessor(1),
-            )
-            with pytest.warns(None):
-                loaded_model = checkpoint.get_model(model=get_model)
             preprocessor = checkpoint.get_preprocessor()
             assert compare_weights(self.model.get_weights(), loaded_model.get_weights())
             assert preprocessor.multiplier == 1
@@ -129,23 +98,16 @@ def test_tensorflow_checkpoint_saved_model():
                 tf.keras.layers.Dense(1),
             ]
         )
-        model.save("my_model")
-        checkpoint = TensorflowCheckpoint.from_saved_model("my_model")
-        session.report({"my_metric": 1}, checkpoint=checkpoint)
+        with tempfile.TemporaryDirectory() as tempdir:
+            model.save(tempdir)
+            checkpoint = TensorflowCheckpoint.from_saved_model(tempdir)
+            train.report({"my_metric": 1}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_fn, scaling_config=ScalingConfig(num_workers=2)
     )
 
-    result_checkpoint = trainer.fit().checkpoint
-
-    batch_predictor = BatchPredictor.from_checkpoint(
-        result_checkpoint, TensorflowPredictor
-    )
-    predictions = batch_predictor.predict(ray.data.range(3))
-
-    for _ in predictions.iter_batches():
-        pass
+    assert trainer.fit().checkpoint
 
 
 def test_tensorflow_checkpoint_h5():
@@ -160,23 +122,18 @@ def test_tensorflow_checkpoint_h5():
                 tf.keras.layers.Dense(1),
             ]
         )
-        model.save("my_model.h5")
-        checkpoint = TensorflowCheckpoint.from_h5("my_model.h5")
-        session.report({"my_metric": 1}, checkpoint=checkpoint)
+        with tempfile.TemporaryDirectory() as tempdir:
+            model.save(os.path.join(tempdir, "my_model.h5"))
+            checkpoint = TensorflowCheckpoint.from_h5(
+                os.path.join(tempdir, "my_model.h5")
+            )
+            train.report({"my_metric": 1}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func, scaling_config=ScalingConfig(num_workers=2)
     )
 
-    result_checkpoint = trainer.fit().checkpoint
-
-    batch_predictor = BatchPredictor.from_checkpoint(
-        result_checkpoint, TensorflowPredictor
-    )
-    predictions = batch_predictor.predict(ray.data.range(3))
-
-    for _ in predictions.iter_batches():
-        pass
+    assert trainer.fit().checkpoint
 
 
 if __name__ == "__main__":

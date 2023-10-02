@@ -57,7 +57,7 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 ```
 
 :::{note}
-`TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `TFMnistModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
+`TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `TFMnistModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-deployment-graphs).
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.
@@ -156,7 +156,7 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 ```
 
 :::{note}
-`ImageModel.bind()` returns a `DeploymentNode` object (wrapping an `ImageModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
+`ImageModel.bind()` returns a `DeploymentNode` object (wrapping an `ImageModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-deployment-graphs).
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.
@@ -255,7 +255,7 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 ```
 
 :::{note}
-`BoostingModel.bind(MODEL_PATH, LABEL_PATH)` binds the arguments `MODEL_PATH` and `LABEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `BoostingModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
+`BoostingModel.bind(MODEL_PATH, LABEL_PATH)` binds the arguments `MODEL_PATH` and `LABEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `BoostingModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-deployment-graphs).
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.

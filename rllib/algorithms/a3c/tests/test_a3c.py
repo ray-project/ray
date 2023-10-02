@@ -27,7 +27,7 @@ class TestA3C(unittest.TestCase):
         num_iterations = 2
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=False):
+        for _ in framework_iterator(config):
             for env in ["ALE/Pong-v5", "CartPole-v1", "Pendulum-v1"]:
                 print("env={}".format(env))
                 config.model["use_lstm"] = env == "CartPole-v1"
@@ -64,14 +64,14 @@ class TestA3C(unittest.TestCase):
             min_time_s_per_iteration=0, min_sample_timesteps_per_iteration=20
         )
 
-        def _step_n_times(trainer, n: int):
-            """Step trainer n times.
+        def _step_n_times(algo, n: int):
+            """Step Algorithm n times.
 
             Returns:
                 learning rate at the end of the execution.
             """
             for _ in range(n):
-                results = trainer.train()
+                results = algo.train()
             return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
                 "entropy_coeff"
             ]

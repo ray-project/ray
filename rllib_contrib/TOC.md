@@ -2,9 +2,11 @@
 
 
 * [A3C](./a3c)
-* [MAML](./maml)
+* [A2C](./a2c)
+* [DDPG](./ddpg)
 * [Decision Transformer](./dt)
-
+* [MAML](./maml)
+* [R2D2](./r2d2)
 
 
 

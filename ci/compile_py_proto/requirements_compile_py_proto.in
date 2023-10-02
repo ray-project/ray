@@ -1,0 +1,4 @@
+# This uses protoc v19 and
+# is compatible with python protobuf 3.19
+grpcio-tools==1.46.5
+setuptools

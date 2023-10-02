@@ -1,6 +1,8 @@
 import {
   Box,
+  createStyles,
   IconButton,
+  makeStyles,
   TableCell,
   TableRow,
   Tooltip,
@@ -10,8 +12,13 @@ import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link } from "react-router-dom";
 import useSWR from "swr";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import { NodeLink } from "../../common/links";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+} from "../../common/ProfilingLink";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
@@ -35,6 +42,39 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   onExpandButtonClick: () => void;
 };
 
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    tableContainer: {
+      overflowX: "scroll",
+    },
+    expandCollapseIcon: {
+      color: theme.palette.text.secondary,
+      fontSize: "1.5em",
+      verticalAlign: "middle",
+    },
+    idCol: {
+      display: "block",
+      width: "50px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    OverflowCol: {
+      display: "block",
+      width: "100px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    helpInfo: {
+      marginLeft: theme.spacing(1),
+    },
+    logicalResources: {
+      maxWidth: 200,
+    },
+  }),
+);
+
 /**
  * A single row that represents the node information only.
  * Does not show any data about the node's workers.
@@ -53,9 +93,10 @@ export const NodeRow = ({
     networkSpeed = [0, 0],
     raylet,
     logUrl,
+    logicalResources,
   } = node;
 
-  const classes = rowStyles();
+  const classes = useStyles();
 
   const objectStoreTotalMemory =
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
@@ -149,6 +190,17 @@ export const NodeRow = ({
       </TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
+      <TableCell align="center">
+        {logicalResources ? (
+          <CodeDialogButtonWithPreview
+            className={classes.logicalResources}
+            title="Logical Resources"
+            code={logicalResources}
+          />
+        ) : (
+          "-"
+        )}
+      </TableCell>
     </TableRow>
   );
 };
@@ -206,23 +258,8 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           Logs
         </Link>
         <br />
-        <a
-          href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
-          target="_blank"
-          title="Sample the current Python stack trace for this worker."
-          rel="noreferrer"
-        >
-          Stack&nbsp;Trace
-        </a>
-        <br />
-        <a
-          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
-          target="_blank"
-          title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-          rel="noreferrer"
-        >
-          CPU&nbsp;Flame&nbsp;Graph
-        </a>
+        <CpuStackTraceLink pid={pid} ip={ip} type="" />
+        <CpuProfilingLink pid={pid} ip={ip} type="" />
         <br />
       </TableCell>
       <TableCell>
@@ -247,6 +284,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
     </TableRow>

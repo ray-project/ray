@@ -4,7 +4,7 @@
 try:
     import gymnasium as gym
 
-    env = gym.make("GymV26Environment-v0", env_id="ALE/Pong-v5")
+    env = gym.make("ALE/Pong-v5")
     obs, infos = env.reset()
 except Exception:
     import gym

@@ -415,7 +415,8 @@ class JobSupervisor:
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
-                [polling_task, self._stop_event.wait()], return_when=FIRST_COMPLETED
+                [polling_task, create_task(self._stop_event.wait())],
+                return_when=FIRST_COMPLETED,
             )
 
             if self._stop_event.is_set():
@@ -458,6 +459,7 @@ class JobSupervisor:
                             "force-killed with SIGKILL."
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
+
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
@@ -465,22 +467,35 @@ class JobSupervisor:
                 assert len(finished) == 1, "Should have only one coroutine done"
                 [child_process_task] = finished
                 return_code = child_process_task.result()
+                logger.info(
+                    f"Job {self._job_id} entrypoint command "
+                    f"exited with code {return_code}"
+                )
                 if return_code == 0:
                     await self._job_info_client.put_status(
-                        self._job_id, JobStatus.SUCCEEDED
+                        self._job_id,
+                        JobStatus.SUCCEEDED,
+                        driver_exit_code=return_code,
                     )
                 else:
                     log_tail = self._log_client.get_last_n_log_lines(self._job_id)
                     if log_tail is not None and log_tail != "":
                         message = (
-                            "Job failed due to an application error, "
+                            "Job entrypoint command "
+                            f"failed with exit code {return_code}, "
                             "last available logs (truncated to 20,000 chars):\n"
                             + log_tail
                         )
                     else:
-                        message = None
+                        message = (
+                            "Job entrypoint command "
+                            f"failed with exit code {return_code}. No logs available."
+                        )
                     await self._job_info_client.put_status(
-                        self._job_id, JobStatus.FAILED, message=message
+                        self._job_id,
+                        JobStatus.FAILED,
+                        message=message,
+                        driver_exit_code=return_code,
                     )
         except Exception:
             logger.error(
@@ -489,7 +504,9 @@ class JobSupervisor:
             )
             try:
                 await self._job_info_client.put_status(
-                    self._job_id, JobStatus.FAILED, message=traceback.format_exc()
+                    self._job_id,
+                    JobStatus.FAILED,
+                    message=traceback.format_exc(),
                 )
             except Exception:
                 logger.error(
@@ -521,7 +538,7 @@ class JobManager:
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
-        self._gcs_address = gcs_aio_client._channel._gcs_address
+        self._gcs_address = gcs_aio_client.address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()
@@ -608,6 +625,10 @@ class JobManager:
                                 and job_info.entrypoint_num_gpus > 0
                             )
                             or (
+                                job_info.entrypoint_memory is not None
+                                and job_info.entrypoint_memory > 0
+                            )
+                            or (
                                 job_info.entrypoint_resources is not None
                                 and len(job_info.entrypoint_resources) > 0
                             )
@@ -616,7 +637,8 @@ class JobManager:
                             err_msg += (
                                 " This may be because the job entrypoint's specified "
                                 "resources (entrypoint_num_cpus, entrypoint_num_gpus, "
-                                "entrypoint_resources) aren't available on the cluster."
+                                "entrypoint_resources, entrypoint_memory)"
+                                "aren't available on the cluster."
                                 " Try checking the cluster's available resources with "
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
@@ -829,6 +851,7 @@ class JobManager:
         metadata: Optional[Dict[str, str]] = None,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
@@ -858,6 +881,9 @@ class JobManager:
             entrypoint_num_gpus: The quantity of GPUs to reserve for
                 the entrypoint command, separately from any tasks or actors launched
                 by it. Defaults to 0.
+            entrypoint_memory: The amount of total available memory for workers
+                requesting memory the entrypoint command, separately from any tasks
+                or actors launched by it. Defaults to 0.
             entrypoint_resources: The quantity of various custom resources
                 to reserve for the entrypoint command, separately from any tasks or
                 actors launched by it.
@@ -873,6 +899,8 @@ class JobManager:
             entrypoint_num_cpus = 0
         if entrypoint_num_gpus is None:
             entrypoint_num_gpus = 0
+        if entrypoint_memory is None:
+            entrypoint_memory = 0
         if submission_id is None:
             submission_id = generate_job_id()
 
@@ -885,6 +913,7 @@ class JobManager:
             runtime_env=runtime_env,
             entrypoint_num_cpus=entrypoint_num_cpus,
             entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
         )
         new_key_added = await self._job_info_client.put_info(
@@ -904,6 +933,7 @@ class JobManager:
                 [
                     entrypoint_num_cpus is not None and entrypoint_num_cpus > 0,
                     entrypoint_num_gpus is not None and entrypoint_num_gpus > 0,
+                    entrypoint_memory is not None and entrypoint_memory > 0,
                     entrypoint_resources not in [None, {}],
                 ]
             )
@@ -919,6 +949,7 @@ class JobManager:
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=entrypoint_num_cpus,
                 num_gpus=entrypoint_num_gpus,
+                memory=entrypoint_memory,
                 resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(

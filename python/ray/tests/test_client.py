@@ -902,6 +902,26 @@ def test_serialize_client_actor_handle(call_ray_start_shared):
         assert ray.get(deserialized.get_value.remote()) == 1234
 
 
+def test_get_runtime_context_gcs_client(call_ray_start_shared):
+    """
+    Tests get_runtime_context gcs_client
+    """
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+        context = ray.get_runtime_context()
+        assert context.gcs_address, "gcs_address not set"
+
+
+def test_internal_kv_in_proxy_mode(call_ray_start_shared):
+    import ray
+
+    ray.init(SHARED_CLIENT_SERVER_ADDRESS)
+    client_api = ray.util.client.ray
+    client_api._internal_kv_put(b"key", b"val")
+    assert client_api._internal_kv_get(b"key") == b"val"
+    assert client_api._internal_kv_del(b"key") == 1
+    assert client_api._internal_kv_get(b"key") is None
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

@@ -5,6 +5,7 @@ from ray._private.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+    LABELS_ENVIRONMENT_VARIABLE,
     LOGGER_FORMAT,
     RESOURCES_ENVIRONMENT_VARIABLE,
 )
@@ -85,6 +86,11 @@ BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 # ray home path in the container image
 RAY_HOME = "/home/ray"
 
+# The order of this list matters! `scripts.py` kills the ray processes in order of this
+# list. Think twice when you add to this list.
+# Invariants:
+# RAYLET must be the first in the list.
+# GCS SERVER must be the last in the list.
 RAY_PROCESSES = [
     # The first element is the substring to filter.
     # The second element, if True, is to filter ps results by command name
@@ -95,7 +101,6 @@ RAY_PROCESSES = [
     # about comm and args. This can help avoid killing non-ray processes.
     # Format:
     # Keyword to filter, filter by command (True)/filter by args (False)
-    ["gcs_server", True],
     ["raylet", True],
     ["plasma_store", True],
     ["monitor.py", False],
@@ -113,7 +118,9 @@ RAY_PROCESSES = [
     ["reporter.py", False],
     [os.path.join("dashboard", "agent.py"), False],
     [os.path.join("dashboard", "dashboard.py"), False],
+    [os.path.join("runtime_env", "agent", "main.py"), False],
     ["ray_process_reaper.py", False],
+    ["gcs_server", True],
 ]
 
 # Max Concurrent SSH Calls to stop Docker

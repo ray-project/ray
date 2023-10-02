@@ -12,7 +12,6 @@ torch, nn = try_import_torch()
 class LearningRateSchedule:
     """Mixin for TorchPolicy that adds a learning rate schedule."""
 
-    @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
@@ -39,7 +38,6 @@ class LearningRateSchedule:
 class EntropyCoeffSchedule:
     """Mixin for TorchPolicy that adds entropy coeff decay."""
 
-    @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
@@ -74,6 +72,7 @@ class EntropyCoeffSchedule:
             )
 
 
+@DeveloperAPI
 class KLCoeffMixin:
     """Assigns the `update_kl()` method to a TorchPolicy.
 
@@ -112,6 +111,7 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
+@DeveloperAPI
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TorchPolicy.
 
@@ -126,7 +126,7 @@ class ValueNetworkMixin:
     def __init__(self, config):
         # When doing GAE, we need the value function estimate on the
         # observation.
-        if config["use_gae"]:
+        if config.get("use_gae") or config.get("vtrace"):
             # Input dict is provided to us automatically via the Model's
             # requirements. It's a single-timestep (last one in trajectory)
             # input_dict.
@@ -171,6 +171,7 @@ class ValueNetworkMixin:
         }
 
 
+@DeveloperAPI
 class TargetNetworkMixin:
     """Mixin class adding a method for (soft) target net(s) synchronizations.
 

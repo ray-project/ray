@@ -119,13 +119,15 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          const std::string &serialized_retry_exception_allowlist,
          std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
          std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
+         std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
          std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
          bool *is_retryable_error,
          std::string *application_error,
          const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
          const std::string name_of_concurrency_group_to_execute,
          bool is_reattempt,
-         bool is_streaming_generator) {
+         bool is_streaming_generator,
+         bool should_retry_exceptions) {
         // These 2 parameters are used for Python only, and Java worker
         // will not use them.
         RAY_UNUSED(defined_concurrency_groups);
@@ -215,6 +217,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                 data_size,
                 metadata,
                 contained_object_ids,
+                caller_address,
                 &task_output_inlined_bytes,
                 result_ptr));
 
@@ -229,7 +232,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
             }
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-                result_id, result, ObjectID::Nil()));
+                result_id, result, ObjectID::Nil(), caller_address));
           }
         }
 

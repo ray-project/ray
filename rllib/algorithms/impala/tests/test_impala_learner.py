@@ -31,6 +31,9 @@ FAKE_BATCH = {
     SampleBatch.VF_PREDS: np.array(
         list(reversed(range(frag_length))), dtype=np.float32
     ),
+    SampleBatch.VALUES_BOOTSTRAPPED: np.array(
+        list(reversed(range(frag_length))), dtype=np.float32
+    ),
     SampleBatch.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
