@@ -27,7 +27,7 @@ from ray.serve._private.utils import (
     serve_encoders,
     snake_to_camel_case,
 )
-from ray.serve.tests.utils import MockTimer
+from ray.serve.tests.common.utils import MockTimer
 
 
 def test_serialize():
