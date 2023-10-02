@@ -811,7 +811,7 @@ class Trial:
 
     @property
     def node_ip(self):
-        return self.location.hostname
+        return self.temporary_state.location.hostname
 
     @property
     def sync_on_checkpoint(self):
