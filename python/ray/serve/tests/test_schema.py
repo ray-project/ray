@@ -14,6 +14,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     StatusOverview,
 )
+from ray.serve._private.constants import MAX_REPLICAS_PER_NODE_MAX_VALUE
 from ray.serve.config import AutoscalingConfig, BaseRayActorOptionsModel
 from ray.serve.context import _get_global_client
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
@@ -366,6 +367,38 @@ class TestApplyServeDeploymentModel:
 
         # Schema should be created without error.
         ApplyServeDeploymentModel.parse_obj(deployment_options)
+
+    def test_max_replicas_per_node(self):
+        # Max replicas per node should be a positive number less than or
+        # equal to MAX_REPLICAS_PER_NODE_MAX_VALUE
+
+        config = self.get_minimal_deployment_schema()
+        config["max_replicas_per_node"] = 10
+
+        # 10 is a valid value for max replicas per node
+        ApplyServeDeploymentModel.parse_obj(config)
+
+        # A non-positive number is invalid
+        config["max_replicas_per_node"] = 0
+        with pytest.raises(ValidationError):
+            ApplyServeDeploymentModel.parse_obj(config)
+
+        # Any value exceeding MAX_REPLICAS_PER_NODE_MAX_VALUE is invalid
+        config["max_replicas_per_node"] = MAX_REPLICAS_PER_NODE_MAX_VALUE + 1
+        with pytest.raises(ValidationError):
+            ApplyServeDeploymentModel.parse_obj(config)
+
+    def test_placement_group_strategy(self):
+        config = self.get_minimal_deployment_schema()
+        config["placement_group_strategy"] = "PACK"
+
+        # PACK is valid
+        ApplyServeDeploymentModel.parse_obj(config)
+
+        # FAKE_NEWS is invalid
+        config["placement_group_strategy"] = "FAKE_NEWS"
+        with pytest.raises(ValidationError):
+            ApplyServeDeploymentModel.parse_obj(config)
 
 
 class TestServeApplicationSchema:

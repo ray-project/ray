@@ -14,7 +14,7 @@ bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"
 
 
-class PlacementGroupStrategy(Enum):
+class PlacementGroupStrategy(str, Enum):
     PACK = "PACK"
     SPREAD = "SPREAD"
     STRICT_PACK = "STRICT_PACK"

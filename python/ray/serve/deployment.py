@@ -698,7 +698,7 @@ def schema_to_deployment(s: ApplyServeDeploymentModel) -> Deployment:
         health_check_timeout_s=s.health_check_timeout_s,
     )
     deployment_config.user_configured_option_names = (
-        s.get_user_configured_option_names()
+        s._get_user_configured_option_names()
     )
 
     replica_config = ReplicaInitInfo.create(

@@ -1,5 +1,6 @@
 package io.ray.serve.deployment;
 
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +23,7 @@ public class ExampleEchoDeployment {
     return true;
   }
 
-  public Object reconfigure(Object userConfig) {
+  public Object reconfigure(Map<String, String> userConfig) {
     LOGGER.info("recieve userconfig: {}", userConfig);
     if (null != userConfig) {
       this.suffix = userConfig.get("suffix");

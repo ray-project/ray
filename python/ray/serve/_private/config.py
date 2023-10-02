@@ -383,15 +383,19 @@ class ReplicaInitInfo:
             )
 
     def _validate_placement_group_options(self) -> None:
-        valid_placement_group_strategies = [s.value for s in PlacementGroupStrategy]
-        if (
-            self.placement_group_strategy is not None
-            and self.placement_group_strategy not in valid_placement_group_strategies
-        ):
-            raise ValueError(
-                f"Invalid placement group strategy '{self.placement_group_strategy}'. "
-                f"Supported strategies are: {valid_placement_group_strategies}."
-            )
+        try:
+            PlacementGroupStrategy(self.placement_group_strategy)
+        except ValueError:
+            valid_strategies = [s.value for s in PlacementGroupStrategy]
+            if (
+                self.placement_group_strategy is not None
+                and self.placement_group_strategy not in valid_strategies
+            ):
+                raise ValueError(
+                    "Invalid placement group strategy "
+                    f"'{self.placement_group_strategy}'. Supported strategies are: "
+                    f"{valid_strategies}."
+                )
 
         if (
             self.placement_group_strategy is not None

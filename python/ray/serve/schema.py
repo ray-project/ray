@@ -75,6 +75,13 @@ def _route_prefix_format(cls, v):
 
 @PublicAPI(stability="stable")
 class ApplyServeDeploymentModel(BaseDeploymentModel):
+    """Specifies options for one deployment within a Serve application.
+
+    For each deployment this can optionally be included in
+    `ServeApplicationSchema` to override deployment options specified in
+    code.
+    """
+
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
     )
@@ -114,11 +121,11 @@ class ApplyServeDeploymentModel(BaseDeploymentModel):
 
         return values
 
-    deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
+    validate_route_prefix_format = validator("route_prefix", allow_reuse=True)(
         _route_prefix_format
     )
 
-    def get_user_configured_option_names(self) -> Set[str]:
+    def _get_user_configured_option_names(self) -> Set[str]:
         """Get set of names for all user-configured options.
 
         Any field not set to DEFAULT.VALUE is considered a user-configured option.

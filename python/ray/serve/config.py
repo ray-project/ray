@@ -365,11 +365,7 @@ MaxReplicasPerNodeAnnotatedType = Annotated[
 
 @PublicAPI(stability="stable")
 class BaseDeploymentModel(BaseModel, allow_population_by_field_name=True):
-    """
-    Specifies options for one deployment within a Serve application. For each deployment
-    this can optionally be included in `ServeApplicationSchema` to override deployment
-    options specified in code.
-    """
+    """Defines options that can be used to configure a Serve deployment."""
 
     num_replicas: NumReplicasAnnotatedType = 1
     max_concurrent_queries: MaxConcurrentQueriesAnnotatedType = (

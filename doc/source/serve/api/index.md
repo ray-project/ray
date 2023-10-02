@@ -485,6 +485,7 @@ Content-Type: application/json
 ```{eval-rst}
 .. autosummary::
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    schema.ServeInstanceDetails
    schema.ApplicationDetails
