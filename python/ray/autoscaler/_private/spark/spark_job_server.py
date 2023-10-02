@@ -13,7 +13,6 @@ _logger.setLevel(logging.WARN)
 
 
 class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
-
     def setup(self) -> None:
         super().setup()
         self._handler_lock = threading.RLock()

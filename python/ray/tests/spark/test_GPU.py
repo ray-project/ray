@@ -85,7 +85,8 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                     assert worker_res["GPU"] == num_gpus_worker_node
                     assert worker_res["memory"] == mem_worker_node
                     assert (
-                        worker_res["object_store_memory"] == object_store_mem_worker_node
+                        worker_res["object_store_memory"]
+                        == object_store_mem_worker_node
                     )
 
                 @ray.remote(

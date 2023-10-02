@@ -1,5 +1,4 @@
 import copy
-import tempfile
 import yaml
 import json
 import os

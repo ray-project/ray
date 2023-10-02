@@ -1,15 +1,13 @@
 import json
 import logging
-import threading
-import time
 import sys
 from threading import RLock
 from typing import Any, Dict, Optional
 
 import requests
 
-from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.node_launch_exception import NodeLaunchException
+from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
@@ -73,8 +71,13 @@ class SparkNodeProvider(NodeProvider):
                     status = self._query_node_status(node_id)
 
                 if status == "running":
-                    if self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] == STATUS_SETTING_UP:
-                        self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+                    if (
+                        self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS]
+                        == STATUS_SETTING_UP
+                    ):
+                        self._nodes[node_id]["tags"][
+                            TAG_RAY_NODE_STATUS
+                        ] = STATUS_UP_TO_DATE
                         logger.info(
                             f"Spark node provider node {node_id} starts running."
                         )
@@ -203,9 +206,9 @@ class SparkNodeProvider(NodeProvider):
             )
 
             try:
-                # Spark job server is locally launched, if spark job server request failed,
-                # It is unlikely network error but probably unrecoverable error,
-                # so we make it fast-fail.
+                # Spark job server is locally launched, if spark job server request
+                # failed, it is unlikely network error but probably unrecoverable
+                # error, so we make it fast-fail.
                 response.raise_for_status()
             except Exception:
                 raise NodeLaunchException(
@@ -222,9 +225,7 @@ class SparkNodeProvider(NodeProvider):
                     TAG_RAY_NODE_STATUS: STATUS_SETTING_UP,
                 },
             }
-            logger.info(
-                f"Spark node provider creates node {node_id}."
-            )
+            logger.info(f"Spark node provider creates node {node_id}.")
 
     def terminate_node(self, node_id):
         if node_id in self._nodes:
