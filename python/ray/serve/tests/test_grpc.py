@@ -527,8 +527,4 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", "-s", __file__]))
