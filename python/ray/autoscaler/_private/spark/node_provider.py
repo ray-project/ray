@@ -64,6 +64,8 @@ class SparkNodeProvider(NodeProvider):
     def non_terminated_nodes(self, tag_filters):
         with self.lock:
             nodes = []
+
+            died_nodes = []
             for node_id in self._nodes:
                 if node_id == str(HEAD_NODE_ID):
                     status = "running"
@@ -77,7 +79,9 @@ class SparkNodeProvider(NodeProvider):
                             f"Spark node provider node {node_id} starts running."
                         )
 
-                if status != "terminated":
+                if status == "terminated":
+                    died_nodes.append(node_id)
+                else:
                     tags = self.node_tags(node_id)
                     ok = True
                     for k, v in tag_filters.items():
@@ -85,6 +89,9 @@ class SparkNodeProvider(NodeProvider):
                             ok = False
                     if ok:
                         nodes.append(node_id)
+
+            for died_node_id in died_nodes:
+                self._nodes.pop(died_node_id)
 
             return nodes
 
@@ -220,16 +227,18 @@ class SparkNodeProvider(NodeProvider):
             )
 
     def terminate_node(self, node_id):
-        response = requests.post(
-            url=self.server_url + "/terminate_node",
-            json={"spark_job_group_id": self._gen_spark_job_group_id(node_id)},
-        )
-        response.raise_for_status()
+        if node_id in self._nodes:
+            response = requests.post(
+                url=self.server_url + "/terminate_node",
+                json={"spark_job_group_id": self._gen_spark_job_group_id(node_id)},
+            )
+            response.raise_for_status()
 
         with self.lock:
             if node_id in self._nodes:
                 self._nodes.pop(node_id)
-            logger.info(f"Spark node provider terminates node {node_id}")
+
+        logger.info(f"Spark node provider terminates node {node_id}")
 
     @staticmethod
     def bootstrap_config(cluster_config):
