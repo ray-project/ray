@@ -3,7 +3,7 @@
 Building Ray from Source
 =========================
 
-For a majority of Ray users, installing Ray via the latest wheels or pip package is usually enough. However, you may want to build the latest master branch.
+To contribute to the Ray repository, follow the instructions below to build from the latest master branch.
 
 .. tip::
 
@@ -14,7 +14,7 @@ For a majority of Ray users, installing Ray via the latest wheels or pip package
 .. contents::
   :local:
 
-Clone the repository
+Fork the repository
 --------------------
 
 To build Ray locally you will need to have the Git repository, so first, fork it on GitHub. Then you can clone it to your machine:
