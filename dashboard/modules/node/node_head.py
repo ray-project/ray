@@ -38,7 +38,7 @@ from ray._private.ray_constants import (
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 def gcs_node_info_to_dict(message):
