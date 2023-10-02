@@ -14,8 +14,7 @@ from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.test_config_files.grpc_deployment import g, g2
-from ray.serve.tests.utils import (
+from ray.serve.tests.common.utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -24,6 +23,7 @@ from ray.serve.tests.utils import (
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
 )
+from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 
 
 @pytest.fixture
