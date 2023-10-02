@@ -32,113 +32,125 @@ def get_node_to_deployment_to_num_replicas():
     return node_to_deployment_to_num_replicas
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Flaky on Windows due to https://github.com/ray-project/ray/issues/36926.",
+)
 def test_basic():
     """Test that max_replicas_per_node is honored."""
 
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 0},
-        worker_node_types={
-            "cpu_node": {
-                "resources": {
-                    "CPU": 9999,
+    try:
+        cluster = AutoscalingCluster(
+            head_resources={"CPU": 0},
+            worker_node_types={
+                "cpu_node": {
+                    "resources": {
+                        "CPU": 9999,
+                    },
+                    "node_config": {},
+                    "min_workers": 0,
+                    "max_workers": 100,
                 },
-                "node_config": {},
-                "min_workers": 0,
-                "max_workers": 100,
             },
-        },
-    )
+        )
 
-    cluster.start()
-    ray.init()
+        cluster.start()
+        ray.init()
 
-    @serve.deployment
-    class D:
-        def __call__(self):
-            return "hello"
+        @serve.deployment
+        class D:
+            def __call__(self):
+                return "hello"
 
-    deployments = {
-        "/deploy1": D.options(
-            num_replicas=6, max_replicas_per_node=3, name="deploy1"
-        ).bind(),
-        "/deploy2": D.options(
-            num_replicas=2, max_replicas_per_node=1, name="deploy2"
-        ).bind(),
-    }
-    serve.run(DAGDriver.bind(deployments), name="app")
+        deployments = {
+            "/deploy1": D.options(
+                num_replicas=6, max_replicas_per_node=3, name="deploy1"
+            ).bind(),
+            "/deploy2": D.options(
+                num_replicas=2, max_replicas_per_node=1, name="deploy2"
+            ).bind(),
+        }
+        serve.run(DAGDriver.bind(deployments), name="app")
 
-    # 2 worker nodes should be started.
-    # Each worker node should run 3 deploy1 replicas
-    # and 1 deploy2 replicas.
-    assert len(ray.nodes()) == 3
-    node_to_deployment_to_num_replicas = get_node_to_deployment_to_num_replicas()
+        # 2 worker nodes should be started.
+        # Each worker node should run 3 deploy1 replicas
+        # and 1 deploy2 replicas.
+        assert len(ray.nodes()) == 3
+        node_to_deployment_to_num_replicas = get_node_to_deployment_to_num_replicas()
 
-    assert len(node_to_deployment_to_num_replicas) == 2
-    for _, deployment_to_num_replicas in node_to_deployment_to_num_replicas.items():
-        assert deployment_to_num_replicas["deploy1"] == 3
-        assert deployment_to_num_replicas["deploy2"] == 1
+        assert len(node_to_deployment_to_num_replicas) == 2
+        for _, deployment_to_num_replicas in node_to_deployment_to_num_replicas.items():
+            assert deployment_to_num_replicas["deploy1"] == 3
+            assert deployment_to_num_replicas["deploy2"] == 1
 
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
+    finally:
+        serve.shutdown()
+        ray.shutdown()
+        cluster.shutdown()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Flaky on Windows due to https://github.com/ray-project/ray/issues/36926.",
+)
 def test_update_max_replicas_per_node():
     """Test re-deploying a deployment with different max_replicas_per_node."""
 
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 0},
-        worker_node_types={
-            "cpu_node": {
-                "resources": {
-                    "CPU": 9999,
+    try:
+        cluster = AutoscalingCluster(
+            head_resources={"CPU": 0},
+            worker_node_types={
+                "cpu_node": {
+                    "resources": {
+                        "CPU": 9999,
+                    },
+                    "node_config": {},
+                    "min_workers": 0,
+                    "max_workers": 100,
                 },
-                "node_config": {},
-                "min_workers": 0,
-                "max_workers": 100,
             },
-        },
-    )
+        )
 
-    cluster.start()
-    ray.init()
+        cluster.start()
+        ray.init()
 
-    @serve.deployment
-    class D:
-        def __call__(self):
-            return "hello"
+        @serve.deployment
+        class D:
+            def __call__(self):
+                return "hello"
 
-    # Requires 2 worker nodes.
-    serve.run(
-        D.options(num_replicas=3, max_replicas_per_node=2, name="deploy1").bind(),
-        name="app",
-    )
+        # Requires 2 worker nodes.
+        serve.run(
+            D.options(num_replicas=3, max_replicas_per_node=2, name="deploy1").bind(),
+            name="app",
+        )
 
-    assert len(ray.nodes()) == 3
-    node_to_deployment_to_num_replicas = get_node_to_deployment_to_num_replicas()
+        assert len(ray.nodes()) == 3
+        node_to_deployment_to_num_replicas = get_node_to_deployment_to_num_replicas()
 
-    assert len(node_to_deployment_to_num_replicas) == 2
-    # One node has 2 replicas and the other has 1 replica.
-    for _, deployment_to_num_replicas in node_to_deployment_to_num_replicas.items():
-        assert deployment_to_num_replicas["deploy1"] in {1, 2}
+        assert len(node_to_deployment_to_num_replicas) == 2
+        # One node has 2 replicas and the other has 1 replica.
+        for _, deployment_to_num_replicas in node_to_deployment_to_num_replicas.items():
+            assert deployment_to_num_replicas["deploy1"] in {1, 2}
 
-    # Redeploy, requires 3 worker nodes.
-    serve.run(
-        D.options(num_replicas=3, max_replicas_per_node=1, name="deploy1").bind(),
-        name="app",
-    )
+        # Redeploy, requires 3 worker nodes.
+        serve.run(
+            D.options(num_replicas=3, max_replicas_per_node=1, name="deploy1").bind(),
+            name="app",
+        )
 
-    assert len(ray.nodes()) == 4
-    node_to_deployment_to_num_replicas = get_node_to_deployment_to_num_replicas()
+        assert len(ray.nodes()) == 4
+        node_to_deployment_to_num_replicas = get_node_to_deployment_to_num_replicas()
 
-    assert len(node_to_deployment_to_num_replicas) == 3
-    for _, deployment_to_num_replicas in node_to_deployment_to_num_replicas.items():
-        # Every node has 1 replica.
-        assert deployment_to_num_replicas["deploy1"] == 1
+        assert len(node_to_deployment_to_num_replicas) == 3
+        for _, deployment_to_num_replicas in node_to_deployment_to_num_replicas.items():
+            # Every node has 1 replica.
+            assert deployment_to_num_replicas["deploy1"] == 1
 
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
+    finally:
+        serve.shutdown()
+        ray.shutdown()
+        cluster.shutdown()
 
 
 if __name__ == "__main__":
