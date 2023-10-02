@@ -214,6 +214,7 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
+      python/ray/train:test_windows
       -python/ray/serve/tests:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
       -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows

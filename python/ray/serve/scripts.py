@@ -397,6 +397,11 @@ def run(
             "removed in a future version. To specify custom HTTP options, use the "
             "`serve start` command."
         )
+    if gradio:
+        cli_logger.warning(
+            "The gradio visualization tool is deprecated because the DAG API is "
+            "deprecated. Both will be removed in a future version."
+        )
 
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
@@ -423,8 +428,8 @@ def run(
                 config = ServeDeploySchema.parse_obj(config_dict)
                 if gradio:
                     raise click.ClickException(
-                        "The gradio visualization feature of `serve run` does not yet "
-                        "have support for multiple applications."
+                        "The gradio visualization feature of `serve run` does not "
+                        "support multiple applications."
                     )
 
                 # If host or port is specified as a CLI argument, they should take
