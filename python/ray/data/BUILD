@@ -452,7 +452,7 @@ py_test(
 
 py_test(
     name = "test_stats",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_stats.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
