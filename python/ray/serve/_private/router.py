@@ -22,7 +22,7 @@ from typing import (
 )
 
 import ray
-from ray._private.utils import load_class, make_asyncio_event_version_compat
+from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError
@@ -344,7 +344,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
-        self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
+        self._replicas_updated_event = asyncio.Event()
         # Colocated replicas (e.g. wrt node, AZ)
         self._colocated_replica_ids: DefaultDict[LocalityScope, Set[str]] = defaultdict(
             set
