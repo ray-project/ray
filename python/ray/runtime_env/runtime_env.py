@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sys
 from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
@@ -334,7 +335,7 @@ class RuntimeEnv(dict):
                 "user-guide/tasks/manage-environments.html"
                 "#create-env-file-manually"
             )
-        
+
         if self.get("nsight") and sys.platform != "linux":
             raise ValueError(
                 "nsight client is only avaliable in Linux.\n"
@@ -449,7 +450,7 @@ class RuntimeEnv(dict):
         if "java_jars" in self:
             return list(self["java_jars"])
         return []
-    
+
     def nsight(self) -> Optional[List[str]]:
         return self.get("nsight", None)
 

@@ -16,12 +16,19 @@ from ray._private.utils import (
 
 default_logger = logging.getLogger(__name__)
 
+
 def check_if_nsys_installed():
     try:
-        result = subprocess.run(["nsys", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(
+            ["nsys", "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
         return result.returncode == 0
     except FileNotFoundError:
         return False
+
 
 class NsightPlugin(RuntimeEnvPlugin):
     name = "nsight"
@@ -30,30 +37,22 @@ class NsightPlugin(RuntimeEnvPlugin):
         self.nsys_cmd = []
         self._resources_dir = os.path.join(resource_dir, "nsight")
         try_to_create_directory(self._resources_dir)
-    
+
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
-        logger.info(f"Got request to delete URI {uri}")
-        protocol, hash = parse_uri(uri)
-        if protocol != Protocol.CONDA:
-            raise ValueError(
-                "CondaPlugin can only delete URIs with protocol "
-                f"conda.  Received protocol {protocol}, URI {uri}"
-            )
+        logger.info("Got request to delete nsight URI %s", uri)
+        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
+        local_dir_size = get_directory_size_bytes(local_dir)
 
-        conda_env_path = self._get_path_from_hash(hash)
-        local_dir_size = get_directory_size_bytes(conda_env_path)
-
-        with FileLock(self._installs_and_deletions_file_lock):
-            successful = delete_conda_env(prefix=conda_env_path, logger=logger)
-        if not successful:
-            logger.warning(f"Error when deleting nsight env {conda_env_path}. ")
+        deleted = delete_package(uri, self._resources_dir)
+        if not deleted:
+            logger.warning(f"Tried to delete nonexistent URI: {uri}.")
             return 0
 
         return local_dir_size
-    
+
     async def create(
         self,
         uri: Optional[str],
@@ -65,14 +64,23 @@ class NsightPlugin(RuntimeEnvPlugin):
         if not nsight_flags:
             return 0
         if not check_if_nsys_installed():
-            logger.warning("Nsys is not installed, running worker process without `nsys profile`")
+            logger.warning(
+                "Nsys is not installed, running worker process without `nsys profile`"
+            )
             return 0
 
-        self.nsys_cmd = ["nsys", "profile", "--sample=cpu", "--cudabacktrace=true", \
-        "--stop-on-exit=true", 	"-o", f"{self._resources_dir}/worker_process_%p"]
+        self.nsys_cmd = [
+            "nsys",
+            "profile",
+            "--sample=cpu",
+            "--cudabacktrace=true",
+            "--stop-on-exit=true",
+            "-o",
+            f"{self._resources_dir}/worker_process_%p",
+        ]
         self.nsys_cmd += ["-t " + ",".join(nsight_flags)]
         return 0
-    
+
     def modify_context(
         self,
         uris: List[str],

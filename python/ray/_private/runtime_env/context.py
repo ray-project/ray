@@ -95,4 +95,5 @@ class RuntimeEnvContext:
             # instead of os.execvp(file="executable", args=[])
             os.execvp("bash", args=["bash", "-c", command_str])
 
+
 # post process: kill ray worker process and move file to local
