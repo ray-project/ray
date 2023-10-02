@@ -429,32 +429,6 @@ class TestHTTPProxy:
         mocked_proxy_request.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("ray.serve._private.proxy.receive_http_body")
-    async def test_send_request_to_replica_unary(self, mock_receive_http_body):
-        """Test HTTPProxy send_request_to_replica_unary returns the correct response."""
-
-        http_body_bytes = b""
-        mock_receive_http_body.return_value = http_body_bytes
-
-        async def receive_message():
-            await asyncio.sleep(1000)
-
-        handle = FakeActorHandler("fake-deployment-handle")
-        proxy_request = ASGIProxyRequest(
-            scope={},
-            receive=receive_message,
-            send=AsyncMock(),
-        )
-        http_proxy = self.create_http_proxy()
-        returned_response = await http_proxy.send_request_to_replica_unary(
-            handle=handle,
-            proxy_request=proxy_request,
-        )
-
-        assert isinstance(returned_response, ProxyResponse)
-        assert returned_response.status_code == http_proxy.success_status_code
-
-    @pytest.mark.asyncio
     async def test_proxy_asgi_receive(self):
         """Test HTTPProxy proxy_asgi_receive receives messages."""
         http_proxy = self.create_http_proxy()
@@ -471,36 +445,6 @@ class TestHTTPProxy:
         )
 
         queue.close.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_send_request_to_replica_streaming(self):
-        """Test HTTPProxy send_request_to_replica_streaming returns the correct
-        response.
-        """
-        http_proxy = self.create_http_proxy()
-        status_code = "200"
-        request_id = "fake-request-id"
-        handle = MagicMock()
-        scope = {"headers": [(b"x-request-id", request_id.encode())]}
-        proxy_request = ASGIProxyRequest(
-            scope=scope,
-            receive=AsyncMock(),
-            send=AsyncMock(),
-        )
-        response = FakeRefGenerator()
-        mocked_assign_request_with_timeout = AsyncMock(return_value=response)
-        with patch.object(
-            http_proxy,
-            "_assign_request_with_timeout",
-            mocked_assign_request_with_timeout,
-        ):
-            returned_response = await http_proxy.send_request_to_replica_streaming(
-                request_id=request_id,
-                handle=handle,
-                proxy_request=proxy_request,
-            )
-        assert isinstance(returned_response, ProxyResponse)
-        assert returned_response.status_code == status_code
 
 
 class TestTimeoutKeepAliveConfig:

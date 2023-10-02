@@ -23,7 +23,6 @@ from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import EndpointInfo, EndpointTag, NodeId, RequestProtocol
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
@@ -136,9 +135,8 @@ class GenericProxy(ABC):
       - `timeout_response()`
       - `routes_response()`
       - `health_response()`
-      - `send_request_to_replica_unary()`
       - `setup_request_context_and_handle()`
-      - `send_request_to_replica_streaming()`
+      - `send_request_to_replica()`
     """
 
     def __init__(
@@ -448,7 +446,7 @@ class GenericProxy(ABC):
                 proxy_request=proxy_request,
             )
 
-            proxy_response = await self.send_request_to_replica_streaming(
+            proxy_response = await self.send_request_to_replica(
                 request_id=request_id,
                 handle=handle,
                 proxy_request=proxy_request,
@@ -545,19 +543,6 @@ class GenericProxy(ABC):
             raise TimeoutError()
 
     @abstractmethod
-    async def send_request_to_replica_unary(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
-        """Send the request to the replica and handle unary response.
-
-        Each proxy needs to implement its own logic for sending the request and
-        handling the unary response.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def setup_request_context_and_handle(
         self,
         app_name: str,
@@ -573,7 +558,7 @@ class GenericProxy(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def send_request_to_replica_streaming(
+    async def send_request_to_replica(
         self,
         request_id: str,
         handle: DeploymentHandle,
@@ -717,15 +702,6 @@ class gRPCProxy(GenericProxy):
 
         return unary_stream if stream else unary_unary
 
-    async def send_request_to_replica_unary(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
-        raise NotImplementedError(
-            "Unary codepath is only for Java and gRPC is not implemented for Java."
-        )
-
     def setup_request_context_and_handle(
         self,
         app_name: str,
@@ -825,7 +801,7 @@ class gRPCProxy(GenericProxy):
         except asyncio.exceptions.TimeoutError:
             raise TimeoutError() from None
 
-    async def send_request_to_replica_streaming(
+    async def send_request_to_replica(
         self,
         request_id: str,
         handle: DeploymentHandle,
@@ -972,118 +948,6 @@ class HTTPProxy(GenericProxy):
         proxy_request = ASGIProxyRequest(scope=scope, receive=receive, send=send)
         await self.proxy_request(proxy_request=proxy_request)
 
-    async def send_request_to_replica_unary(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
-        """Send the request to a downstream replica using a unary (non-streaming) call.
-
-        This codepath is ONLY used for Java applications.
-        """
-        # Convert HTTP requests to Java-accepted format (single byte string).
-        query_string = proxy_request.scope.get("query_string")
-        http_body_bytes = await receive_http_body(
-            proxy_request.scope, proxy_request.receive, proxy_request.send
-        )
-        if query_string:
-            arg = query_string.decode().split("=", 1)[1]
-        else:
-            arg = http_body_bytes.decode()
-
-        retries = 0
-        loop = get_or_create_event_loop()
-        # We have received all the http request content. The next `receive`
-        # call might never arrive; if it does, it can only be `http.disconnect`.
-        while retries < HTTP_REQUEST_MAX_RETRIES + 1:
-            should_backoff = False
-            result_ref = handle.remote(arg)
-            client_disconnection_task = loop.create_task(proxy_request.receive())
-            done, _ = await asyncio.wait(
-                [
-                    result_ref._to_object_ref(_record_telemetry=False),
-                    client_disconnection_task,
-                ],
-                return_when=FIRST_COMPLETED,
-            )
-            if client_disconnection_task in done:
-                message = await client_disconnection_task
-                assert message["type"] == "http.disconnect", (
-                    "Received additional request payload that's not disconnect. "
-                    "This is an invalid HTTP state."
-                )
-                logger.warning(
-                    f"Client from {proxy_request.client} disconnected, cancelling the "
-                    "request.",
-                    extra={"log_to_stderr": False},
-                )
-                result_ref.cancel()
-
-            try:
-                # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
-                # some replicas crash simultaneously (e.g. if the head node crashes),
-                # requests to the dead replicas hang until the gcs recovers.
-                # This asyncio.wait can kill those hanging requests and retry them
-                # at another replica. Release tests should kill the head node and
-                # check if latency drops significantly. See
-                # https://github.com/ray-project/ray/pull/29534 for more info.
-                done, pending = await asyncio.wait(
-                    [result_ref, client_disconnection_task],
-                    return_when=asyncio.FIRST_COMPLETED,
-                    timeout=self.request_timeout_s,
-                )
-                if client_disconnection_task in done:
-                    logger.info("Client disconnected, cancelling request.")
-                    result_ref.cancel()
-                    raise asyncio.CancelledError()
-                elif len(done) == 0:
-                    logger.info(
-                        f"Request didn't finish within {self.request_timeout_s} seconds"
-                        ". Retrying with another replica. You can modify this timeout "
-                        'by setting "request_timeout_s" in your Serve config\'s '
-                        "`http_options` field."
-                    )
-                    should_backoff = True
-                    result_ref.cancel()
-                else:
-                    result = await result_ref
-                    break
-            except asyncio.CancelledError:
-                # Here because the client disconnected, we will return a custom
-                # error code for metric tracking.
-                return ProxyResponse(status_code=DISCONNECT_ERROR_CODE)
-            except RayTaskError as e:
-                error_message = f"Unexpected error, traceback: {e}."
-                await Response(error_message, status_code=500).send(
-                    proxy_request.scope, proxy_request.receive, proxy_request.send
-                )
-                return ProxyResponse(status_code="500")
-            except RayActorError:
-                logger.info(
-                    "Request failed due to replica failure. There are "
-                    f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
-                    "remaining."
-                )
-                should_backoff = True
-
-            if should_backoff:
-                backoff_period = min(
-                    INITIAL_BACKOFF_PERIOD_SEC * pow(2, retries), MAX_BACKOFF_PERIOD_SEC
-                )
-                retries += 1
-                await asyncio.sleep(backoff_period)
-        else:
-            error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-            await Response(error_message, status_code=500).send(
-                proxy_request.scope, proxy_request.receive, proxy_request.send
-            )
-            return ProxyResponse(status_code="500")
-
-        await Response(result).send(
-            proxy_request.scope, proxy_request.receive, proxy_request.send
-        )
-        return ProxyResponse(status_code=self.success_status_code)
-
     async def proxy_asgi_receive(
         self, receive: Receive, queue: ASGIMessageQueue
     ) -> Optional[int]:
@@ -1161,7 +1025,7 @@ class HTTPProxy(GenericProxy):
 
         return arg
 
-    async def send_request_to_replica_streaming(
+    async def send_request_to_replica(
         self,
         request_id: str,
         handle: DeploymentHandle,
