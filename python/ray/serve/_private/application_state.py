@@ -908,7 +908,6 @@ def build_serve_application(
                     deployment_config=deployment._deployment_config,
                     version=deployment.version,
                     route_prefix=deployment.route_prefix,
-                    is_driver_deployment=deployment._is_driver_deployment,
                     docs_path=deployment._docs_path,
                 )
             )
