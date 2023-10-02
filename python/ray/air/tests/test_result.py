@@ -104,7 +104,6 @@ def test_result_restore(ray_start_4_cpus, monkeypatch, tmpdir, mode):
     """
     # Check if the checkpoints bounded with correct metrics
     best_ckpt_a = result.get_best_checkpoint(metric="metric_a", mode="max")
-    print("GOT", best_ckpt_a, result.best_checkpoints)
     assert load_dict_checkpoint(best_ckpt_a)["iter"] == NUM_ITERATIONS - 1
 
     best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")

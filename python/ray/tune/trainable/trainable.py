@@ -556,7 +556,7 @@ class Trainable:
                         local_checkpoint
                     )
 
-                    metrics[CHECKPOINT_DIR_NAME] = self.storage.checkpoint_dir_name
+                    metrics[CHECKPOINT_DIR_NAME] = self._storage.checkpoint_dir_name
 
                     checkpoint_result = _TrainingResult(
                         checkpoint=persisted_checkpoint, metrics=metrics
