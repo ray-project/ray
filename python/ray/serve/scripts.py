@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 import os
 import pathlib
+import re
 import sys
 import time
+import traceback
 from dataclasses import asdict
 from typing import Dict, List, Optional, Tuple
 
 import click
-import yaml
-import traceback
-import re
 import watchfiles
+import yaml
 from pydantic import ValidationError
 
 import ray
@@ -19,18 +19,21 @@ from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.serve.api import build as build_app
-from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
+from ray.serve._private import api as _private_api
+from ray.serve._private.common import ServeDeployMode
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
 )
-from ray.serve._private.common import ServeDeployMode
+from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import (
+    get_and_validate_ingress_deployment,
+)
+from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
-from ray.serve._private import api as _private_api
 from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -182,8 +185,8 @@ def cli():
     default=[],
     required=False,
     multiple=True,
-    help="Servicer function for adding the method handler to the gRPC server."
-    "Defaults to empty list and no gRPC server will be started.",
+    help="Servicer function for adding the method handler to the gRPC server. "
+    "Defaults to an empty list and no gRPC server is started.",
 )
 def start(
     address,
@@ -207,7 +210,6 @@ def start(
         namespace=SERVE_NAMESPACE,
     )
     serve.start(
-        detached=True,
         proxy_location=proxy_location,
         http_options=dict(
             host=http_host,
@@ -398,6 +400,11 @@ def run(
             "removed in a future version. To specify custom HTTP options, use the "
             "`serve start` command."
         )
+    if gradio:
+        cli_logger.warning(
+            "The gradio visualization tool is deprecated because the DAG API is "
+            "deprecated. Both will be removed in a future version."
+        )
 
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
@@ -424,8 +431,8 @@ def run(
                 config = ServeDeploySchema.parse_obj(config_dict)
                 if gradio:
                     raise click.ClickException(
-                        "The gradio visualization feature of `serve run` does not yet "
-                        "have support for multiple applications."
+                        "The gradio visualization feature of `serve run` does not "
+                        "support multiple applications."
                     )
 
                 # If host or port is specified as a CLI argument, they should take
@@ -503,7 +510,6 @@ def run(
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
     client = _private_api.serve_start(
-        detached=True,
         http_options=http_options,
         grpc_options=grpc_options,
     )
@@ -775,8 +781,8 @@ def shutdown(address: str, yes: bool):
     default=[],
     required=False,
     multiple=True,
-    help="Servicer function for adding the method handler to the gRPC server."
-    "Defaults to empty list and no gRPC server will be started.",
+    help="Servicer function for adding the method handler to the gRPC server. "
+    "Defaults to an empty list and no gRPC server is started.",
 )
 def build(
     import_paths: Tuple[str],
@@ -808,13 +814,12 @@ def build(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        app = build_app(app, name)
+        deployments = pipeline_build(app, name)
+        ingress = get_and_validate_ingress_deployment(deployments)
         schema = ServeApplicationSchema(
             import_path=import_path,
             runtime_env={},
-            deployments=[
-                deployment_to_schema(d, single_app) for d in app.deployments.values()
-            ],
+            deployments=[deployment_to_schema(d, single_app) for d in deployments],
         )
         # If building a multi-app config, auto-generate names for each application.
         # Also, each ServeApplicationSchema should not have host and port set, it should
@@ -824,7 +829,7 @@ def build(
             schema.port = 8000
         else:
             schema.name = name
-            schema.route_prefix = app.ingress.route_prefix
+            schema.route_prefix = ingress.route_prefix
 
         if _kubernetes_format:
             return schema.kubernetes_dict(exclude_unset=True)

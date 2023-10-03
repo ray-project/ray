@@ -202,6 +202,7 @@ ray_files += [
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
+    "ray/autoscaler/vsphere/defaults.yaml",
     "ray/autoscaler/ray-schema.json",
 ]
 
@@ -275,7 +276,7 @@ if setup_spec.type == SetupType.RAY:
             else "grpcio",
         ],
         "serve": [
-            "uvicorn",
+            "uvicorn[standard]",
             "requests",
             "starlette",
             "fastapi",

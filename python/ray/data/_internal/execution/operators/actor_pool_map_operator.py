@@ -254,23 +254,8 @@ class ActorPoolMapOperator(MapOperator):
         # Warn if the user specified a batch or block size that prevents full
         # parallelization across the actor pool. We only know this information after
         # execution has completed.
-        total_rows = sum([m.num_rows for m in self._output_metadata])
         min_workers = self._autoscaling_policy.min_workers
-        max_desired_batch_size = total_rows // min_workers
-        if (
-            self._min_rows_per_bundle is not None
-            and self._min_rows_per_bundle > max_desired_batch_size
-        ):
-            # The user specified a batch size, but it was probably too large.
-            logger.get_logger().warning(
-                f"Your batch size is too large. Currently, your batch size is "
-                f"{self._min_rows_per_bundle}. Your dataset contains {total_rows}, and "
-                f"Ray Data tried to parallelize it across {min_workers} actors. To "
-                f"parallelize this fully across all {min_workers} actors, set batch "
-                f"size to not exceed `{total_rows} / {min_workers} = "
-                f"{max_desired_batch_size}`."
-            )
-        elif len(self._output_metadata) < min_workers:
+        if len(self._output_metadata) < min_workers:
             # The user created a stream that has too few blocks to begin with.
             logger.get_logger().warning(
                 "To ensure full parallelization across an actor pool of size "

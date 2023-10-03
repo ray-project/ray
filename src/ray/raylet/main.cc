@@ -14,6 +14,10 @@
 
 #include <iostream>
 
+#ifdef __linux__
+#include <stdlib.h>
+#endif
+
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -122,6 +126,13 @@ int main(int argc, char *argv[]) {
   ray::RayLog::InstallTerminateHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+#ifdef __linux__
+  // Reset LD_PRELOAD if it's loaded with ray jemalloc
+  auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");
+  if (ray_ld_preload != nullptr && std::string(ray_ld_preload) == "1") {
+    unsetenv("LD_PRELOAD");
+  }
+#endif
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
   const std::string store_socket_name = FLAGS_store_socket_name;
   const std::string node_name =

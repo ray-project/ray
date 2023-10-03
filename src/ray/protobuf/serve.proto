@@ -237,19 +237,6 @@ message StatusOverview {
   string name = 3;
 }
 
-// RPC Schema
-message PredictRequest {
-  map<string, bytes> input = 2;
-}
-
-message PredictResponse {
-  bytes prediction = 1;
-}
-
-service PredictAPIsService {
-  rpc Predict(PredictRequest) returns (PredictResponse);
-}
-
 // Used for gRPC proxy health check
 message ListApplicationsRequest {}
 

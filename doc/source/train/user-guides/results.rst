@@ -1,3 +1,5 @@
+.. _train-inspect-results:
+
 Inspecting Training Results
 ===========================
 

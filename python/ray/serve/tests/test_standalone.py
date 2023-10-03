@@ -21,32 +21,28 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
+from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
 )
-from ray._raylet import GcsClient
+from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.http_util import set_socket_reuse_port
+from ray.serve._private.utils import block_until_http_ready, format_actor_name
+from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
-from ray.serve._private.http_util import set_socket_reuse_port
-from ray.serve._private.utils import (
-    block_until_http_ready,
-    format_actor_name,
-)
-from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve.schema import ServeApplicationSchema
-
-from ray.util.state import list_actors
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
 from ray.tests.conftest import maybe_external_redis  # noqa: F401
 from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -156,7 +152,7 @@ def test_v1_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
+        "ProxyActor",
         "ServeReplica:f",
     }
 
@@ -194,7 +190,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
+        "ProxyActor",
         "ServeReplica:app:f",
     }
 
@@ -233,7 +229,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
+        "ProxyActor",
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }
@@ -255,7 +251,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-def test_detached_deployment(ray_cluster):
+def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
@@ -291,12 +287,10 @@ def test_detached_deployment(ray_cluster):
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_connect(detached, ray_shutdown):
-    # Check that you can make API calls from within a deployment for both
-    # detached and non-detached instances.
+def test_connect(ray_shutdown):
+    # Check that you can make API calls from within a deployment.
     ray.init(num_cpus=16, namespace="serve")
-    serve.start(detached=detached)
+    serve.start()
 
     @serve.deployment
     def connect_in_deployment(*args):
@@ -305,27 +299,6 @@ def test_connect(detached, ray_shutdown):
     handle = serve.run(connect_in_deployment.bind())
     ray.get(handle.remote())
     assert "deployment-ception" in serve.list_deployments()
-
-
-@pytest.mark.parametrize("controller_cpu", [True, False])
-@pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
-def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
-    cluster = ray_cluster
-    num_cluster_cpus = 8
-    head_node = cluster.add_node(num_cpus=num_cluster_cpus)
-
-    ray.init(head_node.address)
-    wait_for_condition(lambda: ray.cluster_resources().get("CPU") == num_cluster_cpus)
-
-    num_cpus_used = int(controller_cpu) + num_proxy_cpus
-
-    serve.start(
-        dedicated_cpu=controller_cpu, http_options=HTTPOptions(num_cpus=num_proxy_cpus)
-    )
-    available_cpus = num_cluster_cpus - num_cpus_used
-    wait_for_condition(lambda: (ray.available_resources().get("CPU") == available_cpus))
-    serve.shutdown()
-    ray.shutdown()
 
 
 def test_set_socket_reuse_port():
@@ -567,7 +540,7 @@ def test_no_http(ray_shutdown):
         ]
         assert len(live_actors) == 1
         controller = serve.context._global_client._controller
-        assert len(ray.get(controller.get_http_proxies.remote())) == 0
+        assert len(ray.get(controller.get_proxies.remote())) == 0
 
         # Test that the handle still works.
         @serve.deployment
@@ -651,10 +624,10 @@ def test_fixed_number_proxies(monkeypatch, ray_cluster):
     # Only the controller and two http proxy should be started.
     controller_handle = _get_global_client()._controller
     wait_for_condition(
-        lambda: len(ray.get(controller_handle.get_http_proxies.remote())) == 2
+        lambda: len(ray.get(controller_handle.get_proxies.remote())) == 2
     )
 
-    proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
+    proxy_names_bytes = ray.get(controller_handle.get_proxy_names.remote())
     proxy_names = ActorNameList.FromString(proxy_names_bytes)
     assert len(proxy_names.names) == 2
 
@@ -688,13 +661,8 @@ def test_serve_shutdown(ray_shutdown):
     assert len(client.list_deployments()) == 1
 
 
-def test_detached_namespace_default_ray_init(ray_shutdown):
-    # Can start detached instance when ray is not initialized.
-    serve.start()
-
-
-def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
-    # Can start detached instance in non-anonymous namespace.
+def test_instance_in_non_anonymous_namespace(ray_shutdown):
+    # Can start instance in non-anonymous namespace.
     ray.init(namespace="foo")
     serve.start()
 

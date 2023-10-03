@@ -92,7 +92,7 @@ class RandomKiller:
 
     def _get_serve_actors(self):
         controller = _get_global_client()._controller
-        routers = list(ray.get(controller.get_http_proxies.remote()).values())
+        routers = list(ray.get(controller.get_proxies.remote()).values())
         all_handles = routers + [controller]
         replica_dict = ray.get(controller._all_running_replicas.remote())
         for deployment_id, replica_info_list in replica_dict.items():

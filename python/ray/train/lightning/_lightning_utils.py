@@ -168,11 +168,11 @@ class RayLightningEnvironment(LightningEnvironment):
         return train.get_context().get_node_rank()
 
     def set_world_size(self, size: int) -> None:
-        # Disable it since `world_size()` directly returns data from AIR session.
+        # Disable it since `world_size()` directly returns data from Train context.
         pass
 
     def set_global_rank(self, rank: int) -> None:
-        # Disable it since `global_rank()` directly returns data from AIR session.
+        # Disable it since `global_rank()` directly returns data from Train.
         pass
 
     def teardown(self):
