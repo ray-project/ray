@@ -201,6 +201,8 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
         cmd.append("--no-config-cache")
     cmd.append(str(cluster_config))
 
+    print(" ".join(cmd))
+
     try:
         subprocess.run(cmd, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:

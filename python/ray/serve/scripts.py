@@ -28,7 +28,10 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve.api import build as build_app
+from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import (
+    get_and_validate_ingress_deployment,
+)
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -397,6 +400,11 @@ def run(
             "removed in a future version. To specify custom HTTP options, use the "
             "`serve start` command."
         )
+    if gradio:
+        cli_logger.warning(
+            "The gradio visualization tool is deprecated because the DAG API is "
+            "deprecated. Both will be removed in a future version."
+        )
 
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
@@ -423,8 +431,8 @@ def run(
                 config = ServeDeploySchema.parse_obj(config_dict)
                 if gradio:
                     raise click.ClickException(
-                        "The gradio visualization feature of `serve run` does not yet "
-                        "have support for multiple applications."
+                        "The gradio visualization feature of `serve run` does not "
+                        "support multiple applications."
                     )
 
                 # If host or port is specified as a CLI argument, they should take
@@ -806,13 +814,12 @@ def build(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        app = build_app(app, name)
+        deployments = pipeline_build(app, name)
+        ingress = get_and_validate_ingress_deployment(deployments)
         schema = ServeApplicationSchema(
             import_path=import_path,
             runtime_env={},
-            deployments=[
-                deployment_to_schema(d, single_app) for d in app.deployments.values()
-            ],
+            deployments=[deployment_to_schema(d, single_app) for d in deployments],
         )
         # If building a multi-app config, auto-generate names for each application.
         # Also, each ServeApplicationSchema should not have host and port set, it should
@@ -822,7 +829,7 @@ def build(
             schema.port = 8000
         else:
             schema.name = name
-            schema.route_prefix = app.ingress.route_prefix
+            schema.route_prefix = ingress.route_prefix
 
         if _kubernetes_format:
             return schema.kubernetes_dict(exclude_unset=True)
