@@ -8,7 +8,18 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from asyncio.tasks import FIRST_COMPLETED
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
 import grpc
 import starlette.responses
@@ -63,10 +74,7 @@ from ray.serve._private.proxy_router import (
     ProxyRouter,
 )
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import (
-    calculate_remaining_timeout,
-    call_function_from_import_path,
-)
+from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.config import gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
@@ -677,7 +685,13 @@ class gRPCProxy(GenericProxy):
                 stream=False,
             )
             proxy_response = await self.proxy_request(proxy_request=proxy_request)
-            return proxy_response.response
+            if proxy_response.streaming_response is not None:
+                # Unary calls go through the same generator codepath but will only ever
+                # yield a single result.
+                async for result in proxy_response.streaming_response:
+                    return result
+            else:
+                return proxy_response.response
 
         async def unary_stream(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
@@ -737,69 +751,6 @@ class gRPCProxy(GenericProxy):
         proxy_request.send_request_id(request_id=request_id)
         return handle, request_id
 
-    async def _streaming_generator_helper(
-        self,
-        obj_ref_generator: StreamingObjectRefGenerator,
-        proxy_request: ProxyRequest,
-        request_id: str,
-        timeout_s: Optional[float] = None,
-    ) -> Generator[bytes, None, None]:
-        start = time.time()
-        while True:
-            try:
-                obj_ref = await obj_ref_generator._next_async(
-                    timeout_s=calculate_remaining_timeout(
-                        timeout_s=timeout_s,
-                        start_time_s=start,
-                        curr_time_s=time.time(),
-                    )
-                )
-                if obj_ref.is_nil():
-                    await self.timeout_response(
-                        proxy_request=proxy_request, request_id=request_id
-                    )
-                    break
-
-                user_response_bytes = await obj_ref
-                yield user_response_bytes
-
-            except StopAsyncIteration:
-                break
-            except Exception as e:
-                self._set_internal_error_response(proxy_request, e)
-                break
-
-    async def _consume_generator_stream(
-        self,
-        obj_ref: StreamingObjectRefGenerator,
-        proxy_request: ProxyRequest,
-        request_id: str,
-        timeout_s: Optional[float] = None,
-    ) -> ProxyResponse:
-        streaming_response = self._streaming_generator_helper(
-            obj_ref_generator=obj_ref,
-            proxy_request=proxy_request,
-            request_id=request_id,
-            timeout_s=timeout_s,
-        )
-
-        return ProxyResponse(
-            status_code=self.success_status_code, streaming_response=streaming_response
-        )
-
-    async def _consume_generator_unary(
-        self,
-        obj_ref: ray.ObjectRef,
-        timeout_s: Optional[float] = None,
-    ) -> ProxyResponse:
-        try:
-            user_response_bytes = await asyncio.wait_for(obj_ref, timeout=timeout_s)
-            return ProxyResponse(
-                status_code=self.success_status_code, response=user_response_bytes
-            )
-        except asyncio.exceptions.TimeoutError:
-            raise TimeoutError() from None
-
     async def send_request_to_replica(
         self,
         request_id: str,
@@ -807,56 +758,38 @@ class gRPCProxy(GenericProxy):
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
     ) -> ProxyResponse:
-        start = time.time()
-        try:
-            obj_ref = None
+        handle_arg = proxy_request.request_object(proxy_handle=self.self_actor_handle)
+        response_generator = ProxyResponseGenerator(
+            handle.remote(handle_arg),
+            timeout_s=self.request_timeout_s,
+        )
+
+        async def consume_response_generator() -> AsyncIterator[bytes]:
             try:
-                obj_ref = await self._assign_request_with_timeout(
-                    handle=handle,
-                    proxy_request=proxy_request,
-                    timeout_s=self.request_timeout_s,
-                )
-                if obj_ref is None:
-                    logger.info(
-                        f"Client from {proxy_request.client} disconnected, "
-                        "cancelling the request.",
-                        extra={"log_to_stderr": False},
-                    )
-                    return ProxyResponse(status_code=DISCONNECT_ERROR_CODE)
-                if proxy_request.stream:
-                    return await self._consume_generator_stream(
-                        obj_ref=obj_ref,
-                        proxy_request=proxy_request,
-                        request_id=request_id,
-                        timeout_s=calculate_remaining_timeout(
-                            timeout_s=self.request_timeout_s,
-                            start_time_s=start,
-                            curr_time_s=time.time(),
-                        ),
-                    )
-                else:
-                    return await self._consume_generator_unary(
-                        obj_ref=obj_ref,
-                        timeout_s=calculate_remaining_timeout(
-                            timeout_s=self.request_timeout_s,
-                            start_time_s=start,
-                            curr_time_s=time.time(),
-                        ),
-                    )
+                async for result in response_generator:
+                    yield result
             except TimeoutError:
                 logger.warning(
                     f"Request {request_id} timed out after {self.request_timeout_s}s."
                 )
-                if obj_ref is not None:
-                    ray.cancel(obj_ref)
                 await self.timeout_response(
                     proxy_request=proxy_request, request_id=request_id
                 )
-                return ProxyResponse(status_code=TIMEOUT_ERROR_CODE)
+            except asyncio.CancelledError:
+                # NOTE(edoakes): we aren't passing a `disconnected_task` to the
+                # `ProxyResponseGenerator` so this won't ever happen.
+                logger.info(f"Client for request {request_id} disconnected.")
+                # Ignore the rest of the response (the handler will be cancelled).
+            except Exception as e:
+                logger.exception(e)
+                self._set_internal_error_response(proxy_request, e)
 
-        except Exception as e:
-            logger.exception(e)
-            return self._set_internal_error_response(proxy_request, e)
+        # TODO(edoakes): this status code is meaningless because the request hasn't
+        # actually run yet.
+        return ProxyResponse(
+            status_code=self.success_status_code,
+            streaming_response=consume_response_generator(),
+        )
 
 
 class HTTPProxy(GenericProxy):
