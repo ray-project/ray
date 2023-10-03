@@ -27,14 +27,11 @@ import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
-from ray.train._internal.checkpoint_manager import (
-    _CheckpointManager as _NewCheckpointManager,
-)
+from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
-from ray.tune.execution.checkpoint_manager import _CheckpointManager
 from ray.tune.logger import NoopLogger
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -528,15 +525,9 @@ class Trial:
                 checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
             )
 
-        if _use_storage_context():
-            self.run_metadata.checkpoint_manager = _NewCheckpointManager(
-                checkpoint_config=checkpoint_config
-            )
-        else:
-            self.run_metadata.checkpoint_manager = _CheckpointManager(
-                checkpoint_config=checkpoint_config,
-                delete_fn=_CheckpointDeleter(str(self), self.temporary_state.ray_actor),
-            )
+        self.run_metadata.checkpoint_manager = _CheckpointManager(
+            checkpoint_config=checkpoint_config
+        )
 
         # Restoration fields
         self.restore_path = restore_path
