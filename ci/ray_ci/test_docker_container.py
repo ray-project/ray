@@ -35,15 +35,15 @@ class TestDockerContainer(RayCITestBase):
                 "rayproject/ray:123456-py38-cu118"
             )
 
-            container = RayDockerContainer("py38", "cpu", "ray-ml")
+            container = RayDockerContainer("py39", "cpu", "ray-ml")
             container.run()
             cmd = self.cmds[-1]
             assert cmd == (
                 "./ci/build/build-ray-docker.sh "
-                f"ray-{RAY_VERSION}-cp38-cp38m-manylinux2014_x86_64.whl "
-                f"{_DOCKER_ECR_REPO}:123-ray-mlpy38cpubase "
+                f"ray-{RAY_VERSION}-cp39-cp39-manylinux2014_x86_64.whl "
+                f"{_DOCKER_ECR_REPO}:123-ray-mlpy39cpubase "
                 "requirements_compiled.txt "
-                "rayproject/ray-ml:123456-py38-cpu"
+                "rayproject/ray-ml:123456-py39-cpu"
             )
 
     def test_canonical_tag(self) -> None:
@@ -85,14 +85,14 @@ class TestDockerContainer(RayCITestBase):
             "rayproject/ray:nightly",
         ]
 
-        container = RayDockerContainer("py38", "cu118", "ray-ml")
+        container = RayDockerContainer("py39", "cu118", "ray-ml")
         assert container._get_image_names() == [
-            "rayproject/ray-ml:123456-py38-cu118",
-            "rayproject/ray-ml:123456-py38-gpu",
-            "rayproject/ray-ml:123456-py38",
-            "rayproject/ray-ml:nightly-py38-cu118",
-            "rayproject/ray-ml:nightly-py38-gpu",
-            "rayproject/ray-ml:nightly-py38",
+            "rayproject/ray-ml:123456-py39-cu118",
+            "rayproject/ray-ml:123456-py39-gpu",
+            "rayproject/ray-ml:123456-py39",
+            "rayproject/ray-ml:nightly-py39-cu118",
+            "rayproject/ray-ml:nightly-py39-gpu",
+            "rayproject/ray-ml:nightly-py39",
         ]
 
         with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
