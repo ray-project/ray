@@ -369,12 +369,7 @@ def read_datasource(
             _get_reader, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        (
-            requested_parallelism,
-            min_safe_parallelism,
-            inmemory_size,
-            reader,
-        ) = ray.get(
+        (requested_parallelism, min_safe_parallelism, inmemory_size, reader,) = ray.get(
             get_reader.remote(
                 datasource,
                 ctx,
@@ -1762,7 +1757,7 @@ def read_sql(
 
 
 @PublicAPI(stability="alpha")
-def read_databricks_uc_tables(
+def read_databricks_tables(
     *,
     warehouse_id: str,
     table: Optional[str] = None,
@@ -1773,35 +1768,37 @@ def read_databricks_uc_tables(
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
     """
-    Read from a Databricks UC table or Databricks SQL execution result that queries
-    from Databricks UC tables.
-    If it is not called in databricks runtime, you need to set environment varaibles
-    'DATABRICKS_HOST' and 'DATABRICKS_TOKEN' firstly.
+    Read from a Databricks unity catalog table or Databricks SQL execution result that
+    queries from Databricks UC tables.
+    If this API isn't called in Databricks runtime, set the 'DATABRICKS_HOST' and
+    'DATABRICKS_TOKEN' environment variables.
 
     This reader is implemented based on
-    [Databricks statemenet execution API](https://docs.databricks.com/api/workspace/statementexecution).
+    [Databricks statement execution API](https://docs.databricks.com/api/workspace/statementexecution).
 
     Examples:
-        >>> from ray.data.read_api import read_databricks_uc_tables
-        >>>
-        >>> ds = read_databricks_uc_tables(
-        ...   warehouse_id='a885ad08b64951ad',
-        ...   catalog='catalog_1',
-        ...   schema='db_1',
-        ...   query='select id from table_1 limit 750000',
-        ...   parallelism=2,
-        ... )
+    .. testcode::
+        :skipif: True
+
+        import ray
+
+        ds = ray.data.read_databricks_uc_tables(
+            warehouse_id='a885ad08b64951ad',
+            catalog='catalog_1',
+            schema='db_1',
+            query='select id from table_1 limit 750000',
+        )
 
     Args:
-        warehouse_id: The id of the databricks warehouse, the query statement is
+        warehouse_id: The ID of the Databricks warehouse. The query statement is
             executed on this warehouse.
         table: The name of UC table you want to read. If this argument is set,
-            you can't set 'query' argument, and the reader generates query
-            of 'select * from {table_name}' under the hood.
+            you can't set ``query`` argument, and the reader generates query
+            of ``select * from {table_name}`` under the hood.
         query: The query you want to execute. If this argument is set,
-            you can't set 'table_name' argument.
-        catalog: (Optional) The default catalog name used by the query
-        schema: (Optional) The default schema used by the query
+            you can't set ``table_name`` argument.
+        catalog: (Optional) The default catalog name used by the query.
+        schema: (Optional) The default schema used by the query.
         parallelism: The requested parallelism of the read. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.

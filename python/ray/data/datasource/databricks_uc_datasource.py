@@ -14,6 +14,9 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
+_STATEMENT_EXEC_POLL_TIME_S = 1
+
+
 class _DatabricksUCReader(Reader):
     def __init__(
         self,
@@ -59,10 +62,10 @@ class _DatabricksUCReader(Reader):
 
         state = response.json()["status"]["state"]
 
-        logger.info(f"Waiting for query {query} exeuction result.")
+        logger.info(f"Waiting for query {query!r} execution result.")
         try:
             while state in ["PENDING", "RUNNING"]:
-                time.sleep(1)
+                time.sleep(_STATEMENT_EXEC_POLL_TIME_S)
                 response = requests.get(
                     urljoin(url_base, statement_id) + "/",
                     auth=req_auth,
@@ -81,19 +84,19 @@ class _DatabricksUCReader(Reader):
                 response.raise_for_status()
             except Exception as e:
                 logger.warning(
-                    f"Canceling query {query} execution failed, reason: {repr(e)}."
+                    f"Canceling query {query!r} execution failed, reason: {repr(e)}."
                 )
             raise
 
         if state != "SUCCEEDED":
-            raise RuntimeError(f"Query {self.query} execution failed.")
+            raise RuntimeError(f"Query {self.query!r} execution failed.")
 
         manifest = response.json()["manifest"]
         is_truncated = manifest["truncated"]
 
         if is_truncated:
             logger.warning(
-                f"The result dataset of '{query}' exceeding 100GiB and it is truncated."
+                f"The result dataset of '{query!r}' exceeding 100GiB and it is truncated."
             )
 
         chunks = manifest["chunks"]
