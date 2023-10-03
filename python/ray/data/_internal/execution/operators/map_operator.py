@@ -36,6 +36,11 @@ from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
+INIT_CONCURRENCY_CAP = 4
+CONCURRENCY_CAP_RAMP_UP_RATIO = 0.5
+CONCURRENCY_CAP_MULTIPLIER = 2
+
+
 class MapOperator(OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
@@ -85,6 +90,10 @@ class MapOperator(OneToOneOperator, ABC):
         self._num_tasks_finished = 0
         self._num_output_blocks = 0
         self._num_inputs_received = 0
+
+        self._concurrency_cap = INIT_CONCURRENCY_CAP
+        self._num_tasks_running = 0
+
         super().__init__(name, input_op)
 
     @classmethod
@@ -207,6 +216,9 @@ class MapOperator(OneToOneOperator, ABC):
             self._add_bundled_input(bundle)
         self._num_inputs_received += 1
 
+    def should_add_input(self) -> bool:
+        return self._num_tasks_running < self._concurrency_cap
+
     def _get_runtime_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
@@ -263,6 +275,7 @@ class MapOperator(OneToOneOperator, ABC):
         #    can also be capsulated in the base class.
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
+        self._num_tasks_running += 1
 
         def _output_ready_callback(task_index, output: RefBundle):
             # Since output is streamed, it should only contain one block.
@@ -313,6 +326,11 @@ class MapOperator(OneToOneOperator, ABC):
             self._estimated_output_blocks = round(
                 estimated_num_tasks * self._num_output_blocks / self._num_tasks_finished
             )
+            # Handle concurrency cap.
+            self._num_tasks_running -= 1
+            if self._num_tasks_finished * CONCURRENCY_CAP_RAMP_UP_RATIO >= self._concurrency_cap:
+                self._concurrency_cap *= CONCURRENCY_CAP_MULTIPLIER
+                print(self, "Ramping up concurrency cap to", self._concurrency_cap)
             if task_done_callback:
                 task_done_callback()
 
