@@ -267,8 +267,9 @@ class OpState:
         return object_store_memory
 
     def _check_first_block_size(self, ref: RefBundle):
-        """Checks and logs the size of the first bundle produced by this operator.
-        If the block size exceeds 2 times the target max block size, logs a warning."""
+        """Checks and logs the size of the first bundle produced by this operator
+        to the Ray Data logfile (skips stdout). If the block size exceeds 2 times
+        the target max block size, also logs a warning to stdout."""
 
         BLOCK_SIZE_TO_MAX_TARGET_RATIO = 2
 
@@ -283,10 +284,9 @@ class OpState:
                 f"{self.op.name} in-memory block size of "
                 f"{(self.first_block_size_bytes / 2**20):.2f} MB is significantly "
                 f"larger than the maximium target block size of "
-                f"{(target_max_block_size / 2**20):.2f} MB. Consider increasing read "
-                f"parallelism in order to reduce the block size. See docs "
-                f"for more details and additional tips to improve performance: "
-                f"https://docs.ray.io/en/latest/data/performance-tips.html#tuning-read-parallelism"  # noqa: E501
+                f"{(target_max_block_size / 2**20):.2f} MB. "
+                f"This could be because one single row is larger than the "
+                f"target block size, or there could be an unexpected Ray Data bug."
             )
         else:
             logger.get_logger(log_to_stdout=False).info(
