@@ -51,8 +51,8 @@ const useStyles = makeStyles((theme) =>
 export const OverviewPage = () => {
   const classes = useStyles();
 
-  const { cluster_status } = useRayStatus();
-
+  // const { cluster_status } = useRayStatus();
+  const cluster_status = undefined;
   return (
     <div className={classes.root}>
       <MainNavPageInfo
