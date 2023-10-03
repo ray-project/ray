@@ -154,7 +154,6 @@ class Preprocessor(abc.ABC):
                 "or simply use fit_transform() to run both steps"
             )
         transformed_ds = self._transform(ds)
-
         return transformed_ds
 
     def transform_batch(self, data: "DataBatchType") -> "DataBatchType":
