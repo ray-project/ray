@@ -63,7 +63,7 @@ def request_cluster_resources(
 
 
 def get_cluster_status(
-    gcs_address: Optional[str] = None, timeout: int = DEFAULT_RPC_TIMEOUT_S
+    gcs_address: str, timeout: int = DEFAULT_RPC_TIMEOUT_S
 ) -> ClusterStatus:
     """
     Get the cluster status from the autoscaler.
