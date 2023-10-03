@@ -1,6 +1,5 @@
 import asyncio
 import json
-import sys
 import time
 from typing import Any, List, Tuple
 from unittest.mock import patch
