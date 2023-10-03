@@ -26,7 +26,7 @@ public class DeploymentTest extends BaseServeTest {
     // Deploy deployment.
     String deploymentName = "exampleEcho";
     Map<String, String> userConfig = new HashMap<>();
-    userConfig.put("suffix", "_text");
+    userConfig.put("suffix", "_test");
 
     Deployment deployment =
         Serve.deployment()
@@ -47,7 +47,7 @@ public class DeploymentTest extends BaseServeTest {
     // Deploy deployment.
     String deploymentName = "exampleEcho";
     Map<String, String> userConfig = new HashMap<>();
-    userConfig.put("suffix", "_text");
+    userConfig.put("suffix", "_test");
 
     Deployment deployment =
         Serve.deployment()
@@ -79,7 +79,7 @@ public class DeploymentTest extends BaseServeTest {
   public void updateDeploymentTest() {
     String deploymentName = "exampleEcho";
     Map<String, String> userConfig = new HashMap<>();
-    userConfig.put("suffix", "_text");
+    userConfig.put("suffix", "_test");
 
     Deployment deployment =
         Serve.deployment()
@@ -101,7 +101,7 @@ public class DeploymentTest extends BaseServeTest {
   public void autoScaleTest() {
     String deploymentName = "exampleEcho";
     Map<String, String> userConfig = new HashMap<>();
-    userConfig.put("suffix", "_text");
+    userConfig.put("suffix", "_test");
     AutoscalingConfig autoscalingConfig = new AutoscalingConfig();
     autoscalingConfig.setMinReplicas(2);
     autoscalingConfig.setMaxReplicas(5);
@@ -123,7 +123,7 @@ public class DeploymentTest extends BaseServeTest {
   public void userConfigTest() {
     String deploymentName = "exampleEcho";
     Map<String, String> userConfig = new HashMap<>();
-    userConfig.put("suffix", "_text");
+    userConfig.put("suffix", "_test");
     Deployment deployment =
         Serve.deployment()
             .setName(deploymentName)
@@ -133,7 +133,8 @@ public class DeploymentTest extends BaseServeTest {
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
-    deployment.options().setUserConfig("_new").create().deploy(true);
+    userConfig.put("suffix", "_new")
+    deployment.options().setUserConfig(userConfig).create().deploy(true);
     Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote("6")), "echo_6_new");
   }
 }

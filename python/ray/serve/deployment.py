@@ -433,6 +433,7 @@ class Deployment:
 
         if num_replicas not in [DEFAULT.VALUE, None]:
             new_deployment_config.num_replicas = num_replicas
+        print("setting user_config", user_config)
         if user_config is not DEFAULT.VALUE:
             new_deployment_config.user_config = user_config
         if max_concurrent_queries is not DEFAULT.VALUE:
@@ -655,6 +656,7 @@ def deployment_to_schema(
     # because internally we use these two field for autoscale and deploy.
     # We can improve the code after we separate the user faced deployment config and
     # internal deployment config.
+    print("deployment_options", deployment_options)
     return ApplyServeDeploymentModel(**deployment_options)
 
 

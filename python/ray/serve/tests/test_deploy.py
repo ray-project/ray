@@ -196,7 +196,7 @@ def test_reconfigure_with_exception(serve_instance):
             return self.config
 
     with pytest.raises(ValidationError):
-        serve.run(A.options(user_config="hi").bind())
+        A.options(user_config=["hey"]).bind()
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
