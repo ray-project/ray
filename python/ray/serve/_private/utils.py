@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import importlib
 import inspect
@@ -11,9 +12,8 @@ import time
 import traceback
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import __main__
 import fastapi.encoders
 import numpy as np
 import pydantic
@@ -37,7 +37,6 @@ try:
 except ImportError:
     pd = None
 
-ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 MESSAGE_PACK_OFFSET = 9
 
 
@@ -160,43 +159,6 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
-def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
-    """Given two iterables, return the entries that's (added, removed, updated).
-
-    Usage:
-        >>> from ray.serve._private.utils import compute_iterable_delta
-        >>> old = {"a", "b"}
-        >>> new = {"a", "d"}
-        >>> compute_iterable_delta(old, new)
-        ({'d'}, {'b'}, {'a'})
-    """
-    old_keys, new_keys = set(old), set(new)
-    added_keys = new_keys - old_keys
-    removed_keys = old_keys - new_keys
-    updated_keys = old_keys.intersection(new_keys)
-    return added_keys, removed_keys, updated_keys
-
-
-def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
-    """Given two dicts, return the entries that's (added, removed, updated).
-
-    Usage:
-        >>> from ray.serve._private.utils import compute_dict_delta
-        >>> old = {"a": 1, "b": 2}
-        >>> new = {"a": 3, "d": 4}
-        >>> compute_dict_delta(old, new)
-        ({'d': 4}, {'b': 2}, {'a': 3})
-    """
-    added_keys, removed_keys, updated_keys = compute_iterable_delta(
-        old_dict.keys(), new_dict.keys()
-    )
-    return (
-        {k: new_dict[k] for k in added_keys},
-        {k: old_dict[k] for k in removed_keys},
-        {k: new_dict[k] for k in updated_keys},
-    )
-
-
 def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
@@ -242,50 +204,6 @@ def merge_dict(dict1, dict2):
     for key in dict1.keys() | dict2.keys():
         result[key] = sum([e.get(key, 0) for e in (dict1, dict2)])
     return result
-
-
-def get_deployment_import_path(
-    deployment, replace_main=False, enforce_importable=False
-):
-    """
-    Gets the import path for deployment's func_or_class.
-
-    deployment: A deployment object whose import path should be returned
-    replace_main: If this is True, the function will try to replace __main__
-        with __main__'s file name if the deployment's module is __main__
-    """
-
-    body = deployment.func_or_class
-
-    if isinstance(body, str):
-        # deployment's func_or_class is already an import path
-        return body
-    elif hasattr(body, "__ray_actor_class__"):
-        # If ActorClass, get the class or function inside
-        body = body.__ray_actor_class__
-
-    import_path = f"{body.__module__}.{body.__qualname__}"
-
-    if enforce_importable and "<locals>" in body.__qualname__:
-        raise RuntimeError(
-            "Deployment definitions must be importable to build the Serve app, "
-            f"but deployment '{deployment.name}' is inline defined or returned "
-            "from another function. Please restructure your code so that "
-            f"'{import_path}' can be imported (i.e., put it in a module)."
-        )
-
-    if replace_main:
-        # Replaces __main__ with its file name. E.g. suppose the import path
-        # is __main__.classname and classname is defined in filename.py.
-        # Its import path becomes filename.classname.
-
-        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
-            file_name = os.path.basename(__main__.__file__)
-            extensionless_file_name = file_name.split(".")[0]
-            attribute_name = import_path.split(".")[-1]
-            import_path = f"{extensionless_file_name}.{attribute_name}"
-
-    return import_path
 
 
 def parse_import_path(import_path: str):
@@ -685,11 +603,34 @@ def get_all_live_placement_group_names() -> List[str]:
     return live_pg_names
 
 
-def in_ray_driver_process() -> bool:
-    """Returns True if called in the Ray driver, False otherwise.
+def get_current_actor_id() -> str:
+    """Gets the ID of the calling actor.
+
+    If this is called in a driver, returns "DRIVER."
+
+    If otherwise called outside of an actor, returns an empty string.
 
     This function hangs when GCS is down due to the `ray.get_runtime_context()`
     call.
     """
 
-    return ray.get_runtime_context().worker.mode in [SCRIPT_MODE, LOCAL_MODE]
+    worker_mode = ray.get_runtime_context().worker.mode
+    if worker_mode in {SCRIPT_MODE, LOCAL_MODE}:
+        return "DRIVER"
+    else:
+        try:
+            actor_id = ray.get_runtime_context().get_actor_id()
+            if actor_id is None:
+                return ""
+            else:
+                return actor_id
+        except Exception:
+            return ""
+
+
+def is_running_in_asyncio_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False

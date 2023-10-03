@@ -194,13 +194,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item serving
-        :link: /serve/tutorials/gradio-dag-visualization
-        :link-type: doc
-
-        Visualizing a Deployment Graph with Gradio
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item serving
         :link: /serve/tutorials/java
         :link-type: doc
 

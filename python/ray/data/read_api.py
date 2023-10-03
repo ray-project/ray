@@ -1862,7 +1862,7 @@ def read_databricks_tables(
 
 
 @PublicAPI
-def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
+def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
 
@@ -1898,7 +1898,7 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
 
 
 @PublicAPI
-def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
+def from_mars(df: "mars.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
 
@@ -1915,7 +1915,7 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
 
 
 @PublicAPI
-def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
+def from_modin(df: "modin.pandas.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 
