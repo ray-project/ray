@@ -820,19 +820,23 @@ def test_estimated_output_blocks():
         for i in range(5):
             yield pd.DataFrame({"id": [i]})
 
+    min_rows_per_bundle = 10
     op = MapOperator.create(
         create_map_transformer_from_block_fn(yield_five),
         input_op=input_op,
         name="TestEstimatedNumBlocks",
-        min_rows_per_bundle=10,
+        min_rows_per_bundle=min_rows_per_bundle,
     )
 
     op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.all_inputs_done()
+        if op._num_inputs_received % min_rows_per_bundle == 0:
+            # enough inputs for a task bundle
+            run_op_tasks_sync(op)
+            assert op._estimated_output_blocks == 50
 
-    run_op_tasks_sync(op)
+    op.all_inputs_done()
 
     # 100 inputs -> 100 / 10 = 10 tasks -> 10 * 5 = 50 output blocks
     assert op._estimated_output_blocks == 50
