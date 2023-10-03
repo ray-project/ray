@@ -814,6 +814,7 @@ def test_block_ref_bundler_uniform(
 
 
 def test_estimated_output_blocks():
+    # Test map operator estimation
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
 
     def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
@@ -840,6 +841,34 @@ def test_estimated_output_blocks():
 
     # 100 inputs -> 100 / 10 = 10 tasks -> 10 * 5 = 50 output blocks
     assert op._estimated_output_blocks == 50
+
+    # Test limit operator estimation
+    input_op = InputDataBuffer(make_ref_bundles([[i, i] for i in range(100)]))
+    op = LimitOperator(100, input_op)
+
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        run_op_tasks_sync(op)
+        assert op._estimated_output_blocks == 50
+
+    op.all_inputs_done()
+
+    # 2 rows per bundle, 100 / 2 = 50 blocks output
+    assert op._estimated_output_blocks == 50
+
+    # Test limit operator estimation where: limit > # of rows
+    input_op = InputDataBuffer(make_ref_bundles([[i, i] for i in range(100)]))
+    op = LimitOperator(300, input_op)
+
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        run_op_tasks_sync(op)
+        assert op._estimated_output_blocks == 100
+
+    op.all_inputs_done()
+
+    # all blocks are outputted
+    assert op._estimated_output_blocks == 100
 
 
 if __name__ == "__main__":
