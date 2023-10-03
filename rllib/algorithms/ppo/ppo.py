@@ -742,11 +742,11 @@ class PPO(Algorithm):
                     # only returns `List[Episode]`.
                     batch = postprocess_episodes_to_sample_batch([sample])
 
-                # Evaluation worker set has k remote workers.
                 elif self.evaluation_workers.num_healthy_remote_workers() > 0:
-                    # Distribute number of units evenly on evaluation workers.
                     workers = self.evaluation_workers
-                    # If there are less units than workers, run on each worker a unit.
+
+                    # If duration is less than workers, take duration many workers
+                    # and run a single `evaluation_duration_unit` on each of them.
                     if (
                         duration
                         < workers.num_healthy_remote_workers()
@@ -761,12 +761,169 @@ class PPO(Algorithm):
                             <= duration
                         ]
                         duration_per_worker = 1
-                        remaining_units = 0
+                        remaining_duration = 0
                     # In the other case distribute evenly with possible rest.
                     else:
                         selected_eval_worker_ids = workers.healthy_worker_ids()
                         duration_per_worker = duration // len(selected_eval_worker_ids)
-                        remaining_units = duration % len(selected_eval_worker_ids)
+                        remaining_duration = duration % len(selected_eval_worker_ids)
+                        # Give first worker more.
+                        durations_per_worker = [duration_per_worker] * len(
+                            selected_eval_worker_ids
+                        )
+                        durations_per_worker[0] += remaining_duration
+
+                    # Run m number of episodes if unit is "episodes"
+                    if self.config.evaluation_duration_unit == "episodes":
+                        samples = workers.foreach_worker_with_id(
+                            lambda wid, w: w.sample(
+                                num_episodes=durations_per_worker[
+                                    selected_eval_worker_ids.index(wid)
+                                ]
+                            ),
+                            local_worker=False,
+                            remote_worker_ids=selected_eval_worker_ids,
+                            timeout_seconds=self.config.evaluation_sample_timeout_s,
+                        )
+                    # Run n number of timesteps if unit is "timesteps".
+                    else:
+                        samples = workers.foreach_worker_with_id(
+                            lambda wid, w: w.sample(
+                                num_timesteps=durations_per_worker[
+                                    selected_eval_worker_ids.index(wid)
+                                ]
+                            ),
+                            local_worker=False,
+                            remote_worker_ids=selected_eval_worker_ids,
+                            timeout_seconds=self.config.evaluation_sample_timeout_s,
+                        )
+
+                    if len(samples) < len(selected_eval_worker_ids):
+                        logger.warning(
+                            "Calling `sample()` on your remote evaluation worker(s) "
+                            "resulted in a timeout (after the configured "
+                            f"{self.config.evaluation_sample_timeout_s} seconds)! "
+                            "Try to set `evaluation_sample_timeout_s` in your config"
+                            " to a larger value."
+                            + (
+                                " If your episodes don't terminate easily, you may "
+                                "also want to set `evaluation_duration_unit` to "
+                                "'timesteps' (instead of 'episodes')."
+                                if self.config.evaluation_duration_unit == "episodes"
+                                else ""
+                            )
+                        )
+
+                    batch = postprocess_episodes_to_sample_batch(samples)
+
+                    logger.info(
+                        f"Ran {self.config.evaluation_duration} "
+                        f"{self.config.evaluation_duration_unit}s."
+                    )
+
+                # Evaluation worker set has k remote workers.
+                elif self.evaluation_workers.num_healthy_remote_workers() > 0:
+                    # Distribute number of units evenly on evaluation workers.
+                    workers = self.evaluation_workers
+                    sample_duration = duration
+                    samples = []
+
+                    while sample_duration > 0:
+                        # If duration is less than workers, take duration many workers
+                        # and run a single `evaluation_duration_unit` on each of them.
+                        if (
+                            sample_duration
+                            < workers.num_healthy_remote_workers()
+                            * self.evaluation_config.num_envs_per_worker
+                        ):
+                            selected_eval_worker_ids = [
+                                worker_id
+                                for unit, worker_id in enumerate(
+                                    workers.healthy_worker_ids()
+                                )
+                                if unit * self.evaluation_config.num_envs_per_worker
+                                <= sample_duration
+                            ]
+                            duration_per_worker = 1
+                            remaining_duration = 0
+                        # In the other case distribute evenly with possible rest.
+                        else:
+                            selected_eval_worker_ids = workers.healthy_worker_ids()
+                            duration_per_worker = sample_duration // len(
+                                selected_eval_worker_ids
+                            )
+                            remaining_duration = sample_duration % len(
+                                selected_eval_worker_ids
+                            )
+
+                        # Run m number of episodes if unit is "episodes"
+                        if self.config.evaluation_duration_unit == "episodes":
+                            samples_this_iter = workers.foreach_worker(
+                                lambda w: w.sample(num_episodes=duration_per_worker),
+                                local_worker=False,
+                                remote_worker_ids=selected_eval_worker_ids,
+                                timeout_seconds=self.config.evaluation_sample_timeout_s,
+                            )
+                        # Run n number of timesteps if unit is "timesteps".
+                        else:
+                            samples_this_iter = workers.foreach_worker(
+                                lambda w: w.sample(num_timesteps=duration_per_worker),
+                                local_worker=False,
+                                remote_worker_ids=selected_eval_worker_ids,
+                                timeout_seconds=self.config.evaluation_sample_timeout_s,
+                            )
+
+                        if len(samples_this_iter) < len(selected_eval_worker_ids):
+                            logger.warning(
+                                "Calling `sample()` on your remote evaluation "
+                                "worker(s) resulted in a timeout (after the "
+                                f"configured {self.config.evaluation_sample_timeout_s} "
+                                " seconds)! Try to set `evaluation_sample_timeout_s` "
+                                "in your config to a larger value."
+                                + (
+                                    " If your episodes don't terminate easily, you may "
+                                    "also want to set `evaluation_duration_unit` to "
+                                    "'timesteps' (instead of 'episodes')."
+                                    if self.config.evaluation_duration_unit
+                                    == "episodes"
+                                    else ""
+                                )
+                            )
+                        samples += samples_this_iter
+                        sample_duration = remaining_duration
+
+                    batch = postprocess_episodes_to_sample_batch(samples)
+
+                    logger.info(
+                        f"Ran {self.config.evaluation_duration} "
+                        f"{self.config.evaluation_duration_unit}s."
+                    )
+                # Evaluation worker set has k remote workers.
+                elif self.evaluation_workers.num_healthy_remote_workers() > 0:
+                    # Distribute number of units evenly on evaluation workers.
+                    workers = self.evaluation_workers
+                    # If duration is less than workers, take duration many workers
+                    # and run a single `evaluation_duration_unit` on each of them.
+                    if (
+                        duration
+                        < workers.num_healthy_remote_workers()
+                        * self.evaluation_config.num_envs_per_worker
+                    ):
+                        selected_eval_worker_ids = [
+                            worker_id
+                            for unit, worker_id in enumerate(
+                                workers.healthy_worker_ids()
+                            )
+                            if unit * self.evaluation_config.num_envs_per_worker
+                            <= duration
+                        ]
+                        duration_per_worker = 1
+                        remaining_duration = 0
+                    # In the other case distribute evenly with possible rest.
+                    else:
+                        selected_eval_worker_ids = workers.healthy_worker_ids()
+                        duration_per_worker = duration // len(selected_eval_worker_ids)
+                        remaining_duration = duration % len(selected_eval_worker_ids)
 
                     # Run m number of episodes if unit is "episodes"
                     if self.config.evaluation_duration_unit == "episodes":
@@ -778,12 +935,12 @@ class PPO(Algorithm):
                         )
                         # If there remain episodes run them on as many workers as
                         # needed.
-                        if remaining_units > 0:
+                        if remaining_duration > 0:
                             samples + workers.foreach_worker(
-                                lambda w: w.sample(num_episodes=remaining_units),
+                                lambda w: w.sample(num_episodes=remaining_duration),
                                 local_worker=False,
                                 remote_worker_ids=selected_eval_worker_ids[
-                                    :remaining_units
+                                    :remaining_duration
                                 ],
                                 timeout_seconds=self.config.evaluation_sample_timeout_s,
                             )
@@ -795,19 +952,19 @@ class PPO(Algorithm):
                             remote_worker_ids=selected_eval_worker_ids,
                             timeout_seconds=self.config.evaluation_sample_timeout_s,
                         )
-                        if remaining_units > 0:
+                        if remaining_duration > 0:
                             samples + workers.foreach_worker(
                                 lambda w: w.sample(num_timesteps=duration_per_worker),
                                 local_worker=False,
                                 remote_worker_ids=selected_eval_worker_ids[
-                                    :remaining_units
+                                    :remaining_duration
                                 ],
                                 timeout_seconds=self.config.evaluation_sample_timeout_s,
                             )
 
                     # Note that, if we have `remaining_units=0` the last length is zero.
                     if len(samples) < len(selected_eval_worker_ids) + len(
-                        selected_eval_worker_ids[:remaining_units]
+                        selected_eval_worker_ids[:remaining_duration]
                     ):
                         logger.warning(
                             "Calling `sample()` on your remote evaluation worker(s) "
@@ -823,6 +980,9 @@ class PPO(Algorithm):
                                 else ""
                             )
                         )
+
+                    # TODO (sven): Should we error out here, or is this handled
+                    # already in the FaultTolerantActorManager?
 
                     batch = postprocess_episodes_to_sample_batch(samples)
 
