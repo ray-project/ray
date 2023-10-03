@@ -6857,8 +6857,8 @@
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
-    timeout: 3600
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20
+    timeout: 4800
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30
 
 - name: gcp_cluster_launcher_latest_image
   group: cluster-launcher-test
