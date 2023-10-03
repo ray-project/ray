@@ -84,7 +84,7 @@ def _detect_and_configure_custom_accelerator(
             ray_constants.NEURON_CORES or ray_constants.TPU or ray_constants.HPU
         accelerator_type: The name of the accelerator type. This
             is the unique identifier of the accelerator version, e.g.
-            ray_constants.AWS_NEURON_CORE or ray_constants.GOOGLE_TPU_V4 or ray_constants.GAUDI.
+            ray_constants.AWS_NEURON_CORE or ray_constants.GOOGLE_TPU_V4 or ray_constants.INTEL_GAUDI.
         visible_ids: The visible IDs specified by the user. This is typically
             controlled by an environment variable, e.g. NEURON_RT_VISIBLE_CORES
             or TPU_VISIBLE_CHIPS or HABANA_VISIBLE_MODULES.

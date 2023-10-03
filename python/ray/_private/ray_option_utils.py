@@ -178,7 +178,7 @@ def _validate_accelerators(options: Dict[str, Any]):
     non_zero_hpus = non_zero_custom_resource(
         resource_id=ray_constants.HPU,
         accelerator_ids=[
-            accelerators.GAUDI,
+            accelerators.INTEL_GAUDI,
         ],
     )
 
