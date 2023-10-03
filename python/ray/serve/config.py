@@ -250,7 +250,7 @@ MaxConcurrentQueriesAnnotatedType = Annotated[
     ),
 ]
 UserConfigAnnotatedType = Annotated[
-    Optional[Dict],
+    Optional[Union[Dict, bytes]],
     Field(
         description=(
             "Config to pass into this deployment's "

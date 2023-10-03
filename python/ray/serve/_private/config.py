@@ -132,16 +132,6 @@ class InternalDeploymentConfig(BaseDeploymentModel):
             data["user_configured_option_names"] = set(
                 data["user_configured_option_names"]
             )
-        deployment_language = (
-            data["deployment_language"]
-            if "deployment_language" in data
-            else DeploymentLanguage.PYTHON
-        )
-        is_cross_language = (
-            data["is_cross_language"] if "is_cross_language" in data else False
-        )
-        if deployment_language != DeploymentLanguage.PYTHON or is_cross_language:
-            assert False, f'user_config: {data["user_config"]}'
         return cls(**data)
 
     @classmethod
