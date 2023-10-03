@@ -493,6 +493,7 @@ class _DeploymentResponseBase:
         # The result of `object_ref_future` must be an ObjectRef or
         # StreamingObjectRefGenerator.
         self._object_ref_future = object_ref_future
+        self._cancelled = False
 
     async def _to_object_ref_or_gen(
         self,
@@ -545,10 +546,23 @@ class _DeploymentResponseBase:
             - If the request was cancelled after assignment, they'll raise
               `ray.exceptions.TaskCancelledError`.
         """
+        if self._cancelled:
+            return
+
+        self._cancelled = True
         if not self._object_ref_future.done():
             self._object_ref_future.cancel()
         elif self._object_ref_future.exception() is None:
             ray.cancel(self._object_ref_future.result())
+
+    @DeveloperAPI
+    def cancelled(self) -> bool:
+        """Whether or not the request has been cancelled.
+
+        This is `True` if `.cancel()` is called, but the request may actually have run
+        to completion.
+        """
+        return self._cancelled
 
 
 @PublicAPI(stability="beta")
