@@ -79,10 +79,6 @@ def test_client_disconnect(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Hanging on Windows.")
-@pytest.mark.skipif(
-    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
-    reason="Different disconnect behavior on 3.7.",
-)
 def test_server_disconnect(serve_instance):
     app = FastAPI()
 

@@ -175,7 +175,7 @@ class OpState:
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
-            self.progress_bar.update(1)
+            self.progress_bar.update(1, self.op._estimated_output_blocks)
         if self.first_block_size_bytes is None:
             self._check_first_block_size(ref)
 
