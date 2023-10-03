@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from datetime import datetime
 from pathlib import Path
 from importlib import import_module
@@ -9,26 +8,15 @@ from jinja2.filters import FILTERS
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import (
     DownloadAndPreprocessEcosystemDocs,
-    mock_modules,
     update_context,
     LinkcheckSummarizer,
     build_gallery,
 )
 
-
-# Mocking modules allows Sphinx to work without installing Ray.
-mock_modules()
-
-assert (
-    "ray" not in sys.modules
-), "If ray is already imported, we will not render documentation correctly!"
-
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath("../../python/"))
-
-import ray
 
 # -- General configuration ------------------------------------------------
 
@@ -109,10 +97,6 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-intersphinx_mapping = {
-    "sklearn": ("https://scikit-learn.org/stable/", None),
-}
-
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
 # To cache previous runs, set this to "cache".
@@ -137,9 +121,23 @@ copybutton_prompt_is_regexp = True
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
 
-# There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
-# of imports.
-# autodoc_mock_imports = ["ray.experimental.tf_utils"]
+# Special mocking of packaging.version.Version is required when using sphinx;
+# we can't just add this to autodoc_mock_imports, as packaging is imported by
+# sphinx even before it can be mocked. Instead, we patch it here.
+import packaging
+
+Version = packaging.version.Version
+
+
+class MockVersion(Version):
+    def __init__(self, version: str):
+        if isinstance(version, (str, bytes)):
+            super().__init__(version)
+        else:
+            super().__init__("0")
+
+
+packaging.version.Version = MockVersion
 
 # This is used to suppress warnings about explicit "toctree" directives.
 suppress_warnings = ["etoc.toctree"]
@@ -180,11 +178,12 @@ author = "The Ray Team"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
-# built documents.
-from ray import __version__ as version
+# built documents. Retrieve the version using `find_version` rather than importing
+# directly (from ray import __version__) because initializing ray will prevent
+# mocking of certain external dependencies.
+from setup import find_version
 
-# The full version, including alpha/beta/rc tags.
-release = version
+release = find_version("ray", "__init__.py")
 
 language = None
 
@@ -399,6 +398,7 @@ def setup(app):
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")
     app.add_js_file("js/custom.js", defer="defer")
+    app.add_js_file("js/assistant.js", defer="defer")
 
     app.add_js_file("js/top-navigation.js", defer="defer")
 
@@ -436,3 +436,95 @@ autosummary_filename_map = {
     "ray.serve.deployment": "ray.serve.deployment_decorator",
     "ray.serve.Deployment": "ray.serve.Deployment",
 }
+
+# Mock out external dependencies here.
+autodoc_mock_imports = [
+    "aiohttp",
+    "composer",
+    "dask",
+    "datasets",
+    "fastapi",
+    "fsspec",
+    "grpc",
+    "gymnasium",
+    "horovod",
+    "huggingface",
+    "joblib",
+    "lightgbm",
+    "lightgbm_ray",
+    "nevergrad",
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "pytorch_lightning",
+    "scipy",
+    "setproctitle",
+    "skimage",
+    "sklearn",
+    "skopt",
+    "starlette",
+    "tensorflow",
+    "torch",
+    "torchvision",
+    "transformers",
+    "tree",
+    "uvicorn",
+    "wandb",
+    "watchfiles",
+    "xgboost",
+    "xgboost_ray",
+    # Internal compiled modules
+    "ray._raylet",
+    "ray.core.generated",
+    "ray.serve.generated",
+]
+
+
+for mock_target in autodoc_mock_imports:
+    assert mock_target not in sys.modules, (
+        f"Problematic mock target ({mock_target}) found; "
+        "autodoc_mock_imports cannot mock modules that have already"
+        "been loaded into sys.modules when the sphinx build starts."
+    )
+
+# Other sphinx docs can be linked to if the appropriate URL to the docs
+# is specified in the `intersphinx_mapping` - for example, types annotations
+# that are defined in dependencies can link to their respective documentation.
+intersphinx_mapping = {
+    "aiohttp": ("https://docs.aiohttp.org/en/stable/", None),
+    "composer": ("https://docs.mosaicml.com/en/latest/", None),
+    "dask": ("https://docs.dask.org/en/stable/", None),
+    "datasets": ("https://huggingface.co/docs/datasets/main/en/", None),
+    "distributed": ("https://distributed.dask.org/en/stable/", None),
+    "grpc": ("https://grpc.github.io/grpc/python/", None),
+    "gymnasium": ("https://gymnasium.farama.org/", None),
+    "horovod": ("https://horovod.readthedocs.io/en/stable/", None),
+    "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
+    "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
+    "modin": ("https://modin.readthedocs.io/en/stable/", None),
+    "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
+    "pyarrow": ("https://arrow.apache.org/docs", None),
+    "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
+    "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
+    "python": ("https://docs.python.org/3", None),
+    "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "sklearn": ("https://scikit-learn.org/stable/", None),
+    "skopt": ("https://scikit-optimize.github.io/stable/", None),
+    "tensorflow": (
+        "https://www.tensorflow.org/api_docs/python",
+        "https://raw.githubusercontent.com/GPflow/tensorflow-intersphinx/master/tf2_py_objects.inv",
+    ),
+    "torch": ("https://pytorch.org/docs/stable/", None),
+    "torchvision": ("https://pytorch.org/vision/stable/", None),
+    "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
+}
+
+# Ray must not be imported in conf.py because third party modules initialized by
+# `import ray` will no be mocked out correctly. Perform a check here to ensure
+# ray is not imported by future maintainers.
+assert (
+    "ray" not in sys.modules
+), "If ray is already imported, we will not render documentation correctly!"

@@ -26,7 +26,7 @@ from typing import Optional
 import ray
 from ray import serve
 from ray.serve.handle import RayServeSyncHandle
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -85,11 +85,11 @@ def construct_wide_fanout_graph_with_pure_handle(
     nodes = []
     for id in range(fanout_degree):
         Node.options(name=str(id)).deploy(id, init_delay_secs=init_delay_secs)
-        nodes.append(get_global_client().get_handle(str(id), "", sync=sync_handle))
+        nodes.append(_get_global_client().get_handle(str(id), "", sync=sync_handle))
     CombineNode.options(name="combine").deploy(
         nodes, compute_delay_secs, sync_handle=sync_handle
     )
-    return get_global_client().get_handle("combine", "", sync=sync_handle)
+    return _get_global_client().get_handle("combine", "", sync=sync_handle)
 
 
 async def sanity_check_graph_deployment_with_async_handle(handle, expected_result):

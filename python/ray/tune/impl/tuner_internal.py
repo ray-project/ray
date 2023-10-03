@@ -3,7 +3,6 @@ import io
 import os
 import math
 import logging
-import warnings
 import shutil
 import tempfile
 from pathlib import Path
@@ -21,7 +20,6 @@ from typing import (
 
 import pyarrow.fs
 
-import ray
 import ray.cloudpickle as pickle
 from ray.util import inspect_serializability
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
@@ -34,7 +32,7 @@ from ray.train._internal.storage import (
     get_fs_and_path,
 )
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import LegacyExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
@@ -158,8 +156,6 @@ class TunerInternal:
         with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
             pickle.dump(self.__getstate__(), fp)
 
-        self._maybe_warn_resource_contention()
-
     def get_run_config(self) -> RunConfig:
         return self._run_config
 
@@ -189,44 +185,6 @@ class TunerInternal:
             )
         )
         return (actual_concurrency * cpus_per_trial) / (cpus_total + 0.001)
-
-    def _maybe_warn_resource_contention(self):
-        if not ray.is_initialized():
-            return
-
-        trainable = self.converted_trainable
-
-        # This may not be precise, but we don't have a great way of
-        # accessing the actual scaling config if it is being tuned.
-        scaling_config = None
-        get_scaling_config = getattr(trainable, "base_scaling_config", None)
-        if callable(get_scaling_config):
-            scaling_config = get_scaling_config()
-
-        if scaling_config is None or scaling_config._max_cpu_fraction_per_node:
-            return
-
-        has_base_dataset = getattr(trainable, "has_base_dataset", False)
-
-        cpus_per_trial = scaling_config.total_resources.get("CPU", 0)
-        cpus_left = ray.available_resources().get("CPU", 0)  # avoid div by 0
-        # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
-        # longer experimental.
-        if (
-            has_base_dataset
-            and self._expected_utilization(cpus_per_trial, cpus_left) > 0.8
-        ):
-            warnings.warn(
-                "Executing `.fit()` may leave less than 20% of CPUs in "
-                "this cluster for Dataset execution, which can lead to "
-                "resource contention or hangs. To avoid this, "
-                "reserve at least 20% of node CPUs for Dataset execution by "
-                "setting `_max_cpu_fraction_per_node = 0.8` in the Trainer "
-                "scaling_config. See "
-                "https://docs.ray.io/en/master/data/dataset-internals.html"
-                "#datasets-and-tune for more info.",
-                stacklevel=4,
-            )
 
     def _validate_trainable(
         self, trainable: TrainableType, required_trainable_name: Optional[str] = None
@@ -446,13 +404,13 @@ class TunerInternal:
         # Load the experiment results at the point where it left off.
         try:
             if _use_storage_context():
-                self._experiment_analysis = NewExperimentAnalysis(
+                self._experiment_analysis = ExperimentAnalysis(
                     experiment_checkpoint_path=path_or_uri,
                     default_metric=self._tune_config.metric,
                     default_mode=self._tune_config.mode,
                 )
             else:
-                self._experiment_analysis = ExperimentAnalysis(
+                self._experiment_analysis = LegacyExperimentAnalysis(
                     experiment_checkpoint_path=path_or_uri,
                     default_metric=self._tune_config.metric,
                     default_mode=self._tune_config.mode,
@@ -489,7 +447,7 @@ class TunerInternal:
 
         Args:
             tuner_run_config: The run config passed into the Tuner constructor.
-            trainer: The AIR Trainer instance to use with Tune, which may have
+            trainer: The Trainer instance to use with Tune, which may have
                 a RunConfig specified by the user.
             param_space: The param space passed to the Tuner.
 
@@ -604,8 +562,8 @@ class TunerInternal:
             self._process_scaling_config()
 
     def _convert_trainable(self, trainable: TrainableTypeOrTrainer) -> TrainableType:
-        """Converts an AIR Trainer to a Tune trainable and saves the converted
-        trainable. If not using an AIR Trainer, this leaves the trainable as is."""
+        """Converts a Trainer to a Tune trainable and saves the converted
+        trainable. If not using a Trainer, this leaves the trainable as is."""
         from ray.train.trainer import BaseTrainer
 
         return (
@@ -652,7 +610,7 @@ class TunerInternal:
                     "You passed `checkpoint_frequency="
                     f"{checkpoint_config.checkpoint_frequency}` to your "
                     "CheckpointConfig, but this trainer does not support "
-                    "this argument. If you passed in an AIR trainer that takes in a "
+                    "this argument. If you passed in a Trainer that takes in a "
                     "custom training loop, you will need to "
                     "report a checkpoint every `checkpoint_frequency` iterations "
                     "within your training loop using "
@@ -663,7 +621,7 @@ class TunerInternal:
                 # If we specifically support it, it's handled in the training loop,
                 # so we disable tune's bookkeeping.
                 checkpoint_config.checkpoint_frequency = 0
-            # Otherwise, the trainable is not an AIR trainer and we just keep the
+            # Otherwise, the trainable is not a Trainer and we just keep the
             # user-supplied value.
             # Function trainables will raise a runtime error later if set > 0
         if checkpoint_config.checkpoint_at_end is not None:
@@ -675,7 +633,7 @@ class TunerInternal:
                     "You passed `checkpoint_at_end="
                     f"{checkpoint_config.checkpoint_at_end}` "
                     "to your CheckpointConfig, but this trainer does not support "
-                    "this argument. If you passed in an AIR trainer that takes in a "
+                    "this argument. If you passed in a Trainer that takes in a "
                     "custom training loop, you should include one last call to "
                     "`ray.train.report(metrics=..., checkpoint=...)` "
                     "at the end of your training loop to get this behavior."
@@ -704,7 +662,6 @@ class TunerInternal:
             stop=self._run_config.stop,
             max_failures=self._run_config.failure_config.max_failures,
             checkpoint_config=checkpoint_config,
-            _experiment_checkpoint_dir=self._legacy_experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             fail_fast=(self._run_config.failure_config.fail_fast),
             progress_reporter=self._run_config.progress_reporter,
@@ -714,8 +671,13 @@ class TunerInternal:
             time_budget_s=self._tune_config.time_budget_s,
             trial_name_creator=self._tune_config.trial_name_creator,
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
-            chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
             _entrypoint=self._entrypoint,
+            # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
+            # For now, keep accepting both options.
+            local_dir=self._run_config.local_dir,
+            # Deprecated
+            chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
+            _experiment_checkpoint_dir=self._legacy_experiment_checkpoint_dir,
         )
 
     def _fit_internal(

@@ -9,7 +9,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardAgentRouteTable
 
 
 @dashboard_utils.dashboard_module(

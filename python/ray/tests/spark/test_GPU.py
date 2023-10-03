@@ -9,10 +9,13 @@ from ray.tests.spark.test_basic import RayOnSparkCPUClusterTestBase, _setup_ray_
 
 import ray
 
-pytestmark = pytest.mark.skipif(
-    not sys.platform.startswith("linux"),
-    reason="Ray on spark only supports running on Linux.",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not sys.platform.startswith("linux"),
+        reason="Ray on spark only supports running on Linux.",
+    ),
+    pytest.mark.timeout(300),
+]
 
 
 class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):

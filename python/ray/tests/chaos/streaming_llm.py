@@ -41,7 +41,7 @@ class Textbot:
 
     @fastapi_app.post("/")
     async def handle_request(self, prompt: str) -> StreamingResponse:
-        logger.info(f'Got prompt: "{prompt}"')
+        logger.info(f'Got prompt with size "{len(prompt)}"')
         remote_async_gen = await self.llm.remote(prompt)
         return StreamingResponse(
             self.local_async_gen(remote_async_gen), media_type="text/plain"

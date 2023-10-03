@@ -4,10 +4,13 @@ import os
 from pyspark.sql import SparkSession
 from ray.tests.spark.test_GPU import RayOnSparkGPUClusterTestBase
 
-pytestmark = pytest.mark.skipif(
-    not sys.platform.startswith("linux"),
-    reason="Ray on spark only supports running on Linux.",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not sys.platform.startswith("linux"),
+        reason="Ray on spark only supports running on Linux.",
+    ),
+    pytest.mark.timeout(300),
+]
 
 
 class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):

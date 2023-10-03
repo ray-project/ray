@@ -216,7 +216,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(self.callback.state["trial_fail"]["trial"].trial_id, "one")
 
     def testCallbacksEndToEnd(self):
-        def train(config):
+        def train_fn(config):
             if config["do"] == "save":
                 with tune.checkpoint_dir(0):
                     pass
@@ -230,7 +230,10 @@ class TrialRunnerCallbacks(unittest.TestCase):
         config = {"do": tune.grid_search(["save", "fail", "delay"])}
 
         tune.run(
-            train, config=config, raise_on_failed_trial=False, callbacks=[self.callback]
+            train_fn,
+            config=config,
+            raise_on_failed_trial=False,
+            callbacks=[self.callback],
         )
 
         self.assertIn("setup", self.callback.state)

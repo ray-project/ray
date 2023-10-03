@@ -301,6 +301,11 @@ The experiment state itself is checkpointed separately. See {ref}`tune-persisted
 In our example, we want to be able to resume the training from the latest checkpoint, and to save the `trained_model` in a checkpoint every iteration. To accomplish this, we will use the `session` and `Checkpoint` APIs.
 
 ```python
+import os
+import pickle
+import tempfile
+
+from ray import train
 from ray.train import Checkpoint
 
 
@@ -312,24 +317,33 @@ def training_function(config, data):
     epochs = config["epochs"]
 
     # Load the checkpoint, if there is any.
-    loaded_checkpoint = session.get_checkpoint()
-    if loaded_checkpoint is not None:
-        last_epoch = loaded_checkpoint.to_dict()["epoch"] + 1
-    else:
-        last_epoch = 0
+    checkpoint = session.get_checkpoint()
+    start_epoch = 0
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "model.pkl"), "w") as f:
+                checkpoint_dict = pickle.load(f)
+        start_epoch = checkpoint_dict["epoch"] + 1
+        model = checkpoint_dict["state"]
 
     # Simulate training & evaluation - we obtain back a "metric" and a "trained_model".
-    for epoch in range(last_epoch, epochs):
+    for epoch in range(start_epoch, epochs):
         # Simulate doing something expensive.
         time.sleep(1)
         metric = (0.1 + model["hyperparameter_a"] * epoch / 100) ** (
             -1
         ) + model["hyperparameter_b"] * 0.1 * data["A"].sum()
-        trained_model = {"state": model, "epoch": epoch}
+
+        checkpoint_dict = {"state": model, "epoch": epoch}
 
         # Create the checkpoint.
-        checkpoint = Checkpoint.from_dict({"model": trained_model})
-        session.report(metrics={"metric": metric}, checkpoint=checkpoint)
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            with open(os.path.join(temp_checkpoint_dir, "model.pkl"), "w") as f:
+                pickle.dump(checkpoint_dict, f)
+            train.report(
+                {"metric": metric},
+                checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
+            )
 
 
 tuner = Tuner(

@@ -23,8 +23,7 @@ from transformers import (
 import ray
 import ray.train
 
-from ray.train import Checkpoint
-from ray.train import ScalingConfig
+from ray.train import ScalingConfig, Checkpoint
 from ray.train.torch import TorchTrainer
 
 
@@ -119,17 +118,16 @@ def train_func(config):
         # Report checkpoint and metrics to Ray Train
         # ==============================================================
         with TemporaryDirectory() as tmpdir:
+            # Each worker saves its own checkpoint shard
             model.save_checkpoint(tmpdir)
 
             # Ensure all workers finished saving their checkpoint shard
             torch.distributed.barrier()
 
-            # Report all shards on a node from local rank 0
-            if model.local_rank == 0:
-                checkpoint = Checkpoint.from_directory(tmpdir)
-            else:
-                checkpoint = None
-            ray.train.report(metrics=eval_metric, checkpoint=checkpoint)
+            # Report checkpoint shards from each worker in parallel
+            ray.train.report(
+                metrics=eval_metric, checkpoint=Checkpoint.from_directory(tmpdir)
+            )
         # ==============================================================
 
 

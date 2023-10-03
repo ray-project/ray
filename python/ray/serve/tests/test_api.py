@@ -1,28 +1,25 @@
 import asyncio
 import os
 import sys
-from typing import Dict, Optional
+from typing import Optional
 
-from fastapi import FastAPI
-import requests
-from pydantic import BaseModel, ValidationError
 import pytest
+import requests
 import starlette.responses
-from starlette.requests import Request
+from fastapi import FastAPI
+from pydantic import BaseModel, ValidationError
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
-
 from ray import serve
-from ray.serve.built_application import BuiltApplication
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.api import call_app_builder_with_args_if_necessary
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.deployment import Application
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, RayServeHandle
-from ray.serve._private.api import call_app_builder_with_args_if_necessary
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.common import DeploymentID
 
 
 @serve.deployment()
@@ -314,7 +311,6 @@ def test_delete_deployment_group(serve_instance, blocking):
 
         # Check idempotence
         for _ in range(2):
-
             serve_instance.delete_deployments(["f", "g"], blocking=blocking)
 
             wait_for_condition(
@@ -380,20 +376,6 @@ def test_shutdown_destructor(serve_instance):
 
     B.deploy()
     B.delete()
-
-
-def test_run_get_ingress_app(serve_instance):
-    """Check that serve.run() with an app returns the ingress."""
-
-    @serve.deployment(route_prefix="/g")
-    def g():
-        return "got g"
-
-    app = BuiltApplication([g], "g")
-    ingress_handle = serve.run(app)
-
-    assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_apps([SERVE_DEFAULT_APP_NAME])
 
 
 def test_run_get_ingress_node(serve_instance):
@@ -676,19 +658,6 @@ def test_application_route_prefix_override1(serve_instance, ingress_route):
         assert requests.get(f"http://localhost:8000{ingress_route}").text == "hello"
 
 
-def test_invalid_driver_deployment_class():
-    """Test invalid driver deployment class"""
-
-    @serve.deployment(is_driver_deployment=True)
-    def f():
-        pass
-
-    with pytest.raises(ValueError):
-        f.options(num_replicas=2)
-    with pytest.raises(ValueError):
-        f.options(autoscaling_config={"min_replicas": "1"})
-
-
 class TestAppBuilder:
     @serve.deployment
     class A:
@@ -838,40 +807,6 @@ def test_no_slash_route_prefix(serve_instance):
         serve.run(f.bind(), route_prefix="no_slash")
 
 
-def test_pass_starlette_request_over_handle(serve_instance):
-    @serve.deployment
-    class Downstream:
-        async def __call__(self, request: Request) -> Dict[str, str]:
-            r = await request.json()
-            r["foo"] = request.headers["foo"]
-            r.update(request.query_params)
-            return r
-
-    @serve.deployment
-    class Upstream:
-        def __init__(self, downstream: RayServeHandle):
-            self._downstream = downstream
-
-        async def __call__(self, request: Request) -> Dict[str, str]:
-            ref = await self._downstream.remote(request)
-            return await ref
-
-    serve.run(Upstream.bind(Downstream.bind()))
-
-    r = requests.get(
-        "http://127.0.0.1:8000/",
-        json={"hello": "world"},
-        headers={"foo": "bar"},
-        params={"baz": "quux"},
-    )
-    r.raise_for_status()
-    assert r.json() == {
-        "hello": "world",
-        "foo": "bar",
-        "baz": "quux",
-    }
-
-
 def test_status_basic(serve_instance):
     # Before Serve is started, serve.status() should have an empty list of applications
     assert len(serve.status().applications) == 0
@@ -946,8 +881,8 @@ def test_status_package_unavailable_in_controller(serve_instance):
     @serve.deployment
     class MyDeployment:
         def __init__(self):
-            from sqlalchemy import create_engine
             import pymysql
+            from sqlalchemy import create_engine
 
             pymysql.install_as_MySQLdb()
 
@@ -1055,6 +990,33 @@ def test_get_deployment_handle_basic(serve_instance):
     app_handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
     assert isinstance(app_handle, DeploymentHandle)
     assert app_handle.remote().result() == "hello world!!"
+
+
+def test_deployment_handle_nested_in_obj(serve_instance):
+    """Test binding a handle within a custom object."""
+
+    class HandleWrapper:
+        def __init__(self, handle: RayServeHandle):
+            self._handle = handle
+
+        def get(self) -> DeploymentHandle:
+            return self._handle.options(use_new_handle_api=True)
+
+    @serve.deployment
+    def f() -> str:
+        return "hi"
+
+    @serve.deployment
+    class MyDriver:
+        def __init__(self, handle_wrapper: HandleWrapper):
+            self.handle_wrapper = handle_wrapper
+
+        async def __call__(self) -> str:
+            return await self.handle_wrapper.get().remote()
+
+    handle_wrapper = HandleWrapper(f.bind())
+    h = serve.run(MyDriver.bind(handle_wrapper)).options(use_new_handle_api=True)
+    assert h.remote().result() == "hi"
 
 
 if __name__ == "__main__":

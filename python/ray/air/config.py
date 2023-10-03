@@ -45,6 +45,7 @@ SampleRange = Union["Domain", Dict[str, List]]
 
 MAX = "max"
 MIN = "min"
+_DEPRECATED_VALUE = "DEPRECATED"
 
 
 logger = logging.getLogger(__name__)
@@ -89,13 +90,13 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ScalingConfig:
     """Configuration for scaling training.
 
     Args:
         trainer_resources: Resources to allocate for the trainer. If None is provided,
-            will default to 1 CPU.
+            will default to 1 CPU for most trainers.
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
@@ -111,13 +112,23 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
-        _max_cpu_fraction_per_node: [Experimental] The max fraction of CPUs per node
-            that Train will use for scheduling training actors. The remaining CPUs
-            can be used for dataset tasks. It is highly recommended that you set this
-            to less than 1.0 (e.g., 0.8) when passing datasets to trainers, to avoid
-            hangs / CPU starvation of dataset tasks. Warning: this feature is
-            experimental and is not recommended for use with autoscaling (scale-up will
-            not trigger properly).
+
+    Example:
+
+        .. code-block:: python
+
+            from ray.train import ScalingConfig
+            scaling_config = ScalingConfig(
+                # Number of distributed workers.
+                num_workers=2,
+                # Turn on/off GPU.
+                use_gpu=True,
+                # Specify resources used for trainer.
+                trainer_resources={"CPU": 1},
+                # Try to schedule workers on different nodes.
+                placement_strategy="SPREAD",
+            )
+
     """
 
     # If adding new attributes here, please also update
@@ -127,7 +138,6 @@ class ScalingConfig:
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
-    _max_cpu_fraction_per_node: Optional[Union[float, SampleRange]] = None
 
     def __post_init__(self):
         if self.resources_per_worker:
@@ -243,15 +253,7 @@ class ScalingConfig:
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles
-        if self._max_cpu_fraction_per_node is not None:
-            kwargs = {
-                "_max_cpu_fraction_per_node": self._max_cpu_fraction_per_node,
-            }
-        else:
-            kwargs = {}
-        return PlacementGroupFactory(
-            bundles, strategy=self.placement_strategy, **kwargs
-        )
+        return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
     @classmethod
     def from_placement_group_factory(
@@ -269,7 +271,6 @@ class ScalingConfig:
         placement_strategy = pgf.strategy
         resources_per_worker = None
         num_workers = None
-        max_cpu_fraction_per_node = None
 
         if worker_bundles:
             first_bundle = worker_bundles[0]
@@ -282,16 +283,12 @@ class ScalingConfig:
             num_workers = len(worker_bundles)
             resources_per_worker = first_bundle
 
-        if "_max_cpu_fraction_per_node" in pgf._kwargs:
-            max_cpu_fraction_per_node = pgf._kwargs["_max_cpu_fraction_per_node"]
-
         return ScalingConfig(
             trainer_resources=trainer_resources,
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
-            _max_cpu_fraction_per_node=max_cpu_fraction_per_node,
         )
 
 
@@ -522,7 +519,7 @@ class DatasetConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class FailureConfig:
     """Configuration related to failure handling of each training/tuning run.
 
@@ -573,7 +570,7 @@ class FailureConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class CheckpointConfig:
     """Configurable parameters for defining the checkpointing strategy.
 
@@ -608,15 +605,15 @@ class CheckpointConfig:
             This attribute is only supported by trainers that don't take in
             custom training loops. Defaults to True for trainers that support it
             and False for generic function trainables.
-        _checkpoint_keep_all_ranks: If True, will save checkpoints from all ranked
-            training workers. If False, only checkpoint from rank 0 worker is kept.
-            NOTE: This API is experimental and subject to change between minor
-            releases.
-        _checkpoint_upload_from_workers: If True, distributed workers
-            will upload their checkpoints to cloud directly. This is to avoid the
-            need for transferring large checkpoint files to the training worker
-            group coordinator for persistence. NOTE: This API is experimental and
-            subject to change between minor releases.
+        _checkpoint_keep_all_ranks: This experimental config is deprecated.
+            This behavior is now controlled by reporting `checkpoint=None`
+            in the workers that shouldn't persist a checkpoint.
+            For example, if you only want the rank 0 worker to persist a checkpoint
+            (e.g., in standard data parallel training), then you should save and
+            report a checkpoint if `ray.train.get_context().get_world_rank() == 0`
+            and `None` otherwise.
+        _checkpoint_upload_from_workers: This experimental config is deprecated.
+            Uploading checkpoint directly from the worker is now the default behavior.
     """
 
     num_to_keep: Optional[int] = None
@@ -624,10 +621,29 @@ class CheckpointConfig:
     checkpoint_score_order: Optional[str] = MAX
     checkpoint_frequency: Optional[int] = 0
     checkpoint_at_end: Optional[bool] = None
-    _checkpoint_keep_all_ranks: Optional[bool] = False
-    _checkpoint_upload_from_workers: Optional[bool] = False
+    _checkpoint_keep_all_ranks: Optional[bool] = _DEPRECATED_VALUE
+    _checkpoint_upload_from_workers: Optional[bool] = _DEPRECATED_VALUE
 
     def __post_init__(self):
+        if self._checkpoint_keep_all_ranks != _DEPRECATED_VALUE:
+            raise DeprecationWarning(
+                "The experimental `_checkpoint_keep_all_ranks` config is deprecated. "
+                "This behavior is now controlled by reporting `checkpoint=None` "
+                "in the workers that shouldn't persist a checkpoint. "
+                "For example, if you only want the rank 0 worker to persist a "
+                "checkpoint (e.g., in standard data parallel training), "
+                "then you should save and report a checkpoint if "
+                "`ray.train.get_context().get_world_rank() == 0` "
+                "and `None` otherwise."
+            )
+
+        if self._checkpoint_upload_from_workers != _DEPRECATED_VALUE:
+            raise DeprecationWarning(
+                "The experimental `_checkpoint_upload_from_workers` config is "
+                "deprecated. Uploading checkpoint directly from the worker is "
+                "now the default behavior."
+            )
+
         if self.num_to_keep is not None and self.num_to_keep <= 0:
             raise ValueError(
                 f"Received invalid num_to_keep: "
@@ -703,7 +719,7 @@ class CheckpointConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class RunConfig:
     """Runtime configuration for training and tuning runs.
 
@@ -714,32 +730,32 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: Path to store results at. Can be a local directory or
+        storage_path: [Beta] Path to store results at. Can be a local directory or
             a destination on cloud storage. If Ray storage is set up,
             defaults to the storage location. Otherwise, this defaults to
             the local ``~/ray_results`` directory.
-        stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
-            for more info. Stoppers should be serializable.
-        callbacks: Callbacks to invoke.
-            Refer to ray.tune.callback.Callback for more info.
-            Callbacks should be serializable.
-            Currently only stateless callbacks are supported for resumed runs.
-            (any state of the callback will not be checkpointed by Tune
-            and thus will not take effect in resumed runs).
         failure_config: Failure mode configuration.
-        sync_config: Configuration object for syncing. See train.SyncConfig.
         checkpoint_config: Checkpointing configuration.
-        progress_reporter: Progress reporter for reporting
-            intermediate experiment progress. Defaults to CLIReporter if
-            running in command-line, or JupyterNotebookReporter if running in
-            a Jupyter notebook.
+        sync_config: Configuration object for syncing. See train.SyncConfig.
         verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = default, 2 = verbose. Defaults to 1.
             If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
             uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results.
-        log_to_file: Log stdout and stderr to files in
+        stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
+            for more info. Stoppers should be serializable.
+        callbacks: [DeveloperAPI] Callbacks to invoke.
+            Refer to ray.tune.callback.Callback for more info.
+            Callbacks should be serializable.
+            Currently only stateless callbacks are supported for resumed runs.
+            (any state of the callback will not be checkpointed by Tune
+            and thus will not take effect in resumed runs).
+        progress_reporter: [DeveloperAPI] Progress reporter for reporting
+            intermediate experiment progress. Defaults to CLIReporter if
+            running in command-line, or JupyterNotebookReporter if running in
+            a Jupyter notebook.
+        log_to_file: [DeveloperAPI] Log stdout and stderr to files in
             trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
             and `trialdir/stderr`, respectively. If this is a single string,
@@ -753,13 +769,13 @@ class RunConfig:
     name: Optional[str] = None
     storage_path: Optional[str] = None
     storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
-    callbacks: Optional[List["Callback"]] = None
-    stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None
-    sync_config: Optional["SyncConfig"] = None
     checkpoint_config: Optional[CheckpointConfig] = None
-    progress_reporter: Optional["ProgressReporter"] = None
+    sync_config: Optional["SyncConfig"] = None
     verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
+    stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
+    callbacks: Optional[List["Callback"]] = None
+    progress_reporter: Optional["ProgressReporter"] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated
@@ -787,10 +803,10 @@ class RunConfig:
 
         # Convert Paths to strings
         if isinstance(self.local_dir, Path):
-            self.local_dir = str(self.local_dir)
+            self.local_dir = self.local_dir.as_posix()
 
         if isinstance(self.storage_path, Path):
-            self.storage_path = str(self.storage_path)
+            self.storage_path = self.storage_path.as_posix()
 
         # TODO(justinvyu): [code_removal] Legacy stuff below.
         from ray.tune.utils.util import _resolve_storage_path

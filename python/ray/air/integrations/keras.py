@@ -103,7 +103,7 @@ class _Callback(KerasCallback):
 
 @PublicAPI(stability="alpha")
 class ReportCheckpointCallback(_Callback):
-    """Keras callback for Ray AIR reporting and checkpointing.
+    """Keras callback for Ray Train reporting and checkpointing.
 
     .. note::
         Metrics are always reported with checkpoints, even if the event isn't specified

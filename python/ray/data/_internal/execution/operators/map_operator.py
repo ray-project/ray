@@ -63,7 +63,7 @@ class MapOperator(OneToOneOperator, ABC):
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
         # Object store allocation stats.
-        self._metrics = _ObjectStoreMetrics(alloc=0, freed=0, cur=0, peak=0)
+        self._metrics = _ObjectStoreMetrics(alloc=0, freed=0, cur=0, peak=0, spilled=0)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
@@ -75,6 +75,11 @@ class MapOperator(OneToOneOperator, ABC):
         # All active `MetadataOpTask`s.
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
+        # Keep track of all finished streaming generators.
+        # TODO(hchen): This is a workaround for a bug of lineage reconstruction.
+        # When the streaming generator ref is GC'ed, the objects it generated
+        # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
+        self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
         super().__init__(name, input_op)
 
     @classmethod
@@ -270,11 +275,23 @@ class MapOperator(OneToOneOperator, ABC):
         def _task_done_callback(task_index, inputs):
             # We should only destroy the input bundle when the whole task is done.
             # Otherwise, if the task crashes in the middle, we can't rerun it.
+            blocks = [input[0] for input in inputs.blocks]
+            metadata = [input[1] for input in inputs.blocks]
+            ctx = ray.data.context.DataContext.get_current()
+            if ctx.enable_get_object_locations_for_metrics:
+                locations = ray.experimental.get_object_locations(blocks)
+            else:
+                locations = {ref: {"did_spill": False} for ref in blocks}
+            for block, meta in zip(blocks, metadata):
+                if locations[block]["did_spill"]:
+                    self._metrics.spilled += meta.size_bytes
+
             inputs.destroy_if_owned()
             freed = inputs.size_bytes()
             self._metrics.freed += freed
             self._metrics.cur -= freed
-            self._data_tasks.pop(task_index)
+            task = self._data_tasks.pop(task_index)
+            self._finished_streaming_gens.append(task.get_waitable())
             # Notify output queue that this task is complete.
             self._output_queue.notify_task_completed(task_index)
             if task_done_callback:
@@ -342,9 +359,10 @@ class MapOperator(OneToOneOperator, ABC):
     def get_map_transformer(self) -> MapTransformer:
         return self._map_transformer
 
-    @abstractmethod
     def shutdown(self):
-        pass
+        self._data_tasks.clear()
+        self._metadata_tasks.clear()
+        self._finished_streaming_gens.clear()
 
     @abstractmethod
     def current_resource_usage(self) -> ExecutionResources:
@@ -367,12 +385,14 @@ class _ObjectStoreMetrics:
     freed: int
     cur: int
     peak: int
+    spilled: int
 
     def to_metrics_dict(self) -> Dict[str, int]:
         return {
             "obj_store_mem_alloc": self.alloc,
             "obj_store_mem_freed": self.freed,
             "obj_store_mem_peak": self.peak,
+            "obj_store_mem_spilled": self.spilled,
         }
 
 

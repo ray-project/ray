@@ -2,7 +2,7 @@ from pathlib import Path
 from ray import train
 from ray.train import ScalingConfig, RunConfig
 from ray.train.torch import TorchTrainer
-from ray.air.integrations.mlflow import MLflowLoggerCallback
+from ray.tune.logger.mlflow import MLflowLoggerCallback
 from ray.tune.logger import TBXLoggerCallback
 
 

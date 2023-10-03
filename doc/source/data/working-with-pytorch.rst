@@ -77,10 +77,6 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
     )
     trainer.fit()
 
-.. testoutput::
-    :hide:
-
-    ...
 
 For more details, see the :ref:`Ray Train user guide <data-ingest-torch>`.
 

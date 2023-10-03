@@ -105,7 +105,7 @@ class LightningPredictor(TorchPredictor):
 
                     # ...
 
-                # After the training is finished, LightningTrainer saves AIR
+                # After the training is finished, LightningTrainer saves
                 # checkpoints in the result directory, for example:
                 # ckpt_dir = "{storage_path}/LightningTrainer_.*/checkpoint_000000"
 
