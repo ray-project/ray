@@ -239,7 +239,7 @@ test_serve() {
       --test_env=USERPROFILE="${USERPROFILE}" \
       --test_output=streamed \
       -- \
-      ${args[@]};
+      "${args[@]}";
   fi
 }
 
