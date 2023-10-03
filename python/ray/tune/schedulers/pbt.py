@@ -9,7 +9,6 @@ import warnings
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
-from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
 from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
 from ray.train._internal.storage import _use_storage_context
@@ -692,11 +691,7 @@ class PopulationBasedTraining(FIFOScheduler):
             else:
                 logger.debug(f"Instructing {trial} to save.")
                 state.last_checkpoint = tune_controller._schedule_trial_save(
-                    trial,
-                    CheckpointStorage.PERSISTENT
-                    if _use_storage_context()
-                    else CheckpointStorage.MEMORY,
-                    result=state.last_result,
+                    trial, result=state.last_result
                 )
             self._num_checkpoints += 1
         else:
@@ -1181,16 +1176,11 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
             "Configuration will be changed to {}.".format(step, new_config)
         )
 
-        result = tune_controller._schedule_trial_save(
-            trial, CheckpointStorage.PERSISTENT, result=result
+        result = tune_controller._schedule_trial_save(trial, result=result)
+        training_result = result.resolve()
+        trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
+            training_result
         )
-        if _use_storage_context():
-            training_result = result.resolve()
-            trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
-                training_result
-            )
-        else:
-            trial.on_checkpoint(result)
 
         new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
 
