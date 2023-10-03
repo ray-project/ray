@@ -26,7 +26,7 @@ from ray.dashboard.optional_deps import aiohttp, hdrs
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 def setup_static_dir():
@@ -87,7 +87,7 @@ class HttpServerDashboardHead:
                 logger.warning(ex)
             else:
                 raise ex
-        dashboard_optional_utils.ClassMethodRouteTable.bind(self)
+        dashboard_optional_utils.DashboardHeadRouteTable.bind(self)
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
@@ -174,7 +174,7 @@ class HttpServerDashboardHead:
     async def run(self, modules):
         # Bind http routes of each module.
         for c in modules:
-            dashboard_optional_utils.ClassMethodRouteTable.bind(c)
+            dashboard_optional_utils.DashboardHeadRouteTable.bind(c)
 
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.

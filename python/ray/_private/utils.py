@@ -1880,19 +1880,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
     return asyncio.get_event_loop()
 
 
-def make_asyncio_event_version_compat(
-    event_loop: asyncio.AbstractEventLoop,
-) -> asyncio.Event:
-    # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
-    # removed it altogether. Construct an `asyncio.Event` accordingly.
-    if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
-        event = asyncio.Event()
-    else:
-        event = asyncio.Event(loop=event_loop)
-
-    return event
-
-
 def get_entrypoint_name():
     """Get the entrypoint of the current script."""
     prefix = ""

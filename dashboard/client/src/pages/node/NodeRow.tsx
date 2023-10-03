@@ -141,7 +141,12 @@ export const NodeRow = ({
       </TableCell>
       <TableCell>
         {raylet.state !== "DEAD" && (
-          <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
+          <Link
+            to={`/logs/${encodeURIComponent(logUrl)}`}
+            style={{ textDecoration: "none" }}
+          >
+            Log
+          </Link>
         )}
       </TableCell>
       <TableCell>
@@ -254,11 +259,16 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
-        <Link to={workerLogUrl} target="_blank">
-          Logs
+        <Link
+          to={workerLogUrl}
+          target="_blank"
+          style={{ textDecoration: "none" }}
+        >
+          Log
         </Link>
         <br />
         <CpuStackTraceLink pid={pid} ip={ip} type="" />
+        <br />
         <CpuProfilingLink pid={pid} ip={ip} type="" />
         <br />
       </TableCell>
