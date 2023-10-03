@@ -428,7 +428,7 @@ requests==2.31.0
 requests-oauthlib==1.3.1
 requests-toolbelt==1.0.0
 responses==0.13.4
-restrictedpython==6.1
+restrictedpython==6.2
 retry-decorator==1.1.1
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
