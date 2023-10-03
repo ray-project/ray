@@ -277,13 +277,14 @@ class DataParallelTrainer(BaseTrainer):
         self._train_loop_config = train_loop_config
 
         if dataset_config is None:
-            self._data_config = DataConfig()
+            dataset_config = DataConfig()
 
         if not isinstance(dataset_config, DataConfig):
             raise ValueError(
                 "`dataset_config` must be an instance of ray.train.DataConfig, "
                 f"was: {dataset_config}"
             )
+        self._data_config = dataset_config
 
         backend_config = (
             backend_config if backend_config is not None else BackendConfig()
