@@ -26,9 +26,8 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-
-# from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
-from ray.rllib.evaluation.metrics import summarize_episodes
+from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -643,7 +642,7 @@ class PPO(Algorithm):
             if self.evaluation_dataset is not None:
                 return {"evaluation": self._run_offline_evaluation()}
 
-            # Sync weights to the evaluation WorkerSet.
+            # Sync weights to the evaluation worker set.
             if self.evaluation_workers is not None:
                 self.evaluation_workers.sync_weights(
                     from_worker_or_learner_group=self.workers.local_worker()
@@ -686,172 +685,124 @@ class PPO(Algorithm):
                 # How many episodes/timesteps do we need to run?
                 # In "auto" mode (only for parallel eval + training): Run as long
                 # as training lasts.
-                unit = self.config.evaluation_duration_unit
-                eval_cfg = self.evaluation_config
-                rollout = eval_cfg.rollout_fragment_length
-                # rllnum_envs = eval_cfg.num_envs_per_worker
-                # TODO (simon):
-                auto = self.config.evaluation_duration == "auto"
                 duration = (
                     self.config.evaluation_duration
-                    if not auto
+                    if not self.config.evaluation_duration == "auto"
                     else (self.config.evaluation_num_workers or 1)
-                    * (1 if unit == "episodes" else rollout)
+                    * (
+                        1
+                        if self.config.evaluation_duration_unit == "episodes"
+                        else self.evaluation_config.rollout_fragment_length
+                    )
                 )
 
                 logger.info(
-                    f"Evaluating current state of {self} for {duration} {unit}."
+                    f"Evaluating current state of {self} for {duration} "
+                    f"{self.config.evaluation_duration_unit}."
                 )
 
                 metrics = None
+                workers = None
                 all_batches = []
                 # No evaluation worker set ->
                 # Do evaluation using the local worker. Expect error due to the
                 # local worker not having an env.
+                # TODO (sven): Shall we instead simply test for an env on the local
+                # worker?
                 if self.evaluation_workers is None:
-                    # Run n number of timesteps if unit is "timesteps".
-                    if self.config.evaluation_duration_unit != "episodes":
-                        sample = self.workers.local_worker().sample(
-                            num_timesteps=self.config.evaluation_duration
-                        )
+                    workers = self.workers
                     # Run m number of episodes if unit is "episodes".
-                    else:
+                    if self.config.evaluation_duration_unit == "episodes":
                         sample = self.workers.local_worker().sample(
-                            num_episodes=self.config.evaluation_duration
+                            num_episodes=duration,
                         )
-                    batches = []
-                    # TODO (simon): We need this in training and evaluation, pls
-                    # refactor.
-                    for episode in sample:
-                        if episode.is_terminated or episode.is_truncated:
-                            batches.append(episode.to_sample_batch())
-                        else:
-                            # We need to convert to arrays first.
-                            episode.observations = np.array(episode.observations)
-                            episode.actions = np.array(episode.actions)
-                            episode.rewards = np.array(episode.rewards)
-                            episode.render_images = np.array(
-                                episode.render_images, dtype=np.uint8
-                            )
-                            batches.append(episode.to_sample_batch())
-                    batch = concat_samples(batches)
-                    del batch[SampleBatch.INFOS]
-                    batch = batch.as_multi_agent()
-                    if self.reward_estimators:
-                        all_batches.append(batch)
-                    # metrics = collect_metrics(
-                    #     self.workers,
-                    #     keep_custom_metrics=eval_cfg.keep_per_episode_custom_metrics,
-                    #     timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
-                    # )
-                    # TODO (simon): Do we still need this here? We call below for all
-                    # workers (local worker included) the get_metrics
-                    metrics = self.workers.local_worker().get_metrics()
+                    # Run n number of timesteps if unit is "timesteps".
+                    else:
+                        sample = workers.local_worker().sample(
+                            num_timesteps=duration,
+                        )
+                    # Postprocessing expects `List[List[Episode]]` and single worker
+                    # only returns `List[Episode]`.
+                    batch = postprocess_episodes_to_sample_batch([sample])
 
                 # Evaluation worker set only has local worker.
                 elif self.evaluation_workers.num_remote_workers() == 0:
-                    # Run n number of timesteps if unit is "timesteps".
-                    if self.config.evaluation_duration_unit != "episodes":
-                        sample = self.evaluation_workers.local_worker().sample(
-                            num_timesteps=self.config.evaluation_duration
-                        )
+                    workers = self.evaluation_workers
                     # Run m number of episodes if unit is "episodes".
-                    else:
-                        sample = self.evaluation_workers.local_worker().sample(
-                            num_episodes=self.config.evaluation_duration
+                    if self.config.evaluation_duration_unit == "episodes":
+                        sample = self.workers.local_worker().sample(
+                            num_episodes=duration,
                         )
-                    batches = []
-                    # TODO (simon): We need this in training and evaluation,
-                    #  pls refactor.
-                    for episode in sample:
-                        if episode.is_terminated or episode.is_truncated:
-                            batches.append(episode.to_sample_batch())
-                        else:
-                            # We need to convert to arrays first.
-                            episode.observations = np.array(episode.observations)
-                            episode.actions = np.array(episode.actions)
-                            episode.rewards = np.array(episode.rewards)
-                            episode.render_images = np.array(
-                                episode.render_images, dtype=np.uint8
-                            )
-                            batches.append(episode.to_sample_batch())
-                    batch = concat_samples(batches)
-                    del batch[SampleBatch.INFOS]
-                    batch = batch.as_multi_agent()
-                    if self.reward_estimators:
-                        all_batches.append(batch)
+                    # Run n number of timesteps if unit is "timesteps".
+                    else:
+                        sample = workers.local_worker().sample(
+                            num_timesteps=duration,
+                        )
+                    # Postprocessing expects `List[List[Episode]]` and single worker
+                    # only returns `List[Episode]`.
+                    batch = postprocess_episodes_to_sample_batch([sample])
 
-                # Evaluation worker set has n remote workers.
+                # Evaluation worker set has k remote workers.
                 elif self.evaluation_workers.num_healthy_remote_workers() > 0:
-                    # Distribute number of units evenly on workers.
-
+                    # Distribute number of units evenly on evaluation workers.
+                    workers = self.evaluation_workers
                     # If there are less units than workers, run on each worker a unit.
                     if (
-                        self.config.evaluation_duration
-                        < self.evaluation_workers.num_healthy_remote_workers()
+                        duration
+                        < workers.num_healthy_remote_workers()
                         * self.evaluation_config.num_envs_per_worker
                     ):
                         selected_eval_worker_ids = [
                             worker_id
                             for unit, worker_id in enumerate(
-                                self.evaluation_workers.healthy_worker_ids()
+                                workers.healthy_worker_ids()
                             )
                             if unit * self.evaluation_config.num_envs_per_worker
-                            <= self.config.evaluation_duration
+                            <= duration
                         ]
-                        units = 1
+                        duration_per_worker = 1
                         remaining_units = 0
                     # In the other case distribute evenly with possible rest.
                     else:
-                        selected_eval_worker_ids = (
-                            self.evaluation_workers.healthy_worker_ids()
-                        )
-                        units = self.config.evaluation_duration // len(
-                            selected_eval_worker_ids
-                        )
-                        remaining_units = self.config.evaluation_duration % len(
-                            selected_eval_worker_ids
-                        )
+                        selected_eval_worker_ids = workers.healthy_worker_ids()
+                        duration_per_worker = duration // len(selected_eval_worker_ids)
+                        remaining_units = duration % len(selected_eval_worker_ids)
 
+                    # Run m number of episodes if unit is "episodes"
                     if self.config.evaluation_duration_unit == "episodes":
-                        samples = self.evaluation_workers.foreach_worker(
-                            lambda w: w.sample(num_episodes=units),
+                        samples = workers.foreach_worker(
+                            lambda w: w.sample(num_episodes=duration_per_worker),
                             local_worker=False,
                             remote_worker_ids=selected_eval_worker_ids,
                             timeout_seconds=self.config.evaluation_sample_timeout_s,
                         )
+                        # If there remain episodes run them on as many workers as
+                        # needed.
                         if remaining_units > 0:
-                            samples.append(
-                                self.evaluation_workers.foreach_worker(
-                                    lambda w: w.sample(num_episodes=units),
-                                    local_worker=False,
-                                    remote_worker_ids=selected_eval_worker_ids[
-                                        remaining_units
-                                    ],
-                                    timeout_seconds=(
-                                        self.config.evaluation_sample_timeout_s,
-                                    ),
-                                )
+                            samples + workers.foreach_worker(
+                                lambda w: w.sample(num_episodes=remaining_units),
+                                local_worker=False,
+                                remote_worker_ids=selected_eval_worker_ids[
+                                    :remaining_units
+                                ],
+                                timeout_seconds=self.config.evaluation_sample_timeout_s,
                             )
+                    # Run n number of timesteps if unit is "timesteps".
                     else:
-                        samples = self.evaluation_workers.foreach_worker(
-                            lambda w: w.sample(num_timesteps=units),
+                        samples = workers.foreach_worker(
+                            lambda w: w.sample(num_timesteps=duration_per_worker),
                             local_worker=False,
                             remote_worker_ids=selected_eval_worker_ids,
                             timeout_seconds=self.config.evaluation_sample_timeout_s,
                         )
                         if remaining_units > 0:
-                            samples.append(
-                                self.evaluation_workers.foreach_worker(
-                                    lambda w: w.sample(num_timesteps=units),
-                                    local_worker=False,
-                                    remote_worker_ids=selected_eval_worker_ids[
-                                        :remaining_units
-                                    ],
-                                    timeout_seconds=(
-                                        self.config.evaluation_sample_timeout_s,
-                                    ),
-                                )
+                            samples + workers.foreach_worker(
+                                lambda w: w.sample(num_timesteps=duration_per_worker),
+                                local_worker=False,
+                                remote_worker_ids=selected_eval_worker_ids[
+                                    :remaining_units
+                                ],
+                                timeout_seconds=self.config.evaluation_sample_timeout_s,
                             )
 
                     # Note that, if we have `remaining_units=0` the last length is zero.
@@ -868,32 +819,12 @@ class PPO(Algorithm):
                                 " If your episodes don't terminate easily, you may "
                                 "also want to set `evaluation_duration_unit` to "
                                 "'timesteps' (instead of 'episodes')."
-                                if unit == "episodes"
+                                if self.config.evaluation_duration_unit == "episodes"
                                 else ""
                             )
                         )
 
-                    # TODO (simon): We need this in training and evaluation,
-                    # pls refactor.
-                    batches = []
-                    for sample in samples:
-                        for episode in sample:
-                            if episode.is_terminated or episode.is_truncated:
-                                batches.append(episode.to_sample_batch())
-                            else:
-                                # We need to convert to arrays first.
-                                episode.observations = np.array(episode.observations)
-                                episode.actions = np.array(episode.actions)
-                                episode.rewards = np.array(episode.rewards)
-                                episode.render_images = np.array(
-                                    episode.render_images, dtype=np.uint8
-                                )
-                                batches.append(episode.to_sample_batch())
-                    batch = concat_samples(batches)
-                    del batch[SampleBatch.INFOS]
-                    batch = batch.as_multi_agent()
-                    if self.reward_estimators:
-                        all_batches.append(batch)
+                    batch = postprocess_episodes_to_sample_batch(samples)
 
                     logger.info(
                         f"Ran {self.config.evaluation_duration} "
@@ -904,20 +835,18 @@ class PPO(Algorithm):
                     # Wait for next iteration.
                     pass
 
+                if self.reward_estimators:
+                    all_batches.append(batch)
+
                 if metrics is None:
-                    metrics = self.evaluation_workers.foreach_worker(
-                        func=lambda w: w.get_metrics(),
-                        timeout_seconds=(
-                            self.evaluation_config.metrics_episode_collection_timeout_s
-                        ),
-                    )
-                    episodes = []
-                    for episode in metrics:
-                        episodes.extend(episode)
-                    metrics = summarize_episodes(
-                        episodes,
+                    # Collect metrics for any of the above cases.
+                    metrics = collect_metrics(
+                        workers,
                         keep_custom_metrics=(
                             self.evaluation_config.keep_per_episode_custom_metrics
+                        ),
+                        timeout_seconds=(
+                            self.evaluation_config.metrics_episode_collection_timeout_s
                         ),
                     )
 

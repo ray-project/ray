@@ -101,8 +101,8 @@ class TestPPO(unittest.TestCase):
             .callbacks(MyCallbacks)
             .rl_module(_enable_rl_module_api=True)
             .evaluation(
-                evaluation_num_workers=1,
-                evaluation_duration=2,
+                evaluation_num_workers=2,
+                evaluation_duration=3,
                 evaluation_duration_unit="episodes",
             )
         )

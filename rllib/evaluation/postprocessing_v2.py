@@ -2,10 +2,12 @@ import numpy as np
 import scipy
 import tree
 
+from typing import List
+
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import concat_samples, DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
@@ -23,6 +25,33 @@ class Postprocessing:
 
     ADVANTAGES = "advantages"
     VALUE_TARGETS = "value_targets"
+
+
+@DeveloperAPI
+def postprocess_episodes_to_sample_batch(samples: List[List[_Episode]]) -> SampleBatch:
+    """Converts the result from sampling with `EnvRunner` to a `SampleBatch'.
+
+    Once the `SampleBatch` will be deprecated this function will be
+    deprecated, too.
+    """
+    batches = []
+    for sample in samples:
+        for episode in sample:
+            # If the episode is terminated or truncated it is
+            # ready to be converted to a `SampleBatch`
+            if episode.is_terminated or episode.is_truncated:
+                batches.append(episode.to_sample_batch())
+            # We need to convert to arrays first.
+            else:
+                episode.convert_lists_to_numpy()
+                batches.append(episode.to_sample_batch())
+    batch = concat_samples(batches)
+    # This is right now the default to work on sample batches without
+    # infos.
+    del batch[SampleBatch.INFOS]
+
+    # SampleBatch handling in the Learner API runs on `MultiAgentSampleBatch`.
+    return batch.as_multi_agent()
 
 
 @DeveloperAPI

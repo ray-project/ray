@@ -506,14 +506,7 @@ class _Episode:
         assert len(self.rewards) == (self.t - self.t_started)
         # Convert all lists to numpy arrays, if we are terminated.
         if self.is_done:
-            self.observations = np.array(self.observations)
-            self.actions = np.array(self.actions)
-            self.rewards = np.array(self.rewards)
-            # TODO (simon): Check, if this is suitable for infos.
-            self.infos = np.array(self.infos)
-            self.render_images = np.array(self.render_images, dtype=np.uint8)
-            for k, v in self.extra_model_outputs.items():
-                self.extra_model_outputs[k] = np.array(v)
+            self.convert_lists_to_numpy()
 
     @property
     def is_done(self):
@@ -524,6 +517,17 @@ class _Episode:
         succeeded via `self.create_successor()`.
         """
         return self.is_terminated or self.is_truncated
+
+    def convert_lists_to_numpy(self):
+        """Converts list attributes to numpy arrays."""
+
+        self.observations = np.array(self.observations)
+        self.actions = np.array(self.actions)
+        self.rewards = np.array(self.rewards)
+        self.infos = np.array(self.infos)
+        self.render_images = np.array(self.render_images, dtype=np.uint8)
+        for k, v in self.extra_model_outputs.items():
+            self.extra_model_outputs[k] = np.array(v)
 
     def create_successor(self) -> "_Episode":
         """Returns a successor episode chunk (of len=0) continuing with this one.
