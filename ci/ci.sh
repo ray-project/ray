@@ -207,14 +207,12 @@ prepare_docker() {
 }
 
 # For running Python tests on Windows.
-test_python() {
+test_serve() {
   local pathsep=":" args=()
   if [ "${OSTYPE}" = msys ]; then
     pathsep=";"
     args+=(
       python/ray/serve/...
-      python/ray/tests/...
-      python/ray/train:test_windows
       -python/ray/serve/tests:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
       -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
@@ -223,6 +221,36 @@ test_python() {
       -python/ray/serve/tests:test_air_integrations_gpu
       -python/ray/serve/tests:test_fastapi
       -python/ray/serve/tests:test_get_deployment # address violation
+    )
+  fi
+  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
+    install_ray
+
+    # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
+    # It's unclear to me if this should be necessary, but this is to make tests run for now.
+    # Check why this issue doesn't arise on Linux/Mac.
+    # Ideally importing ray.cloudpickle should import pickle5 automatically.
+    # shellcheck disable=SC2046,SC2086
+    bazel test --config=ci \
+      --build_tests_only $(./ci/run/bazel_export_options) \
+      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
+      --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_output=streamed \
+      -- \
+      ${args[@]};
+  fi
+}
+
+# For running Python tests on Windows.
+test_python() {
+  local pathsep=":" args=()
+  if [ "${OSTYPE}" = msys ]; then
+    pathsep=";"
+    args+=(
+      python/ray/tests/...
+      python/ray/train:test_windows
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
