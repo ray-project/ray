@@ -26,6 +26,19 @@ steps:
     depends_on: rllibbuild
     job_env: forge
 
+  - label: ":brain: rllib: examples"
+    tags: rllib
+    parallelism: 3
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --only-tags examples
+        --except-tags multi_gpu,gpu 
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+    depends_on: rllibbuild
+    job_env: forge
+
   - label: ":brain: rllib: learning tests tf2-eager-tracing"
     tags: rllib
     parallelism: 2
@@ -36,6 +49,18 @@ steps:
         --only-tags learning_tests_discrete,learning_tests_continuous,crashing_cartpole,stateless_cartpole
         --except-tags fake_gpus,torch_only,multi_gpu,no_tf_eager_tracing
         --test-arg --framework=tf2
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: rlmodule tests"
+    tags: rllib_directly
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --parallelism-per-worker 3
+        --only-tags rlm
+        --test-env RLLIB_ENABLE_RL_MODULE=1
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
     depends_on: rllibbuild
     job_env: forge
 
@@ -69,6 +94,20 @@ steps:
         --only-tags tf2_only
         --except-tags fake_gpus,torch_only,multi_gpu,no_tf_eager_tracing
         --test-arg --framework=tf2
+        --skip-ray-installation # reuse the same docker image as the previous run
+
+      # examples
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib  --run-flaky-tests --parallelism-per-worker 3
+        --only-tags examples
+        --except-tags multi_gpu,gpu 
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+        --skip-ray-installation # reuse the same docker image as the previous run
+
+      # rlmodule tests
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests --parallelism-per-worker 3
+        --only-tags rlm
+        --test-env RLLIB_ENABLE_RL_MODULE=1
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         --skip-ray-installation # reuse the same docker image as the previous run
     depends_on: rllibbuild
     soft_fail: true
