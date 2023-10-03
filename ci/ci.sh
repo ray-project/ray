@@ -206,7 +206,7 @@ prepare_docker() {
     popd
 }
 
-# For running Python tests on Windows.
+# For running Serve tests on Windows.
 test_serve() {
   local pathsep=":" args=()
   if [ "${OSTYPE}" = msys ]; then
@@ -243,7 +243,7 @@ test_serve() {
   fi
 }
 
-# For running Python tests on Windows.
+# For running Python tests on Windows (excluding Serve).
 test_python() {
   local pathsep=":" args=()
   if [ "${OSTYPE}" = msys ]; then
