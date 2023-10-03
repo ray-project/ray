@@ -81,16 +81,21 @@ class LimitOperator(OneToOneOperator):
         if self._limit_reached():
             self.all_inputs_done()
 
-        # Estimate number of output bundles
-        # Check the case where _limit > # of input rows
-        num_inputs = self.input_dependencies[0].num_outputs_total()
-        estimated_total_output_rows = min(
-            self._limit, self._consumed_rows / self._cur_output_bundles * num_inputs
-        )
-        # _consumed_rows / _limit is roughly _cur_output_bundles / total output blocks
-        self._estimated_output_blocks = round(
-            estimated_total_output_rows / self._consumed_rows * self._cur_output_bundles
-        )
+        # We cannot estimate if we have only consumed empty blocks
+        if self._consumed_rows > 0:
+            # Estimate number of output bundles
+            # Check the case where _limit > # of input rows
+            num_inputs = self.input_dependencies[0].num_outputs_total()
+            estimated_total_output_rows = min(
+                self._limit, self._consumed_rows / self._cur_output_bundles * num_inputs
+            )
+            # _consumed_rows / _limit is roughly equal to
+            # _cur_output_bundles / total output blocks
+            self._estimated_output_blocks = round(
+                estimated_total_output_rows
+                / self._consumed_rows
+                * self._cur_output_bundles
+            )
 
     def has_next(self) -> bool:
         return len(self._buffer) > 0

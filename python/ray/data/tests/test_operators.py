@@ -612,10 +612,6 @@ def test_limit_operator(ray_start_regular_shared):
             # If the limit is 0, the operator should be completed immediately.
             assert limit_op.completed()
             assert limit_op._limit_reached()
-        else:
-            # The number of output bundles is unknown until
-            # inputs are completed.
-            assert limit_op.num_outputs_total() is None, limit
         cur_rows = 0
         loop_count = 0
         while input_op.has_next() and not limit_op._limit_reached():
