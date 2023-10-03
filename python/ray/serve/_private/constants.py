@@ -193,11 +193,6 @@ SERVE_LOG_RECORD_FORMAT = {
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
-# Request ID used for logging. Can be provided as a request
-# header and will always be returned as a response header.
-# DEPRECATED: use `X-Request-Id` instead
-RAY_SERVE_REQUEST_ID_HEADER = "RAY_SERVE_REQUEST_ID"
-
 # Feature flag to enable new handle API.
 RAY_SERVE_ENABLE_NEW_HANDLE_API = (
     os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "0") == "1"
