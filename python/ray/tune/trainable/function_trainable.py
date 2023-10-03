@@ -6,7 +6,6 @@ import sys
 import threading
 import time
 import uuid
-import warnings
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
@@ -20,9 +19,19 @@ from ray.air.constants import (
     _RESULT_FETCH_TIMEOUT,
     TIME_THIS_ITER_S,
 )
+import ray.train
+from ray.train._internal.checkpoint_manager import _TrainingResult
+from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.session import (
+    init_session,
+    get_session,
+    shutdown_session,
+    _TrainSession,
+    TrialInfo,
+)
 from ray.tune import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.trainable import session
+from ray.tune.trainable import session as legacy_tune_session
 from ray.tune.result import (
     DEFAULT_METRIC,
     RESULT_DUPLICATE,
@@ -35,7 +44,7 @@ from ray.tune.utils import (
     _detect_reporter,
 )
 from ray.util.annotations import DeveloperAPI
-from ray.util.debug import log_once
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +53,64 @@ logger = logging.getLogger(__name__)
 
 NULL_MARKER = ".null_marker"
 TEMP_MARKER = ".temp_marker"
+
+
+_CHECKPOINT_DIR_ARG_DEPRECATION_MSG = """Accepting a `checkpoint_dir` argument in your training function is deprecated.
+Please use `ray.train.get_checkpoint()` to access your checkpoint as a
+`ray.train.Checkpoint` object instead. See below for an example:
+
+Before
+------
+
+from ray import tune
+
+def train_fn(config, checkpoint_dir=None):
+    if checkpoint_dir:
+        torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
+    ...
+
+tuner = tune.Tuner(train_fn)
+tuner.fit()
+
+After
+-----
+
+from ray import train, tune
+
+def train_fn(config):
+    checkpoint: train.Checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
+    ...
+
+tuner = tune.Tuner(train_fn)
+tuner.fit()"""  # noqa: E501
+
+_REPORTER_ARG_DEPRECATION_MSG = """Accepting a `reporter` in your training function is deprecated.
+Please use `ray.train.report()` to report results instead. See below for an example:
+
+Before
+------
+
+from ray import tune
+
+def train_fn(config, reporter):
+    reporter(metric=1)
+
+tuner = tune.Tuner(train_fn)
+tuner.fit()
+
+After
+-----
+
+from ray import train, tune
+
+def train_fn(config):
+    train.report({"metric": 1})
+
+tuner = tune.Tuner(train_fn)
+tuner.fit()"""  # noqa: E501
 
 
 @DeveloperAPI
@@ -160,6 +227,7 @@ class _StatusReporter:
         self._trial_id = trial_id
         self._logdir = logdir
         self._last_checkpoint = None
+        self._latest_checkpoint_result = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
         self._air_session_has_reported = False
@@ -253,46 +321,20 @@ class _StatusReporter:
         self._last_report_time = time.time()
 
     def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
-        from ray.train._internal.storage import _use_storage_context
-        from ray.train._internal.checkpoint_manager import _TrainingResult
-        from ray.train._checkpoint import Checkpoint as NewCheckpoint
-
         # TODO(xwjiang): Tons of optimizations.
         self._air_session_has_reported = True
-
-        # TODO(justinvyu): With a unified session, we'll still run into this doubled
-        # report problem. This should be fixed by checking if the checkpoint has been
-        # uploaded already (via some marker), then skipping the repeat upload.
-        if _use_storage_context() and isinstance(checkpoint, NewCheckpoint):
-            logger.debug(f"Checkpoint received by the Tune session: {checkpoint}")
-            self._fresh_checkpoint = True
-            # TODO(justinvyu): `metrics` doesn't include the autofilled metrics
-            # like `training_iteration` and `time_total_s`.
-            # Should the session be the source of truth for these metrics?
-            self._last_checkpoint = _TrainingResult(
-                checkpoint=checkpoint, metrics=metrics
-            )
-        else:
-            if checkpoint:
-                training_iteration = self._get_training_iteration()
-                checkpoint_dir = self.make_checkpoint_dir(step=training_iteration)
-                self.set_checkpoint(checkpoint_dir)
-                checkpoint.to_directory(checkpoint_dir)
-                # TODO(krfricke): Remove this once support is added in Checkpoint.
-                open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+        if checkpoint:
+            training_iteration = self._get_training_iteration()
+            checkpoint_dir = self.make_checkpoint_dir(step=training_iteration)
+            self.set_checkpoint(checkpoint_dir)
+            checkpoint.to_directory(checkpoint_dir)
+            # TODO(krfricke): Remove this once support is added in Checkpoint.
+            open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
         self.__call__(**metrics)
 
     @property
     def loaded_checkpoint(self) -> Optional[Checkpoint]:
         if self._last_checkpoint:
-            from ray.train._internal.storage import _use_storage_context
-            from ray.train._internal.checkpoint_manager import _TrainingResult
-
-            if _use_storage_context() and isinstance(
-                self._last_checkpoint, _TrainingResult
-            ):
-                return self._last_checkpoint.checkpoint
-
             assert isinstance(self._last_checkpoint, str)
             return Checkpoint.from_directory(self._last_checkpoint)
         return None
@@ -336,6 +378,33 @@ class FunctionTrainable(Trainable):
     _name = "func"
 
     def setup(self, config):
+        if _use_storage_context():
+            init_session(
+                training_func=lambda: self._trainable_func(self.config),
+                trial_info=TrialInfo(
+                    name=self.trial_name,
+                    id=self.trial_id,
+                    resources=self.trial_resources,
+                    logdir=self._storage.trial_local_path,
+                    driver_ip=None,
+                    experiment_name=self._storage.experiment_dir_name,
+                ),
+                storage=self._storage,
+                synchronous_result_reporting=True,
+                # Set all Train-specific properties to None.
+                world_rank=None,
+                local_rank=None,
+                node_rank=None,
+                local_world_size=None,
+                world_size=None,
+                dataset_shard=None,
+                checkpoint=None,
+                # Deprecated configs
+                enable_lazy_checkpointing=False,
+            )
+            self._last_training_result = None
+            return
+
         # Semaphore for notifying the reporter to continue with the computation
         # and to generate the next result.
         self._continue_semaphore = threading.Semaphore(0)
@@ -367,12 +436,12 @@ class FunctionTrainable(Trainable):
         )
         self._last_result = {}
 
-        session._init(self._status_reporter)
+        legacy_tune_session._init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
 
-    def _trainable_func(self, config, reporter, checkpoint_dir):
+    def _trainable_func(self, config: Dict[str, Any]):
         """Subclasses can override this to set the trainable func."""
 
         raise NotImplementedError
@@ -380,11 +449,7 @@ class FunctionTrainable(Trainable):
     def _start(self):
         def entrypoint():
             try:
-                return self._trainable_func(
-                    self.config,
-                    self._status_reporter,
-                    self._status_reporter.get_checkpoint(),
-                )
+                return self._trainable_func(self.config)
             except Exception as e:
                 raise StartTraceback from e
 
@@ -409,6 +474,41 @@ class FunctionTrainable(Trainable):
         along with a result with "done=True". The TrialRunner will handle the
         result accordingly (see tune/tune_controller.py).
         """
+        if _use_storage_context():
+            session: _TrainSession = get_session()
+            if not session.training_started:
+                session.start()
+
+            training_result: Optional[_TrainingResult] = session.get_next()
+
+            if not training_result:
+                # The `RESULT_DUPLICATE` result should have been the last
+                # result reported by the session, which triggers cleanup.
+                raise RuntimeError(
+                    "Should not have reached here. The TuneController should not "
+                    "have scheduled another `train` remote call."
+                    "It should have scheduled a `stop` instead "
+                    "after the training function exits."
+                )
+
+            metrics = training_result.metrics
+            # This keyword appears if the train_func using the Function API
+            # finishes without "done=True". This duplicates the last result, but
+            # the TuneController will not log this result again.
+            # TuneController will also inject done=True to the result,
+            # and proceed to queue up a STOP decision for the trial.
+            if RESULT_DUPLICATE in metrics:
+                metrics[SHOULD_CHECKPOINT] = False
+
+            self._last_training_result = training_result
+            if training_result.checkpoint is not None:
+                # TODO(justinvyu): Result/checkpoint reporting can be combined.
+                # For now, since result/checkpoint reporting is separate, this
+                # special key will tell Tune to pull the checkpoint from
+                # the `last_training_result`.
+                metrics[SHOULD_CHECKPOINT] = True
+            return metrics
+
         if self._runner and self._runner.is_alive():
             # if started and alive, inform the reporter to continue and
             # generate the next result
@@ -483,6 +583,12 @@ class FunctionTrainable(Trainable):
     def get_state(self):
         state = super().get_state()
 
+        if _use_storage_context():
+            # TODO(justinvyu): This is only used to populate the tune metadata
+            # file within the checkpoint, so can be removed after if remove
+            # the metadata file.
+            return state
+
         checkpoint = self._status_reporter.get_checkpoint()
         if not checkpoint:
             state.update(iteration=0, timesteps_total=0, episodes_total=0)
@@ -492,13 +598,12 @@ class FunctionTrainable(Trainable):
         if checkpoint_dir:
             raise ValueError("Checkpoint dir should not be used with function API.")
 
+        if _use_storage_context():
+            # TRAIN -> SAVE remote calls get processed sequentially,
+            # so `_last_training_result.checkpoint` holds onto the latest ckpt.
+            return self._last_training_result
+
         checkpoint = self._status_reporter.get_checkpoint()
-
-        from ray.train._internal.storage import _use_storage_context
-        from ray.train._internal.checkpoint_manager import _TrainingResult
-
-        if _use_storage_context() and isinstance(checkpoint, _TrainingResult):
-            return checkpoint
 
         if not checkpoint:
             # We drop a marker here to indicate that the checkpoint is empty
@@ -531,12 +636,14 @@ class FunctionTrainable(Trainable):
     ) -> Optional[str]:
         return None
 
-    def save_to_object(self):
-        checkpoint_path = self.save()
-        checkpoint = Checkpoint.from_directory(checkpoint_path)
-        return checkpoint.to_bytes()
-
     def load_checkpoint(self, checkpoint):
+        if _use_storage_context():
+            checkpoint_result = checkpoint
+            assert isinstance(checkpoint_result, _TrainingResult)
+            session = get_session()
+            session.loaded_checkpoint = checkpoint_result.checkpoint
+            return
+
         # This should be removed once Trainables are refactored.
         if "tune_checkpoint_path" in checkpoint:
             del checkpoint["tune_checkpoint_path"]
@@ -556,16 +663,20 @@ class FunctionTrainable(Trainable):
         checkpoint.to_directory(self.temp_checkpoint_dir)
         self.restore(self.temp_checkpoint_dir)
 
-    def restore_from_object(self, obj):
-        self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
-            self.logdir
-        )
-        checkpoint = Checkpoint.from_bytes(obj)
-        checkpoint.to_directory(self.temp_checkpoint_dir)
-
-        self.restore(self.temp_checkpoint_dir)
-
     def cleanup(self):
+        if _use_storage_context():
+            session = get_session()
+            try:
+                # session.finish raises any Exceptions from training.
+                # Do not wait for thread termination here (timeout=0).
+                session.finish(timeout=0)
+            finally:
+                # Check for any errors that might have been missed.
+                session._report_thread_runner_error()
+                # Shutdown session even if session.finish() raises an Exception.
+                shutdown_session()
+            return
+
         # Trigger thread termination
         self._end_event.set()
         self._continue_semaphore.release()
@@ -582,7 +693,7 @@ class FunctionTrainable(Trainable):
 
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
-        session._shutdown()
+        legacy_tune_session._shutdown()
 
         if self.temp_checkpoint_dir is not None and os.path.exists(
             self.temp_checkpoint_dir
@@ -591,6 +702,32 @@ class FunctionTrainable(Trainable):
             logger.debug("Clearing temporary checkpoint: %s", self.temp_checkpoint_dir)
 
     def reset_config(self, new_config):
+        if _use_storage_context():
+            session = get_session()
+
+            # Wait for thread termination so it is save to re-use the same actor.
+            thread_timeout = int(os.environ.get("TUNE_FUNCTION_THREAD_TIMEOUT_S", 2))
+            session.finish(timeout=thread_timeout)
+            if session.training_thread.is_alive():
+                # Did not finish within timeout, reset unsuccessful.
+                return False
+
+            session.reset(
+                training_func=lambda: self._trainable_func(self.config),
+                trial_info=TrialInfo(
+                    name=self.trial_name,
+                    id=self.trial_id,
+                    resources=self.trial_resources,
+                    logdir=self._storage.trial_local_path,
+                    driver_ip=None,
+                    experiment_name=self._storage.experiment_dir_name,
+                ),
+                storage=self._storage,
+            )
+
+            self._last_result = {}
+            return True
+
         if self._runner and self._runner.is_alive():
             self._end_event.set()
             self._continue_semaphore.release()
@@ -636,35 +773,19 @@ def wrap_function(
     use_config_single = _detect_config_single(train_func)
     use_reporter = _detect_reporter(train_func)
 
-    if not any([use_checkpoint, use_config_single, use_reporter]):
+    if use_checkpoint:
+        raise DeprecationWarning(_CHECKPOINT_DIR_ARG_DEPRECATION_MSG)
+
+    if use_reporter:
+        raise DeprecationWarning(_REPORTER_ARG_DEPRECATION_MSG)
+
+    if not use_config_single:
         # use_reporter is hidden
         raise ValueError(
             "Unknown argument found in the Trainable function. "
-            "The function args must include a 'config' positional "
-            "parameter. Any other args must be 'checkpoint_dir'. "
+            "The function args must include a 'config' positional parameter."
             "Found: {}".format(func_args)
         )
-
-    if use_checkpoint:
-        if log_once("tune_checkpoint_dir_deprecation") and warn:
-            with warnings.catch_warnings():
-                warnings.simplefilter("always")
-                warning_msg = (
-                    "`checkpoint_dir` in `func(config, checkpoint_dir)` is "
-                    "being deprecated. "
-                    "To save and load checkpoint in trainable functions, "
-                    "please use the `report` API:\n\n"
-                    "from ray import train\n\n"
-                    "def train(config):\n"
-                    "    # ...\n"
-                    '    train.report({"metric": metric}, checkpoint=checkpoint)\n\n'
-                    "For more information please see "
-                    "https://docs.ray.io/en/latest/tune/api/trainable.html\n"
-                )
-                warnings.warn(
-                    warning_msg,
-                    DeprecationWarning,
-                )
 
     resources = getattr(train_func, "_resources", None)
 
@@ -676,21 +797,16 @@ def wrap_function(
         def __repr__(self):
             return self._name
 
-        def _trainable_func(self, config, reporter, checkpoint_dir):
-            if not use_checkpoint and not use_reporter:
-                fn = partial(train_func, config)
-            elif use_checkpoint:
-                fn = partial(train_func, config, checkpoint_dir=checkpoint_dir)
-            else:
-                fn = partial(train_func, config, reporter)
+        def _trainable_func(self, config):
+            fn = partial(train_func, config)
 
             def handle_output(output):
                 if not output:
                     return
                 elif isinstance(output, dict):
-                    reporter(**output)
+                    ray.train.report(output)
                 elif isinstance(output, Number):
-                    reporter(_metric=output)
+                    ray.train.report({DEFAULT_METRIC: output})
                 else:
                     raise ValueError(
                         "Invalid return or yield value. Either return/yield "
@@ -709,7 +825,7 @@ def wrap_function(
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
             # with the keyword RESULT_DUPLICATE -- see tune/tune_controller.py.
-            reporter(**{RESULT_DUPLICATE: True})
+            ray.train.report({RESULT_DUPLICATE: True})
             return output
 
         @classmethod

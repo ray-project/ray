@@ -1,17 +1,11 @@
-import os
-from pathlib import Path
-from unittest.mock import patch
 import pytest
 
 import ray
 from ray import train
-from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
-from ray.data.preprocessor import Preprocessor
-from ray.train.constants import (
-    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
-)
+from ray.train import CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture
@@ -23,145 +17,51 @@ def ray_start_4_cpus():
 
 
 scale_config = ScalingConfig(num_workers=2)
+NUM_EPOCHS = 3
 
 
-def get_checkpoint_train_func(checkpoint_type):
-    def checkpoint_train_func():
-        for i in range(3):
-            checkpoint = Checkpoint.from_dict({"model": i})
-            path = None
-            if checkpoint_type != "dict":
-                checkpoint = Checkpoint.from_directory(checkpoint.to_directory())
-                path = checkpoint._local_path
-            train.report({"epoch": i, "path": path}, checkpoint=checkpoint)
-
-    return checkpoint_train_func
+def checkpoint_train_func():
+    for i in range(NUM_EPOCHS):
+        with create_dict_checkpoint({"epoch": i}) as checkpoint:
+            train.report({"epoch": i}, checkpoint=checkpoint)
 
 
-checkpoint_type_and_should_copy = (
-    ("dict", True),
-    ("dir", True),
-    ("lazy_dir", True),
-    ("lazy_dir", False),
-)
-
-
-@pytest.mark.parametrize(
-    "checkpoint_type_and_should_copy", checkpoint_type_and_should_copy
-)
-def test_checkpoint(ray_start_4_cpus, checkpoint_type_and_should_copy):
-    """
-    Test that a checkpoint is created and accessible.
-
-    - Assert that the data from the returned checkpoint has an expected state.
-    - Assert that the directory was moved/copied depending on
-      ``checkpoint_type_and_should_copy``.
-    """
-    checkpoint_type, should_copy = checkpoint_type_and_should_copy
-    with patch.dict(
-        os.environ,
-        {
-            DISABLE_LAZY_CHECKPOINTING_ENV: str(int(checkpoint_type != "lazy_dir")),
-            COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV: str(int(should_copy)),
-        },
-    ):
-        trainer = DataParallelTrainer(
-            train_loop_per_worker=get_checkpoint_train_func(checkpoint_type),
-            scaling_config=scale_config,
-        )
-        result = trainer.fit()
-    assert result.checkpoint.to_dict()["model"] == 2
-
-    path = result.metrics["path"]
-    if path:
-        if should_copy:
-            assert list(Path(path).glob("*"))
-        else:
-            assert not list(Path(path).glob("*"))
-
-
-@pytest.mark.parametrize(
-    "checkpoint_type_and_should_copy", checkpoint_type_and_should_copy
-)
-def test_preprocessor_in_checkpoint(ray_start_4_cpus, checkpoint_type_and_should_copy):
-    """
-    Test that a checkpoint with a preprocessor is created and accessible.
-
-    - Assert that the data from the returned checkpoint has an expected state.
-    - Assert that the preprocessor keeps its state.
-    - Assert that the directory was moved/copied depending on
-      ``checkpoint_type_and_should_copy``.
-    """
-    checkpoint_type, should_copy = checkpoint_type_and_should_copy
-
-    class DummyPreprocessor(Preprocessor):
-        def __init__(self):
-            super().__init__()
-            self.is_same = True
-
-    with patch.dict(
-        os.environ,
-        {
-            DISABLE_LAZY_CHECKPOINTING_ENV: str(int(checkpoint_type != "lazy_dir")),
-            COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV: str(int(should_copy)),
-        },
-    ):
-        trainer = DataParallelTrainer(
-            train_loop_per_worker=get_checkpoint_train_func(checkpoint_type),
-            scaling_config=scale_config,
-            preprocessor=DummyPreprocessor(),
-        )
-        result = trainer.fit()
-    assert result.checkpoint.to_dict()["model"] == 2
-    assert result.checkpoint.get_preprocessor().is_same
-
-    path = result.metrics["path"]
-    if path:
-        if should_copy:
-            assert list(Path(path).glob("*"))
-        else:
-            assert not list(Path(path).glob("*"))
+def test_checkpoint(ray_start_4_cpus):
+    """Test that a checkpoint is created and accessible."""
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=checkpoint_train_func,
+        scaling_config=scale_config,
+    )
+    result = trainer.fit()
+    assert load_dict_checkpoint(result.checkpoint)["epoch"] == NUM_EPOCHS - 1
 
 
 def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
-    """
-    Test that training can be resumed from a reported checkpoint.
-
-    - Assert that the data from the returned checkpoint has an expected state.
-    - Move the checkpoint to memory and then back to disk to test ser/deser and ensure
-      that a different directory can be used.
-    - Restart training from checkpoint and assert that hhe returned checkpoint
-      has an expected state.
-    """
+    """Test that training can be resumed from a reported checkpoint."""
 
     def train_func():
         checkpoint = train.get_checkpoint()
         if checkpoint:
-            epoch = checkpoint.to_dict()["epoch"]
+            epoch = load_dict_checkpoint(checkpoint)["epoch"]
         else:
             epoch = 0
         for i in range(epoch, epoch + 2):
-            train.report({"epoch": i}, checkpoint=Checkpoint.from_dict({"epoch": i}))
+            with create_dict_checkpoint({"epoch": i}) as checkpoint:
+                train.report({"epoch": i}, checkpoint=checkpoint)
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func, scaling_config=scale_config
     )
     result = trainer.fit()
-    assert result.checkpoint.to_dict()["epoch"] == 1
-
-    # Move checkpoint to a different directory.
-    checkpoint_dict = result.checkpoint.to_dict()
-    checkpoint = Checkpoint.from_dict(checkpoint_dict)
-    checkpoint_path = checkpoint.to_directory(tmpdir)
-    resume_from = Checkpoint.from_directory(checkpoint_path)
+    assert load_dict_checkpoint(result.checkpoint)["epoch"] == 1
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scale_config,
-        resume_from_checkpoint=resume_from,
+        resume_from_checkpoint=result.checkpoint,
     )
     result = trainer.fit()
-    assert result.checkpoint.to_dict()["epoch"] == 2
+    assert load_dict_checkpoint(result.checkpoint)["epoch"] == 2
 
 
 @pytest.mark.parametrize("mode", ["min", "max"])
@@ -174,16 +74,18 @@ def test_checkpoints_to_keep(ray_start_4_cpus, mode):
     """
 
     def train_func():
-        train.report(
-            dict(loss=float("nan")), checkpoint=Checkpoint.from_dict({"idx": 0})
-        )  # nan, deleted
-        train.report(
-            dict(loss=3), checkpoint=Checkpoint.from_dict({"idx": 1})
-        )  # best for min, worst for max (del)
-        train.report(
-            dict(loss=7), checkpoint=Checkpoint.from_dict({"idx": 2})
-        )  # worst for min (del), best for max
-        train.report(dict(loss=5), checkpoint=Checkpoint.from_dict({"idx": 3}))
+        with create_dict_checkpoint({"idx": 0}) as checkpoint:
+            train.report(dict(loss=float("nan")), checkpoint=checkpoint)  # nan, deleted
+        with create_dict_checkpoint({"idx": 1}) as checkpoint:
+            train.report(
+                dict(loss=3), checkpoint=checkpoint
+            )  # best for min, worst for max (del)
+        with create_dict_checkpoint({"idx": 2}) as checkpoint:
+            train.report(
+                dict(loss=7), checkpoint=checkpoint
+            )  # worst for min (del), best for max
+        with create_dict_checkpoint({"idx": 3}) as checkpoint:
+            train.report(dict(loss=5), checkpoint=checkpoint)
 
     checkpoint_config = CheckpointConfig(
         num_to_keep=2, checkpoint_score_attribute="loss", checkpoint_score_order=mode
@@ -198,7 +100,7 @@ def test_checkpoints_to_keep(ray_start_4_cpus, mode):
     assert len(result.best_checkpoints) == 2
 
     # Last checkpoint
-    assert result.checkpoint.to_dict()["idx"] == 3
+    assert load_dict_checkpoint(result.checkpoint)["idx"] == 3
 
     if mode == "min":
         indices = [3, 1]
@@ -207,8 +109,8 @@ def test_checkpoints_to_keep(ray_start_4_cpus, mode):
         indices = [3, 2]
         losses = [5, 7]
 
-    assert result.best_checkpoints[0][0].to_dict()["idx"] == indices[0]
-    assert result.best_checkpoints[1][0].to_dict()["idx"] == indices[1]
+    assert load_dict_checkpoint(result.best_checkpoints[0][0])["idx"] == indices[0]
+    assert load_dict_checkpoint(result.best_checkpoints[1][0])["idx"] == indices[1]
     assert result.best_checkpoints[0][1]["loss"] == losses[0]
     assert result.best_checkpoints[1][1]["loss"] == losses[1]
 

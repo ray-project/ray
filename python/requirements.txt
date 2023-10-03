@@ -17,6 +17,7 @@ pyyaml
 aiosignal
 frozenlist
 requests
+watchfiles
 
 # Python version-specific requirements
 dataclasses; python_version < '3.7'
@@ -61,3 +62,4 @@ fsspec
 pandas>=1.3
 pydantic<2
 py-spy>=0.2.0
+watchfiles

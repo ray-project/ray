@@ -72,7 +72,7 @@ def ray_with_memory_monitor_no_oom_retry(shutdown_only):
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "memory_usage_threshold": memory_usage_threshold,
-            "memory_monitor_refresh_ms": 100,
+            "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
             "metrics_report_interval_ms": 100,
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
             "task_oom_retries": 0,
@@ -571,6 +571,7 @@ def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
         _system_config={
             "worker_killing_policy": "retriable_fifo",
             "memory_usage_threshold": 0.7,
+            "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
         },
     ):
         bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.5)

@@ -1,8 +1,10 @@
+from typing import Dict
+
+import numpy as np
 import pandas as pd
 import torch
 
 from ray.data import read_images
-from ray.data.preprocessors import TorchVisionPreprocessor
 from torchvision import transforms
 from transformers import AutoTokenizer
 
@@ -66,12 +68,14 @@ def get_train_dataset(args, image_resolution=512):
             transforms.Normalize([0.5], [0.5]),
         ]
     )
-    instance_ds_preprocessor = TorchVisionPreprocessor(
-        columns=["image"], output_columns=["instance_image"], transform=transform
-    )
-    class_ds_preprocessor = TorchVisionPreprocessor(
-        columns=["image"], output_columns=["class_image"], transform=transform
-    )
+
+    def transform_image(
+        batch: Dict[str, np.ndarray], output_column_name: str
+    ) -> Dict[str, np.ndarray]:
+        transformed_tensors = [transform(image).numpy() for image in batch["image"]]
+        batch[output_column_name] = transformed_tensors
+        return batch
+
     # END: image preprocessing
 
     # START: Apply preprocessing steps as Ray Dataset operations
@@ -80,14 +84,18 @@ def get_train_dataset(args, image_resolution=512):
     # - drop the original image column
     # - add a new column with the tokenized prompts
     instance_dataset = (
-        instance_ds_preprocessor.transform(instance_dataset)
+        instance_dataset.map_batches(
+            transform_image, fn_kwargs={"output_column_name": "instance_image"}
+        )
         .drop_columns(["image"])
         .add_column("instance_prompt_ids", lambda df: [instance_prompt_ids] * len(df))
     )
     # END: Apply preprocessing steps as Ray Dataset operations
 
     class_dataset = (
-        class_ds_preprocessor.transform(class_dataset)
+        class_dataset.map_batches(
+            transform_image, fn_kwargs={"output_column_name": "class_image"}
+        )
         .drop_columns(["image"])
         .add_column("class_prompt_ids", lambda df: [class_prompt_ids] * len(df))
     )
@@ -110,7 +118,7 @@ def get_train_dataset(args, image_resolution=512):
     return train_dataset.random_shuffle()
 
 
-def collate(batch, device, dtype):
+def collate(batch, dtype):
     """Build Torch training batch.
 
     B = batch size
@@ -135,7 +143,7 @@ def collate(batch, device, dtype):
     """
 
     images = torch.cat([batch["instance_image"], batch["class_image"]], dim=0)
-    images = images.to(memory_format=torch.contiguous_format).float()
+    images = images.to(memory_format=torch.contiguous_format).to(dtype)
 
     batch_size = len(batch["instance_prompt_ids"])
 
@@ -144,6 +152,6 @@ def collate(batch, device, dtype):
     ).reshape(batch_size * 2, -1)
 
     return {
-        "images": images.to(device, dtype=dtype),
-        "prompt_ids": prompt_ids.to(device),  # token ids should stay int.
+        "images": images,
+        "prompt_ids": prompt_ids,  # token ids should stay int.
     }

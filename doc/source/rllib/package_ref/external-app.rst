@@ -12,5 +12,3 @@ This is possible via RLlib's external applications interface
 
 .. autoclass:: ray.rllib.env.policy_server_input.PolicyServerInput
     :members:
-
-.. include:: /_includes/rllib/announcement_bottom.rst

@@ -18,7 +18,7 @@
 #include "ray/common/id.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 #include "src/ray/protobuf/monitor.grpc.pb.h"
 
@@ -139,7 +139,6 @@ namespace rpc {
                       HANDLER,                            \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-// TODO(vitsai): Set auth for everything except GCS.
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
@@ -382,7 +381,13 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    NODE_INFO_SERVICE_RPC_HANDLER(GetClusterId);
+    // We only allow one cluster ID in the lifetime of a client.
+    // So, if a client connects, it should not have a pre-existing different ID.
+    RPC_SERVICE_HANDLER_CUSTOM_AUTH(
+        NodeInfoGcsService,
+        GetClusterId,
+        RayConfig::instance().gcs_max_active_rpcs_per_handler(),
+        AuthType::EMPTY_AUTH);
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
@@ -409,6 +414,10 @@ class NodeResourceInfoGcsServiceHandler {
       rpc::GetAllAvailableResourcesRequest request,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
+                                      rpc::GetDrainingNodesReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleReportResourceUsage(ReportResourceUsageRequest request,
                                          ReportResourceUsageReply *reply,
@@ -438,6 +447,7 @@ class NodeResourceInfoGrpcService : public GrpcService {
       const ClusterID &cluster_id) override {
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetDrainingNodes);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
   }

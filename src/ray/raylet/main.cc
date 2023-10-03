@@ -14,6 +14,10 @@
 
 #include <iostream>
 
+#ifdef __linux__
+#include <stdlib.h>
+#endif
+
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -50,6 +54,8 @@ DEFINE_int32(num_prestart_python_workers,
              0,
              "Number of prestarted default Python workers on raylet startup.");
 DEFINE_bool(head, false, "Whether this node is a head node.");
+/// NOTE: This value is overwritten inside worker_pool.h by
+/// worker_maximum_startup_concurrency.
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
@@ -69,6 +75,8 @@ DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
+DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
+
 #ifdef __linux__
 DEFINE_string(plasma_directory,
               "/dev/shm",
@@ -118,6 +126,13 @@ int main(int argc, char *argv[]) {
   ray::RayLog::InstallTerminateHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+#ifdef __linux__
+  // Reset LD_PRELOAD if it's loaded with ray jemalloc
+  auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");
+  if (ray_ld_preload != nullptr && std::string(ray_ld_preload) == "1") {
+    unsetenv("LD_PRELOAD");
+  }
+#endif
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
   const std::string store_socket_name = FLAGS_store_socket_name;
   const std::string node_name =
@@ -153,6 +168,10 @@ int main(int argc, char *argv[]) {
   const std::string session_name = FLAGS_session_name;
   const bool is_head_node = FLAGS_head;
   const std::string labels_json_str = FLAGS_labels;
+
+  RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
+  ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
+  RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -171,7 +190,7 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
   gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
-  RAY_CHECK_OK(gcs_client->Connect(main_service));
+  RAY_CHECK_OK(gcs_client->Connect(main_service, cluster_id));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
@@ -205,8 +224,7 @@ int main(int argc, char *argv[]) {
                            : 0;
 
         node_manager_config.raylet_config = stored_raylet_config.get();
-        node_manager_config.resource_config =
-            ray::ResourceMapToResourceRequest(std::move(static_resource_conf), false);
+        node_manager_config.resource_config = ray::ResourceSet(static_resource_conf);
         RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                        << node_manager_config.resource_config.DebugString();
         node_manager_config.node_manager_address = node_ip_address;

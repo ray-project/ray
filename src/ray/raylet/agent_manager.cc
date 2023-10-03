@@ -17,6 +17,7 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
+#include "ray/raylet/raylet_util.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/logging.h"
@@ -81,10 +82,7 @@ void AgentManager::StartAgent() {
              "https://docs.ray.io/en/master/ray-observability/"
              "ray-logging.html#logging-directory-structure.\n"
              "- The agent is killed by the OS (e.g., out of memory).";
-      // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
-      RAY_CHECK(std::raise(SIGTERM) == 0) << "There was a failure while sending a "
-                                             "sigterm to itself. The process will not "
-                                             "gracefully shutdown.";
+      ShutdownRayletGracefully();
       // If the process is not terminated within 10 seconds, forcefully kill raylet
       // itself.
       delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);

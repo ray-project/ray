@@ -359,7 +359,7 @@ allowing you to do ad-hoc data analysis over your results.
     :start-after: __results_start__
     :end-before: __results_end__
 
-See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
+See the :ref:`result analysis user guide <tune-analysis-guide>` for more usage examples.
 
 What's Next?
 -------------

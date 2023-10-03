@@ -1,4 +1,4 @@
-from typing import Dict, Callable, Optional, Union, TYPE_CHECKING
+from typing import Any, Dict, Callable, Optional, Union, TYPE_CHECKING
 
 from ray.air.config import ScalingConfig, RunConfig
 from ray.train import DataConfig
@@ -46,7 +46,7 @@ class HorovodTrainer(DataParallelTrainer):
     ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>`.
+    :ref:`Ray Train loop methods <train-loop-api>`.
 
     .. testcode::
 
@@ -93,7 +93,7 @@ class HorovodTrainer(DataParallelTrainer):
         import torch
         import torch.nn as nn
         from ray.train.horovod import HorovodTrainer
-        from ray.train.torch import TorchCheckpoint
+        from ray.train.torch import LegacyTorchCheckpoint
         from ray.air.config import ScalingConfig
 
         # If using GPUs, set this to True.
@@ -142,7 +142,7 @@ class HorovodTrainer(DataParallelTrainer):
                     print(f"epoch: {epoch}, loss: {loss.item()}")
                 train.report(
                     {},
-                    checkpoint=TorchCheckpoint.from_state_dict(
+                    checkpoint=LegacyTorchCheckpoint.from_state_dict(
                         model.state_dict()
                     ),
                 )
@@ -168,12 +168,11 @@ class HorovodTrainer(DataParallelTrainer):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
+            dataset.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available via
+            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -186,8 +185,10 @@ class HorovodTrainer(DataParallelTrainer):
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
@@ -199,4 +200,5 @@ class HorovodTrainer(DataParallelTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )

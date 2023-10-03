@@ -77,6 +77,8 @@ result_grid = tuner.fit()
 # __xgboost_end__
 
 # __torch_start__
+import os
+
 from ray import tune
 from ray.tune import Tuner
 from ray.train.examples.pytorch.torch_linear_example import (
@@ -104,7 +106,9 @@ param_space = {
 
 tuner = Tuner(
     trainable=trainer,
-    run_config=RunConfig(name="test_tuner", storage_path="~/ray_results"),
+    run_config=RunConfig(
+        name="test_tuner", storage_path=os.path.expanduser("~/ray_results")
+    ),
     param_space=param_space,
     tune_config=tune.TuneConfig(
         mode="min", metric="loss", num_samples=2, max_concurrent_trials=2
@@ -114,30 +118,24 @@ result_grid = tuner.fit()
 # __torch_end__
 
 
-# __tune_preprocess_start__
-from ray.data.preprocessors import StandardScaler
-from ray.tune import Tuner
-
-prep_v1 = StandardScaler(["worst radius", "worst area"])
-prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
-tuner = Tuner(
-    trainer,
-    param_space={
-        "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-        # Your other parameters go here
-    },
-)
-# __tune_preprocess_end__
-
-
 # __tune_dataset_start__
+from ray.data.preprocessors import StandardScaler
+
+
 def get_dataset():
-    return ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+    ds1 = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+    prep_v1 = StandardScaler(["worst radius", "worst area"])
+    ds1 = prep_v1.fit_transform(ds1)
+    return ds1
 
 
 def get_another_dataset():
-    # imagine this is a different dataset
-    return ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+    ds2 = ray.data.read_csv(
+        "s3://anonymous@air-example-data/breast_cancer_with_categorical.csv"
+    )
+    prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
+    ds2 = prep_v2.fit_transform(ds2)
+    return ds2
 
 
 dataset_1 = get_dataset()
@@ -229,7 +227,9 @@ tune_config = TuneConfig(
 
 # __tune_restore_start__
 tuner = Tuner.restore(
-    path="~/ray_results/test_tuner", trainable=trainer, restart_errored=True
+    path=os.path.expanduser("~/ray_results/test_tuner"),
+    trainable=trainer,
+    restart_errored=True,
 )
 tuner.fit()
 # __tune_restore_end__

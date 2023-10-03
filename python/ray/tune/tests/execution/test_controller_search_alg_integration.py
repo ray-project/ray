@@ -15,6 +15,14 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import Searcher, ConcurrencyLimiter, Repeater, SearchGenerator
 from ray.tune.search._mock import _MockSuggestionAlgorithm
 
+from ray.train.tests.util import mock_storage_context
+
+
+class TestTuneController(TuneController):
+    def __init__(self, *args, **kwargs):
+        kwargs.update(dict(storage=mock_storage_context()))
+        super().__init__(*args, **kwargs)
+
 
 @pytest.fixture(scope="function")
 def ray_start_8_cpus():
@@ -49,7 +57,7 @@ def test_search_alg_notification(ray_start_4_cpus_2_gpus_extra, resource_manager
     searcher = search_alg.searcher
     search_alg.add_configurations(experiments)
 
-    runner = TuneController(
+    runner = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(), search_alg=search_alg
     )
 
@@ -98,7 +106,7 @@ def test_search_alg_scheduler_stop(ray_start_4_cpus_2_gpus_extra, resource_manag
     searcher = search_alg.searcher
     search_alg.add_configurations(experiments)
 
-    runner = TuneController(
+    runner = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         search_alg=search_alg,
         scheduler=_MockScheduler(),
@@ -143,7 +151,7 @@ def test_search_alg_stalled(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
     search_alg = _MockSuggestionAlgorithm(max_concurrent=1)
     search_alg.add_configurations(experiments)
     searcher = search_alg.searcher
-    runner = TuneController(
+    runner = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         search_alg=search_alg,
     )
@@ -218,7 +226,11 @@ def test_search_alg_finishes(ray_start_4_cpus_2_gpus_extra, resource_manager_cls
             spec = self._experiment.spec
             trial = None
             if self._index < spec["num_samples"]:
-                trial = Trial(spec.get("run"), stopping_criterion=spec.get("stop"))
+                trial = Trial(
+                    spec.get("run"),
+                    stopping_criterion=spec.get("stop"),
+                    storage=spec.get("storage"),
+                )
             self._index += 1
 
             if self._index > 4:
@@ -238,7 +250,7 @@ def test_search_alg_finishes(ray_start_4_cpus_2_gpus_extra, resource_manager_cls
     experiments = [Experiment.from_json("test", experiment_spec)]
     searcher.add_configurations(experiments)
 
-    runner = TuneController(
+    runner = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         search_alg=searcher,
     )
@@ -311,7 +323,7 @@ def test_searcher_save_restore(ray_start_8_cpus, resource_manager_cls, tmpdir):
 
     searcher = create_searcher()
 
-    runner = TuneController(
+    runner = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         search_alg=searcher,
         checkpoint_period=-1,
@@ -332,7 +344,7 @@ def test_searcher_save_restore(ray_start_8_cpus, resource_manager_cls, tmpdir):
 
     searcher = create_searcher()
 
-    runner2 = TuneController(
+    runner2 = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         search_alg=searcher,
         experiment_path=str(tmpdir),

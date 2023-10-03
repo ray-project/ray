@@ -19,6 +19,14 @@ def get_new_event_loop():
         return asyncio.new_event_loop()
 
 
+def try_install_uvloop():
+    """Installs uvloop as event-loop implementation for asyncio (if available)"""
+    if uvloop:
+        uvloop.install()
+    else:
+        pass
+
+
 def is_async_func(func):
     """Return True if the function is an async or async generator method."""
     return inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func)

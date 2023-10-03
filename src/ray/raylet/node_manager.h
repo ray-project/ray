@@ -26,7 +26,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
@@ -61,7 +61,7 @@ using rpc::ResourceUsageBatchData;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
-  ResourceRequest resource_config;
+  ResourceSet resource_config;
   /// The IP address this node manager is running on.
   std::string node_manager_address;
   /// The port to use for listening to incoming connections. If this is 0 then
@@ -224,6 +224,30 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::function<void()> &on_all_replied);
 
  private:
+  void ReleaseWorker(const WorkerID &worker_id) {
+    leased_workers_.erase(worker_id);
+    SetIdleIfLeaseEmpty();
+  }
+
+  void ReleaseWorkers(const std::vector<WorkerID> &worker_ids) {
+    for (auto &it : worker_ids) {
+      leased_workers_.erase(it);
+    }
+    SetIdleIfLeaseEmpty();
+  }
+
+  inline void SetIdleIfLeaseEmpty() {
+    if (leased_workers_.empty()) {
+      cluster_resource_scheduler_->GetLocalResourceManager().SetIdleFootprint(
+          WorkFootprint::NODE_WORKERS);
+    }
+  }
+
+  /// If the primary objects' usage is over the threshold
+  /// specified in RayConfig, spill objects up to the max
+  /// throughput.
+  void SpillIfOverPrimaryObjectsThreshold();
+
   /// Methods for handling nodes.
 
   /// Handle an unexpected failure notification from GCS pubsub.
@@ -263,10 +287,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Fill out the normal task resource report.
   void FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data);
-
-  /// Fill out the resource report. This can be called by either method to transport the
-  /// report to GCS.
-  void FillResourceReport(rpc::ResourcesData &resources_data);
 
   /// Write out debug state to a file.
   void DumpDebugState() const;
@@ -485,15 +505,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
                                    const uint8_t *message_data);
 
-  void HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
-                                 rpc::UpdateResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `RequestResourceReport` request.
-  void HandleRequestResourceReport(rpc::RequestResourceReportRequest request,
-                                   rpc::RequestResourceReportReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `GetResourceLoad` request.
   void HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
                              rpc::GetResourceLoadReply *reply,
@@ -539,7 +550,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ReturnWorker` request.
+  /// Handle a `DrainRaylet` request.
+  void HandleDrainRaylet(rpc::DrainRayletRequest request,
+                         rpc::DrainRayletReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `CancelWorkerLease` request.
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
@@ -814,7 +830,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Keeps track of workers waiting for objects
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
-      async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
+      async_plasma_objects_notification_
+          ABSL_GUARDED_BY(plasma_object_notification_lock_);
 
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.
@@ -845,8 +862,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
 
-  /// Whether or not if the node draining process has already received.
-  bool is_node_drained_ = false;
+  /// Whether or not if the shutdown raylet request has been received.
+  bool is_shutdown_request_received_ = false;
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;

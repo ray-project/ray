@@ -15,9 +15,14 @@
 #include "ray/stats/metric_exporter.h"
 
 #include <future>
+#include <string_view>
 
 namespace ray {
 namespace stats {
+
+namespace {
+inline constexpr std::string_view kGrpcIoMetricsNamePrefix = "grpc.io/";
+}
 
 template <>
 void MetricPointExporter::ExportToPoints(
@@ -103,7 +108,22 @@ void MetricPointExporter::ExportViewData(
       break;
     }
   }
+  for (auto &point : points) {
+    addGlobalTagsToGrpcMetric(point);
+  }
   metric_exporter_client_->ReportMetrics(points);
+}
+
+/// Hack. We want to add GlobalTags to all our metrics, but gRPC OpenCencus plugin is not
+/// configurable at all so we don't have chance to add our own tags. We use this hack to
+/// append the tags in export time.
+void MetricPointExporter::addGlobalTagsToGrpcMetric(MetricPoint &metric) {
+  if (std::string_view(metric.metric_name).substr(0, kGrpcIoMetricsNamePrefix.size()) ==
+      kGrpcIoMetricsNamePrefix) {
+    for (const auto &[key, value] : ray::stats::StatsConfig::instance().GetGlobalTags()) {
+      metric.tags[key.name()] = value;
+    }
+  }
 }
 
 OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
@@ -114,6 +134,22 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
   absl::MutexLock l(&mu_);
   client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
 };
+
+/// Hack. We want to add GlobalTags to all our metrics, but gRPC OpenCencus plugin is not
+/// configurable at all so we don't have chance to add our own tags. We use this hack to
+/// append the tags in export time.
+void OpenCensusProtoExporter::addGlobalTagsToGrpcMetric(
+    opencensus::proto::metrics::v1::Metric &metric) {
+  if (std::string_view(metric.metric_descriptor().name())
+          .substr(0, kGrpcIoMetricsNamePrefix.size()) == kGrpcIoMetricsNamePrefix) {
+    for (const auto &[key, value] : ray::stats::StatsConfig::instance().GetGlobalTags()) {
+      metric.mutable_metric_descriptor()->add_label_keys()->set_key(key.name());
+      for (auto &timeseries : *metric.mutable_timeseries()) {
+        timeseries.add_label_values()->set_value(value);
+      }
+    }
+  }
+}
 
 void OpenCensusProtoExporter::ExportViewData(
     const std::vector<std::pair<opencensus::stats::ViewDescriptor,
@@ -201,6 +237,7 @@ void OpenCensusProtoExporter::ExportViewData(
       RAY_LOG(FATAL) << "Unknown view data type.";
       break;
     }
+    addGlobalTagsToGrpcMetric(*request_point_proto);
   }
 
   {

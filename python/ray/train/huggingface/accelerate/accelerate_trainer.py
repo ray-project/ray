@@ -2,9 +2,10 @@ import functools
 import os
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Tuple, Union
 
 from ray import train
+from ray.util.annotations import Deprecated
 from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train import DataConfig
 from ray.train.torch import TorchConfig
@@ -34,6 +35,15 @@ if TYPE_CHECKING:
     from ray.tune.trainable import Trainable
 
 
+ACCELERATE_TRAINER_DEPRECATION_MESSAGE = (
+    "The AccelerateTrainer will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/huggingface-accelerate.html#acceleratetrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated(message=ACCELERATE_TRAINER_DEPRECATION_MESSAGE, warning=True)
 class AccelerateTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Accelerate training with PyTorch.
 
@@ -52,7 +62,7 @@ class AccelerateTrainer(TorchTrainer):
     as you would without Ray.
 
     Inside the ``train_loop_per_worker`` function, In addition to Accelerate APIs, you
-    can use any of the :ref:`Ray AIR session methods <air-session-ref>`.
+    can use any of the :ref:`Ray Train loop methods <train-loop-api>`.
     See full example code below.
 
     .. testcode::
@@ -111,6 +121,8 @@ class AccelerateTrainer(TorchTrainer):
     Example:
         .. testcode::
 
+            import os
+            import tempfile
             import torch
             import torch.nn as nn
 
@@ -184,16 +196,20 @@ class AccelerateTrainer(TorchTrainer):
                         if epoch % 20 == 0:
                             print(f"epoch: {epoch}/{num_epochs}, loss: {loss:.3f}")
 
+                    # Create checkpoint.
+                    base_model=accelerator.unwrap_model(model)
+                    checkpoint_dir = tempfile.mkdtemp()
+                    torch.save(
+                        {"model_state_dict": base_model.state_dict()},
+                        os.path.join(checkpoint_dir, "model.pt"),
+                    )
+                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
                     # Report and record metrics, checkpoint model at end of each
                     # epoch
                     train.report(
                         {"loss": loss.item(), "epoch": epoch},
-                        checkpoint=Checkpoint.from_dict(
-                            dict(
-                                epoch=epoch,
-                                model=accelerator.unwrap_model(model).state_dict(),
-                            )
-                        ),
+                        checkpoint=checkpoint
                     )
 
 
@@ -245,12 +261,11 @@ class AccelerateTrainer(TorchTrainer):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
-        preprocessor: A ``ray.data.Preprocessor`` to preprocess the
-            provided datasets.
+            dataset.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available via
+            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -264,8 +279,10 @@ class AccelerateTrainer(TorchTrainer):
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
 
         if ACCELERATE_IMPORT_ERROR is not None:
@@ -287,6 +304,7 @@ class AccelerateTrainer(TorchTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
     def _unwrap_accelerate_config_if_needed(

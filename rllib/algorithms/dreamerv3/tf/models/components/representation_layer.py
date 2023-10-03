@@ -61,7 +61,7 @@ class RepresentationLayer(tf.keras.layers.Layer):
             activation=None,
         )
 
-    def call(self, inputs, return_z_probs=False):
+    def call(self, inputs):
         """Produces a discrete, differentiable z-sample from some 1D input tensor.
 
         Pushes the input_ tensor through our dense layer, which outputs
@@ -80,9 +80,11 @@ class RepresentationLayer(tf.keras.layers.Layer):
                 (concatenated) outputs of the (image?) encoder + the last hidden
                 deterministic state, or b) the output of the dynamics predictor MLP
                 network.
-            return_z_probs: Whether to return the probabilities for the categorical
-                distribution (in the shape of [B, num_categoricals, num_classes])
-                as a second return value.
+
+        Returns:
+            Tuple consisting of a differentiable z-sample and the probabilities for the
+            categorical distribution (in the shape of [B, num_categoricals,
+            num_classes]) that created this sample.
         """
         # Compute the logits (no activation) for our `num_categoricals` Categorical
         # distributions (with `num_classes_per_categorical` classes each).
@@ -93,7 +95,7 @@ class RepresentationLayer(tf.keras.layers.Layer):
             shape=(-1, self.num_categoricals, self.num_classes_per_categorical),
         )
         # Compute the probs (based on logits) via softmax.
-        probs = tf.nn.softmax(logits)
+        probs = tf.nn.softmax(tf.cast(logits, tf.float32))
         # Add the unimix weighting (1% uniform) to the probs.
         # See [1]: "Unimix categoricals: We parameterize the categorical distributions
         # for the world model representations and dynamics, as well as for the actor
@@ -121,9 +123,8 @@ class RepresentationLayer(tf.keras.layers.Layer):
         # [1] "The representations are sampled from a vector of softmax distributions
         # and we take straight-through gradients through the sampling step."
         # [2] Algorithm 1.
-        differentiable_sample = (
-            tf.stop_gradient(sample) + probs - tf.stop_gradient(probs)
+        differentiable_sample = tf.cast(
+            (tf.stop_gradient(sample) + probs - tf.stop_gradient(probs)),
+            tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32,
         )
-        if return_z_probs:
-            return differentiable_sample, probs
-        return differentiable_sample
+        return differentiable_sample, probs

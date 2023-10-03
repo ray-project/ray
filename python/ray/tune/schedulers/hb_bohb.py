@@ -140,7 +140,10 @@ class HyperBandForBOHB(HyperBandScheduler):
             scrubbed = [b for b in hyperband if b is not None]
             for bracket in scrubbed:
                 for trial in bracket.current_trials():
-                    if trial.status == Trial.PENDING:
+                    if (
+                        trial.status == Trial.PAUSED
+                        and trial in bracket.trials_to_unpause
+                    ) or trial.status == Trial.PENDING:
                         return trial
         # MAIN CHANGE HERE!
         if not any(t.status == Trial.RUNNING for t in tune_controller.get_trials()):
@@ -159,7 +162,11 @@ class HyperBandForBOHB(HyperBandScheduler):
                         # PAUSED trials now, and PAUSED trials will raise
                         # an error before the trial runner tries again.
                         if allow_recurse and any(
-                            trial.status == Trial.PENDING
+                            (
+                                trial.status == Trial.PAUSED
+                                and trial in bracket.trials_to_unpause
+                            )
+                            or trial.status == Trial.PENDING
                             for trial in bracket.current_trials()
                         ):
                             return self.choose_trial_to_run(

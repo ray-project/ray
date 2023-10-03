@@ -1,13 +1,117 @@
-from typing import Callable, Dict, List, Optional
+from abc import ABC, abstractmethod
+from typing import Callable, Dict, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
+from ray._raylet import StreamingObjectRefGenerator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.stats import StatsDict
+
+# TODO(hchen): Ray Core should have a common interface for these two types.
+Waitable = Union[ray.ObjectRef, StreamingObjectRefGenerator]
+
+
+class OpTask(ABC):
+    """Abstract class that represents a task that is created by an PhysicalOperator.
+
+    The task can be either a regular task or an actor task.
+    """
+
+    @abstractmethod
+    def get_waitable(self) -> Waitable:
+        """Return the ObjectRef or StreamingObjectRefGenerator to wait on."""
+        pass
+
+    @abstractmethod
+    def on_waitable_ready(self):
+        """Called when the waitable is ready.
+
+        This method may get called multiple times if the waitable is a
+        streaming generator.
+        """
+        pass
+
+
+class DataOpTask(OpTask):
+    """Represents an OpTask that handles Block data."""
+
+    def __init__(
+        self,
+        streaming_gen: StreamingObjectRefGenerator,
+        output_ready_callback: Callable[[RefBundle], None],
+        task_done_callback: Callable[[], None],
+    ):
+        """
+        Args:
+            streaming_gen: The streaming generator of this task. It should yield blocks.
+            output_ready_callback: The callback to call when a new RefBundle is output
+                from the generator.
+            task_done_callback: The callback to call when the task is done.
+        """
+        # TODO(hchen): Right now, the streaming generator is required to yield a Block
+        # and a BlockMetadata each time. We should unify task submission with an unified
+        # interface. So each individual operator don't need to take care of the
+        # BlockMetadata.
+        self._streaming_gen = streaming_gen
+        self._output_ready_callback = output_ready_callback
+        self._task_done_callback = task_done_callback
+
+    def get_waitable(self) -> StreamingObjectRefGenerator:
+        return self._streaming_gen
+
+    def on_waitable_ready(self):
+        # Handle all the available outputs of the streaming generator.
+        while True:
+            try:
+                block_ref = self._streaming_gen._next_sync(0)
+                if block_ref.is_nil():
+                    # The generator currently doesn't have new output.
+                    # And it's not stopped yet.
+                    return
+            except StopIteration:
+                self._task_done_callback()
+                return
+
+            try:
+                meta = ray.get(next(self._streaming_gen))
+            except StopIteration:
+                # The generator should always yield 2 values (block and metadata)
+                # each time. If we get a StopIteration here, it means an error
+                # happened in the task.
+                # And in this case, the block_ref is the exception object.
+                # TODO(hchen): Ray Core should have a better interface for
+                # detecting and obtaining the exception.
+                ex = ray.get(block_ref)
+                self._task_done_callback()
+                raise ex
+            self._output_ready_callback(
+                RefBundle([(block_ref, meta)], owns_blocks=True)
+            )
+
+
+class MetadataOpTask(OpTask):
+    """Represents an OpTask that only handles metadata, instead of Block data."""
+
+    def __init__(
+        self, object_ref: ray.ObjectRef, task_done_callback: Callable[[], None]
+    ):
+        """
+        Args:
+            object_ref: The ObjectRef of the task.
+            task_done_callback: The callback to call when the task is done.
+        """
+        self._object_ref = object_ref
+        self._task_done_callback = task_done_callback
+
+    def get_waitable(self) -> ray.ObjectRef:
+        return self._object_ref
+
+    def on_waitable_ready(self):
+        self._task_done_callback()
 
 
 class PhysicalOperator(Operator):
@@ -63,7 +167,7 @@ class PhysicalOperator(Operator):
         """
         return (
             self._inputs_complete
-            and len(self.get_work_refs()) == 0
+            and self.num_active_tasks() == 0
             and not self.has_next()
         ) or self._dependents_complete
 
@@ -78,13 +182,6 @@ class PhysicalOperator(Operator):
         obj_store_mem_allocated, obj_store_mem_freed.
         """
         return {}
-
-    def get_transformation_fn(self) -> Callable:
-        """Returns the underlying transformation function for this operator.
-
-        This is used by the physical plan optimizer for e.g. operator fusion.
-        """
-        raise NotImplementedError
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -176,13 +273,16 @@ class PhysicalOperator(Operator):
         """
         raise NotImplementedError
 
-    def get_work_refs(self) -> List[ray.ObjectRef]:
-        """Get a list of object references the executor should wait on.
-
-        When a reference becomes ready, the executor must call
-        `notify_work_completed(ref)` to tell this operator of the state change.
-        """
+    def get_active_tasks(self) -> List[OpTask]:
+        """Get a list of the active tasks of this operator."""
         return []
+
+    def num_active_tasks(self) -> int:
+        """Return the number of active tasks.
+
+        Subclasses can override this as a performance optimization.
+        """
+        return len(self.get_active_tasks())
 
     def throttling_disabled(self) -> bool:
         """Whether to disable resource throttling for this operator.
@@ -193,27 +293,12 @@ class PhysicalOperator(Operator):
         """
         return False
 
-    def num_active_work_refs(self) -> int:
-        """Return the number of active work refs.
-
-        Subclasses can override this as a performance optimization.
-        """
-        return len(self.get_work_refs())
-
     def internal_queue_size(self) -> int:
         """If the operator has an internal input queue, return its size.
 
         This is used to report tasks pending submission to actor pools.
         """
         return 0
-
-    def notify_work_completed(self, work_ref: ray.ObjectRef) -> None:
-        """Executor calls this when the given work is completed and local.
-
-        This must be called as soon as the operator is aware that `work_ref` is
-        ready.
-        """
-        raise NotImplementedError
 
     def shutdown(self) -> None:
         """Abort execution and release all resources used by this operator.

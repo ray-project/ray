@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -27,11 +28,13 @@ class GcsPlacementGroupManager;
 
 class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(const std::string &session_name,
-                            const ClusterResourceManager &cluster_resource_manager,
-                            const GcsResourceManager &gcs_resource_manager,
-                            const GcsNodeManager &gcs_node_manager,
-                            const GcsPlacementGroupManager &gcs_placement_group_manager);
+  GcsAutoscalerStateManager(
+      const std::string &session_name,
+      const ClusterResourceManager &cluster_resource_manager,
+      const GcsResourceManager &gcs_resource_manager,
+      const GcsNodeManager &gcs_node_manager,
+      const GcsPlacementGroupManager &gcs_placement_group_manager,
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -133,6 +136,9 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   /// GCS placement group manager reference.
   const GcsPlacementGroupManager &gcs_placement_group_manager_;
+
+  /// Raylet client pool.
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
