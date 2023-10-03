@@ -149,10 +149,6 @@ def _update_and_check_proxy_state_manager(
     )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 def test_node_selection(all_nodes):
     all_node_ids = {node_id for node_id, _ in all_nodes}
     # Test NoServer
@@ -214,10 +210,6 @@ def test_node_selection(all_nodes):
     ]
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 def test_proxy_state_update_restarts_unhealthy_proxies(ray_shutdown):
     """Test the update method in ProxyStateManager would
        kill and restart unhealthy proxies.
@@ -272,10 +264,6 @@ def test_proxy_state_update_restarts_unhealthy_proxies(ray_shutdown):
     assert new_proxy != old_proxy
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 def test_proxy_state_update_shutting_down():
     """Test calling update method on ProxyState when the proxy state is shutting
     down.
@@ -295,10 +283,6 @@ def test_proxy_state_update_shutting_down():
     assert previous_status == current_status
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 def test_proxy_state_update_starting_ready_succeed():
     """Test calling update method on ProxyState when the proxy state is STARTING and
     when the ready call succeeded.
@@ -319,10 +303,6 @@ def test_proxy_state_update_starting_ready_succeed():
     )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 def test_proxy_state_update_starting_ready_failed_once():
     """Test calling update method on ProxyState when the proxy state is STARTING and
     when the ready call failed once and succeeded for the following call.
@@ -364,10 +344,6 @@ def test_proxy_state_update_starting_ready_failed_once():
     )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 def test_proxy_state_update_starting_ready_always_fails():
     """Test calling update method on ProxyState when the proxy state is STARTING and
     when the ready call is always failing.
@@ -401,10 +377,6 @@ def test_proxy_state_update_starting_ready_always_fails():
     assert proxy_state._consecutive_health_check_failures == 3
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_READY_CHECK_TIMEOUT_S", 1)
 def test_proxy_state_update_starting_ready_always_timeout():
     """Test calling update method on ProxyState when the proxy state is STARTING and
@@ -436,10 +408,6 @@ def test_proxy_state_update_starting_ready_always_timeout():
     )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_proxy_state_update_healthy_check_health_succeed():
     """Test calling update method on ProxyState when the proxy state is HEALTHY and
@@ -471,10 +439,6 @@ def test_proxy_state_update_healthy_check_health_succeed():
     assert first_check_time != proxy_state._last_health_check_time
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_proxy_state_update_healthy_check_health_failed_once():
     """Test calling update method on ProxyState when the proxy state is HEALTHY and
@@ -526,10 +490,6 @@ def test_proxy_state_update_healthy_check_health_failed_once():
     )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_proxy_state_update_healthy_check_health_always_fails():
     """Test calling update method on ProxyState when the proxy state is HEALTHY and
@@ -574,10 +534,6 @@ def test_proxy_state_update_healthy_check_health_always_fails():
     assert proxy_state._consecutive_health_check_failures == 3
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_proxy_state_update_healthy_check_health_sometimes_fails():
     """Test that the proxy is UNHEALTHY after consecutive health-check failures.
@@ -690,10 +646,6 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
     )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 0.1)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_proxy_state_check_health_always_timeout_timeout_eq_period():
@@ -739,10 +691,6 @@ def test_proxy_state_check_health_always_timeout_timeout_eq_period():
     assert proxy_state._consecutive_health_check_failures == 3
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 1)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_proxy_state_check_health_always_timeout_timeout_greater_than_period():
@@ -788,10 +736,6 @@ def test_proxy_state_check_health_always_timeout_timeout_greater_than_period():
     assert proxy_state._consecutive_health_check_failures == 3
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_proxy_state_update_unhealthy_check_health_succeed():
     """Test calling update method on ProxyState when the proxy state has
@@ -816,10 +760,6 @@ def test_proxy_state_update_unhealthy_check_health_succeed():
     assert proxy_state._consecutive_health_check_failures == 0
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 0)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
 def test_unhealthy_retry_correct_number_of_times():
@@ -861,10 +801,6 @@ def test_unhealthy_retry_correct_number_of_times():
     assert proxy_state.status == ProxyStatus.UNHEALTHY
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 @pytest.mark.parametrize("number_of_worker_nodes", [0, 1, 2, 3])
 def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
@@ -923,10 +859,6 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
     )
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_proxy_actor_healthy_during_draining():
     """Test that the proxy will remain DRAINING even if health check succeeds."""
@@ -984,10 +916,6 @@ def test_proxy_actor_healthy_during_draining():
     assert proxy_state.status == ProxyStatus.DRAINING
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip on Windows until we refactor the tests with ProxyWrapper"
-)
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 1)
 @patch("ray.serve._private.proxy_state.PROXY_DRAIN_CHECK_PERIOD_S", 0.1)
 @pytest.mark.parametrize("number_of_worker_nodes", [1])

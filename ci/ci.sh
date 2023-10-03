@@ -223,6 +223,7 @@ test_python() {
       -python/ray/serve/tests:test_air_integrations_gpu
       -python/ray/serve/tests:test_fastapi
       -python/ray/serve/tests:test_get_deployment # address violation
+      -python/ray/serve/tests:test_proxy_state # skip running on Windows until we refactor the test
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
