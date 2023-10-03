@@ -15,7 +15,6 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve.built_application import BuiltApplication
 from ray.serve.deployment import Application
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
@@ -377,20 +376,6 @@ def test_shutdown_destructor(serve_instance):
 
     B.deploy()
     B.delete()
-
-
-def test_run_get_ingress_app(serve_instance):
-    """Check that serve.run() with an app returns the ingress."""
-
-    @serve.deployment(route_prefix="/g")
-    def g():
-        return "got g"
-
-    app = BuiltApplication([g], "g")
-    ingress_handle = serve.run(app)
-
-    assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_apps([SERVE_DEFAULT_APP_NAME])
 
 
 def test_run_get_ingress_node(serve_instance):
