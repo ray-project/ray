@@ -3,6 +3,7 @@ import json
 import logging
 import time
 import grpc
+from itertools import chain
 
 import aiohttp.web
 
@@ -37,7 +38,7 @@ from ray._private.ray_constants import (
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 def gcs_node_info_to_dict(message):
@@ -261,7 +262,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
             per_node_resources = {}
             # TODO(rickyx): we should just return structure data rather than strings.
-            for node in cluster_status.healthy_nodes:
+            for node in chain(cluster_status.active_nodes, cluster_status.idle_nodes):
                 if not node.resource_usage:
                     continue
 

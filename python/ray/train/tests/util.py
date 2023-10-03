@@ -25,9 +25,11 @@ def load_dict_checkpoint(checkpoint: Checkpoint) -> Dict[str, Any]:
             return ray_pickle.load(f)
 
 
-def mock_storage_context() -> StorageContext:
+def mock_storage_context(
+    exp_name: str = "exp_name", delete_syncer: bool = True
+) -> StorageContext:
     storage_path = tempfile.mkdtemp()
-    exp_name = "exp_name"
+    exp_name = exp_name
     trial_name = "trial_name"
     storage = StorageContext(
         storage_path=storage_path,
@@ -35,5 +37,7 @@ def mock_storage_context() -> StorageContext:
         trial_dir_name=trial_name,
     )
     storage.storage_local_path = storage_path
+    if delete_syncer:
+        storage.syncer = None
     os.makedirs(os.path.join(storage_path, exp_name, trial_name), exist_ok=True)
     return storage

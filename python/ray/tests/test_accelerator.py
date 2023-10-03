@@ -158,6 +158,8 @@ def test_autodetect_tpu_version(mock_os, mock_request, accelerator_type_version_
         ("gce", "not-a-valid-version"),
         ("gce", "vNOTVALID-8"),
         ("gce", "230498230948230948"),
+        # From issue #39913
+        ("gce", ""),
         ("gke", "not-a-valid-version"),
         ("gke", "vNOTVALID-8"),
         ("gke", "230498230948230948"),
@@ -175,8 +177,7 @@ def test_autodetect_invalid_type(mock_os, mock_request, test_case):
         mock_os.return_value = None
     else:
         mock_os.return_value = accelerator_type
-    with pytest.raises(ValueError):
-        accelerator._autodetect_tpu_version()
+    assert accelerator._autodetect_tpu_version() is None
 
 
 def test_autodetect_tpu_fails_gracefully():

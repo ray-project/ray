@@ -1,11 +1,12 @@
-import pytest
 from typing import Callable
+
+import pytest
 
 from ray.serve._private.common import EndpointInfo, EndpointTag, RequestProtocol
 from ray.serve._private.proxy_router import (
-    ProxyRouter,
     EndpointRouter,
     LongestPrefixRouter,
+    ProxyRouter,
 )
 
 
