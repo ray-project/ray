@@ -300,8 +300,7 @@ void RaySyncer::Register(MessageType message_type,
                 }
                 OnDemandBroadcasting(message_type);
               },
-              pull_from_reporter_interval_ms,
-              "RaySyncer.OnDemandBroadcasting");
+              pull_from_reporter_interval_ms);
         }
 
         RAY_LOG(DEBUG) << "Registered components: "

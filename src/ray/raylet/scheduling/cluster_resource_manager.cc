@@ -35,8 +35,7 @@ ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_servi
           }
         }
       },
-      RayConfig::instance().ray_syncer_message_refresh_interval_ms(),
-      "ClusterResourceManager.ResetRemoteNodeView");
+      RayConfig::instance().ray_syncer_message_refresh_interval_ms());
 }
 
 std::optional<absl::Time> ClusterResourceManager::GetNodeResourceModifiedTs(

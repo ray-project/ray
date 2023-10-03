@@ -333,8 +333,7 @@ class Publisher : public PublisherInterface {
     }
 
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
-                                          subscriber_timeout_ms,
-                                          "Publisher.CheckDeadSubscribers");
+                                          subscriber_timeout_ms);
   }
 
   ~Publisher() override = default;
