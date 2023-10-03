@@ -133,7 +133,7 @@ public class DeploymentTest extends BaseServeTest {
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
-    userConfig.put("suffix", "_new")
+    userConfig.put("suffix", "_new");
     deployment.options().setUserConfig(userConfig).create().deploy(true);
     Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote("6")), "echo_6_new");
   }

@@ -121,6 +121,31 @@ class ApplyServeDeploymentModel(BaseDeploymentModel):
 
         return values
 
+    @validator("ray_actor_options")
+    def runtime_env_contains_remote_uris(cls, v):
+        # Ensure that all uris in py_modules and working_dir are remote
+
+        runtime_env = v.runtime_env
+        if runtime_env is None:
+            return
+
+        uris = runtime_env.get("py_modules", [])
+        if "working_dir" in runtime_env:
+            uris.append(runtime_env["working_dir"])
+
+        for uri in uris:
+            if uri is not None:
+                try:
+                    parse_uri(uri)
+                except ValueError as e:
+                    raise ValueError(
+                        "runtime_envs in the Serve config support only "
+                        "remote URIs in working_dir and py_modules. Got "
+                        f"error when parsing URI: {e}"
+                    )
+
+        return v
+
     validate_route_prefix_format = validator("route_prefix", allow_reuse=True)(
         _route_prefix_format
     )

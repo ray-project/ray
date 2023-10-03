@@ -15,7 +15,6 @@ from pydantic import (
 )
 from typing_extensions import Annotated
 
-from ray._private.runtime_env.packaging import parse_uri
 from ray._private.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -150,7 +149,7 @@ class ProxyLocation(str, Enum):
 
 
 @PublicAPI(stability="stable")
-class BaseRayActorOptionsModel(BaseModel):
+class RayActorOptionsConfig(BaseModel):
     """Options with which to start a replica actor."""
 
     runtime_env: dict = Field(
@@ -203,30 +202,6 @@ class BaseRayActorOptionsModel(BaseModel):
             "Forces replicas to run on nodes with the specified accelerator type."
         ),
     )
-
-    @validator("runtime_env")
-    def runtime_env_contains_remote_uris(cls, v):
-        # Ensure that all uris in py_modules and working_dir are remote
-
-        if v is None:
-            return
-
-        uris = v.get("py_modules", [])
-        if "working_dir" in v:
-            uris.append(v["working_dir"])
-
-        for uri in uris:
-            if uri is not None:
-                try:
-                    parse_uri(uri)
-                except ValueError as e:
-                    raise ValueError(
-                        "runtime_envs in the Serve config support only "
-                        "remote URIs in working_dir and py_modules. Got "
-                        f"error when parsing URI: {e}"
-                    )
-
-        return v
 
 
 NumReplicasAnnotatedType = Annotated[
@@ -316,7 +291,7 @@ HealthCheckTimeoutSAnnotatedType = Annotated[
     ),
 ]
 RayActorOptionsAnnotatedType = Annotated[
-    BaseRayActorOptionsModel,
+    RayActorOptionsConfig,
     Field(
         description="Options set for each replica actor.",
         update_type=DeploymentOptionUpdateType.HeavyWeight,
@@ -385,7 +360,7 @@ class BaseDeploymentModel(BaseModel, allow_population_by_field_name=True):
     health_check_timeout_s: HealthCheckTimeoutSAnnotatedType = (
         DEFAULT_HEALTH_CHECK_TIMEOUT_S
     )
-    ray_actor_options: RayActorOptionsAnnotatedType = BaseRayActorOptionsModel()
+    ray_actor_options: RayActorOptionsAnnotatedType = RayActorOptionsConfig()
     placement_group_bundles: PlacementGroupBundlesAnnotatedType = None
     placement_group_strategy: PlacementGroupStrategyAnnotatedType = None
     max_replicas_per_node: MaxReplicasPerNodeAnnotatedType = None
