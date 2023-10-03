@@ -29,9 +29,9 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
 from ray.train._internal.checkpoint_manager import (
-    _TrainingResult,
     _CheckpointManager as _NewCheckpointManager,
 )
+from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
@@ -209,12 +209,12 @@ class _TemporaryTrialState:
     def __init__(self):
         self.location = _Location()
 
-        self.ray_actor = None
+        self.ray_actor: Optional[ray.actor.ActorHandle] = None
 
-        self.saving_to = None
-        self.restoring_from = None
+        self.saving_to: Optional[_FutureTrainingResult] = None
+        self.restoring_from: Optional[_TrainingResult] = None
 
-        self.num_restore_failures = 0
+        self.num_restore_failures: int = 0
 
     def __getstate__(self):
         return {}
@@ -811,7 +811,7 @@ class Trial:
 
     @property
     def node_ip(self):
-        return self.location.hostname
+        return self.temporary_state.location.hostname
 
     @property
     def sync_on_checkpoint(self):

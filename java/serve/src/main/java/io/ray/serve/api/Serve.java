@@ -39,13 +39,10 @@ public class Serve {
   /**
    * Initialize a serve instance.
    *
-   * @param dedicatedCpu Whether to reserve a CPU core for the internal Serve controller actor.
-   *     Defaults to False.
    * @param config Configuration options for Serve.
    * @return
    */
-  public static synchronized ServeControllerClient start(
-      boolean dedicatedCpu, Map<String, String> config) {
+  public static synchronized ServeControllerClient start(Map<String, String> config) {
     // Initialize ray if needed.
     if (!Ray.isInitialized()) {
       System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
@@ -69,7 +66,6 @@ public class Serve {
         Ray.actor(
                 PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"),
                 Constants.SERVE_CONTROLLER_NAME,
-                dedicatedCpu,
                 httpPort)
             .setName(Constants.SERVE_CONTROLLER_NAME + "_AVATAR")
             .setLifetime(ActorLifetime.DETACHED)

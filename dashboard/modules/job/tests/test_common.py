@@ -122,6 +122,9 @@ def test_dynamic_status_message():
     )
     assert "may be waiting for resources" in info.message
 
+    info = JobInfo(status=JobStatus.PENDING, entrypoint="echo hi", entrypoint_memory=4)
+    assert "may be waiting for resources" in info.message
+
     info = JobInfo(
         status=JobStatus.PENDING,
         entrypoint="echo hi",
@@ -141,6 +144,7 @@ def test_job_info_to_json():
         entrypoint="echo hi",
         entrypoint_num_cpus=1,
         entrypoint_num_gpus=1,
+        entrypoint_memory=4,
         entrypoint_resources={"Custom": 1},
         runtime_env={"pip": ["pkg"]},
     )
@@ -148,12 +152,13 @@ def test_job_info_to_json():
         "status": "PENDING",
         "message": (
             "Job has not started yet. It may be waiting for resources "
-            "(CPUs, GPUs, custom resources) to become available. "
+            "(CPUs, GPUs, memory, custom resources) to become available. "
             "It may be waiting for the runtime environment to be set up."
         ),
         "entrypoint": "echo hi",
         "entrypoint_num_cpus": 1,
         "entrypoint_num_gpus": 1,
+        "entrypoint_memory": 4,
         "entrypoint_resources": {"Custom": 1},
         "runtime_env_json": '{"pip": ["pkg"]}',
     }
@@ -180,6 +185,7 @@ def test_job_info_json_to_proto():
         metadata={"hi": "hi2"},
         entrypoint_num_cpus=1,
         entrypoint_num_gpus=1,
+        entrypoint_memory=4,
         entrypoint_resources={"Custom": 1},
         runtime_env={"pip": ["pkg"]},
         driver_agent_http_address="http://localhost:1234",
@@ -194,11 +200,12 @@ def test_job_info_json_to_proto():
     assert info_proto.metadata == {"hi": "hi2"}
     assert info_proto.entrypoint_num_cpus == 1
     assert info_proto.entrypoint_num_gpus == 1
+    assert info_proto.entrypoint_memory == 4
     assert info_proto.entrypoint_resources == {"Custom": 1}
     assert info_proto.runtime_env_json == '{"pip": ["pkg"]}'
     assert info_proto.message == (
         "Job has not started yet. It may be waiting for resources "
-        "(CPUs, GPUs, custom resources) to become available. "
+        "(CPUs, GPUs, memory, custom resources) to become available. "
         "It may be waiting for the runtime environment to be set up."
     )
     assert info_proto.error_type == "error_type"
@@ -213,6 +220,7 @@ def test_job_info_json_to_proto():
     for unset_optional_field in [
         "entrypoint_num_cpus",
         "entrypoint_num_gpus",
+        "entrypoint_memory",
         "runtime_env_json",
         "error_type",
         "driver_agent_http_address",
