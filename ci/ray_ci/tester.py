@@ -76,13 +76,6 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     type=str,
     help="Name of the build used to run tests",
 )
-@click.option(
-    "--skip-ray-install",
-    is_flag=True,
-    show_default=True,
-    default=False,
-    help=("Skip installing ray."),
-)
 def main(
     targets: List[str],
     team: str,
@@ -96,7 +89,6 @@ def main(
     test_env: List[str],
     test_arg: Optional[str],
     build_name: Optional[str],
-    skip_ray_install: bool,
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
