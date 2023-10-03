@@ -1,3 +1,4 @@
+import asyncio
 import time
 from typing import Any, Dict
 
@@ -8,6 +9,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
+from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.proxy import DRAINED_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
@@ -222,3 +224,10 @@ def ping_fruit_stand(channel, app_name):
     metadata = (("application", app_name),)
     response = stub.FruitStand(request=request, metadata=metadata)
     assert response.costs == 32
+
+
+async def send_signal_on_cancellation(signal_actor: ActorHandle):
+    try:
+        await asyncio.sleep(100000)
+    except asyncio.CancelledError:
+        await signal_actor.send.remote()

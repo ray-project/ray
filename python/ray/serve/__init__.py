@@ -3,9 +3,7 @@ import ray._private.worker
 try:
     from ray.serve.api import (
         Application,
-        BuiltApplication,
         Deployment,
-        build,
         delete,
         deployment,
         get_app_handle,
@@ -37,7 +35,6 @@ ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
     "batch",
-    "build",
     "start",
     "HTTPOptions",
     "get_replica_context",
@@ -50,7 +47,6 @@ __all__ = [
     "PredictorDeployment",
     "delete",
     "Application",
-    "BuiltApplication",
     "Deployment",
     "multiplexed",
     "get_multiplexed_model_id",
