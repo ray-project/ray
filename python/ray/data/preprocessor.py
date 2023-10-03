@@ -58,12 +58,6 @@ class Preprocessor(abc.ABC):
         PARTIALLY_FITTED = "PARTIALLY_FITTED"
         FITTED = "FITTED"
 
-    class TransformStatus(str, Enum):
-        """The transform status of preprocessor."""
-
-        NOT_TRANSFORMED = "NOT_TRANSFORMED"
-        TRANSFORMED = "TRANSFORMED"
-
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
 
@@ -74,27 +68,6 @@ class Preprocessor(abc.ABC):
             return Preprocessor.FitStatus.FITTED
         else:
             return Preprocessor.FitStatus.NOT_FITTED
-
-    def transform_status(self) -> "Preprocessor.TransformStatus":
-        if hasattr(self, "_transformed") and self._transformed:
-            return Preprocessor.TransformStatus.TRANSFORMED
-        else:
-            return Preprocessor.TransformStatus.NOT_TRANSFORMED
-
-    def is_inverse_transformable(self):
-        has_inverse_transform_pandas = (
-            self.__class__._inverse_transform_pandas
-            != Preprocessor._inverse_transform_pandas
-        )
-        has_inverse_transform_numpy = (
-            self.__class__._inverse_transform_numpy
-            != Preprocessor._inverse_transform_numpy
-        )
-
-        if has_inverse_transform_pandas or has_inverse_transform_numpy:
-            return True
-        else:
-            return False
 
     @Deprecated
     def transform_stats(self) -> Optional[str]:
@@ -234,62 +207,6 @@ class Preprocessor(abc.ABC):
 
         return self._transform(pipeline)
 
-    def inverse_transform(self, ds: "Dataset") -> "Dataset":
-        """Returns the original values of a transform operation.
-
-        Args:
-            ds: A transformed dataset.
-
-        Returns:
-            ray.data.Dataset: The Dataset with its original values.
-
-        Raises:
-            RuntimeError: If the preprocessor does not have a a defined
-            `inverse_transform` method or `transform` has not been called
-            first.
-        """
-
-        if not self._is_inverse_transformable:
-            raise RuntimeError(
-                "An inverse transform method has not been defined on"
-                "this preprocessor."
-            )
-
-        transform_status = self.transform_status()
-        if transform_status == Preprocessor.TransformStatus.NOT_TRANSFORMED:
-            raise RuntimeError("`transform` must be called before `inverse_transform`")
-
-        return self._inverse_transform(ds)
-
-    def inverse_transform_batch(self, data: "DataBatchType") -> "DataBatchType":
-        """Inverse transform a single batch of data.
-
-        The data will be converted to the format supported by the Preprocessor,
-        based on which ``_inverse_transform_*`` methods are implemented.
-
-        Args:
-            data: Input data batch.
-
-        Returns:
-            DataBatchType:
-                The inverse transformed data batch. This may differ
-                from the input type depending on which ``_inverse_transform_*`` methods
-                are implemented.
-        """
-        if not self._is_inverse_transformable:
-            raise RuntimeError(
-                "An inverse transform method has not been defined on"
-                "this preprocessor."
-            )
-
-        transform_status = self.transform_status()
-        if transform_status == Preprocessor.TransformStatus.NOT_TRANSFORMED:
-            raise RuntimeError(
-                "`transform` must be called before" "`inverse_transform_batch`"
-            )
-
-        return self._inverse_transform_batch(data)
-
     @DeveloperAPI
     def _fit(self, ds: "Dataset") -> "Preprocessor":
         """Sub-classes should override this instead of fit()."""
@@ -348,27 +265,6 @@ class Preprocessor(abc.ABC):
                 f'"pandas" and "numpy" allowed, but got: {transform_type}'
             )
 
-    def _inverse_transform(
-        self,
-        ds: Union["Dataset", "DatasetPipeline"],
-    ) -> Union["Dataset", "DatasetPipeline"]:
-
-        inverse_transform_type = self._determine_transform_to_use()
-
-        kwargs = self._get_transform_config()
-
-        assert inverse_transform_type in (BatchFormat.PANDAS, BatchFormat.NUMPY)
-        if inverse_transform_type == BatchFormat.PANDAS:
-            return ds.map_batches(
-                self._inverse_transform_pandas,
-                batch_format=BatchFormat.PANDAS,
-                **kwargs,
-            )
-        elif inverse_transform_type == BatchFormat.NUMPY:
-            return ds.map_batches(
-                self._inverse_transform_numpy, batch_format=BatchFormat.NUMPY, **kwargs
-            )
-
     def _get_transform_config(self) -> Dict[str, Any]:
         """Returns kwargs to be passed to :meth:`ray.data.Dataset.map_batches`.
 
@@ -407,36 +303,6 @@ class Preprocessor(abc.ABC):
         elif transform_type == BatchFormat.NUMPY:
             return self._transform_numpy(_convert_batch_type_to_numpy(data))
 
-    def _inverse_transform_batch(self, data: "DataBatchType") -> "DataBatchType":
-        import numpy as np
-        import pandas as pd
-
-        from ray.air.util.data_batch_conversion import (
-            _convert_batch_type_to_numpy,
-            _convert_batch_type_to_pandas,
-        )
-
-        try:
-            import pyarrow
-        except ImportError:
-            pyarrow = None
-
-        if not isinstance(
-            data, (pd.DataFrame, pyarrow.Table, collections.abc.Mapping, np.ndarray)
-        ):
-            raise ValueError(
-                "`inverse_transform_batch` is currently only implemented for Pandas "
-                "DataFrames, pyarrow Tables, NumPy ndarray and dictionary of "
-                f"ndarray. Got {type(data)}."
-            )
-
-        transform_type = self._determine_transform_to_use()
-
-        if transform_type == BatchFormat.PANDAS:
-            return self._inverse_transform_pandas(_convert_batch_type_to_pandas(data))
-        elif transform_type == BatchFormat.NUMPY:
-            return self._inverse_transform_numpy(_convert_batch_type_to_numpy(data))
-
     @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
         """Run the transformation on a data batch in a Pandas DataFrame format."""
@@ -444,18 +310,6 @@ class Preprocessor(abc.ABC):
 
     @DeveloperAPI
     def _transform_numpy(
-        self, np_data: Union["np.ndarray", Dict[str, "np.ndarray"]]
-    ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
-        """Run the transformation on a data batch in a NumPy ndarray format."""
-        raise NotImplementedError()
-
-    @DeveloperAPI
-    def _inverse_transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
-        """Run the inverse transformation on a data batch in a Pandas DataFrame format."""
-        raise NotImplementedError()
-
-    @DeveloperAPI
-    def _inverse_transform_numpy(
         self, np_data: Union["np.ndarray", Dict[str, "np.ndarray"]]
     ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
         """Run the transformation on a data batch in a NumPy ndarray format."""

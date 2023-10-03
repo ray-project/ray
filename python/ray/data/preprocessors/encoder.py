@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 import pandas.api.types
 
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.util.annotations import PublicAPI
 
 
@@ -400,8 +401,6 @@ class LabelEncoder(Preprocessor):
             :class:`LabelEncoder`.
     """
 
-    _is_inverse_transformable = True
-
     def __init__(self, label_column: str):
         self.label_column = label_column
 
@@ -418,6 +417,29 @@ class LabelEncoder(Preprocessor):
 
         df[self.label_column] = df[self.label_column].transform(column_label_encoder)
         return df
+
+    def inverse_transform(self, ds: "Dataset"):
+        fit_status = self.fit_status()
+
+        if fit_status in (
+            Preprocessor.FitStatus.PARTIALLY_FITTED,
+            Preprocessor.FitStatus.NOT_FITTED,
+        ):
+            raise PreprocessorNotFittedException(
+                "`fit` must be called before `inverse_transform`, "
+            )
+
+        transform_type = self._determine_transform_to_use()
+        if transform_type != BatchFormat.PANDAS:
+            raise ValueError("Only 'pandas' transform_type can be inverse_transformed")
+
+        kwargs = self._get_transform_config()
+
+        return ds.map_batches(
+            self._inverse_transform_pandas,
+            batch_format=BatchFormat.PANDAS,
+            **kwargs
+            )
 
     def _inverse_transform_pandas(self, df: pd.DataFrame):
         def column_label_decoder(s: pd.Series):
