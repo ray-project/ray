@@ -29,8 +29,6 @@ class RayDockerContainer(DockerContainer):
         wheel_name = f"ray-{RAY_VERSION}-{bin_path}-manylinux2014_x86_64.whl"
 
         constraints_file = "requirements_compiled.txt"
-        if self.python_version == "py37":
-            constraints_file = "requirements_compiled_py37.txt"
 
         ray_image = f"rayproject/{self.image_type}:{self._get_canonical_tag()}"
         cmds = [

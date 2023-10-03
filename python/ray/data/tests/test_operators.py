@@ -813,6 +813,35 @@ def test_block_ref_bundler_uniform(
     assert flat_out == list(range(n))
 
 
+def test_estimated_output_blocks():
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+
+    def yield_five(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        for i in range(5):
+            yield pd.DataFrame({"id": [i]})
+
+    min_rows_per_bundle = 10
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(yield_five),
+        input_op=input_op,
+        name="TestEstimatedNumBlocks",
+        min_rows_per_bundle=min_rows_per_bundle,
+    )
+
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        if op._num_inputs_received % min_rows_per_bundle == 0:
+            # enough inputs for a task bundle
+            run_op_tasks_sync(op)
+            assert op._estimated_output_blocks == 50
+
+    op.all_inputs_done()
+
+    # 100 inputs -> 100 / 10 = 10 tasks -> 10 * 5 = 50 output blocks
+    assert op._estimated_output_blocks == 50
+
+
 if __name__ == "__main__":
     import sys
 
