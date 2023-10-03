@@ -20,7 +20,6 @@ MAX_RETRY_CNT = 10
 RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
 
 
-@PublicAPI(stability="alpha")
 class _BigQueryDatasourceReader(Reader):
     def __init__(
         self,
@@ -132,6 +131,7 @@ class _BigQueryDatasourceReader(Reader):
             )
 
 
+@PublicAPI(stability="alpha")
 class BigQueryDatasource(Datasource):
     def create_reader(self, **kwargs) -> Reader:
         _check_import(self, module="google.cloud", package="bigquery")
