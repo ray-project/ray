@@ -15,7 +15,7 @@ To contribute to the Ray repository, follow the instructions below to build from
   :local:
 
 Fork the Ray repository
---------------------
+-----------------------
 
 Forking an open source repository is a best practice when looking to contribute, as it allows you to make and test changes without affecting the original project, ensuring a clean and organized collaboration process.
 You can propose changes to the main project by submitting a pull request to the main project's repository.
@@ -28,7 +28,7 @@ You can propose changes to the main project by submitting a pull request to the 
     c. `Connect your repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#configuring-git-to-sync-your-fork-with-the-upstream-repository>`_ to the upstream (main project) Ray repo to sync changes.
 
 Prepare a Python virtual environment
-------------------------------
+------------------------------------
 
 It's recommended to create a virtual environment to prevent version conflicts and to develop with an isolated, project-specific Python setup.
 
