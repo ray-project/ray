@@ -689,7 +689,8 @@ class gRPCProxy(GenericProxy):
             if proxy_response.streaming_response is not None:
                 # Unary calls go through the same generator codepath but will only ever
                 # yield a single result.
-                return await proxy_response.streaming_response.__anext__()
+                async for result in proxy_response.streaming_response:
+                    return result
             else:
                 return proxy_response.response
 
