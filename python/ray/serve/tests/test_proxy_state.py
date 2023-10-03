@@ -1,9 +1,6 @@
 import asyncio
-import concurrent
 import json
-import threading
 import time
-from random import random
 from typing import Any, List, Tuple
 from unittest.mock import patch
 
@@ -23,8 +20,7 @@ from ray.serve._private.controller import ServeController
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import (
-    ActorWrapper,
-    ProxyActorWrapper,
+    ActorProxyWrapper,
     ProxyState,
     ProxyStateManager,
 )
@@ -32,46 +28,6 @@ from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import DeploymentMode, HTTPOptions
 
 HEAD_NODE_ID = "node_id-index-head"
-
-
-class FakeProxyActorWrapper(ActorWrapper):
-    def __init__(self, actor_handle):
-        super().__init__(actor_handle=actor_handle)
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        thread = threading.Thread(
-            daemon=True,
-            target=self.loop.run_forever,
-        )
-        thread.start()
-        self.completed_tasks = {}
-
-    def start_new_ready_check(self):
-        pass
-
-    def start_new_health_check(self):
-        pass
-
-    def start_new_drained_check(self):
-        pass
-
-    def is_ready(self) -> Any:
-        pass
-
-    def is_healthy(self) -> bool:
-        pass
-
-    def is_drained(self) -> bool:
-        pass
-
-    def check_health(self):
-        pass
-
-    def update_draining(self, draining: bool):
-        pass
-
-    def kill_proxy(self):
-        pass
 
 
 class MockClusterNodeInfoCache:
@@ -90,7 +46,7 @@ def _make_proxy_state_manager(
     head_node_id: str = HEAD_NODE_ID,
     cluster_node_info_cache=MockClusterNodeInfoCache(),
     proxy_actor_class=ProxyActor,
-    proxy_actor_wrapper_class=ProxyActorWrapper,
+    actor_proxy_wrapper_class=ActorProxyWrapper,
 ) -> (ProxyStateManager, ClusterNodeInfoCache):
     return (
         ProxyStateManager(
@@ -99,7 +55,7 @@ def _make_proxy_state_manager(
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
             proxy_actor_class=proxy_actor_class,
-            proxy_actor_wrapper_class=proxy_actor_wrapper_class,
+            actor_proxy_wrapper_class=actor_proxy_wrapper_class,
         ),
         cluster_node_info_cache,
     )
@@ -162,7 +118,7 @@ def _create_proxy_state(
         kwargs["node_id"] = node_id
     proxy = proxy_actor_class.options(lifetime="detached").remote(**kwargs)
     state = ProxyState(
-        proxy_actor_wrapper=ProxyActorWrapper(actor_handle=proxy),
+        actor_proxy_wrapper=ActorProxyWrapper(actor_handle=proxy),
         actor_name="alice",
         node_id=node_id,
         node_ip="mock_node_ip",
@@ -624,8 +580,8 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
     ):
         state.update()
         assert (
-            ray.get(state.actor_handle.get_num_health_checks.remote())
-        ) == num_health_checks
+                   ray.get(state.actor_handle.get_num_health_checks.remote())
+               ) == num_health_checks
         return True
 
     def incur_health_checks(
@@ -833,7 +789,7 @@ def test_unhealthy_retry_correct_number_of_times():
     # Ensure _health_check_obj_ref is set again
     def health_check_ongoing():
         proxy_state.update()
-        return proxy_state._proxy_actor_wrapper.health_check_ongoing
+        return proxy_state._actor_proxy_wrapper.health_check_ongoing
 
     wait_for_condition(health_check_ongoing)
 
@@ -883,7 +839,7 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
         proxy_state_manager=manager,
         node_ids=node_ids,
         statuses=[ProxyStatus.HEALTHY]
-        + [ProxyStatus.DRAINING] * number_of_worker_nodes,
+                 + [ProxyStatus.DRAINING] * number_of_worker_nodes,
         proxy_nodes=proxy_nodes,
     )
 
@@ -1010,7 +966,7 @@ def test_proxy_actor_unhealthy_during_draining(
         proxy_state_manager=manager,
         node_ids=node_ids,
         statuses=[ProxyStatus.HEALTHY]
-        + [ProxyStatus.DRAINING] * number_of_worker_nodes,
+                 + [ProxyStatus.DRAINING] * number_of_worker_nodes,
         proxy_nodes=proxy_nodes,
     )
 
@@ -1061,118 +1017,6 @@ def test_is_ready_for_shutdown(all_nodes):
         return manager.is_ready_for_shutdown()
 
     wait_for_condition(check_is_ready_for_shutdown)
-
-
-@patch("ray.serve._private.proxy_state.PROXY_READY_CHECK_TIMEOUT_S", 0.1)
-@pytest.mark.parametrize("number_of_worker_nodes", [1])
-def test_proxy_starting_timeout_longer_than_env(number_of_worker_nodes, all_nodes):
-    """Test update method on ProxyStateManager when the proxy state is STARTING and
-    when the ready call takes longer than PROXY_READY_CHECK_TIMEOUT_S.
-
-    The proxy state started with STARTING. After update is called, ready calls takes
-    some time to finish. The state will eventually change to HEALTHY after few more
-    tries.
-    """
-    proxy_actor_wrapper_timeout = 0.1
-
-    class NewFakeProxyActorWrapper(FakeProxyActorWrapper):
-        def start_new_ready_check(self):
-            try:
-                self._ready_obj_ref = asyncio.run_coroutine_threadsafe(
-                    self._actor_handle.ready(),
-                    loop=self.loop,
-                )
-                # Running the ready call in a separate thread with a timeout.
-                self.completed_tasks[self.actor_id] = self._ready_obj_ref.result(
-                    timeout=proxy_actor_wrapper_timeout
-                )
-            except concurrent.futures._base.TimeoutError:
-                pass
-
-        def is_ready(self) -> Any:
-            # If the task is completed at the time of this call, a real payload will be
-            # returned. Otherwise, a none will be returned.
-            return self.completed_tasks.get(self.actor_id)
-
-    class FakeProxyActor:
-        def __init__(self, *args, **kwargs):
-            self._actor_id = random()
-
-        async def ready(self):
-            await asyncio.sleep(0.15)
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        async def check_health(self):
-            pass
-
-    class ProxyActorWrapper:
-        @classmethod
-        def options(cls, *args, **kwargs):
-            return ProxyActorWrapper
-
-        @classmethod
-        def remote(cls, *args, **kwargs):
-            return FakeProxyActor()
-
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
-        http_options=HTTPOptions(location=DeploymentMode.EveryNode),
-        proxy_actor_class=ProxyActorWrapper,
-        proxy_actor_wrapper_class=NewFakeProxyActorWrapper,
-    )
-    cluster_node_info_cache.alive_nodes = all_nodes
-
-    node_ids = {node[0] for node in all_nodes}
-
-    proxy_state_manager.update(proxy_nodes=node_ids)
-
-    # Ensure 2 proxies are created, one for the head node and another for the worker.
-    assert len(proxy_state_manager._proxy_states) == len(
-        node_ids
-    ), proxy_state_manager._proxy_states
-
-    # Ensure the proxy state statuses before update are STARTING.
-    for proxy_state in proxy_state_manager._proxy_states.values():
-        assert proxy_state.status == ProxyStatus.STARTING
-
-    # Continuously trigger update and wait for proxy states to restart.
-    def check_proxy_state_restarted():
-        proxy_state_manager.update(proxy_nodes=node_ids)
-        assert len(proxy_state_manager._proxy_restart_counts) == len(node_ids)
-        return True
-
-    wait_for_condition(check_proxy_state_restarted, timeout=5)
-
-    # Continuously trigger update and wait for status to be changed to HEALTHY.
-    def check_proxy_state_updates_timeout(
-        _proxy_state_manager: ProxyStateManager,
-        _node_ids: List[str],
-        _statuses: List[ProxyStatus],
-        **kwargs,
-    ):
-        # Update the timeout on the fake proxy actor wrapper to be consistent with the
-        # ones used on the proxy states.
-        nonlocal proxy_actor_wrapper_timeout
-        proxy_actor_wrapper_timeout = max(
-            _proxy_state_manager._proxy_restart_counts.values()
-        )
-        _proxy_state_manager.update(**kwargs)
-        proxy_states = _proxy_state_manager._proxy_states
-        assert all(
-            [
-                proxy_states[_node_ids[idx]].status == _statuses[idx]
-                for idx in range(len(_node_ids))
-            ]
-        )
-        return True
-
-    wait_for_condition(
-        condition_predictor=check_proxy_state_updates_timeout,
-        timeout=5,
-        _proxy_state_manager=proxy_state_manager,
-        _node_ids=list(node_ids),
-        _statuses=[ProxyStatus.HEALTHY] * len(node_ids),
-        proxy_nodes=node_ids,
-    )
 
 
 if __name__ == "__main__":

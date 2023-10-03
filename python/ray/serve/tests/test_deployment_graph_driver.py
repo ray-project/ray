@@ -46,7 +46,7 @@ def test_unit_schema_injection():
         return my_custom_param
 
     server = EchoIngress(http_adapter=resolver)
-    client = TestClient(server.app)
+    client = TestClient(server._asgi_app)
 
     response = client.post("/")
     assert response.status_code == 422
@@ -72,7 +72,7 @@ class MyType(BaseModel):
 
 def test_unit_pydantic_class_adapter():
     server = EchoIngress(http_adapter=MyType)
-    client = TestClient(server.app)
+    client = TestClient(server._asgi_app)
     response = client.get("/openapi.json")
     assert response.status_code == 200
     assert response.json()["paths"]["/"]["get"]["requestBody"] == {
