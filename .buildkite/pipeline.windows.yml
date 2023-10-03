@@ -42,6 +42,12 @@ steps:
     - ./ci/ci.sh test_python
 
 - label: ":windows: Serve tests"
+  conditions:
+    [
+        "RAY_CI_SERVE_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
+        "RAY_CI_ML_AFFECTED",
+    ]
   commands:
     - *prelude_commands
     # conda init should be moved to the docker image setup
