@@ -777,13 +777,15 @@ class gRPCProxy(GenericProxy):
                     proxy_request=proxy_request, request_id=request_id
                 )
             except asyncio.CancelledError:
+                # NOTE(edoakes): we aren't passing a `disconnected_task` to the
+                # `ProxyResponseGenerator` so this won't ever happen.
                 logger.info(f"Client for request {request_id} disconnected.")
                 # Ignore the rest of the response (the handler will be cancelled).
             except Exception as e:
                 logger.exception(e)
                 self._set_internal_error_response(proxy_request, e)
 
-        # TODO(edoakes): this status code is meaningless because we the request hasn't
+        # TODO(edoakes): this status code is meaningless because the request hasn't
         # actually run yet.
         return ProxyResponse(
             status_code=self.success_status_code,
