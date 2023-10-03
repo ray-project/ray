@@ -16,11 +16,9 @@
 
 #include <stdint.h>
 
-#include <thread>
-
 namespace ray {
 
-const int DEFAULT_MEMCOPY_THREADS = std::thread::hardware_concurrency() / 4;
+const int DEFAULT_MEMCOPY_THREADS = 6;
 
 // A helper function for doing memcpy with multiple threads. This is required
 // to saturate the memory bandwidth of modern cpus.
