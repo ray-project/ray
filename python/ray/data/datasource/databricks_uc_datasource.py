@@ -96,7 +96,8 @@ class _DatabricksUCReader(Reader):
 
         if is_truncated:
             logger.warning(
-                f"The result dataset of '{query!r}' exceeding 100GiB and it is truncated."
+                f"The result dataset of '{query!r}' exceeding 100GiB and it is "
+                "truncated."
             )
 
         chunks = manifest["chunks"]
@@ -134,7 +135,8 @@ class _DatabricksUCReader(Reader):
                     )
                     resolve_external_link_url = urljoin(
                         url_base,
-                        f"{statement_id}/result/chunks/{chunk_index}?{row_offset_param}",
+                        f"{statement_id}/result/chunks/{chunk_index}?"
+                        f"{row_offset_param}",
                     )
 
                     resolve_response = requests.get(
