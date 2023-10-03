@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.air.constants import TRAINING_ITERATION
+from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.error import TuneError
@@ -940,20 +941,13 @@ class PopulationBasedTraining(FIFOScheduler):
 
         # Resume training from a shallow copy of `trial_to_clone`'s latest
         # checkpoint
-        checkpoint_to_exploit = copy.copy(new_state.last_checkpoint)
+        checkpoint_to_exploit: Checkpoint = copy.copy(new_state.last_checkpoint)
 
-        if _use_storage_context():
-            trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
-                _TrainingResult(
-                    checkpoint=checkpoint_to_exploit, metrics=new_state.last_result
-                )
+        trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
+            _TrainingResult(
+                checkpoint=checkpoint_to_exploit, metrics=new_state.last_result
             )
-        else:
-            # NOTE: Clear the checkpoint id (which was set by the other trial's
-            # checkpoint manager) so that the current trial's checkpoint manager marks
-            # the checkpoint as the most recent to use upon trial resume
-            checkpoint_to_exploit.id = None
-            trial.on_checkpoint(checkpoint_to_exploit)
+        )
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
