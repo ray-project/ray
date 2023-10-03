@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 
 from typing import List, Optional
 
@@ -32,11 +33,42 @@ class Container:
         self.docker_tag = docker_tag
         self.volumes = volumes or []
 
-    def run_script(self, script: List[str]) -> bytes:
+    def run_script_with_output(self, script: List[str]) -> bytes:
+        """
+        Run a script in container and returns output
+        """
+        return subprocess.check_output(self._get_run_command(script))
+
+    def run_script(self, script: List[str]) -> None:
         """
         Run a script in container
         """
-        return subprocess.check_output(self._get_run_command(script))
+        return subprocess.check_call(
+            self._get_run_command(script),
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+        )
+
+    def install_ray(self) -> None:
+        env = os.environ.copy()
+        env["DOCKER_BUILDKIT"] = "1"
+        subprocess.check_call(
+            [
+                "docker",
+                "build",
+                "--pull",
+                "--build-arg",
+                f"BASE_IMAGE={self._get_docker_image()}",
+                "-t",
+                self._get_docker_image(),
+                "-f",
+                "/ray/ci/ray_ci/tests.env.Dockerfile",
+                "/ray",
+            ],
+            env=env,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+        )
 
     def _get_run_command(self, script: List[str]) -> List[str]:
         command = [
