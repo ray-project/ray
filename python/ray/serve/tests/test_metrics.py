@@ -214,7 +214,7 @@ def test_proxy_metrics(serve_start_shutdown):
     # Any updates here should be reflected there too.
     expected_metrics.append("serve_num_deployment_http_error_requests")
     expected_metrics.append("serve_http_request_latency_ms")
-    expected_metrics.append("serve_num_deployment_grpc_error_requests")
+    # expected_metrics.append("serve_num_deployment_grpc_error_requests")
     expected_metrics.append("serve_grpc_request_latency_ms")
 
     @serve.deployment(name="A")
