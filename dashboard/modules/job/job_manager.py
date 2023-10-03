@@ -548,6 +548,7 @@ class JobManager:
             self.event_logger = None
 
         run_background_task(self._recover_running_jobs())
+        self._recover_running_jobs_done_event = asyncio.Event()
 
     async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
@@ -555,10 +556,13 @@ class JobManager:
         For each job, we will spawn a coroutine to monitor it.
         Each will be added to self._running_jobs and reconciled.
         """
-        all_jobs = await self._job_info_client.get_all_jobs()
-        for job_id, job_info in all_jobs.items():
-            if not job_info.status.is_terminal():
-                run_background_task(self._monitor_job(job_id))
+        try:
+            all_jobs = await self._job_info_client.get_all_jobs()
+            for job_id, job_info in all_jobs.items():
+                if not job_info.status.is_terminal():
+                    run_background_task(self._monitor_job(job_id))
+        finally:
+            self._recover_running_jobs_done_event.set()
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
@@ -895,6 +899,9 @@ class JobManager:
             job_id: Generated uuid for further job management. Only valid
                 within the same ray cluster.
         """
+        # TODO: comment.
+        await self._recover_running_jobs_done_event.wait()
+
         if entrypoint_num_cpus is None:
             entrypoint_num_cpus = 0
         if entrypoint_num_gpus is None:
