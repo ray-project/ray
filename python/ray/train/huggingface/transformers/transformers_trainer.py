@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
 from torch.utils.data import Dataset as TorchDataset
 
-from ray import train
-from ray.air import session
+import ray.train
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import (
     EVALUATION_DATASET_KEY,
@@ -398,8 +397,8 @@ def _huggingface_train_loop_per_worker(config):
     """Per-worker training loop for HuggingFace Transformers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
 
-    train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
-    eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
+    train_dataset = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
+    eval_dataset = ray.train.get_dataset_shard(EVALUATION_DATASET_KEY)
 
     train_torch_dataset, eval_torch_dataset = process_datasets(
         train_dataset,
@@ -480,7 +479,7 @@ def _huggingface_train_loop_per_worker(config):
 
     trainer.add_callback(TrainReportCallback)
 
-    checkpoint = train.get_checkpoint()
+    checkpoint = ray.train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_path:
             trainer.train(resume_from_checkpoint=checkpoint_path)

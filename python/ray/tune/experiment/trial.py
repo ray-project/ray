@@ -15,7 +15,6 @@ from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
-from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import (
@@ -26,7 +25,7 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
-from ray.train import Checkpoint
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
 from ray.train._internal.checkpoint_manager import (
     _CheckpointManager as _NewCheckpointManager,
