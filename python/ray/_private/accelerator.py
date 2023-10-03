@@ -47,9 +47,9 @@ def update_resources_with_accelerator_type(resources: dict):
     _detect_and_configure_custom_accelerator(
         resources=resources,
         accelerator_key=ray_constants.HPU,
-        accelerator_type=_autodetect_hpu_type(),
-        visible_ids=utils.get_hpu_visible_devices(),
-        autodetected_accelerators=_autodetect_num_hpus(),
+        get_accelerator_type=_autodetect_hpu_type,
+        get_visible_ids=utils.get_hpu_visible_devices,
+        autodetect_accelerators=_autodetect_num_hpus,
         visible_devices_env_variable=ray_constants.HABANA_VISIBLE_MODULES_ENV_VAR,
     )
 
@@ -285,7 +285,7 @@ def valid_tpu_accelerator_type(accelerator_type: str):
     return True
 
 
-def _autodetect_hpu_type() -> str:
+def _autodetect_hpu_type() -> Optional[str]:
     """Attempt to HPU family type.
 
     Returns:
