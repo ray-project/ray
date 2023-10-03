@@ -119,7 +119,7 @@ void NewPlacementGroupResourceManager::CommitBundle(
   } else {
     // Ignore request If the bundle state is already committed.
     if (it->second->state_ == CommitState::COMMITTED) {
-      RAY_LOG(DEBUG) << "Duplicate committ bundle request, skip it directly.";
+      RAY_LOG(DEBUG) << "Duplicate commit bundle request, skip it directly.";
       return;
     }
   }
