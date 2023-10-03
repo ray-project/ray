@@ -151,7 +151,7 @@ future==0.18.3
 gast==0.4.0
 gcs-oauth2-boto-plugin==3.0
 gitdb==4.0.10
-gitpython==3.1.32
+gitpython==3.1.35
 glfw==2.6.2
 glom==22.1.0
 google-api-core==2.11.1

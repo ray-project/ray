@@ -581,7 +581,7 @@ gin-config==0.5.0
     #   recsim
 gitdb==4.0.10
     # via gitpython
-gitpython==3.1.37
+gitpython==3.1.35
     # via
     #   mlflow
     #   nbdime
