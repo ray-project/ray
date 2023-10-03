@@ -5,7 +5,6 @@ import json
 import logging
 import os
 from pathlib import Path
-import tempfile
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 import warnings
 
@@ -14,22 +13,12 @@ import pyarrow.fs
 import ray
 import ray.cloudpickle as pickle
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
-from ray.air._internal.remote_storage import (
-    download_from_uri,
-    is_non_local_path_uri,
-    list_at_uri,
-)
 from ray.air._internal import usage as air_usage
-from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.train._internal import session
-from ray.train._internal.storage import (
-    _exists_at_fs_path,
-    _use_storage_context,
-    get_fs_and_path,
-)
+from ray.train._internal.session import _get_session
+from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
 
 from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
@@ -313,16 +302,9 @@ class BaseTrainer(abc.ABC):
                 "is the experiment directory that results from a call to "
                 "`trainer.fit()`."
             )
-        if _use_storage_context():
-            fs, fs_path = get_fs_and_path(path, storage_filesystem)
-            with fs.open_input_file(os.path.join(fs_path, _TRAINER_PKL)) as f:
-                trainer_cls, param_dict = pickle.loads(f.readall())
-        else:
-            trainer_state_path = cls._maybe_sync_down_trainer_state(path)
-            assert trainer_state_path.exists()
-
-            with open(trainer_state_path, "rb") as fp:
-                trainer_cls, param_dict = pickle.load(fp)
+        fs, fs_path = get_fs_and_path(path, storage_filesystem)
+        with fs.open_input_file(os.path.join(fs_path, _TRAINER_PKL)) as f:
+            trainer_cls, param_dict = pickle.loads(f.readall())
 
         if trainer_cls is not cls:
             warnings.warn(
@@ -390,11 +372,8 @@ class BaseTrainer(abc.ABC):
         Returns:
             bool: Whether this path exists and contains the trainer state to resume from
         """
-        if _use_storage_context():
-            fs, fs_path = get_fs_and_path(path, storage_filesystem)
-            return _exists_at_fs_path(fs, os.path.join(fs_path, _TRAINER_PKL))
-
-        return _TRAINER_PKL in list_at_uri(str(path))
+        fs, fs_path = get_fs_and_path(path, storage_filesystem)
+        return _exists_at_fs_path(fs, os.path.join(fs_path, _TRAINER_PKL))
 
     def __repr__(self):
         # A dictionary that maps parameters to their default values.
@@ -507,22 +486,6 @@ class BaseTrainer(abc.ABC):
             allowed_keys=cls._scaling_config_allowed_keys,
         )
         return scaling_config
-
-    @classmethod
-    def _maybe_sync_down_trainer_state(cls, restore_path: str) -> Path:
-        """Syncs down trainer state from remote storage.
-
-        Returns:
-            str: Local directory containing the trainer state
-        """
-        if not is_non_local_path_uri(restore_path):
-            return Path(os.path.expanduser(restore_path)) / _TRAINER_PKL
-
-        tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
-
-        uri = URI(restore_path)
-        download_from_uri(str(uri / _TRAINER_PKL), str(tempdir / _TRAINER_PKL))
-        return tempdir / _TRAINER_PKL
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -733,33 +696,24 @@ class BaseTrainer(abc.ABC):
 
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
-        restored = bool(self._restore_path)
         metadata = self.metadata
 
         def train_func(config):
             assert metadata is not None, metadata
             # Propagate user metadata from the Trainer constructor.
-            session._get_session().metadata = metadata
+            _get_session().metadata = metadata
 
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
 
             # Get the checkpoint from Tune and pass it to workers later on.
-            checkpoint = session.get_checkpoint()
+            checkpoint = ray.train.get_checkpoint()
             if checkpoint:
                 # Set `starting_checkpoint` for auto-recovery fault-tolerance
                 # as well as manual restoration.
                 trainer.starting_checkpoint = checkpoint
-
-                # TODO(justinvyu): Remove this when Preprocessor is removed from Trainer
-                if not _use_storage_context():
-                    # Always load the preprocessor from an available checkpoint
-                    # Unless we are restoring the experiment and have explicitly
-                    # passed in a new preprocessor
-                    if not (restored and trainer.preprocessor):
-                        trainer.preprocessor = checkpoint.get_preprocessor()
-            # Else: Train will restore from the user-provided
+            # else: Train will restore from the user-provided
             # `resume_from_checkpoint` == `starting_checkpoint`.
 
             trainer.setup()
