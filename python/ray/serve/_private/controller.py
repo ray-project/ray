@@ -4,7 +4,6 @@ import marshal
 import os
 import pickle
 import time
-from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
@@ -115,8 +114,6 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        detached: bool = False,
-        _disable_proxy: bool = False,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -149,23 +146,16 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
-        # Dictionary of deployment_name -> proxy_name -> queue length.
-        self.deployment_stats = defaultdict(lambda: defaultdict(dict))
-
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
 
-        if _disable_proxy:
-            self.proxy_state_manager = None
-        else:
-            self.proxy_state_manager = ProxyStateManager(
-                controller_name,
-                detached,
-                http_config,
-                self._controller_node_id,
-                self.cluster_node_info_cache,
-                grpc_options,
-            )
+        self.proxy_state_manager = ProxyStateManager(
+            controller_name,
+            http_config,
+            self._controller_node_id,
+            self.cluster_node_info_cache,
+            grpc_options,
+        )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
@@ -180,7 +170,6 @@ class ServeController:
 
         self.deployment_state_manager = DeploymentStateManager(
             controller_name,
-            detached,
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
@@ -592,7 +581,6 @@ class ServeController:
         route_prefix: Optional[str],
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
-        is_driver_deployment: Optional[bool] = False,
         # TODO(edoakes): this is a hack because the deployment_language doesn't seem
         # to get set properly from Java.
         is_deployed_from_python: bool = False,
@@ -610,7 +598,6 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             route_prefix=route_prefix,
             docs_path=docs_path,
-            is_driver_deployment=is_driver_deployment,
             app_name="",
         )
 
@@ -1046,8 +1033,6 @@ class ServeControllerAvatar:
     def __init__(
         self,
         controller_name: str,
-        detached: bool = False,
-        dedicated_cpu: bool = False,
         http_proxy_port: int = 8000,
     ):
         try:
@@ -1058,9 +1043,9 @@ class ServeControllerAvatar:
             http_config = HTTPOptions()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
-                num_cpus=1 if dedicated_cpu else 0,
+                num_cpus=0,
                 name=controller_name,
-                lifetime="detached" if detached else None,
+                lifetime="detached",
                 max_restarts=-1,
                 max_task_retries=-1,
                 resources={HEAD_NODE_RESOURCE_NAME: 0.001},
@@ -1069,7 +1054,6 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
-                detached=detached,
             )
 
     def check_alive(self) -> None:

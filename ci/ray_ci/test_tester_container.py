@@ -70,14 +70,14 @@ def test_run_tests() -> None:
         "ci.ray_ci.tester_container.TesterContainer.install_ray",
         return_value=None,
     ):
-        container = TesterContainer("team")
+        container = TesterContainer("team", shard_count=2, shard_ids=[0, 1])
         # test_targets are not empty
-        assert container.run_tests(["t1", "t2"], [], 2)
+        assert container.run_tests(["t1", "t2"], [])
         # test_targets is empty after chunking, but not creating popen
-        assert container.run_tests(["t1"], [], 2)
-        assert container.run_tests([], [], 2)
+        assert container.run_tests(["t1"], [])
+        assert container.run_tests([], [])
         # test targets contain bad_test
-        assert not container.run_tests(["bad_test"], [], 2)
+        assert not container.run_tests(["bad_test"], [])
 
 
 if __name__ == "__main__":

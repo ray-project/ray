@@ -14,14 +14,7 @@ from ray._private.test_utils import (
     async_wait_for_condition,
     wait_for_condition,
 )
-from ray.actor import ActorHandle
-
-
-async def send_signal_on_cancellation(signal_actor: ActorHandle):
-    try:
-        await asyncio.sleep(100000)
-    except asyncio.CancelledError:
-        await signal_actor.send.remote()
+from ray.serve.tests.common.utils import send_signal_on_cancellation
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
