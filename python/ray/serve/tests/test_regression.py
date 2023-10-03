@@ -3,15 +3,15 @@ import gc
 import sys
 
 import numpy as np
-import requests
 import pytest
+import requests
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 import ray
-from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray._private.test_utils import SignalActor
+from ray.exceptions import GetTimeoutError
 from ray.serve.context import _get_global_client
 from ray.serve.drivers import DAGDriver
 
@@ -79,10 +79,6 @@ def test_np_in_composed_model(serve_instance):
     assert result.json() == 100.0
 
 
-@pytest.mark.skipif(
-    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
-    reason="Failing on Python 3.7 due to different GC behavior.",
-)
 def test_replica_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
     @serve.deployment
@@ -204,7 +200,7 @@ def test_out_of_order_chaining(serve_instance):
             r2_ref = await self.m2.compute.remote(r1_task)
             await r2_ref
 
-    @serve.deployment
+    @serve.deployment(graceful_shutdown_timeout_s=0.0)
     class FirstModel:
         async def compute(self, _id):
             if _id == 0:
@@ -275,6 +271,4 @@ def test_healthcheck_timeout(serve_instance):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -69,6 +69,8 @@ int main(int argc, char *argv[]) {
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);
 
+  ray::stats::enable_grpc_metrics_collection_if_needed("gcs");
+
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "gcs_server"},
                                             {ray::stats::WorkerIdKey, ""},
                                             {ray::stats::VersionKey, kRayVersion},

@@ -113,7 +113,7 @@ compile_pip_dependencies() {
   pip install --no-cache-dir numpy torch
 
   pip-compile --resolver=backtracking -q \
-     --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
+     --pip-args --no-deps --strip-extras --no-header -o \
     "${WORKSPACE_DIR}/python/$TARGET" \
     "${WORKSPACE_DIR}/python/requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
@@ -128,7 +128,8 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
+    "${WORKSPACE_DIR}/doc/requirements-doc.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
@@ -213,13 +214,15 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
-      -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
-      -python/ray/serve:test_gcs_failure # Fork not supported in windows
-      -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
-      -python/ray/serve:test_gradio
-      -python/ray/serve:test_gradio_visualization
-      -python/ray/serve:test_air_integrations_gpu
-      -python/ray/serve:test_fastapi
+      python/ray/train:test_windows
+      -python/ray/serve/tests:test_cross_language # Ray java not built on Windows yet.
+      -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
+      -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
+      -python/ray/serve/tests:test_gradio
+      -python/ray/serve/tests:test_gradio_visualization
+      -python/ray/serve/tests:test_air_integrations_gpu
+      -python/ray/serve/tests:test_fastapi
+      -python/ray/serve/tests:test_get_deployment # address violation
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -228,7 +231,6 @@ test_python() {
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_gcp_tpu_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_gcs_fault_tolerance # flaky
-      -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
@@ -244,7 +246,6 @@ test_python() {
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ml_py37_compat/... # Required ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
     )

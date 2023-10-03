@@ -109,6 +109,7 @@ class LoadMetricsSummary:
     # Optional for deployment modes which have the concept of node types and
     # backwards compatibility.
     node_type_mapping: Optional[Dict[str, str]] = None
+    idle_time_map: Optional[Dict[str, int]] = None
 
 
 class ConcurrentCounter:
@@ -742,6 +743,7 @@ def get_per_node_breakdown_as_dict(
 def get_per_node_breakdown(
     lm_summary: LoadMetricsSummary,
     node_type_mapping: Optional[Dict[str, float]],
+    node_activities: Optional[Dict[str, List[str]]],
     verbose: bool,
 ) -> str:
     sio = StringIO()
@@ -750,17 +752,34 @@ def get_per_node_breakdown(
         node_type_mapping = {}
 
     print(file=sio)
-    for node_ip, usage in lm_summary.usage_by_node.items():
+    for node_id, usage in lm_summary.usage_by_node.items():
         print(file=sio)  # Print a newline.
-        node_string = f"Node: {node_ip}"
-        if node_ip in node_type_mapping:
-            node_type = node_type_mapping[node_ip]
+        node_string = f"Node: {node_id}"
+        if node_id in node_type_mapping:
+            node_type = node_type_mapping[node_id]
             node_string += f" ({node_type})"
-
         print(node_string, file=sio)
+        if (
+            lm_summary.idle_time_map
+            and node_id in lm_summary.idle_time_map
+            and lm_summary.idle_time_map[node_id] > 0
+        ):
+            print(f" Idle: {lm_summary.idle_time_map[node_id]} ms", file=sio)
+
         print(" Usage:", file=sio)
         for line in parse_usage(usage, verbose):
             print(f"  {line}", file=sio)
+        # Don't print anything if not provided.
+        if not node_activities:
+            continue
+        print(" Activity:", file=sio)
+        if node_id not in node_activities:
+            print("  (no activity)", file=sio)
+        else:
+            # Note: We have node IP here.
+            _, reasons = node_activities[node_id]
+            for reason in reasons:
+                print(f"  {reason}", file=sio)
 
     return sio.getvalue()
 
@@ -791,10 +810,22 @@ def format_info_string(
             header += "Autoscaler iteration time: " f"{autoscaler_update_time:3f}s\n"
 
     available_node_report_lines = []
-    for node_type, count in autoscaler_summary.active_nodes.items():
-        line = f" {count} {node_type}"
-        available_node_report_lines.append(line)
-    available_node_report = "\n".join(available_node_report_lines)
+    if not autoscaler_summary.active_nodes:
+        available_node_report = " (no active nodes)"
+    else:
+        for node_type, count in autoscaler_summary.active_nodes.items():
+            line = f" {count} {node_type}"
+            available_node_report_lines.append(line)
+        available_node_report = "\n".join(available_node_report_lines)
+
+    if not autoscaler_summary.idle_nodes:
+        idle_node_report = " (no idle nodes)"
+    else:
+        idle_node_report_lines = []
+        for node_type, count in autoscaler_summary.idle_nodes.items():
+            line = f" {count} {node_type}"
+            idle_node_report_lines.append(line)
+        idle_node_report = "\n".join(idle_node_report_lines)
 
     pending_lines = []
     for node_type, count in autoscaler_summary.pending_launches.items():
@@ -846,12 +877,18 @@ def format_info_string(
 
     usage_report = get_usage_report(lm_summary, verbose)
     demand_report = get_demand_report(lm_summary)
-
     formatted_output = f"""{header}
 Node status
 {separator}
-Healthy:
-{available_node_report}
+Active:
+{available_node_report}"""
+
+    if not autoscaler_summary.legacy:
+        formatted_output += f"""
+Idle:
+{idle_node_report}"""
+
+    formatted_output += f"""
 Pending:
 {pending_report}
 {failure_report}
@@ -863,10 +900,16 @@ Resources
 {"Total " if verbose else ""}Demands:
 {demand_report}"""
 
-    if verbose and lm_summary.usage_by_node:
-        formatted_output += get_per_node_breakdown(
-            lm_summary, autoscaler_summary.node_type_mapping, verbose
-        )
+    if verbose:
+        if lm_summary.usage_by_node:
+            formatted_output += get_per_node_breakdown(
+                lm_summary,
+                autoscaler_summary.node_type_mapping,
+                autoscaler_summary.node_activities,
+                verbose,
+            )
+        else:
+            formatted_output += "\n"
 
     return formatted_output.strip()
 

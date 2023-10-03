@@ -1,23 +1,17 @@
-import copy
 import inspect
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
-from ray import air, tune
-from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
-from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY, LAZY_CHECKPOINT_MARKER_FILE
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray import air
+from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train import BackendConfig, Checkpoint, TrainingIterator
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
-from ray.train._internal.checkpoint import TuneCheckpointManager
 from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
-from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
@@ -29,30 +23,6 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
-
-
-# TODO(team-ml): Refactor checkpoint management along with Tune.
-class _DataParallelCheckpointManager(TuneCheckpointManager):
-    def __init__(
-        self,
-        preprocessor: "Preprocessor",
-        run_dir: Optional[Path] = None,
-        checkpoint_strategy: Optional[CheckpointConfig] = None,
-    ):
-        self.preprocessor = preprocessor
-        super(_DataParallelCheckpointManager, self).__init__(
-            run_dir=run_dir,
-            checkpoint_strategy=checkpoint_strategy,
-        )
-
-    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        air_checkpoint: air.Checkpoint = checkpoint.dir_or_data
-        checkpoint.dir_or_data = add_preprocessor_to_checkpoint(
-            air_checkpoint, self.preprocessor
-        )
-        super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
-            checkpoint=checkpoint
-        )
 
 
 @DeveloperAPI
@@ -235,10 +205,6 @@ class DataParallelTrainer(BaseTrainer):
             for checkpoints saved from this Trainer. Must be JSON-serializable.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
-
-    _checkpoint_manager_cls: Type[
-        TuneCheckpointManager
-    ] = _DataParallelCheckpointManager
 
     # Exposed here for testing purposes. Should never need
     # to be overriden.
@@ -430,56 +396,51 @@ class DataParallelTrainer(BaseTrainer):
         for results in training_iterator:
             # TODO(ml-team): add ability to report results from multiple workers.
             first_worker_result = results[0]
-            if _use_storage_context():
-                assert all(isinstance(result, _TrainingResult) for result in results)
+            assert all(isinstance(result, _TrainingResult) for result in results)
 
-                tune_session = get_session()
+            tune_session = get_session()
 
-                # Check if any workers reported a checkpoint.
-                # If so, report a checkpoint pointing to the persisted location
-                # to Tune for book-keeping.
-                # NOTE: This removes the restriction for any individual worker
-                # (ex: global rank 0 worker) from needing to report a checkpoint.
-                # All workers reported a checkpoint to the same fs path, so there's
-                # no need to report multiple checkpoints to Tune.
-                worker_checkpoints = [
-                    result.checkpoint
-                    for result in results
-                    if result.checkpoint is not None
-                ]
-                at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
-                # Make sure that all workers uploaded to the same location.
-                assert all(
-                    checkpoint.path == tune_session.storage.checkpoint_fs_path
-                    for checkpoint in worker_checkpoints
+            # Check if any workers reported a checkpoint.
+            # If so, report a checkpoint pointing to the persisted location
+            # to Tune for book-keeping.
+            # NOTE: This removes the restriction for any individual worker
+            # (ex: global rank 0 worker) from needing to report a checkpoint.
+            # All workers reported a checkpoint to the same fs path, so there's
+            # no need to report multiple checkpoints to Tune.
+            worker_checkpoints = [
+                result.checkpoint for result in results if result.checkpoint is not None
+            ]
+            at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
+            # Make sure that all workers uploaded to the same location.
+            assert all(
+                checkpoint.path == tune_session.storage.checkpoint_fs_path
+                for checkpoint in worker_checkpoints
+            )
+
+            checkpoint = (
+                Checkpoint(
+                    filesystem=tune_session.storage.storage_filesystem,
+                    # NOTE: The checkpoint index has not been incremented yet
+                    # at this point, which is why `checkpoint_fs_path` points
+                    # to the most recent checkpoint.
+                    path=tune_session.storage.checkpoint_fs_path,
                 )
+                if at_least_one_reported_checkpoint
+                else None
+            )
+            tracked_training_result = _TrainingResult(
+                checkpoint=checkpoint,
+                metrics=first_worker_result.metrics,
+            )
 
-                checkpoint = (
-                    Checkpoint(
-                        filesystem=tune_session.storage.storage_filesystem,
-                        # NOTE: The checkpoint index has not been incremented yet
-                        # at this point, which is why `checkpoint_fs_path` points
-                        # to the most recent checkpoint.
-                        path=tune_session.storage.checkpoint_fs_path,
-                    )
-                    if at_least_one_reported_checkpoint
-                    else None
-                )
-                tracked_training_result = _TrainingResult(
-                    checkpoint=checkpoint,
-                    metrics=first_worker_result.metrics,
-                )
+            logger.debug(
+                "Report (metrics, checkpoint) to the Tune session:\n"
+                f"  metrics={tracked_training_result.metrics}\n"
+                f"  checkpoint={tracked_training_result.checkpoint}"
+            )
 
-                logger.debug(
-                    "Report (metrics, checkpoint) to the Tune session:\n"
-                    f"  metrics={tracked_training_result.metrics}\n"
-                    f"  checkpoint={tracked_training_result.checkpoint}"
-                )
-
-                # Report the metrics and checkpoint to Tune.
-                tune_session._report_training_result(tracked_training_result)
-            else:
-                tune.report(**first_worker_result)
+            # Report the metrics and checkpoint to Tune.
+            tune_session._report_training_result(tracked_training_result)
 
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
@@ -510,52 +471,10 @@ class DataParallelTrainer(BaseTrainer):
             num_gpus_per_worker=scaling_config.num_gpus_per_worker,
             additional_resources_per_worker=additional_resources_per_worker,
             max_retries=0,
-            checkpoint_config=self.run_config.checkpoint_config,
         )
-
-        def clear_lazy_checkpoint_marker():
-            """Clears the stale lazy checkpointing marker on all worker nodes.
-
-            After recovery, the trainer may be scheduled on another node.
-            We should delete the marker files created earlier on each node to
-            Avoid converting checkpoints to string paths.
-
-            Please note that we need to clear the flag before the initialization
-            of the checkpoint_manager, during which it will create a new lazy
-            checkpointing marker file.
-            """
-
-            marker_file = Path(trial_info.logdir) / LAZY_CHECKPOINT_MARKER_FILE
-            if marker_file.exists():
-                logger.debug(
-                    f"Deleting the stale lazy checkpoint marker file: {marker_file}."
-                )
-                # Multiple workers on the same node may delete this file at the
-                # same time. Return if the marker file has been deleted.
-                # TODO(ml-team): replace this try-except block with `missing_ok=True`
-                # after we completely drop py37 support.
-                try:
-                    marker_file.unlink()
-                except FileNotFoundError:
-                    return
 
         # Start the remote actors.
-        backend_executor.start(initialization_hook=clear_lazy_checkpoint_marker)
-
-        checkpoint_manager = self._checkpoint_manager_cls(
-            preprocessor=self.preprocessor
-        )
-
-        # Disable TrainingIterator's CheckpointManager from handling
-        # checkpoints itself by setting num_to_keep to None.
-        # This is important because otherwise Trainer's CheckpointManager
-        # may delete a checkpoint prematurely, before the next checkpoint
-        # has been fully handled by Tune.
-        # TODO(jungong, justinvyu) : Trainer should not own a
-        # CheckpointManager.
-        checkpoint_strategy = copy.deepcopy(self.run_config.checkpoint_config)
-        checkpoint_strategy.num_to_keep = None
-        checkpoint_strategy.checkpoint_score_attribute = None
+        backend_executor.start()
 
         training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
@@ -564,10 +483,7 @@ class DataParallelTrainer(BaseTrainer):
             datasets=self.datasets,
             metadata=self.metadata,
             data_config=self._data_config,
-            checkpoint_manager=checkpoint_manager,
             checkpoint=self.starting_checkpoint,
-            checkpoint_strategy=checkpoint_strategy,
-            storage_path=self.run_config.storage_path,
         )
 
         self._report(training_iterator)
@@ -705,7 +621,7 @@ def _load_checkpoint_dict(
             message.
 
     Returns:
-        The model or weights and AIR preprocessor contained within.
+        The model or weights and preprocessor contained within.
     """
     checkpoint_dict = checkpoint.to_dict()
     preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)

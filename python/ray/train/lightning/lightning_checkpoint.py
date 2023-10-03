@@ -44,7 +44,7 @@ class LightningCheckpoint(FrameworkCheckpoint):
             raise ValueError(
                 f"`from_path()` expects a file path, but `{path}` is a directory. "
                 "A valid checkpoint file name is normally with .ckpt extension."
-                "If you have an AIR checkpoint folder, you can also try to use "
+                "If you have a Ray checkpoint folder, you can also try to use "
                 "`LightningCheckpoint.from_directory()` instead."
             )
 
@@ -77,7 +77,7 @@ class LightningCheckpoint(FrameworkCheckpoint):
 
                     # ...
 
-                # After the training is finished, LightningTrainer saves AIR
+                # After the training is finished, LightningTrainer saves
                 # checkpoints in the result directory, for example:
                 # ckpt_dir = "{storage_path}/LightningTrainer_.*/checkpoint_000000"
 
@@ -196,7 +196,7 @@ class LegacyLightningCheckpoint(LegacyTorchCheckpoint):
             raise ValueError(
                 f"`from_path()` expects a file path, but `{path}` is a directory. "
                 "A valid checkpoint file name is normally with .ckpt extension."
-                "If you have an AIR checkpoint folder, you can also try to use "
+                "If you have a Ray checkpoint folder, you can also try to use "
                 "`LightningCheckpoint.from_directory()` instead."
             )
 
