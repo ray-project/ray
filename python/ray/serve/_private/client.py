@@ -1,4 +1,3 @@
-import atexit
 import logging
 import random
 import time
@@ -54,11 +53,9 @@ class ServeControllerClient:
         self,
         controller: ActorHandle,
         controller_name: str,
-        detached: bool = False,
     ):
         self._controller: ServeController = controller
         self._controller_name = controller_name
-        self._detached = detached
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())
@@ -67,16 +64,6 @@ class ServeControllerClient:
         self.handle_cache = dict()
         self._evicted_handle_keys = set()
 
-        # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
-        # when the interpreter is exiting so we can't rely on __del__ (it
-        # throws a nasty stacktrace).
-        if not self._detached:
-
-            def shutdown_serve_client():
-                self.shutdown()
-
-            atexit.register(shutdown_serve_client)
-
     @property
     def root_url(self):
         return self._root_url
@@ -84,15 +71,6 @@ class ServeControllerClient:
     @property
     def http_config(self):
         return self._http_config
-
-    def __del__(self):
-        if not self._detached:
-            logger.debug(
-                "Shutting down Ray Serve because client went out of "
-                "scope. To prevent this, either keep a reference to "
-                "the client or use serve.start(detached=True)."
-            )
-            self.shutdown()
 
     def __reduce__(self):
         raise RayServeException(("Ray Serve client cannot be serialized."))
@@ -317,7 +295,6 @@ class ServeControllerClient:
                     deployment_config=deployment["deployment_config"],
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
-                    is_driver_deployment=deployment["is_driver_deployment"],
                     docs_path=deployment["docs_path"],
                 )
             )

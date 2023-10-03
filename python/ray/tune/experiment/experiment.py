@@ -133,6 +133,7 @@ class Experiment:
 
     # Keys that will be present in `public_spec` dict.
     PUBLIC_KEYS = {"stop", "num_samples", "time_budget_s"}
+    _storage_context_cls = StorageContext
 
     def __init__(
         self,
@@ -201,7 +202,7 @@ class Experiment:
             if not name:
                 name = StorageContext.get_experiment_dir_name(run)
 
-            self.storage = StorageContext(
+            self.storage = self._storage_context_cls(
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
                 sync_config=sync_config,

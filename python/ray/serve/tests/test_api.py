@@ -15,7 +15,6 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve.built_application import BuiltApplication
 from ray.serve.deployment import Application
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
@@ -379,20 +378,6 @@ def test_shutdown_destructor(serve_instance):
     B.delete()
 
 
-def test_run_get_ingress_app(serve_instance):
-    """Check that serve.run() with an app returns the ingress."""
-
-    @serve.deployment(route_prefix="/g")
-    def g():
-        return "got g"
-
-    app = BuiltApplication([g], "g")
-    ingress_handle = serve.run(app)
-
-    assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_apps([SERVE_DEFAULT_APP_NAME])
-
-
 def test_run_get_ingress_node(serve_instance):
     """Check that serve.run() with a node returns the ingress."""
 
@@ -671,19 +656,6 @@ def test_application_route_prefix_override1(serve_instance, ingress_route):
         assert len(routes) == 0
     else:
         assert requests.get(f"http://localhost:8000{ingress_route}").text == "hello"
-
-
-def test_invalid_driver_deployment_class():
-    """Test invalid driver deployment class"""
-
-    @serve.deployment(is_driver_deployment=True)
-    def f():
-        pass
-
-    with pytest.raises(ValueError):
-        f.options(num_replicas=2)
-    with pytest.raises(ValueError):
-        f.options(autoscaling_config={"min_replicas": "1"})
 
 
 class TestAppBuilder:

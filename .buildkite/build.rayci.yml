@@ -29,7 +29,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- doc 
     depends_on: docbuild
-    job_env: docbuild
+    job_env: forge
 
   - label: ":tapioca: build: ray py38 cu118 docker"
     instance_type: medium
@@ -61,4 +61,3 @@ steps:
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
     depends_on:
       - forge
-    job_env: forge

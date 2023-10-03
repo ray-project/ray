@@ -4,13 +4,12 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Type, Union
 
 import numpy as np
-import starlette
 from fastapi import Depends, FastAPI
 from pydantic import BaseModel
 
 from ray import serve
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.http_util import BufferedASGISender
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.utils import install_serve_encoders_to_fastapi, require_packages
 from ray.serve.drivers_utils import HTTPAdapterFn, load_http_adapter
 from ray.util.annotations import Deprecated, DeveloperAPI
@@ -153,7 +152,7 @@ class _BatchingManager:
 
 
 @DeveloperAPI
-class SimpleSchemaIngress:
+class SimpleSchemaIngress(ASGIAppReplicaWrapper):
     def __init__(
         self, http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]] = None
     ):
@@ -169,24 +168,18 @@ class SimpleSchemaIngress:
         """
         install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
-        self.app = FastAPI()
+        app = FastAPI()
 
-        @self.app.get("/")
-        @self.app.post("/")
+        @app.get("/")
+        @app.post("/")
         async def handle_request(inp=Depends(http_adapter)):
-            resp = await self.predict(inp)
-            return resp
+            return await self.predict(inp)
+
+        ASGIAppReplicaWrapper.__init__(self, app)
 
     @abstractmethod
     async def predict(self, inp):
         raise NotImplementedError()
-
-    async def __call__(self, request: starlette.requests.Request):
-        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
-        # generate FastAPI on the fly, we should find a way to unify the two.
-        sender = BufferedASGISender()
-        await self.app(request.scope, receive=request.receive, send=sender)
-        return sender.build_asgi_response()
 
 
 @Deprecated

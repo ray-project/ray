@@ -23,13 +23,11 @@ from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import EndpointInfo, EndpointTag, NodeId, RequestProtocol
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_REQUEST_ID_HEADER,
     SERVE_LOGGER_NAME,
@@ -39,9 +37,8 @@ from ray.serve._private.constants import (
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     ASGIMessageQueue,
-    HTTPRequestWrapper,
-    RawASGIResponse,
     Response,
+    convert_object_to_asgi_messages,
     receive_http_body,
     set_socket_reuse_port,
     validate_http_proxy_callback_return,
@@ -60,6 +57,7 @@ from ray.serve._private.proxy_request_response import (
     ProxyResponse,
     gRPCProxyRequest,
 )
+from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import (
     EndpointRouter,
     LongestPrefixRouter,
@@ -117,7 +115,6 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 
 INITIAL_BACKOFF_PERIOD_SEC = 0.05
 MAX_BACKOFF_PERIOD_SEC = 5
-BACKOFF_FACTOR = 2
 DRAINED_MESSAGE = "This node is being drained."
 HEALTH_CHECK_SUCCESS_MESSAGE = "success"
 
@@ -138,9 +135,8 @@ class GenericProxy(ABC):
       - `timeout_response()`
       - `routes_response()`
       - `health_response()`
-      - `send_request_to_replica_unary()`
       - `setup_request_context_and_handle()`
-      - `send_request_to_replica_streaming()`
+      - `send_request_to_replica()`
     """
 
     def __init__(
@@ -174,12 +170,6 @@ class GenericProxy(ABC):
 
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
-
-        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-            logger.info(
-                "Experimental streaming feature flag enabled.",
-                extra={"log_to_stderr": False},
-            )
 
         self.proxy_router = proxy_router_class(
             serve.get_deployment_handle, self.protocol
@@ -456,18 +446,12 @@ class GenericProxy(ABC):
                 proxy_request=proxy_request,
             )
 
-            # Streaming codepath isn't supported for Java.
-            if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
-                proxy_response = await self.send_request_to_replica_streaming(
-                    request_id=request_id,
-                    handle=handle,
-                    proxy_request=proxy_request,
-                )
-            else:
-                proxy_response = await self.send_request_to_replica_unary(
-                    handle=handle,
-                    proxy_request=proxy_request,
-                )
+            proxy_response = await self.send_request_to_replica(
+                request_id=request_id,
+                handle=handle,
+                proxy_request=proxy_request,
+                app_is_cross_language=app_is_cross_language,
+            )
 
             self.request_counter.inc(
                 tags={
@@ -559,19 +543,6 @@ class GenericProxy(ABC):
             raise TimeoutError()
 
     @abstractmethod
-    async def send_request_to_replica_unary(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
-        """Send the request to the replica and handle unary response.
-
-        Each proxy needs to implement its own logic for sending the request and
-        handling the unary response.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def setup_request_context_and_handle(
         self,
         app_name: str,
@@ -587,11 +558,12 @@ class GenericProxy(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def send_request_to_replica_streaming(
+    async def send_request_to_replica(
         self,
         request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
+        app_is_cross_language: bool = False,
     ) -> ProxyResponse:
         """Send the request to the replica and handle streaming response.
 
@@ -728,20 +700,7 @@ class gRPCProxy(GenericProxy):
             async for response in proxy_response.streaming_response:
                 yield response
 
-        if not stream:
-            return unary_unary
-        return unary_stream
-
-    async def send_request_to_replica_unary(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
-        return await self.send_request_to_replica_streaming(
-            request_id=proxy_request.request_id,
-            handle=handle,
-            proxy_request=proxy_request,
-        )
+        return unary_stream if stream else unary_unary
 
     def setup_request_context_and_handle(
         self,
@@ -842,11 +801,12 @@ class gRPCProxy(GenericProxy):
         except asyncio.exceptions.TimeoutError:
             raise TimeoutError() from None
 
-    async def send_request_to_replica_streaming(
+    async def send_request_to_replica(
         self,
         request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
+        app_is_cross_language: bool = False,
     ) -> ProxyResponse:
         start = time.time()
         try:
@@ -988,121 +948,6 @@ class HTTPProxy(GenericProxy):
         proxy_request = ASGIProxyRequest(scope=scope, receive=receive, send=send)
         await self.proxy_request(proxy_request=proxy_request)
 
-    async def send_request_to_replica_unary(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-    ) -> ProxyResponse:
-        http_body_bytes = await receive_http_body(
-            proxy_request.scope, proxy_request.receive, proxy_request.send
-        )
-
-        # NOTE(edoakes): it's important that we defer building the starlette
-        # request until it reaches the replica to avoid unnecessary
-        # serialization cost, so we use a simple dataclass here.
-        request = HTTPRequestWrapper(proxy_request.scope, http_body_bytes)
-
-        # Perform a pickle here to improve latency. Stdlib pickle for simple
-        # dataclasses are 10-100x faster than cloudpickle.
-        request = pickle.dumps(request)
-
-        retries = 0
-        loop = get_or_create_event_loop()
-        # We have received all the http request content. The next `receive`
-        # call might never arrive; if it does, it can only be `http.disconnect`.
-        while retries < HTTP_REQUEST_MAX_RETRIES + 1:
-            should_backoff = False
-            result_ref = handle.remote(request)
-            client_disconnection_task = loop.create_task(proxy_request.receive())
-            done, _ = await asyncio.wait(
-                [
-                    result_ref._to_object_ref(_record_telemetry=False),
-                    client_disconnection_task,
-                ],
-                return_when=FIRST_COMPLETED,
-            )
-            if client_disconnection_task in done:
-                message = await client_disconnection_task
-                assert message["type"] == "http.disconnect", (
-                    "Received additional request payload that's not disconnect. "
-                    "This is an invalid HTTP state."
-                )
-                logger.warning(
-                    f"Client from {proxy_request.client} disconnected, cancelling the "
-                    "request.",
-                    extra={"log_to_stderr": False},
-                )
-                result_ref.cancel()
-
-            try:
-                # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
-                # some replicas crash simultaneously (e.g. if the head node crashes),
-                # requests to the dead replicas hang until the gcs recovers.
-                # This asyncio.wait can kill those hanging requests and retry them
-                # at another replica. Release tests should kill the head node and
-                # check if latency drops significantly. See
-                # https://github.com/ray-project/ray/pull/29534 for more info.
-                done, pending = await asyncio.wait(
-                    [result_ref, client_disconnection_task],
-                    return_when=asyncio.FIRST_COMPLETED,
-                    timeout=self.request_timeout_s,
-                )
-                if client_disconnection_task in done:
-                    logger.info("Client disconnected, cancelling request.")
-                    result_ref.cancel()
-                    raise asyncio.CancelledError()
-                elif len(done) == 0:
-                    logger.info(
-                        f"Request didn't finish within {self.request_timeout_s} seconds"
-                        ". Retrying with another replica. You can modify this timeout "
-                        'by setting "request_timeout_s" in your Serve config\'s '
-                        "`http_options` field."
-                    )
-                    should_backoff = True
-                    result_ref.cancel()
-                else:
-                    result = await result_ref
-                    break
-            except asyncio.CancelledError:
-                # Here because the client disconnected, we will return a custom
-                # error code for metric tracking.
-                return ProxyResponse(status_code=DISCONNECT_ERROR_CODE)
-            except RayTaskError as e:
-                error_message = f"Unexpected error, traceback: {e}."
-                await Response(error_message, status_code=500).send(
-                    proxy_request.scope, proxy_request.receive, proxy_request.send
-                )
-                return ProxyResponse(status_code="500")
-            except RayActorError:
-                logger.info(
-                    "Request failed due to replica failure. There are "
-                    f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
-                    "remaining."
-                )
-                should_backoff = True
-
-            if should_backoff:
-                backoff_period = min(
-                    INITIAL_BACKOFF_PERIOD_SEC * pow(2, retries), MAX_BACKOFF_PERIOD_SEC
-                )
-                retries += 1
-                await asyncio.sleep(backoff_period)
-        else:
-            error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-            await Response(error_message, status_code=500).send(
-                proxy_request.scope, proxy_request.receive, proxy_request.send
-            )
-            return ProxyResponse(status_code="500")
-
-        if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            await result(proxy_request.scope, proxy_request.receive, proxy_request.send)
-            return ProxyResponse(status_code=str(result.status_code))
-        else:
-            await Response(result).send(
-                proxy_request.scope, proxy_request.receive, proxy_request.send
-            )
-            return ProxyResponse(status_code=self.success_status_code)
-
     async def proxy_asgi_receive(
         self, receive: Receive, queue: ASGIMessageQueue
     ) -> Optional[int]:
@@ -1129,118 +974,6 @@ class HTTPProxy(GenericProxy):
             # Close the queue so any subsequent calls to fetch messages return
             # immediately: https://github.com/ray-project/ray/issues/38368.
             queue.close()
-
-    async def _consume_and_send_asgi_message_generator(
-        self,
-        obj_ref_generator: StreamingObjectRefGenerator,
-        disconnected_task: asyncio.Task,
-        request_id: str,
-        proxy_request: ProxyRequest,
-        timeout_s: Optional[float] = None,
-    ) -> Optional[str]:
-        """Consumes an obj ref generator that yields ASGI messages.
-
-        The messages are sent over the `send` interface.
-
-        If timeout_s is `None`, there's no timeout. If it's not `None`, a timeout error
-        will be raised if the full generator isn't consumed within the timeout.
-
-        Returns the status code for HTTP responses.
-        """
-        status_code = ""
-        start = time.time()
-        response_done = False
-        response_started = False
-        expecting_trailers = False
-        is_websocket_connection = False
-        while True:
-            try:
-                next_obj_ref_task = asyncio.ensure_future(
-                    obj_ref_generator._next_async(),
-                )
-                tasks = [next_obj_ref_task]
-                # Once the response is completed, the client will immediately
-                # disconnect. This causes a race condition: if we get the disconnect
-                # message before the replica handler finishes, we'll falsely detect a
-                # client disconnect. To avoid this, stop listening for disconnects once
-                # the full response has been sent.
-                if not response_done:
-                    tasks.append(disconnected_task)
-
-                done, _ = await asyncio.wait(
-                    tasks,
-                    return_when=asyncio.FIRST_COMPLETED,
-                    timeout=calculate_remaining_timeout(
-                        timeout_s=timeout_s,
-                        start_time_s=start,
-                        curr_time_s=time.time(),
-                    ),
-                )
-                if len(done) == 0:
-                    logger.warning(
-                        f"Request {request_id} timed out after "
-                        f"{self.request_timeout_s}s while executing."
-                    )
-                    next_obj_ref_task.cancel()
-                    ray.cancel(obj_ref_generator)
-
-                    # We should only send timeout response if we have not sent
-                    # any messages to the client yet. Header (including status code)
-                    # messages can only be sent once.
-                    if not response_started:
-                        await self.timeout_response(
-                            proxy_request=proxy_request, request_id=request_id
-                        )
-
-                    return TIMEOUT_ERROR_CODE
-                elif disconnected_task in done:
-                    logger.info(
-                        f"Client for request {request_id} disconnected "
-                        "during execution, cancelling request."
-                    )
-                    next_obj_ref_task.cancel()
-                    if not is_websocket_connection:
-                        # Websocket code explicitly handles client disconnects,
-                        # so let the ASGI disconnect message propagate instead of
-                        # cancelling the handler.
-                        ray.cancel(obj_ref_generator)
-                    return DISCONNECT_ERROR_CODE
-
-                obj_ref = next_obj_ref_task.result()
-                asgi_messages: List[Message] = pickle.loads(await obj_ref)
-                # See the ASGI spec for message details:
-                # https://asgi.readthedocs.io/en/latest/specs/www.html.
-                for asgi_message in asgi_messages:
-                    if asgi_message["type"] == "http.response.start":
-                        # HTTP responses begin with exactly one
-                        # "http.response.start" message containing the "status"
-                        # field. Other response types (e.g., WebSockets) may not.
-                        status_code = str(asgi_message["status"])
-                        expecting_trailers = asgi_message.get("trailers", False)
-                    elif asgi_message["type"] == "websocket.accept":
-                        is_websocket_connection = True
-                    elif (
-                        asgi_message["type"] == "http.response.body"
-                        and not asgi_message.get("more_body", False)
-                        and not expecting_trailers
-                    ):
-                        # If the body is completed and we aren't expecting trailers, the
-                        # response is done.
-                        response_done = True
-                    elif asgi_message["type"] == "http.response.trailers":
-                        # If we are expecting trailers, the response is only done when
-                        # the trailers message has been sent.
-                        response_done = not asgi_message.get("more_trailers", False)
-                    elif asgi_message["type"] == "websocket.disconnect":
-                        status_code = str(asgi_message["code"])
-                        response_done = True
-
-                    await proxy_request.send(asgi_message)
-                    response_started = True
-            except StopAsyncIteration:
-                break
-
-        return status_code
 
     def setup_request_context_and_handle(
         self,
@@ -1276,12 +1009,40 @@ class HTTPProxy(GenericProxy):
         )
         return handle, request_context_info["request_id"]
 
-    async def send_request_to_replica_streaming(
+    async def _format_handle_arg_for_java(
+        self,
+        proxy_request: ProxyRequest,
+    ) -> bytes:
+        """Convert an HTTP request to the Java-accepted format (single byte string)."""
+        query_string = proxy_request.scope.get("query_string")
+        http_body_bytes = await receive_http_body(
+            proxy_request.scope, proxy_request.receive, proxy_request.send
+        )
+        if query_string:
+            arg = query_string.decode().split("=", 1)[1]
+        else:
+            arg = http_body_bytes.decode()
+
+        return arg
+
+    async def send_request_to_replica(
         self,
         request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
+        app_is_cross_language: bool = False,
     ) -> ProxyResponse:
+        if app_is_cross_language:
+            handle_arg = await self._format_handle_arg_for_java(proxy_request)
+            # Response is returned as raw bytes, convert it to ASGI messages.
+            result_callback = convert_object_to_asgi_messages
+        else:
+            handle_arg = proxy_request.request_object(
+                proxy_handle=self.self_actor_handle
+            )
+            # Messages are returned as pickled dictionaries.
+            result_callback = pickle.loads
+
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
@@ -1291,50 +1052,72 @@ class HTTPProxy(GenericProxy):
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
 
+        response_generator = ProxyResponseGenerator(
+            handle.remote(handle_arg),
+            timeout_s=self.request_timeout_s,
+            disconnected_task=proxy_asgi_receive_task,
+            result_callback=result_callback,
+        )
+
         status_code = ""
-        start = time.time()
+        response_started = False
+        expecting_trailers = False
         try:
-            obj_ref_generator = None
-            try:
-                obj_ref_generator = await self._assign_request_with_timeout(
-                    handle=handle,
-                    proxy_request=proxy_request,
-                    disconnected_task=proxy_asgi_receive_task,
-                    timeout_s=self.request_timeout_s,
-                )
-                if obj_ref_generator is None:
-                    logger.info(
-                        f"Client from {proxy_request.client} disconnected, "
-                        "cancelling the request.",
-                        extra={"log_to_stderr": False},
-                    )
-                    return ProxyResponse(status_code=DISCONNECT_ERROR_CODE)
-            except TimeoutError:
-                logger.warning(
-                    f"Request {request_id} timed out after {self.request_timeout_s}s."
-                )
-                if obj_ref_generator is not None:
-                    ray.cancel(obj_ref_generator)
+            async for asgi_message_batch in response_generator:
+                # See the ASGI spec for message details:
+                # https://asgi.readthedocs.io/en/latest/specs/www.html.
+                for asgi_message in asgi_message_batch:
+                    if asgi_message["type"] == "http.response.start":
+                        # HTTP responses begin with exactly one
+                        # "http.response.start" message containing the "status"
+                        # field. Other response types (e.g., WebSockets) may not.
+                        status_code = str(asgi_message["status"])
+                        expecting_trailers = asgi_message.get("trailers", False)
+                    elif asgi_message["type"] == "websocket.accept":
+                        # Websocket code explicitly handles client disconnects,
+                        # so let the ASGI disconnect message propagate instead of
+                        # cancelling the handler.
+                        response_generator.stop_checking_for_disconnect()
+                    elif (
+                        asgi_message["type"] == "http.response.body"
+                        and not asgi_message.get("more_body", False)
+                        and not expecting_trailers
+                    ):
+                        # If the body is completed and we aren't expecting trailers, the
+                        # response is done so we should stop listening for disconnects.
+                        response_generator.stop_checking_for_disconnect()
+                    elif asgi_message["type"] == "http.response.trailers":
+                        # If we are expecting trailers, the response is only done when
+                        # the trailers message has been sent.
+                        if not asgi_message.get("more_trailers", False):
+                            response_generator.stop_checking_for_disconnect()
+                    elif asgi_message["type"] == "websocket.disconnect":
+                        status_code = str(asgi_message["code"])
+                        response_generator.stop_checking_for_disconnect()
+
+                    await proxy_request.send(asgi_message)
+                    response_started = True
+        except TimeoutError:
+            status_code = TIMEOUT_ERROR_CODE
+            logger.warning(
+                f"Request {request_id} timed out after {self.request_timeout_s}s."
+            )
+            # We should only send timeout response if we have not sent
+            # any messages to the client yet. Header (including status code)
+            # messages can only be sent once.
+            if not response_started:
                 await self.timeout_response(
                     proxy_request=proxy_request, request_id=request_id
                 )
-                return ProxyResponse(status_code=TIMEOUT_ERROR_CODE)
-
-            status_code = await self._consume_and_send_asgi_message_generator(
-                obj_ref_generator,
-                disconnected_task=proxy_asgi_receive_task,
-                request_id=request_id,
-                proxy_request=proxy_request,
-                timeout_s=calculate_remaining_timeout(
-                    timeout_s=self.request_timeout_s,
-                    start_time_s=start,
-                    curr_time_s=time.time(),
-                ),
+        except asyncio.CancelledError:
+            status_code = DISCONNECT_ERROR_CODE
+            logger.info(
+                f"Client for request {request_id} disconnected, cancelling request."
             )
-
         except Exception as e:
             logger.exception(e)
             status_code = "500"
+
         finally:
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
@@ -1605,6 +1388,7 @@ class ProxyActor:
         grpc_server = create_serve_grpc_server(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
+
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a
