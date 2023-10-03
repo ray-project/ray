@@ -13,7 +13,6 @@ mkdir -p "${CPU_TMP}/.whl"
 cp .whl/"$WHEEL_NAME" "${CPU_TMP}/.whl/${WHEEL_NAME}"
 cp docker/ray/Dockerfile "${CPU_TMP}/Dockerfile"
 cp python/requirements_compiled.txt "${CPU_TMP}/."
-cp python/requirements_compiled_py37.txt "${CPU_TMP}/."
 
 cd "${CPU_TMP}"
 tar --mtime="UTC 2020-01-01" -c -f - . \
