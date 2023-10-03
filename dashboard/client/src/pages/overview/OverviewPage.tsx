@@ -7,7 +7,6 @@ import {
   ResourceStatusCard,
 } from "../../components/AutoscalerStatusCards";
 import EventTable from "../../components/EventTable";
-import { RayStatusResp } from "../../service/status";
 import { useRayStatus } from "../job/hook/useClusterStatus";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";
@@ -52,14 +51,8 @@ const useStyles = makeStyles((theme) =>
 export const OverviewPage = () => {
   const classes = useStyles();
 
-  // const { cluster_status } = useRayStatus();
-  const cluster_status = {
-    result: true,
-    data: { clusterStatus: undefined },
-    message: "",
-  };
-  console.info("cluster_status: ", cluster_status);
-  // const cluster_status = { data: { cluster_status: undefined } };
+  const { cluster_status } = useRayStatus();
+
   return (
     <div className={classes.root}>
       <MainNavPageInfo
@@ -86,7 +79,7 @@ export const OverviewPage = () => {
                 classes.autoscalerCard,
               )}
             >
-              <NodeStatusCard cluster_status={cluster_status as any} />
+              <NodeStatusCard cluster_status={cluster_status} />
             </OverviewCard>
             <OverviewCard
               className={classNames(
@@ -95,7 +88,7 @@ export const OverviewPage = () => {
                 classes.autoscalerCard,
               )}
             >
-              <ResourceStatusCard cluster_status={cluster_status as any} />
+              <ResourceStatusCard cluster_status={cluster_status} />
             </OverviewCard>
           </div>
         }
