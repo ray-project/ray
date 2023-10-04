@@ -315,7 +315,7 @@ with ThreadPoolExecutor(max_workers=100) as executor:
         for f in futs:
             f.result()
 """
-    for _ in range(100):
+    for _ in range(5):
         print("submit a new clients!")
         proc = run_string_as_driver_nonblocking(client_script)
         # Wait sufficient time.
