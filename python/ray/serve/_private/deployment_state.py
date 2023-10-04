@@ -7,7 +7,7 @@ import time
 import traceback
 from collections import OrderedDict, defaultdict
 from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -1329,13 +1329,20 @@ class DeploymentState:
         self._last_notified_running_replica_infos = running_replica_infos
         self._multiplexed_model_ids_updated = False
 
+    def set_cluster_scale(self, cluster_scale: float):
+        target_state = replace(self._target_state, cluster_scale=cluster_scale)
+        self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
+        self._target_state = target_state
+
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
 
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
         target_state = DeploymentTargetState.from_deployment_info(
-            self._target_state.info, deleting=True
+            self._target_state.info,
+            cluster_scale=self._target_state.cluster_scale,
+            deleting=True,
         )
         self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
@@ -1354,7 +1361,9 @@ class DeploymentState:
 
         # We must write ahead the target state in case of GCS failure (we don't
         # want to set the target state, then fail because we can't checkpoint it).
-        target_state = DeploymentTargetState.from_deployment_info(target_info)
+        target_state = DeploymentTargetState.from_deployment_info(
+            target_info, cluster_scale=self._target_state.cluster_scale
+        )
         self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
         if self._target_state.version == target_state.version:
@@ -2145,6 +2154,9 @@ class DeploymentStateManager:
             all_current_actor_names, all_current_placement_group_names
         )
 
+        # TODO (shrekris-anyscale): Recover this value after a crash.
+        self.cluster_scale = 1.0
+
         # TODO(simon): move autoscaling related stuff into a manager.
         self.handle_metrics_store = InMemoryMetricsStore()
 
@@ -2433,6 +2445,8 @@ class DeploymentStateManager:
             )
             self._record_deployment_usage()
 
+        self._deployment_states[deployment_id].set_cluster_scale(self.cluster_scale)
+
         return self._deployment_states[deployment_id].deploy(deployment_info)
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
@@ -2523,6 +2537,11 @@ class DeploymentStateManager:
             self._record_deployment_usage()
 
         return any_recovering
+
+    def set_cluster_scale(self, cluster_scale: float):
+        self.cluster_scale = cluster_scale
+        for deployment_state in self._deployment_states.values():
+            deployment_state.set_cluster_scale()
 
     def _record_deployment_usage(self):
         ServeUsageTag.NUM_DEPLOYMENTS.record(str(len(self._deployment_states)))

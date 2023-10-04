@@ -733,6 +733,11 @@ class ServeController:
         new_applications = {app_config.name for app_config in applications}
         self.delete_apps(existing_applications.difference(new_applications))
 
+    def set_cluster_scale(self, cluster_scale: float):
+        """Sets the cluster scale for all deployments."""
+
+        self.deployment_state_manager.set_cluster_scale(cluster_scale)
+
     def delete_deployment(self, name: str):
         """Should only be used for 1.x deployments."""
 
