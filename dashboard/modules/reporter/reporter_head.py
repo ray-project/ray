@@ -119,7 +119,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 ]
             ]
         )
-
+        import pdb
+        pdb.set_trace()
         formatted_status = (
             json.loads(formatted_status_string.decode())
             if formatted_status_string
@@ -132,13 +133,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 message="Got cluster status.",
                 autoscaling_status=legacy_status.decode() if legacy_status else None,
                 autoscaling_error=error.decode() if error else None,
-                cluster_status=formatted_status if formatted_status else None,
+                cluster_status=formatted_status if formatted_status else "",
             )
         else:
             return dashboard_optional_utils.rest_response(
                 success=True,
                 message="Got formatted cluster status.",
-                cluster_status=None,
+                cluster_status=debug_status(formatted_status_string, error),
             )
 
     async def get_task_ids_running_in_a_worker(self, worker_id: str) -> List[str]:
