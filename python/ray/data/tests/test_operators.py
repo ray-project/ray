@@ -866,6 +866,30 @@ def test_estimated_output_blocks():
     # all blocks are outputted
     assert op._estimated_output_blocks == 100
 
+    # Test all to all operator
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+
+    def all_transform(bundles: List[RefBundle], ctx):
+        return bundles, {}
+
+    estimated_output_blocks = 500
+    op1 = AllToAllOperator(all_transform, input_op, estimated_output_blocks)
+    op2 = AllToAllOperator(all_transform, op1)
+
+    while input_op.has_next():
+        op1.add_input(input_op.get_next(), 0)
+    op1.all_inputs_done()
+    run_op_tasks_sync(op1)
+
+    while op1.has_next():
+        op2.add_input(op1.get_next(), 0)
+    op2.all_inputs_done()
+    run_op_tasks_sync(op2)
+
+    # estimated output blocks for op2 should fallback to op1
+    assert op2._estimated_output_blocks is None
+    assert op2.num_outputs_total() == estimated_output_blocks
+
 
 if __name__ == "__main__":
     import sys
