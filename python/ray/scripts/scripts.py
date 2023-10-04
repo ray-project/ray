@@ -10,7 +10,6 @@ import traceback
 import urllib
 import urllib.parse
 import warnings
-import readline
 import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
@@ -204,6 +203,13 @@ def debug(address):
     address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
+
+    # Import readline for better input()
+    try:
+        import readline
+    except Exception:
+        pass
+
     while True:
         # Used to filter out and clean up entries from dead jobs.
         live_jobs = {
