@@ -128,6 +128,15 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     return args_dict
 
 
+def warn_if_agent_address_set():
+    if "RAY_AGENT_ADDRESS" in os.environ:
+        cli_logger.warning(
+            "The `RAY_AGENT_ADDRESS` env var has been deprecated in favor of "
+            "the `RAY_HEAD_ADDRESS` env var. The `RAY_AGENT_ADDRESS` is "
+            "ignored."
+        )
+
+
 @click.group(
     help="CLI for managing Serve applications on a Ray cluster.",
     context_settings=dict(help_option_names=["--help", "-h"]),
@@ -246,6 +255,8 @@ def start(
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 def deploy(config_file_name: str, address: str):
+    warn_if_agent_address_set()
+
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
@@ -595,6 +606,8 @@ def run(
     ),
 )
 def config(address: str, name: Optional[str]):
+    warn_if_agent_address_set()
+
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -669,6 +682,8 @@ def config(address: str, name: Optional[str]):
     ),
 )
 def status(address: str, name: Optional[str]):
+    warn_if_agent_address_set()
+
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -715,6 +730,8 @@ def status(address: str, name: Optional[str]):
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
+    warn_if_agent_address_set()
+
     if not yes:
         click.confirm(
             f"This will shut down Serve on the cluster at address "
