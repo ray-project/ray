@@ -11,6 +11,7 @@ To maintain feature completeness, we simply wrap the existing `SSHCommandRunner`
 `DockerCommandRunner` and run them as batched calls.
 
 """
+import copy
 from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
 from typing import Any, Dict, Optional
@@ -25,9 +26,19 @@ from ray.autoscaler.node_provider import NodeProvider
 class TPUVMSSHCommandRunner(SSHCommandRunner):
     """An SSH command runner with overwritten IP address calls."""
 
-    def __init__(self, internal_ip: str, external_ip: str, *args, **kwargs):
+    def __init__(self,
+                 internal_ip: str,
+                 external_ip: str,
+                 instance_name: str,
+                 worker_id: int,
+                 accelerator_type: str,
+                 *args,
+                 **kwargs):
         self._internal_ip = internal_ip
         self._external_ip = external_ip
+        self._instance_name = instance_name
+        self._worker_id = worker_id
+        self._accelerator_type = accelerator_type
         super().__init__(*args, **kwargs)
 
     def _get_node_ip(self) -> str:
@@ -35,6 +46,44 @@ class TPUVMSSHCommandRunner(SSHCommandRunner):
             return self._internal_ip
         else:
             return self._external_ip
+
+    def run(
+        self,
+        cmd,
+        timeout=120,
+        exit_on_fail=False,
+        port_forward=None,
+        with_output=False,
+        environment_variables: Dict[str, object] = None,
+        run_env="auto",  # Unused argument.
+        ssh_options_override_ssh_key="",
+        shutdown_after_run=False,
+        silent=False):
+
+        if environment_variables:
+            resources = environment_variables.get(
+                ray_constants.RESOURCES_ENVIRONMENT_VARIABLE, None)
+            if resources:
+                # For TPU pod support, we need to modify the resources:
+                #   1) inject the TPU pod name in the form of the instance id
+                #   2) if this is NOT worker 0, then remove the identifier.
+                resources[self._instance_name] = 1
+                if self._worker_id != 0:
+                    resources.pop(f"tpu-{self._accelerator_type}", None)
+                # Do we even need this lol
+                environment_variables[ray_constants.RESOURCES_ENVIRONMENT_VARIABLE] = resources 
+
+        super().run(
+            cmd=cmd,
+            timeout=timeout,
+            exit_on_fail=exit_on_fail,
+            port_forward=port_forward,
+            with_output=with_output,
+            environment_variables=environment_variables,
+            run_env=run_env,
+            ssh_options_override_ssh_key=ssh_options_override_ssh_key,
+            shutdown_after_run=shutdown_after_run,
+            silent=silent)
 
 
 class TPUVMDockerCommandRunner(DockerCommandRunner):
@@ -45,12 +94,16 @@ class TPUVMDockerCommandRunner(DockerCommandRunner):
         docker_config: Dict[str, Any],
         internal_ip: str,
         external_ip: str,
+        instance_name: str,
+        worker_id: int,
+        accelerator_type: str,
         **common_args
     ):
         super().__init__(docker_config=docker_config, **common_args)
         self.ssh_command_runner = TPUVMSSHCommandRunner(
-            internal_ip=internal_ip, external_ip=external_ip, **common_args
-        )
+            internal_ip=internal_ip, external_ip=external_ip,
+            instance_name=instance_name, worker_id=worker_id,
+            accelerator_type=accelerator_type, **common_args)
 
 
 class TPUCommandRunner(CommandRunnerInterface):
@@ -69,13 +122,17 @@ class TPUCommandRunner(CommandRunnerInterface):
         docker_config: Optional[Dict[str, Any]] = None,
     ):
         def create_command_runner(
-            worker_id: int, internal_ip: str, external_ip: str
+            worker_id: int, instance_name: str,
+            accelerator_type: str, internal_ip: str, external_ip: str
         ) -> CommandRunnerInterface:
             """Returns the correct base command runner."""
 
             common_args = {
                 "internal_ip": internal_ip,
                 "external_ip": external_ip,
+                "worker_id": worker_id,
+                "instance_name": instance_name,
+                "accelerator_type": accelerator_type,
                 "log_prefix": "[tpu_worker_{}] ".format(worker_id) + log_prefix,
                 "node_id": node_id,
                 "provider": provider,
@@ -93,10 +150,13 @@ class TPUCommandRunner(CommandRunnerInterface):
 
         self._command_runners = []
         self._num_workers = instance.num_workers
+        instance_name = instance.get("name").split("/")[-1]
         for i in range(self._num_workers):
             self._command_runners.append(
                 create_command_runner(
                     worker_id=i,
+                    instance_name=instance_name,
+                    accelerator_type=instance.get("acceleratorType"),
                     internal_ip=instance.get_internal_ip(i),
                     external_ip=instance.get_external_ip(i),
                 )
@@ -118,11 +178,31 @@ class TPUCommandRunner(CommandRunnerInterface):
         )
         return min(self._num_workers, num_max_concurrent_active_connections)
 
-    def run(self, *args, **kwargs) -> str:
+    def run(
+        self,
+        cmd,
+        timeout=120,
+        exit_on_fail=False,
+        port_forward=None,
+        with_output=False,
+        environment_variables: Dict[str, object] = None,
+        run_env="auto",  # Unused argument.
+        ssh_options_override_ssh_key="",
+        shutdown_after_run=False,
+        silent=False) -> str:
         with ThreadPoolExecutor(self.num_connections) as executor:
             results = executor.map(
-                lambda i: self._command_runners[i].run(*args, **kwargs),
-                range(self._num_workers),
+                lambda i: self._command_runners[i].run(
+                    cmd=cmd,
+                    timeout=timeout,
+                    exit_on_fail=exit_on_fail,
+                    port_forward=port_forward,
+                    with_output=with_output,
+                    environment_variables=copy.deepcopy(environment_variables),
+                    run_env=run_env,
+                    ssh_options_override_ssh_key=ssh_options_override_ssh_key,
+                    shutdown_after_run=shutdown_after_run,
+                    silent=silent), range(self._num_workers),
             )
         # Note: the `run` abstract function may return a string representing
         # representing command output, but this result is rarely used - especially
