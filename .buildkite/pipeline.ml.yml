@@ -67,20 +67,6 @@
       --test_env=WANDB_API_KEY --test_env=COMET_API_KEY
       python/ray/train/...
 
-- label: ":brain: RLlib: Benchmarks (Torch 2.x)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    # Install torch 2.x locally until we move to torch 2.x in the CI.
-    - pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=torch_2.x_only_benchmark
-      rllib/...
-
 - label: ":brain: RLlib: Learning tests TF2-static-graph"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   parallelism: 3
@@ -517,7 +503,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/apex_ddpg && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/apex_ddpg && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/apex_ddpg/tests/
     - python rllib_contrib/apex_ddpg/examples/apex_ddpg_pendulum_v1.py --run-as-test
@@ -529,11 +515,23 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/apex_dqn && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/apex_dqn && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/apex_dqn/tests/
     - python rllib_contrib/apex_dqn/examples/apex_dqn_cartpole_v1.py --run-as-test
-    
+
+- label: ":exploding_death_star: RLlib Contrib: Bandit Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/bandit && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/bandit/tests/
+    - python rllib_contrib/bandit/examples/bandit_linucb_interest_evolution_recsim.py --run-as-test
+
 - label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
@@ -541,15 +539,28 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/ddpg/tests/
     - python rllib_contrib/ddpg/examples/ddpg_pendulum_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: Leela Chess Zero Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/leela_chess_zero && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/leela_chess_zero/tests/
+    - python rllib_contrib/leela_chess_zero/examples/leela_chess_zero_connect_4.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: MAML Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+
     # Install mujoco necessary for the testing environments
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
@@ -560,9 +571,29 @@
     - mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
     - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
     - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin
-    - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development"])
+
+    - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/maml/tests/test_maml.py
+
+- label: ":exploding_death_star: RLlib Contrib: MBMPO Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+
+    # Install mujoco necessary for the testing environments
+    - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
+    - mkdir -p /root/.mujoco
+    - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+    - mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
+    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
+    - echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin' >> /root/.bashrc
+    - source /root/.bashrc
+
+    - (cd rllib_contrib/mbmpo && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/mbmpo/tests/
+    - python rllib_contrib/mbmpo/examples/mbmpo_cartpole_v1_model_based.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: PG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -571,7 +602,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/pg && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/pg && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/pg/tests/
     - python rllib_contrib/pg/examples/pg_cartpole_v1.py --run-as-test
@@ -583,7 +614,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/qmix && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/qmix && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/qmix/tests/
     - python rllib_contrib/qmix/examples/qmix_two_step_game.py --run-as-test
@@ -595,22 +626,31 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/r2d2/tests/
     - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: SimpleQ Tests"
+    - (cd rllib_contrib/simple_q && pip install -r requirements.txt && pip install -e ".[development]")
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/simple_q/tests/
+    - python rllib_contrib/simple_q/examples/simple_q_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: SlateQ Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/simple_q && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/slate_q && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/simple_q/tests/
-    - python rllib_contrib/simple_q/examples/simple_q_cartpole_v1.py --run-as-test
+    - pytest rllib_contrib/slate_q/tests/
+    - python rllib_contrib/slate_q/examples/recommender_system_with_recsim_and_slateq.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: TD3 Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -619,7 +659,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/td3 && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/td3 && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/td3/tests/
     - python rllib_contrib/td3/examples/td3_pendulum_v1.py --run-as-test
