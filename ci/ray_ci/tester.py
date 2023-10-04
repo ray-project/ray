@@ -84,16 +84,14 @@ def main(
     container = _get_container(
         team, workers, worker_id, parallelism_per_worker, build_name
     )
-    if run_flaky_tests:
-        test_targets = _get_flaky_test_targets(team)
-    else:
-        test_targets = _get_test_targets(
-            container,
-            targets,
-            team,
-            except_tags,
-            only_tags,
-        )
+    test_targets = _get_test_targets(
+        container,
+        targets,
+        team,
+        except_tags=except_tags,
+        only_tags=only_tags,
+        get_flaky_tests=run_flaky_tests,
+    )
     success = container.run_tests(test_targets, test_env)
     sys.exit(0 if success else 1)
 
@@ -151,24 +149,28 @@ def _get_test_targets(
     except_tags: Optional[str] = "",
     only_tags: Optional[str] = "",
     yaml_dir: Optional[str] = None,
+    get_flaky_tests: bool = False,
 ) -> List[str]:
     """
-    Get all test targets that are not flaky
+    Get test targets that are owned by a particular team
     """
 
     query = _get_all_test_query(targets, team, except_tags, only_tags)
-    test_targets = (
+    test_targets = set(
         container.run_script_with_output(
             [
                 f'bazel query "{query}"',
             ]
         )
         .decode("utf-8")
+        .strip()
         .split("\n")
     )
-    flaky_tests = _get_flaky_test_targets(team, yaml_dir)
+    flaky_tests = set(_get_flaky_test_targets(team, yaml_dir))
 
-    return [test for test in test_targets if test and test not in flaky_tests]
+    if get_flaky_tests:
+        return list(flaky_tests.intersection(test_targets))
+    return list(test_targets.difference(flaky_tests))
 
 
 def _get_flaky_test_targets(team: str, yaml_dir: Optional[str] = None) -> List[str]:
