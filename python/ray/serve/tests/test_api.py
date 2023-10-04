@@ -16,7 +16,6 @@ from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.deployment import Application
-from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, RayServeHandle
@@ -385,11 +384,11 @@ def test_run_get_ingress_node(serve_instance):
 
     @serve.deployment
     class Driver:
-        def __init__(self, dag: RayServeDAGHandle):
-            self.dag = dag
+        def __init__(self, handle):
+            self._h = handle.options(use_new_handle_api=True)
 
         async def __call__(self, *args):
-            return await (await self.dag.remote())
+            return await self._h
 
     @serve.deployment
     class f:
@@ -844,11 +843,11 @@ def test_status_basic(serve_instance):
 
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class MyDriver:
-        def __init__(self, dag: RayServeDAGHandle):
-            self.dag = dag
+        def __init__(self, handle):
+            self._h = handle.options(use_new_handle_api=True)
 
         async def __call__(self):
-            return await (await self.dag.remote())
+            return await self._h.remote()
 
     handle_1 = serve.run(A.bind(), name="plus", route_prefix="/a").options(
         use_new_handle_api=True,
@@ -944,11 +943,11 @@ def test_get_app_handle_basic(serve_instance):
 
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class MyDriver:
-        def __init__(self, dag: RayServeDAGHandle):
-            self.dag = dag
+        def __init__(self, handle):
+            self._h = handle.options(use_new_handle_api=True)
 
         async def __call__(self):
-            return await (await self.dag.remote())
+            return await self._h.remote()
 
     serve.run(M.bind(), name="A", route_prefix="/a")
     serve.run(MyDriver.bind(f.bind()), name="B", route_prefix="/b")
@@ -1003,11 +1002,11 @@ def test_get_deployment_handle_basic(serve_instance):
 
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class MyDriver:
-        def __init__(self, dag: RayServeDAGHandle):
-            self.dag = dag
+        def __init__(self, handle):
+            self._h = handle.options(use_new_handle_api=True)
 
         async def __call__(self):
-            return f"{await (await self.dag.remote())}!!"
+            return f"{await self._h.remote()}!!"
 
     serve.run(MyDriver.bind(f.bind()))
 
