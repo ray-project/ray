@@ -484,11 +484,26 @@
     - pytest rllib_contrib/alpha_star/tests/
     - python rllib_contrib/alpha_star/examples/multi-agent-cartpole-alpha-star.py --run-as-test
 
+- label: ":exploding_death_star: RLlib Contrib: AlphaZero Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/alpha_zero && pip install -r requirements.txt && pip install -e ".[development"])
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/alpha_zero/tests/
+    - python alpha_zero/examples/alpha_zero_cartpole_sparse_rewards.py --run-as-test
+
 - label: ":exploding_death_star: RLlib Contrib: APEX DDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - (cd rllib_contrib/apex_ddpg && pip install -r requirements.txt && pip install -e ".[development"])
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/apex_ddpg && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/apex_ddpg/tests/
     - python rllib_contrib/apex_ddpg/examples/apex_ddpg_pendulum_v1.py --run-as-test
@@ -500,7 +515,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/apex_dqn && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/apex_dqn && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/apex_dqn/tests/
     - python rllib_contrib/apex_dqn/examples/apex_dqn_cartpole_v1.py --run-as-test
@@ -512,7 +527,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/bandit && pip install -r requirements.txt && pip install -e .)
+    - (cd rllib_contrib/bandit && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/bandit/tests/
     - python rllib_contrib/bandit/examples/bandit_linucb_interest_evolution_recsim.py --run-as-test
@@ -524,7 +539,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/ddpg/tests/
     - python rllib_contrib/ddpg/examples/ddpg_pendulum_v1.py --run-as-test
@@ -536,7 +551,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/leela_chess_zero && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/leela_chess_zero && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/leela_chess_zero/tests/
     - python rllib_contrib/leela_chess_zero/examples/leela_chess_zero_connect_4.py --run-as-test
@@ -545,6 +560,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+
     # Install mujoco necessary for the testing environments
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
@@ -555,7 +571,8 @@
     - mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
     - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
     - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin
-    - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development"])
+
+    - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/maml/tests/test_maml.py
 
@@ -573,7 +590,7 @@
     - echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin' >> /root/.bashrc
     - source /root/.bashrc
 
-    - (cd rllib_contrib/mbmpo && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/mbmpo && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/mbmpo/tests/
     - python rllib_contrib/mbmpo/examples/mbmpo_cartpole_v1_model_based.py --run-as-test
@@ -585,7 +602,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/pg && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/pg && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/pg/tests/
     - python rllib_contrib/pg/examples/pg_cartpole_v1.py --run-as-test
@@ -597,7 +614,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/qmix && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/qmix && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/qmix/tests/
     - python rllib_contrib/qmix/examples/qmix_two_step_game.py --run-as-test
@@ -609,13 +626,13 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/r2d2/tests/
     - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: SimpleQ Tests"
-    - (cd rllib_contrib/simple_q && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/simple_q && pip install -r requirements.txt && pip install -e ".[development]")
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
@@ -630,7 +647,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/slate_q && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/slate_q && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/slate_q/tests/
     - python rllib_contrib/slate_q/examples/recommender_system_with_recsim_and_slateq.py --run-as-test
@@ -642,7 +659,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/td3 && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/td3 && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/td3/tests/
     - python rllib_contrib/td3/examples/td3_pendulum_v1.py --run-as-test
