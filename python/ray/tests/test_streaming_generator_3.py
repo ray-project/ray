@@ -309,7 +309,7 @@ def send_serve_requests():
         # events.request.fire(**request_meta)
 
 from concurrent.futures import ThreadPoolExecutor
-with ThreadPoolExecutor(max_workers=100) as executor:
+with ThreadPoolExecutor(max_workers=10) as executor:
     while True:
         futs = [executor.submit(send_serve_requests) for _ in range(100)]
         for f in futs:
