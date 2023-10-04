@@ -127,7 +127,7 @@ HEALTH_CHECK_SUCCESS_MESSAGE = "success"
 
 @dataclass
 class ResponseStatus:
-    code: str
+    code: Any  # Must be convertible to a string.
     is_error: bool = False
     message: str = ""
 
@@ -488,8 +488,8 @@ class GenericProxy(ABC):
             async for message in response_handler_info.response_generator:
                 if isinstance(message, ResponseStatus):
                     status = message
-                else:
-                    yield message
+
+                yield message
 
             assert status is not None and isinstance(status, ResponseStatus)
         finally:
@@ -503,7 +503,7 @@ class GenericProxy(ABC):
             logger.info(
                 access_log_msg(
                     method=proxy_request.method,
-                    status=status.code,
+                    status=str(status.code),
                     latency_ms=latency_ms,
                 ),
                 extra={"log_to_stderr": False},
@@ -515,7 +515,7 @@ class GenericProxy(ABC):
                     "route": proxy_request.route_path,
                     "method": proxy_request.method,
                     "application": response_handler_info.application_name,
-                    "status_code": status.code,
+                    "status_code": str(status.code),
                 }
             )
 
@@ -525,21 +525,21 @@ class GenericProxy(ABC):
                     "method": proxy_request.method,
                     "route": proxy_request.route_path,
                     "application": response_handler_info.application_name,
-                    "status_code": status.code,
+                    "status_code": str(status.code),
                 },
             )
             if status.is_error:
                 self.request_error_counter.inc(
                     tags={
                         "route": proxy_request.route_path,
-                        "error_code": status.code,
+                        "error_code": str(status.code),
                         "method": proxy_request.method,
                     }
                 )
                 self.deployment_request_error_counter.inc(
                     tags={
                         "deployment": response_handler_info.deployment_name,
-                        "error_code": status.code,
+                        "error_code": str(status.code),
                         "method": proxy_request.method,
                         "route": proxy_request.route_path,
                         "application": response_handler_info.application_name,
@@ -638,7 +638,7 @@ class gRPCProxy(GenericProxy):
         )
 
         yield ResponseStatus(
-            code=str(grpc.StatusCode.NOT_FOUND),
+            code=grpc.StatusCode.NOT_FOUND,
             message=not_found_message,
         )
 
@@ -653,7 +653,7 @@ class gRPCProxy(GenericProxy):
 
         yield response_proto.SerializeToString()
         yield ResponseStatus(
-            code=str(grpc.StatusCode.UNAVAILABLE),
+            code=grpc.StatusCode.UNAVAILABLE,
             message=DRAINED_MESSAGE,
         )
 
@@ -664,14 +664,14 @@ class gRPCProxy(GenericProxy):
         ).SerializeToString()
 
         yield ResponseStatus(
-            code=str(grpc.StatusCode.OK),
+            code=grpc.StatusCode.OK,
             message=HEALTH_CHECK_SUCCESS_MESSAGE,
         )
 
     async def health_response(self, proxy_request: ProxyRequest) -> ResponseGenerator:
         yield HealthzResponse(message=HEALTH_CHECK_SUCCESS_MESSAGE).SerializeToString()
         yield ResponseStatus(
-            code=str(grpc.StatusCode.OK),
+            code=grpc.StatusCode.OK,
             message=HEALTH_CHECK_SUCCESS_MESSAGE,
         )
 
@@ -787,13 +787,13 @@ class gRPCProxy(GenericProxy):
             async for result in response_generator:
                 yield result
 
-            status = ResponseStatus(code=str(grpc.StatusCode.OK))
+            status = ResponseStatus(code=grpc.StatusCode.OK)
         except TimeoutError:
             message = f"Request {request_id} timed out after {self.request_timeout_s}s."
             logger.warning(message)
             # TODO(edoakes): this should probably be `StatusCode.DEADLINE_EXCEEDED`.
             status = ResponseStatus(
-                code=str(grpc.StatusCode.CANCELLED),
+                code=grpc.StatusCode.CANCELLED,
                 is_error=True,
                 message=message,
             )
@@ -803,13 +803,13 @@ class gRPCProxy(GenericProxy):
             # `ProxyResponseGenerator` so this won't ever happen.
             logger.info(f"Client for request {request_id} disconnected.")
             status = ResponseStatus(
-                code=str(grpc.StatusCode.CANCELLED),
+                code=grpc.StatusCode.CANCELLED,
                 is_error=True,
             )
         except Exception as e:
             logger.exception(e)
             status = ResponseStatus(
-                code=str(grpc.StatusCode.INTERNAL),
+                code=grpc.StatusCode.INTERNAL,
                 is_error=True,
                 message=str(e),
             )

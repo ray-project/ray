@@ -178,11 +178,11 @@ def ping_grpc_call_method(channel, app_name, test_not_found=False):
         with pytest.raises(grpc.RpcError) as exception_info:
             _, _ = stub.__call__.with_call(request=request, metadata=metadata)
         rpc_error = exception_info.value
-        assert rpc_error.code() == grpc.StatusCode.NOT_FOUND
+        assert rpc_error.code() == grpc.StatusCode.NOT_FOUND, rpc_error.code()
         assert f"Application '{app_name}' not found." in rpc_error.details()
     else:
         response, call = stub.__call__.with_call(request=request, metadata=metadata)
-        assert call.code() == grpc.StatusCode.OK
+        assert call.code() == grpc.StatusCode.OK, call.code()
         assert response.greeting == "Hello foo from bar", response.greeting
 
 
