@@ -132,7 +132,7 @@ def warn_if_agent_address_set():
     if "RAY_AGENT_ADDRESS" in os.environ:
         cli_logger.warning(
             "The `RAY_AGENT_ADDRESS` env var has been deprecated in favor of "
-            "the `RAY_HEAD_ADDRESS` env var. The `RAY_AGENT_ADDRESS` is "
+            "the `RAY_DASHBOARD_ADDRESS` env var. The `RAY_AGENT_ADDRESS` is "
             "ignored."
         )
 
