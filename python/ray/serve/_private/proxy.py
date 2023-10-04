@@ -7,7 +7,6 @@ import socket
 import time
 import uuid
 from abc import ABC, abstractmethod
-from asyncio.tasks import FIRST_COMPLETED
 from typing import (
     Any,
     AsyncIterator,
@@ -18,7 +17,6 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    Union,
 )
 
 import grpc
@@ -32,7 +30,6 @@ from starlette.types import Message, Receive
 import ray
 from ray import serve
 from ray._private.utils import get_or_create_event_loop
-from ray._raylet import StreamingObjectRefGenerator
 from ray.actor import ActorHandle
 from ray.serve._private.common import EndpointInfo, EndpointTag, NodeId, RequestProtocol
 from ray.serve._private.constants import (
@@ -78,7 +75,7 @@ from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.config import gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
-from ray.serve.handle import DeploymentHandle, _DeploymentResponseBase
+from ray.serve.handle import DeploymentHandle
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -510,44 +507,6 @@ class GenericProxy(ABC):
             self._ongoing_requests_end()
 
         return proxy_response
-
-    async def _assign_request_with_timeout(
-        self,
-        handle: DeploymentHandle,
-        proxy_request: ProxyRequest,
-        disconnected_task: Optional[asyncio.Task] = None,
-        timeout_s: Optional[float] = None,
-    ) -> Union[None, ray.ObjectRef, StreamingObjectRefGenerator]:
-        """Attempt to send a request on the handle within the timeout.
-
-        If `timeout_s` is exceeded while trying to assign a replica, `TimeoutError`
-        will be raised.
-
-        `disconnected_task` is expected to be done if the client disconnects; in this
-        case, we will abort assigning a replica and return `None`.
-        """
-        result: _DeploymentResponseBase = handle.remote(
-            proxy_request.request_object(proxy_handle=self.self_actor_handle)
-        )
-        to_object_ref_task = asyncio.ensure_future(
-            result._to_object_ref_or_gen(_record_telemetry=False)
-        )
-        tasks = [to_object_ref_task]
-        if disconnected_task is not None:
-            tasks.append(disconnected_task)
-        done, _ = await asyncio.wait(
-            tasks,
-            return_when=FIRST_COMPLETED,
-            timeout=timeout_s,
-        )
-        if to_object_ref_task in done:
-            return to_object_ref_task.result()
-        elif disconnected_task is not None and disconnected_task in done:
-            result.cancel()
-            return None
-        else:
-            result.cancel()
-            raise TimeoutError()
 
     @abstractmethod
     def setup_request_context_and_handle(
