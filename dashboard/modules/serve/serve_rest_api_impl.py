@@ -339,7 +339,6 @@ def create_serve_rest_api(
             self.validate_http_options(client, full_http_options)
 
             try:
-                client.set_cluster_scale(config.cluster_scale)
                 client.deploy_apps(config)
                 record_extra_usage_tag(TagKey.SERVE_REST_API_VERSION, "v2")
             except RayTaskError as e:

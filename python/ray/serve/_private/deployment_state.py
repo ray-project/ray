@@ -1336,9 +1336,22 @@ class DeploymentState:
         self._multiplexed_model_ids_updated = False
 
     def set_cluster_scale(self, cluster_scale: float):
+        update_message = (
+            f"Scaling cluster from {self._target_state.cluster_scale} to "
+            f"{cluster_scale}. The target num_replicas for deployment "
+            f"{self.deployment_name} will scale from "
+            f"{self.target_num_replicas} to "
+            f"{math.ceil(self._target_state.num_replicas * cluster_scale)}."
+        )
         target_state = replace(self._target_state, cluster_scale=cluster_scale)
         self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
         self._target_state = target_state
+        self._curr_status_info = DeploymentStatusInfo(
+            self.deployment_name,
+            DeploymentStatus.UPDATING,
+            message=update_message,
+        )
+        logger.info(update_message)
 
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
@@ -2544,7 +2557,7 @@ class DeploymentStateManager:
     def set_cluster_scale(self, cluster_scale: float):
         self.cluster_scale = cluster_scale
         for deployment_state in self._deployment_states.values():
-            deployment_state.set_cluster_scale()
+            deployment_state.set_cluster_scale(cluster_scale)
 
     def _record_deployment_usage(self):
         ServeUsageTag.NUM_DEPLOYMENTS.record(str(len(self._deployment_states)))

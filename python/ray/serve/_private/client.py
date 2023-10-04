@@ -329,6 +329,7 @@ class ServeControllerClient:
                 config, or vice versa.
         """
         ray.get(self._controller.deploy_config.remote(config))
+        self.set_cluster_scale(config.cluster_scale)
 
         if _blocking:
             timeout_s = 60

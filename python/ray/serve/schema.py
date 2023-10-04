@@ -722,6 +722,7 @@ class ServeStatus:
         applications: The live applications in the cluster.
     """
 
+    cluster_scale: float = field(default_factory=lambda: 1.0)
     proxies: Dict[str, ProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
 
@@ -927,6 +928,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 
     def _get_status(self) -> ServeStatus:
         return ServeStatus(
+            cluster_scale=self.cluster_scale,
             proxies={node_id: proxy.status for node_id, proxy in self.proxies.items()},
             applications={
                 app_name: ApplicationStatusOverview(
