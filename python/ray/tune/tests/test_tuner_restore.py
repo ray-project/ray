@@ -120,9 +120,10 @@ class _ClassTrainableSometimesFailing(Trainable):
         # Fails if failing is set and marker file exists.
         # Hangs if hanging is set and marker file exists.
         failing, hanging = self.config["failing_hanging"]
+        num_epochs = self.config.get("num_epochs", 1)
 
         # We fail after reporting num_epochs checkpoints.
-        if self.iteration == self.config.get("num_epochs", 1):
+        if self.iteration == self.config.get("fail_epochs", 1):
 
             if failing and failing.exists():
                 raise RuntimeError("I am failing")
@@ -130,9 +131,10 @@ class _ClassTrainableSometimesFailing(Trainable):
             if hanging and hanging.exists():
                 time.sleep(60)
 
+        print("Training iteration", self.iteration, "/", num_epochs)
         return {
             "it": self.iteration,
-            "done": self.iteration >= self.config.get("num_epochs", 1),
+            "done": self.iteration >= num_epochs,
         }
 
     def save_checkpoint(self, checkpoint_dir: str):
@@ -141,7 +143,7 @@ class _ClassTrainableSometimesFailing(Trainable):
             ray_pickle.dump({"it": self.iteration}, f)
 
     def load_checkpoint(self, checkpoint):
-        pass
+        print("Restored iteration", self.iteration)
 
 
 class _FailOnStats(Callback):
@@ -932,6 +934,8 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, trainable_ty
     elif trainable_type == "class":
         trainable = _ClassTrainableSometimesFailing
         checkpoint_config.checkpoint_frequency = 1
+        param_space["num_epochs"] = 4
+        param_space["fail_epochs"] = 2
     elif trainable_type == "data_parallel":
         trainable = DataParallelTrainer(
             _train_fn_sometimes_failing, scaling_config=ScalingConfig(num_workers=1)
