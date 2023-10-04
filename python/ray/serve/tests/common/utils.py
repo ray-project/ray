@@ -1,3 +1,4 @@
+import asyncio
 import time
 from typing import Any, Dict
 
@@ -8,6 +9,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
+from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.proxy import DRAINED_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
@@ -181,7 +183,7 @@ def ping_grpc_call_method(channel, app_name, test_not_found=False):
     else:
         response, call = stub.__call__.with_call(request=request, metadata=metadata)
         assert call.code() == grpc.StatusCode.OK
-        assert response.greeting == "Hello foo from bar"
+        assert response.greeting == "Hello foo from bar", response.greeting
 
 
 def ping_grpc_another_method(channel, app_name):
@@ -222,3 +224,10 @@ def ping_fruit_stand(channel, app_name):
     metadata = (("application", app_name),)
     response = stub.FruitStand(request=request, metadata=metadata)
     assert response.costs == 32
+
+
+async def send_signal_on_cancellation(signal_actor: ActorHandle):
+    try:
+        await asyncio.sleep(100000)
+    except asyncio.CancelledError:
+        await signal_actor.send.remote()
