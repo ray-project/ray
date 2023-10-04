@@ -10,6 +10,7 @@ import ray._private.utils as utils
 import re
 from typing import Callable, Iterable, Optional
 
+logger = logging.getLogger("ray")
 
 def update_resources_with_accelerator_type(resources: dict):
     """Update the resources dictionary with the accelerator type and custom
@@ -169,7 +170,7 @@ def _autodetect_num_tpus() -> int:
         numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
         return len(numeric_entries)
     except FileNotFoundError as e:
-        logging.info("Failed to detect number of TPUs: %s", e)
+        logger.debug("Failed to detect number of TPUs: %s", e)
         return 0
 
 
@@ -208,7 +209,7 @@ def _autodetect_tpu_version() -> Optional[str]:
     if accelerator_type is not None:
         detected_tpu_version = accelerator_type_to_version(accelerator_type)
         if detected_tpu_version is None:
-            logging.info(
+            logger.debug(
                 "While trying to autodetect a TPU type and "
                 f"parsing {ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR}, "
                 f"received malformed accelerator_type: {accelerator_type}"
@@ -228,27 +229,27 @@ def _autodetect_tpu_version() -> Optional[str]:
                     accelerator_type_request.text
                 )
                 if detected_tpu_version is None:
-                    logging.info(
+                    logger.debug(
                         "While trying to autodetect a TPU type, the TPU GCE metadata "
                         "returned a malformed accelerator type: "
                         f"{accelerator_type_request.text}."
                     )
             else:
-                logging.info(
+                logger.debug(
                     "While trying to autodetect a TPU type, "
                     "unable to poll TPU GCE metadata. Got "
                     f"status code: {accelerator_type_request.status_code} and "
                     f"content: {accelerator_type_request.text}"
                 )
         except requests.RequestException as e:
-            logging.info(
+            logger.debug(
                 "While trying to autodetect a TPU type, "
                 " unable to poll TPU GCE metadata: %s",
                 e,
             )
 
     if detected_tpu_version is None:
-        logging.info("Failed to auto-detect TPU type.")
+        logger.debug("Failed to auto-detect TPU type.")
     return detected_tpu_version
 
 
