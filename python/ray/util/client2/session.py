@@ -125,11 +125,11 @@ class ClientSession:
         self.old_ray_actormethod_remote = None
 
         if not self.detached:
-            await self.kill_driver()
+            await self.kill_actor()
 
         await self.aiohttp_client_session.__aexit__(exc_type, exc_val, exc_tb)
 
-    async def kill_driver(self):
+    async def kill_actor(self):
         async with self.aiohttp_client_session.delete(
             f"{self.server_addr}/api/clients/{self.actor_name}"
         ) as resp:

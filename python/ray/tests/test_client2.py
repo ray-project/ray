@@ -232,7 +232,6 @@ def test_actor_remote(call_ray_start_with_webui_addr):
     webui = call_ray_start_with_webui_addr
     with ClientSession(webui, "test_actor_remote") as client:
         actor = Counter.remote(5)
-        print(actor, actor._get_local_state())
         got_ref = actor.increment.remote(3)
         got = client.get(got_ref)
         assert got == 8
