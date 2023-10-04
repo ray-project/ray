@@ -9,6 +9,7 @@ Learner specifications and configurations
 .. currentmodule:: ray.rllib.core.learner.learner
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     FrameworkHyperparameters
@@ -18,6 +19,7 @@ TorchLearner configurations
 +++++++++++++++++++++++++++
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     TorchCompileWhatToCompile
@@ -26,6 +28,7 @@ Constructor
 -----------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner
@@ -37,6 +40,7 @@ Performing Updates
 ------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.update
@@ -50,6 +54,7 @@ Computing Losses
 ----------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.compute_loss
@@ -62,6 +67,7 @@ Configuring Optimizers
 ----------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.configure_optimizers_for_module
@@ -81,6 +87,7 @@ Gradient Computation
 --------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.compute_gradients
@@ -92,6 +99,7 @@ Saving, Loading, Checkpointing, and Restoring States
 ----------------------------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.save_state
@@ -108,6 +116,7 @@ Adding and Removing Modules
 ---------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.add_module
@@ -117,6 +126,7 @@ Managing Results
 ----------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Learner.compile_results
@@ -133,6 +143,7 @@ Configuring a LearnerGroup
 --------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     LearnerSpec
@@ -140,6 +151,7 @@ Configuring a LearnerGroup
 .. currentmodule:: ray.rllib.core.learner.learner_group
     
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     LearnerGroup

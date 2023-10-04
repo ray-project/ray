@@ -32,9 +32,8 @@ from ray.serve._private.deployment_state import (
     ReplicaStateContainer,
     VersionedReplica,
 )
-from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
-from ray.serve.tests.utils import MockKVStore, MockTimer
+from ray.serve.tests.common.utils import MockKVStore, MockTimer
 
 
 class FakeRemoteFunction:
@@ -64,7 +63,6 @@ class MockReplicaActorWrapper:
     def __init__(
         self,
         actor_name: str,
-        detached: bool,
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_id: DeploymentID,
@@ -358,7 +356,6 @@ def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
         deployment_state = DeploymentState(
             DeploymentID("name", "my_app"),
             "name",
-            True,
             mock_long_poll,
             MockDeploymentScheduler(cluster_node_info_cache),
             cluster_node_info_cache,
@@ -2258,7 +2255,6 @@ def mock_deployment_state_manager_full(
 
             return DeploymentStateManager(
                 "name",
-                True,
                 kv_store,
                 mock_long_poll,
                 actor_names,
@@ -2471,7 +2467,7 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
     ), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
-        kv_store = RayInternalKVStore("test")
+        kv_store = MockKVStore()
         cluster_node_info_cache = MockClusterNodeInfoCache()
         mock_create_deployment_scheduler.return_value = MockDeploymentScheduler(
             cluster_node_info_cache
@@ -2480,7 +2476,6 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(
             DeploymentID("name", "my_app"),
-            True,
             kv_store,
             mock_long_poll,
             all_current_actor_names,
@@ -2558,7 +2553,7 @@ def test_resource_requirements_none():
         available_resources = {}
 
     # Make a DeploymentReplica just to accesss its resource_requirement function
-    replica = DeploymentReplica(None, None, "random_tag", None, None)
+    replica = DeploymentReplica(None, "random_tag", None, None)
     replica._actor = FakeActor()
 
     # resource_requirements() should not error
@@ -2570,7 +2565,6 @@ class TestActorReplicaWrapper:
         actor_replica = ActorReplicaWrapper(
             version=deployment_version("1"),
             actor_name="test",
-            detached=False,
             controller_name="test_controller",
             replica_tag="test_tag",
             deployment_id=DeploymentID("test_deployment", "test_app"),
@@ -2582,20 +2576,6 @@ class TestActorReplicaWrapper:
         assert actor_replica.max_concurrent_queries == DEFAULT_MAX_CONCURRENT_QUERIES
         assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
         assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
-
-    def test_recover(self):
-        actor_replica = ActorReplicaWrapper(
-            version=deployment_version("1"),
-            actor_name="test",
-            detached=False,
-            controller_name="test_controller",
-            replica_tag="test_tag",
-            deployment_id=DeploymentID("test_deployment", "test_app"),
-        )
-        actor_replica._actor_handle = MockActorHandle()
-        actor_replica.recover()
-        assert actor_replica._actor_handle.initialize_and_get_metadata_called
-        assert actor_replica._actor_handle.is_allocated_called
 
 
 def test_get_active_node_ids(mock_deployment_state_manager_full):

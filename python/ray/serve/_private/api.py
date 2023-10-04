@@ -17,7 +17,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.controller import ServeController
-from ray.serve._private.utils import format_actor_name, get_random_letters
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application, Deployment
@@ -110,9 +109,7 @@ def _check_http_options(
 
 
 def _start_controller(
-    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, str]:
@@ -131,15 +128,10 @@ def _start_controller(
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
-    if detached:
-        controller_name = SERVE_CONTROLLER_NAME
-    else:
-        controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
-
     controller_actor_options = {
-        "num_cpus": 1 if dedicated_cpu else 0,
-        "name": controller_name,
-        "lifetime": "detached" if detached else None,
+        "num_cpus": 0,
+        "name": SERVE_CONTROLLER_NAME,
+        "lifetime": "detached",
         "max_restarts": -1,
         "max_task_retries": -1,
         "resources": {HEAD_NODE_RESOURCE_NAME: 0.001},
@@ -165,9 +157,8 @@ def _start_controller(
         grpc_options = gRPCOptions(**grpc_options)
 
     controller = ServeController.options(**controller_actor_options).remote(
-        controller_name,
+        SERVE_CONTROLLER_NAME,
         http_config=http_options,
-        detached=detached,
         grpc_options=grpc_options,
     )
 
@@ -182,13 +173,11 @@ def _start_controller(
             raise TimeoutError(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
-    return controller, controller_name
+    return controller, SERVE_CONTROLLER_NAME
 
 
 async def serve_start_async(
-    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
@@ -219,41 +208,31 @@ async def serve_start_async(
     controller, controller_name = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(detached, http_options, dedicated_cpu, grpc_options, **kwargs)
+        .remote(http_options, grpc_options, **kwargs)
     )
 
     client = ServeControllerClient(
         controller,
         controller_name,
-        detached=detached,
     )
     _set_global_client(client)
-    logger.info(
-        f"Started{' detached ' if detached else ' '}Serve instance in "
-        f'namespace "{SERVE_NAMESPACE}".'
-    )
+    logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
 
 
 def serve_start(
-    detached: bool = False,
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
 
     By default, the instance will be scoped to the lifetime of the returned
-    Client object (or when the script exits). If detached is set to True, the
-    instance will instead persist until serve.shutdown() is called. This is
+    Client object (or when the script exits). This is
     only relevant if connecting to a long-running Ray cluster (e.g., with
     ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
-        detached: Whether not the instance should be detached from this
-          script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
@@ -277,8 +256,6 @@ def serve_start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        dedicated_cpu: Whether to reserve a CPU core for the internal
-          Serve controller actor.  Defaults to False.
         grpc_options: [Experimental] Configuration options for gRPC proxy.
           You can pass in a gRPCOptions object with fields:
 
@@ -303,19 +280,15 @@ def serve_start(
         pass
 
     controller, controller_name = _start_controller(
-        detached, http_options, dedicated_cpu, grpc_options, **kwargs
+        http_options, grpc_options, **kwargs
     )
 
     client = ServeControllerClient(
         controller,
         controller_name,
-        detached=detached,
     )
     _set_global_client(client)
-    logger.info(
-        f"Started{' detached ' if detached else ' '}Serve instance in "
-        f'namespace "{SERVE_NAMESPACE}".'
-    )
+    logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
 
 
