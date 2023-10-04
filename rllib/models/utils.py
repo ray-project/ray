@@ -2,11 +2,11 @@ from typing import Callable, Optional, Union
 
 from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 
 
-@ExperimentalAPI
+@DeveloperAPI
 def input_to_output_specs(
     input_specs: SpecDict,
     num_input_feature_dims: int,

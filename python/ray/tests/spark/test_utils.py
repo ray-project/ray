@@ -9,7 +9,11 @@ from ray.util.spark.utils import (
     _calc_mem_per_ray_worker_node,
     _get_avail_mem_per_ray_worker_node,
 )
-from ray.util.spark.cluster_init import _convert_ray_node_options, _verify_node_options
+from ray.util.spark.cluster_init import (
+    _convert_ray_node_options,
+    _verify_node_options,
+    _append_default_spilling_dir_config,
+)
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
@@ -130,6 +134,36 @@ def test_verify_node_options():
             block_keys={"not_permitted": "permitted"},
             node_type="worker",
         )
+
+
+def test_append_default_spilling_dir_config():
+    assert _append_default_spilling_dir_config({}, "/xx/yy") == {
+        "system_config": {
+            "object_spilling_config": '{"type": "filesystem", "params": {"directory_path": "/xx/yy"}}'  # noqa: E501
+        }
+    }
+    assert _append_default_spilling_dir_config(
+        {"system_config": {"a": 3}}, "/xx/yy"
+    ) == {
+        "system_config": {
+            "a": 3,
+            "object_spilling_config": '{"type": "filesystem", "params": {"directory_path": "/xx/yy"}}',  # noqa: E501
+        }
+    }
+    assert _append_default_spilling_dir_config(
+        {
+            "system_config": {
+                "a": 4,
+                "object_spilling_config": '{"type": "filesystem", "params": {"directory_path": "/aa/bb"}}',  # noqa: E501
+            },
+        },
+        "/xx/yy",
+    ) == {
+        "system_config": {
+            "a": 4,
+            "object_spilling_config": '{"type": "filesystem", "params": {"directory_path": "/aa/bb"}}',  # noqa: E501
+        }
+    }
 
 
 if __name__ == "__main__":

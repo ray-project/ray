@@ -59,7 +59,7 @@ cc_library(
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
         "//:ray_common",
-        "//:ray_util",
+        "//src/ray/util",
         "@boost//:callable_traits",
         "@boost//:dll",
         "@com_google_absl//absl/flags:flag",

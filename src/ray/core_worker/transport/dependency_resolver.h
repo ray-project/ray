@@ -102,7 +102,8 @@ class LocalDependencyResolver {
   /// Number of tasks pending dependency resolution.
   std::atomic<int> num_pending_;
 
-  absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_ GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_
+      ABSL_GUARDED_BY(mu_);
 
   /// Protects against concurrent access to internal state.
   mutable absl::Mutex mu_;
