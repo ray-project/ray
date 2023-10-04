@@ -76,7 +76,7 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether PPO can be built with all frameworks."""
-        #from ray.rllib.algorithms.ppo.utils.ppo_env_runner import PPOEnvRunner
+        # from ray.rllib.algorithms.ppo.utils.ppo_env_runner import PPOEnvRunner
         from ray.rllib.env.env_runner import SingleAgentEnvRunner
 
         # Build a PPOConfig object.

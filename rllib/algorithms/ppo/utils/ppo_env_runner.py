@@ -3,7 +3,7 @@ import numpy as np
 import tree
 
 from functools import partial
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from collections import defaultdict
 from ray.experimental.tqdm_ray import tqdm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig

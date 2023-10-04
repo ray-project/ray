@@ -21,11 +21,10 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.rllib.utils.typing import TensorStructType, TensorType
+from ray.tune.registry import ENV_CREATOR, _global_registry
 
 tf1, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
-
-from ray.tune.registry import ENV_CREATOR, _global_registry
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -336,7 +335,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 # benchmarking).
                 extra_model_output = {}
                 for k, v in fwd_out.items():
-                    if not SampleBatch.ACTIONS in k:
+                    if SampleBatch.ACTIONS not in k:
                         extra_model_output[k] = v[i]
                 # TODO (simon, sven): Some algos do not have logps.
                 extra_model_output[SampleBatch.ACTION_LOGP] = action_logp
@@ -357,7 +356,8 @@ class SingleAgentEnvRunner(EnvRunner):
                         extra_model_output=extra_model_output,
                     )
                     if explore and self.config.use_gae:
-                        # Make postprocessing here. Calculate advantages and value targets.
+                        # Make postprocessing here. Calculate advantages and value
+                        # targets.
                         self._episodes[i] = compute_gae_for_episode(
                             self._episodes[i],
                             self.config,
@@ -404,7 +404,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self._ts_since_last_metrics += ts
 
         return done_episodes_to_return + ongoing_episodes
-    
+
     def _sample_episodes(
         self,
         num_episodes: int,
@@ -455,7 +455,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 }
 
                 # Explore or not.
-                if explore:                    
+                if explore:
                     fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_exploration(
                         batch
                     )
@@ -463,8 +463,10 @@ class SingleAgentEnvRunner(EnvRunner):
                     fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_inference(
                         batch
                     )
-                    
-                actions, action_logp = self._sample_actions_if_necessary(fwd_out, explore)
+
+                actions, action_logp = self._sample_actions_if_necessary(
+                    fwd_out, explore
+                )
 
                 if STATE_OUT in fwd_out:
                     states = convert_to_numpy(fwd_out[STATE_OUT])
@@ -484,11 +486,11 @@ class SingleAgentEnvRunner(EnvRunner):
                 # obs of the new episode.
                 extra_model_output = {}
                 for k, v in fwd_out.items():
-                    if not SampleBatch.ACTIONS in k:
+                    if SampleBatch.ACTIONS not in k:
                         extra_model_output[k] = v[i]
                 # TODO (simon, sven): Some algos do not have logps.
                 extra_model_output[SampleBatch.ACTION_LOGP] = action_logp
-        
+
                 if terminateds[i] or truncateds[i]:
                     eps += 1
                     pbar.update(1)
@@ -522,10 +524,8 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     # Reset h-states to the model's initial ones b/c we are starting
                     # a new episode.
-                    for k, v in (
-                        self.module.get_initial_state().items()
-                    ):
-                        states[k][i] = convert_to_numpy(v),
+                    for k, v in self.module.get_initial_state().items():
+                        states[k][i] = (convert_to_numpy(v),)
 
                     # Create a new episode object.
                     episodes[i] = Episode(
@@ -555,7 +555,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self._needs_initial_reset = True
 
         return done_episodes_to_return
-    
+
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Instead Algorithm should compile episode metrics itself via its local
     #  buffer.
@@ -583,7 +583,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self._ts_since_last_metrics = 0
 
         return metrics
-    
+
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
     def set_weights(self, weights, global_vars=None):
