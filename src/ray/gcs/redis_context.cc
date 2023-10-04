@@ -202,7 +202,9 @@ void RedisRequestContext::Run() {
           auto reply = std::make_shared<CallbackReply>(redis_reply);
           request_cxt->io_service_.post(
               [reply, callback = std::move(request_cxt->callback_)]() {
-                callback(std::move(reply));
+                if (callback) {
+                  callback(std::move(reply));
+                }
               },
               "RedisRequestContext.Callback");
           auto end_time = absl::Now();

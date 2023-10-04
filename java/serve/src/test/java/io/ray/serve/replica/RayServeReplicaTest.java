@@ -45,7 +45,8 @@ public class RayServeReplicaTest {
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setDeploymentDef(DummyReplica.class.getName());
+              .setDeploymentDef(DummyReplica.class.getName())
+              .setAppName("app_test");
 
       ActorHandle<RayServeWrappedReplica> replicHandle =
           Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)

@@ -318,12 +318,12 @@ class WorkerSet:
 
     @DeveloperAPI
     def num_healthy_remote_workers(self) -> int:
-        """Returns the number of healthy workers, including local and remote workers."""
+        """Returns the number of healthy remote workers."""
         return self.__worker_manager.num_healthy_actors()
 
     @DeveloperAPI
     def num_healthy_workers(self) -> int:
-        """Returns the number of healthy workers, including local and remote workers."""
+        """Returns the number of all healthy workers, including the local worker."""
         return int(bool(self._local_worker)) + self.num_healthy_remote_workers()
 
     @DeveloperAPI
@@ -333,7 +333,7 @@ class WorkerSet:
 
     @DeveloperAPI
     def num_remote_worker_restarts(self) -> int:
-        """Total number of times managed remote workers get restarted."""
+        """Total number of times managed remote workers have been restarted."""
         return self.__worker_manager.total_num_restarts()
 
     @DeveloperAPI

@@ -1,8 +1,7 @@
 from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.exploration.exploration import TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -11,7 +10,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-@Deprecated(error=False)
+@PublicAPI
 class SlateEpsilonGreedy(EpsilonGreedy):
     @override(EpsilonGreedy)
     def _get_tf_exploration_action_op(
@@ -79,8 +78,10 @@ class SlateEpsilonGreedy(EpsilonGreedy):
 
         per_slate_q_values = action_distribution.inputs
         all_slates = self.model.slates
+        device = all_slates.device
 
         exploit_indices = action_distribution.deterministic_sample()
+        exploit_indices = exploit_indices.to(device)
         exploit_action = all_slates[exploit_indices]
 
         batch_size = per_slate_q_values.size()[0]
@@ -94,7 +95,10 @@ class SlateEpsilonGreedy(EpsilonGreedy):
             epsilon = self.epsilon_schedule(self.last_timestep)
             # A random action.
             random_indices = torch.randint(
-                0, per_slate_q_values.shape[1], (per_slate_q_values.shape[0],)
+                0,
+                per_slate_q_values.shape[1],
+                (per_slate_q_values.shape[0],),
+                device=device,
             )
             random_actions = all_slates[random_indices]
 

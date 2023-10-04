@@ -16,7 +16,7 @@ def test_setup_func_basic(shutdown_only):
     ray.init(
         num_cpus=1,
         runtime_env={
-            "worker_setup_hook": lambda: configure_logging(logging.DEBUG),
+            "worker_process_setup_hook": lambda: configure_logging(logging.DEBUG),
             "env_vars": {"ABC": "123"},
         },
     )
@@ -53,10 +53,12 @@ def test_setup_func_basic(shutdown_only):
     # ray.get(
     #     f.options(
     #         runtime_env={
-    #             "worker_setup_hook": lambda: configure_logging(logging.INFO)}
+    #             "worker_process_setup_hook": lambda: configure_logging(logging.INFO)}
     #     ).remote("INFO"))
     # a = Actor.optinos(
-    #     runtime_env={"worker_setup_hook": lambda: configure_logging(logging.INFO)}
+    #     runtime_env={
+    #       "worker_process_setup_hook": lambda: configure_logging(logging.INFO)
+    #     }
     # ).remote("INFO")
     # assert ray.get(a.__ray_ready__.remote())
 
@@ -88,7 +90,7 @@ def test_setup_func_failure(shutdown_only):
     ray.init(
         num_cpus=1,
         runtime_env={
-            "worker_setup_hook": setup,
+            "worker_process_setup_hook": setup,
         },
     )
 
@@ -114,7 +116,7 @@ def test_setup_func_failure(shutdown_only):
         ray.init(
             num_cpus=0,
             runtime_env={
-                "worker_setup_hook": lambda: print(lock),
+                "worker_process_setup_hook": lambda: print(lock),
             },
         )
     assert "Failed to export the setup function." in str(e.value)
@@ -130,7 +132,7 @@ def test_setup_func_failure(shutdown_only):
     ray.init(
         num_cpus=1,
         runtime_env={
-            "worker_setup_hook": setup_func,
+            "worker_process_setup_hook": setup_func,
         },
     )
 

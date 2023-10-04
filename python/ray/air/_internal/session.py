@@ -4,7 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _get_session(warn: bool = True):
+def _get_session(warn: bool = False):
     from ray.train._internal.session import _session as train_session
     from ray.tune.trainable.session import _session as tune_session
 

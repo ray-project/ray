@@ -38,20 +38,23 @@ public class RayServeHandleTest {
       String version = "v1";
       Map<String, String> config = new HashMap<>();
       config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
+      String appName = "app1";
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config, null);
 
       // Replica
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs =
-          new Object[] {deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
+          new Object[] {
+            deploymentName, replicaTag, controllerName, new Object(), new HashMap<>(), appName
+          };
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
