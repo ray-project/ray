@@ -10,7 +10,7 @@ from starlette.requests import Request
 from fastapi import FastAPI
 from ray import serve
 
-from aviary.backend.server.models import AviaryModelResponse
+from pydantic import BaseModel
 import ray
 from ray._raylet import StreamingObjectRefGenerator
 from ray._private.test_utils import run_string_as_driver_nonblocking
@@ -270,9 +270,11 @@ def test_streaming_generator_load(shutdown_only):
             for i in range(100):
                 # await asyncio.sleep(0.001)
                 time.sleep(0.001)  # if change to async sleep, i don't see crash.
-                # 56 bytes
-                yield AviaryModelResponse(generated_text="abcd")
-                # yield np.random.rand(5 * 1024 * 1024 * 100)
+
+                class Model(BaseModel):
+                    msg = "a" * 56
+
+                yield Model()
             delta = time.time() - start
             print(f"**model throughput: {100 / delta}")
 

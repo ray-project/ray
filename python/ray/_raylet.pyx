@@ -1673,10 +1673,12 @@ cdef void execute_task(
 
                         if is_async_gen:
                             eventloop, _ = core_worker.get_event_loop(
-                                function_descriptor, name_of_concurrency_group_to_execute)
-                            # Due to Python's limitation, execute_streaming_generator_async
-                            # can return and raise an CancelledError while coroutine is still
-                            # running, which causes various memory corruptions.
+                                function_descriptor,
+                                name_of_concurrency_group_to_execute)
+                            # Due to Python's limitation,
+                            # execute_streaming_generator_async
+                            # can return and raise an CancelledError while coroutine
+                            # is still running, which causes various memory corruptions.
                             # coroutine_complete_event is set when the coroutine
                             # actually completes.
                             coroutine_complete_event = asyncio.Event(loop=eventloop)
@@ -1691,10 +1693,11 @@ cdef void execute_task(
                                     name_of_concurrency_group_to_execute,
                                     task_id)
                             except TaskCancelledError:
-                                # Due to Python's limitation, execute_streaming_generator_async
-                                # can return and raise an exception while coroutine is still
-                                # running. cancel_shield is set when the coroutine actually
-                                # completes.
+                                # Due to Python's limitation,
+                                # execute_streaming_generator_async
+                                # can return and raise an exception while coroutine
+                                # is still running. cancel_shield is set when the
+                                # coroutine actually completes.
                                 core_worker.run_async_func_or_coro_in_event_loop(
                                     coroutine_complete_event.wait,
                                     function_descriptor,
@@ -4286,8 +4289,6 @@ cdef class CoreWorker:
                 the future is not tracked with a task ID.
                 (e.g., When we deserialize the arguments, we don't want to
                 track the task_id -> future mapping).
-            cancel_shield_event: The asyncio Event that's used to shield
-                task from completion when 
             args: The arguments for the async function.
             kwargs: The keyword arguments for the async function.
         """
@@ -4305,7 +4306,6 @@ cdef class CoreWorker:
 
         eventloop, _ = self.get_event_loop(
             function_descriptor, specified_cgname)
-        # async_func_finished_event = asyncio.Event(loop=eventloop)
 
         async def async_func():
             if task_id:
