@@ -1703,6 +1703,7 @@ cdef void execute_task(
                                     function_descriptor,
                                     name_of_concurrency_group_to_execute,
                                     None)
+                                raise
                         else:
                             execute_streaming_generator_sync(context)
 
