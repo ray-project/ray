@@ -17,17 +17,27 @@ from ray._private.utils import (
 default_logger = logging.getLogger(__name__)
 
 
-def check_if_nsys_installed():
+def check_nsys_script(nsys_cmd):
     try:
+        nsys_cmd = nsys_cmd + ["-o", "empty", "python", "-c", '""']
         result = subprocess.run(
-            ["nsys", "--version"],
+            nsys_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
-        return result.returncode == 0
+        if result.returncode == 0:
+            subprocess.run(["rm", "empty.nsys-rep"])
+            return True, None
+        else:
+            error_msg = (
+                result.stderr.strip()
+                if result.stderr.strip() != ""
+                else result.stdout.strip()
+            )
+            return False, error_msg
     except FileNotFoundError:
-        return False
+        return False, ("Nsys is not installed")
 
 
 class NsightPlugin(RuntimeEnvPlugin):
@@ -69,22 +79,21 @@ class NsightPlugin(RuntimeEnvPlugin):
         nsight_flags = runtime_env.get("nsight")
         if not nsight_flags:
             return 0
-        if not check_if_nsys_installed():
-            logger.warning(
-                "Nsys is not installed, running worker process without `nsys profile`"
-            )
-            return 0
 
         self.nsys_cmd = [
             "nsys",
             "profile",
-            "--sample=cpu",
-            "--cudabacktrace=true",
-            "--stop-on-exit=true",
-            "-o",
-            f"{self._logs_dir}/worker_process_%p",
         ]
-        self.nsys_cmd += ["-t " + ",".join(nsight_flags)]
+        self.nsys_cmd += nsight_flags
+
+        valid_nsys_cmd, error_msg = check_nsys_script(self.nsys_cmd)
+        if not valid_nsys_cmd:
+            logger.warning(error_msg)
+            raise RuntimeError(
+                "nsys profile failed to run, " "check runtime_env.log for more details"
+            )
+
+        self.nsys_cmd += ["-o", f"{self._logs_dir}/worker_process_%p"]
         return 0
 
     def modify_context(
