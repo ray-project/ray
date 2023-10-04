@@ -234,8 +234,8 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
         actor_id = min(task_counts, key=lambda k: task_counts[k])
         try:
             [pool_actor] = [i for i in self.pool if i["actor"]._ray_actor_id.hex() == actor_id]
-        except:
-            raise ValueError("Could not acquire next actor")
+        except ValueError as err:
+            raise ValueError(f"Could not acquire next actor with id: {actor_id}") from err
         return pool_actor
 
     def submit(self, fn: Callable[[], T]) -> Future[T]:
