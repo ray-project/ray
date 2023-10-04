@@ -4,11 +4,7 @@ import logging
 import os
 import sys
 
-# For cases like docs builds, we want the default logging config.
-skip_reset = os.environ.get("SKIP_LOG_RESET", False)
-if not skip_reset:
-    log.generate_logging_config()
-
+log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
 

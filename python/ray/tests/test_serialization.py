@@ -678,6 +678,33 @@ def test_serialization_before_init(shutdown_only):
     ray.get(ray.put(A(1)))  # success!
 
 
+def test_serialization_pydantic(ray_start_regular):
+    @ray.remote
+    def test(pydantic_model):
+        return pydantic_model.x
+
+    @ray.remote(runtime_env={"pip": ["pydantic<2"]})
+    def py1():
+        from pydantic import BaseModel
+
+        class Foo(BaseModel):
+            x: int
+
+        return ray.get(test.remote(Foo(x=1)))
+
+    @ray.remote(runtime_env={"pip": ["pydantic>=2"]})
+    def py2():
+        from pydantic.v1 import BaseModel
+
+        class Foo(BaseModel):
+            x: int
+
+        return ray.get(test.remote(Foo(x=2)))
+
+    assert ray.get(py1.remote()) == 1
+    assert ray.get(py2.remote()) == 2
+
+
 if __name__ == "__main__":
     import os
     import pytest

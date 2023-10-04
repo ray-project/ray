@@ -40,7 +40,7 @@ PANEL_TEMPLATE = {
     "bars": False,
     "dashLength": 10,
     "dashes": False,
-    "datasource": {"type": "prometheus", "uid": r"${datasource}"},
+    "datasource": r"${datasource}",
     "description": "<Description>",
     "fieldConfig": {"defaults": {}, "overrides": []},
     "fill": 10,

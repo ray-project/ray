@@ -93,7 +93,10 @@ class LightningPredictor(TorchPredictor):
             .. testcode::
 
                 import pytorch_lightning as pl
-                from ray.train.lightning import LightningCheckpoint, LightningPredictor
+                from ray.train.lightning import (
+                    LightningCheckpoint,
+                    LightningPredictor,
+                )
 
                 class MyLightningModule(pl.LightningModule):
                     def __init__(self, input_dim, output_dim) -> None:
@@ -102,7 +105,7 @@ class LightningPredictor(TorchPredictor):
 
                     # ...
 
-                # After the training is finished, LightningTrainer saves AIR
+                # After the training is finished, LightningTrainer saves
                 # checkpoints in the result directory, for example:
                 # ckpt_dir = "{storage_path}/LightningTrainer_.*/checkpoint_000000"
 

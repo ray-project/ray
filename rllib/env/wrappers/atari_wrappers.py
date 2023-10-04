@@ -4,7 +4,7 @@ from gymnasium import spaces
 import numpy as np
 from typing import Union
 
-from ray.rllib.utils.annotations import Deprecated, PublicAPI
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.images import rgb2gray, resize
 
 
@@ -107,7 +107,7 @@ class NoopResetEnv(gym.Wrapper):
         self.noop_max = noop_max
         self.override_num_noops = None
         self.noop_action = 0
-        assert env.unwrapped.gym_env.get_action_meanings()[0] == "NOOP"
+        assert env.unwrapped.get_action_meanings()[0] == "NOOP"
 
     def reset(self, **kwargs):
         """Do no-op action for a number of steps in [1, noop_max]."""
@@ -151,8 +151,8 @@ class FireResetEnv(gym.Wrapper):
 
         For environments that are fixed until firing."""
         gym.Wrapper.__init__(self, env)
-        assert env.unwrapped.gym_env.get_action_meanings()[1] == "FIRE"
-        assert len(env.unwrapped.gym_env.get_action_meanings()) >= 3
+        assert env.unwrapped.get_action_meanings()[1] == "FIRE"
+        assert len(env.unwrapped.get_action_meanings()) >= 3
 
     def reset(self, **kwargs):
         self.env.reset(**kwargs)
@@ -183,7 +183,7 @@ class EpisodicLifeEnv(gym.Wrapper):
         self.was_real_terminated = terminated
         # check current lives, make loss of life terminal,
         # then update lives to handle bonus lives
-        lives = self.env.unwrapped.gym_env.ale.lives()
+        lives = self.env.unwrapped.ale.lives()
         if lives < self.lives and lives > 0:
             # for Qbert sometimes we stay in lives == 0 condtion for a few fr
             # so its important to keep lives > 0, so that we only reset once
@@ -202,7 +202,7 @@ class EpisodicLifeEnv(gym.Wrapper):
         else:
             # no-op step to advance from terminal/lost life state
             obs, _, _, _, info = self.env.step(0)
-        self.lives = self.env.unwrapped.gym_env.ale.lives()
+        self.lives = self.env.unwrapped.ale.lives()
         return obs, info
 
 
@@ -257,7 +257,7 @@ class WarpFrame(gym.ObservationWrapper):
         return frame[:, :, None]
 
 
-@Deprecated(error=False)
+@PublicAPI
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""
@@ -333,7 +333,7 @@ def wrap_deepmind(env, dim=84, framestack=True, noframeskip=False):
     if env.spec is not None and noframeskip is True:
         env = MaxAndSkipEnv(env, skip=4)
     env = EpisodicLifeEnv(env)
-    if "FIRE" in env.unwrapped.gym_env.get_action_meanings():
+    if "FIRE" in env.unwrapped.get_action_meanings():
         env = FireResetEnv(env)
     env = WarpFrame(env, dim)
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?

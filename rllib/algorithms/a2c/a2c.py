@@ -43,8 +43,7 @@ class A2CConfig(A3CConfig):
         >>> algo.train()  # doctest: +SKIP
 
     Example:
-        >>> import ray.air as air
-        >>> from ray import tune
+        >>> from ray import train, tune
         >>> from ray.rllib.algorithms.a2c import A2CConfig
         >>> config = A2CConfig()
         >>> # Print out some default values.

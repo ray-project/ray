@@ -1,12 +1,12 @@
 from enum import Enum
 from typing import List, TypeVar
-from ray.serve.handle import RayServeDeploymentHandle
 
 import starlette.requests
 
 from ray import serve
 from ray.serve.deployment_graph import InputNode
 from ray.serve.drivers import DAGDriver
+from ray.serve.handle import RayServeHandle
 
 RayHandleLike = TypeVar("RayHandleLike")
 
@@ -52,9 +52,7 @@ class Subtract:
     }
 )
 class Router:
-    def __init__(
-        self, adder: RayServeDeploymentHandle, subtractor: RayServeDeploymentHandle
-    ):
+    def __init__(self, adder: RayServeHandle, subtractor: RayServeHandle):
         self.adder = adder
         self.subtractor = subtractor
 

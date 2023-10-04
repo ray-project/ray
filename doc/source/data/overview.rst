@@ -109,7 +109,7 @@ Preprocessing and ingest for ML training
 Use Ray Data to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>` in a streaming fashion.
 Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to distributed
 applications and libraries in Ray. Don't use it as a replacement for more general data
-processing systems.
+processing systems. For more details on how to use Ray Data for preprocessing and ingest for ML training, see :ref:`Data loading for ML training <data-ingest-torch>`.
 
 .. image:: images/dataset-loading-1.png
    :width: 650px
