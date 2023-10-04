@@ -44,7 +44,6 @@ from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIMessageQueue,
     ASGIReceiveProxy,
-    RawASGIResponse,
     Response,
 )
 from ray.serve._private.logging_utils import (
@@ -87,7 +86,6 @@ def create_replica_wrapper(actor_class_name: str):
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
             controller_name: str,
-            detached: bool,
             app_name: str = None,
         ):
             self._replica_tag = replica_tag
@@ -645,10 +643,10 @@ class RayServeReplica:
         is converted to a custom Response type that handles serialization for
         common Python objects.
         """
-        if not isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            await Response(result).send(scope, receive, send)
-        else:
+        if isinstance(result, starlette.responses.Response):
             await result(scope, receive, send)
+        else:
+            await Response(result).send(scope, receive, send)
 
     async def reconfigure(self, deployment_config: DeploymentConfig):
         old_user_config = self.deployment_config.user_config

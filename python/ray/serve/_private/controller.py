@@ -114,7 +114,6 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        detached: bool = False,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -152,7 +151,6 @@ class ServeController:
 
         self.proxy_state_manager = ProxyStateManager(
             controller_name,
-            detached,
             http_config,
             self._controller_node_id,
             self.cluster_node_info_cache,
@@ -172,7 +170,6 @@ class ServeController:
 
         self.deployment_state_manager = DeploymentStateManager(
             controller_name,
-            detached,
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
@@ -1036,8 +1033,6 @@ class ServeControllerAvatar:
     def __init__(
         self,
         controller_name: str,
-        detached: bool = False,
-        dedicated_cpu: bool = False,
         http_proxy_port: int = 8000,
     ):
         try:
@@ -1048,9 +1043,9 @@ class ServeControllerAvatar:
             http_config = HTTPOptions()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
-                num_cpus=1 if dedicated_cpu else 0,
+                num_cpus=0,
                 name=controller_name,
-                lifetime="detached" if detached else None,
+                lifetime="detached",
                 max_restarts=-1,
                 max_task_retries=-1,
                 resources={HEAD_NODE_RESOURCE_NAME: 0.001},
@@ -1059,7 +1054,6 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
-                detached=detached,
             )
 
     def check_alive(self) -> None:

@@ -14,8 +14,7 @@ from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.test_config_files.grpc_deployment import g, g2
-from ray.serve.tests.utils import (
+from ray.serve.tests.common.utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -24,6 +23,7 @@ from ray.serve.tests.utils import (
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
 )
+from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 
 
 @pytest.fixture
@@ -419,10 +419,6 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     ],
     indirect=True,
 )
-@pytest.mark.skipif(
-    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
-    reason="Failing on Python 3.7.",
-)
 @pytest.mark.parametrize("streaming", [False, True])
 def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request timed out.
@@ -483,10 +479,6 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     ray.get(signal_actor.send.remote())
 
 
-@pytest.mark.skipif(
-    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
-    reason="Failing on Python 3.7.",
-)
 @pytest.mark.parametrize("streaming", [False, True])
 def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request error out.
@@ -535,8 +527,4 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", "-s", __file__]))
