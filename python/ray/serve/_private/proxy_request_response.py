@@ -1,7 +1,7 @@
 import logging
 import pickle
 from abc import ABC, abstractmethod
-from typing import Any, Generator, List, Optional, Tuple
+from typing import Any, List, Tuple
 
 import grpc
 from starlette.types import Receive, Scope, Send
@@ -160,28 +160,8 @@ class gRPCProxyRequest(ProxyRequest):
     def send_request_id(self, request_id: str):
         self.context.set_trailing_metadata([("request_id", request_id)])
 
-    def send_status_code(self, status_code: grpc.StatusCode):
-        self.context.set_code(status_code)
-
-    def send_details(self, message: str):
-        self.context.set_details(message)
-
     def request_object(self, proxy_handle: ActorHandle) -> gRPCRequest:
         return gRPCRequest(
             grpc_user_request=self.user_request,
             grpc_proxy_handle=proxy_handle,
         )
-
-
-class ProxyResponse:
-    """ProxyResponse class to use in the common interface among proxies"""
-
-    def __init__(
-        self,
-        status_code: str,
-        response: Optional[bytes] = None,
-        streaming_response: Optional[Generator[bytes, None, None]] = None,
-    ):
-        self.status_code = status_code
-        self.response = response
-        self.streaming_response = streaming_response
