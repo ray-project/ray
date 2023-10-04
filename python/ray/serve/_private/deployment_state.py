@@ -1197,6 +1197,12 @@ class DeploymentState:
 
         self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
 
+    @property
+    def target_num_replicas(self) -> int:
+        return math.ceil(
+            self._target_state.num_replicas * self._target_state.cluster_scale
+        )
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -1602,10 +1608,7 @@ class DeploymentState:
 
         # If the deployment is currently scaling down, let the scale down
         # complete before doing a rolling update.
-        if (
-            self._target_state.num_replicas
-            < old_running_replicas + old_stopping_replicas
-        ):
+        if self.target_num_replicas < old_running_replicas + old_stopping_replicas:
             return False
 
         # The number of replicas that are currently in transition between
@@ -1613,15 +1616,13 @@ class DeploymentState:
         # count the number of stopping replicas because once replicas finish
         # stopping, they are removed from the data structure.
         pending_replicas = (
-            self._target_state.num_replicas
-            - new_running_replicas
-            - old_running_replicas
+            self.target_num_replicas - new_running_replicas - old_running_replicas
         )
 
         # Maximum number of replicas that can be updating at any given time.
         # There should never be more than rollout_size old replicas stopping
         # or rollout_size new replicas starting.
-        rollout_size = max(int(0.2 * self._target_state.num_replicas), 1)
+        rollout_size = max(int(0.2 * self.target_num_replicas), 1)
         max_to_stop = max(rollout_size - pending_replicas, 0)
 
         return self._stop_or_update_outdated_version_replicas(max_to_stop)
@@ -1647,9 +1648,7 @@ class DeploymentState:
 
         # Target number of replicas should be specified number of replicas
         # scaled by cluster_scale.
-        target_num_replicas = math.ceil(
-            self._target_state.num_replicas * self._target_state.cluster_scale
-        )
+        target_num_replicas = self.target_num_replicas
 
         delta_replicas = target_num_replicas - current_replicas - recovering_replicas
         if delta_replicas == 0:
@@ -1733,7 +1732,7 @@ class DeploymentState:
         # failure happens.
 
         target_version = self._target_state.version
-        target_replica_count = self._target_state.num_replicas
+        target_replica_count = self.target_num_replicas
 
         any_replicas_recovering = (
             self._replicas.count(states=[ReplicaState.RECOVERING]) > 0
