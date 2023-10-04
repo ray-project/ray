@@ -260,10 +260,6 @@ class JuliaFunctionDescriptor : public FunctionDescriptorInterface {
            ", function_hash=" + typed_message_->function_hash() + "}";
   }
 
-  /// TODO: implement this?
-  // virtual std::string CallSiteString() const {
-  // }
-
   virtual std::string CallString() const {
     const std::string &module_name = typed_message_->module_name();
     const std::string &function_name = typed_message_->function_name();
