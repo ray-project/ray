@@ -644,6 +644,8 @@
     - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: SimpleQ Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
