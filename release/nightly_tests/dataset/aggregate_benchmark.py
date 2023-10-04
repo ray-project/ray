@@ -1,7 +1,8 @@
 from typing import Tuple
 
 import ray
-from ray.data.aggregate import _AggregateOnKeyBase, Max, Mean, Min, Sum
+from ray.data.aggregate import Max, Mean, Min, Sum
+from ray.data.aggregate._aggregate import _AggregateOnKeyBase
 from ray.data.block import Block
 from ray.data.dataset import Dataset
 import pyarrow.compute as pac

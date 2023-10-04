@@ -178,11 +178,11 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.shutdown()
 
 
-def test_ray_resources_environment_variable(ray_start_cluster):
-    address = ray_start_cluster.address
-
-    os.environ["RAY_OVERRIDE_RESOURCES"] = '{"custom1":1, "custom2":2, "CPU":3}'
-    ray.init(address=address, resources={"custom1": 3, "custom3": 3})
+def test_ray_resources_environment_variable(shutdown_only):
+    os.environ[
+        ray_constants.RESOURCES_ENVIRONMENT_VARIABLE
+    ] = '{"custom1":1, "custom2":2, "CPU":3}'
+    ray.init(resources={"custom1": 3, "custom3": 3})
 
     cluster_resources = ray.cluster_resources()
     print(cluster_resources)
@@ -190,6 +190,18 @@ def test_ray_resources_environment_variable(ray_start_cluster):
     assert cluster_resources["custom2"] == 2
     assert cluster_resources["custom3"] == 3
     assert cluster_resources["CPU"] == 3
+
+
+def test_ray_labels_environment_variables(shutdown_only):
+    os.environ[
+        ray_constants.LABELS_ENVIRONMENT_VARIABLE
+    ] = '{"custom1":"1", "custom2":"2"}'
+    ray.init(labels={"custom1": "3", "custom3": "3"})
+
+    node_info = ray.nodes()[0]
+    assert node_info["Labels"]["custom1"] == "1"
+    assert node_info["Labels"]["custom2"] == "2"
+    assert node_info["Labels"]["custom3"] == "3"
 
 
 def test_gpu_info_parsing():
@@ -230,14 +242,17 @@ Blacklisted:     No
     assert resource_spec._constraints_from_gpu_info(None) == {}
 
 
-def test_accelerator_type_api(shutdown_only):
-    v100 = ray.util.accelerators.NVIDIA_TESLA_V100
-    resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{v100}"
+@pytest.mark.parametrize(
+    "accelerator_type",
+    [ray.util.accelerators.NVIDIA_TESLA_V100, ray.util.accelerators.AWS_NEURON_CORE],
+)
+def test_accelerator_type_api(accelerator_type, shutdown_only):
+    resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
     ray.init(num_cpus=4, resources={resource_name: 1})
 
     quantity = 1
 
-    @ray.remote(accelerator_type=v100)
+    @ray.remote(accelerator_type=accelerator_type)
     def decorated_func(quantity):
         wait_for_condition(lambda: ray.available_resources()[resource_name] < quantity)
         return True
@@ -249,10 +264,12 @@ def test_accelerator_type_api(shutdown_only):
         return True
 
     assert ray.get(
-        ray.remote(via_options_func).options(accelerator_type=v100).remote(quantity)
+        ray.remote(via_options_func)
+        .options(accelerator_type=accelerator_type)
+        .remote(quantity)
     )
 
-    @ray.remote(accelerator_type=v100)
+    @ray.remote(accelerator_type=accelerator_type)
     class DecoratedActor:
         def __init__(self):
             pass
@@ -274,7 +291,9 @@ def test_accelerator_type_api(shutdown_only):
     wait_for_condition(lambda: ray.available_resources()[resource_name] < quantity)
 
     quantity = ray.available_resources()[resource_name]
-    with_options = ray.remote(ActorWithOptions).options(accelerator_type=v100).remote()
+    with_options = (
+        ray.remote(ActorWithOptions).options(accelerator_type=accelerator_type).remote()
+    )
     ray.get(with_options.initialized.remote())
     wait_for_condition(lambda: ray.available_resources()[resource_name] < quantity)
 

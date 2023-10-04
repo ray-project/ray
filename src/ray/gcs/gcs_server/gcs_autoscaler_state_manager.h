@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -23,12 +24,17 @@ namespace gcs {
 
 class GcsResourceManager;
 class GcsNodeManager;
+class GcsPlacementGroupManager;
 
-class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
+class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(const ClusterResourceManager &cluster_resource_manager,
-                            const GcsResourceManager &gcs_resource_manager,
-                            const GcsNodeManager &gcs_node_manager);
+  GcsAutoscalerStateManager(
+      const std::string &session_name,
+      const ClusterResourceManager &cluster_resource_manager,
+      const GcsResourceManager &gcs_resource_manager,
+      const GcsNodeManager &gcs_node_manager,
+      const GcsPlacementGroupManager &gcs_placement_group_manager,
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -45,11 +51,29 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
       rpc::autoscaler::RequestClusterResourceConstraintReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetClusterStatus(rpc::autoscaler::GetClusterStatusRequest request,
+                              rpc::autoscaler::GetClusterStatusReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleDrainNode(rpc::autoscaler::DrainNodeRequest request,
+                       rpc::autoscaler::DrainNodeReply *reply,
+                       rpc::SendReplyCallback send_reply_callback) override;
+
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
 
  private:
+  /// \brief Internal method for populating the rpc::ClusterResourceState
+  /// protobuf.
+  /// \param state The state to be filled.
+  void MakeClusterResourceStateInternal(rpc::autoscaler::ClusterResourceState *state);
+
+  /// \brief Get the placement group load from GcsPlacementGroupManager
+  ///
+  /// \return The placement group load, nullptr if there is no placement group load.
+  std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
+
   /// \brief Increment and get the next cluster resource state version.
   /// \return The incremented cluster resource state version.
   int64_t IncrementAndGetNextClusterResourceStateVersion() {
@@ -59,31 +83,47 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// \brief Get the current cluster resource state.
   /// \param reply The reply to be filled.
   ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::node_states for more details.
-  void GetNodeStates(rpc::autoscaler::GetClusterResourceStateReply *reply);
+  /// See rpc::autoscaler::ClusterResourceState::node_states for more details.
+  void GetNodeStates(rpc::autoscaler::ClusterResourceState *state);
 
   /// \brief Get the resource requests state.
   /// \param reply The reply to be filled.
   ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::pending_resource_requests for
+  /// See rpc::autoscaler::ClusterResourceState::pending_resource_requests for
   /// more details.
-  void GetPendingResourceRequests(rpc::autoscaler::GetClusterResourceStateReply *reply);
+  void GetPendingResourceRequests(rpc::autoscaler::ClusterResourceState *state);
 
   /// \brief Get the gang resource requests (e.g. from placement group) state.
   /// \param reply The reply to be filled.
   ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::pending_gang_resource_requests
-  /// for more
-  void GetPendingGangResourceRequests(
-      rpc::autoscaler::GetClusterResourceStateReply *reply);
+  /// This method fills up the `pending_gang_resource_requests` field.
+  /// The `pending_gang_resource_requests` field is a list of resource requests from
+  /// placement groups, which should be fulfilled atomically (either all fulfilled or all
+  /// failed). Each pending or rescheduling placement group should generate one
+  /// GangResourceRequest.
+  ///
+  /// Scheduling STRICT_SPREAD PGs
+  /// ===============================
+  /// If a pending/rescheduling placement group is STRICT_SPREAD, then its resources
+  /// requests should also have anti-affinity constraint attached to it.
+  ///
+  /// When a placement group is rescheduled due to node failures, some bundles might
+  /// get unplaced. In this case, the request corresponding to the placement group will
+  /// only include those unplaced bundles.
+  ///
+  /// See rpc::autoscaler::ClusterResourceState::pending_gang_resource_requests
+  /// for more details.
+  void GetPendingGangResourceRequests(rpc::autoscaler::ClusterResourceState *state);
 
   /// \brief Get the cluster resource constraints state.
   /// \param reply The reply to be filled.
   ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::cluster_resource_constraints for
+  /// See rpc::autoscaler::ClusterResourceState::cluster_resource_constraints for
   /// more details. This is requested through autoscaler SDK for request_resources().
-  void GetClusterResourceConstraints(
-      rpc::autoscaler::GetClusterResourceStateReply *reply);
+  void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
+
+  // Ray cluster session name.
+  const std::string session_name_ = "";
 
   /// Cluster resources manager that provides cluster resources information.
   const ClusterResourceManager &cluster_resource_manager_;
@@ -93,6 +133,12 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
 
   /// GCS resource manager that provides resource demand/load information.
   const GcsResourceManager &gcs_resource_manager_;
+
+  /// GCS placement group manager reference.
+  const GcsPlacementGroupManager &gcs_placement_group_manager_;
+
+  /// Raylet client pool.
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
@@ -111,8 +157,13 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
 
   /// The most recent cluster resource constraints requested.
   /// This is requested through autoscaler SDK from request_resources().
-  absl::optional<rpc::ClusterResourceConstraint> cluster_resource_constraint_ =
-      absl::nullopt;
+  absl::optional<rpc::autoscaler::ClusterResourceConstraint>
+      cluster_resource_constraint_ = absl::nullopt;
+
+  /// Cached autoscaling state.
+  absl::optional<rpc::autoscaler::AutoscalingState> autoscaling_state_ = absl::nullopt;
+
+  FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };
 
 }  // namespace gcs

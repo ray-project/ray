@@ -157,7 +157,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, with_eager_tracing=True):
+        for fw in framework_iterator(config):
             for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
@@ -225,7 +225,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, with_eager_tracing=True):
+        for fw in framework_iterator(config):
             for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
@@ -283,9 +283,9 @@ class TestPPO(unittest.TestCase):
         # Test against all frameworks.
         for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
-            trainer = config.build()
+            algo = config.build()
             # explore=False, always expect the same (deterministic) action.
-            a_ = trainer.compute_single_action(
+            a_ = algo.compute_single_action(
                 obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
             )
 
@@ -293,14 +293,14 @@ class TestPPO(unittest.TestCase):
             # TODO (Kourosh): Only meaningful in the ModelV2 stack.
             config.validate()
             if not config._enable_rl_module_api and fw != "tf":
-                last_out = trainer.get_policy().model.last_output()
+                last_out = algo.get_policy().model.last_output()
                 if fw == "torch":
                     check(a_, np.argmax(last_out.detach().cpu().numpy(), 1)[0])
                 else:
                     check(a_, np.argmax(last_out.numpy(), 1)[0])
 
             for _ in range(50):
-                a = trainer.compute_single_action(
+                a = algo.compute_single_action(
                     obs,
                     explore=False,
                     prev_action=np.array(2),
@@ -312,12 +312,12 @@ class TestPPO(unittest.TestCase):
             actions = []
             for _ in range(300):
                 actions.append(
-                    trainer.compute_single_action(
+                    algo.compute_single_action(
                         obs, prev_action=np.array(2), prev_reward=np.array(1.0)
                     )
                 )
             check(np.mean(actions), 1.5, atol=0.2)
-            trainer.stop()
+            algo.stop()
 
     def test_ppo_free_log_std(self):
         """Tests the free log std option works.
@@ -347,8 +347,8 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             # Check the free log std var is created.
             if fw == "torch":
@@ -384,7 +384,7 @@ class TestPPO(unittest.TestCase):
             # Check the variable is updated.
             post_std = get_value()
             assert post_std != 0.0, post_std
-            trainer.stop()
+            algo.stop()
 
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math.
@@ -412,8 +412,8 @@ class TestPPO(unittest.TestCase):
         )
 
         for fw, sess in framework_iterator(config, session=True):
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
 
             # Check no free log std var by default.
             if fw == "torch":
@@ -512,7 +512,7 @@ class TestPPO(unittest.TestCase):
                 check(policy._mean_policy_loss, np.mean(-pg_loss))
                 check(policy._mean_vf_loss, np.mean(vf_loss), decimals=4)
                 check(policy._total_loss, overall_loss, decimals=4)
-            trainer.stop()
+            algo.stop()
 
     def _ppo_loss_helper(
         self, policy, model, dist_class, train_batch, logits, vf_outs, sess=None

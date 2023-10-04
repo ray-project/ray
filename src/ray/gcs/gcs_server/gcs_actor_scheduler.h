@@ -21,11 +21,11 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -124,7 +124,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param raylet_client_pool Raylet client pool to
   /// construct connections to raylets.
   /// \param client_factory Factory to create remote
-  /// core worker client, default factor will be used if not set.
+  /// core worker client, default factory will be used if not set.
   explicit GcsActorScheduler(
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,

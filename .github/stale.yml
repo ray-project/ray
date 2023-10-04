@@ -15,6 +15,7 @@ exemptLabels:
   - triage
   - P0
   - P1
+  - P1.5
   - P2
   - P3
   - good first issue

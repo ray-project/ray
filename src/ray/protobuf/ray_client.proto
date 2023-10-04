@@ -208,6 +208,7 @@ message ClusterInfoResponse {
     string namespace = 3;
     string runtime_env = 4;
     bool capture_client_tasks = 5;
+    string gcs_address = 6;
   }
 
   ClusterInfoType.TypeEnum type = 1;

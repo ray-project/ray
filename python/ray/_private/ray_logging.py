@@ -5,7 +5,6 @@ import os
 import re
 import sys
 import threading
-from logging.handlers import RotatingFileHandler
 import time
 from typing import Callable, Dict, List, Set, Tuple, Any, Optional
 
@@ -69,9 +68,7 @@ def setup_component_logger(
     Returns:
         the created or modified logger.
     """
-    ray_logger = logging.getLogger("ray")
-    ray_logger.propagate = True
-    ray_logger.handlers.clear()
+    ray._private.log.clear_logger("ray")
 
     logger = logging.getLogger(logger_name)
     if type(logging_level) is str:
@@ -92,109 +89,29 @@ def setup_component_logger(
     return logger
 
 
+def run_callback_on_events_in_ipython(event: str, cb: Callable):
+    """
+    Register a callback to be run after each cell completes in IPython.
+    E.g.:
+        This is used to flush the logs after each cell completes.
+
+    If IPython is not installed, this function does nothing.
+
+    Args:
+        cb: The callback to run.
+    """
+    if "IPython" in sys.modules:
+        from IPython import get_ipython
+
+        ipython = get_ipython()
+        # Register a callback on cell completion.
+        if ipython is not None:
+            ipython.events.register(event, cb)
+
+
 """
 All components underneath here is used specifically for the default_worker.py.
 """
-
-
-class StandardStreamInterceptor:
-    """Used to intercept stdout and stderr.
-
-    Intercepted messages are handled by the given logger.
-
-    NOTE: The logger passed to this method should always have
-          logging.INFO severity level.
-
-    Example:
-
-        .. code-block:: python
-
-            from contextlib import redirect_stdout
-            logger = logging.getLogger("ray_logger")
-            hook = StandardStreamHook(logger)
-            with redirect_stdout(hook):
-                print("a") # stdout will be delegated to logger.
-
-    Args:
-        logger: Python logger that will receive messages streamed to
-                the standard out/err and delegate writes.
-        intercept_stdout: True if the class intercepts stdout. False
-                         if stderr is intercepted.
-    """
-
-    def __init__(self, logger, intercept_stdout=True):
-        self.logger = logger
-        assert (
-            len(self.logger.handlers) == 1
-        ), "Only one handler is allowed for the interceptor logger."
-        self.intercept_stdout = intercept_stdout
-
-    def write(self, message):
-        """Redirect the original message to the logger."""
-        self.logger.info(message)
-        return len(message)
-
-    def flush(self):
-        for handler in self.logger.handlers:
-            handler.flush()
-
-    def isatty(self):
-        # Return the standard out isatty. This is used by colorful.
-        fd = 1 if self.intercept_stdout else 2
-        return os.isatty(fd)
-
-    def close(self):
-        handler = self.logger.handlers[0]
-        handler.close()
-
-    def fileno(self):
-        handler = self.logger.handlers[0]
-        return handler.stream.fileno()
-
-
-class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
-    """RotatingFileHandler that redirects stdout and stderr to the log file.
-
-    It is specifically used to default_worker.py.
-
-    The only difference from this handler vs original RotatingFileHandler is
-    that it actually duplicates the OS level fd using os.dup2.
-    """
-
-    def __init__(
-        self,
-        filename,
-        mode="a",
-        maxBytes=0,
-        backupCount=0,
-        encoding=None,
-        delay=False,
-        is_for_stdout=True,
-    ):
-        super().__init__(
-            filename,
-            mode=mode,
-            maxBytes=maxBytes,
-            backupCount=backupCount,
-            encoding=encoding,
-            delay=delay,
-        )
-        self.is_for_stdout = is_for_stdout
-        self.switch_os_fd()
-
-    def doRollover(self):
-        super().doRollover()
-        self.switch_os_fd()
-
-    def get_original_stream(self):
-        if self.is_for_stdout:
-            return sys.stdout
-        else:
-            return sys.stderr
-
-    def switch_os_fd(self):
-        # Old fd will automatically closed by dup2 when necessary.
-        os.dup2(self.stream.fileno(), self.get_original_stream().fileno())
 
 
 def get_worker_log_file_name(worker_type, job_id=None):
@@ -326,6 +243,8 @@ class LogDeduplicator:
         # This buffer is cleared if the pattern isn't seen within the window.
         self.recent: Dict[str, DedupState] = {}
         self.timesource = _timesource or (lambda: time.time())
+
+        run_callback_on_events_in_ipython("post_execute", self.flush)
 
     def deduplicate(self, batch: LogBatch) -> List[LogBatch]:
         """Rewrite a batch of lines to reduce duplicate log messages.

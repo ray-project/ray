@@ -4,20 +4,14 @@ from datasets import Dataset
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
-    AutoTokenizer,
     Trainer,
     TrainingArguments,
 )
 
 import ray.data
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.huggingface import (
-    TransformersPredictor,
-    TransformersTrainer,
-    TransformersCheckpoint,
-)
+from ray.train.huggingface import TransformersTrainer
 from ray.train.trainer import TrainingFailedError
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
 from ray import tune
 from ray.tune import Tuner
@@ -92,33 +86,6 @@ def train_function_local_dataset(train_dataset, eval_dataset=None, **config):
     return train_function(train_dataset, eval_dataset, **config)
 
 
-def test_deprecations(ray_start_4_cpus):
-    """Tests that soft deprecations warn but still can be used"""
-    from ray.train.huggingface import (
-        HuggingFaceCheckpoint,
-        HuggingFacePredictor,
-        HuggingFaceTrainer,
-    )
-
-    ray_train = ray.data.from_pandas(train_df)
-    ray_validation = ray.data.from_pandas(validation_df)
-
-    with pytest.warns(DeprecationWarning):
-        obj = HuggingFaceCheckpoint.from_dict({"foo": "bar"})
-    assert isinstance(obj, TransformersCheckpoint)
-
-    with pytest.warns(DeprecationWarning):
-        obj = HuggingFacePredictor()
-    assert isinstance(obj, TransformersPredictor)
-
-    with pytest.warns(DeprecationWarning):
-        obj = HuggingFaceTrainer(
-            train_function,
-            datasets={"train": ray_train, "evaluation": ray_validation},
-        )
-    assert isinstance(obj, TransformersTrainer)
-
-
 @pytest.mark.parametrize("save_strategy", ["no", "epoch"])
 def test_e2e(ray_start_4_cpus, save_strategy):
     ray_train = ray.data.from_pandas(train_df)
@@ -135,7 +102,6 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result.metrics["epoch"] == 4
     assert result.metrics["training_iteration"] == 4
     assert result.checkpoint
-    assert isinstance(result.checkpoint, TransformersCheckpoint)
     assert "eval_loss" in result.metrics
 
     trainer2 = TransformersTrainer(
@@ -153,18 +119,7 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result2.metrics["epoch"] == 5
     assert result2.metrics["training_iteration"] == 1
     assert result2.checkpoint
-    assert isinstance(result2.checkpoint, TransformersCheckpoint)
     assert "eval_loss" in result2.metrics
-
-    predictor = BatchPredictor.from_checkpoint(
-        result2.checkpoint,
-        TransformersPredictor,
-        task="text-generation",
-        tokenizer=AutoTokenizer.from_pretrained(tokenizer_checkpoint),
-    )
-
-    predictions = predictor.predict(ray.data.from_pandas(prompts))
-    assert predictions.count() == 3
 
 
 def test_training_local_dataset(ray_start_4_cpus):
@@ -179,7 +134,6 @@ def test_training_local_dataset(ray_start_4_cpus):
     assert result.metrics["epoch"] == 1
     assert result.metrics["training_iteration"] == 1
     assert result.checkpoint
-    assert isinstance(result.checkpoint, TransformersCheckpoint)
     assert "eval_loss" in result.metrics
 
 

@@ -98,6 +98,25 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
+double operator""_MB(unsigned long long int x) {
+  return static_cast<double>(1024L * 1024L * x);
+}
+
+DEFINE_stats(object_store_dist,
+             "The distribution of object size in bytes",
+             ("Source"),
+             ({32_MB,
+               64_MB,
+               128_MB,
+               256_MB,
+               512_MB,
+               1024_MB,
+               2048_MB,
+               4096_MB,
+               8192_MB,
+               16384_MB}),
+             ray::stats::HISTOGRAM);
+
 /// Placement group metrics from the GCS.
 DEFINE_stats(placement_groups,
              "Number of placement groups broken down by state.",

@@ -1,0 +1,29 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+head_node_type:
+  name: head_node_type
+  instance_type: g5.48xlarge
+  resources:
+    custom_resources: 
+      large_cpu_mem: 1
+
+worker_node_types:
+  - name: large_gpu_worker
+    instance_type: g5.48xlarge
+    min_workers: 2
+    max_workers: 2
+    use_spot: false
+
+  - name: medium_gpu_worker
+    instance_type: g5.24xlarge
+    min_workers: 2
+    max_workers: 2
+    use_spot: false
+
+aws:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
