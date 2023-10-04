@@ -197,13 +197,16 @@ const MetadataList: React.FC<{
 export const MetadataSection = ({
   header,
   metadataList,
+  footer,
 }: {
   header?: string;
   metadataList: Metadata[];
+  footer?: JSX.Element;
 }) => {
   return (
     <Section title={header} marginTop={1} marginBottom={4}>
       <MetadataList metadataList={metadataList} />
+      <Box marginTop={1}>{footer}</Box>
     </Section>
   );
 };

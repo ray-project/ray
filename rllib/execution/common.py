@@ -1,7 +1,9 @@
 from ray.util.iter import LocalIterator
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import Dict, SampleBatchType
 from ray.util.iter_metrics import MetricsContext
+from ray.util import log_once
 
 # Backward compatibility.
 from ray.rllib.utils.metrics import (  # noqa: F401
@@ -41,7 +43,11 @@ def _get_global_vars() -> Dict:
 
 
 def _get_shared_metrics() -> MetricsContext:
+
     """Return shared metrics for the training workflow.
 
     This only applies if this algorithm has an execution plan."""
+    if log_once("shared-metrics-deprecation-warning"):
+        deprecation_warning(old="ray.rllib.execution.common._get_shared_metrics")
+
     return LocalIterator.get_metrics()

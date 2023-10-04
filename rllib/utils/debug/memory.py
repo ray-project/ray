@@ -15,9 +15,9 @@ def check_memory_leaks(
     repeats: Optional[int] = None,
     max_num_trials: int = 3,
 ) -> DefaultDict[str, List[Suspect]]:
-    """Diagnoses the given trainer for possible memory leaks.
+    """Diagnoses the given Algorithm for possible memory leaks.
 
-    Isolates single components inside the trainer's local worker, e.g. the env,
+    Isolates single components inside the Algorithm's local worker, e.g. the env,
     policy, etc.. and calls some of their methods repeatedly, while checking
     the memory footprints and keeping track of which lines in the code add
     un-GC'd items to memory.
@@ -46,7 +46,7 @@ def check_memory_leaks(
     # Test a single sub-env (first in the VectorEnv)?
     if "env" in to_check:
         assert local_worker.async_env is not None, (
-            "ERROR: Cannot test 'env' since given trainer does not have one "
+            "ERROR: Cannot test 'env' since given Algorithm does not have one "
             "in its local worker. Try setting `create_env_on_driver=True`."
         )
 

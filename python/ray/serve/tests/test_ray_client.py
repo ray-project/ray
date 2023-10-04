@@ -7,8 +7,8 @@ import pytest
 import requests
 
 import ray
-from ray._private.test_utils import run_string_as_driver
 from ray import serve
+from ray._private.test_utils import run_string_as_driver
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -64,7 +64,7 @@ ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
-serve.start(detached=True)
+serve.start()
 """.format(
         ray_client_instance
     )
@@ -134,8 +134,6 @@ A.deploy()
 
 
 def test_quickstart_class(serve_with_client):
-    serve.start()
-
     @serve.deployment
     def hello(request):
         name = request.query_params["name"]

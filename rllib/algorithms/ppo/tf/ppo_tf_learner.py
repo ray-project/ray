@@ -44,7 +44,22 @@ class PPOTfLearner(PPOLearner, TfLearner):
         # TODO (Kourosh): We may or may not user module_id. For example if we have an
         # agent based learning rate scheduler, we may want to use module_id to get the
         # learning rate for that agent.
-        # TODO (Kourosh): come back to RNNs later
+
+        # RNN case: Mask away 0-padded chunks at end of time axis.
+        if self.module[module_id].is_stateful():
+            # In the RNN case, we expect incoming tensors to be padded to the maximum
+            # sequence length. We infer the max sequence length from the actions
+            # tensor.
+            maxlen = tf.math.reduce_max(batch[SampleBatch.SEQ_LENS])
+            mask = tf.sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen)
+
+            def possibly_masked_mean(t):
+                return tf.reduce_mean(tf.boolean_mask(t, mask))
+
+        # non-RNN case: No masking.
+        else:
+            mask = None
+            possibly_masked_mean = tf.reduce_mean
 
         action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
         action_dist_class_exploration = self.module[
@@ -65,12 +80,12 @@ class PPOTfLearner(PPOLearner, TfLearner):
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
         if hps.use_kl_loss:
             action_kl = prev_action_dist.kl(curr_action_dist)
-            mean_kl_loss = tf.reduce_mean(action_kl)
+            mean_kl_loss = possibly_masked_mean(action_kl)
         else:
             mean_kl_loss = tf.constant(0.0, dtype=logp_ratio.dtype)
 
         curr_entropy = curr_action_dist.entropy()
-        mean_entropy = tf.reduce_mean(curr_entropy)
+        mean_entropy = possibly_masked_mean(curr_entropy)
 
         surrogate_loss = tf.minimum(
             batch[Postprocessing.ADVANTAGES] * logp_ratio,
@@ -83,8 +98,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
             value_fn_out = fwd_out[SampleBatch.VF_PREDS]
             vf_loss = tf.math.square(value_fn_out - batch[Postprocessing.VALUE_TARGETS])
             vf_loss_clipped = tf.clip_by_value(vf_loss, 0, hps.vf_clip_param)
-            mean_vf_loss = tf.reduce_mean(vf_loss_clipped)
-            mean_vf_unclipped_loss = tf.reduce_mean(vf_loss)
+            mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
+            mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
         # Ignore the value function.
         else:
             value_fn_out = tf.constant(0.0, dtype=surrogate_loss.dtype)
@@ -93,7 +108,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
                 0.0, dtype=surrogate_loss.dtype
             )
 
-        total_loss = tf.reduce_mean(
+        total_loss = possibly_masked_mean(
             -surrogate_loss
             + hps.vf_loss_coeff * vf_loss_clipped
             - (

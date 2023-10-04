@@ -58,14 +58,6 @@ py_test(
 )
 
 py_test(
-    name = "test_nonstrict_mode",
-    size = "small",
-    srcs = ["tests/test_nonstrict_mode.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
     name = "test_sql",
     size = "small",
     srcs = ["tests/test_sql.py"],
@@ -178,6 +170,14 @@ py_test(
 )
 
 py_test(
+    name = "test_file_based_datasource",
+    size = "small",
+    srcs = ["tests/test_file_based_datasource.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],
@@ -219,7 +219,7 @@ py_test(
 
 py_test(
     name = "test_numpy",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_numpy.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -293,6 +293,14 @@ py_test(
     name = "test_dynamic_block_split",
     size = "medium",
     srcs = ["tests/test_dynamic_block_split.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_splitblocks",
+    size = "medium",
+    srcs = ["tests/test_splitblocks.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -387,6 +395,14 @@ py_test(
 )
 
 py_test(
+    name = "test_progress_bar",
+    size = "small",
+    srcs = ["tests/test_progress_bar.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_random_access",
     size = "small",
     srcs = ["tests/test_random_access.py"],
@@ -436,7 +452,7 @@ py_test(
 
 py_test(
     name = "test_stats",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_stats.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],

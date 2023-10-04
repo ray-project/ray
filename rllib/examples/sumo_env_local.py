@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-""" Example Trainer for RLLIB + SUMO Utlis
+""" Example Algorithm for RLLIB + SUMO Utlis
 
     Author: Lara CODECA lara.codeca@gmail.com
 
@@ -50,7 +50,7 @@ parser.add_argument(
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.",
+    "Algorithm state.",
 )
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument(

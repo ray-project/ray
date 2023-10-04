@@ -39,15 +39,16 @@ Constructor
 
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    RolloutWorker
-   RolloutWorker.as_remote
 
 Multi agent
 ~~~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~RolloutWorker.add_policy
@@ -63,6 +64,7 @@ Setter and getter methods
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~RolloutWorker.get_filters
@@ -79,6 +81,7 @@ Setter and getter methods
 Threading
 ~~~~~~~~~
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~RolloutWorker.lock
@@ -88,6 +91,7 @@ Sampling API
 ~~~~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~RolloutWorker.sample
@@ -98,6 +102,7 @@ Training API
 ~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~RolloutWorker.learn_on_batch
@@ -108,7 +113,9 @@ Training API
 Environment API
 ~~~~~~~~~~~~~~~
 
+
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~RolloutWorker.foreach_env
@@ -119,6 +126,7 @@ Miscellaneous
 ~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~RolloutWorker.stop
@@ -141,6 +149,7 @@ Constructor
 
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     WorkerSet
@@ -151,6 +160,7 @@ Constructor
 Worker Orchestration
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~WorkerSet.add_workers
@@ -169,6 +179,7 @@ Worker Orchestration
 Pass-through methods
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~WorkerSet.add_policy
@@ -195,6 +206,7 @@ Input Reader API
 .. currentmodule:: ray.rllib.offline.input_reader
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     InputReader
@@ -207,6 +219,7 @@ Input Sampler API
 .. currentmodule:: ray.rllib.evaluation.sampler
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     SamplerInput
@@ -220,6 +233,7 @@ Synchronous Sampler API
 .. currentmodule:: ray.rllib.evaluation.sampler
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     SyncSampler
@@ -231,6 +245,7 @@ Asynchronous Sampler API
 .. currentmodule:: ray.rllib.evaluation.sampler
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     AsyncSampler
@@ -253,6 +268,7 @@ JSON reader API
 .. currentmodule:: ray.rllib.offline.json_reader
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     JsonReader
@@ -263,6 +279,7 @@ JSON reader API
 Mixed input reader
 ++++++++++++++++++
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     MixedInput
@@ -272,6 +289,7 @@ Mixed input reader
 D4RL reader
 +++++++++++
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     D4RLReader
@@ -281,6 +299,7 @@ D4RL reader
 IOContext
 ~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     IOContext
@@ -294,6 +313,7 @@ Policy Map API
 .. currentmodule:: ray.rllib.policy.policy_map
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     PolicyMap
@@ -307,6 +327,7 @@ Sample batch API
 .. currentmodule:: ray.rllib.policy.sample_batch
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     SampleBatch
@@ -335,6 +356,7 @@ MultiAgent batch API
 .. currentmodule:: ray.rllib.policy.sample_batch
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     MultiAgentBatch

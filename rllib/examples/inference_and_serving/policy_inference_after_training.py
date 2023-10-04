@@ -25,7 +25,6 @@ parser.add_argument(
     default="torch",
     help="The DL framework specifier.",
 )
-parser.add_argument("--eager-tracing", action="store_true")
 parser.add_argument(
     "--stop-iters",
     type=int,
@@ -67,7 +66,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
-        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .framework(args.framework)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
@@ -92,7 +91,7 @@ if __name__ == "__main__":
     )
     results = tuner.fit()
 
-    print("Training completed. Restoring new Trainer for action inference.")
+    print("Training completed. Restoring new Algorithm for action inference.")
     # Get the last checkpoint from the above training run.
     checkpoint = results.get_best_result().checkpoint
     # Create new Algorithm and restore its state from the last checkpoint.

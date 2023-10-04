@@ -19,7 +19,7 @@ import org.apache.hc.client5.http.fluent.Request;
 public class HttpStrategyCalcOnRayServe {
 
   public void deploy() {
-    Serve.start(true, false, null);
+    Serve.start(null);
 
     Deployment deployment =
         Serve.deployment()
