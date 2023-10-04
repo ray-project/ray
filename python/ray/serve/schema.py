@@ -587,6 +587,10 @@ class ServeDeploySchema(BaseModel):
           simply ignoring new parameters)
     """
 
+    cluster_scale: float = Field(
+        default=1.0,
+        description="Percent of num_replicas to use."
+    )
     proxy_location: ProxyLocation = Field(
         default=ProxyLocation.EveryNode,
         description=(
