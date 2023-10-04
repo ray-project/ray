@@ -43,20 +43,13 @@ class BinaryDatasource(FileBasedDatasource):
         else:
             data = f.readall()
 
-        output_arrow_format = reader_args.pop("output_arrow_format", False)
-        if output_arrow_format:
-            builder = ArrowBlockBuilder()
-            if include_paths:
-                item = {self._COLUMN_NAME: data, "path": path}
-            else:
-                item = {self._COLUMN_NAME: data}
-            builder.add(item)
-            return builder.build()
+        builder = ArrowBlockBuilder()
+        if include_paths:
+            item = {self._COLUMN_NAME: data, "path": path}
         else:
-            if include_paths:
-                return [(path, data)]
-            else:
-                return [data]
+            item = {self._COLUMN_NAME: data}
+        builder.add(item)
+        return builder.build()
 
     def _rows_per_file(self):
         return 1

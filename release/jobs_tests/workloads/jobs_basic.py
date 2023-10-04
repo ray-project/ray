@@ -15,6 +15,7 @@ from typing import Optional
 from ray.dashboard.modules.job.common import JobStatus
 
 from ray.job_submission import JobSubmissionClient
+from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 
 
 def wait_until_finish(
@@ -58,7 +59,11 @@ if __name__ == "__main__":
     client = JobSubmissionClient(address)
     job_id = client.submit_job(
         entrypoint="python run_simple_tune_job.py",
-        runtime_env={"pip": ["ray[tune]"], "working_dir": args.working_dir},
+        runtime_env={
+            "pip": ["ray[tune]"],
+            "working_dir": args.working_dir,
+            "env_vars": {RAY_AIR_NEW_PERSISTENCE_MODE: "1"},
+        },
     )
     timeout_s = 10 * 60
     status = wait_until_finish(client=client, job_id=job_id, timeout_s=timeout_s)

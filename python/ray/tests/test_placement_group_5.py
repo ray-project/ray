@@ -232,7 +232,7 @@ def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strat
     def task(input):
         return input
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def manage_tasks(input):
         pg = ray.util.placement_group(
             [{"custom_resource": 1, "CPU": 1}], strategy=scheduling_strategy

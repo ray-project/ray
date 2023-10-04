@@ -8,10 +8,8 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
 from ray.rllib.models.base_model import RecurrentModel, Model, ModelIO
-from ray.rllib.utils.deprecation import Deprecated
 
 
-@Deprecated(error=False)
 class TorchModelIO(ModelIO):
     """Save/Load mixin for torch models
 
@@ -42,7 +40,6 @@ class TorchModelIO(ModelIO):
         self.load_state_dict(torch.load(path))
 
 
-@Deprecated(error=False)
 class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
     """The base class for recurrent pytorch models.
 
@@ -154,7 +151,6 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         )
 
 
-@Deprecated(error=False)
 class TorchModel(Model, nn.Module, TorchModelIO):
     """The base class for non-recurrent pytorch models.
 

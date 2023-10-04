@@ -12,6 +12,7 @@ import ray._private.gcs_utils as gcs_utils
 from ray._private import ray_constants
 from ray._private.test_utils import (
     convert_actor_state,
+    enable_external_redis,
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
@@ -433,13 +434,16 @@ def test_gcs_aio_client_reconnect(
     passed = [False]
 
     async def async_kv_get():
-        gcs_aio_client = gcs_utils.GcsAioClient(
-            address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
-        )
         if not auto_reconnect:
             with pytest.raises(Exception):
+                gcs_aio_client = gcs_utils.GcsAioClient(
+                    address=gcs_address, nums_reconnect_retry=0
+                )
                 await gcs_aio_client.internal_kv_get(b"a", None)
         else:
+            gcs_aio_client = gcs_utils.GcsAioClient(
+                address=gcs_address, nums_reconnect_retry=20
+            )
             assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
         return True
 
@@ -720,8 +724,18 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
 
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
     ip, port = redis_addr.split(":")
-    cli = redis.Redis(ip, port)
-    nodes = cli.cluster("nodes")
+    redis_cli = redis.Redis(ip, port)
+
+    def get_connected_nodes():
+        return [
+            (k, v) for (k, v) in redis_cli.cluster("nodes").items() if v["connected"]
+        ]
+
+    wait_for_condition(
+        lambda: len(get_connected_nodes())
+        == int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS"))
+    )
+    nodes = redis_cli.cluster("nodes")
     leader_cli = None
     follower_cli = []
     for addr in nodes:
@@ -731,6 +745,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
         flags = meta["flags"].split(",")
         if "master" in flags:
             leader_cli = cli
+            print("LEADER", addr, redis_addr)
         else:
             follower_cli.append(cli)
 
@@ -769,6 +784,10 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     print("GCS killed")
 
     follower_cli[0].cluster("failover", "takeover")
+    wait_for_condition(
+        lambda: len(get_connected_nodes())
+        == int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS")) - 1
+    )
 
     # Kill Counter actor. It should restart after GCS is back
     c_process.kill()
@@ -776,6 +795,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     cluster.head_node.kill_gcs_server(False)
 
     print("Start gcs")
+    sleep(2)
     cluster.head_node.start_gcs_server()
 
     assert len(ray.nodes()) == 1
@@ -788,11 +808,15 @@ ray.init('{cluster.address}')
 def f():
     return 10
 assert ray.get(f.remote()) == 10
+
 c = ray.get_actor("c", namespace="test")
-assert ray.get(c.r.remote(10)) == 10
+v = ray.get(c.r.remote(10))
+assert v == 10
+print("DONE")
 """
+
     # Make sure the cluster is usable
-    run_string_as_driver(driver_script)
+    wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
 
     # Now make follower_cli[0] become replica
     # and promote follower_cli[1] as leader
@@ -802,7 +826,76 @@ assert ray.get(c.r.remote(10)) == 10
     gcs_server_pid = gcs_server_process.pid
     # GCS should exit in this case
     print(">>> Waiting gcs server to exit", gcs_server_pid)
+    wait_for_pid_to_exit(gcs_server_pid, 10000)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [
+        generate_system_config_map(
+            enable_cluster_auth=True,
+        )
+    ],
+    indirect=True,
+)
+def test_cluster_id(ray_start_regular):
+    # Kill GCS and check that raylets kill themselves when not backed by Redis,
+    # and stay alive when backed by Redis.
+    # Raylets should kill themselves due to cluster ID mismatch in the
+    # non-persisted case.
+    raylet_proc = ray._private.worker._global_node.all_processes[
+        ray_constants.PROCESS_TYPE_RAYLET
+    ][0].process
+
+    def check_raylet_healthy():
+        return raylet_proc.poll() is None
+
+    wait_for_condition(lambda: check_raylet_healthy())
+    for i in range(10):
+        assert check_raylet_healthy()
+        sleep(1)
+
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
+
+    if not enable_external_redis():
+        # Waiting for raylet to become unhealthy
+        wait_for_condition(lambda: not check_raylet_healthy())
+    else:
+        # Waiting for raylet to stay healthy
+        for i in range(10):
+            assert check_raylet_healthy()
+            sleep(1)
+
+
+def test_session_name(ray_start_cluster):
+    # Kill GCS and check that raylets kill themselves when not backed by Redis,
+    # and stay alive when backed by Redis.
+    # Raylets should kill themselves due to cluster ID mismatch in the
+    # non-persisted case.
+    cluster = ray_start_cluster
+    cluster.add_node()
+    cluster.wait_for_nodes()
+
+    head_node = cluster.head_node
+    session_dir = head_node.get_session_dir_path()
+
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+    cluster.remove_node(head_node, allow_graceful=False)
+    # Wait to prevent the gcs server process becoming zombie.
+    gcs_server_process.wait()
     wait_for_pid_to_exit(gcs_server_pid, 1000)
+
+    # Add head node back
+    cluster.add_node()
+    head_node = cluster.head_node
+    new_session_dir = head_node.get_session_dir_path()
+
+    if not enable_external_redis():
+        assert session_dir != new_session_dir
+    else:
+        assert session_dir == new_session_dir
 
 
 @pytest.mark.parametrize(
@@ -852,6 +945,34 @@ def test_redis_data_loss_no_leak(ray_start_regular_with_external_redis):
 
     # Waiting for raylet to become unhealthy
     wait_for_condition(lambda: not check_raylet_healthy())
+
+
+def test_redis_logs(external_redis):
+    try:
+        import subprocess
+
+        process = subprocess.Popen(
+            ["ray", "start", "--head"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        stdout, stderr = process.communicate(timeout=30)
+        print(stdout.decode())
+        print(stderr.decode())
+        assert "redis_context.cc" not in stderr.decode()
+        assert "redis_context.cc" not in stdout.decode()
+        assert "Resolve Redis address" not in stderr.decode()
+        assert "Resolve Redis address" not in stdout.decode()
+        # assert "redis_context.cc" not in result.output
+    finally:
+        from click.testing import CliRunner
+        import ray.scripts.scripts as scripts
+
+        runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+        runner.invoke(
+            scripts.stop,
+            [
+                "--force",
+            ],
+        )
 
 
 if __name__ == "__main__":

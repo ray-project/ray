@@ -97,10 +97,6 @@ class MockRayletClientInterface : public RayletClientInterface {
                const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback),
               (override));
   MOCK_METHOD(void,
-              RequestResourceReport,
-              (const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback),
-              (override));
-  MOCK_METHOD(void,
               GetResourceLoad,
               (const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback),
               (override));
@@ -113,6 +109,12 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const NodeID &node_id,
                bool graceful,
                const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              DrainRaylet,
+              (const rpc::autoscaler::DrainNodeReason &reason,
+               const std::string &reason_message,
+               const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
               (override));
 };
 

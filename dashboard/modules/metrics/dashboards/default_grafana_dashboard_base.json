@@ -45,10 +45,7 @@
         "current": {
           "selected": false
         },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
+        "datasource": "${datasource}",
         "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, SessionName)",
         "description": "Filter queries to specific ray sessions.",
         "error": null,
@@ -83,10 +80,7 @@
             "$__all"
           ]
         },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
+        "datasource": "${datasource}",
         "definition": "label_values(ray_node_network_receive_speed{{SessionName=\"$SessionName\",{global_filters}}}, instance)",
         "description": null,
         "error": null,
