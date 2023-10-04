@@ -1,6 +1,6 @@
-"""Examples for recommender system simulating envs ready to be used by
-   RLlib Trainers.
-   This env follows RecSim obs and action APIs.
+"""Examples for recommender system simulating envs ready to be used by RLlib Algorithms.
+
+This env follows RecSim obs and action APIs.
 """
 import gymnasium as gym
 import numpy as np

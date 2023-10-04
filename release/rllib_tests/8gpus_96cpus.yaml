@@ -1,11 +1,11 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-max_workers: 0
+max_workers: 2
 
 head_node_type:
     name: head_node
-    instance_type: g4dn.metal
+    instance_type: g5.24xlarge
 
 worker_node_types: []
 

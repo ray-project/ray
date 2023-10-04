@@ -176,7 +176,7 @@ class DatasetPipeline:
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
-        """Return a local batched iterator over the data in the pipeline.
+        """Return a batched iterator over the data in the pipeline.
 
         Examples:
             >>> import ray
@@ -1050,9 +1050,22 @@ class DatasetPipeline:
         )
 
     def take(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """Call :py:meth:`Dataset.take <ray.data.Dataset.take>` over the stream of
-        output batches from the pipeline"""
-        return Dataset.take(self, limit)
+        """Replicates the logic of :py:meth:`Dataset.take <ray.data.Dataset.take>`
+        over the stream of output batches from the pipeline, excluding logic
+        of applying a `Limit[batch_size]` before taking rows."""
+        if ray.util.log_once("dataset_take"):
+            logger.info(
+                "Tip: Use `take_batch()` instead of `take() / show()` to return "
+                "records in pandas or numpy batch format."
+            )
+
+        output = []
+        for row in self.iter_rows():
+            output.append(row)
+            if len(output) >= limit:
+                break
+        self._synchronize_progress_bar()
+        return output
 
     def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Call :py:meth:`Dataset.take_all <ray.data.Dataset.take_all>` over the stream
@@ -1062,14 +1075,31 @@ class DatasetPipeline:
     def take_batch(
         self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
-        """Call :py:meth:`Dataset.take_batch <ray.data.Dataset.take_batch>`
-        over the stream of output batches from the pipeline"""
-        return Dataset.take_batch(self, batch_size, batch_format=batch_format)
+        """Replicates the logic of :py:meth:`Dataset.take_batch <ray.data.Dataset.take_batch>`
+        over the stream of output batches from the pipeline, excluding logic
+        of applying a `Limit[batch_size]` before taking rows."""
+        batch_format = _apply_strict_mode_batch_format(batch_format)
+        try:
+            res = next(
+                iter(
+                    self.iter_batches(
+                        batch_size=batch_size,
+                        prefetch_batches=0,
+                        batch_format=batch_format,
+                    )
+                )
+            )
+        except StopIteration:
+            raise ValueError("The dataset is empty.")
+        self._synchronize_progress_bar()
+        return res
 
     def show(self, limit: int = 20) -> None:
-        """Call :py:meth:`Dataset.show <ray.data.Dataset.show>` over the stream of
-        output batches from the pipeline"""
-        return Dataset.show(self, limit)
+        """Replicates the logic of :py:meth:`Dataset.show <ray.data.Dataset.show>`
+        over the stream of output batches from the pipeline, excluding logic
+        of applying a `Limit[batch_size]` before taking rows."""
+        for row in self.take(limit):
+            print(row)
 
     def iter_tf_batches(
         self,
@@ -1084,15 +1114,21 @@ class DatasetPipeline:
         """Call
         :py:meth:`Dataset.iter_tf_batches <ray.data.Dataset.iter_tf_batches>`
         over the stream of output batches from the pipeline."""
+        from ray.air._internal.tensorflow_utils import (
+            convert_ndarray_batch_to_tf_tensor_batch,
+        )
+
         batch_format = _apply_strict_mode_batch_format(batch_format)
-        return DataIterator.iter_tf_batches(
-            self,
+
+        for batch in self.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        )
+        ):
+
+            yield convert_ndarray_batch_to_tf_tensor_batch(batch)
 
     def iter_torch_batches(
         self,
@@ -1112,13 +1148,29 @@ class DatasetPipeline:
         :py:meth:`Dataset.iter_torch_batches
         <ray.data.Dataset.iter_torch_batches>` over the stream of output batches
         from the pipeline."""
-        return DataIterator.iter_torch_batches(
-            self,
+
+        from ray.air._internal.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+        )
+
+        if collate_fn is not None and (dtypes is not None or device is not None):
+            raise ValueError(
+                "collate_fn cannot be used with dtypes and device. It is expected that"
+                "the provided `collate_fn` will move the output Torch tensors to the"
+                "appropriate dtype and device."
+            )
+
+        if collate_fn is None:
+
+            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
+                return convert_ndarray_batch_to_torch_tensor_batch(
+                    batch, dtypes=dtypes, device=device
+                )
+
+        return self.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            dtypes=dtypes,
-            device=device,
-            collate_fn=collate_fn,
+            _collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -1310,6 +1362,7 @@ class DatasetPipeline:
             0,
             True,
         )
+        dummy_ds._plan._generated_from_pipeline = True
         # Apply all pipeline operations to the dummy dataset.
         for stage in self._stages:
             dummy_ds = stage(dummy_ds)

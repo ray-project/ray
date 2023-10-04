@@ -8,7 +8,14 @@ Ray Workflows provides strong fault tolerance and exactly-once execution semanti
 
 Checkpoints can be skipped by specifying ``checkpoint=False``:
 
-.. code-block:: python
+.. testcode::
+
+    import ray
+    from ray import workflow
+
+    @ray.remote
+    def read_data(num: int):
+        return [i for i in range(num)]
 
     data = read_data.options(**workflow.options(checkpoint=False)).bind(10)
 

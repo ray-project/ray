@@ -8,10 +8,19 @@ from ray.tests.conftest import *  # noqa
 def test_huggingface(ray_start_regular_shared):
     data = datasets.load_dataset("tweet_eval", "emotion")
 
+    # Check that DatasetDict is not directly supported.
     assert isinstance(data, datasets.DatasetDict)
+    with pytest.raises(
+        DeprecationWarning,
+        match="You provided a Hugging Face DatasetDict",
+    ):
+        ray.data.from_huggingface(data)
 
-    ray_datasets = ray.data.from_huggingface(data)
-    assert isinstance(ray_datasets, dict)
+    ray_datasets = {
+        "train": ray.data.from_huggingface(data["train"]),
+        "validation": ray.data.from_huggingface(data["validation"]),
+        "test": ray.data.from_huggingface(data["test"]),
+    }
 
     assert ray.get(ray_datasets["train"].to_arrow_refs())[0].equals(
         data["train"].data.table
@@ -21,15 +30,27 @@ def test_huggingface(ray_start_regular_shared):
 
     ray_dataset = ray.data.from_huggingface(data["train"])
     assert isinstance(ray_dataset, ray.data.Dataset)
-
     assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
 
     # Test reading in a split Hugging Face dataset yields correct individual datasets
     base_hf_dataset = data["train"]
     hf_dataset_split = base_hf_dataset.train_test_split(test_size=0.2)
-    ray_dataset_split = ray.data.from_huggingface(hf_dataset_split)
-    assert ray_dataset_split["train"].count() == hf_dataset_split["train"].num_rows
-    assert ray_dataset_split["test"].count() == hf_dataset_split["test"].num_rows
+    ray_dataset_split_train = ray.data.from_huggingface(hf_dataset_split["train"])
+    ray_dataset_split_test = ray.data.from_huggingface(hf_dataset_split["test"])
+    assert ray_dataset_split_train.count() == hf_dataset_split["train"].num_rows
+    assert ray_dataset_split_test.count() == hf_dataset_split["test"].num_rows
+
+
+@pytest.mark.skipif(
+    datasets.Version(datasets.__version__) < datasets.Version("2.8.0"),
+    reason="IterableDataset.iter() added in 2.8.0",
+)
+def test_from_huggingface_streaming(ray_start_regular_shared):
+    hfds = datasets.load_dataset("tweet_eval", "emotion", streaming=True, split="train")
+
+    assert isinstance(hfds, datasets.IterableDataset)
+    ds = ray.data.from_huggingface(hfds)
+    assert ds.count() == 3257
 
 
 if __name__ == "__main__":

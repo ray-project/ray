@@ -25,7 +25,9 @@ Tip 2: Sharing the ray cluster across tests if possible
 
 It is safest to start a new ray cluster for each test.
 
-.. code-block:: python
+.. testcode::
+
+    import unittest
 
     class RayTest(unittest.TestCase):
         def setUp(self):
@@ -44,7 +46,7 @@ Across 20 tests, this ends up being 90 seconds of added overhead.
 
 Reusing a Ray cluster across tests can provide significant speedups to your test suite. This reduces the overhead to a constant, amortized quantity:
 
-.. code-block:: python
+.. testcode::
 
     class RayClassTest(unittest.TestCase):
         @classmethod
@@ -72,7 +74,7 @@ If writing an application for a cluster setting, you may want to mock a multi-no
   On Windows, support for multi-node Ray clusters is currently experimental and untested.
   If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 
-.. code-block:: python
+.. testcode::
 
     from ray.cluster_utils import Cluster
 
@@ -85,7 +87,9 @@ If writing an application for a cluster setting, you may want to mock a multi-no
 
 After starting a cluster, you can execute a typical ray script in the same process:
 
-.. code-block:: python
+.. testcode::
+
+    import ray
 
     ray.init(address=cluster.address)
 
@@ -108,7 +112,7 @@ After starting a cluster, you can execute a typical ray script in the same proce
 
 You can also add multiple nodes, each with different resource quantities:
 
-.. code-block:: python
+.. testcode::
 
     mock_node = cluster.add_node(num_cpus=10)
 
@@ -116,7 +120,7 @@ You can also add multiple nodes, each with different resource quantities:
 
 You can also remove nodes, which is useful when testing failure-handling logic:
 
-.. code-block:: python
+.. testcode::
 
     cluster.remove_node(mock_node)
 

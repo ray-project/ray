@@ -6,13 +6,13 @@ except ImportError:
     pyarrow = None
 
 if TYPE_CHECKING:
-    from ray.data._internal.sort import SortKeyT
+    from ray.data._internal.sort import SortKey
 
 
-def sort(table: "pyarrow.Table", key: "SortKeyT", descending: bool) -> "pyarrow.Table":
+def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     import pyarrow.compute as pac
 
-    indices = pac.sort_indices(table, sort_keys=key)
+    indices = pac.sort_indices(table, sort_keys=sort_key.to_arrow_sort_args())
     return take_table(table, indices)
 
 
@@ -34,7 +34,7 @@ def take_table(
     if any(_is_column_extension_type(col) for col in table.columns):
         new_cols = []
         for col in table.columns:
-            if _is_column_extension_type(col):
+            if _is_column_extension_type(col) and col.num_chunks > 1:
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
                 col = _concatenate_extension_column(col)
@@ -256,10 +256,12 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
 
 
 def concat_and_sort(
-    blocks: List["pyarrow.Table"], key: "SortKeyT", descending: bool
+    blocks: List["pyarrow.Table"], sort_key: "SortKey"
 ) -> "pyarrow.Table":
+    import pyarrow.compute as pac
+
     ret = concat(blocks)
-    indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
+    indices = pac.sort_indices(ret, sort_keys=sort_key.to_arrow_sort_args())
     return take_table(ret, indices)
 
 
