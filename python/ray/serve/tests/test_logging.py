@@ -1,20 +1,20 @@
-from contextlib import redirect_stderr
 import io
+import json
 import logging
-import time
+import re
 import sys
+import time
+from contextlib import redirect_stderr
 
+import pytest
 import requests
 import starlette
-import pytest
-import json
 
 import ray
 from ray import serve
-import re
-from ray.serve._private.logging_utils import ServeJSONFormatter
-from ray.serve._private.common import ServeComponentType
 from ray._private.test_utils import wait_for_condition
+from ray.serve._private.common import ServeComponentType
+from ray.serve._private.logging_utils import ServeJSONFormatter
 
 
 @pytest.fixture
@@ -246,14 +246,14 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         # Check user log file
         if json_log_format:
             user_method_log_regexes = [
-                f'.*"deployment": "app1_fn", '
+                f'.*"deployment": "fn", '
                 f'"replica": "{resp["replica"]}", '
                 f'"request_id": "{resp["request_id"]}", '
                 f'"route": "{resp["route"]}", '
                 f'"application": "{resp["app_name"]}", "message":.* user func.*',
             ]
             user_class_method_log_regexes = [
-                f'.*"deployment": "app2_Model", '
+                f'.*"deployment": "Model", '
                 f'"replica": "{resp2["replica"]}", '
                 f'"request_id": "{resp2["request_id"]}", '
                 f'"route": "{resp2["route"]}", '

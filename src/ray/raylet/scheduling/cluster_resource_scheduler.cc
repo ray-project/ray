@@ -44,10 +44,11 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const absl::flat_hash_map<std::string, double> &local_node_resources,
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
     std::function<int64_t(void)> get_used_object_store_memory,
-    std::function<bool(void)> get_pull_manager_at_capacity)
+    std::function<bool(void)> get_pull_manager_at_capacity,
+    const absl::flat_hash_map<std::string, std::string> &local_node_labels)
     : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
-  NodeResources node_resources =
-      ResourceMapToNodeResources(local_node_resources, local_node_resources);
+  NodeResources node_resources = ResourceMapToNodeResources(
+      local_node_resources, local_node_resources, local_node_labels);
   Init(io_service,
        node_resources,
        get_used_object_store_memory,
@@ -75,23 +76,34 @@ void ClusterResourceScheduler::Init(
           local_node_id_,
           *cluster_resource_manager_,
           /*is_node_available_fn*/
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          [this](auto node_id) { return this->NodeAvailable(node_id); });
   bundle_scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeBundleSchedulingPolicy>(
           *cluster_resource_manager_,
           /*is_node_available_fn*/
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          [this](auto node_id) { return this->NodeAvailable(node_id); });
 }
 
-bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
+bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
   if (node_id == local_node_id_) {
-    return is_local_node_with_raylet_;
+    if (!is_local_node_with_raylet_) {
+      return false;
+    } else {
+      return !local_resource_manager_->IsLocalNodeDraining();
+    }
   }
+
   if (node_id.IsNil()) {
     return false;
   }
+
   RAY_CHECK(is_node_available_fn_ != nullptr);
-  return is_node_available_fn_(node_id);
+  if (!is_node_available_fn_(node_id) ||
+      cluster_resource_manager_->IsNodeDraining(node_id)) {
+    return false;
+  }
+
+  return true;
 }
 
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
@@ -100,9 +112,10 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
   // will eventually spill the task back from the waiting queue if its args
   // cannot be pulled.
   return cluster_resource_manager_->HasSufficientResource(
-      node_id,
-      resource_request,
-      /*ignore_object_store_memory_requirement*/ node_id == local_node_id_);
+             node_id,
+             resource_request,
+             /*ignore_object_store_memory_requirement*/ node_id == local_node_id_) &&
+         NodeAvailable(node_id);
 }
 
 namespace {
@@ -159,7 +172,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
             scheduling_strategy.node_affinity_scheduling_strategy().node_id(),
             scheduling_strategy.node_affinity_scheduling_strategy().soft(),
             scheduling_strategy.node_affinity_scheduling_strategy()
-                .spill_on_unavailable()));
+                .spill_on_unavailable(),
+            scheduling_strategy.node_affinity_scheduling_strategy()
+                .fail_on_unavailable()));
   } else if (IsAffinityWithBundleSchedule(scheduling_strategy) &&
              !is_local_node_with_raylet_) {
     // This scheduling strategy is only used for gcs scheduling for the time being.
@@ -171,6 +186,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                       .placement_group_bundle_index());
     best_node_id = scheduling_policy_->Schedule(
         resource_request, SchedulingOptions::AffinityWithBundle(bundle_id));
+  } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
+    best_node_id = scheduling_policy_->Schedule(
+        resource_request, SchedulingOptions::NodeLabelScheduling(scheduling_strategy));
   } else {
     // TODO (Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
@@ -233,7 +251,7 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << local_node_id_.ToInt();
   buffer << " Local resources: " << local_resource_manager_->DebugString();
-  cluster_resource_manager_->DebugString(buffer);
+  buffer << " Cluster resources: " << cluster_resource_manager_->DebugString();
   return buffer.str();
 }
 

@@ -271,6 +271,9 @@ directory will take effect without reinstalling the package.
 
   The ``build --disk_cache=~/bazel-cache`` option can be useful to speed up repeated builds too.
 
+.. note::
+  Warning: If you run into an error building protobuf, switching from miniconda to anaconda might help.
+
 .. _NodeJS: https://nodejs.org
 
 Building Ray on Windows (full)
@@ -360,13 +363,13 @@ Dependencies for the linter (``scripts/format.sh``) can be installed with:
 
 .. code-block:: shell
 
- pip install -r python/requirements_linters.txt
+ pip install -r python/requirements/lint-requirements.txt
 
 Dependencies for running Ray unit tests under ``python/ray/tests`` can be installed with:
 
 .. code-block:: shell
 
- pip install -c python/requirements.txt -r python/requirements_test.txt
+ pip install -c python/requirements.txt -r python/requirements/test-requirements.txt
 
 Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
 

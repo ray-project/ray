@@ -2,9 +2,13 @@
 
 
 * [A3C](./a3c)
-* [MAML](./maml)
+* [A2C](./a2c)
+* [Alpha Star](./alpha_star)
+* [APEX DQN](./apex_dqn/)
 * [Bandit](./bandit)
-
+* [DDPG](./ddpg)
+* [MAML](./maml)
+* [R2D2](./r2d2)
 
 
 

@@ -5,7 +5,9 @@ import time
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
 from ray.rllib.models.jax.misc import SlimFC
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_jax
+from ray.util import log_once
 
 jax, flax = try_import_jax()
 
@@ -17,6 +19,8 @@ class FullyConnectedNetwork(JAXModelV2):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
         super().__init__(obs_space, action_space, num_outputs, model_config, name)
+        if log_once("jax_fc_net_deprecation_warning"):
+            deprecation_warning(old="ray.rllib.models.jax.fcnet.FullyConnectedNetwork")
 
         self.key = jax.random.PRNGKey(int(time.time()))
 

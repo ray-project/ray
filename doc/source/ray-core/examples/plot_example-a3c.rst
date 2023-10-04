@@ -81,13 +81,14 @@ Worker Code Walkthrough
 
 We use a Ray Actor to simulate the environment.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
   import numpy as np
   import ray
 
   @ray.remote
-  class Runner(object):
+  class Runner:
       """Actor object to start running simulation on workers.
           Gradient computation is also executed on this object."""
       def __init__(self, env_name, actor_id):
@@ -124,7 +125,7 @@ global model parameters. The main training script looks like the following.
 
 .. TODO: this is untested code. literalinclude and test.
 
-.. code-block:: python
+.. testcode::
 
   import numpy as np
   import ray

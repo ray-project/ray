@@ -97,7 +97,7 @@ def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
 def get_learner(
     *,
     framework: str,
-    eager_tracing: bool = True,
+    framework_hps: Optional[FrameworkHyperparameters] = None,
     env: "gym.Env",
     learner_hps: Optional[BaseTestingLearnerHyperparameters] = None,
     is_multi_agent: bool = False,
@@ -106,7 +106,8 @@ def get_learner(
 
     Args:
         framework: The framework used for training.
-        eager_tracing: Whether to switch on eager tracing for framework=tf2.
+        framework_hps: The FrameworkHyperparameters instance to pass to the
+            Learner's constructor.
         env: The environment to train on.
         learner_hps: The LearnerHyperparameter instance to pass to the Learner's
             constructor.
@@ -126,7 +127,7 @@ def get_learner(
     learner = _cls(
         module_spec=spec,
         learner_hyperparameters=learner_hps or BaseTestingLearnerHyperparameters(),
-        framework_hyperparameters=FrameworkHyperparameters(eager_tracing=eager_tracing),
+        framework_hyperparameters=framework_hps or FrameworkHyperparameters(),
     )
     learner.build()
     return learner
@@ -138,7 +139,7 @@ def get_learner_group(
     env: "gym.Env",
     scaling_config: LearnerGroupScalingConfig,
     is_multi_agent: bool = False,
-    eager_tracing: bool = False,
+    eager_tracing: bool = True,
 ) -> LearnerGroup:
     """Construct a learner_group for testing.
 

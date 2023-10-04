@@ -672,7 +672,8 @@ void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> a
   auto &cluster_resource_manager =
       cluster_task_manager_->GetClusterResourceScheduler()->GetClusterResourceManager();
   cluster_resource_manager.AddNodeAvailableResources(
-      scheduling::NodeID(actor->GetNodeID().Binary()), actor->GetAcquiredResources());
+      scheduling::NodeID(actor->GetNodeID().Binary()),
+      actor->GetAcquiredResources().GetResourceSet());
   actor->SetAcquiredResources(ResourceRequest());
 }
 

@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger("tune_framework")
 
 
-def run(smoke_test=False):
+def run(smoke_test=False, storage_path: str = None):
     stop = {"training_iteration": 1 if smoke_test else 50}
     num_workers = 1 if smoke_test else 20
     num_gpus = 0 if smoke_test else 1
@@ -62,6 +62,7 @@ def run(smoke_test=False):
                 sort_by_metric=True,
                 max_report_frequency=30,
             ),
+            storage_path=storage_path,
         ),
         tune_config=tune.TuneConfig(
             num_samples=1,

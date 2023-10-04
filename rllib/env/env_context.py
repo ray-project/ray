@@ -29,7 +29,7 @@ class EnvContext(dict):
 
         Args:
             env_config: The env's configuration defined under the
-                "env_config" key in the Trainer's config.
+                "env_config" key in the Algorithm's config.
             worker_index: When there are multiple workers created, this
                 uniquely identifies the worker the env is created in.
                 0 for local worker, >0 for remote workers.
@@ -42,7 +42,7 @@ class EnvContext(dict):
                 0 if only a local worker exists.
             recreated_worker: Whether the worker that holds this env is a recreated one.
                 This means that it replaced a previous (failed) worker when
-                `recreate_failed_workers=True` in the Trainer's config.
+                `recreate_failed_workers=True` in the Algorithm's config.
         """
         # Store the env_config in the (super) dict.
         dict.__init__(self, env_config)
@@ -78,7 +78,7 @@ class EnvContext(dict):
                 the one from the source (self).
             recreated_worker: Optional flag, indicating, whether the worker that holds
                 the env is a recreated one. This means that it replaced a previous
-                (failed) worker when `recreate_failed_workers=True` in the Trainer's
+                (failed) worker when `recreate_failed_workers=True` in the Algorithm's
                 config.
 
         Returns:

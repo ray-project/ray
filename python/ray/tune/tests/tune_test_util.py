@@ -2,7 +2,7 @@ import os
 import tempfile
 
 from ray.tune import Callback
-from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.execution.tune_controller import TuneController
 
 
 class TrialResultObserver(Callback):
@@ -28,7 +28,7 @@ class TrialResultObserver(Callback):
 
 def create_tune_experiment_checkpoint(trials: list, **runner_kwargs) -> str:
     experiment_dir = tempfile.mkdtemp()
-    runner_kwargs.setdefault("local_checkpoint_dir", experiment_dir)
+    runner_kwargs.setdefault("experiment_path", experiment_dir)
 
     # Update environment
     orig_env = os.environ.copy()
@@ -38,7 +38,7 @@ def create_tune_experiment_checkpoint(trials: list, **runner_kwargs) -> str:
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
     try:
-        runner = TrialRunner(**runner_kwargs)
+        runner = TuneController(**runner_kwargs)
 
         for trial in trials:
             runner.add_trial(trial)

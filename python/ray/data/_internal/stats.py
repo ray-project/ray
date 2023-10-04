@@ -249,6 +249,7 @@ class DatasetStats:
         self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
         self.iter_collate_batch_s: Timer = Timer()
+        self.iter_finalize_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
@@ -263,6 +264,11 @@ class DatasetStats:
         self.iter_blocks_local: int = 0
         self.iter_blocks_remote: int = 0
         self.iter_unknown_location: int = 0
+
+        # Memory usage stats
+        self.global_bytes_spilled: int = 0
+        self.global_bytes_restored: int = 0
+        self.dataset_bytes_spilled: int = 0
 
     @property
     def stats_actor(self):
@@ -290,16 +296,12 @@ class DatasetStats:
             ac = self.stats_actor
             # TODO(chengsu): this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            if DataContext.get_current().block_splitting_enabled:
-                # Only populate stats when stats from all read tasks are ready at
-                # stats actor.
-                if len(stats_map.items()) == len(self.stages["Read"]):
-                    self.stages["Read"] = []
-                    for _, blocks_metadata in sorted(stats_map.items()):
-                        self.stages["Read"] += blocks_metadata
-            else:
-                for i, metadata in stats_map.items():
-                    self.stages["Read"][i] = metadata[0]
+            # Only populate stats when stats from all read tasks are ready at
+            # stats actor.
+            if len(stats_map.items()) == len(self.stages["Read"]):
+                self.stages["Read"] = []
+                for _, blocks_metadata in sorted(stats_map.items()):
+                    self.stages["Read"] += blocks_metadata
 
         stages_stats = []
         is_substage = len(self.stages) > 1
@@ -307,7 +309,6 @@ class DatasetStats:
             stages_stats.append(
                 StageStatsSummary.from_block_metadata(
                     metadata,
-                    self.time_total_s,
                     stage_name,
                     is_substage=is_substage,
                 )
@@ -320,6 +321,7 @@ class DatasetStats:
             self.iter_next_batch_s,
             self.iter_format_batch_s,
             self.iter_collate_batch_s,
+            self.iter_finalize_batch_s,
             self.iter_total_blocked_s,
             self.iter_user_s,
             self.iter_total_s,
@@ -339,6 +341,9 @@ class DatasetStats:
             self.time_total_s,
             self.base_name,
             self.extra_metrics,
+            self.global_bytes_spilled,
+            self.global_bytes_restored,
+            self.dataset_bytes_spilled,
         )
 
 
@@ -353,9 +358,15 @@ class DatasetStatsSummary:
     time_total_s: float
     base_name: str
     extra_metrics: Dict[str, Any]
+    global_bytes_spilled: int
+    global_bytes_restored: int
+    dataset_bytes_spilled: int
 
     def to_string(
-        self, already_printed: Optional[Set[str]] = None, include_parent: bool = True
+        self,
+        already_printed: Optional[Set[str]] = None,
+        include_parent: bool = True,
+        add_global_stats=True,
     ) -> str:
         """Return a human-readable summary of this Dataset's stats.
 
@@ -364,6 +375,7 @@ class DatasetStatsSummary:
             out.
             include_parent: If true, also include parent stats summary; otherwise, only
             log stats of the latest stage.
+            add_global_stats: If true, includes global stats to this summary.
         Returns:
             String with summary statistics for executing the Dataset.
         """
@@ -373,7 +385,7 @@ class DatasetStatsSummary:
         out = ""
         if self.parents and include_parent:
             for p in self.parents:
-                parent_sum = p.to_string(already_printed)
+                parent_sum = p.to_string(already_printed, add_global_stats=False)
                 if parent_sum:
                     out += parent_sum
                     out += "\n"
@@ -410,6 +422,20 @@ class DatasetStatsSummary:
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)
+
+        if len(self.stages_stats) > 0 and add_global_stats:
+            mb_spilled = round(self.global_bytes_spilled / 1e6)
+            mb_restored = round(self.global_bytes_restored / 1e6)
+            if mb_spilled or mb_restored:
+                out += "\nCluster memory:\n"
+                out += "* Spilled to disk: {}MB\n".format(mb_spilled)
+                out += "* Restored from disk: {}MB\n".format(mb_restored)
+
+            dataset_mb_spilled = round(self.dataset_bytes_spilled / 1e6)
+            if dataset_mb_spilled:
+                out += "\nDataset memory:\n"
+                out += "* Spilled to disk: {}MB\n".format(dataset_mb_spilled)
+
         return out
 
     def __repr__(self, level=0) -> str:
@@ -433,6 +459,9 @@ class DatasetStatsSummary:
             f"{indent}   extra_metrics={{{extra_metrics}}},\n"
             f"{indent}   stage_stats=[{stage_stats}],\n"
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
+            f"{indent}   global_bytes_spilled={self.global_bytes_spilled / 1e6}MB,\n"
+            f"{indent}   global_bytes_restored={self.global_bytes_restored / 1e6}MB,\n"
+            f"{indent}   dataset_bytes_spilled={self.dataset_bytes_spilled / 1e6}MB,\n"
             f"{indent}   parents=[{parent_stats}],\n"
             f"{indent})"
         )
@@ -451,6 +480,9 @@ class DatasetStatsSummary:
     def get_max_heap_memory(self) -> float:
         parent_memory = [p.get_max_heap_memory() for p in self.parents]
         parent_max = max(parent_memory) if parent_memory else 0
+        if not self.stages_stats:
+            return parent_max
+
         return max(
             parent_max,
             *[ss.memory.get("max", 0) for ss in self.stages_stats],
@@ -485,7 +517,6 @@ class StageStatsSummary:
     def from_block_metadata(
         cls,
         block_metas: List[BlockMetadata],
-        time_total_s: float,
         stage_name: str,
         is_substage: bool,
     ) -> "StageStatsSummary":
@@ -494,24 +525,32 @@ class StageStatsSummary:
 
         Args:
             block_metas: List of `BlockMetadata` to calculate stats of
-            time_total_s: Total execution time of stage
             stage_name: Name of stage associated with `blocks`
             is_substage: Whether this set of blocks belongs to a substage.
         Returns:
             A `StageStatsSummary` object initialized with the calculated statistics
         """
         exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
+        rounded_total = 0
+        time_total_s = 0
 
         if is_substage:
             exec_summary_str = "{}/{} blocks executed\n".format(
                 len(exec_stats), len(block_metas)
             )
         else:
-            rounded_total = round(time_total_s, 2)
-            if rounded_total <= 0:
-                # Handle -0.0 case.
-                rounded_total = 0
             if exec_stats:
+                # Calculate the total execution time of stage as
+                # the difference between the latest end time and
+                # the earliest start time of all blocks in the stage.
+                earliest_start_time = min(s.start_time_s for s in exec_stats)
+                latest_end_time = max(s.end_time_s for s in exec_stats)
+                time_total_s = latest_end_time - earliest_start_time
+
+                rounded_total = round(time_total_s, 2)
+                if rounded_total <= 0:
+                    # Handle -0.0 case.
+                    rounded_total = 0
                 exec_summary_str = "{}/{} blocks executed in {}s".format(
                     len(exec_stats), len(block_metas), rounded_total
                 )
@@ -726,6 +765,8 @@ class IterStatsSummary:
     format_time: Timer
     # Time spent in collate fn, in seconds
     collate_time: Timer
+    # Time spent in finalize_fn, in seconds
+    finalize_batch_time: Timer
     # Total time user thread is blocked by iter_batches
     block_time: Timer
     # Time spent in user code, in seconds
@@ -754,6 +795,7 @@ class IterStatsSummary:
             or self.next_time.get()
             or self.format_time.get()
             or self.collate_time.get()
+            or self.finalize_batch_time.get()
         ):
             out += "\nDataset iterator time breakdown:\n"
             if self.block_time.get():
@@ -807,6 +849,16 @@ class IterStatsSummary:
                     fmt(self.collate_time.max()),
                     fmt(self.collate_time.avg()),
                     fmt(self.collate_time.get()),
+                )
+            if self.finalize_batch_time.get():
+                format_str = (
+                    "   * In host->device transfer: {} min, {} max, {} avg, {} total\n"
+                )
+                out += format_str.format(
+                    fmt(self.finalize_batch_time.min()),
+                    fmt(self.finalize_batch_time.max()),
+                    fmt(self.finalize_batch_time.avg()),
+                    fmt(self.finalize_batch_time.get()),
                 )
 
         return out
@@ -875,6 +927,7 @@ class DatasetPipelineStats:
             "iter_next_batch_s": Timer(),
             "iter_format_batch_s": Timer(),
             "iter_collate_batch_s": Timer(),
+            "iter_finalize_batch_s": Timer(),
             "iter_user_s": Timer(),
             "iter_total_s": Timer(),
         }

@@ -20,7 +20,11 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.utils.replay_buffers import PrioritizedReplayBuffer
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -348,6 +352,12 @@ class LeelaChessZeroPolicyWrapperClass(LeelaChessZeroPolicy):
         )
 
 
+@Deprecated(
+    old="rllib/algorithms/leela_chess_zero/",
+    new="rllib_contrib/leela_chess_zero/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class LeelaChessZero(Algorithm):
     @classmethod
     @override(Algorithm)
