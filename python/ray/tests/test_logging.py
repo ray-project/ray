@@ -817,7 +817,7 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     assert log_monitor.should_update_filenames(current)
 
 
-def test_repr_inheritance():
+def test_repr_inheritance(shutdown_only):
     """Tests that a subclass's repr is used in logging."""
     logger = logging.getLogger(__name__)
 
@@ -958,7 +958,7 @@ def test_log_monitor_ip_correct(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0, node_ip_address="127.0.0.1")
     cluster.add_node(num_cpus=1, node_ip_address="127.0.0.2")
-    ray.init()
+    ray.init(address=cluster.address)
 
     @ray.remote
     def print_msg():
