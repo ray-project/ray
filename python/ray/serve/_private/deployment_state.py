@@ -1645,14 +1645,18 @@ class DeploymentState:
         )
         recovering_replicas = self._replicas.count(states=[ReplicaState.RECOVERING])
 
-        delta_replicas = (
-            self._target_state.num_replicas - current_replicas - recovering_replicas
+        # Target number of replicas should be specified number of replicas
+        # scaled by cluster_scale.
+        target_num_replicas = math.ceil(
+            self._target_state.num_replicas * self._target_state.cluster_scale
         )
+
+        delta_replicas = target_num_replicas - current_replicas - recovering_replicas
         if delta_replicas == 0:
             return (upscale, downscale)
 
         elif delta_replicas > 0:
-            # Don't ever exceed self._target_state.num_replicas.
+            # Don't ever exceed target_num_replicas.
             stopping_replicas = self._replicas.count(
                 states=[
                     ReplicaState.STOPPING,
