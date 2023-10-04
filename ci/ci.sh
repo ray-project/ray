@@ -227,6 +227,11 @@ test_serve() {
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
     install_ray
 
+    # Shard the args.
+    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
+    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
+    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+
     # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
     # Check why this issue doesn't arise on Linux/Mac.
@@ -240,7 +245,7 @@ test_serve() {
       --test_env=USERPROFILE="${USERPROFILE}" \
       --test_output=streamed \
       -- \
-      "${args[@]}";
+      ${test_shard_selection};
   fi
 }
 
