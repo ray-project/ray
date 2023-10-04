@@ -70,8 +70,8 @@ def test_get_all_test_query() -> None:
     )
     assert _get_all_test_query(["a"], "core", except_tags="tag1", only_tags="tag2") == (
         "attr(tags, 'team:core\\\\b', tests(a)) "
-        "except (attr(tags, tag1, tests(a))) "
-        "intersect (attr(tags, tag2, tests(a)))"
+        "intersect (attr(tags, tag2, tests(a))) "
+        "except (attr(tags, tag1, tests(a)))"
     )
 
 
