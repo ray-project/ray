@@ -1985,7 +1985,6 @@ def build_julia_worker_command(
         The command string for starting Julia worker.
     """
 
-    # TODO: --project, --startup-file=no, --banner=no, ...?
     command = [
         sys.executable,
         setup_worker_path,
