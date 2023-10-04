@@ -33,10 +33,8 @@ from ray.serve._private.utils import (
     extract_self_if_method_call,
     get_random_letters,
     guarded_deprecation_warning,
-    in_interactive_shell,
     install_serve_encoders_to_fastapi,
 )
-from ray.serve.built_application import BuiltApplication
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentMode,
@@ -102,7 +100,7 @@ def start(
 
     if dedicated_cpu is not False:
         raise ValueError(
-            "`dedicated_cpu` is no longer supported. "
+            "`dedicated_cpu=True` is no longer supported. "
             "In a future release, it will be removed altogether."
         )
 
@@ -517,14 +515,8 @@ def run(
     if isinstance(target, Application):
         deployments = pipeline_build(target._get_internal_dag_node(), name)
         ingress = get_and_validate_ingress_deployment(deployments)
-    elif isinstance(target, BuiltApplication):
-        deployments = list(target.deployments.values())
-        ingress = target.ingress
     else:
-        msg = (
-            "`serve.run` expects an `Application` returned by `Deployment.bind()` "
-            "or a static `BuiltApplication` returned by `serve.build`."
-        )
+        msg = "`serve.run` expects an `Application` returned by `Deployment.bind()`."
         if isinstance(target, DAGNode):
             msg += (
                 " If you are using the DAG API, you must bind the DAG node to a "
@@ -567,51 +559,6 @@ def run(
         client._wait_for_deployment_created(ingress.name, name)
         handle = client.get_handle(ingress.name, name, missing_ok=True)
         return handle
-
-
-def _build(target: Application, name: str = None) -> BuiltApplication:
-    """Builds a Serve application into a static, built application.
-
-    Resolves the provided Application object into a list of deployments.
-    This can be converted to a Serve config file that can be deployed via
-    the Serve REST API or CLI.
-
-    All of the deployments must be importable. That is, they cannot be
-    defined in __main__ or inline defined. The deployments will be
-    imported in the config file using the same import path they were here.
-
-    Args:
-        target: The Serve application to run consisting of one or more
-            deployments.
-        name: The name of the Serve application. When name is not provided, the
-        deployment name won't be updated. (SINGLE_APP use case.)
-
-    Returns:
-        The static built Serve application.
-    """
-    if in_interactive_shell():
-        raise RuntimeError(
-            "build cannot be called from an interactive shell like "
-            "IPython or Jupyter because it requires all deployments to be "
-            "importable to run the app after building."
-        )
-
-    # If application is built using pipeline_build, ingress deployment
-    # is the last deployment since Ray DAG traversal is done bottom-up.
-    deployments = pipeline_build(target._get_internal_dag_node(), name)
-    ingress = deployments[-1].name
-
-    # TODO(edoakes): this should accept host and port, but we don't
-    # currently support them in the REST API.
-    return BuiltApplication(deployments, ingress)
-
-
-@Deprecated(message="Use the `serve build` CLI command instead.")
-def build(target: Application, name: str = None) -> BuiltApplication:
-    warnings.warn(
-        "The `serve.build` Python API is deprecated. Use the `serve build` CLI instead."
-    )
-    return _build(target, name=name)
 
 
 @PublicAPI(stability="stable")
@@ -708,7 +655,7 @@ def multiplexed(
                 "with at least one 'model_id: str' argument."
             )
 
-    if type(max_num_models_per_replica) is not int:
+    if not isinstance(max_num_models_per_replica, int):
         raise TypeError("max_num_models_per_replica must be an integer.")
 
     if max_num_models_per_replica != -1 and max_num_models_per_replica <= 0:

@@ -10,7 +10,6 @@ class PythonVersionInfo(TypedDict):
 
 
 PYTHON_VERSIONS = {
-    "py37": PythonVersionInfo(bin_path="cp37-cp37m", numpy_version="1.14.5"),
     "py38": PythonVersionInfo(bin_path="cp38-cp38", numpy_version="1.19.3"),
     "py39": PythonVersionInfo(bin_path="cp39-cp39", numpy_version="1.19.3"),
     "py310": PythonVersionInfo(bin_path="cp310-cp310", numpy_version="1.22.0"),
