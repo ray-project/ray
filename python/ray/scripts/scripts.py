@@ -10,6 +10,7 @@ import traceback
 import urllib
 import urllib.parse
 import warnings
+import readline
 import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
