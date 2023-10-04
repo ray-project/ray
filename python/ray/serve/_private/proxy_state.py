@@ -492,6 +492,11 @@ class ProxyState:
                 ready_call_status = self._actor_proxy_wrapper.is_ready()
                 if ready_call_status == ProxyWrapperCallStatus.FINISHED_SUCCEED:
                     self.try_update_status(ProxyStatus.HEALTHY)
+                    self.update_actor_details(
+                        worker_id=self._actor_proxy_wrapper.worker_id,
+                        log_file_path=self._actor_proxy_wrapper.log_file_path,
+                        status=self._status,
+                    )
                 elif ready_call_status == ProxyWrapperCallStatus.FINISHED_FAILED:
                     self.set_status(ProxyStatus.UNHEALTHY)
                     logger.warning(
