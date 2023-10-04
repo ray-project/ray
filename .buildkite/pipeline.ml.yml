@@ -502,7 +502,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - (cd rllib_contrib/apex_ddpg && pip install -r requirements.txt && pip install -e .)
+    - (cd rllib_contrib/apex_ddpg && pip install -r requirements.txt && pip install -e ".[development"])
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/apex_ddpg/tests/
     - python rllib_contrib/apex_ddpg/examples/apex_ddpg_pendulum_v1.py --run-as-test
@@ -586,16 +586,25 @@
     - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: SimpleQ Tests"
+    - (cd rllib_contrib/simple_q && pip install -r requirements.txt && pip install -e ".[development"])
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/simple_q/tests/
+    - python rllib_contrib/simple_q/examples/simple_q_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: SlateQ Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/simple_q && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/slate_q && pip install -r requirements.txt && pip install -e ".[development"])
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/simple_q/tests/
-    - python rllib_contrib/simple_q/examples/simple_q_cartpole_v1.py --run-as-test
+    - pytest rllib_contrib/slate_q/tests/
+    - python rllib_contrib/slate_q/examples/recommender_system_with_recsim_and_slateq.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: TD3 Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
