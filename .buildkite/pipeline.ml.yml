@@ -498,6 +498,15 @@
     - pytest rllib_contrib/alpha_star/tests/
     - python rllib_contrib/alpha_star/examples/multi-agent-cartpole-alpha-star.py --run-as-test
 
+- label: ":exploding_death_star: RLlib Contrib: APEX DDPG Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (cd rllib_contrib/apex_ddpg && pip install -r requirements.txt && pip install -e ".[development"])
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/apex_ddpg/tests/
+    - python rllib_contrib/apex_ddpg/examples/apex_ddpg_pendulum_v1.py --run-as-test
+
 - label: ":exploding_death_star: RLlib Contrib: APEX DQN Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
@@ -552,6 +561,18 @@
     - pytest rllib_contrib/pg/tests/
     - python rllib_contrib/pg/examples/pg_cartpole_v1.py --run-as-test
 
+- label: ":exploding_death_star: RLlib Contrib: QMIX Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/qmix && pip install -r requirements.txt && pip install -e ".[development"])
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/qmix/tests/
+    - python rllib_contrib/qmix/examples/qmix_two_step_game.py --run-as-test
+
 - label: ":exploding_death_star: RLlib Contrib: R2D2 Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
@@ -563,6 +584,15 @@
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/r2d2/tests/
     - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: SimpleQ Tests"
+    - (cd rllib_contrib/simple_q && pip install -r requirements.txt && pip install -e ".[development"])
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/simple_q/tests/
+    - python rllib_contrib/simple_q/examples/simple_q_cartpole_v1.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: SlateQ Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
