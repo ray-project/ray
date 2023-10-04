@@ -640,6 +640,7 @@ class gRPCProxy(GenericProxy):
         yield ResponseStatus(
             code=grpc.StatusCode.NOT_FOUND,
             message=not_found_message,
+            is_error=True,
         )
 
     async def draining_response(self, proxy_request: ProxyRequest) -> ResponseGenerator:
@@ -655,6 +656,7 @@ class gRPCProxy(GenericProxy):
         yield ResponseStatus(
             code=grpc.StatusCode.UNAVAILABLE,
             message=DRAINED_MESSAGE,
+            is_error=True,
         )
 
     async def routes_response(self, proxy_request: ProxyRequest) -> ResponseGenerator:
