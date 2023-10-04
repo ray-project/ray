@@ -318,6 +318,7 @@ class ProxyState:
         actor_name: str,
         node_id: str,
         node_ip: str,
+        proxy_restart_count: int = 0,
     ):
         self._actor_proxy_wrapper = actor_proxy_wrapper
         self._actor_proxy_wrapper.start_new_ready_check()
@@ -327,6 +328,7 @@ class ProxyState:
         self._last_health_check_time: float = time.time()
         self._shutting_down = False
         self._consecutive_health_check_failures: int = 0
+        self._proxy_restart_count = proxy_restart_count
         self._last_drain_check_time: float = None
 
         self._actor_details = ProxyDetails(
@@ -352,6 +354,10 @@ class ProxyState:
     @property
     def actor_details(self) -> ProxyDetails:
         return self._actor_details
+
+    @property
+    def proxy_restart_count(self) -> int:
+        return self._proxy_restart_count
 
     def set_status(self, status: ProxyStatus) -> None:
         """Sets _status and updates _actor_details with the new status."""
@@ -486,7 +492,10 @@ class ProxyState:
         ):
             return
 
-        ready_check_timeout = PROXY_READY_CHECK_TIMEOUT_S
+        # Doing a linear backoff for the ready check timeout.
+        ready_check_timeout = (
+            self.proxy_restart_count + 1
+        ) * PROXY_READY_CHECK_TIMEOUT_S
         if self._status == ProxyStatus.STARTING:
             try:
                 ready_call_status = self._actor_proxy_wrapper.is_ready()
@@ -580,6 +589,7 @@ class ProxyStateManager:
             self._config = HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
         self._proxy_states: Dict[NodeId, ProxyState] = dict()
+        self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
         self._proxy_actor_class = proxy_actor_class
         self._actor_proxy_wrapper_class = actor_proxy_wrapper_class
@@ -761,6 +771,7 @@ class ProxyStateManager:
                 actor_name=name,
                 node_id=node_id,
                 node_ip=node_ip_address,
+                proxy_restart_count=self._proxy_restart_counts.get(node_id, 0),
             )
 
     def _stop_proxies_if_needed(self) -> bool:
@@ -786,4 +797,5 @@ class ProxyStateManager:
 
         for node_id in to_stop:
             proxy_state = self._proxy_states.pop(node_id)
+            self._proxy_restart_counts[node_id] = proxy_state.proxy_restart_count + 1
             proxy_state.shutdown()
