@@ -107,7 +107,7 @@ def _detect_and_configure_custom_accelerator(
         # Don't use more resources than allowed by the user's pre-set values.
         if accelerator_count is not None and visible_ids is not None:
             accelerator_count = min(accelerator_count, len(visible_ids))
-    if accelerator_count is not None:
+    if accelerator_count is not None and accelerator_count > 0:
         # 4. Update accelerator_type and accelerator_count with
         # number of accelerators detected or configured.
         resources.update(
@@ -169,7 +169,7 @@ def _autodetect_num_tpus() -> int:
         numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
         return len(numeric_entries)
     except FileNotFoundError as e:
-        logging.info("Failed to detect number of TPUs: %s", e)
+        logging.debug("Failed to detect number of TPUs: %s", e)
         return 0
 
 
@@ -219,6 +219,7 @@ def _autodetect_tpu_version() -> Optional[str]:
             accelerator_type_request = requests.get(
                 ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
                 headers=ray_constants.RAY_GCE_TPU_HEADERS,
+                timeout=30,
             )
             if (
                 accelerator_type_request.status_code == 200
