@@ -490,6 +490,9 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
     - (cd rllib_contrib/alpha_star && pip install -r requirements.txt && pip install -e .)
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/alpha_star/tests/
@@ -523,14 +526,14 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-
     # Install mujoco necessary for the testing environments
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
-    - [ ! -d "/root/.mujoco" ] && mkdir -p /root/.mujoco && wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz \
-      && mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/. && \
+    - mkdir -p /root/.mujoco && \
+      wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz && \
+      mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/. && \
       (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
     - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin
     - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development"])
@@ -548,3 +551,15 @@
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/r2d2/tests/
     - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: TD3 Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/td3 && pip install -r requirements.txt && pip install -e .)
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/td3/tests/
+    - python rllib_contrib/td3/examples/td3_pendulum_v1.py --run-as-test
