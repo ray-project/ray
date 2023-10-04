@@ -40,6 +40,9 @@ class TaskPoolMapOperator(MapOperator):
             map_transformer, input_op, name, min_rows_per_bundle, ray_remote_args
         )
 
+    def should_add_input(self) -> bool:
+        return self._num_tasks_running < self._concurrency_cap
+
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
         map_task = cached_remote_fn(_map_task, num_returns="streaming")

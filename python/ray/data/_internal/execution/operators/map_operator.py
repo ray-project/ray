@@ -216,9 +216,6 @@ class MapOperator(OneToOneOperator, ABC):
             self._add_bundled_input(bundle)
         self._num_inputs_received += 1
 
-    def should_add_input(self) -> bool:
-        return self._num_tasks_running < self._concurrency_cap
-
     def _get_runtime_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
