@@ -1,5 +1,5 @@
 import argparse
-from gymnasium.spaces import Dict, Tuple, Box, Discrete
+from gymnasium.spaces import Dict, Tuple, Box, Discrete, MultiDiscrete
 import os
 
 import ray
@@ -59,10 +59,10 @@ if __name__ == "__main__":
                 "space": Dict(
                     {
                         "a": Tuple(
-                            [Dict({"d": Box(-10.0, 10.0, ()), "e": Discrete(2)})]
+                            [Dict({"d": Box(-10.0, 10.0, ()), "e": Discrete(3)})]
                         ),
                         "b": Box(-10.0, 10.0, (2,)),
-                        "c": Discrete(4),
+                        "c": MultiDiscrete([3, 3]),
                     }
                 ),
             },

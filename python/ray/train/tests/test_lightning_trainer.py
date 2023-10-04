@@ -91,7 +91,7 @@ def test_trainer_with_native_dataloader(
     if datasource == "datamodule":
         config_builder.fit_params(datamodule=datamodule)
 
-    scaling_config = ray.air.ScalingConfig(
+    scaling_config = ray.train.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
     )
 
@@ -131,7 +131,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy, accelerator):
         .build()
     )
 
-    scaling_config = ray.air.ScalingConfig(
+    scaling_config = ray.train.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
     )
 
@@ -177,7 +177,7 @@ def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator)
         .build()
     )
 
-    scaling_config = ray.air.ScalingConfig(
+    scaling_config = ray.train.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
     )
 
@@ -216,7 +216,7 @@ def test_trainer_checkpoint_configs():
         .fit_params(datamodule=datamodule)
     )
 
-    scaling_config = ray.air.ScalingConfig(num_workers=2, use_gpu=True)
+    scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 
     trainer = LightningTrainer(
         lightning_config=config_builder.build(), scaling_config=scaling_config
@@ -242,7 +242,7 @@ def test_trainer_dataset_iter_config():
     # Test missing datasets_iter_config
     with pytest.raises(RuntimeError, match="No `datasets_iter_config` provided"):
         LightningTrainer(
-            scaling_config=ray.air.ScalingConfig(num_workers=2),
+            scaling_config=ray.train.ScalingConfig(num_workers=2),
             datasets={"train": ray.data.range(100)},
         )
 

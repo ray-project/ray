@@ -16,9 +16,9 @@
 
 #include <vector>
 
-#include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/policy/scheduling_options.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
 
 namespace ray {
 namespace raylet_scheduling_policy {
