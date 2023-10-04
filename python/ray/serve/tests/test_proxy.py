@@ -2,7 +2,7 @@ import asyncio
 import pickle
 import sys
 from typing import AsyncGenerator
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import grpc
 import pytest
@@ -10,18 +10,18 @@ import pytest
 import ray
 from ray import serve
 from ray.actor import ActorHandle
-from ray.serve._private.common import EndpointTag, RequestProtocol
+from ray.serve._private.common import EndpointTag
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.proxy import (
     HEALTH_CHECK_SUCCESS_MESSAGE,
-    GenericProxy,
     HTTPProxy,
+    ResponseStatus,
     gRPCProxy,
 )
-from ray.serve._private.proxy_request_response import ASGIProxyRequest, ProxyResponse
+from ray.serve._private.proxy_request_response import ASGIProxyRequest
 from ray.serve.generated import serve_pb2
 
 
@@ -97,38 +97,34 @@ class TestgRPCProxy:
             proxy_actor=FakeActorHandler("fake_proxy_actor"),
         )
 
-    def test_subclass_from_generic_proxy(self):
-        """Test gRPCProxy is a subclass from GenericProxy."""
-        grpc_proxy = self.create_grpc_proxy()
-
-        assert isinstance(grpc_proxy, GenericProxy)
-
-    def test_protocol(self):
-        """Test gRPCProxy set up the correct protocol property."""
-        grpc_proxy = self.create_grpc_proxy()
-
-        assert isinstance(grpc_proxy.protocol, RequestProtocol)
-        assert grpc_proxy.protocol == "gRPC"
-
-    def test_success_status_code(self):
-        """Test gRPCProxy set up the correct success status code."""
-        grpc_proxy = self.create_grpc_proxy()
-
-        assert isinstance(grpc_proxy.success_status_code, str)
-        assert grpc_proxy.success_status_code == str(grpc.StatusCode.OK)
-
     @pytest.mark.asyncio
     async def test_not_found(self):
         """Test gRPCProxy set up the correct not found response."""
         grpc_proxy = self.create_grpc_proxy()
-        proxy_request = AsyncMock()
-        not_found_status = grpc.StatusCode.NOT_FOUND
-        response = await grpc_proxy.not_found(proxy_request=proxy_request)
 
-        assert isinstance(response, ProxyResponse)
-        assert response.status_code == str(not_found_status)
-        proxy_request.send_status_code.assert_called_with(status_code=not_found_status)
-        proxy_request.send_details.assert_called_once()
+        # Application name isn't provided.
+        proxy_request = Mock()
+        proxy_request.app_name = ""
+        gen = grpc_proxy.not_found(proxy_request)
+        status = await gen.__anext__()
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
+
+        assert isinstance(status, ResponseStatus)
+        assert status.code == grpc.StatusCode.NOT_FOUND
+        assert "Application metadata not set" in status.message
+
+        # Application name is provided but wasn't found.
+        proxy_request = Mock()
+        proxy_request.app_name = "foobar"
+        gen = grpc_proxy.not_found(proxy_request)
+        status = await gen.__anext__()
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
+
+        assert isinstance(status, ResponseStatus)
+        assert status.code == grpc.StatusCode.NOT_FOUND
+        assert "Application 'foobar' not found" in status.message
 
     @pytest.mark.asyncio
     async def test_draining_response(self):
@@ -138,7 +134,6 @@ class TestgRPCProxy:
         draining_status = grpc.StatusCode.UNAVAILABLE
         response = await grpc_proxy.draining_response(proxy_request=proxy_request)
 
-        assert isinstance(response, ProxyResponse)
         assert response.status_code == str(draining_status)
         proxy_request.send_status_code.assert_called_with(status_code=draining_status)
         proxy_request.send_details.assert_called_once()
@@ -153,7 +148,6 @@ class TestgRPCProxy:
             proxy_request=proxy_request, request_id="fake-request-id"
         )
 
-        assert isinstance(response, ProxyResponse)
         assert response.status_code == str(timeout_status)
         proxy_request.send_status_code.assert_called_with(status_code=timeout_status)
         proxy_request.send_details.assert_called_once()
@@ -169,7 +163,6 @@ class TestgRPCProxy:
         routes_status = grpc.StatusCode.OK
         response = await grpc_proxy.routes_response(proxy_request=proxy_request)
 
-        assert isinstance(response, ProxyResponse)
         assert response.status_code == str(routes_status)
         response_proto = serve_pb2.ListApplicationsResponse()
         response_proto.ParseFromString(response.response)
@@ -185,7 +178,6 @@ class TestgRPCProxy:
         health_status = grpc.StatusCode.OK
         response = await grpc_proxy.health_response(proxy_request=proxy_request)
 
-        assert isinstance(response, ProxyResponse)
         assert response.status_code == str(grpc.StatusCode.OK)
         response_proto = serve_pb2.HealthzResponse()
         response_proto.ParseFromString(response.response)
@@ -242,26 +234,6 @@ class TestHTTPProxy:
             proxy_actor=FakeActorHandler("fake_proxy_actor"),
         )
 
-    def test_subclass_from_generic_proxy(self):
-        """Test HTTPProxy is a subclass from GenericProxy."""
-        http_proxy = self.create_http_proxy()
-
-        assert isinstance(http_proxy, GenericProxy)
-
-    def test_protocol(self):
-        """Test HTTPProxy set up the correct success status code."""
-        http_proxy = self.create_http_proxy()
-
-        assert isinstance(http_proxy.protocol, RequestProtocol)
-        assert http_proxy.protocol == "HTTP"
-
-    def test_success_status_code(self):
-        """Test HTTPProxy set up the correct success status code."""
-        http_proxy = self.create_http_proxy()
-
-        assert isinstance(http_proxy.success_status_code, str)
-        assert http_proxy.success_status_code == "200"
-
     @pytest.mark.asyncio
     @patch("ray.serve._private.proxy.Response")
     async def test_not_found(self, mocked_util):
@@ -277,7 +249,6 @@ class TestHTTPProxy:
         )
         response = await http_proxy.not_found(proxy_request=proxy_request)
 
-        assert isinstance(response, ProxyResponse)
         assert response.status_code == str(not_found_status)
         mocked_util.assert_called_with(ANY, status_code=not_found_status)
         mocked_response.send.assert_called_once()
@@ -296,7 +267,6 @@ class TestHTTPProxy:
             send=AsyncMock(),
         )
         response = await http_proxy.draining_response(proxy_request=proxy_request)
-        assert isinstance(response, ProxyResponse)
         assert response.status_code == str(draining_status)
         mocked_util.assert_called_with(ANY, status_code=draining_status)
         mocked_response.send.assert_called_once()
@@ -318,7 +288,6 @@ class TestHTTPProxy:
             proxy_request=proxy_request,
             request_id="fake-request-id",
         )
-        assert isinstance(response, ProxyResponse)
         assert response.status_code == str(timeout_status)
         mocked_util.assert_called_with(ANY, status_code=timeout_status)
         mocked_response.send.assert_called_once()
@@ -337,7 +306,6 @@ class TestHTTPProxy:
             send=AsyncMock(),
         )
         response = await http_proxy.routes_response(proxy_request=proxy_request)
-        assert isinstance(response, ProxyResponse)
         assert response.status_code == str(routes_status)
         mock_json_response.assert_called_once()
         mocked_response.assert_called_once()
@@ -356,7 +324,6 @@ class TestHTTPProxy:
             send=AsyncMock(),
         )
         response = await http_proxy.health_response(proxy_request=proxy_request)
-        assert isinstance(response, ProxyResponse)
         assert response.status_code == str(health_status)
         mock_plain_text_response.assert_called_once()
         mocked_response.assert_called_once()
