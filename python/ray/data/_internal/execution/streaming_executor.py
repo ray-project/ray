@@ -30,7 +30,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, _get_or_create_dataset_metrics
 from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
@@ -54,7 +54,7 @@ class StreamingExecutor(Executor, threading.Thread):
     a way that maximizes throughput under resource constraints.
     """
 
-    def __init__(self, options: ExecutionOptions):
+    def __init__(self, options: ExecutionOptions, dataset_uuid: Optional[str] = None):
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
@@ -72,6 +72,10 @@ class StreamingExecutor(Executor, threading.Thread):
         # generator `yield`s.
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
+
+        self._dataset_metrics = _get_or_create_dataset_metrics()
+        self._prev_metrics_state = {}
+        self._dataset_uuid = dataset_uuid
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -101,6 +105,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
+
+        for op_state in self._topology.values():
+            self._prev_metrics_state[op_state] = {}
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
@@ -271,6 +278,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():
             op_state.refresh_progress_bar()
+            self._update_dataset_metrics(op_state)
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
@@ -311,6 +319,18 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         if self._global_info:
             self._global_info.set_description(resources_status)
+
+    def _update_dataset_metrics(self, op_state):
+        metrics = op_state.op.get_metrics()
+        self._dataset_metrics.inc_bytes_spilled.remote(
+            metrics.get("obj_store_mem_spilled", 0)
+            - self._prev_metrics_state[op_state].get("bytes_spilled", 0),
+            self._dataset_uuid or "None",
+        )
+
+        self._prev_metrics_state[op_state]["bytes_spilled"] = metrics.get(
+            "obj_store_mem_spilled", 0
+        )
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:

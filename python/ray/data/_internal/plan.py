@@ -518,7 +518,9 @@ class ExecutionPlan:
         )
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
-        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
+        executor = StreamingExecutor(
+            copy.deepcopy(ctx.execution_options), self._dataset_uuid
+        )
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,
@@ -575,7 +577,7 @@ class ExecutionPlan:
                     StreamingExecutor,
                 )
 
-                executor = StreamingExecutor(copy.deepcopy(context.execution_options))
+                executor = StreamingExecutor(copy.deepcopy(context.execution_options), self._dataset_uuid)
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
