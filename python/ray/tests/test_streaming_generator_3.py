@@ -270,7 +270,9 @@ def test_streaming_generator_load(shutdown_only):
             for i in range(100):
                 # await asyncio.sleep(0.001)
                 time.sleep(0.001)  # if change to async sleep, i don't see crash.
+                # 56 bytes
                 yield AviaryModelResponse(generated_text="abcd")
+                # yield np.random.rand(5 * 1024 * 1024 * 100)
             delta = time.time() - start
             print(f"**model throughput: {100 / delta}")
 
@@ -311,15 +313,14 @@ with ThreadPoolExecutor(max_workers=100) as executor:
         for f in futs:
             f.result()
 """
-    for _ in range(5):
+    for _ in range(100):
         print("submit a new clients!")
         proc = run_string_as_driver_nonblocking(client_script)
         # Wait sufficient time.
         time.sleep(5)
         proc.terminate()
-
-    for actor in list_actors():
-        assert actor.state != "DEAD"
+        for actor in list_actors():
+            assert actor.state != "DEAD"
 
 
 if __name__ == "__main__":
