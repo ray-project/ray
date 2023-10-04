@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import click
 import watchfiles
 import yaml
-from pydantic import ValidationError
+from pydantic.v1 import ValidationError
 
 import ray
 from ray import serve

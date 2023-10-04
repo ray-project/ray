@@ -3,7 +3,7 @@ import logging
 from types import FunctionType
 from typing import Any, Dict, Tuple, Union
 
-from pydantic.main import ModelMetaclass
+# from pydantic.main import ModelMetaclass
 
 import ray
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME

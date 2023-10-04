@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Type, Union
 
 import numpy as np
 from fastapi import Depends, FastAPI
-from pydantic import BaseModel
+from pydantic.v1 import BaseModel
 
 from ray import serve
 from ray.serve._private.constants import SERVE_LOGGER_NAME

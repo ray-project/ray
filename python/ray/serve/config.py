@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
 import pydantic
-from pydantic import (
+from pydantic.v1 import (
     BaseModel,
     NonNegativeFloat,
     NonNegativeInt,
@@ -139,7 +139,7 @@ class ProxyLocation(str, Enum):
 
 
 @PublicAPI(stability="stable")
-class HTTPOptions(pydantic.BaseModel):
+class HTTPOptions(pydantic.v1.BaseModel):
     """HTTP options for the proxies. Supported fields:
 
     - host: Host that the proxies listens for HTTP on. Defaults to

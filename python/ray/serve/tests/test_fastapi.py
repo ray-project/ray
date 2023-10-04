@@ -20,7 +20,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic.v1 import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.routing import Route
 

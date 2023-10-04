@@ -3,7 +3,7 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.json_format import MessageToDict
-from pydantic import (
+from pydantic.v1 import (
     BaseModel,
     Field,
     NonNegativeFloat,
