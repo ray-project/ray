@@ -102,10 +102,9 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
     )
 
     tune_config = {
-        "per_device_train_batch_size": 32,
+        "per_device_train_batch_size": tune.choice([16, 32, 64]),
         "per_device_eval_batch_size": 32,
-        "num_train_epochs": tune.choice([2, 3, 4, 5]),
-        "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
+        "num_train_epochs": 2 if smoke_test else tune.choice([2, 3, 4, 5]),
     }
 
     scheduler = PopulationBasedTraining(
@@ -113,6 +112,7 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         metric="eval_acc",
         mode="max",
         perturbation_interval=1,
+        synch=True,
         hyperparam_mutations={
             "weight_decay": tune.uniform(0.0, 0.3),
             "learning_rate": tune.uniform(1e-5, 5e-5),
@@ -137,14 +137,11 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
         scheduler=scheduler,
         checkpoint_config=CheckpointConfig(
-            num_to_keep=1,
+            num_to_keep=3,
             checkpoint_score_attribute="training_iteration",
         ),
-        stop={"training_iteration": 1} if smoke_test else None,
         progress_reporter=reporter,
-        local_dir="~/ray_results/",
         name="tune_transformer_pbt",
-        log_to_file=True,
     )
 
 
@@ -158,7 +155,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True)
+        tune_transformer(num_samples=2, gpus_per_trial=0, smoke_test=True)
     else:
         # You can change the number of GPUs here:
         tune_transformer(num_samples=8, gpus_per_trial=1)
