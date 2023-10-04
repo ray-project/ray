@@ -6,6 +6,7 @@
 * [Alpha Star](./alpha_star)
 * [APEX-DDPG][./apex_ddpg]
 * [APEX DQN](./apex_dqn/)
+* [Bandit](./bandit)
 * [DDPG](./ddpg)
 * [Decision Transformer](./dt)
 * [MAML](./maml)
