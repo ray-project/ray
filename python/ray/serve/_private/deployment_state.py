@@ -86,16 +86,17 @@ class ReplicaHealthCheckResponse(Enum):
 class DeploymentTargetState:
     info: Optional[DeploymentInfo]
     num_replicas: int
+    cluster_scale: float
     version: Optional[DeploymentVersion]
     deleting: bool
 
     @classmethod
     def default(cls) -> "DeploymentTargetState":
-        return cls(None, -1, None, False)
+        return cls(None, -1, 1, None, False)
 
     @classmethod
     def from_deployment_info(
-        cls, info: DeploymentInfo, *, deleting: bool = False
+        cls, info: DeploymentInfo, *, cluster_scale: float = 1.0, deleting: bool = False
     ) -> "DeploymentTargetState":
         if deleting:
             num_replicas = 0
@@ -116,7 +117,7 @@ class DeploymentTargetState:
             max_replicas_per_node=info.replica_config.max_replicas_per_node,
         )
 
-        return cls(info, num_replicas, version, deleting)
+        return cls(info, num_replicas, cluster_scale, version, deleting)
 
 
 @dataclass

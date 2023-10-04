@@ -588,8 +588,7 @@ class ServeDeploySchema(BaseModel):
     """
 
     cluster_scale: float = Field(
-        default=1.0,
-        description="Percent of num_replicas to use."
+        default=1.0, description="Percent of num_replicas to use."
     )
     proxy_location: ProxyLocation = Field(
         default=ProxyLocation.EveryNode,
