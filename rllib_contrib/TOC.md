@@ -4,6 +4,7 @@
 * [A3C](./a3c)
 * [A2C](./a2c)
 * [Alpha Star](./alpha_star)
+* [APEX-DDPG][./apex_ddpg]
 * [APEX DQN](./apex_dqn/)
 * [DDPG](./ddpg)
 * [MAML](./maml)
