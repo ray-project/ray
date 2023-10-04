@@ -13,7 +13,20 @@ Retrieving metadata
 Workflow metadata can be retrieved with ``workflow.get_metadata(workflow_id)``.
 For example:
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    import tempfile
+    import ray
+
+    temp_dir = tempfile.TemporaryDirectory()
+
+    ray.init(storage=f"file://{temp_dir.name}")
+
+.. testcode::
+
+    import ray
+    from ray import workflow
 
     @ray.remote
     def add(left: int, right: int) -> int:
@@ -30,7 +43,7 @@ For example:
 You can also retrieve metadata for individual workflow tasks by
 providing the task name:
 
-.. code-block:: python
+.. testcode::
 
     workflow.run(
         add.options(
@@ -51,7 +64,7 @@ workflow or workflow task.
 - workflow-level metadata can be added via ``.run(metadata=metadata)``
 - task-level metadata can be added via ``.options(**workflow.options(metadata=metadata))`` or in the decorator ``@workflow.options(metadata=metadata)``
 
-.. code-block:: python
+.. testcode::
 
     workflow.run(add.options(**workflow.options(task_id="add_task", metadata={"task_k": "task_v"})).bind(10, 20),
         workflow_id="add_example_3", metadata={"workflow_k": "workflow_v"})
@@ -86,40 +99,42 @@ be available in the result if corresponding metadata is not available
 (e.g., ``metadata["stats"]["end_time"]`` won't be available until the workflow
 is completed).
 
-.. code-block:: python
+.. testcode::
+
+    import time
 
     @ray.remote
     def simple():
-        flag.touch() # touch a file here
         time.sleep(1000)
         return 0
 
-    workflow.run_async(simple.bind(), workflow_id=workflow_id)
+    workflow.run_async(simple.bind(), workflow_id="workflow_id")
 
     # make sure workflow task starts running
-    while not flag.exists():
-        time.sleep(1)
+    time.sleep(2)
 
-    workflow_metadata = workflow.get_metadata(workflow_id)
+    workflow_metadata = workflow.get_metadata("workflow_id")
     assert workflow_metadata["status"] == "RUNNING"
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" not in workflow_metadata["stats"]
 
-    workflow.cancel(workflow_id)
+    workflow.cancel("workflow_id")
 
-    workflow_metadata = workflow.get_metadata(workflow_id)
+    workflow_metadata = workflow.get_metadata("workflow_id")
     assert workflow_metadata["status"] == "CANCELED"
-    assert "task_options" in workflow_metadata
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" not in workflow_metadata["stats"]
 
 2. For resumed workflows, the current behavior is that "stats" will
 be updated whenever a workflow is resumed.
 
-.. code-block:: python
+.. testcode::
+
+    from pathlib import Path
 
     workflow_id = "simple"
-    error_flag = tmp_path / "error"
+
+    error_flag = Path("error")
     error_flag.touch()
 
     @ray.remote
@@ -128,8 +143,10 @@ be updated whenever a workflow is resumed.
             raise ValueError()
         return 0
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    try:
         workflow.run(simple.bind(), workflow_id=workflow_id)
+    except ray.exceptions.RayTaskError:
+        pass
 
     workflow_metadata_failed = workflow.get_metadata(workflow_id)
     assert workflow_metadata_failed["status"] == "FAILED"

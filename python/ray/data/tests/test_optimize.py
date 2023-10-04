@@ -676,13 +676,9 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
 
 @pytest.mark.skip(reason="reusing base data not enabled")
 @pytest.mark.parametrize("with_shuffle", [True, False])
-@pytest.mark.parametrize("enable_dynamic_splitting", [True, False])
 def test_optimize_lazy_reuse_base_data(
     ray_start_regular_shared, local_path, enable_dynamic_splitting, with_shuffle
 ):
-    context = DataContext.get_current()
-    context.block_splitting_enabled = enable_dynamic_splitting
-
     num_blocks = 4
     dfs = [pd.DataFrame({"one": list(range(i, i + 4))}) for i in range(num_blocks)]
     paths = [os.path.join(local_path, f"test{i}.csv") for i in range(num_blocks)]

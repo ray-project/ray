@@ -20,12 +20,12 @@ import { HelpInfo } from "../../components/Tooltip";
 import {
   ServeApplication,
   ServeApplicationsRsp,
-  ServeHttpProxy,
+  ServeProxy,
 } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
 import { LinkWithArrow } from "../overview/cards/OverviewCard";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
-import { ServeControllerRow, ServeHttpProxyRow } from "./ServeSystemDetailRows";
+import { ServeControllerRow, ServeProxyRow } from "./ServeSystemDetailRows";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -41,12 +41,12 @@ const useStyles = makeStyles((theme) =>
 
 export type ServeDetails = Pick<
   ServeApplicationsRsp,
-  "http_options" | "proxy_location" | "controller_info"
+  "http_options" | "grpc_options" | "proxy_location" | "controller_info"
 >;
 
 type ServeSystemDetailsProps = {
   serveDetails: ServeDetails;
-  httpProxies: ServeHttpProxy[];
+  proxies: ServeProxy[];
   page: { pageSize: number; pageNo: number };
   setPage: (key: string, value: number) => void;
 };
@@ -61,7 +61,7 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 
 export const ServeSystemDetails = ({
   serveDetails,
-  httpProxies,
+  proxies,
   page,
   setPage,
 }: ServeSystemDetailsProps) => {
@@ -83,10 +83,17 @@ export const ServeSystemDetails = ({
               },
             },
             {
-              label: "Port",
+              label: "HTTP Port",
               content: {
                 copyableValue: `${serveDetails.http_options.port}`,
                 value: `${serveDetails.http_options.port}`,
+              },
+            },
+            {
+              label: "gRPC Port",
+              content: {
+                copyableValue: `${serveDetails.grpc_options.port}`,
+                value: `${serveDetails.grpc_options.port}`,
               },
             },
             {
@@ -101,7 +108,7 @@ export const ServeSystemDetails = ({
       <TableContainer>
         <div style={{ display: "flex", alignItems: "center" }}>
           <Pagination
-            count={Math.ceil(httpProxies.length / page.pageSize)}
+            count={Math.ceil(proxies.length / page.pageSize)}
             page={page.pageNo}
             onChange={(e, pageNo) => setPage("pageNo", pageNo)}
           />
@@ -133,16 +140,13 @@ export const ServeSystemDetails = ({
           </TableHead>
           <TableBody>
             <ServeControllerRow controller={serveDetails.controller_info} />
-            {httpProxies
+            {proxies
               .slice(
                 (page.pageNo - 1) * page.pageSize,
                 page.pageNo * page.pageSize,
               )
-              .map((httpProxy) => (
-                <ServeHttpProxyRow
-                  key={httpProxy.actor_id}
-                  httpProxy={httpProxy}
-                />
+              .map((proxy) => (
+                <ServeProxyRow key={proxy.actor_id} proxy={proxy} />
               ))}
           </TableBody>
         </Table>
@@ -153,13 +157,13 @@ export const ServeSystemDetails = ({
 
 type ServeSystemPreviewProps = {
   serveDetails: ServeDetails;
-  httpProxies: ServeHttpProxy[];
+  proxies: ServeProxy[];
   allApplications: ServeApplication[];
 };
 
 export const ServeSystemPreview = ({
   serveDetails,
-  httpProxies,
+  proxies,
   allApplications,
 }: ServeSystemPreviewProps) => {
   const { data: controllerActor } = useFetchActor(
@@ -186,12 +190,12 @@ export const ServeSystemPreview = ({
             ),
           },
           {
-            label: "HTTP Proxy status",
+            label: "Proxy status",
             content: (
               <StatusCountChips
-                elements={httpProxies}
+                elements={proxies}
                 statusKey="status"
-                type="serveHttpProxy"
+                type="serveProxy"
               />
             ),
           },

@@ -358,8 +358,8 @@ class MAMLTorchPolicy(ValueNetworkMixin, KLCoeffMixin, TorchPolicyV2):
         else:
             self.var_list = model.named_parameters()
 
-            # `split` may not exist yet (during test-loss call), use a dummy value.
-            # Cannot use get here due to train_batch being a TrackingDict.
+            # `split` does not exist when this method is called as part of
+            # `_initialize_loss_from_dummy_batch`.
             if "split" in train_batch:
                 split = train_batch["split"]
             else:
@@ -371,6 +371,12 @@ class MAMLTorchPolicy(ValueNetworkMixin, KLCoeffMixin, TorchPolicyV2):
                     train_batch["obs"].shape[0] // (split_shape[0] * split_shape[1])
                 )
                 split = torch.ones(split_shape, dtype=int) * split_const
+
+                # We add the remaining samples to the last task just for the purpose
+                # of initializing the loss
+                additional_samples = train_batch["obs"].shape[0] - torch.sum(split)
+                split[:, -1] += additional_samples
+
             self.loss_obj = MAMLLoss(
                 model=model,
                 dist_class=dist_class,

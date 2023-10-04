@@ -51,6 +51,10 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     RAY_PATH, "core", "src", "ray", "gcs", "gcs_server" + EXE_SUFFIX
 )
 
+JEMALLOC_SO = os.path.join(RAY_PATH, "core", "libjemalloc.so")
+
+JEMALLOC_SO = JEMALLOC_SO if os.path.exists(JEMALLOC_SO) else None
+
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
 
@@ -211,13 +215,11 @@ def propagate_jemalloc_env_var(
     assert isinstance(jemalloc_comps, list)
     assert process_type is not None
     process_type = process_type.lower()
-    if not jemalloc_path or process_type not in jemalloc_comps:
+    if not jemalloc_path:
         return {}
 
-    env_vars = {
-        "LD_PRELOAD": jemalloc_path,
-    }
-    if jemalloc_conf:
+    env_vars = {"LD_PRELOAD": jemalloc_path, "RAY_LD_PRELOAD": "1"}
+    if process_type in jemalloc_comps and jemalloc_conf:
         env_vars.update({"MALLOC_CONF": jemalloc_conf})
     return env_vars
 
@@ -305,7 +307,7 @@ def _find_address_from_flag(flag: str):
     #     --java_worker_command= --cpp_worker_command=
     #     --redis_password=[MASKED] --temp_dir=/tmp/ray --session_dir=...
     #     --metrics-agent-port=41856 --metrics_export_port=64229
-    #     --agent_command=/usr/bin/python
+    #     --dashboard_agent_command=/usr/bin/python
     #     -u /usr/local/lib/python3.8/dist-packages/ray/dashboard/agent.py
     #         --redis-address=123.456.78.910:6379 --metrics-export-port=64229
     #         --dashboard-agent-port=41856 --node-manager-port=58578
@@ -771,17 +773,21 @@ def start_ray_process(
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
     # Jemalloc memory profiling.
-    jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH)
-    jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
-    jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
-    jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
-    jemalloc_env_vars = propagate_jemalloc_env_var(
-        jemalloc_path=jemalloc_lib_path,
-        jemalloc_conf=jemalloc_conf,
-        jemalloc_comps=jemalloc_comps,
-        process_type=process_type,
-    )
-    use_jemalloc_mem_profiler = len(jemalloc_env_vars) > 0
+    if os.environ.get("LD_PRELOAD") is None:
+        jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH, JEMALLOC_SO)
+        jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
+        jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
+        jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
+        jemalloc_env_vars = propagate_jemalloc_env_var(
+            jemalloc_path=jemalloc_lib_path,
+            jemalloc_conf=jemalloc_conf,
+            jemalloc_comps=jemalloc_comps,
+            process_type=process_type,
+        )
+    else:
+        jemalloc_env_vars = {}
+
+    use_jemalloc_mem_profiler = "MALLOC_CONF" in jemalloc_env_vars
 
     if (
         sum(
@@ -844,12 +850,7 @@ def start_ray_process(
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
 
-    if use_jemalloc_mem_profiler:
-        logger.info(
-            f"Jemalloc profiling will be used for {process_type}. "
-            f"env vars: {jemalloc_env_vars}"
-        )
-        modified_env.update(jemalloc_env_vars)
+    modified_env.update(jemalloc_env_vars)
 
     if use_tmux:
         # The command has to be created exactly as below to ensure that it
@@ -1034,7 +1035,7 @@ def start_log_monitor(
 
 
 def start_api_server(
-    include_dashboard: bool,
+    include_dashboard: Optional[bool],
     raise_on_failure: bool,
     host: str,
     gcs_address: str,
@@ -1055,8 +1056,10 @@ def start_api_server(
 
     Args:
         include_dashboard: If true, this will load all dashboard-related modules
-            when starting the API server. Otherwise, it will only
-            start the modules that are not relevant to the dashboard.
+            when starting the API server, or fail. If None, it will load all
+            dashboard-related modules conditioned on dependencies being present.
+            Otherwise, it will only start the modules that are not relevant to
+            the dashboard.
         raise_on_failure: If true, this will raise an exception
             if we fail to start the API server. Otherwise it will print
             a warning if we fail to start the API server.
@@ -1118,7 +1121,19 @@ def start_api_server(
                 else:
                     raise e
         # Make sure the process can start.
-        minimal = not ray._private.utils.check_dashboard_dependencies_installed()
+        minimal: bool = not ray._private.utils.check_dashboard_dependencies_installed()
+
+        # Explicitly check here that when the user explicitly specifies
+        # dashboard inclusion, the install is not minimal.
+        if include_dashboard and minimal:
+            logger.error(
+                "--include-dashboard is not supported when minimal ray is used."
+                "Download ray[default] to use the dashboard."
+            )
+            raise Exception("Cannot include dashboard with missing packages.")
+
+        include_dash: bool = True if include_dashboard is None else include_dashboard
+
         # Start the dashboard process.
         dashboard_dir = "dashboard"
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
@@ -1158,7 +1173,7 @@ def start_api_server(
         if minimal:
             command.append("--minimal")
 
-        if not include_dashboard:
+        if not include_dash:
             # If dashboard is not included, load modules
             # that are irrelevant to the dashboard.
             # TODO(sang): Modules like job or state APIs should be
@@ -1264,7 +1279,7 @@ def start_api_server(
                 # Is it reachable?
                 raise Exception("Failed to start a dashboard.")
 
-        if minimal or not include_dashboard:
+        if minimal or not include_dash:
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
             dashboard_url = ""
@@ -1275,6 +1290,25 @@ def start_api_server(
         else:
             logger.error(e)
             return None, None
+
+
+def get_address(redis_address):
+    parts = redis_address.split("://", 1)
+    enable_redis_ssl = False
+    if len(parts) == 1:
+        redis_ip_address, redis_port = parts[0].rsplit(":", 1)
+    else:
+        # rediss for SSL
+        if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
+            raise ValueError(
+                f"Invalid redis address {redis_address}."
+                "Expected format is ip:port or redis://ip:port, "
+                "or rediss://ip:port for SSL."
+            )
+        redis_ip_address, redis_port = parts[1].rsplit(":", 1)
+        if parts[0] == "rediss":
+            enable_redis_ssl = True
+    return redis_ip_address, redis_port, enable_redis_ssl
 
 
 def start_gcs_server(
@@ -1322,21 +1356,12 @@ def start_gcs_server(
         f"--session-name={session_name}",
     ]
     if redis_address:
-        parts = redis_address.split("://", 1)
-        enable_redis_ssl = "false"
-        if len(parts) == 1:
-            redis_ip_address, redis_port = parts[0].rsplit(":", 1)
-        else:
-            if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
-                raise ValueError(f"Invalid redis address {redis_address}")
-            redis_ip_address, redis_port = parts[1].rsplit(":", 1)
-            if parts[0] == "rediss":
-                enable_redis_ssl = "true"
+        redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
 
         command += [
             f"--redis_address={redis_ip_address}",
             f"--redis_port={redis_port}",
-            f"--redis_enable_ssl={enable_redis_ssl}",
+            f"--redis_enable_ssl={'true' if enable_redis_ssl else 'false'}",
         ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
@@ -1357,6 +1382,7 @@ def start_raylet(
     node_manager_port: int,
     raylet_name: str,
     plasma_store_name: str,
+    cluster_id: str,
     worker_path: str,
     setup_worker_path: str,
     storage: str,
@@ -1377,6 +1403,7 @@ def start_raylet(
     metrics_agent_port: Optional[int] = None,
     metrics_export_port: Optional[int] = None,
     dashboard_agent_listen_port: Optional[int] = None,
+    runtime_env_agent_port: Optional[int] = None,
     use_valgrind: bool = False,
     use_profiler: bool = False,
     stdout_file: Optional[str] = None,
@@ -1425,7 +1452,9 @@ def start_raylet(
         metrics_agent_port: The port where metrics agent is bound to.
         metrics_export_port: The port at which metrics are exposed to.
         dashboard_agent_listen_port: The port at which the dashboard agent
-            listens to for http.
+            listens to for HTTP.
+        runtime_env_agent_port: The port at which the runtime env agent
+            listens to for HTTP.
         use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
@@ -1527,12 +1556,15 @@ def start_raylet(
             f"--redis-address={redis_address}",
             f"--temp-dir={temp_dir}",
             f"--metrics-agent-port={metrics_agent_port}",
+            f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
+            f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--gcs-address={gcs_address}",
             f"--session-name={session_name}",
             f"--temp-dir={temp_dir}",
             f"--webui={webui}",
+            f"--cluster-id={cluster_id}",
         ]
     )
 
@@ -1559,7 +1591,7 @@ def start_raylet(
     if labels:
         labels_json_str = json.dumps(labels)
 
-    agent_command = [
+    dashboard_agent_command = [
         *_build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
         ),
@@ -1573,7 +1605,6 @@ def start_raylet(
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
         f"--session-dir={session_dir}",
-        f"--runtime-env-dir={resource_dir}",
         f"--log-dir={log_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
@@ -1583,18 +1614,33 @@ def start_raylet(
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
-        agent_command.append("--logging-filename=")
+        dashboard_agent_command.append("--logging-filename=")
         # Use stderr log format with the component name as a message prefix.
         logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
             component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT
         )
-        agent_command.append(f"--logging-format={logging_format}")
+        dashboard_agent_command.append(f"--logging-format={logging_format}")
 
     if not ray._private.utils.check_dashboard_dependencies_installed():
         # If dependencies are not installed, it is the minimally packaged
         # ray. We should restrict the features within dashboard agent
         # that requires additional dependencies to be downloaded.
-        agent_command.append("--minimal")
+        dashboard_agent_command.append("--minimal")
+
+    runtime_env_agent_command = [
+        *_build_python_executable_command_memory_profileable(
+            ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
+        ),
+        os.path.join(RAY_PATH, "_private", "runtime_env", "agent", "main.py"),
+        f"--node-ip-address={node_ip_address}",
+        f"--runtime-env-agent-port={runtime_env_agent_port}",
+        f"--gcs-address={gcs_address}",
+        f"--runtime-env-dir={resource_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--log-dir={log_dir}",
+        f"--temp-dir={temp_dir}",
+    ]
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1617,12 +1663,14 @@ def start_raylet(
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
+        f"--runtime_env_agent_port={runtime_env_agent_port}",
         f"--object_store_memory={object_store_memory}",
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
         f"--gcs-address={gcs_address}",
         f"--session-name={session_name}",
         f"--labels={labels_json_str}",
+        f"--cluster-id={cluster_id}",
     ]
 
     if is_head_node:
@@ -1633,7 +1681,16 @@ def start_raylet(
     command.append(
         "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
     )
-    command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
+    command.append(
+        "--dashboard_agent_command={}".format(
+            subprocess.list2cmdline(dashboard_agent_command)
+        )
+    )
+    command.append(
+        "--runtime_env_agent_command={}".format(
+            subprocess.list2cmdline(runtime_env_agent_command)
+        )
+    )
     if huge_pages:
         command.append("--huge_pages")
     if socket_to_use:
@@ -1945,8 +2002,9 @@ def start_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    if gcs_address is not None:
-        command.append(f"--gcs-address={gcs_address}")
+    assert gcs_address is not None
+    command.append(f"--gcs-address={gcs_address}")
+
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
@@ -1978,7 +2036,7 @@ def start_ray_client_server(
     stderr_file: Optional[int] = None,
     redis_password: Optional[int] = None,
     fate_share: Optional[bool] = None,
-    metrics_agent_port: Optional[int] = None,
+    runtime_env_agent_address: Optional[str] = None,
     server_type: str = "proxy",
     serialized_runtime_env_context: Optional[str] = None,
 ):
@@ -1993,6 +2051,8 @@ def start_ray_client_server(
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password: The password of the redis server.
+        runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
+            Only needed when server_type == "proxy".
         server_type: Whether to start the proxy version of Ray Client.
         serialized_runtime_env_context (str|None): If specified, the serialized
             runtime_env_context to start the client server in.
@@ -2025,8 +2085,11 @@ def start_ray_client_server(
         command.append(
             f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
         )
-    if metrics_agent_port:
-        command.append(f"--metrics-agent-port={metrics_agent_port}")
+    if server_type == "proxy":
+        assert len(runtime_env_agent_address) > 0
+    if runtime_env_agent_address:
+        command.append(f"--runtime-env-agent-address={runtime_env_agent_address}")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,

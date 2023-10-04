@@ -38,6 +38,9 @@ class RayInstaller(object):
             f"Creating new (spawn_updater) updater thread for node"
             f" {instance.cloud_instance_id}."
         )
+        provider_instance_type_name = self._config.get_provider_instance_type(
+            instance.instance_type
+        )
         updater = NodeUpdater(
             node_id=instance.instance_id,
             provider_config=self._config.get_config("provider"),
@@ -63,6 +66,7 @@ class RayInstaller(object):
                     "RAY_HEAD_IP": head_node_ip,
                     "RAY_CLOUD_INSTANCE_ID": instance.instance_id,
                     "RAY_NODE_TYPE_NAME": instance.instance_type,
+                    "RAY_CLOUD_INSTANCE_TYPE_NAME": provider_instance_type_name,
                 },
             ),
             runtime_hash=self._config.runtime_hash,
@@ -76,6 +80,7 @@ class RayInstaller(object):
             use_internal_ip=True,
             docker_config=docker_config,
             node_resources=self._config.get_node_resources(instance.instance_type),
+            node_labels=self._config.get_node_labels(instance.instance_type),
             process_runner=self._process_runner,
         )
         try:

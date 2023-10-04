@@ -512,6 +512,16 @@ void raylet::RayletClient::ShutdownRaylet(
   grpc_client_->ShutdownRaylet(request, callback);
 }
 
+void raylet::RayletClient::DrainRaylet(
+    const rpc::autoscaler::DrainNodeReason &reason,
+    const std::string &reason_message,
+    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) {
+  rpc::DrainRayletRequest request;
+  request.set_reason(reason);
+  request.set_reason_message(reason_message);
+  grpc_client_->DrainRaylet(request, callback);
+}
+
 void raylet::RayletClient::GlobalGC(
     const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
   rpc::GlobalGCRequest request;
@@ -524,12 +534,6 @@ void raylet::RayletClient::UpdateResourceUsage(
   rpc::UpdateResourceUsageRequest request;
   request.set_serialized_resource_usage_batch(serialized_resource_usage_batch);
   grpc_client_->UpdateResourceUsage(request, callback);
-}
-
-void raylet::RayletClient::RequestResourceReport(
-    const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) {
-  rpc::RequestResourceReportRequest request;
-  grpc_client_->RequestResourceReport(request, callback);
 }
 
 void raylet::RayletClient::GetResourceLoad(

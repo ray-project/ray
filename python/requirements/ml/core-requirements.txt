@@ -7,10 +7,10 @@ wandb==0.13.4
 # ML training frameworks
 xgboost==1.6.2; python_version <= '3.7'
 xgboost==1.7.6; python_version > '3.7'
-xgboost_ray==0.1.15
+xgboost_ray==0.1.18
 
 lightgbm==3.3.5
-lightgbm_ray==0.1.8
+lightgbm_ray==0.1.9
 
 # Huggingface
 transformers==4.19.1
