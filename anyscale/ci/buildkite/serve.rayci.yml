@@ -5,4 +5,4 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/serve/... serve
     depends_on: servebuild
-    job_env: servebuild
+    job_env: forge
