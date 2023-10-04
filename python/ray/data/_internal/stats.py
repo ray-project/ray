@@ -12,6 +12,7 @@ from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
+from ray.util.metrics import Counter
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
@@ -190,6 +191,39 @@ def _get_or_create_stats_actor():
     return _StatsActor.options(
         name=STATS_ACTOR_NAME,
         namespace=STATS_ACTOR_NAMESPACE,
+        get_if_exists=True,
+        lifetime="detached",
+        scheduling_strategy=scheduling_strategy,
+    ).remote()
+
+
+@ray.remote(num_cpus=0)
+class _DatasetMetrics:
+    def __init__(self):
+        self.bytes_spilled = Counter(
+            "ray_data_bytes_spilled",
+            description="Bytes spilled by dataset operators",
+            tag_keys=("dataset",),
+        )
+
+    def inc_bytes_spilled(self, bytes_spilled, dataset):
+        if bytes_spilled > 0:
+            self.bytes_spilled.inc(bytes_spilled, {"dataset": dataset})
+
+
+def _get_or_create_dataset_metrics():
+    ctx = DataContext.get_current()
+    scheduling_strategy = ctx.scheduling_strategy
+    if not ray.util.client.ray.is_connected():
+        # Pin the stats actor to the local node
+        # so it fate-shares with the driver.
+        scheduling_strategy = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+    return _DatasetMetrics.options(
+        name="dataset_metrics",
+        namespace="dataset_metrics_namespace",
         get_if_exists=True,
         lifetime="detached",
         scheduling_strategy=scheduling_strategy,
