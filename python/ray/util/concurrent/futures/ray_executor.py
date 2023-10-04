@@ -91,23 +91,6 @@ class _ActorPoolBoilerPlate(_ActorPool):
 
     """
     Boilerplate class for actor pools.
-    ...
-
-    Attributes
-    -----------
-    num_actors : int
-        Specify the size of the actor pool to create.
-    initializer : Callable
-        A function that will be called remotely in the actor context before the
-        submitted task (for compatibility with
-        concurrent.futures.ThreadPoolExecutor).
-    initargs : tuple
-        Arguments for initializer (for compatibility with
-        concurrent.futures.ThreadPoolExecutor).
-    max_tasks_per_actor : int
-        The maximum number of tasks to be performed by an actor before it is
-        gracefully killed and replaced (for compatibility with
-        concurrent.futures.ProcessPoolExecutor).
     """
 
     def __init__(
