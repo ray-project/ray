@@ -97,7 +97,7 @@ class PPOEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> Tuple[List[Episode], List[Episode]]:
+    ) -> List[Episode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s)."""
 
         # If not execution details are provided, use self.config.
@@ -137,7 +137,7 @@ class PPOEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         force_reset: bool = False,
-    ) -> Tuple[List[Episode], List[Episode]]:
+    ) -> List[Episode]:
         """Helper method to sample n timesteps."""
 
         done_episodes_to_return = []

@@ -8,11 +8,11 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.policy.sample_batch import concat_samples, DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode
 from ray.rllib.utils.typing import TensorType
 
 # TODO (simon): Make framework-agnostic.

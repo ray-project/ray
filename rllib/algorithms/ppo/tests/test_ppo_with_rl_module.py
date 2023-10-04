@@ -76,7 +76,8 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether PPO can be built with all frameworks."""
-        from ray.rllib.algorithms.ppo.utils.ppo_env_runner import PPOEnvRunner
+        #from ray.rllib.algorithms.ppo.utils.ppo_env_runner import PPOEnvRunner
+        from ray.rllib.env.env_runner import SingleAgentEnvRunner
 
         # Build a PPOConfig object.
         config = (
@@ -96,7 +97,7 @@ class TestPPO(unittest.TestCase):
                 # Test with compression.
                 # compress_observations=True,
                 enable_connectors=True,
-                env_runner_cls=PPOEnvRunner,
+                env_runner_cls=SingleAgentEnvRunner,
             )
             .callbacks(MyCallbacks)
             .rl_module(_enable_rl_module_api=True)
