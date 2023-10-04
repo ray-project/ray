@@ -3,7 +3,9 @@ import click
 from ci.ray_ci.builder_container import PYTHON_VERSIONS, BuilderContainer
 from ci.ray_ci.doc_builder_container import DocBuilderContainer
 from ci.ray_ci.forge_container import ForgeContainer
-from ci.ray_ci.docker_container import PLATFORM, DockerContainer
+from ci.ray_ci.docker_container import PLATFORM
+from ci.ray_ci.ray_docker_container import RayDockerContainer
+from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.utils import logger, docker_login
 
@@ -12,7 +14,7 @@ from ci.ray_ci.utils import logger, docker_login
 @click.argument(
     "artifact_type",
     required=True,
-    type=click.Choice(["wheel", "doc", "docker"]),
+    type=click.Choice(["wheel", "doc", "docker", "anyscale"]),
 )
 @click.option(
     "--python-version",
@@ -51,6 +53,13 @@ def main(
         build_docker(python_version, platform, image_type)
         return
 
+    if artifact_type == "anyscale":
+        logger.info(
+            f"Building {image_type} anyscale for {python_version} on {platform}"
+        )
+        build_anyscale(python_version, platform, image_type)
+        return
+
     if artifact_type == "doc":
         logger.info("Building ray docs")
         build_doc()
@@ -72,7 +81,16 @@ def build_docker(python_version: str, platform: str, image_type: str) -> None:
     Build a container artifact.
     """
     BuilderContainer(python_version).run()
-    DockerContainer(python_version, platform, image_type).run()
+    RayDockerContainer(python_version, platform, image_type).run()
+
+
+def build_anyscale(python_version: str, platform: str, image_type: str) -> None:
+    """
+    Build an anyscale container artifact.
+    """
+    BuilderContainer(python_version).run()
+    RayDockerContainer(python_version, platform, image_type).run()
+    AnyscaleDockerContainer(python_version, platform, image_type).run()
 
 
 def build_doc() -> None:

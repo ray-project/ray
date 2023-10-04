@@ -20,8 +20,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.conftest import check_ray_stop
-from ray.serve.tests.utils import (
+from ray.serve.tests.common.utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -30,6 +29,7 @@ from ray.serve.tests.utils import (
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
 )
+from ray.serve.tests.conftest import check_ray_stop
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
 

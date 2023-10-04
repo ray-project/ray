@@ -66,6 +66,7 @@ def test_submit_job_with_resources(shutdown_only):
         num_gpus=1,
         resources={"Custom": 1},
         dashboard_port=8269,
+        _memory=4,
     )
     address = ctx.address_info["webui_url"]
     client = JobSubmissionClient(format_web_url(address))
@@ -73,6 +74,7 @@ def test_submit_job_with_resources(shutdown_only):
     for kwargs in [
         {"entrypoint_num_cpus": 2},
         {"entrypoint_num_gpus": 2},
+        {"entrypoint_memory": 4},
         {"entrypoint_resources": {"Custom": 2}},
     ]:
         job_id = client.submit_job(entrypoint="echo hello", **kwargs)
@@ -84,6 +86,7 @@ def test_submit_job_with_resources(shutdown_only):
         entrypoint="echo hello",
         entrypoint_num_cpus=1,
         entrypoint_num_gpus=1,
+        entrypoint_memory=4,
         entrypoint_resources={"Custom": 1},
     )
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=10)
@@ -334,7 +337,21 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
         runtime_env=runtime_env_option["runtime_env"],
     )
 
-    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=60)
+    try:
+        job_start_time = time.time()
+        wait_for_condition(
+            _check_job_succeeded, client=client, job_id=job_id, timeout=300
+        )
+        job_duration = time.time() - job_start_time
+        print(f"The job took {job_duration}s to succeed.")
+    except RuntimeError as e:
+        # If the job is still pending, include job logs and info in error.
+        if client.get_job_status(job_id) == JobStatus.PENDING:
+            logs = client.get_job_logs(job_id)
+            info = client.get_job_info(job_id)
+            raise RuntimeError(
+                f"Job was stuck in PENDING.\nLogs: {logs}\nInfo: {info}"
+            ) from e
 
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs

@@ -85,9 +85,14 @@ if __name__ == "__main__":
                 # start copy logs (including all local ray nodes logs) to destination.
                 if collect_log_to_path:
                     try:
+                        base_dir = os.path.join(
+                            collect_log_to_path, os.path.basename(temp_dir) + "-logs"
+                        )
+                        # Note: multiple Ray node launcher process might
+                        # execute this line code, so we set exist_ok=True here.
+                        os.makedirs(base_dir, exist_ok=True)
                         copy_log_dest_path = os.path.join(
-                            collect_log_to_path,
-                            os.path.basename(temp_dir) + "-logs",
+                            base_dir,
                             socket.gethostname(),
                         )
                         ray_session_dir = os.readlink(
