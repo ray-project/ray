@@ -373,6 +373,14 @@ if __name__ == "__main__":
     if args.output.lower() == "json":
         print(json.dumps(affected_vars))
     elif args.output.lower() == "rayci_tags":
-        print(" ".join(affected_vars))
+
+        def f(s):
+            if s.startswith("RAY_CI_"):
+                s = s[7:]
+            if s.endswith("_AFFECTED"):
+                s = s[:-9]
+            return s.lower()
+
+        print(" ".join(list(map(f, affected_vars))))
     else:
         print(output_string)

@@ -51,3 +51,7 @@ steps:
   - name: serverlessbuild
     wanda: ci/docker/serverless.build.wanda.yaml
     depends_on: oss-ci-base_build
+
+  - name: rllibbuild
+    wanda: ci/docker/rllib.build.wanda.yaml
+    depends_on: oss-ci-base_ml
