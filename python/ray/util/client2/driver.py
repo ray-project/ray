@@ -1,4 +1,5 @@
 import ray
+import time
 import asyncio
 import argparse
 import ray._private.ray_constants as ray_constants
@@ -149,3 +150,6 @@ if __name__ == "__main__":
         f"created driver name {actor.get_name.remote()}, "
         f"ns {ray_constants.RAY_INTERNAL_CLIENT2_NAMESPACE}: {actor}"
     )
+
+    while True:
+        time.sleep(1000)
