@@ -129,17 +129,17 @@ def _get_all_test_query(
     test_query = " union ".join([f"tests({target})" for target in targets])
     query = f"attr(tags, 'team:{team}\\\\b', {test_query})"
 
-    if except_tags:
-        except_query = " union ".join(
-            [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
-        )
-        query = f"{query} except ({except_query})"
-
     if only_tags:
         only_query = " union ".join(
             [f"attr(tags, {t}, {test_query})" for t in only_tags.split(",")]
         )
         query = f"{query} intersect ({only_query})"
+
+    if except_tags:
+        except_query = " union ".join(
+            [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
+        )
+        query = f"{query} except ({except_query})"
 
     return query
 
