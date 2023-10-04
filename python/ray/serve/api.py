@@ -100,7 +100,7 @@ def start(
 
     if dedicated_cpu is not False:
         raise ValueError(
-            "`dedicated_cpu` is no longer supported. "
+            "`dedicated_cpu=True` is no longer supported. "
             "In a future release, it will be removed altogether."
         )
 

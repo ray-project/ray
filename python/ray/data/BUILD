@@ -468,7 +468,7 @@ py_test(
 
 py_test(
     name = "test_streaming_executor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
