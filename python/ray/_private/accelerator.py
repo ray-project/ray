@@ -10,7 +10,6 @@ import ray._private.utils as utils
 import re
 from typing import Callable, Iterable, Optional
 
-logger = logging.getLogger("ray")
 
 def update_resources_with_accelerator_type(resources: dict):
     """Update the resources dictionary with the accelerator type and custom
@@ -108,7 +107,7 @@ def _detect_and_configure_custom_accelerator(
         # Don't use more resources than allowed by the user's pre-set values.
         if accelerator_count is not None and visible_ids is not None:
             accelerator_count = min(accelerator_count, len(visible_ids))
-    if accelerator_count is not None:
+    if accelerator_count is not None and accelerator_count > 0:
         # 4. Update accelerator_type and accelerator_count with
         # number of accelerators detected or configured.
         resources.update(
@@ -170,7 +169,7 @@ def _autodetect_num_tpus() -> int:
         numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
         return len(numeric_entries)
     except FileNotFoundError as e:
-        logger.debug("Failed to detect number of TPUs: %s", e)
+        logging.debug("Failed to detect number of TPUs: %s", e)
         return 0
 
 
@@ -209,7 +208,7 @@ def _autodetect_tpu_version() -> Optional[str]:
     if accelerator_type is not None:
         detected_tpu_version = accelerator_type_to_version(accelerator_type)
         if detected_tpu_version is None:
-            logger.debug(
+            logging.info(
                 "While trying to autodetect a TPU type and "
                 f"parsing {ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR}, "
                 f"received malformed accelerator_type: {accelerator_type}"
@@ -220,6 +219,7 @@ def _autodetect_tpu_version() -> Optional[str]:
             accelerator_type_request = requests.get(
                 ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
                 headers=ray_constants.RAY_GCE_TPU_HEADERS,
+                timeout=30,
             )
             if (
                 accelerator_type_request.status_code == 200
@@ -229,27 +229,27 @@ def _autodetect_tpu_version() -> Optional[str]:
                     accelerator_type_request.text
                 )
                 if detected_tpu_version is None:
-                    logger.debug(
+                    logging.info(
                         "While trying to autodetect a TPU type, the TPU GCE metadata "
                         "returned a malformed accelerator type: "
                         f"{accelerator_type_request.text}."
                     )
             else:
-                logger.debug(
+                logging.info(
                     "While trying to autodetect a TPU type, "
                     "unable to poll TPU GCE metadata. Got "
                     f"status code: {accelerator_type_request.status_code} and "
                     f"content: {accelerator_type_request.text}"
                 )
         except requests.RequestException as e:
-            logger.debug(
+            logging.info(
                 "While trying to autodetect a TPU type, "
                 " unable to poll TPU GCE metadata: %s",
                 e,
             )
 
     if detected_tpu_version is None:
-        logger.debug("Failed to auto-detect TPU type.")
+        logging.info("Failed to auto-detect TPU type.")
     return detected_tpu_version
 
 
