@@ -881,6 +881,7 @@ class ServeController:
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
             controller_info=self._actor_details,
+            cluster_scale=self.deployment_state_manager.cluster_scale,
             proxy_location=http_config.location,
             http_options=http_options,
             grpc_options=grpc_options,

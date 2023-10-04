@@ -883,6 +883,9 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     controller_info: ServeActorDetails = Field(
         description="Details about the Serve controller actor."
     )
+    cluster_scale: float = Field(
+        default=1.0, description="Percent of num_replicas to use."
+    )
     proxy_location: Optional[ProxyLocation] = Field(
         description=(
             "Config for where to run proxies for ingress traffic to the cluster.\n"
