@@ -250,6 +250,8 @@ message CancelTaskRequest {
   bool force_kill = 2;
   // Whether to recursively cancel tasks.
   bool recursive = 3;
+  // The worker ID of the caller.
+  bytes caller_worker_id = 4;
 }
 
 message CancelTaskReply {

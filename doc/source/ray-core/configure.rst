@@ -123,6 +123,7 @@ All Nodes
 ~~~~~~~~~
 - ``--node-manager-port``: Raylet port for node manager. Default: Random value.
 - ``--object-manager-port``: Raylet port for object manager. Default: Random value.
+- ``--runtime-env-agent-port``: Raylet port for runtime env agent. Default: Random value.
 
 The node manager and object manager run as separate processes with their own ports for communication.
 

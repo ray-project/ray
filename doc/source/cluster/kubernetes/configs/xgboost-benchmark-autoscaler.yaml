@@ -1,4 +1,4 @@
-# This is a RayCluster configuration for exploration of the 100Gi Ray AIR XGBoostTrainer benchmark.
+# This is a RayCluster configuration for exploration of the 100Gi Ray XGBoostTrainer benchmark.
 
 # This configuration here modifies the file xgboost-benchmark.yaml in this directory
 # to demonstrate autoscaling.

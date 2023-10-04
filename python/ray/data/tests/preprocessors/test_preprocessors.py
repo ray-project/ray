@@ -127,6 +127,18 @@ def test_fitted_preprocessor_without_stats():
     assert preprocessor.fit_status() == Preprocessor.FitStatus.FITTED
 
 
+def test_fitted_preprocessor_with_stats():
+    """Tests that Preprocessors can be fitted by setting an attribute that ends
+    with _."""
+
+    class FittablePreprocessor(Preprocessor):
+        ...
+
+    preprocessor = FittablePreprocessor()
+    preprocessor.stats_ = True
+    assert preprocessor.fit_status() == Preprocessor.FitStatus.FITTED
+
+
 @patch.object(warnings, "warn")
 def test_fit_twice(mocked_warn):
     """Tests that a warning msg should be printed."""

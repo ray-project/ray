@@ -1,3 +1,6 @@
+from filelock import FileLock
+import os
+
 import pytest
 
 import torch
@@ -6,9 +9,7 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
-from ray.air import session
-from ray.air.config import ScalingConfig
-from ray.air.constants import TRAINING_ITERATION
+from ray.train import ScalingConfig
 import ray.train as train
 from ray.train.trainer import TrainingFailedError
 
@@ -34,21 +35,22 @@ def trainer_init_per_worker(config):
         [transforms.ToTensor(), transforms.Normalize(mean, std)]
     )
 
-    data_directory = "~/data"
-    train_dataset = torch.utils.data.Subset(
-        datasets.CIFAR10(
-            data_directory, train=True, download=True, transform=cifar10_transforms
-        ),
-        list(range(64)),
-    )
-    test_dataset = torch.utils.data.Subset(
-        datasets.CIFAR10(
-            data_directory, train=False, download=True, transform=cifar10_transforms
-        ),
-        list(range(64)),
-    )
+    data_directory = os.path.expanduser("~/data")
+    with FileLock(os.path.expanduser("~/data.lock")):
+        train_dataset = torch.utils.data.Subset(
+            datasets.CIFAR10(
+                data_directory, train=True, download=True, transform=cifar10_transforms
+            ),
+            list(range(BATCH_SIZE)),
+        )
+        test_dataset = torch.utils.data.Subset(
+            datasets.CIFAR10(
+                data_directory, train=False, download=True, transform=cifar10_transforms
+            ),
+            list(range(BATCH_SIZE)),
+        )
 
-    batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+    batch_size_per_worker = BATCH_SIZE // train.get_context().get_world_size()
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size_per_worker, shuffle=True
     )
@@ -60,7 +62,9 @@ def trainer_init_per_worker(config):
     test_dataloader = train.torch.prepare_data_loader(test_dataloader)
 
     evaluator = Evaluator(
-        dataloader=test_dataloader, label="my_evaluator", metrics=Accuracy()
+        dataloader=test_dataloader,
+        label="my_evaluator",
+        metrics=Accuracy(task="multiclass", num_classes=10, top_k=1),
     )
 
     # prepare optimizer
@@ -80,22 +84,6 @@ def trainer_init_per_worker(config):
 
 
 trainer_init_per_worker.__test__ = False
-
-
-def test_mosaic_cifar10(ray_start_4_cpus):
-    from ray.train.examples.mosaic_cifar10_example import train_mosaic_cifar10
-
-    result = train_mosaic_cifar10(max_duration="5ep").metrics_dataframe
-
-    # check the max epoch value
-    assert result["epoch"][result.index[-1]] == 4
-
-    # check train_iterations
-    assert result[TRAINING_ITERATION][result.index[-1]] == 5
-
-    # check metrics/train/Accuracy has increased
-    acc = list(result["metrics/train/Accuracy"])
-    assert acc[-1] > acc[0]
 
 
 def test_init_errors(ray_start_4_cpus):

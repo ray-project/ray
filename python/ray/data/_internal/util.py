@@ -3,9 +3,21 @@ import logging
 import os
 import pathlib
 import sys
+import threading
 import urllib.parse
+from collections import deque
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 
@@ -19,6 +31,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.compute import ComputeStrategy
+    from ray.data._internal.sort import SortKey
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
@@ -406,10 +419,12 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
 
 
 def validate_compute(
-    fn: "UserDefinedFunction", compute: Optional[Union[str, "ComputeStrategy"]]
+    fn: "UserDefinedFunction",
+    compute: Optional[Union[str, "ComputeStrategy"]],
+    fn_constructor_args: Optional[Iterable[Any]] = None,
 ) -> None:
     # Lazily import these objects to avoid circular imports.
-    from ray.data._internal.compute import TaskPoolStrategy
+    from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
     from ray.data.block import CallableClass
 
     if isinstance(fn, CallableClass) and (
@@ -420,6 +435,20 @@ def validate_compute(
             f"specify the actor compute strategy, but got: {compute}. "
             "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
         )
+
+    if fn_constructor_args is not None:
+        if compute is None or (
+            compute != "actors" and not isinstance(compute, ActorPoolStrategy)
+        ):
+            raise ValueError(
+                "fn_constructor_args can only be specified if using the actor "
+                f"pool compute strategy, but got: {compute}"
+            )
+        if not isinstance(fn, CallableClass):
+            raise ValueError(
+                "fn_constructor_args can only be specified if providing a "
+                f"CallableClass instance for fn, but got: {fn}"
+            )
 
 
 def capfirst(s: str):
@@ -513,3 +542,243 @@ def unify_block_metadata_schema(
         # return the first schema.
         return schemas_to_unify[0]
     return None
+
+
+def find_partition_index(
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
+    desired: List[Any],
+    sort_key: "SortKey",
+) -> int:
+    columns = sort_key.get_columns()
+    descending = sort_key.get_descending()
+
+    left, right = 0, len(table)
+    for i in range(len(desired)):
+        if left == right:
+            return right
+        col_name = columns[i]
+        col_vals = table[col_name].to_numpy()[left:right]
+        desired_val = desired[i]
+
+        prevleft = left
+        if descending is True:
+            left = prevleft + (
+                len(col_vals)
+                - np.searchsorted(
+                    col_vals,
+                    desired_val,
+                    side="right",
+                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                )
+            )
+            right = prevleft + (
+                len(col_vals)
+                - np.searchsorted(
+                    col_vals,
+                    desired_val,
+                    side="left",
+                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                )
+            )
+        else:
+            left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
+            right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
+    return right if descending is True else left
+
+
+def find_partitions(table, boundaries, sort_key):
+    partitions = []
+
+    # For each boundary value, count the number of items that are less
+    # than it. Since the block is sorted, these counts partition the items
+    # such that boundaries[i] <= x < boundaries[i + 1] for each x in
+    # partition[i]. If `descending` is true, `boundaries` would also be
+    # in descending order and we only need to count the number of items
+    # *greater than* the boundary value instead.
+    bounds = [
+        find_partition_index(table, boundary, sort_key) for boundary in boundaries
+    ]
+
+    last_idx = 0
+    for idx in bounds:
+        partitions.append(table[last_idx:idx])
+        last_idx = idx
+    partitions.append(table[last_idx:])
+    return partitions
+
+
+def get_attribute_from_class_name(class_name: str) -> Any:
+    """Get Python attribute from the provided class name.
+
+    The caller needs to make sure the provided class name includes
+    full module name, and can be imported successfully.
+    """
+    from importlib import import_module
+
+    paths = class_name.split(".")
+    if len(paths) < 2:
+        raise ValueError(f"Cannot create object from {class_name}.")
+
+    module_name = ".".join(paths[:-1])
+    attribute_name = paths[-1]
+    return getattr(import_module(module_name), attribute_name)
+
+
+class Queue:
+    """A thread-safe queue implementation for multiple producers and consumers.
+
+    Provide `release()` to exit producer threads cooperatively for resource release.
+    """
+
+    def __init__(self, queue_size: int):
+        # The queue shared across multiple producer threads.
+        self._queue = deque()
+        # The boolean varilable to indicate whether producer threads should exit.
+        self._threads_exit = False
+        # The semaphore for producer threads to put item into queue.
+        self._producer_semaphore = threading.Semaphore(queue_size)
+        # The semaphore for consumer threads to get item from queue.
+        self._consumer_semaphore = threading.Semaphore(0)
+        # The mutex lock to guard access of `self._queue` and `self._threads_exit`.
+        self._mutex = threading.Lock()
+
+    def put(self, item: Any) -> bool:
+        """Put an item into the queue.
+
+        Block if necessary until a free slot is available in queue.
+        This method is called by producer threads.
+
+        Returns:
+            True if the caller thread should exit immediately.
+        """
+        self._producer_semaphore.acquire()
+        with self._mutex:
+            if self._threads_exit:
+                return True
+            else:
+                self._queue.append(item)
+        self._consumer_semaphore.release()
+        return False
+
+    def get(self) -> Any:
+        """Remove and return an item from the queue.
+
+        Block if necessary until an item is available in queue.
+        This method is called by consumer threads.
+        """
+        self._consumer_semaphore.acquire()
+        with self._mutex:
+            next_item = self._queue.popleft()
+        self._producer_semaphore.release()
+        return next_item
+
+    def release(self, num_threads: int):
+        """Release `num_threads` of producers so they would exit cooperatively."""
+        with self._mutex:
+            self._threads_exit = True
+        for _ in range(num_threads):
+            # NOTE: After Python 3.9+, Semaphore.release(n) can be used to
+            # release all threads at once.
+            self._producer_semaphore.release()
+
+    def qsize(self):
+        """Return the size of the queue."""
+        with self._mutex:
+            return len(self._queue)
+
+
+T = TypeVar("T")
+U = TypeVar("U")
+
+
+def make_async_gen(
+    base_iterator: Iterator[T],
+    fn: Callable[[Iterator[T]], Iterator[U]],
+    num_workers: int = 1,
+) -> Iterator[U]:
+    """Returns a new iterator with elements fetched from the base_iterator
+    in an async fashion using a threadpool.
+
+    Each thread in the threadpool will fetch data from the base_iterator in a
+    thread-safe fashion, and apply the provided `fn` computation concurrently.
+
+    Args:
+        base_iterator: The iterator to asynchronously fetch from.
+        fn: The function to run on the input iterator.
+        num_workers: The number of threads to use in the threadpool. Defaults to 1.
+
+    Returns:
+        An iterator with the same elements as outputted from `fn`.
+    """
+
+    if num_workers < 1:
+        raise ValueError("Size of threadpool must be at least 1.")
+
+    # Use a lock to fetch from the base_iterator in a thread-safe fashion.
+    def convert_to_threadsafe_iterator(base_iterator: Iterator[T]) -> Iterator[T]:
+        class ThreadSafeIterator:
+            def __init__(self, it):
+                self.lock = threading.Lock()
+                self.it = it
+
+            def __next__(self):
+                with self.lock:
+                    return next(self.it)
+
+            def __iter__(self):
+                return self
+
+        return ThreadSafeIterator(base_iterator)
+
+    thread_safe_generator = convert_to_threadsafe_iterator(base_iterator)
+
+    class Sentinel:
+        def __init__(self, thread_index: int):
+            self.thread_index = thread_index
+
+    output_queue = Queue(1)
+
+    # Because pulling from the base iterator cannot happen concurrently,
+    # we must execute the expensive computation in a separate step which
+    # can be parallelized via a threadpool.
+    def execute_computation(thread_index: int):
+        try:
+            for item in fn(thread_safe_generator):
+                if output_queue.put(item):
+                    # Return early when it's instructed to do so.
+                    return
+            output_queue.put(Sentinel(thread_index))
+        except Exception as e:
+            output_queue.put(e)
+
+    # Use separate threads to produce output batches.
+    threads = [
+        threading.Thread(target=execute_computation, args=(i,), daemon=True)
+        for i in range(num_workers)
+    ]
+
+    for thread in threads:
+        thread.start()
+
+    # Use main thread to consume output batches.
+    num_threads_finished = 0
+    try:
+        while True:
+            next_item = output_queue.get()
+            if isinstance(next_item, Exception):
+                raise next_item
+            if isinstance(next_item, Sentinel):
+                logger.debug(f"Thread {next_item.thread_index} finished.")
+                num_threads_finished += 1
+            else:
+                yield next_item
+            if num_threads_finished >= num_workers:
+                break
+    finally:
+        # Cooperatively exit all producer threads.
+        # This is to avoid these daemon threads hanging there with holding batches in
+        # memory, which can cause GRAM OOM easily. This can happen when caller breaks
+        # in the middle of iteration.
+        num_threads_alive = num_workers - num_threads_finished
+        if num_threads_alive > 0:
+            output_queue.release(num_threads_alive)
