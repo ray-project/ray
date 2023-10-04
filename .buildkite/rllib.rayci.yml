@@ -1,7 +1,7 @@
 group: rllib tests
 steps:
   - label: ":brain: rllib: benchmarks"
-    tags: ["RAY_CI_RLLIB_AFFECTED"]
+    tags: rllib
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --only-tags torch_2.x_only_benchmark
