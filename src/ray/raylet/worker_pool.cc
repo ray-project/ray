@@ -557,6 +557,13 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
                   ? "The process is still alive, probably it's hanging during start."
                   : "The process is dead, probably it crashed during start.");
 
+      if (first_job_send_register_client_reply_to_driver_) {
+        // We should also warn that since some workers are hanging, the first job callback
+        // if present might not be called yet. This might cause the first job to be
+        // still hanging.
+        RAY_LOG(WARNING) << "The first job callback is not called yet.";
+      }
+
       if (proc.IsAlive()) {
         proc.Kill();
       }
@@ -799,6 +806,8 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
         first_job_driver_wait_num_python_workers_) {
       if (first_job_send_register_client_reply_to_driver_) {
         first_job_send_register_client_reply_to_driver_();
+        RAY_LOG(INFO) << "Finished driver registration after all initial workers are "
+                         "registered to Raylet. First job's driver should be unblocked.";
         first_job_send_register_client_reply_to_driver_ = nullptr;
       }
     }
@@ -1565,6 +1574,10 @@ std::string WorkerPool::DebugString() const {
          << process_failed_pending_registration_;
   result << "\n- process_failed_runtime_env_setup_failed: "
          << process_failed_runtime_env_setup_failed_;
+  result << "\n- first job driver wait num python workers: "
+         << first_job_driver_wait_num_python_workers_;
+  result << "\n - first job registered num python workers: "
+         << first_job_registered_python_worker_count_;
   for (const auto &entry : states_by_lang_) {
     result << "\n- num " << Language_Name(entry.first)
            << " workers: " << entry.second.registered_workers.size();
