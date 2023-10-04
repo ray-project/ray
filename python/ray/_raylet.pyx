@@ -972,7 +972,6 @@ cdef class StreamingGeneratorExecutionContext:
         object generator_index
         # True if `initialize` API has been called. False otherwise.
         object _is_initialized
-        object shield
         # -- Arguments that are passed. See the docstring for details --
         object generator
         CObjectID generator_id
@@ -1044,11 +1043,7 @@ cdef class StreamingGeneratorExecutionContext:
         self.streaming_generator_returns = streaming_generator_returns
         self.is_retryable_error = is_retryable_error
         self.application_error = application_error
-        self.should_retry_exceptions, = should_retry_exceptions
-        # It is used to prevent task from cancelled while running
-        # cpp code in a different thread.
-        self.shield = threading.Event()
-        self.shield.set()
+        self.should_retry_exceptions = should_retry_exceptions
         return self
 
 
@@ -1073,82 +1068,77 @@ cdef report_streaming_generator_output(
             generator is done being used). False otherwise.
     """
     worker = ray._private.worker.global_worker
-    context.shield.clear()
 
     cdef:
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
 
-    try:
-        if isinstance(output_or_exception, Exception):
-            create_generator_error_object(
-                output_or_exception,
-                worker,
-                context.task_type,
-                context.caller_address,
-                context.task_id,
-                context.serialized_retry_exception_allowlist,
-                context.function_name,
-                context.function_descriptor,
-                context.title,
-                context.actor,
-                context.actor_id,
-                context.return_size,
-                context.generator_index,
-                context.is_async,
-                context.should_retry_exceptions,
-                &return_obj,
-                context.is_retryable_error,
-                context.application_error
-            )
+    if isinstance(output_or_exception, Exception):
+        create_generator_error_object(
+            output_or_exception,
+            worker,
+            context.task_type,
+            context.caller_address,
+            context.task_id,
+            context.serialized_retry_exception_allowlist,
+            context.function_name,
+            context.function_descriptor,
+            context.title,
+            context.actor,
+            context.actor_id,
+            context.return_size,
+            context.generator_index,
+            context.is_async,
+            context.should_retry_exceptions,
+            &return_obj,
+            context.is_retryable_error,
+            context.application_error
+        )
 
-            context.streaming_generator_returns[0].push_back(
-                c_pair[CObjectID, c_bool](
-                    return_obj.first,
-                    is_plasma_object(return_obj.second)))
+        context.streaming_generator_returns[0].push_back(
+            c_pair[CObjectID, c_bool](
+                return_obj.first,
+                is_plasma_object(return_obj.second)))
 
-            CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-                return_obj,
-                context.generator_id,
-                context.caller_address,
-                context.generator_index,
-                context.attempt_number)
-            context.generator_index += 1
-            return True
-        else:
-            # Report the intermediate result if there was no error.
-            create_generator_return_obj(
-                output_or_exception,
-                context.generator_id,
-                worker,
-                context.caller_address,
-                context.task_id,
-                context.return_size,
-                context.generator_index,
-                context.is_async,
-                &return_obj)
-            # Del output here so that we can GC the memory
-            # usage asap.
-            del output_or_exception
+        CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+            return_obj,
+            context.generator_id,
+            context.caller_address,
+            context.generator_index,
+            context.attempt_number)
+        context.generator_index += 1
+        return True
+    else:
+        # Report the intermediate result if there was no error.
+        create_generator_return_obj(
+            output_or_exception,
+            context.generator_id,
+            worker,
+            context.caller_address,
+            context.task_id,
+            context.return_size,
+            context.generator_index,
+            context.is_async,
+            &return_obj)
+        # Del output here so that we can GC the memory
+        # usage asap.
+        del output_or_exception
+        context.streaming_generator_returns[0].push_back(
+            c_pair[CObjectID, c_bool](
+                return_obj.first,
+                is_plasma_object(return_obj.second)))
 
-            context.streaming_generator_returns[0].push_back(
-                c_pair[CObjectID, c_bool](
-                    return_obj.first,
-                    is_plasma_object(return_obj.second)))
-
-            logger.debug(
-                "Writes to a ObjectRefStream of an "
-                "index {}".format(context.generator_index))
-            CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-                return_obj,
-                context.generator_id,
-                context.caller_address,
-                context.generator_index,
-                context.attempt_number)
-            context.generator_index += 1
-            return False
-    finally:
-        context.shield.set()
+        logger.debug(
+            "Writes to a ObjectRefStream of an "
+            "index {}".format(context.generator_index))
+        CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+            return_obj,
+            context.generator_id,
+            context.caller_address,
+            context.generator_index,
+            context.attempt_number)
+        context.generator_index += 1
+        return False
 
 
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
@@ -1228,14 +1218,11 @@ async def execute_streaming_generator_async(
         # Run it in a separate thread to that we can
         # avoid blocking the event loop when serializing
         # the output (which has nogil).
-        logger.error(f"report_streaming_generator_output start {context.task_id}")
-        fut = asyncio.shield(loop.run_in_executor(
+        done = await loop.run_in_executor(
             worker.core_worker.get_thread_pool_for_async_event_loop(),
             report_streaming_generator_output,
             output_or_exception,
-            context))
-        logger.error(f"report_streaming_generator_output end {context.task_id}")
-        done = await fut
+            context)
         if done:
             break
 
@@ -1684,10 +1671,6 @@ cdef void execute_task(
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
                                 task_id)
-                            # While the cpp code is running in a different thread,
-                            # this is blocked.
-                            context.shield.wait()
-                            logger.error("SANG-TODO the whole task finished.")
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -1817,7 +1800,6 @@ cdef void execute_task(
                     returns)
 
         except Exception as e:
-            logger.exception(e)
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, caller_address, returns, application_error)
@@ -4289,20 +4271,28 @@ cdef class CoreWorker:
         # the max number of callstacks is limited in direct actor
         # transport with max_concurrency flag.
         increase_recursion_limit()
+        # It is the event that's used to notify if the
+        # async function is terminated. It is needed because
+        # the future.result() can return while the async func is
+        # running if futuren.cacnel() is called.
+        async_func_finished_event = threading.Event()
 
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
 
         async def async_func():
-            if task_id:
-                async_task_id.set(task_id)
+            try:
+                if task_id:
+                    async_task_id.set(task_id)
 
-            if inspect.isawaitable(func_or_coro):
-                coroutine = func_or_coro
-            else:
-                coroutine = func_or_coro(*args, **kwargs)
+                if inspect.isawaitable(func_or_coro):
+                    coroutine = func_or_coro
+                else:
+                    coroutine = func_or_coro(*args, **kwargs)
 
-            return await coroutine
+                return await coroutine
+            finally:
+                async_func_finished_event.set()
 
         future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
         if task_id:
@@ -4321,6 +4311,13 @@ cdef class CoreWorker:
             if task_id:
                 with self._task_id_to_future_lock:
                     self._task_id_to_future.pop(task_id)
+            # Wait until the function is actually finished.
+            # future.result() can return before the function
+            # finishes if future.cancel() is called.
+            # If we don't wait here, it can have thread-safety
+            # issue because the coroutine can still run while
+            # we are cleaning up the states for this task.
+            async_func_finished_event.wait()
         return result
 
     def stop_and_join_asyncio_threads_if_exist(self):
