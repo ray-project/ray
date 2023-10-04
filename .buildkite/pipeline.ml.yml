@@ -493,7 +493,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/alpha_star && pip install -r requirements.txt && pip install -e .)
+    - (cd rllib_contrib/alpha_star && pip install -r requirements.txt && pip install -e ".[development"])
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/alpha_star/tests/
     - python rllib_contrib/alpha_star/examples/multi-agent-cartpole-alpha-star.py --run-as-test
@@ -531,10 +531,10 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
-    - mkdir -p /root/.mujoco && \
-      wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz && \
-      mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/. && \
-      (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
+    - mkdir -p /root/.mujoco
+    - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+    - mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
+    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
     - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin
     - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development"])
     - ./ci/env/env_info.sh
@@ -547,10 +547,22 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/pg && pip install -r requirements.txt && pip install -e .)
+    - (cd rllib_contrib/pg && pip install -r requirements.txt && pip install -e ".[development"])
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/pg/tests/
     - python rllib_contrib/pg/examples/pg_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: QMIX Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/qmix && pip install -r requirements.txt && pip install -e ".[development"])
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/qmix/tests/
+    - python rllib_contrib/qmix/examples/qmix_two_step_game.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: R2D2 Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -571,7 +583,7 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/td3 && pip install -r requirements.txt && pip install -e .)
+    - (cd rllib_contrib/td3 && pip install -r requirements.txt && pip install -e ".[development"])
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/td3/tests/
     - python rllib_contrib/td3/examples/td3_pendulum_v1.py --run-as-test
