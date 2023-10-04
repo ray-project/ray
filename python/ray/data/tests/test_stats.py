@@ -1354,7 +1354,7 @@ Dataset memory:
     ds = (
         ray.data.range(1000 * 80 * 80 * 4)
         .map_batches(lambda x: x)
-        .random_shuffle()
+        .materialize()
         .map_batches(lambda x: x)
         .materialize()
     )
