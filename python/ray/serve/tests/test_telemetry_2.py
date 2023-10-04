@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve.tests.utils import (
+from ray.serve.tests.common.utils import (
     check_ray_started,
     check_telemetry_not_recorded,
     check_telemetry_recorded,

@@ -137,6 +137,7 @@ class JobSubmissionClient(SubmissionClient):
         submission_id: Optional[str] = None,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
@@ -170,6 +171,9 @@ class JobSubmissionClient(SubmissionClient):
             entrypoint_num_gpus: The quantity of GPUs to reserve for the execution
                 of the entrypoint command, separately from any tasks or actors launched
                 by it. Defaults to 0.
+            entrypoint_memory: The quantity of memory to reserve for the
+                execution of the entrypoint command, separately from any tasks or
+                actors launched by it. Defaults to 0.
             entrypoint_resources: The quantity of custom resources to reserve for the
                 execution of the entrypoint command, separately from any tasks or
                 actors launched by it.
@@ -196,6 +200,14 @@ class JobSubmissionClient(SubmissionClient):
                 "running Ray 2.2 or higher.",
             )
 
+        if entrypoint_memory:
+            self._check_connection_and_version(
+                min_version="2.8",
+                version_error_message="`entrypoint_memory` kwarg "
+                "is not supported on the Ray cluster. Please ensure the cluster is "
+                "running Ray 2.8 or higher.",
+            )
+
         runtime_env = runtime_env or {}
         metadata = metadata or {}
         metadata.update(self._default_metadata)
@@ -214,6 +226,7 @@ class JobSubmissionClient(SubmissionClient):
             metadata=metadata,
             entrypoint_num_cpus=entrypoint_num_cpus,
             entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
         )
 

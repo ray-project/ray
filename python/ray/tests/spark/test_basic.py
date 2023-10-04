@@ -133,6 +133,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
         try:
             ray_temp_root_dir = tempfile.mkdtemp(dir="/tmp")
             collect_log_to_path = tempfile.mkdtemp(dir="/tmp")
+            # Test the case that `collect_log_to_path` directory does not exist.
+            shutil.rmtree(collect_log_to_path, ignore_errors=True)
             setup_ray_cluster(
                 num_worker_nodes=MAX_NUM_WORKER_NODES,
                 collect_log_to_path=collect_log_to_path,
