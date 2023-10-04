@@ -28,6 +28,7 @@ _op_name_white_list = [
     "ReadTFRecord",
     "ReadBinary",
     "ReadCustom",
+    "ReadTorch",
     # From
     "FromArrow",
     "FromItems",
