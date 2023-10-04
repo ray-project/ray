@@ -2930,7 +2930,10 @@ def check_health(address: str, timeout=2, skip_version_check=False):
         Raises an exception otherwise.
     """
 
-    gcs_address, gcs_port = address.split(":")
+    tokens = address.rsplit(":", 1)
+    if len(tokens) != 2:
+        raise ValueError("Invalid address: {}. Expect 'ip:port'".format(address))
+    gcs_address, gcs_port = tokens
 
     cdef:
         c_string c_gcs_address = gcs_address
