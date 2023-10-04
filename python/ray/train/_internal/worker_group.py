@@ -10,6 +10,7 @@ from ray.actor import ActorHandle
 from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
+from ray.data.context import DataContext
 
 T = TypeVar("T")
 
@@ -17,7 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 class RayTrainWorker:
-    """A class to execute arbitrary functions. Does not hold any state."""
+    """A class to execute arbitrary functions. Does not hold any state.
+    Args:
+        data_context: The DataContext from the driver, to be propagated to this worker.
+            If not specified, default values for DataContext will be used.
+    """
+
+    def __init__(self, data_context: Optional[DataContext] = None):
+        if data_context:
+            DataContext._set_current(data_context)
 
     def __execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
