@@ -16,7 +16,7 @@ Merging: a merge task would receive a block from every worker that consists
 of items in a certain range. It then merges the sorted blocks into one sorted
 block and becomes part of the new, sorted dataset.
 """
-from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
@@ -31,12 +31,68 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
+if TYPE_CHECKING:
+    import pyarrow
+
 T = TypeVar("T")
 
-# Data can be sorted by value (None), a list of columns and
-# ascending/descending orders (List), or a custom transform function
-# (Callable).
-SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
+
+class SortKey:
+    """SortKey class to convert between different sort args formats."""
+
+    def __init__(
+        self,
+        key: Optional[Union[str, List[str]]] = None,
+        descending: Union[bool, List[bool]] = False,
+    ):
+        if key is None:
+            key = []
+        if isinstance(key, str):
+            key = [key]
+        if not (isinstance(key, list) and all(isinstance(k, str) for k in key)):
+            raise ValueError(
+                f"Key must be a string or a list of strings, but got {key}."
+            )
+        if isinstance(descending, bool):
+            descending = [descending for _ in key]
+        elif isinstance(descending, list):
+            if len(descending) != len(key):
+                raise ValueError(
+                    "Length of `descending` does not match the length of the key."
+                )
+            if len(set(descending)) != 1:
+                raise ValueError("Sorting with mixed key orders not supported yet.")
+        self._columns = key
+        self._descending = descending
+
+    def get_columns(self) -> List[str]:
+        return self._columns
+
+    def get_descending(self) -> bool:
+        return self._descending[0]
+
+    def to_arrow_sort_args(self) -> List[Tuple[str, str]]:
+        return [
+            (key, "descending" if self._descending[0] else "ascending")
+            for key in self._columns
+        ]
+
+    def to_pandas_sort_args(self) -> Tuple[List[str], bool]:
+        return self._columns, not self._descending[0]
+
+    def validate_schema(self, schema: Optional[Union[type, "pyarrow.lib.Schema"]]):
+        """Check the key function is valid on the given schema."""
+        if schema is None:
+            # Dataset is empty/cleared, validation not possible.
+            return
+
+        if self._columns and len(schema.names) > 0:
+            for column in self._columns:
+                if column not in schema.names:
+                    raise ValueError(
+                        "The column '{}' does not exist in the "
+                        "schema '{}'.".format(column, schema)
+                    )
 
 
 class _SortOp(ShuffleOp):
@@ -46,13 +102,10 @@ class _SortOp(ShuffleOp):
         block: Block,
         output_num_blocks: int,
         boundaries: List[T],
-        key: SortKeyT,
-        descending: bool,
+        sort_key: SortKey,
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
-        out = BlockAccessor.for_block(block).sort_and_partition(
-            boundaries, key, descending
-        )
+        out = BlockAccessor.for_block(block).sort_and_partition(boundaries, sort_key)
         meta = BlockAccessor.for_block(block).get_metadata(
             input_files=None, exec_stats=stats.build()
         )
@@ -60,13 +113,12 @@ class _SortOp(ShuffleOp):
 
     @staticmethod
     def reduce(
-        key: SortKeyT,
-        descending: bool,
+        sort_key: SortKey,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
         return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
-            mapper_outputs, key, descending
+            mapper_outputs, sort_key
         )
 
 
@@ -80,23 +132,24 @@ class PushBasedSortOp(_SortOp, PushBasedShufflePlan):
 
 def sample_boundaries(
     blocks: List[ObjectRef[Block]],
-    key: SortKeyT,
+    sort_key: SortKey,
     num_reducers: int,
     ctx: Optional[TaskContext] = None,
 ) -> List[T]:
     """
     Return (num_reducers - 1) items in ascending order from the blocks that
     partition the domain into ranges with approximately equally many elements.
+    Each boundary item is a tuple of a form (col1_value, col2_value, ...).
     """
-    # TODO(Clark): Support multiple boundary sampling keys.
-    if isinstance(key, list) and len(key) > 1:
-        raise ValueError("Multiple boundary sampling keys not supported.")
+    columns = sort_key.get_columns()
 
     n_samples = int(num_reducers * 10 / len(blocks))
 
     sample_block = cached_remote_fn(_sample_block)
 
-    sample_results = [sample_block.remote(block, n_samples, key) for block in blocks]
+    sample_results = [
+        sample_block.remote(block, n_samples, sort_key) for block in blocks
+    ]
 
     should_close_bar = True
     if ctx is not None and ctx.sub_progress_bar_dict is not None:
@@ -120,14 +173,23 @@ def sample_boundaries(
     for sample in samples:
         builder.add_block(sample)
     samples = builder.build()
-    column = key[0][0] if isinstance(key, list) else None
-    sample_items = BlockAccessor.for_block(samples).to_numpy(column)
-    sample_items = np.sort(sample_items)
-    ret = [
-        np.quantile(sample_items, q, interpolation="nearest")
-        for q in np.linspace(0, 1, num_reducers)
+    sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
+    # Compute sorted indices of the samples. In np.lexsort last key is the
+    # primary key hence have to reverse the order.
+    indices = np.lexsort(list(reversed(list(sample_dict.values()))))
+    # Sort each column by indices, and calculate q-ths quantile items.
+    # Ignore the 1st item as it's not required for the boundary
+    for k, v in sample_dict.items():
+        sorted_v = v[indices]
+        sample_dict[k] = [
+            np.quantile(sorted_v, q, interpolation="nearest")
+            for q in np.linspace(0, 1, num_reducers)
+        ][1:]
+    # Return the list of boundaries as tuples
+    # of a form (col1_value, col2_value, ...)
+    return [
+        tuple(sample_dict[k][i] for k in sample_dict) for i in range(num_reducers - 1)
     ]
-    return ret[1:]
 
 
 # Note: currently the map_groups() API relies on this implementation
@@ -135,8 +197,7 @@ def sample_boundaries(
 def sort_impl(
     blocks: BlockList,
     clear_input_blocks: bool,
-    key: SortKeyT,
-    descending: bool = False,
+    sort_key: SortKey,
     ctx: Optional[TaskContext] = None,
 ) -> Tuple[BlockList, dict]:
     stage_info = {}
@@ -144,18 +205,13 @@ def sort_impl(
     if len(blocks_list) == 0:
         return BlockList([], []), stage_info
 
-    if isinstance(key, str):
-        key = [(key, "descending" if descending else "ascending")]
-
-    if isinstance(key, list):
-        descending = key[0][1] == "descending"
-
     num_mappers = len(blocks_list)
     # Use same number of output partitions.
     num_reducers = num_mappers
     # TODO(swang): sample_boundaries could be fused with a previous stage.
-    boundaries = sample_boundaries(blocks_list, key, num_reducers, ctx)
-    if descending:
+    boundaries = sample_boundaries(blocks_list, sort_key, num_reducers, ctx)
+    _, ascending = sort_key.to_pandas_sort_args()
+    if not ascending:
         boundaries.reverse()
 
     context = DataContext.get_current()
@@ -163,9 +219,7 @@ def sort_impl(
         sort_op_cls = PushBasedSortOp
     else:
         sort_op_cls = SimpleSortOp
-    sort_op = sort_op_cls(
-        map_args=[boundaries, key, descending], reduce_args=[key, descending]
-    )
+    sort_op = sort_op_cls(map_args=[boundaries, sort_key], reduce_args=[sort_key])
     return sort_op.execute(
         blocks,
         num_reducers,
@@ -173,5 +227,5 @@ def sort_impl(
     )
 
 
-def _sample_block(block: Block, n_samples: int, key: SortKeyT) -> Block:
-    return BlockAccessor.for_block(block).sample(n_samples, key)
+def _sample_block(block: Block, n_samples: int, sort_key: SortKey) -> Block:
+    return BlockAccessor.for_block(block).sample(n_samples, sort_key)

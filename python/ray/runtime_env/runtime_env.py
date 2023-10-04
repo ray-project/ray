@@ -235,11 +235,11 @@ class RuntimeEnv(dict):
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
         env_vars: Environment variables to set.
-        worker_setup_hook: The setup hook that's called after workers
-            start and before tasks and actors are scheduled.
-            The value has to be a callable when passed to the job/task/actor.
+        worker_process_setup_hook: (Experimental) The setup hook that's
+            called after workers start and before Tasks and Actors are scheduled.
+            The value has to be a callable when passed to the Job, Task, or Actor.
             The callable is then exported and this value is converted to
-            the setup hook's function name for the observability purpose.
+            the setup hook's function name for observability.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
@@ -263,7 +263,7 @@ class RuntimeEnv(dict):
         # field which is not supported. We should remove it
         # with the test.
         "docker",
-        "worker_setup_hook",
+        "worker_process_setup_hook",
     }
 
     extensions_fields: Set[str] = {
@@ -281,7 +281,7 @@ class RuntimeEnv(dict):
         conda: Optional[Union[Dict[str, str], str]] = None,
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
-        worker_setup_hook: Optional[Union[Callable, str]] = None,
+        worker_process_setup_hook: Optional[Union[Callable, str]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         **kwargs,
@@ -303,8 +303,8 @@ class RuntimeEnv(dict):
             runtime_env["env_vars"] = env_vars
         if config is not None:
             runtime_env["config"] = config
-        if worker_setup_hook is not None:
-            runtime_env["worker_setup_hook"] = worker_setup_hook
+        if worker_process_setup_hook is not None:
+            runtime_env["worker_process_setup_hook"] = worker_process_setup_hook
 
         if runtime_env.get("java_jars"):
             runtime_env["java_jars"] = runtime_env.get("java_jars")
@@ -508,3 +508,53 @@ class RuntimeEnv(dict):
             if key not in self.known_fields:
                 result.append((key, value))
         return result
+
+
+def _merge_runtime_env(
+    parent: Optional[RuntimeEnv],
+    child: Optional[RuntimeEnv],
+    override: bool = False,
+) -> Optional[RuntimeEnv]:
+    """Merge the parent and child runtime environments.
+
+    If override = True, the child's runtime env overrides the parent's
+    runtime env in the event of a conflict.
+
+    Merging happens per key (i.e., "conda", "pip", ...), but
+    "env_vars" are merged per env var key.
+
+    It returns None if Ray fails to merge runtime environments because
+    of a conflict and `override = False`.
+
+    Args:
+        parent: Parent runtime env.
+        child: Child runtime env.
+        override: If True, the child's runtime env overrides
+            conflicting fields.
+    Returns:
+        The merged runtime env's if Ray successfully merges them.
+        None if the runtime env's conflict. Empty dict if
+        parent and child are both None.
+    """
+    if parent is None:
+        parent = {}
+    if child is None:
+        child = {}
+
+    parent = deepcopy(parent)
+    child = deepcopy(child)
+    parent_env_vars = parent.pop("env_vars", {})
+    child_env_vars = child.pop("env_vars", {})
+
+    if not override:
+        if set(parent.keys()).intersection(set(child.keys())):
+            return None
+        if set(parent_env_vars.keys()).intersection(set(child_env_vars.keys())):  # noqa
+            return None
+
+    parent.update(child)
+    parent_env_vars.update(child_env_vars)
+    if parent_env_vars:
+        parent["env_vars"] = parent_env_vars
+
+    return parent

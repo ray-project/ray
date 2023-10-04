@@ -18,10 +18,12 @@ from ray._private.runtime_env.conda_utils import (
     create_conda_env_if_needed,
     delete_conda_env,
     get_conda_activate_commands,
+    get_conda_env_list,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.validation import parse_and_validate_conda
 from ray._private.utils import (
     get_directory_size_bytes,
     get_master_wheel_url,
@@ -222,7 +224,7 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
             # we don't track them with URIs.
             uri = None
         elif isinstance(conda, dict):
-            uri = "conda://" + _get_conda_env_hash(conda_dict=conda)
+            uri = f"conda://{_get_conda_env_hash(conda_dict=conda)}"
         else:
             raise TypeError(
                 "conda field received by RuntimeEnvAgent must be "
@@ -269,6 +271,12 @@ class CondaPlugin(RuntimeEnvPlugin):
         self._installs_and_deletions_file_lock = os.path.join(
             self._resources_dir, "ray-conda-installs-and-deletions.lock"
         )
+        # A set of named conda environments (instead of yaml or dict)
+        # that are validated to exist.
+        # NOTE: It has to be only used within the same thread, which
+        # is an event loop.
+        # Also, we don't need to GC this field because it is pretty small.
+        self._validated_named_conda_env = set()
 
     def _get_path_from_hash(self, hash: str) -> str:
         """Generate a path from the hash of a conda or pip spec.
@@ -319,18 +327,34 @@ class CondaPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
-        if uri is None:
-            # The "conda" field is the name of an existing conda env, so no
-            # need to create one.
-            # TODO(architkulkarni): Try "conda activate" here to see if the
-            # env exists, and raise an exception if it doesn't.
+        if not runtime_env.has_conda():
             return 0
 
-        # Currently create method is still a sync process, to avoid blocking
-        # the loop, need to run this function in another thread.
-        # TODO(Catch-Bull): Refactor method create into an async process, and
-        # make this method running in current loop.
         def _create():
+            result = parse_and_validate_conda(runtime_env.get("conda"))
+
+            if isinstance(result, str):
+                # The conda env name is given.
+                # In this case, we only verify if the given
+                # conda env exists.
+
+                # If the env is already validated, do nothing.
+                if result in self._validated_named_conda_env:
+                    return 0
+
+                conda_env_list = get_conda_env_list()
+                envs = [Path(env).name for env in conda_env_list]
+                if result not in envs:
+                    raise ValueError(
+                        f"The given conda environment '{result}' "
+                        f"from the runtime env {runtime_env} doesn't "
+                        "exist from the output of `conda env list --json`. "
+                        "You can only specify an env that already exists. "
+                        f"Please make sure to create an env {result} "
+                    )
+                self._validated_named_conda_env.add(result)
+                return 0
+
             logger.debug(
                 "Setting up conda for runtime_env: " f"{runtime_env.serialize()}"
             )

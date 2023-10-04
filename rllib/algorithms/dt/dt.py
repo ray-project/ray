@@ -12,6 +12,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -81,7 +82,7 @@ class DTConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # Overwriting the trainer config default
+        # Overwriting the Algorithm config default
         # Number of training_step calls between evaluation rollouts.
         self.min_train_timesteps_per_iteration = 5000
 
@@ -291,6 +292,12 @@ class DTConfig(AlgorithmConfig):
             ), "replay_buffer's max_ep_len must equal rollout horizon."
 
 
+@Deprecated(
+    old="rllib/algorithms/dt/",
+    new="rllib_contrib/dt/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class DT(Algorithm):
     """Implements Decision Transformer: https://arxiv.org/abs/2106.01345."""
 

@@ -62,7 +62,7 @@ class BulkExecutor(Executor):
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
                         op.add_input(r, input_index=i)
-                op.inputs_done()
+                op.all_inputs_done()
                 output = _naive_run_until_complete(op)
             finally:
                 op.shutdown()
@@ -98,16 +98,20 @@ def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
         The list of output ref bundles for the operator.
     """
     output = []
-    tasks = op.get_work_refs()
+    tasks = op.get_active_tasks()
     if tasks:
         bar = ProgressBar(op.name, total=op.num_outputs_total())
         while tasks:
+            waitable_to_tasks = {task.get_waitable(): task for task in tasks}
             done, _ = ray.wait(
-                tasks, num_returns=len(tasks), fetch_local=True, timeout=0.1
+                list(waitable_to_tasks.keys()),
+                num_returns=len(tasks),
+                fetch_local=True,
+                timeout=0.1,
             )
             for ready in done:
-                op.notify_work_completed(ready)
-            tasks = op.get_work_refs()
+                waitable_to_tasks[ready].on_waitable_ready()
+            tasks = op.get_active_tasks()
             while op.has_next():
                 bar.update(1)
                 output.append(op.get_next())

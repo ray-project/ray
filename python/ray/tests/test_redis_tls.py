@@ -46,9 +46,16 @@ openssl dhparam -out {str(tmp_path)}/tls/redis.dh 2048
     yield tmp_path
 
 
+@pytest.fixture
+def setup_replicas(request, monkeypatch):
+    monkeypatch.setenv("TEST_EXTERNAL_REDIS_REPLICAS", str(request.param))
+    yield
+
+
 @pytest.mark.skipif(not enable_external_redis(), reason="Only work for redis mode")
 @pytest.mark.skipif(sys.platform != "linux", reason="Only work in linux")
-def test_redis_tls(setup_tls, ray_start_cluster_head):
+@pytest.mark.parametrize("setup_replicas", [1, 3], indirect=True)
+def test_redis_tls(setup_tls, setup_replicas, ray_start_cluster_head):
     @ray.remote
     def hello():
         return "world"

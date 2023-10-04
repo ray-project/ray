@@ -6,7 +6,11 @@ TD3 paper.
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 
 
 class TD3Config(DDPGConfig):
@@ -101,6 +105,12 @@ class TD3Config(DDPGConfig):
         # fmt: on
 
 
+@Deprecated(
+    old="rllib/algorithms/td3/",
+    new="rllib_contrib/td3/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class TD3(DDPG):
     @classmethod
     @override(DDPG)

@@ -15,13 +15,21 @@ class LambdaDefaultDict(defaultdict):
 
     Example:
 
-    >>> # In this example, if you try to access a key that doesn't exist, it will call
-    >>> # the lambda function, passing it the missing key. The function will return a
-    >>> # string, which will be stored in the dictionary under that key.
-    >>> default_dict = LambdaDefaultDict(lambda missing_key: f"Value for {missing_key}")
-    >>> print(default_dict["a"])
-    ... "Value for a"
-    """
+        In this example, if you try to access a key that doesn't exist, it will call
+        the lambda function, passing it the missing key. The function will return a
+        string, which will be stored in the dictionary under that key.
+
+        .. testcode::
+
+            from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
+
+            default_dict = LambdaDefaultDict(lambda missing_key: f"Value for {missing_key}")
+            print(default_dict["a"])
+
+        .. testoutput::
+
+            Value for a
+    """  # noqa: E501
 
     def __init__(self, default_factory: Callable[[str], Any], *args, **kwargs):
         """Initializes a LambdaDefaultDict instance.

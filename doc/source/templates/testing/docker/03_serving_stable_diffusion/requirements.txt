@@ -1,8 +1,8 @@
-accelerate==0.19.0
-diffusers==0.15.1
-fastapi==0.95.1
+accelerate==0.20.3
+diffusers==0.17.1
+fastapi==0.97.0
 ipywidgets
 matplotlib==3.7.1
 numpy==1.24.3
-torch==2.0.0
-transformers==4.28.1
+torch==2.0.1
+transformers==4.30.1

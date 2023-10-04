@@ -64,7 +64,8 @@ We provide ``ray_train.py`` (`code <https://github.com/ray-project/ray/tree/mast
 
 Two main components of ``ray_train.py`` are a ``RayDistributedActor`` class and a function ``run_fault_tolerant_loop()``. The ``RayDistributedActor`` sets proper arguments for different ray actor processes, adds a checkpoint hook to enable the process to make use of new available GPUs, and calls the ``main`` of Fairseq:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
   import math
   import copy
@@ -150,7 +151,8 @@ Two main components of ``ray_train.py`` are a ``RayDistributedActor`` class and 
 
 The function ``run_fault_tolerant_loop()`` provides fault-tolerance by catching failure and restart the computation:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
   def run_fault_tolerant_loop():
       """Entrance function to the fairseq library, providing fault-tolerance."""
@@ -202,7 +204,8 @@ The function ``run_fault_tolerant_loop()`` provides fault-tolerance by catching 
 
 In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`` adds Ray and fault-tolerant training related arguments to the argument parser:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
   def add_ray_args(parser):
       """Add ray and fault-tolerance related parser arguments to the parser."""
@@ -226,8 +229,8 @@ In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`
 
 ``set_num_resources()`` sets the distributed world size to be the number of resources. Also if we want to use GPUs but the current number of GPUs is 0, the function will wait until there is GPU available:
 
-.. code-block:: python
-
+.. testcode::
+    :skipif: True
 
   def set_num_resources(args):
       """Get the number of resources and set the corresponding fields."""
@@ -245,7 +248,8 @@ In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`
 
 ``set_batch_size()`` keeps the effective batch size to be relatively the same given different number of GPUs:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
   def set_batch_size(args):
       """Fixes the total batch_size to be agnostic to the GPU count."""

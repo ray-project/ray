@@ -24,6 +24,5 @@ repeat-after-me-ppo-w-lstm:
             max_seq_len: 20
             fcnet_hiddens: [64]
             vf_share_layers: true
-        # TODO (Kourosh): Enable when LSTMs are supported
         _enable_learner_api: false
         _enable_rl_module_api: false

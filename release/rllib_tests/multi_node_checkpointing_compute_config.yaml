@@ -9,7 +9,7 @@ head_node_type:
 
 worker_node_types:
     - name: worker_node
-      instance_type: g4dn.xlarge
+      instance_type: g3s.xlarge
       min_workers: 2
       max_workers: 2
       use_spot: false
