@@ -51,9 +51,9 @@ RAY_INIT_ADDRESS_HELP_STR = (
     "using the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard agent (defaults to "
-    "http://localhost:52365). Can also be specified using the "
-    "RAY_AGENT_ADDRESS environment variable."
+    "Address to use to query the Ray dashboard head (defaults to "
+    "http://localhost:8265). Can also be specified using the "
+    "RAY_DASHBOARD_ADDRESS environment variable."
 )
 
 
@@ -240,7 +240,7 @@ def start(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -579,7 +579,7 @@ def run(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -652,7 +652,7 @@ def config(address: str, name: Optional[str]):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -708,7 +708,7 @@ def status(address: str, name: Optional[str]):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
