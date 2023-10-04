@@ -33,10 +33,15 @@ def check_if_nsys_installed():
 class NsightPlugin(RuntimeEnvPlugin):
     name = "nsight"
 
-    def __init__(self, resource_dir: str):
+    def __init__(self, resources_dir: str):
         self.nsys_cmd = []
-        self._resources_dir = os.path.join(resource_dir, "nsight")
+        self._resources_dir = os.path.join(resources_dir, "nsight")
         try_to_create_directory(self._resources_dir)
+
+        # replace this with better way to get logs dir
+        session_dir, runtime_dir = os.path.split(resources_dir)
+        self._logs_dir = os.path.join(session_dir + "/logs/nsight")
+        try_to_create_directory(self._logs_dir)
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -46,6 +51,7 @@ class NsightPlugin(RuntimeEnvPlugin):
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         local_dir_size = get_directory_size_bytes(local_dir)
 
+        # move package to head node
         deleted = delete_package(uri, self._resources_dir)
         if not deleted:
             logger.warning(f"Tried to delete nonexistent URI: {uri}.")
@@ -76,7 +82,7 @@ class NsightPlugin(RuntimeEnvPlugin):
             "--cudabacktrace=true",
             "--stop-on-exit=true",
             "-o",
-            f"{self._resources_dir}/worker_process_%p",
+            f"{self._logs_dir}/worker_process_%p",
         ]
         self.nsys_cmd += ["-t " + ",".join(nsight_flags)]
         return 0
