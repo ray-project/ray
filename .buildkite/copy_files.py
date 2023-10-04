@@ -103,6 +103,10 @@ if __name__ == "__main__":
     parser.add_argument("--destination", type=str)
     args = parser.parse_args()
 
+    if os.environ.get("RAYCI_SKIP_UPLOAD", "false") == "true":
+        print("Skipping upload.")
+        sys.exit(0)
+
     assert args.destination in {
         "branch_jars",
         "branch_wheels",

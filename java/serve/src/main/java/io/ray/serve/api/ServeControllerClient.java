@@ -40,8 +40,6 @@ public class ServeControllerClient {
 
   private String controllerName;
 
-  private boolean detached; // TODO if non-detached, shutdown serve when process exits.
-
   private boolean shutdown;
 
   private Map<String, RayServeHandle> handleCache = new ConcurrentHashMap<>();
@@ -49,11 +47,9 @@ public class ServeControllerClient {
   private String rootUrl;
 
   @SuppressWarnings("unchecked")
-  public ServeControllerClient(
-      BaseActorHandle controller, String controllerName, boolean detached) {
+  public ServeControllerClient(BaseActorHandle controller, String controllerName) {
     this.controller = controller;
     this.controllerName = controllerName;
-    this.detached = detached;
     this.rootUrl =
         controller instanceof PyActorHandle
             ? (String)
@@ -308,7 +304,7 @@ public class ServeControllerClient {
         ServeProtoUtil.bytesToProto(
             (byte[])
                 ((PyActorHandle) controller)
-                    .task(PyActorMethod.of("list_deployments"))
+                    .task(PyActorMethod.of("list_deployments_v1"))
                     .remote()
                     .get(),
             DeploymentRouteList::parseFrom);

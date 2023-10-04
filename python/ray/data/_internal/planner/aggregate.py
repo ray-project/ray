@@ -15,6 +15,7 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
+from ray.data._internal.sort import SortKey
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.aggregate import AggregateFn
@@ -58,7 +59,7 @@ def generate_aggregate_fn(
             # Sample boundaries for aggregate key.
             boundaries = SortTaskSpec.sample_boundaries(
                 blocks,
-                [(key, "ascending")] if isinstance(key, str) else key,
+                SortKey(key),
                 num_outputs,
             )
 

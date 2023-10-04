@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/common/ray_object.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "src/ray/protobuf/node_manager.pb.h"

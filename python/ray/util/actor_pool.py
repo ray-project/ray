@@ -1,7 +1,12 @@
-from typing import List, Callable, Any
+from typing import TYPE_CHECKING, Any, Callable, List, TypeVar
 
 import ray
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    import ray.actor
+
+V = TypeVar("V")
 
 
 @DeveloperAPI
@@ -33,7 +38,9 @@ class ActorPool:
     """
 
     def __init__(self, actors: list):
-        ray._private.usage.usage_lib.record_library_usage("util.ActorPool")
+        from ray._private.usage.usage_lib import record_library_usage
+
+        record_library_usage("util.ActorPool")
 
         # actors to be used
         self._idle_actors = list(actors)
@@ -53,7 +60,7 @@ class ActorPool:
         # next work depending when actors free
         self._pending_submits = []
 
-    def map(self, fn: Callable[[Any], Any], values: List[Any]):
+    def map(self, fn: Callable[["ray.actor.ActorHandle", V], Any], values: List[V]):
         """Apply the given function in parallel over the actors and values.
 
         This returns an ordered iterator that will return results of the map
@@ -107,7 +114,9 @@ class ActorPool:
 
         return get_generator()
 
-    def map_unordered(self, fn: Callable[[Any], Any], values: List[Any]):
+    def map_unordered(
+        self, fn: Callable[["ray.actor.ActorHandle", V], Any], values: List[V]
+    ):
         """Similar to map(), but returning an unordered iterator.
 
         This returns an unordered iterator that will return results of the map

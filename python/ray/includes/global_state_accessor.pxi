@@ -18,6 +18,13 @@ from ray.includes.global_state_accessor cimport (
     RedisDelKeySync,
 )
 
+from ray.includes.optional cimport (
+    optional,
+    nullopt,
+    make_optional
+)
+
+
 from libcpp.string cimport string as c_string
 from libcpp.memory cimport make_unique as c_make_unique
 
@@ -76,6 +83,7 @@ cdef class GlobalStateAccessor:
                 "RayletSocketName": c_node_info.raylet_socket_name().decode(),
                 "MetricsExportPort": c_node_info.metrics_export_port(),
                 "NodeName": c_node_info.node_name().decode(),
+                "RuntimeEnvAgentPort": c_node_info.runtime_env_agent_port(),
             }
             node_info["alive"] = node_info["Alive"]
             c_resources = PythonGetResourcesTotal(c_node_info)
@@ -88,6 +96,15 @@ cdef class GlobalStateAccessor:
             node_info["Labels"] = \
                 {key.decode(): value.decode() for key, value in c_labels}
             results.append(node_info)
+        return results
+
+    def get_draining_nodes(self):
+        cdef c_vector[CNodeID] draining_nodes
+        with nogil:
+            draining_nodes = self.inner.get().GetDrainingNodes()
+        results = set()
+        for draining_node in draining_nodes:
+            results.add(ray._private.utils.binary_to_hex(draining_node.Binary()))
         return results
 
     def get_all_available_resources(self):
@@ -111,10 +128,20 @@ cdef class GlobalStateAccessor:
             return c_string(result.get().data(), result.get().size())
         return None
 
-    def get_actor_table(self):
+    def get_actor_table(self, job_id, actor_state_name):
         cdef c_vector[c_string] result
+        cdef optional[CActorID] cactor_id = nullopt
+        cdef optional[CJobID] cjob_id
+        cdef optional[c_string] cactor_state_name
+        cdef c_string c_name
+        if job_id is not None:
+            cjob_id = make_optional[CJobID](CJobID.FromBinary(job_id.binary()))
+        if actor_state_name is not None:
+            c_name = actor_state_name
+            cactor_state_name = make_optional[c_string](c_name)
         with nogil:
-            result = self.inner.get().GetAllActorInfo()
+            result = self.inner.get().GetAllActorInfo(
+                cactor_id, cjob_id, cactor_state_name)
         return result
 
     def get_actor_info(self, actor_id):
