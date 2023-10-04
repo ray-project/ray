@@ -1223,15 +1223,15 @@ async def execute_streaming_generator_async(
             # Run it in a separate thread to that we can
             # avoid blocking the event loop when serializing
             # the output (which has nogil).
-            done = await asyncio.shield(loop.run_in_executor(
+            done = await loop.run_in_executor(
                 worker.core_worker.get_thread_pool_for_async_event_loop(),
                 report_streaming_generator_output,
                 output_or_exception,
-                context))
+                context)
             if done:
                 break
     finally:
-        # We should not cancel until the coroutine is actually finished.
+        # Notify that the coroutine is actually finished.
         coroutine_complete_event.set()
 
 
@@ -1672,16 +1672,7 @@ cdef void execute_task(
                         context.initialize(outputs)
 
                         if is_async_gen:
-                            eventloop, _ = core_worker.get_event_loop(
-                                function_descriptor,
-                                name_of_concurrency_group_to_execute)
-                            # Due to Python's limitation,
-                            # execute_streaming_generator_async
-                            # can return and raise an CancelledError while coroutine
-                            # is still running, which causes various memory corruptions.
-                            # coroutine_complete_event is set when the coroutine
-                            # actually completes.
-                            coroutine_complete_event = asyncio.Event(loop=eventloop)
+                            coroutine_complete_event = threading.Event()
 
                             try:
                                 # Note that the report RPCs are called inside an
@@ -1696,13 +1687,15 @@ cdef void execute_task(
                                 # Due to Python's limitation,
                                 # execute_streaming_generator_async
                                 # can return and raise an exception while coroutine
-                                # is still running. cancel_shield is set when the
-                                # coroutine actually completes.
-                                core_worker.run_async_func_or_coro_in_event_loop(
-                                    coroutine_complete_event.wait,
-                                    function_descriptor,
-                                    name_of_concurrency_group_to_execute,
-                                    None)
+                                # is still running. wait for
+                                # coroutine_complete_event to avoid it.
+                                # TODO(sang): Currently, it is a blocking call.
+                                # Just in case, we limit this to 1 second.
+                                # However, this shouldn't block the thread long time
+                                # because it only happens upon cancel, and
+                                # when TaskCancelledError is raised, the task
+                                # is already cancelled.
+                                coroutine_complete_event.wait(1)
                                 raise
                         else:
                             execute_streaming_generator_sync(context)
@@ -4331,6 +4324,7 @@ cdef class CoreWorker:
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
+
         try:
             result = future.result()
         except concurrent.futures.CancelledError:
