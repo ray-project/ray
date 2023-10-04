@@ -392,6 +392,10 @@ class ServeControllerClient:
                 self._wait_for_deployment_deleted(name, "")
 
     @_ensure_connected
+    def set_cluster_scale(self, cluster_scale: float):
+        ray.get(self._controller.set_cluster_scale.remote(cluster_scale))
+
+    @_ensure_connected
     def get_deployment_info(
         self, name: str, app_name: str
     ) -> Tuple[DeploymentInfo, str]:
