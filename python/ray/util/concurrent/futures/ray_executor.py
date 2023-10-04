@@ -29,15 +29,17 @@ P = ParamSpec("P")
 if TYPE_CHECKING:
     from ray._private.worker import BaseContext
     from ray.actor import ActorHandle
-    from ray.util.state.common import TaskState
 
-from ray.util.state.common import TaskState
 
 class _PoolActor(TypedDict):
     actor: "ActorHandle"
     task_count: int
 
 # ------------------------------------------------------
+
+class ActorPoolType(Enum):
+    BALANCED = 0
+    ROUND_ROBIN = 1
 
 
 class _ActorPool(ABC):
@@ -85,13 +87,10 @@ class _ActorPool(ABC):
     def submit(self, fn: Callable[[], T]) -> Future[T]:
         ...
 
+class _ActorPoolBoilerPlate(_ActorPool):
 
-class _BalancedActorPool(_ActorPool):
-
-    """This class manages a pool of Ray actors by distributing tasks amongst
-    them in a simple round-robin fashion. Functions are executed remotely in
-    the actor pool using submit().
-
+    """
+    Boilerplate class for actor pools.
     ...
 
     Attributes
@@ -110,6 +109,19 @@ class _BalancedActorPool(_ActorPool):
         gracefully killed and replaced (for compatibility with
         concurrent.futures.ProcessPoolExecutor).
     """
+
+    def __init__(
+        self,
+        num_actors: int = 2,
+        initializer: Optional[Callable[..., Any]] = None,
+        initargs: tuple[Any, ...] = (),
+        max_tasks_per_actor: Optional[int] = None,
+    ) -> None:
+        self.max_tasks_per_actor = max_tasks_per_actor
+        self.num_actors = num_actors
+        self.initializer = initializer
+        self.initargs = initargs
+        return
 
     @property
     def max_tasks_per_actor(self) -> Optional[int]:
@@ -155,17 +167,62 @@ class _BalancedActorPool(_ActorPool):
         self._initargs = val
         return
 
-    def __init__(
-        self,
-        num_actors: int = 2,
-        initializer: Optional[Callable[..., Any]] = None,
-        initargs: tuple[Any, ...] = (),
-        max_tasks_per_actor: Optional[int] = None,
-    ) -> None:
-        self.max_tasks_per_actor = max_tasks_per_actor
-        self.num_actors = num_actors
-        self.initializer = initializer
-        self.initargs = initargs
+    def _build_actor(self) -> _PoolActor:
+        @ray.remote
+        class ExecutorActor:
+            def __init__(
+                self,
+                initializer: Optional[Callable[..., Any]] = None,
+                initargs: tuple[Any, ...] = (),
+            ) -> None:
+                self.initializer = initializer
+                self.initargs = initargs
+
+            def actor_function(self, fn: Callable[[], T]) -> T:
+                if self.initializer is not None:
+                    self.initializer(*self.initargs)
+                return fn()
+
+            def exit(self) -> None:
+                ray.actor.exit_actor()
+
+        actor = ExecutorActor.options().remote(  # type: ignore[attr-defined]
+            self.initializer, self.initargs
+        )
+        return {
+            "actor": actor,
+            "task_count": 0,
+        }
+
+
+class _BalancedActorPool(_ActorPoolBoilerPlate):
+
+    """This class manages a pool of Ray actors by distributing tasks amongst
+    them in a simple balanced fashion - actors with the fewest scheduled tasks
+    are prioritised. Functions are executed remotely in the actor pool using
+    submit().
+
+    ...
+
+    Attributes
+    -----------
+    num_actors : int
+        Specify the size of the actor pool to create.
+    initializer : Callable
+        A function that will be called remotely in the actor context before the
+        submitted task (for compatibility with
+        concurrent.futures.ThreadPoolExecutor).
+    initargs : tuple
+        Arguments for initializer (for compatibility with
+        concurrent.futures.ThreadPoolExecutor).
+    max_tasks_per_actor : int
+        The maximum number of tasks to be performed by an actor before it is
+        gracefully killed and replaced (for compatibility with
+        concurrent.futures.ProcessPoolExecutor).
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self.pool: list[_PoolActor] = [self._build_actor() for _ in range(self.num_actors)]
         return
 
@@ -227,33 +284,6 @@ class _BalancedActorPool(_ActorPool):
             self._kill_actor(i)
         return
 
-    def _build_actor(self) -> _PoolActor:
-        @ray.remote
-        class ExecutorActor:
-            def __init__(
-                self,
-                initializer: Optional[Callable[..., Any]] = None,
-                initargs: tuple[Any, ...] = (),
-            ) -> None:
-                self.initializer = initializer
-                self.initargs = initargs
-
-            def actor_function(self, fn: Callable[[], T]) -> T:
-                if self.initializer is not None:
-                    self.initializer(*self.initargs)
-                return fn()
-
-            def exit(self) -> None:
-                ray.actor.exit_actor()
-
-        actor = ExecutorActor.options().remote(  # type: ignore[attr-defined]
-            self.initializer, self.initargs
-        )
-        return {
-            "actor": actor,
-            "task_count": 0,
-        }
-
     def _replace_actor_if_max_tasks(self, pool_actor: _PoolActor) -> None:
         if self.max_tasks_per_actor is not None:
             if pool_actor["task_count"] >= self.max_tasks_per_actor:
@@ -277,7 +307,7 @@ class _BalancedActorPool(_ActorPool):
         pool_actor["actor"].exit.remote()
         return pool_actor["actor"]
 
-class _RoundRobinActorPool(_ActorPool):
+class _RoundRobinActorPool(_ActorPoolBoilerPlate):
 
     """This class manages a pool of Ray actors by distributing tasks amongst
     them in a simple round-robin fashion. Functions are executed remotely in
@@ -302,61 +332,9 @@ class _RoundRobinActorPool(_ActorPool):
         concurrent.futures.ProcessPoolExecutor).
     """
 
-    @property
-    def max_tasks_per_actor(self) -> Optional[int]:
-        return self._max_tasks_per_actor
 
-    @max_tasks_per_actor.setter
-    def max_tasks_per_actor(self, val: Optional[int]) -> None:
-        if val is not None:
-            if val < 1:
-                raise ValueError(
-                    f"max_tasks_per_child={val} was given. The argument \
-                    max_tasks_per_child must be >= 1 or None"
-                )
-        self._max_tasks_per_actor = val
-        return
-
-    @property
-    def num_actors(self) -> int:
-        return self._num_actors
-
-    @num_actors.setter
-    def num_actors(self, val: int) -> None:
-        if val < 1:
-            raise ValueError("Pool must contain at least one Actor")
-        self._num_actors = val
-        return
-
-    @property
-    def initializer(self) -> Optional[Callable[..., Any]]:
-        return self._initializer
-
-    @initializer.setter
-    def initializer(self, val: Optional[Callable[..., Any]]) -> None:
-        self._initializer = val
-        return
-
-    @property
-    def initargs(self) -> tuple[Any, ...]:
-        return self._initargs
-
-    @initargs.setter
-    def initargs(self, val: tuple[Any, ...]) -> None:
-        self._initargs = val
-        return
-
-    def __init__(
-        self,
-        num_actors: int = 2,
-        initializer: Optional[Callable[..., Any]] = None,
-        initargs: tuple[Any, ...] = (),
-        max_tasks_per_actor: Optional[int] = None,
-    ) -> None:
-        self.max_tasks_per_actor = max_tasks_per_actor
-        self.num_actors = num_actors
-        self.initializer = initializer
-        self.initargs = initargs
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self.pool: Dict[int, _PoolActor] = {
             i: self._build_actor() for i in range(self.num_actors)
         }
@@ -405,33 +383,6 @@ class _RoundRobinActorPool(_ActorPool):
             self._kill_actor(i)
         return
 
-    def _build_actor(self) -> _PoolActor:
-        @ray.remote
-        class ExecutorActor:
-            def __init__(
-                self,
-                initializer: Optional[Callable[..., Any]] = None,
-                initargs: tuple[Any, ...] = (),
-            ) -> None:
-                self.initializer = initializer
-                self.initargs = initargs
-
-            def actor_function(self, fn: Callable[[], T]) -> T:
-                if self.initializer is not None:
-                    self.initializer(*self.initargs)
-                return fn()
-
-            def exit(self) -> None:
-                ray.actor.exit_actor()
-
-        actor = ExecutorActor.options().remote(  # type: ignore[attr-defined]
-            self.initializer, self.initargs
-        )
-        return {
-            "actor": actor,
-            "task_count": 0,
-        }
-
     def _replace_actor_if_max_tasks(self) -> None:
         if self.max_tasks_per_actor is not None:
             if self.pool[self.index]["task_count"] >= self.max_tasks_per_actor:
@@ -456,10 +407,6 @@ class _RoundRobinActorPool(_ActorPool):
         pool_actor["actor"].exit.remote()
         return pool_actor["actor"]
 
-
-class ActorPoolType(Enum):
-    BALANCED = 0
-    ROUND_ROBIN = 1
 
 @PublicAPI(stability="alpha")  # type: ignore
 class RayExecutor(Executor):
