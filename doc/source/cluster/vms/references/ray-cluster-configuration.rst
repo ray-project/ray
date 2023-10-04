@@ -179,6 +179,8 @@ vSphere Config
 
             :ref:`credentials <cluster-configuration-vsphere-credentials>`:
                 :ref:`vSphere Credentials <cluster-configuration-vsphere-credentials-type>`
+            :ref:`frozen_vm <cluster-configuration-vsphere-frozen-vm>`:
+                :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
 
 .. _cluster-configuration-vsphere-credentials-type:
 
@@ -195,7 +197,25 @@ vSphere Credentials
             :ref:`password <cluster-configuration-vsphere-password>`: str
             :ref:`server <cluster-configuration-vsphere-server>`: str
 
+.. _cluster-configuration-vsphere-frozen-vm-configs:
+
+vSphere Frozen VM Configs
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`name <cluster-configuration-vsphere-frozen-vm-name>`: str
+            :ref:`library_item <cluster-configuration-vsphere-frozen-vm-library-item>`: str
+            :ref:`resource_pool <cluster-configuration-vsphere-frozen-vm-resource-pool>`: str
+            :ref:`cluster <cluster-configuration-vsphere-frozen-vm-cluster>`: str
+            :ref:`datastore <cluster-configuration-vsphere-frozen-vm-datastore>`: str
+
 .. _cluster-configuration-node-types-type:
+
 
 Node types
 ~~~~~~~~~~
@@ -254,8 +274,6 @@ nodes with the newly applied ``node_config`` will then be created according to c
             # The resource pool where the head node should live, if unset, will be
             # the frozen VM's resource pool.
             resource_pool: str
-            # Mandatory: The frozen VM name from which the head node will be instant-cloned.
-            frozen_vm_name: str
             # The datastore to store the vmdk of the head node vm, if unset, will be
             # the frozen VM's datastore.
             datastore: str
@@ -1127,7 +1145,7 @@ controlled by your cloud provider's configuration.
 
     .. tab-item:: vSphere
 
-        vSphere configuations used to connect vCenter Server. If not configured,
+        vSphere configurations used to connect vCenter Server. If not configured,
         the VSPHERE_* environment variables will be used.
 
         * **Required:** No
@@ -1196,6 +1214,121 @@ Password of the user to connect to vCenter Server.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The vSphere vCenter Server address.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm:
+
+``vsphere_config.frozen_vm``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The frozen VM related configurations.
+
+If the frozen VM(s) is/are existing, then ``library_item`` should be unset. Either an existing frozen VM should be specified by ``name``, or a resource pool name of frozen VMs on every ESXi (https://docs.vmware.com/en/VMware-vSphere/index.html) host should be specified by ``resource_pool``.
+
+If the frozen VM(s) is/are to be deployed from OVF template, then `library_item` must be set to point to an OVF template (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-AFEDC48B-C96F-4088-9C1F-4F0A30E965DE.html) in the content library. In such a case, ``name`` must be set to indicate the name or the name prefix of the frozen VM(s). Then, either ``resource_pool`` should be set to indicate that a set of frozen VMs will be created on each ESXi host of the resource pool, or ``cluster`` should be set to indicate that creating a single frozen VM in the vSphere cluster. The config ``datastore`` (https://docs.vmware.com/en/VMware-vSphere/7.0/com.vmware.vsphere.storage.doc/GUID-D5AB2BAD-C69A-4B8D-B468-25D86B8D39CE.html) is mandatory in this case.
+
+Valid examples:
+
+1. ``ray up`` on a frozen VM to be deployed from an OVF template:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: single-frozen-vm
+            library_item: frozen-vm-template
+            cluster: vsanCluster
+            datastore: vsanDatastore
+
+2. ``ray up`` on an existing frozen VM:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: existing-single-frozen-vm
+
+3. ``ray up`` on a resource pool of frozen VMs to be deployed from an OVF template:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            name: frozen-vm-prefix
+            library_item: frozen-vm-template
+            resource_pool: frozen-vm-resource-pool
+            datastore: vsanDatastore
+
+4. ``ray up`` on an existing resource pool of frozen VMs:
+
+    .. code-block:: yaml
+
+        frozen_vm:
+            resource_pool: frozen-vm-resource-pool
+
+Other cases not in above examples are invalid.
+
+* **Required:** Yes
+* **Importance:** High
+* **Type:** :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
+
+.. _cluster-configuration-vsphere-frozen-vm-name:
+
+``vsphere_config.frozen_vm.name``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The name or the name prefix of the frozen VM.
+Can only be unset when ``resource_pool`` is set and pointing to an existing resource pool of frozen VMs.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-library-item:
+
+``vsphere_config.frozen_vm.library_item``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The library item (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-D3DD122F-16A5-4F36-8467-97994A854B16.html#GUID-D3DD122F-16A5-4F36-8467-97994A854B16) of the OVF template of the frozen VM. If set, the frozen VM or a set of frozen VMs will be deployed from an OVF template specified by ``library_item``. Otherwise, frozen VM(s) should be existing.
+
+Visit the VM Packer for Ray project (https://github.com/vmware-ai-labs/vm-packer-for-ray) to know how to create an OVF template for frozen VMs.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-resource-pool:
+
+``vsphere_config.frozen_vm.resource_pool``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The resource pool name of the frozen VMs, can point to an existing resource pool of frozen VMs. Otherwise, ``library_item`` must be specified and a set of frozen VMs will be deployed on each ESXi host.
+
+The frozen VMs will be named as "{frozen_vm.name}-{the vm's ip address}"
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-cluster:
+
+``vsphere_config.frozen_vm.cluster``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The vSphere cluster name, only takes effect when ``library_item`` is set and ``resource_pool`` is unset.
+Indicates to deploy a single frozen VM on the vSphere cluster from OVF template.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-datastore:
+
+``vsphere_config.frozen_vm.datastore``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The target vSphere datastore name for storing the virtual machine files of the frozen VM to be deployed from OVF template.
+Will take effect only when ``library_item`` is set. If ``resource_pool`` is also set, this datastore must be a shared datastore among the ESXi hosts.
 
 * **Required:** No
 * **Importance:** Low

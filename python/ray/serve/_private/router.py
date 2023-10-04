@@ -22,7 +22,7 @@ from typing import (
 )
 
 import ray
-from ray._private.utils import load_class, make_asyncio_event_version_compat
+from ray._private.utils import load_class
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError
@@ -39,11 +39,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.utils import (
-    JavaActorHandleProxy,
-    MetricsPusher,
-    in_ray_driver_process,
-)
+from ray.serve._private.utils import JavaActorHandleProxy, MetricsPusher
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
 from ray.util import metrics
@@ -120,10 +116,18 @@ class Query:
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
 
-            # Gather `asyncio.Task` results concurrently.
-            if len(tasks) > 0:
-                resolved = await asyncio.gather(*tasks)
-                replacement_table.update(zip(tasks, resolved))
+            for task in tasks:
+                # NOTE(edoakes): this is a hack to enable the legacy behavior of passing
+                # `asyncio.Task` objects directly to downstream handle calls without
+                # `await`. Because the router now runs on a separate loop, the
+                # `asyncio.Task` can't directly be awaited here. So we use the
+                # thread-safe `concurrent.futures.Future` instead.
+                # This can be removed when `RayServeHandle` is fully deprecated.
+                if hasattr(task, "_ray_serve_object_ref_future"):
+                    future = task._ray_serve_object_ref_future
+                    replacement_table[task] = await asyncio.wrap_future(future)
+                else:
+                    replacement_table[task] = task
 
             # Gather `DeploymentResponse` object refs concurrently.
             if len(responses) > 0:
@@ -212,31 +216,19 @@ class ActorReplicaWrapper:
         if query.metadata.is_streaming:
             raise RuntimeError("Streaming not supported for Java.")
 
-        # Java only supports a single argument.
-        arg = query.args[0]
-
-        # Convert HTTP requests to Java-accepted format (single string).
-        if query.metadata.is_http_request:
-            assert isinstance(arg, bytes)
-            loaded_http_input = pickle.loads(arg)
-            query_string = loaded_http_input.scope.get("query_string")
-            if query_string:
-                arg = query_string.decode().split("=", 1)[1]
-            elif loaded_http_input.body:
-                arg = loaded_http_input.body.decode()
-
-        # Default call method in java is "call," not "__call__" like Python.
-        call_method = query.metadata.call_method
-        if call_method == "__call__":
-            call_method = "call"
+        if len(query.args) != 1:
+            raise ValueError("Java handle calls only support a single argument.")
 
         return self._actor_handle.handle_request.remote(
             RequestMetadataProto(
                 request_id=query.metadata.request_id,
                 endpoint=query.metadata.endpoint,
-                call_method=call_method,
+                # Default call method in java is "call," not "__call__" like Python.
+                call_method="call"
+                if query.metadata.call_method == "__call__"
+                else query.metadata.call_method,
             ).SerializeToString(),
-            [arg],
+            query.args,
         )
 
     def _send_query_python(
@@ -244,15 +236,13 @@ class ActorReplicaWrapper:
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
         """Send the query to a Python replica."""
         if query.metadata.is_streaming:
-            obj_ref = self._actor_handle.handle_request_streaming.options(
+            method = self._actor_handle.handle_request_streaming.options(
                 num_returns="streaming"
-            ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
-        else:
-            _, obj_ref = self._actor_handle.handle_request.remote(
-                pickle.dumps(query.metadata), *query.args, **query.kwargs
             )
+        else:
+            method = self._actor_handle.handle_request
 
-        return obj_ref
+        return method.remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
 
     def send_query(
         self, query: Query
@@ -340,6 +330,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         prefer_local_node_routing: bool = False,
         prefer_local_az_routing: bool = False,
         self_node_id: Optional[str] = None,
+        self_actor_id: Optional[str] = None,
         self_availability_zone: Optional[str] = None,
     ):
         self._loop = event_loop
@@ -353,7 +344,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
-        self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
+        self._replicas_updated_event = asyncio.Event()
         # Colocated replicas (e.g. wrt node, AZ)
         self._colocated_replica_ids: DefaultDict[LocalityScope, Set[str]] = defaultdict(
             set
@@ -386,8 +377,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
         # Prepare scheduler metrics.
-        self._actor_id: str = self._get_actor_id()
-
         self.num_scheduling_tasks_gauge = metrics.Gauge(
             "serve_num_scheduling_tasks",
             description="The number of request scheduling tasks in the router.",
@@ -396,7 +385,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             {
                 "app": self._deployment_id.app,
                 "deployment": self._deployment_id.name,
-                "actor_id": self._actor_id,
+                "actor_id": self_actor_id if self_actor_id else "",
             }
         )
         self.num_scheduling_tasks_gauge.set(0)
@@ -413,7 +402,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             {
                 "app": self._deployment_id.app,
                 "deployment": self._deployment_id.name,
-                "actor_id": self._actor_id,
+                "actor_id": self_actor_id if self_actor_id else "",
             }
         )
         self.num_scheduling_tasks_in_backoff_gauge.set(
@@ -446,34 +435,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
         return self._replicas
-
-    def _get_actor_id(self) -> str:
-        """Gets the ID of the actor where this scheduler runs.
-
-        NOTE: this call hangs when the GCS is down. As long as this method is
-        called only when the scheduler is initialized, that should be
-        okay because a ServeHandle (and its scheduler) relies
-        on the Serve controller for intialization, and the Serve controller
-        is runs only when the GCS is up.
-
-        Return:
-            The ID of the actor where this scheduler runs. If the scheduler
-            runs in the driver, returns "DRIVER". If the method fails, returns
-            an empty string.
-        """
-
-        if in_ray_driver_process():
-            return "DRIVER"
-        else:
-            try:
-                actor_id = ray.get_runtime_context().get_actor_id()
-                if actor_id is None:
-                    return ""
-                else:
-                    return actor_id
-            except Exception:
-                logger.exception("Got exception while attempting to get actor ID.")
-                return ""
 
     @property
     def app_name(self) -> str:
@@ -917,6 +878,7 @@ class Router:
         controller_handle: ActorHandle,
         deployment_id: DeploymentID,
         self_node_id: str,
+        self_actor_id: str,
         self_availability_zone: Optional[str],
         event_loop: asyncio.BaseEventLoop = None,
         _prefer_local_node_routing: bool = False,
@@ -941,6 +903,7 @@ class Router:
                 _prefer_local_node_routing,
                 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_node_id,
+                self_actor_id,
                 self_availability_zone,
             )
 
