@@ -1043,7 +1043,7 @@ cdef class StreamingGeneratorExecutionContext:
         self.streaming_generator_returns = streaming_generator_returns
         self.is_retryable_error = is_retryable_error
         self.application_error = application_error
-        self.should_retry_exceptions = should_retry_exceptions
+        self.should_retry_exceptions, = should_retry_exceptions,
         return self
 
 
@@ -1123,6 +1123,7 @@ cdef report_streaming_generator_output(
         # Del output here so that we can GC the memory
         # usage asap.
         del output_or_exception
+
         context.streaming_generator_returns[0].push_back(
             c_pair[CObjectID, c_bool](
                 return_obj.first,
@@ -1176,8 +1177,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
 
 async def execute_streaming_generator_async(
-        context: StreamingGeneratorExecutionContext,
-        coroutine_complete_event: asyncio.Event):
+        context: StreamingGeneratorExecutionContext):
     """Execute a given generator and streaming-report the
         result to the given caller_address.
 
@@ -1196,8 +1196,6 @@ async def execute_streaming_generator_async(
 
     Args:
         context: The context to execute streaming generator.
-        coroutine_complete_event: The asyncio.Event to notify the
-            main thread that the coroutine is actually finished.
     """
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
@@ -1205,34 +1203,29 @@ async def execute_streaming_generator_async(
     assert context.return_size == 1
 
     gen = context.generator
-    try:
-        while True:
-            try:
-                output_or_exception = await gen.__anext__()
-            except StopAsyncIteration:
-                break
-            except AsyncioActorExit:
-                # The execute_task will handle this case.
-                raise
-            except Exception as e:
-                output_or_exception = e
+    while True:
+        try:
+            output_or_exception = await gen.__anext__()
+        except StopAsyncIteration:
+            break
+        except AsyncioActorExit:
+            # The execute_task will handle this case.
+            raise
+        except Exception as e:
+            output_or_exception = e
 
-            loop = asyncio.get_running_loop()
-            worker = ray._private.worker.global_worker
-
-            # Run it in a separate thread to that we can
-            # avoid blocking the event loop when serializing
-            # the output (which has nogil).
-            done = await loop.run_in_executor(
-                worker.core_worker.get_thread_pool_for_async_event_loop(),
-                report_streaming_generator_output,
-                output_or_exception,
-                context)
-            if done:
-                break
-    finally:
-        # Notify that the coroutine is actually finished.
-        coroutine_complete_event.set()
+        loop = asyncio.get_running_loop()
+        worker = ray._private.worker.global_worker
+        # Run it in a separate thread to that we can
+        # avoid blocking the event loop when serializing
+        # the output (which has nogil).
+        done = await loop.run_in_executor(
+            worker.core_worker.get_thread_pool_for_async_event_loop(),
+            report_streaming_generator_output,
+            output_or_exception,
+            context)
+        if done:
+            break
 
 
 cdef create_generator_return_obj(
@@ -1672,31 +1665,13 @@ cdef void execute_task(
                         context.initialize(outputs)
 
                         if is_async_gen:
-                            coroutine_complete_event = threading.Event()
-
-                            try:
-                                # Note that the report RPCs are called inside an
-                                # event loop thread.
-                                core_worker.run_async_func_or_coro_in_event_loop(
-                                    execute_streaming_generator_async(
-                                        context, coroutine_complete_event),
-                                    function_descriptor,
-                                    name_of_concurrency_group_to_execute,
-                                    task_id)
-                            except TaskCancelledError:
-                                # Due to Python's limitation,
-                                # execute_streaming_generator_async
-                                # can return and raise an exception while coroutine
-                                # is still running. wait for
-                                # coroutine_complete_event to avoid it.
-                                # TODO(sang): Currently, it is a blocking call.
-                                # Just in case, we limit this to 1 second.
-                                # However, this shouldn't block the thread long time
-                                # because it only happens upon cancel, and
-                                # when TaskCancelledError is raised, the task
-                                # is already cancelled.
-                                coroutine_complete_event.wait(1)
-                                raise
+                            # Note that the report RPCs are called inside an
+                            # event loop thread.
+                            core_worker.run_async_func_or_coro_in_event_loop(
+                                execute_streaming_generator_async(context),
+                                function_descriptor,
+                                name_of_concurrency_group_to_execute,
+                                task_id)
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -2260,7 +2235,7 @@ cdef void cancel_async_task(
             function_descriptor, name_of_concurrency_group_to_execute)
         future = worker.core_worker.get_queued_future(task_id)
         if future is not None:
-            eventloop.call_soon_threadsafe(future.cancel)
+            future.cancel()
         # else, the task is already finished. If the task
         # wasn't finished (task is queued on a client or server side),
         # this method shouldn't have been called.
@@ -4301,30 +4276,31 @@ cdef class CoreWorker:
         # transport with max_concurrency flag.
         increase_recursion_limit()
 
-        eventloop, _ = self.get_event_loop(
+        eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
 
         async def async_func():
-            if task_id:
-                async_task_id.set(task_id)
+            try:
+                if task_id:
+                    async_task_id.set(task_id)
 
-            if inspect.isawaitable(func_or_coro):
-                coroutine = func_or_coro
-            else:
-                coroutine = func_or_coro(*args, **kwargs)
+                if inspect.isawaitable(func_or_coro):
+                    coroutine = func_or_coro
+                else:
+                    coroutine = func_or_coro(*args, **kwargs)
 
-            return await coroutine
+                return await coroutine
+            finally:
+                event.Notify()
 
         future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
         if task_id:
             with self._task_id_to_future_lock:
                 self._task_id_to_future[task_id] = future
 
-        future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
-
         try:
             result = future.result()
         except concurrent.futures.CancelledError:
