@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 import time
 from concurrent.futures import Executor, Future
-from functools import partial, reduce
 from typing import (
     Any,
     Callable,
@@ -35,7 +34,9 @@ class _PoolActor(TypedDict):
     actor: "ActorHandle"
     task_count: int
 
+
 # ------------------------------------------------------
+
 
 class ActorPoolType(Enum):
     BALANCED = 0
@@ -86,6 +87,7 @@ class _ActorPool(ABC):
     @abstractmethod
     def submit(self, fn: Callable[[], T]) -> Future[T]:
         ...
+
 
 class _ActorPoolBoilerPlate(_ActorPool):
 
@@ -206,7 +208,9 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.pool: list[_PoolActor] = [self._build_actor() for _ in range(self.num_actors)]
+        self.pool: list[_PoolActor] = [
+            self._build_actor() for _ in range(self.num_actors)
+        ]
         return
 
     def _get_actor_ids(self) -> list[str]:
@@ -217,7 +221,13 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
         for task_state in rus.list_tasks():
             t_actor_id = task_state.actor_id
             assert t_actor_id is not None
-            if all((task_state.type == "ACTOR_TASK", t_actor_id in actor_tasks, task_state.state not in ["FINISHED", "FAILED"])):
+            if all(
+                (
+                    task_state.type == "ACTOR_TASK",
+                    t_actor_id in actor_tasks,
+                    task_state.state not in ["FINISHED", "FAILED"],
+                )
+            ):
                 actor_tasks[t_actor_id] += 1
         return actor_tasks
 
@@ -233,9 +243,13 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
         task_counts = self._get_actor_task_counts()
         actor_id = min(task_counts, key=lambda k: task_counts[k])
         try:
-            [pool_actor] = [i for i in self.pool if i["actor"]._ray_actor_id.hex() == actor_id]
+            [pool_actor] = [
+                i for i in self.pool if i["actor"]._ray_actor_id.hex() == actor_id
+            ]
         except ValueError as err:
-            raise ValueError(f"Could not acquire next actor with id: {actor_id}") from err
+            raise ValueError(
+                f"Could not acquire next actor with id: {actor_id}"
+            ) from err
         return pool_actor
 
     def submit(self, fn: Callable[[], T]) -> Future[T]:
@@ -257,7 +271,7 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
         self._replace_actor_if_max_tasks(pool_actor)
         fut = pool_actor["actor"].actor_function.remote(fn).future()
         pool_actor["task_count"] += 1
-        return fut # type: ignore
+        return fut  # type: ignore
 
     def kill(self) -> None:
         """
@@ -290,6 +304,7 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
         pool_actor["actor"].exit.remote()
         return pool_actor["actor"]
 
+
 class _RoundRobinActorPool(_ActorPoolBoilerPlate):
 
     """This class manages a pool of Ray actors by distributing tasks amongst
@@ -314,7 +329,6 @@ class _RoundRobinActorPool(_ActorPoolBoilerPlate):
         gracefully killed and replaced (for compatibility with
         concurrent.futures.ProcessPoolExecutor).
     """
-
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)

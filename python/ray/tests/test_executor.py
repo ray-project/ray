@@ -1,7 +1,12 @@
 import os
 import sys
 import pytest
-from ray.util.concurrent.futures.ray_executor import RayExecutor, _RoundRobinActorPool, _BalancedActorPool, ActorPoolType
+from ray.util.concurrent.futures.ray_executor import (
+    RayExecutor,
+    _RoundRobinActorPool,
+    _BalancedActorPool,
+    ActorPoolType,
+)
 import time
 import ray
 from ray.util.state import list_actors
@@ -228,7 +233,10 @@ class TestShared:
             return 123
 
         with RayExecutor(
-            address=call_ray_start, max_workers=1, max_tasks_per_child=1, actor_pool_type=ActorPoolType.ROUND_ROBIN
+            address=call_ray_start,
+            max_workers=1,
+            max_tasks_per_child=1,
+            actor_pool_type=ActorPoolType.ROUND_ROBIN,
         ) as ex:
             pool = ex.actor_pool
             assert pool.index == 0
@@ -250,7 +258,10 @@ class TestShared:
             return 123
 
         with RayExecutor(
-            address=call_ray_start, max_workers=1, max_tasks_per_child=1, actor_pool_type=ActorPoolType.ROUND_ROBIN
+            address=call_ray_start,
+            max_workers=1,
+            max_tasks_per_child=1,
+            actor_pool_type=ActorPoolType.ROUND_ROBIN,
         ) as ex:
             pool = ex.actor_pool
             assert pool.index == 0
