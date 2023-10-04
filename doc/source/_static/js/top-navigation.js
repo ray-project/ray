@@ -22,7 +22,6 @@ is_examples = window.location.href.endsWith("ray-overview/examples.html")
 is_get_started = window.location.href.endsWith("ray-overview/getting-started.html")
 is_use_cases = window.location.href.endsWith("ray-overview/use-cases.html")
 is_libraries = window.location.href.includes("/ray-core/") ||
-    window.location.href.includes("/ray-air/") ||
     window.location.href.includes("/data/") ||
     window.location.href.includes("/train/") ||
     window.location.href.includes("/tune/") ||
@@ -89,7 +88,6 @@ librariesMenu.setAttribute("class", "menu")
 librariesMenu.innerHTML = "<a href='#'>Libraries" + downCaret + "</a>"
 librariesList = document.createElement("ul")
 librariesList.innerHTML += "<li><a href='" + getNavURL("ray-core/walkthrough.html") + "'><span class='primary'>Ray Core</span><span class='secondary'>Scale general Python applications</span></a></li>"
-librariesList.innerHTML += "<li><a href='" + getNavURL("ray-air/getting-started.html") + "'><span class='primary'>Ray AIR</span><span class='secondary'>Scale AI applications</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("data/data.html") + "'><span class='primary'>Ray Data</span><span class='secondary'>Scale data ingest and preprocessing</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("train/train.html") + "'><span class='primary'>Ray Train</span><span class='secondary'>Scale machine learning training</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("tune/index.html") + "'><span class='primary'>Ray Tune</span><span class='secondary'>Scale hyperparameter tuning</span></a></li>"

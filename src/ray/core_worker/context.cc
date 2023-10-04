@@ -268,7 +268,8 @@ void WorkerContext::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_num
   GetThreadContext().SetCurrentTaskId(task_id, attempt_number);
 }
 
-void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_) {
+void WorkerContext::SetCurrentActorId(const ActorID &actor_id)
+    ABSL_LOCKS_EXCLUDED(mutex_) {
   absl::WriterMutexLock lock(&mutex_);
   if (!current_actor_id_.IsNil()) {
     RAY_CHECK(current_actor_id_ == actor_id);

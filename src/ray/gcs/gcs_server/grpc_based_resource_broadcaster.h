@@ -46,10 +46,10 @@ class GrpcBasedResourceBroadcaster {
   void Initialize(const GcsInitData &gcs_init_data);
 
   /// Event handler when a new node joins the cluster.
-  void HandleNodeAdded(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mutex_);
+  void HandleNodeAdded(const rpc::GcsNodeInfo &node_info) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Event handler when a node leaves the cluster.
-  void HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mutex_);
+  void HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) ABSL_LOCKS_EXCLUDED(mutex_);
 
   std::string DebugString();
   void SendBroadcast(rpc::ResourceUsageBroadcastData batch);
@@ -70,7 +70,7 @@ class GrpcBasedResourceBroadcaster {
   /// A lock to protect the data structures.
   absl::Mutex mutex_;
   /// The set of nodes and their addresses which are subscribed to resource usage changes.
-  absl::flat_hash_map<NodeID, rpc::Address> nodes_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<NodeID, rpc::Address> nodes_ ABSL_GUARDED_BY(mutex_);
 
   friend class GrpcBasedResourceBroadcasterTest;
 };

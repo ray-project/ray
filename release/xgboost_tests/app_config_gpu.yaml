@@ -1,9 +1,11 @@
-base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
 env_vars:
   # Manually set NCCL_SOCKET_IFNAME to "ens" so NCCL training works on
   # anyscale_default_cloud.
   # See https://github.com/pytorch/pytorch/issues/68893 for more details.
   NCCL_SOCKET_IFNAME: ens
+  RAY_AIR_NEW_PERSISTENCE_MODE": "1"
+
 debian_packages:
   - curl
 
