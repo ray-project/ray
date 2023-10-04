@@ -5,6 +5,7 @@ import random
 import threading
 import collections
 import logging
+from urllib.parse import urlparse
 
 
 _logger = logging.getLogger("ray.util.spark.utils")
@@ -12,6 +13,16 @@ _logger = logging.getLogger("ray.util.spark.utils")
 
 def is_in_databricks_runtime():
     return "DATABRICKS_RUNTIME_VERSION" in os.environ
+
+
+def convert_dbfs_path_to_local_path(dbfs_path):
+    """
+    Helper function to convert dbfs:/ path to local /dbfs path
+    on databricks runtime so that PyArrow can read data from it.
+    """
+    parsed_path = urlparse(dbfs_path)
+    assert parsed_path.scheme.lower() == "dbfs", "dbfs path is required."
+    return "file:///dbfs" + parsed_path.path
 
 
 def gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque):
@@ -121,6 +132,33 @@ def get_spark_session():
             "cluster."
         )
     return spark_session
+
+
+def get_or_create_spark_session_with_delta_extension(delta_package=None):
+    from pyspark.conf import SparkConf
+    from pyspark.sql import SparkSession
+
+    spark_conf = SparkConf()
+    conf = {}
+
+    if spark_session := SparkSession.getActiveSession():
+        conf = spark_session.sparkContext.getConf()
+
+    if "io.delta_delta-core" not in conf.get("spark.jars", ""):
+        spark_conf.set(
+            "spark.jars.packages", delta_package or "io.delta:delta-core_2.12:2.2.0"
+        )
+    spark_conf.set(
+        "spark.sql.extensions",
+        conf.get("spark.sql.extensions") or "io.delta.sql.DeltaSparkSessionExtension",
+    )
+    spark_conf.set(
+        "spark.sql.catalog.spark_catalog",
+        conf.get("spark.sql.catalog.spark_catalog")
+        or "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+    )
+
+    return SparkSession.builder.config(conf=spark_conf).getOrCreate()
 
 
 def get_spark_application_driver_host(spark):

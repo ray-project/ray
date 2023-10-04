@@ -699,6 +699,124 @@ def read_parquet(
     )
 
 
+@PublicAPI
+def read_delta(
+    uri: str,
+    *,
+    delta_package: Optional[str] = None,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    columns: Optional[List[str]] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    meta_provider: Optional[ParquetMetadataProvider] = None,
+    **arrow_parquet_args,
+) -> Dataset:
+    """Creates a :class:`~ray.data.Dataset` from delta files.
+
+
+    Examples:
+        Read delta files.
+
+        >>> import ray
+        >>> ds = ray.data.read_delta("/path/to/your/delta/file")
+
+        The Delta reader requires a spark session to be created.
+
+        .. testcode::
+
+            import ray
+            from pyspark.sql import SparkSession
+
+            spark = (SparkSession.builder
+            # Update this package coordinate according to your spark version
+            .config("spark.jars.packages", "io.delta:delta-core_2.12:2.2.0")
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+            .config("spark.sql.catalog.spark_catalog",
+                    "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+            .getOrCreate())
+
+            # Create a delta table using spark
+            spark_df = spark.range(200).repartition(8)
+            spark_df.write.format("delta").save("DeltaTable")
+
+            # Use ray to read the delta table
+            data = ray.data.read_delta("DeltaTable")
+            assert data.count() == 200
+            assert data.columns() == ["id"]
+            assert data.schema().names == ["id"]
+            assert data.schema().types[0] == "int64"
+
+
+    Args:
+        uri: A single file path or directory. On databricks, only dbfs path is
+            supported. On other platforms, it should be paths that the filesystem
+            specified supports.
+        delta_package: The coordinate of io.delta:delta-core jar package that will
+            be installed in spark session.
+        filesystem: The PyArrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
+            used. If ``None``, this function uses a system-chosen implementation.
+            If on databricks, this argument will be ignored.
+        columns: A list of column names to read. Only the specified columns are
+            read during the file scan.
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
+            which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see :ref:`Tuning read parallelism
+            <read_parallelism>`. Parallelism is upper bounded by the total number of
+            records in all the parquet files.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        tensor_column_schema: A dict of column name to PyArrow dtype and shape
+            mappings for converting a Parquet column containing serialized
+            tensors (ndarrays) as their elements to PyArrow tensors. This function
+            assumes that the tensors are serialized in the raw
+            NumPy array format in C-contiguous order (e.g., via
+            `arr.tobytes()`).
+        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
+            metadata providers may be able to resolve file metadata more quickly and/or
+            accurately. In most cases you do not need to set this parameter.
+        arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
+            set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.dataset.Scanner.html\
+                    #pyarrow.dataset.Scanner.from_fragment>`_
+
+    Returns:
+        :class:`~ray.data.Dataset` producing records read from the specified parquet
+        files.
+    """
+    from ray.util.spark.utils import (
+        convert_dbfs_path_to_local_path,
+        get_or_create_spark_session_with_delta_extension,
+        get_spark_session,
+        is_in_databricks_runtime,
+    )
+
+    if is_in_databricks_runtime():
+        spark = get_spark_session()
+        paths = spark.read.load(uri, format="delta").inputFiles()
+        paths = [convert_dbfs_path_to_local_path(path) for path in paths]
+    else:
+        spark = get_or_create_spark_session_with_delta_extension(delta_package)
+        paths = spark.read.load(uri, format="delta").inputFiles()
+    return read_parquet(
+        paths=paths,
+        filesystem=filesystem,
+        columns=columns,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        tensor_column_schema=tensor_column_schema,
+        meta_provider=meta_provider,
+        **arrow_parquet_args,
+    )
+
+
 @PublicAPI(stability="beta")
 def read_images(
     paths: Union[str, List[str]],
