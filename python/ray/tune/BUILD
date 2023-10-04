@@ -64,7 +64,7 @@ py_test(
 
 py_test(
     name = "test_api_checkpoint_integration",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_api_checkpoint_integration.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
