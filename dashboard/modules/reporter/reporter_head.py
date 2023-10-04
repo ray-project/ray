@@ -138,7 +138,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return dashboard_optional_utils.rest_response(
                 success=True,
                 message="Got formatted cluster status.",
-                cluster_status=debug_status(formatted_status_string, error),
+                cluster_status=None,
             )
 
     async def get_task_ids_running_in_a_worker(self, worker_id: str) -> List[str]:
