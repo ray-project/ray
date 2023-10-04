@@ -156,7 +156,7 @@ if __name__ == "__main__":
     config.rl_module(_enable_rl_module_api=False)
     config._enable_learner_api = False
 
-    # Create the Trainer used for Policy serving.
+    # Create the Algorithm used for Policy serving.
     algo = config.build()
 
     # Attempt to restore from checkpoint if possible.
@@ -169,14 +169,14 @@ if __name__ == "__main__":
     # Serving and training loop.
     count = 0
     while True:
-        # Calls to train() will block on the configured `input` in the Trainer
+        # Calls to train() will block on the configured `input` in the Algorithm
         # config above (PolicyServerInput).
         print(algo.train())
         if count % args.checkpoint_freq == 0:
             print("Saving learning progress to checkpoint file.")
-            checkpoint = algo.save()
+            checkpoint = algo.save().checkpoint
             # Write the latest checkpoint location to CHECKPOINT_FILE,
             # so we can pick up from the latest one after a server re-start.
             with open(checkpoint_path, "w") as f:
-                f.write(checkpoint)
+                f.write(checkpoint.path)
         count += 1

@@ -10,10 +10,16 @@ https://arxiv.org/pdf/2010.02193.pdf
 from typing import Optional
 
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 
-from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_cnn_multiplier,
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class ConvTransposeAtari(tf.keras.Model):
@@ -28,14 +34,14 @@ class ConvTransposeAtari(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         cnn_multiplier: Optional[int] = None,
         gray_scaled: bool,
     ):
         """Initializes a ConvTransposeAtari instance.
 
         Args:
-            model_dimension: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the `cnn_multiplier`.
             cnn_multiplier: Optional override for the additional factor used to multiply
                 the number of filters with each CNN transpose layer. Starting with
@@ -47,7 +53,8 @@ class ConvTransposeAtari(tf.keras.Model):
         """
         super().__init__(name="image_decoder")
 
-        cnn_multiplier = get_cnn_multiplier(model_dimension, override=cnn_multiplier)
+        self.model_size = model_size
+        cnn_multiplier = get_cnn_multiplier(self.model_size, override=cnn_multiplier)
 
         # The shape going into the first Conv2DTranspose layer.
         # We start with a 4x4 channels=8 "image".
@@ -110,6 +117,22 @@ class ConvTransposeAtari(tf.keras.Model):
         )
         # .. until output is 64 x 64 x 3 (or 1 for self.gray_scaled=True).
 
+        # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(model_size),
+                        get_num_z_classes(model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+            ]
+        )(self.call)
+
     def call(self, h, z):
         """Performs a forward pass through the Conv2D transpose decoder.
 
@@ -122,9 +145,19 @@ class ConvTransposeAtari(tf.keras.Model):
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         input_ = tf.concat([h, z], axis=-1)
+        input_.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + get_gru_units(self.model_size)
+                ),
+            ]
+        )
 
         # Feed through initial dense layer to get the right number of input nodes
         # for the first conv2dtranspose layer.
@@ -146,15 +179,9 @@ class ConvTransposeAtari(tf.keras.Model):
         # From [2]:
         # "Distributions: The image predictor outputs the mean of a diagonal Gaussian
         # likelihood with unit variance, ..."
+
         # Reshape `out` for the diagonal multi-variate Gaussian (each pixel is its own
         # independent (b/c diagonal co-variance matrix) variable).
         loc = tf.reshape(out, shape=(out_shape[0], -1))
-        distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=loc,
-            # Scale == 1.0.
-            # [2]: "Distributions The image predictor outputs the mean of a diagonal
-            # Gaussian likelihood with **unit variance** ..."
-            scale_diag=tf.ones_like(loc),
-        )
-        pred_obs = distribution.sample()
-        return pred_obs, distribution
+
+        return loc

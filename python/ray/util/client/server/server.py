@@ -268,6 +268,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group
                 )
+                ctx.gcs_address = rtc.gcs_address
                 ctx.runtime_env = rtc.get_runtime_env_string()
             resp.runtime_context.CopyFrom(ctx)
         else:
@@ -869,11 +870,11 @@ def main():
         help="Password for connecting to Redis",
     )
     parser.add_argument(
-        "--metrics-agent-port",
+        "--runtime-env-agent-address",
         required=False,
-        type=int,
-        default=0,
-        help="The port to use for connecting to the runtime_env agent.",
+        type=str,
+        default=None,
+        help="The port to use for connecting to the runtime_env_agent.",
     )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
@@ -881,13 +882,13 @@ def main():
     ray_connect_handler = create_ray_handler(args.address, args.redis_password)
 
     hostport = "%s:%d" % (args.host, args.port)
-    logger.info(f"Starting Ray Client server on {hostport}")
+    logger.info(f"Starting Ray Client server on {hostport}, args {args}")
     if args.mode == "proxy":
         server = serve_proxier(
             hostport,
             args.address,
             redis_password=args.redis_password,
-            runtime_env_agent_port=args.metrics_agent_port,
+            runtime_env_agent_address=args.runtime_env_agent_address,
         )
     else:
         server = serve(hostport, ray_connect_handler)

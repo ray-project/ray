@@ -64,7 +64,7 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):
 
     # 10GiB dataset.
     ds = ray.data.read_datasource(source, n=10000, parallelism=1000)
-    it = ds.iter_batches(batch_size=None, prefetch_batches=0)
+    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
     next(it)
     time.sleep(3)
     launched = ray.get(source.counter.get.remote())

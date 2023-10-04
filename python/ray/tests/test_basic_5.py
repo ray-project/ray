@@ -12,6 +12,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
+import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_pid_to_exit,
@@ -146,46 +147,6 @@ ray.get(a.pid.remote())
     assert "Traceback" not in log
 
 
-@pytest.mark.skip("flaky test")
-def test_run_on_all_workers(call_ray_start, tmp_path):
-    # This test is to ensure run_function_on_all_workers are executed
-    # on all workers.
-    lock_file = tmp_path / "lock"
-    data_file = tmp_path / "data"
-    driver_script = f"""
-import ray
-from filelock import FileLock
-from pathlib import Path
-import pickle
-
-lock_file = r"{str(lock_file)}"
-data_file = Path(r"{str(data_file)}")
-
-def init_func(worker_info):
-    with FileLock(lock_file):
-        if data_file.exists():
-            old = pickle.loads(data_file.read_bytes())
-        else:
-            old = []
-        old.append(worker_info['worker'].worker_id)
-        data_file.write_bytes(pickle.dumps(old))
-
-ray._private.worker.global_worker.run_function_on_all_workers(init_func)
-ray.init(address='auto')
-
-@ray.remote
-def ready():
-    with FileLock(lock_file):
-        worker_ids = pickle.loads(data_file.read_bytes())
-        assert ray._private.worker.global_worker.worker_id in worker_ids
-
-ray.get(ready.remote())
-"""
-    run_string_as_driver(driver_script)
-    run_string_as_driver(driver_script)
-    run_string_as_driver(driver_script)
-
-
 def test_worker_sys_path_contains_driver_script_directory(tmp_path, monkeypatch):
     package_folder = tmp_path / "package"
     package_folder.mkdir()
@@ -248,10 +209,9 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     b'cluster' b'CLUSTER_METADATA'
     b'tracing' b'tracing_startup_hook'
     b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
-    b'fun' b'RemoteFunction:01000000:'
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
-    assert freqs["internal_kv_get"] == 4
+    assert freqs["internal_kv_get"] == 3
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")
@@ -400,6 +360,48 @@ def test_head_node_resource_ray_start(call_ray_start):
     ray.init(address=call_ray_start)
 
     assert ray.cluster_resources()[HEAD_NODE_RESOURCE_NAME] == 1
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="jemalloc is only prebuilt on linux"
+)
+def test_jemalloc_ray_start(monkeypatch, ray_start_cluster):
+    def check_jemalloc_enabled(pid=None):
+        if pid is None:
+            pid = os.getpid()
+        pmap = subprocess.run(
+            ["pmap", str(pid)], check=True, text=True, stdout=subprocess.PIPE
+        )
+        return "libjemalloc.so" in pmap.stdout
+
+    # Firstly, remove the LD_PRELOAD and make sure
+    # jemalloc is loaded.
+    monkeypatch.delenv("LD_PRELOAD", False)
+    cluster = ray_start_cluster
+    node = cluster.add_node(num_cpus=1)
+
+    # Make sure raylet/gcs/worker all have jemalloc
+    assert check_jemalloc_enabled(
+        node.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0].process.pid
+    )
+    assert check_jemalloc_enabled(
+        node.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.pid
+    )
+    assert not ray.get(ray.remote(check_jemalloc_enabled).remote())
+
+    ray.shutdown()
+    cluster.shutdown()
+
+    monkeypatch.setenv("LD_PRELOAD", "")
+    node = cluster.add_node(num_cpus=1)
+    # Make sure raylet/gcs/worker all have jemalloc
+    assert not check_jemalloc_enabled(
+        node.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0].process.pid
+    )
+    assert not check_jemalloc_enabled(
+        node.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.pid
+    )
+    assert not ray.get(ray.remote(check_jemalloc_enabled).remote())
 
 
 if __name__ == "__main__":

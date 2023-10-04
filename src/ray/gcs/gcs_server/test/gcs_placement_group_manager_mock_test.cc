@@ -17,6 +17,7 @@
 #include "gmock/gmock.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
@@ -40,8 +41,9 @@ class GcsPlacementGroupManagerMockTest : public Test {
     gcs_table_storage_ = std::make_shared<GcsTableStorage>(store_client_);
     gcs_placement_group_scheduler_ =
         std::make_shared<MockGcsPlacementGroupSchedulerInterface>();
+    node_manager_ = std::make_unique<MockGcsNodeManager>();
     resource_manager_ = std::make_shared<MockGcsResourceManager>(
-        io_context_, cluster_resource_manager_, NodeID::FromRandom());
+        io_context_, cluster_resource_manager_, *node_manager_, NodeID::FromRandom());
 
     gcs_placement_group_manager_ =
         std::make_unique<GcsPlacementGroupManager>(io_context_,
@@ -57,6 +59,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
   std::shared_ptr<MockGcsPlacementGroupSchedulerInterface> gcs_placement_group_scheduler_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<MockStoreClient> store_client_;
+  std::unique_ptr<GcsNodeManager> node_manager_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> resource_manager_;
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;

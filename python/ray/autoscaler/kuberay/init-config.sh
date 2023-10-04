@@ -2,8 +2,8 @@
 
 # Clone pinned Kuberay commit to temporary directory, copy the CRD definitions
 # into the autoscaler folder.
-KUBERAY_BRANCH="v0.5.0"
-OPERATOR_TAG="v0.5.0"
+KUBERAY_BRANCH="v0.6.0"
+OPERATOR_TAG="v0.6.0"
 
 # Requires Kustomize
 if ! command -v kustomize &> /dev/null
