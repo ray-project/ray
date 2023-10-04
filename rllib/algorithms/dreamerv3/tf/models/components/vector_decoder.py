@@ -6,10 +6,16 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 import gymnasium as gym
-import tensorflow as tf
-import tensorflow_probability as tfp
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class VectorDecoder(tf.keras.Model):
@@ -22,18 +28,20 @@ class VectorDecoder(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         observation_space: gym.Space,
     ):
         """Initializes a VectorDecoder instance.
 
         Args:
-            model_dimension: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                 Determines the exact size of the underlying MLP.
             observation_space: The observation space to decode back into. This must
                 be a Box of shape (d,), where d >= 1.
         """
         super().__init__(name="vector_decoder")
+
+        self.model_size = model_size
 
         assert (
             isinstance(observation_space, gym.spaces.Box)
@@ -41,9 +49,25 @@ class VectorDecoder(tf.keras.Model):
         )
 
         self.mlp = MLP(
-            model_dimension=model_dimension,
+            model_size=model_size,
             output_layer_size=observation_space.shape[0],
         )
+
+        # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(model_size),
+                        get_num_z_classes(model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+            ]
+        )(self.call)
 
     def call(self, h, z):
         """Performs a forward pass through the vector encoder.
@@ -56,19 +80,21 @@ class VectorDecoder(tf.keras.Model):
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
+        out.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + get_gru_units(self.model_size)
+                ),
+            ]
+        )
         # Send h-cat-z through MLP to get mean values of diag gaussian.
         loc = self.mlp(out)
 
-        # Create the Gaussian diag distribution.
-        distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=loc,
-            # Scale == 1.0.
-            scale_diag=tf.ones_like(loc),
-        )
-        pred_obs = distribution.sample()
-
-        # Always return both predicted observations (sample0 and distribution.
-        return pred_obs, distribution
+        # Return only the predicted observations (mean, no sample).
+        return loc

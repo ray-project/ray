@@ -1,5 +1,5 @@
-base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
-env_vars: {}
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] }}
+env_vars: { "RAY_AIR_NEW_PERSISTENCE_MODE": "1" }
 
 debian_packages:
   - curl

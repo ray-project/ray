@@ -376,7 +376,7 @@ class TfLearner(Learner):
             devices = tf.config.list_logical_devices("GPU")
             assert self._local_gpu_idx < len(devices), (
                 f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                " not available."
+                "not available."
             )
             local_gpu = [devices[self._local_gpu_idx].name]
             strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
@@ -431,10 +431,11 @@ class TfLearner(Learner):
             #  in-efficient. However, for tf>=2.12, it works also w/o this conversion
             #  so remove this after we upgrade officially to tf==2.12.
             _batch = NestedDict(_batch)
-            with tf.GradientTape() as tape:
+            with tf.GradientTape(persistent=True) as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
             gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
+            del tape
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
@@ -458,6 +459,11 @@ class TfLearner(Learner):
                 )
             ),
         )
+
+    @staticmethod
+    @override(Learner)
+    def _get_optimizer_lr(optimizer: "tf.Optimizer") -> float:
+        return optimizer.lr
 
     @staticmethod
     @override(Learner)

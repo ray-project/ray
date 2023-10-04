@@ -53,6 +53,7 @@ class MetricPointExporter final : public opencensus::stats::StatsExporter::Handl
   void ExportViewData(
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                   opencensus::stats::ViewData>> &data) override;
+  void addGlobalTagsToGrpcMetric(MetricPoint &metric);
 
  private:
   template <class DTYPE>
@@ -113,12 +114,15 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   void ExportViewData(
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                   opencensus::stats::ViewData>> &data) override;
+  void addGlobalTagsToGrpcMetric(opencensus::proto::metrics::v1::Metric &metric);
 
  private:
   /// Call Manager for gRPC client.
   rpc::ClientCallManager client_call_manager_;
+  /// Lock to protect the client
+  mutable absl::Mutex mu_;
   /// Client to call a metrics agent gRPC server.
-  std::unique_ptr<rpc::MetricsAgentClient> client_;
+  std::unique_ptr<rpc::MetricsAgentClient> client_ ABSL_GUARDED_BY(&mu_);
   /// The worker ID of the current component.
   WorkerID worker_id_;
 };

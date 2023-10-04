@@ -38,7 +38,7 @@ from ray.util.state.util import convert_string_to_type
 
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 class RateLimitedModule(ABC):
@@ -250,6 +250,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 node_id,
                 node_info["nodeManagerAddress"],
                 int(node_info["nodeManagerPort"]),
+                int(node_info["runtimeEnvAgentPort"]),
             )
 
     async def _update_agent_stubs(self, change: Change):

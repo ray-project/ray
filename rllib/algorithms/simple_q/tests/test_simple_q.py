@@ -44,7 +44,7 @@ class TestSimpleQ(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build(env="CartPole-v1")
             rw = algo.workers.local_worker()
             for i in range(num_iterations):
@@ -70,8 +70,8 @@ class TestSimpleQ(unittest.TestCase):
 
         for fw in framework_iterator(config):
             # Generate Algorithm and get its default Policy object.
-            trainer = config.build()
-            policy = trainer.get_policy()
+            algo = config.build()
+            policy = algo.get_policy()
             # Batch of size=2.
             input_ = SampleBatch(
                 {
@@ -168,7 +168,7 @@ class TestSimpleQ(unittest.TestCase):
         config.training(lr=0.2, lr_schedule=[[0, 0.2], [500, 0.001]])
 
         def _step_n_times(algo, n: int):
-            """Step trainer n times.
+            """Step Algorithm n times.
 
             Returns:
                 learning rate at the end of the execution.

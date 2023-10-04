@@ -102,6 +102,18 @@ class tqdm:
         if ray is not None:
             self._dump_state()
 
+    def refresh(self):
+        """Implements tqdm.tqdm.refresh."""
+        self._dump_state()
+
+    @property
+    def total(self) -> Optional[int]:
+        return self._total
+
+    @total.setter
+    def total(self, total: int):
+        self._total = total
+
     def _dump_state(self) -> None:
         if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
             # Include newline in payload to avoid split prints.
@@ -160,6 +172,9 @@ class _Bar:
         """Apply the updated worker progress bar state."""
         if state["desc"] != self.state["desc"]:
             self.bar.set_description(state["desc"])
+        if state["total"] != self.state["total"]:
+            self.bar.total = state["total"]
+            self.bar.refresh()
         delta = state["x"] - self.state["x"]
         if delta:
             self.bar.update(delta)

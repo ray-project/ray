@@ -285,7 +285,11 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   if (object_id_refs_.count(object_id) != 0) {
     return false;
   }
-  num_objects_owned_by_us_++;
+  if (ObjectID::IsActorID(object_id)) {
+    num_actors_owned_by_us_++;
+  } else {
+    num_objects_owned_by_us_++;
+  }
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
@@ -644,6 +648,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     it->second.on_ref_removed(id);
     it->second.on_ref_removed = nullptr;
   }
+
   PRINT_REF_COUNT(it);
 
   // Whether it is safe to unpin the value.
@@ -702,7 +707,11 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
   }
   freed_objects_.erase(it->first);
   if (it->second.owned_by_us) {
-    num_objects_owned_by_us_--;
+    if (ObjectID::IsActorID(it->first)) {
+      num_actors_owned_by_us_--;
+    } else {
+      num_objects_owned_by_us_--;
+    }
   }
   object_id_refs_.erase(it);
   ShutdownIfNeeded();
@@ -849,9 +858,14 @@ size_t ReferenceCounter::NumObjectIDsInScope() const {
   return object_id_refs_.size();
 }
 
-size_t ReferenceCounter::NumObjectOwnedByUs() const {
+size_t ReferenceCounter::NumObjectsOwnedByUs() const {
   absl::MutexLock lock(&mutex_);
   return num_objects_owned_by_us_;
+}
+
+size_t ReferenceCounter::NumActorsOwnedByUs() const {
+  absl::MutexLock lock(&mutex_);
+  return num_actors_owned_by_us_;
 }
 
 std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
@@ -1355,6 +1369,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   }
 
   it->second.spilled = true;
+  it->second.did_spill = true;
   bool spilled_location_alive =
       spilled_node_id.IsNil() || check_node_alive_(spilled_node_id);
   if (spilled_location_alive) {
@@ -1537,6 +1552,7 @@ void ReferenceCounter::FillObjectInformationInternal(
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
   object_info->set_primary_node_id(primary_node_id.Binary());
   object_info->set_pending_creation(it->second.pending_creation);
+  object_info->set_did_spill(it->second.did_spill);
 }
 
 void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {

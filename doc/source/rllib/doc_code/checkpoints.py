@@ -16,7 +16,7 @@ algo1 = config.build()
 # Create standard (pickle-based) checkpoint.
 with tempfile.TemporaryDirectory() as pickle_cp_dir:
     # Note: `save()` always creates a pickle based checkpoint.
-    pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir)
+    algo1.save(checkpoint_dir=pickle_cp_dir)
 
     # But we can convert this pickle checkpoint to a msgpack one using an RLlib utility
     # function.

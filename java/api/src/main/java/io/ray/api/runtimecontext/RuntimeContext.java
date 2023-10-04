@@ -34,6 +34,15 @@ public interface RuntimeContext {
   List<NodeInfo> getAllNodeInfo();
 
   /**
+   * Get all actor information of Ray cluster. Note that this will return all actor information of
+   * all jobs in this Ray cluster.
+   */
+  List<ActorInfo> getAllActorInfo();
+
+  /** Get all actor information of Ray cluster filtered by job id or actor state. */
+  public List<ActorInfo> getAllActorInfo(JobId jobId, ActorState actorState);
+
+  /**
    * Get the handle to the current actor itself. Note that this method must be invoked in an actor.
    */
   <T extends BaseActorHandle> T getCurrentActorHandle();
