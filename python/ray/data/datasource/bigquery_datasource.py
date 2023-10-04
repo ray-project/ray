@@ -94,13 +94,11 @@ class _BigQueryDatasourceReader(Reader):
                 exec_stats=None,
             )
 
-            # Create a no-arg wrapper read function which returns a block
-            read_single_partition = lambda stream=stream: [
-                _read_single_partition(stream)
-            ]
-
-            # Create the read task and pass the wrapper and metadata in
-            read_task = ReadTask(read_single_partition, metadata)
+            # Create the read task and pass the no-arg wrapper and metadata in
+            read_task = ReadTask(
+                lambda stream=stream: [_read_single_partition(stream)],
+                metadata,
+            )
             read_tasks.append(read_task)
 
         return read_tasks
