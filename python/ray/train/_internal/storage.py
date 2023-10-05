@@ -426,7 +426,7 @@ class StorageContext:
         sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
-        current_checkpoint_index: int = 0,
+        current_checkpoint_index: int = -1,
     ):
         self.custom_fs_provided = storage_filesystem is not None
 
@@ -512,7 +512,7 @@ class StorageContext:
                 "to the configured storage path."
             )
 
-    def _increase_checkpoint_index(self, metrics: Dict):
+    def _update_checkpoint_index(self, metrics: Dict):
         # Per default, increase by 1. This can be overwritten to customize checkpoint
         # directories.
         self.current_checkpoint_index += 1

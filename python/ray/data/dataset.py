@@ -5326,34 +5326,6 @@ def _block_to_arrow(block: Block):
     return block.to_arrow()
 
 
-def _sliding_window(iterable: Iterable, n: int):
-    """Creates an iterator consisting of n-width sliding windows over
-    iterable. The sliding windows are constructed lazily such that an
-    element on the base iterator (iterable) isn't consumed until the
-    first sliding window containing that element is reached.
-
-    If n > len(iterable), then a single len(iterable) window is
-    returned.
-
-    Args:
-        iterable: The iterable on which the sliding window is
-            created.
-        n: The width of the sliding window.
-
-    Returns:
-        An iterator of n-width windows over iterable.
-        If n > len(iterable), then a single len(iterable) window is
-        returned.
-    """
-    it = iter(iterable)
-    window = collections.deque(itertools.islice(it, n), maxlen=n)
-    if len(window) > 0:
-        yield tuple(window)
-    for elem in it:
-        window.append(elem)
-        yield tuple(window)
-
-
 def _do_write(
     ds: Datasource,
     ctx: DataContext,
