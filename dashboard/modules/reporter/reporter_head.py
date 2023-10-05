@@ -125,7 +125,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             if formatted_status_string
             else {}
         )
-        formatted_status_string = None
 
         if not return_formatted_output:
             return dashboard_optional_utils.rest_response(
