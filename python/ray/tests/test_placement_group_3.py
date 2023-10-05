@@ -35,11 +35,11 @@ def get_ray_status_output(address):
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     return {
-        "demand": debug_status(status, error)
+        "demand": debug_status(status, error, address=address)
         .split("Demands:")[1]
         .strip("\n")
         .strip(" "),
-        "usage": debug_status(status, error)
+        "usage": debug_status(status, error, address=address)
         .split("Demands:")[0]
         .split("Usage:")[1]
         .strip("\n")

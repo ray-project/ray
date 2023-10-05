@@ -51,6 +51,23 @@ def test_run_script_in_docker() -> None:
         container.run_script_with_output(["run command"])
 
 
+def test_skip_ray_installation() -> None:
+    install_ray_called = []
+
+    def _mock_install_ray() -> None:
+        install_ray_called.append(True)
+
+    with mock.patch(
+        "ci.ray_ci.tester_container.TesterContainer.install_ray",
+        side_effect=_mock_install_ray,
+    ):
+        assert len(install_ray_called) == 0
+        TesterContainer("team", skip_ray_installation=False)
+        assert len(install_ray_called) == 1
+        TesterContainer("team", skip_ray_installation=True)
+        assert len(install_ray_called) == 1
+
+
 def test_run_tests() -> None:
     def _mock_run_tests_in_docker(
         test_targets: List[str],

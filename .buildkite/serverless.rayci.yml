@@ -1,7 +1,7 @@
 group: serverless tests
 steps:
   - label: ":serverless: serverless: python tests"
-    tags: [RAY_CI_PYTHON_AFFECTED]
+    tags: python
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless 
@@ -11,7 +11,7 @@ steps:
     job_env: forge
 
   - label: ":serverless: serverless: flaky tests"
-    tags: [RAY_CI_PYTHON_AFFECTED]
+    tags: python
     instance_type: medium
     soft_fail: true
     commands:

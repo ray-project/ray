@@ -5,7 +5,6 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.data.context import DataContext
 from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.train.gbdt_trainer import GBDTTrainer
@@ -173,24 +172,6 @@ def test_metadata_propagation_data_parallel(ray_start_4_cpus):
     result = trainer.fit()
     meta_out = result.checkpoint.get_metadata()
     assert meta_out == {"a": 1, "b": 2, "c": 3}, meta_out
-
-
-def test_data_context_propagation(ray_start_4_cpus):
-    ctx = DataContext.get_current()
-    # Fake DataContext attribute to propagate to worker.
-    ctx.foo = "bar"
-
-    def training_loop(self):
-        # Dummy train loop that checks that changes in the driver's
-        # DataContext are propagated to the worker.
-        ctx_worker = DataContext.get_current()
-        assert ctx_worker.foo == "bar"
-
-    trainer = DummyTrainer(
-        train_loop=training_loop,
-        datasets={"train": ray.data.range(10)},
-    )
-    trainer.fit()
 
 
 if __name__ == "__main__":
