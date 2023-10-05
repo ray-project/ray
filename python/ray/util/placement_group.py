@@ -87,7 +87,6 @@ class PlacementGroup:
 
         return bundle_reservation_check.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=self),
-            resources={BUNDLE_RESOURCE_LABEL: 0.001},
         ).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
