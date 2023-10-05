@@ -1576,7 +1576,7 @@ std::string WorkerPool::DebugString() const {
          << process_failed_runtime_env_setup_failed_;
   result << "\n- first job driver wait num python workers: "
          << first_job_driver_wait_num_python_workers_;
-  result << "\n - first job registered num python workers: "
+  result << "\n- first job registered num python workers: "
          << first_job_registered_python_worker_count_;
   for (const auto &entry : states_by_lang_) {
     result << "\n- num " << Language_Name(entry.first)
