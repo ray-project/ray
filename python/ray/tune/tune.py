@@ -24,11 +24,10 @@ from typing import (
 
 import ray
 from ray._private.storage import _get_storage_uri
-from ray.air import CheckpointConfig
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
-from ray.train import SyncConfig
+from ray.train import CheckpointConfig, SyncConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
@@ -984,7 +983,7 @@ def run(
                 "To enable trials to use GPUs, wrap `train_func` with "
                 "`tune.with_resources(train_func, resources_per_trial={'gpu': 1})` "
                 "which allows Tune to expose 1 GPU to each trial. "
-                "For Ray AIR Trainers, you can specify GPU resources "
+                "For Ray Train Trainers, you can specify GPU resources "
                 "through `ScalingConfig(use_gpu=True)`. "
                 "You can also override "
                 "`Trainable.default_resource_request` if using the "

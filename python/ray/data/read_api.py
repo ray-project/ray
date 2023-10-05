@@ -64,6 +64,7 @@ from ray.data.datasource import (
     SQLDatasource,
     TextDatasource,
     TFRecordDatasource,
+    TorchDatasource,
     WebDatasetDatasource,
 )
 from ray.data.datasource._default_metadata_providers import (
@@ -584,15 +585,17 @@ def read_parquet(
         petal.width   double
         variety       string
 
-
         Read a directory in remote storage.
+
         >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris-parquet/")
 
         Read multiple local files.
+
         >>> ray.data.read_parquet(
         ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
 
         Specify a schema for the parquet file.
+
         >>> import pyarrow as pa
         >>> fields = [("sepal.length", pa.float32()),
         ...           ("sepal.width", pa.float32()),
@@ -609,7 +612,6 @@ def read_parquet(
         petal.length  float
         petal.width   float
         variety       string
-
 
         The Parquet reader also supports projection and filter pushdown, allowing column
         selection and row filtering to be pushed down to the file scan.
@@ -1755,7 +1757,7 @@ def read_sql(
 
 
 @PublicAPI
-def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
+def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
 
@@ -1791,7 +1793,7 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
 
 
 @PublicAPI
-def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
+def from_mars(df: "mars.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
 
@@ -1808,7 +1810,7 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
 
 
 @PublicAPI
-def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
+def from_modin(df: "modin.pandas.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 
@@ -2282,20 +2284,13 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
-) -> MaterializedDataset:
+) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
 
-    This function is inefficient. Use it to read small datasets or prototype.
-
-    .. warning::
-        If your dataset is large, this function may execute slowly or raise an
-        out-of-memory error. To avoid issues, read the underyling data with a function
-        like :meth:`~ray.data.read_images`.
-
     .. note::
-        This function isn't parallelized. It loads the entire dataset into the head
-        node's memory before moving the data to the distributed object store.
+        The input dataset can either be map-style or iterable-style, and can have arbitrarily large amount of data.
+        The data will be sequentially streamed with one single read task.
 
     Examples:
         >>> import ray
@@ -2311,9 +2306,23 @@ def from_torch(
         dataset: A `Torch Dataset`_.
 
     Returns:
-        A :class:`MaterializedDataset` containing the Torch dataset samples.
+        A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
-    return from_items(list(dataset))
+
+    # Files may not be accessible from all nodes, run the read task on current node.
+    ray_remote_args = {
+        "scheduling_strategy": NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+    }
+    return read_datasource(
+        TorchDatasource(),
+        dataset=dataset,
+        # Only non-parallel, streaming read is currently supported
+        parallelism=1,
+        ray_remote_args=ray_remote_args,
+    )
 
 
 def _get_reader(

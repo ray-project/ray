@@ -1880,19 +1880,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
     return asyncio.get_event_loop()
 
 
-def make_asyncio_event_version_compat(
-    event_loop: asyncio.AbstractEventLoop,
-) -> asyncio.Event:
-    # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
-    # removed it altogether. Construct an `asyncio.Event` accordingly.
-    if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
-        event = asyncio.Event()
-    else:
-        event = asyncio.Event(loop=event_loop)
-
-    return event
-
-
 def get_entrypoint_name():
     """Get the entrypoint of the current script."""
     prefix = ""
@@ -2191,3 +2178,21 @@ def load_class(path):
     class_str = class_data[-1]
     module = importlib.import_module(module_path)
     return getattr(module, class_str)
+
+
+def validate_actor_state_name(actor_state_name):
+    if actor_state_name is None:
+        return
+    actor_state_names = [
+        "DEPENDENCIES_UNREADY",
+        "PENDING_CREATION",
+        "ALIVE",
+        "RESTARTING",
+        "DEAD",
+    ]
+    if actor_state_name not in actor_state_names:
+        raise ValueError(
+            f'"{actor_state_name}" is not a valid actor state name, '
+            'it must be one of the following: "DEPENDENCIES_UNREADY", '
+            '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
+        )

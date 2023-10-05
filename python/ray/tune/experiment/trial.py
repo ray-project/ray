@@ -15,7 +15,6 @@ from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
-from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import (
@@ -26,12 +25,12 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
-from ray.train import Checkpoint
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
 from ray.train._internal.checkpoint_manager import (
-    _TrainingResult,
     _CheckpointManager as _NewCheckpointManager,
 )
+from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
@@ -209,12 +208,12 @@ class _TemporaryTrialState:
     def __init__(self):
         self.location = _Location()
 
-        self.ray_actor = None
+        self.ray_actor: Optional[ray.actor.ActorHandle] = None
 
-        self.saving_to = None
-        self.restoring_from = None
+        self.saving_to: Optional[_FutureTrainingResult] = None
+        self.restoring_from: Optional[_TrainingResult] = None
 
-        self.num_restore_failures = 0
+        self.num_restore_failures: int = 0
 
     def __getstate__(self):
         return {}
@@ -811,7 +810,7 @@ class Trial:
 
     @property
     def node_ip(self):
-        return self.location.hostname
+        return self.temporary_state.location.hostname
 
     @property
     def sync_on_checkpoint(self):
@@ -1101,10 +1100,10 @@ class Trial:
             checkpoint_result = checkpoint
             assert isinstance(checkpoint_result, _TrainingResult)
             self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
-            # Increment the checkpoint index to keep the checkpoint index in sync.
+            # Update the checkpoint index to keep the checkpoint index in sync.
             # This index will get restored when the trial is restored and will
             # be passed to the Trainable as the starting checkpoint index.
-            self.storage.current_checkpoint_index += 1
+            self.storage._update_checkpoint_index(checkpoint_result.metrics)
         else:
             self.run_metadata.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()

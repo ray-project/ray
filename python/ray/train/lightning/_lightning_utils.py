@@ -11,11 +11,7 @@ import shutil
 import torch
 import tempfile
 from ray.train import Checkpoint
-from ray.train._internal.storage import _use_storage_context
-from ray.train.lightning.lightning_checkpoint import (
-    LightningCheckpoint,
-    LegacyLightningCheckpoint,
-)
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from packaging.version import Version
 from typing import Any, Dict, Optional
 from torch.utils.data import IterableDataset, DataLoader
@@ -168,11 +164,11 @@ class RayLightningEnvironment(LightningEnvironment):
         return train.get_context().get_node_rank()
 
     def set_world_size(self, size: int) -> None:
-        # Disable it since `world_size()` directly returns data from AIR session.
+        # Disable it since `world_size()` directly returns data from Train context.
         pass
 
     def set_global_rank(self, rank: int) -> None:
-        # Disable it since `global_rank()` directly returns data from AIR session.
+        # Disable it since `global_rank()` directly returns data from Train.
         pass
 
     def teardown(self):
@@ -320,7 +316,7 @@ class RayModelCheckpoint(ModelCheckpoint):
         """Report latest metrics dict and checkpoint to AIR training session.
 
         This method is called whenever a new checkpoint is created. It creates
-        a `LegacyLightningCheckpoint` and reports it to the AIR session along with
+        a `LightningCheckpoint` and reports it to the AIR session along with
         the latest metrics.
         """
 
@@ -353,10 +349,7 @@ class RayModelCheckpoint(ModelCheckpoint):
 
             # Only the report_rank worker creates the actual checkpoints.
             # Other workers create placeholder checkpoints to prevent blocking.
-            if _use_storage_context():
-                checkpoint = LightningCheckpoint.from_directory(tmpdir)
-            else:
-                checkpoint = LegacyLightningCheckpoint.from_directory(path=tmpdir)
+            checkpoint = LightningCheckpoint.from_directory(tmpdir)
             train.report(metrics=metrics, checkpoint=checkpoint)
 
         self.is_checkpoint_step = False

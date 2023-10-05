@@ -1,9 +1,12 @@
-Horovod
-=======
+
+.. _train-horovod:
+
+Get Started with Horovod
+========================
 
 Ray Train configures the Horovod environment and Rendezvous
 server for you, allowing you to run your ``DistributedOptimizer`` training
-script. See `Horovod documentation <https://horovod.readthedocs.io/en/stable/index.html>`_
+script. See the `Horovod documentation <https://horovod.readthedocs.io/en/stable/index.html>`_
 for more information.
 
 Quickstart
@@ -13,10 +16,10 @@ Quickstart
 
 
 
-Updating your training function
--------------------------------
+Update your training function
+-----------------------------
 
-First, update your training function to support distributed
+First, update your :ref:`training function <train-overview-training-function>` to support distributed
 training.
 
 If you have a training function that already runs with the `Horovod Ray
@@ -27,11 +30,11 @@ To onboard onto Horovod, visit the `Horovod guide
 <https://horovod.readthedocs.io/en/stable/index.html#get-started>`_.
 
 
-Creating a :class:`~ray.train.horovod.HorovodTrainer`
------------------------------------------------------
+Create a HorovodTrainer
+-----------------------
 
-``Trainer``\s are the primary Ray Train classes that are used to manage state and
-execute training. For Horovod, we use a :class:`~ray.train.horovod.HorovodTrainer`
+``Trainer``\s are the primary Ray Train classes to use to manage state and
+execute training. For Horovod, use a :class:`~ray.train.horovod.HorovodTrainer`
 that you can setup like this:
 
 .. code-block:: python
@@ -45,7 +48,7 @@ that you can setup like this:
         scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
     )
 
-When training with Horovod, we will always use a HorovodTrainer,
+When training with Horovod, always use a HorovodTrainer,
 irrespective of the training framework, for example, PyTorch or TensorFlow.
 
 To customize the backend setup, you can pass a
@@ -64,8 +67,8 @@ To customize the backend setup, you can pass a
 
 For more configurability, see the :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
 
-Running your training function
-------------------------------
+Run a training function
+-----------------------
 
 With a distributed training function and a Ray Train ``Trainer``, you are now
 ready to start training.
@@ -77,6 +80,7 @@ ready to start training.
 
 Further reading
 ---------------
+
 Ray Train's :class:`~ray.train.horovod.HorovodTrainer` replaces the distributed
 communication backend of the native libraries with its own implementation.
 Thus, the remaining integration points remain the same. If you're using Horovod
@@ -85,6 +89,8 @@ refer to the respective guides for further configuration
 and information.
 
 If you are implementing your own Horovod-based training routine without using any of
-the training libraries, we still encourage you to read through the
-:ref:`User Guides <train-user-guides>`, as many of the contents are applicable
-to generic use cases and can be easily adapted.
+the training libraries, read through the
+:ref:`User Guides <train-user-guides>`, as you can apply much of the content
+to generic use cases and adapt them easily.
+
+

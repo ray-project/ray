@@ -18,6 +18,13 @@ from ray.includes.global_state_accessor cimport (
     RedisDelKeySync,
 )
 
+from ray.includes.optional cimport (
+    optional,
+    nullopt,
+    make_optional
+)
+
+
 from libcpp.string cimport string as c_string
 from libcpp.memory cimport make_unique as c_make_unique
 
@@ -121,10 +128,20 @@ cdef class GlobalStateAccessor:
             return c_string(result.get().data(), result.get().size())
         return None
 
-    def get_actor_table(self):
+    def get_actor_table(self, job_id, actor_state_name):
         cdef c_vector[c_string] result
+        cdef optional[CActorID] cactor_id = nullopt
+        cdef optional[CJobID] cjob_id
+        cdef optional[c_string] cactor_state_name
+        cdef c_string c_name
+        if job_id is not None:
+            cjob_id = make_optional[CJobID](CJobID.FromBinary(job_id.binary()))
+        if actor_state_name is not None:
+            c_name = actor_state_name
+            cactor_state_name = make_optional[c_string](c_name)
         with nogil:
-            result = self.inner.get().GetAllActorInfo()
+            result = self.inner.get().GetAllActorInfo(
+                cactor_id, cjob_id, cactor_state_name)
         return result
 
     def get_actor_info(self, actor_id):

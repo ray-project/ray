@@ -426,7 +426,7 @@ class StorageContext:
         sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
-        current_checkpoint_index: int = 0,
+        current_checkpoint_index: int = -1,
     ):
         self.custom_fs_provided = storage_filesystem is not None
 
@@ -454,6 +454,7 @@ class StorageContext:
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             self.storage_path, storage_filesystem
         )
+        self.storage_fs_path = Path(self.storage_fs_path).as_posix()
 
         # Syncing is always needed if a custom `storage_filesystem` is provided.
         # Otherwise, syncing is only needed if storage_local_path
@@ -510,6 +511,11 @@ class StorageContext:
                 "\nCheck that all nodes in the cluster have read/write access "
                 "to the configured storage path."
             )
+
+    def _update_checkpoint_index(self, metrics: Dict):
+        # Per default, increase by 1. This can be overwritten to customize checkpoint
+        # directories.
+        self.current_checkpoint_index += 1
 
     def persist_current_checkpoint(self, checkpoint: "Checkpoint") -> "Checkpoint":
         """Persists a given checkpoint to the current checkpoint path on the filesystem.
@@ -603,7 +609,7 @@ class StorageContext:
         by pyarrow.fs.FileSystem.from_uri already. The URI scheme information is
         kept in `storage_filesystem` instead.
         """
-        return os.path.join(self.storage_fs_path, self.experiment_dir_name)
+        return Path(self.storage_fs_path, self.experiment_dir_name).as_posix()
 
     @property
     def experiment_local_path(self) -> str:
@@ -612,7 +618,7 @@ class StorageContext:
         This local "cache" path refers to location where files are dumped before
         syncing them to the `storage_path` on the `storage_filesystem`.
         """
-        return os.path.join(self.storage_local_path, self.experiment_dir_name)
+        return Path(self.storage_local_path, self.experiment_dir_name).as_posix()
 
     @property
     def trial_local_path(self) -> str:
@@ -624,7 +630,7 @@ class StorageContext:
             raise RuntimeError(
                 "Should not access `trial_local_path` without setting `trial_dir_name`"
             )
-        return os.path.join(self.experiment_local_path, self.trial_dir_name)
+        return Path(self.experiment_local_path, self.trial_dir_name).as_posix()
 
     @property
     def trial_fs_path(self) -> str:
@@ -636,7 +642,7 @@ class StorageContext:
             raise RuntimeError(
                 "Should not access `trial_fs_path` without setting `trial_dir_name`"
             )
-        return os.path.join(self.experiment_fs_path, self.trial_dir_name)
+        return Path(self.experiment_fs_path, self.trial_dir_name).as_posix()
 
     @property
     def checkpoint_fs_path(self) -> str:
@@ -646,7 +652,7 @@ class StorageContext:
         The user of this class is responsible for setting the `current_checkpoint_index`
         (e.g., incrementing when needed).
         """
-        return os.path.join(self.trial_fs_path, self.checkpoint_dir_name)
+        return Path(self.trial_fs_path, self.checkpoint_dir_name).as_posix()
 
     @property
     def checkpoint_dir_name(self) -> str:

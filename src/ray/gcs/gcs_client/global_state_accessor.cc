@@ -168,12 +168,18 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
   return resource_batch_data;
 }
 
-std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
+std::vector<std::string> GlobalStateAccessor::GetAllActorInfo(
+    const std::optional<ActorID> &actor_id,
+    const std::optional<JobID> &job_id,
+    const std::optional<std::string> &actor_state_name) {
   std::vector<std::string> actor_table_data;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAllByFilter(
+        actor_id,
+        job_id,
+        actor_state_name,
         TransformForMultiItemCallback<rpc::ActorTableData>(actor_table_data, promise)));
   }
   promise.get_future().get();

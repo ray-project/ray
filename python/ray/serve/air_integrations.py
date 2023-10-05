@@ -1,20 +1,17 @@
-from collections import defaultdict
 import logging
-from typing import Dict, List, Optional, Type, Union
-from pydantic import BaseModel
-import numpy as np
 from abc import abstractmethod
-import starlette
+from collections import defaultdict
+from typing import Dict, List, Optional, Type, Union
+
+import numpy as np
 from fastapi import Depends, FastAPI
+from pydantic import BaseModel
 
-from ray import serve
-from ray.serve._private.utils import require_packages
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.util.annotations import DeveloperAPI, Deprecated
-from ray.serve.drivers_utils import load_http_adapter, HTTPAdapterFn
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
-from ray.serve._private.http_util import BufferedASGISender
-
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
+from ray.serve._private.utils import install_serve_encoders_to_fastapi, require_packages
+from ray.serve.drivers_utils import HTTPAdapterFn, load_http_adapter
+from ray.util.annotations import DeveloperAPI
 
 try:
     import pandas as pd
@@ -154,7 +151,7 @@ class _BatchingManager:
 
 
 @DeveloperAPI
-class SimpleSchemaIngress:
+class SimpleSchemaIngress(ASGIAppReplicaWrapper):
     def __init__(
         self, http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]] = None
     ):
@@ -170,73 +167,15 @@ class SimpleSchemaIngress:
         """
         install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
-        self.app = FastAPI()
+        app = FastAPI()
 
-        @self.app.get("/")
-        @self.app.post("/")
+        @app.get("/")
+        @app.post("/")
         async def handle_request(inp=Depends(http_adapter)):
-            resp = await self.predict(inp)
-            return resp
+            return await self.predict(inp)
+
+        ASGIAppReplicaWrapper.__init__(self, app)
 
     @abstractmethod
     async def predict(self, inp):
         raise NotImplementedError()
-
-    async def __call__(self, request: starlette.requests.Request):
-        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
-        # generate FastAPI on the fly, we should find a way to unify the two.
-        sender = BufferedASGISender()
-        await self.app(request.scope, receive=request.receive, send=sender)
-        return sender.build_asgi_response()
-
-
-@Deprecated
-class PredictorWrapper(SimpleSchemaIngress):
-    """Serve any Ray AIR predictor from an AIR checkpoint.
-
-    Args:
-        predictor_cls: The class or path for predictor class.
-            The type must be a subclass of :class:`ray.train.predictor.Predictor`.
-        checkpoint: The checkpoint object or a uri to load checkpoint
-            from
-
-            - The checkpoint object must be an instance of
-              :class:`ray.air.checkpoint.Checkpoint`.
-            - The uri string will be called to construct a checkpoint object using
-              ``Checkpoint.from_uri("uri_to_load_from")``.
-
-        http_adapter: The FastAPI input conversion
-            function. By default, Serve will use the
-            :ref:`NdArray <serve-ndarray-schema>` schema and convert to numpy array.
-            You can pass in any FastAPI dependency resolver that returns
-            an array. When you pass in a string, Serve will import it.
-            Please refer to :ref:`Serve HTTP adatpers <serve-http-adapters>`
-            documentation to learn more.
-        batching_params: override the default parameters to
-            :func:`ray.serve.batch`. Pass ``False`` to disable batching.
-        predict_kwargs: optional keyword arguments passed to the
-            ``Predictor.predict`` method upon each call.
-        **predictor_from_checkpoint_kwargs: Additional keyword arguments passed to the
-            ``Predictor.from_checkpoint()`` call.
-    """
-
-    def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
-            "`PredictorWrapper` and `PredictorDeployment` are deprecated. "
-            "See https://github.com/ray-project/ray/issues/37868 for a migration guide "
-            "to the latest recommended API."
-        )
-
-    async def predict(self, inp):
-        """Perform inference directly without HTTP."""
-        raise NotImplementedError
-
-    def reconfigure(self, config):
-        """Reconfigure model from config checkpoint"""
-        raise NotImplementedError
-
-
-@serve.deployment
-@Deprecated
-class PredictorDeployment(PredictorWrapper):
-    """Ray Serve Deployment for AIRPredictorWrapper."""

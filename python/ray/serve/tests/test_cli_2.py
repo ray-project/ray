@@ -1,42 +1,37 @@
+import json
 import os
 import re
-import sys
-import yaml
-import time
-import json
 import signal
+import subprocess
+import sys
+import time
+from tempfile import NamedTemporaryFile
+from typing import Pattern
+
+import grpc
 import pytest
 import requests
-import subprocess
-from typing import Pattern
+import yaml
 from pydantic import BaseModel
-from tempfile import NamedTemporaryFile
-
 
 import ray
-from ray.util.state import list_actors
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve.tests.conftest import check_ray_stop
+from ray._private.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    SERVE_NAMESPACE,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-)
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-import grpc
-from ray.serve.tests.utils import (
-    ping_grpc_list_applications,
-    ping_grpc_healthz,
-    ping_grpc_call_method,
+from ray.serve.tests.common.utils import (
+    ping_fruit_stand,
     ping_grpc_another_method,
+    ping_grpc_call_method,
+    ping_grpc_healthz,
+    ping_grpc_list_applications,
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
-    ping_fruit_stand,
 )
+from ray.serve.tests.conftest import check_ray_stop
+from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray.util.state import list_actors
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -806,9 +801,7 @@ def test_run_config_request_timeout():
     # the 0.1 request_timeout_s set in in the config yaml
     wait_for_condition(
         lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").status_code
-        == 408
-        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
-        else 500,
+        == 408,
     )
 
     # Ensure the http request returned the correct response when the deployment runs

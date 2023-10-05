@@ -1,11 +1,14 @@
 .. _train-deepspeed:
 
-Training with DeepSpeed
-=======================
+Get Started with DeepSpeed
+==========================
 
 The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `DeepSpeed <https://www.deepspeed.ai/>`_  training across a distributed Ray cluster.
 
-All you need to do is run your existing training code with a TorchTrainer. You can expect the final code to look like this:
+Code example
+------------
+
+You only need to run your existing training code with a TorchTrainer. You can expect the final code to look like this:
 
 .. code-block:: python
 
@@ -74,12 +77,12 @@ Below is a simple example of ZeRO-3 training with DeepSpeed only.
     keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything 
     for distributed training.
 
-Running DeepSpeed with other frameworks
--------------------------------------------
+Run DeepSpeed with other frameworks
+-----------------------------------
 
 Many deep learning frameworks have integrated with DeepSpeed, including Lightning, Transformers, Accelerate, and more. You can run all these combinations in Ray Train.
 
-Please check the below examples for more details:
+Check the below examples for more details:
 
 .. list-table::
    :header-rows: 1

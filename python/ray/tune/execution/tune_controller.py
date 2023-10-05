@@ -14,16 +14,15 @@ import logging
 import os
 
 import ray
-from ray.air import Checkpoint, ResourceRequest
+from ray.air import ResourceRequest
 from ray.air._internal.uri_utils import URI
-from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _FutureTrainingResult
 from ray.train._internal.storage import StorageContext, _use_storage_context
-from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.class_cache import _ActorClassCache
@@ -1631,10 +1630,9 @@ class TuneController:
 
             if should_checkpoint:
                 self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
-                future_result = self._schedule_trial_save(
+                self._schedule_trial_save(
                     trial=trial, storage=CheckpointStorage.PERSISTENT
                 )
-                trial.temporary_state.saving_to = future_result
             else:
                 self._schedule_trial_stop(trial)
                 self._set_trial_status(trial, Trial.PAUSED)
@@ -1749,14 +1747,6 @@ class TuneController:
             result = trial.last_result
             result.update(done=True)
 
-        # NOTE: This checkpoint dir name metric should only be auto-filled
-        # after we know the trial will save a checkpoint.
-        if _use_storage_context() and not is_duplicate:
-            trial_will_checkpoint = trial.should_checkpoint() or force_checkpoint
-            result[CHECKPOINT_DIR_NAME] = (
-                trial.storage.checkpoint_dir_name if trial_will_checkpoint else None
-            )
-
         self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
         flat_result = flatten_dict(result)
@@ -1810,7 +1800,14 @@ class TuneController:
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
             # another training step prematurely.
-            self._cached_trial_decisions[trial.trial_id] = decision
+            if not self._cached_trial_decisions.get(trial.trial_id) or decision in {
+                TrialScheduler.PAUSE,
+                TrialScheduler.STOP,
+            }:
+                # If already set, only overwrite if it's a PAUSE or STOP. This is
+                # to avoid that CONTINUE decisions from a training step that resolve
+                # late overwrite PAUSE/STOP decision.
+                self._cached_trial_decisions[trial.trial_id] = decision
             return None
         else:
             self._queue_decision(trial, decision)
@@ -1906,12 +1903,16 @@ class TuneController:
                 on_error=self._trial_task_failure,
                 _return_future=True,
             )
-            # TODO(justinvyu): `trial.saving_to` is needed in order to prevent
-            # a done=True result from executing a STOP decision
+            # TODO(justinvyu): `trial.saving_to` (and trial.is_saving) is needed
+            # in order to prevent a done=True result from executing a STOP decision
             # (which clears all futures) before the save gets processed.
             # Keep this in for now while `train` and `save` are 2 separate steps.
-            # TODO(justinvyu): Remove the return value?
             trial.temporary_state.saving_to = _FutureTrainingResult(future)
+
+            # `trial.saving_to` holds a future training result -- this is only used
+            # in the case of PBT to block until the checkpoint is ready.
+            # In all other situations, the checkpoint future is processed by the
+            # actor event manager when it is ready.
             return trial.temporary_state.saving_to
 
         if storage == CheckpointStorage.MEMORY:
