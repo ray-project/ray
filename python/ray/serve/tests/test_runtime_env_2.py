@@ -1,5 +1,6 @@
-import pytest
 import sys
+
+import pytest
 
 from ray._private.test_utils import run_string_as_driver
 
@@ -56,7 +57,6 @@ Test.delete()
     sys.platform == "win32", reason="Runtime env unsupported on Windows"
 )
 def test_pip_no_working_dir(ray_start):
-
     driver = """
 import ray
 from ray import serve

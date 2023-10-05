@@ -355,6 +355,7 @@ parts:
             title: Applications Guide
           - file: cluster/faq
           - file: cluster/package-overview
+          - file: cluster/usage-stats
 
       - file: ray-observability/index
         title: "Monitoring and Debugging"
@@ -385,14 +386,11 @@ parts:
               - file: ray-observability/reference/cli
               - file: ray-observability/reference/system-metrics
 
-      - file: ray-references/api
-        title: References
-        sections:
-          - file: cluster/usage-stats
-          - file: ray-references/glossary
-
       - file: ray-contribute/index
         title: Developer Guides
+
+      - file: ray-references/glossary
+        title: "Glossary"
 
       - file: ray-security/index
         title: "Security"

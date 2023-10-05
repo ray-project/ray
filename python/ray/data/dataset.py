@@ -483,7 +483,7 @@ class Dataset:
                 entire blocks as batches (blocks may contain different numbers of rows).
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
-                to a given map task. Default batch_size is 4096 with "default".
+                to a given map task. Default batch_size is 1024 with "default".
             compute: Either "tasks" (default) to use Ray Tasks or an
                 :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
@@ -3850,9 +3850,7 @@ class Dataset:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the datasetContext.
+                the collate_fn. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of the stream is not divisible by the batch
@@ -3975,9 +3973,7 @@ class Dataset:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the :class:`~ray.data.DataContext`.
+                the collate_fn. Defaults to 1.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
@@ -4025,7 +4021,7 @@ class Dataset:
             None,
         ] = None,
         verify_meta: bool = True,
-    ) -> "dask.DataFrame":
+    ) -> "dask.dataframe.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
 
@@ -4125,7 +4121,7 @@ class Dataset:
         return ddf
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def to_mars(self) -> "mars.DataFrame":
+    def to_mars(self) -> "mars.dataframe.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
 
@@ -4158,7 +4154,7 @@ class Dataset:
         return op(index_value=index_value, columns_value=columns_value, dtypes=dtypes)
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def to_modin(self) -> "modin.DataFrame":
+    def to_modin(self) -> "modin.pandas.dataframe.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 

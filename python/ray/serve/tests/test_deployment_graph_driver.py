@@ -1,17 +1,17 @@
 import sys
-from pydantic import BaseModel
 
 import pytest
 import requests
 import starlette.requests
+from pydantic import BaseModel
 from starlette.testclient import TestClient
 
-from ray.serve.drivers import DAGDriver
-from ray.serve.air_integrations import SimpleSchemaIngress
-from ray.serve.drivers_utils import load_http_adapter
-from ray.serve.dag import InputNode
-from ray import serve
 import ray
+from ray import serve
+from ray.serve.air_integrations import SimpleSchemaIngress
+from ray.serve.dag import InputNode
+from ray.serve.drivers import DAGDriver
+from ray.serve.drivers_utils import load_http_adapter
 
 
 def my_resolver(a: int):
@@ -46,7 +46,7 @@ def test_unit_schema_injection():
         return my_custom_param
 
     server = EchoIngress(http_adapter=resolver)
-    client = TestClient(server.app)
+    client = TestClient(server._asgi_app)
 
     response = client.post("/")
     assert response.status_code == 422
@@ -71,9 +71,8 @@ class MyType(BaseModel):
 
 
 def test_unit_pydantic_class_adapter():
-
     server = EchoIngress(http_adapter=MyType)
-    client = TestClient(server.app)
+    client = TestClient(server._asgi_app)
     response = client.get("/openapi.json")
     assert response.status_code == 200
     assert response.json()["paths"]["/"]["get"]["requestBody"] == {

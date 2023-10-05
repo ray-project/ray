@@ -1631,10 +1631,9 @@ class TuneController:
 
             if should_checkpoint:
                 self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
-                future_result = self._schedule_trial_save(
+                self._schedule_trial_save(
                     trial=trial, storage=CheckpointStorage.PERSISTENT
                 )
-                trial.temporary_state.saving_to = future_result
             else:
                 self._schedule_trial_stop(trial)
                 self._set_trial_status(trial, Trial.PAUSED)
@@ -1810,7 +1809,14 @@ class TuneController:
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
             # another training step prematurely.
-            self._cached_trial_decisions[trial.trial_id] = decision
+            if not self._cached_trial_decisions.get(trial.trial_id) or decision in {
+                TrialScheduler.PAUSE,
+                TrialScheduler.STOP,
+            }:
+                # If already set, only overwrite if it's a PAUSE or STOP. This is
+                # to avoid that CONTINUE decisions from a training step that resolve
+                # late overwrite PAUSE/STOP decision.
+                self._cached_trial_decisions[trial.trial_id] = decision
             return None
         else:
             self._queue_decision(trial, decision)
@@ -1906,12 +1912,16 @@ class TuneController:
                 on_error=self._trial_task_failure,
                 _return_future=True,
             )
-            # TODO(justinvyu): `trial.saving_to` is needed in order to prevent
-            # a done=True result from executing a STOP decision
+            # TODO(justinvyu): `trial.saving_to` (and trial.is_saving) is needed
+            # in order to prevent a done=True result from executing a STOP decision
             # (which clears all futures) before the save gets processed.
             # Keep this in for now while `train` and `save` are 2 separate steps.
-            # TODO(justinvyu): Remove the return value?
             trial.temporary_state.saving_to = _FutureTrainingResult(future)
+
+            # `trial.saving_to` holds a future training result -- this is only used
+            # in the case of PBT to block until the checkpoint is ready.
+            # In all other situations, the checkpoint future is processed by the
+            # actor event manager when it is ready.
             return trial.temporary_state.saving_to
 
         if storage == CheckpointStorage.MEMORY:
