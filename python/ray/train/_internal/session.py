@@ -32,6 +32,7 @@ from ray.train.constants import (
     WORKER_PID,
     TIME_TOTAL_S,
     RAY_CHDIR_TO_TRIAL_DIR,
+    CHECKPOINT_DIR_NAME,
 )
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -380,10 +381,6 @@ class _TrainSession:
             # NOTE: This populates `train.get_checkpoint`
             self.loaded_checkpoint = training_result.checkpoint
 
-            # NOTE: This is where the coordinator AND workers increment their
-            # checkpoint index.
-            self.storage._increase_checkpoint_index(training_result.metrics)
-
         # Add result to a thread-safe queue.
         self.result_queue.put(training_result, block=True)
 
@@ -416,10 +413,18 @@ class _TrainSession:
         if self.ignore_report:
             return
 
+        metrics = self._auto_fill_metrics(metrics)
+
         persisted_checkpoint = None
         if checkpoint:
+            self.storage._update_checkpoint_index(metrics)
+
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+
+            metrics[CHECKPOINT_DIR_NAME] = self.storage.checkpoint_dir_name
+        else:
+            metrics[CHECKPOINT_DIR_NAME] = None
 
         # Persist trial artifacts to storage.
         force_artifact_sync = (
@@ -427,8 +432,6 @@ class _TrainSession:
             and self.storage.sync_config.sync_artifacts_on_checkpoint
         )
         self.storage.persist_artifacts(force=force_artifact_sync)
-
-        metrics = self._auto_fill_metrics(metrics)
 
         # Set additional user metadata from the Trainer.
         if persisted_checkpoint and self.metadata:
