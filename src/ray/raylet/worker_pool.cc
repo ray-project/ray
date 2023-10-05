@@ -850,7 +850,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   } else {
     if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
         !RayConfig::instance().enable_worker_prestart()) {
-      RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
+      RAY_LOG(INFO) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
       PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
     }
 
@@ -1318,10 +1318,10 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                                  int64_t backlog_size) {
   int64_t num_available_cpus = get_num_cpus_available_();
   // Code path of task that needs a dedicated worker.
-  RAY_LOG(DEBUG) << "PrestartWorkers, num_available_cpus " << num_available_cpus
-                 << " backlog_size " << backlog_size << " task spec "
-                 << task_spec.DebugString() << " has runtime env "
-                 << task_spec.HasRuntimeEnv();
+  RAY_LOG(INFO) << "PrestartWorkers, num_available_cpus " << num_available_cpus
+                << " backlog_size " << backlog_size << " task spec "
+                << task_spec.DebugString() << " has runtime env "
+                << task_spec.HasRuntimeEnv();
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.HasRuntimeEnv() || task_spec.GetLanguage() != ray::Language::PYTHON) {
     return;  // Not handled.
