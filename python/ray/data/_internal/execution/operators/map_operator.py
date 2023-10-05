@@ -291,7 +291,7 @@ class MapOperator(OneToOneOperator, ABC):
             self._data_tasks[task_index].add_num_output_blocks(len(output.blocks))
             # Handle concurrency cap.
             self._num_tasks_outputted += 1
-            if self._num_tasks_finished * CONCURRENCY_CAP_RAMP_UP_RATIO >= self._concurrency_cap:
+            if self._num_tasks_outputted * CONCURRENCY_CAP_RAMP_UP_RATIO >= self._concurrency_cap:
                 self._concurrency_cap *= CONCURRENCY_CAP_MULTIPLIER
                 print(self, "Ramping up concurrency cap to", self._concurrency_cap)
 
