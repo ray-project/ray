@@ -595,7 +595,6 @@ class ReporterAgent(
         )
 
     def _get_load_avg(self):
-        logger.error("SANG-TODO")
         if sys.platform == "win32":
             cpu_percent = psutil.cpu_percent()
             load = (cpu_percent, cpu_percent, cpu_percent)
