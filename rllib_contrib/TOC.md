@@ -1,16 +1,26 @@
 # Algorithms
 
 
-* [A3C](./a3c)
 * [A2C](./a2c)
-* [Alpha Star](./alpha_star)
+* [A3C](./a3c)
+* [AlphaStar](./alpha_star)
+* [AlphaZero](./alpha_zero)
 * [APEX-DDPG][./apex_ddpg]
 * [APEX DQN](./apex_dqn/)
 * [Bandit](./bandit)
-* [DDPG](./ddpg)
+* [CRR](./crr)
 * [Decision Transformer](./dt)
+* [DDPG](./ddpg)
+* [ES](./es)
+* [LeelaChessZero](./leela_chess_zero)
 * [MAML](./maml)
+* [MBMPO](./mbmpo)
+* [PG](./pg)
+* [QMIX](./qmix)
 * [R2D2](./r2d2)
+* [SimpleQ](./simple_q)
+* [SlateQ](./slate_q)
+* [TD3](./td3)
 
 
 

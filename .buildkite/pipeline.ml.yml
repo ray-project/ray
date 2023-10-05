@@ -472,7 +472,7 @@
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/a3c/tests/test_a3c.py
 
-- label: ":exploding_death_star: RLlib Contrib: Alpha Star Tests"
+- label: ":exploding_death_star: RLlib Contrib: AlphaStar Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -491,10 +491,10 @@
     - conda deactivate
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
-    - (cd rllib_contrib/alpha_zero && pip install -r requirements.txt && pip install -e ".[development"])
+    - (cd rllib_contrib/alpha_zero && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/alpha_zero/tests/
-    - python alpha_zero/examples/alpha_zero_cartpole_sparse_rewards.py --run-as-test
+    - python rllib_contrib/alpha_zero/examples/alpha_zero_cartpole_sparse_rewards.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: APEX DDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -531,6 +531,18 @@
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/bandit/tests/
     - python rllib_contrib/bandit/examples/bandit_linucb_interest_evolution_recsim.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: CRR Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/crr && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/crr/tests/
+    - python rllib_contrib/crr/examples/crr_cartpole_v1.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
