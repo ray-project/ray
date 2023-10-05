@@ -7,6 +7,7 @@
 * [AlphaZero](./alpha_zero)
 * [APEX-DDPG][./apex_ddpg]
 * [APEX DQN](./apex_dqn/)
+* [ARS](./ars)
 * [Bandit](./bandit)
 * [CRR](./crr)
 * [Decision Transformer](./dt)

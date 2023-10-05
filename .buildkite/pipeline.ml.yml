@@ -520,6 +520,18 @@
     - pytest rllib_contrib/apex_dqn/tests/
     - python rllib_contrib/apex_dqn/examples/apex_dqn_cartpole_v1.py --run-as-test
 
+- label: ":exploding_death_star: RLlib Contrib: ARS Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/ars && pip install -r requirements.txt && pip install -e ".[development"])
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/ars/tests/
+    - python rllib_contrib/ars/examples/ars_cartpole_v1.py --run-as-test
+
 - label: ":exploding_death_star: RLlib Contrib: Bandit Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
