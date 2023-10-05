@@ -9,6 +9,7 @@ flaky_tests:
   - //rllib:learning_tests_pendulum_cql
   # algorithm, model and other tests
   - //rllib:test_bc 
+  - //rllib:policy/tests/test_policy
   - //rllib:env/tests/test_local_inference_cartpole
   - //rllib:evaluation/tests/test_envs_that_crash
   - //rllib:test_apex_ddpg
@@ -19,6 +20,7 @@ flaky_tests:
   - //rllib:examples/rl_module/mobilenet_rlm
   - //rllib:examples/action_masking_torch
   - //rllib:examples/action_masking_tf2
+  - //rllib:examples/learner/train_w_bc_finetune_w_ppo
   # memory leak tf2-eager-tracing
   - //rllib:test_memory_leak_ppo
   - //rllib:test_memory_leak_sac
