@@ -99,9 +99,15 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "before detaching your Databricks notebook."
             )
 
-        auto_shutdown_minutes = float(
-            os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES, "30")
-        )
+        if ray_cluster_handler.autoscale:
+            # Disable auto shutdown if autoscaling enabled.
+            # because in autoscaling mode, background spark job will be killed
+            # automatically when ray cluster is idle.
+            auto_shutdown_minutes = 0
+        else:
+            auto_shutdown_minutes = float(
+                os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES, "30")
+            )
         if auto_shutdown_minutes == 0:
             _logger.info(
                 "The Ray cluster will keep running until you manually detach the "
