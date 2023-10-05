@@ -272,6 +272,7 @@ class Dataset:
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
+        self._write_ds = None
 
     @staticmethod
     def copy(
@@ -3849,9 +3850,7 @@ class Dataset:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the datasetContext.
+                the collate_fn. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of the stream is not divisible by the batch
@@ -3974,9 +3973,7 @@ class Dataset:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the :class:`~ray.data.DataContext`.
+                the collate_fn. Defaults to 1.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
@@ -4500,6 +4497,8 @@ class Dataset:
             * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
 
         """
+        if self._write_ds is not None and self._write_ds._plan.has_computed_output():
+            return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:

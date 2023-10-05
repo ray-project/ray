@@ -242,7 +242,6 @@ class DatasetStats:
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
 
-        self._legacy_iter_batches = False
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
         self.iter_get_s: Timer = Timer()
@@ -315,7 +314,6 @@ class DatasetStats:
             )
 
         iter_stats = IterStatsSummary(
-            self._legacy_iter_batches,
             self.iter_wait_s,
             self.iter_get_s,
             self.iter_next_batch_s,
@@ -753,8 +751,6 @@ class StageStatsSummary:
 
 @dataclass
 class IterStatsSummary:
-    # Whether the legacy `iter_batches` is being used.
-    legacy_iter_batches: bool
     # Time spent in actor based prefetching, in seconds.
     wait_time: Timer
     # Time spent in `ray.get()`, in seconds
@@ -781,10 +777,7 @@ class IterStatsSummary:
     iter_unknown_location: int
 
     def __str__(self) -> str:
-        if self.legacy_iter_batches:
-            return self.to_string_legacy()
-        else:
-            return self.to_string()
+        return self.to_string()
 
     def to_string(self) -> str:
         out = ""
@@ -861,31 +854,6 @@ class IterStatsSummary:
                     fmt(self.finalize_batch_time.get()),
                 )
 
-        return out
-
-    def to_string_legacy(self) -> str:
-        """Iteration stats summary for legacy `iter_batches`."""
-
-        out = ""
-        if (
-            self.total_time.get()
-            or self.wait_time.get()
-            or self.next_time.get()
-            or self.format_time.get()
-            or self.get_time.get()
-        ):
-            out += "\nDataset iterator time breakdown:\n"
-            out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
-            out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
-            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
-            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
-            out += "* Num blocks unknown location: {}\n".format(
-                self.iter_unknown_location
-            )
-            out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
-            out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
-            out += "* In user code: {}\n".format(fmt(self.user_time.get()))
-            out += "* Total time: {}\n".format(fmt(self.total_time.get()))
         return out
 
     def __repr__(self, level=0) -> str:
