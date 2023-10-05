@@ -47,23 +47,19 @@ def test_huggingface(ray_start_regular_shared):
 )
 def test_from_huggingface_streaming(ray_start_regular_shared):
     # Returns pyarrow.Table batches.
-    hfds = datasets.load_dataset("tweet_eval", "emotion", streaming=True, split="train")
-
+    hfds = datasets.load_dataset(
+        "tweet_eval", "emotion", streaming=True, split="train"
+    ).with_format("arrow")
     assert isinstance(hfds, datasets.IterableDataset)
     ds = ray.data.from_huggingface(hfds)
     assert ds.count() == 3257
 
-    # Returns Dict batches, which should be converted to pyarrow.Table.
-    stream_dataset = datasets.load_dataset(
-        "HuggingFaceGECLM/REDDIT_comments",
-        streaming=True,
-    )
-    ray_stream_ds = ray.data.from_huggingface(stream_dataset["Foodforthought"])
-
-    # The entire dataset is large, so just iterate through first few batches.
-    iter_ds = iter(ray_stream_ds.iter_batches())
-    for _ in range(5):
-        next(iter_ds)
+    hfds = datasets.load_dataset(
+        "tweet_eval", "emotion", streaming=True, split="train"
+    ).with_format(None)
+    assert isinstance(hfds, datasets.IterableDataset)
+    ds = ray.data.from_huggingface(hfds)
+    assert ds.count() == 3257
 
 
 if __name__ == "__main__":
