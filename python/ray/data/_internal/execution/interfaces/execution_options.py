@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
@@ -101,6 +101,10 @@ class ExecutionOptions:
         verbose_progress: Whether to report progress individually per operator. By
             default, only AllToAll operators and global progress is reported. This
             option is useful for performance debugging. Off by default.
+        shuffle_input: Set this to shuffle input before execution. The shuffle seed
+            (as an integer) can also be set. Note current implementation only shuffles
+            the order of input files, but does not shuffle the order of rows inside
+            each file. Off by default.
     """
 
     resource_limits: ExecutionResources = field(default_factory=ExecutionResources)
@@ -112,3 +116,5 @@ class ExecutionOptions:
     actor_locality_enabled: bool = True
 
     verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "0")))
+
+    shuffle_input: Union[bool, Tuple[bool, int]] = False

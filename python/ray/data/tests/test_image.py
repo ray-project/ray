@@ -168,6 +168,70 @@ class TestReadImages:
             "image-datasets/simple/image3.jpg",
         ]
 
+    @pytest.mark.parametrize(
+        "is_shuffle_enabled,shuffle_seed",
+        [
+            (True, None),
+            (True, 9176),
+        ],
+    )
+    def test_random_shuffle2(
+        self, ray_start_regular_shared, is_shuffle_enabled, shuffle_seed
+    ):
+        # NOTE: set preserve_order to True to allow consistent output behavior.
+        context = ray.data.DataContext.get_current()
+        preserve_order = context.execution_options.preserve_order
+        shuffle_input = context.execution_options.shuffle_input
+        context.execution_options.preserve_order = True
+        if shuffle_seed is None:
+            context.execution_options.shuffle_input = is_shuffle_enabled
+        else:
+            context.execution_options.shuffle_input = (is_shuffle_enabled, shuffle_seed)
+
+        try:
+            dir_path = "s3://anonymous@air-example-data/mnist"
+            file_paths = [
+                "00000.png",
+                "00001.png",
+                "00002.png",
+                "00003.png",
+                "00004.png",
+                "00005.png",
+                "00006.png",
+                "00007.png",
+                "00008.png",
+                "00009.png",
+            ]
+            input_uris = [f"{dir_path}/{file_path}" for file_path in file_paths]
+
+            ds = ray.data.read_images(
+                paths=input_uris,
+                include_paths=True,
+            )
+
+            # Execute 10 times to get a set of output paths.
+            output_paths_list = []
+            for _ in range(10):
+                uris = [row["path"][-len(file_paths[0]) :] for row in ds.take_all()]
+                output_paths_list.append(uris)
+            all_paths_matched = [
+                file_paths == output_paths for output_paths in output_paths_list
+            ]
+
+            # Check when shuffle is enabled, output order has at least one different
+            # case.
+            assert not all(all_paths_matched) == is_shuffle_enabled
+            # Check all files are output properly without missing one.
+            assert all(
+                [
+                    file_paths == sorted(output_paths)
+                    for output_paths in output_paths_list
+                ]
+            )
+        finally:
+            context.preserve_order = preserve_order
+            context.shuffle_input = shuffle_input
+
     def test_e2e_prediction(self, shutdown_only):
         import torch
         from torchvision import transforms

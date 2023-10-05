@@ -19,6 +19,7 @@ from ray.data.datasource.file_meta_provider import (
     ParquetMetadataProvider,
     _handle_read_os_error,
 )
+from ray.data.datasource.file_metadata_shuffler import FileMetadataShuffler
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.util.annotations import PublicAPI
 
@@ -275,6 +276,7 @@ class _ParquetDatasourceReader(Reader):
         self._columns = columns
         self._schema = schema
         self._encoding_ratio = self._estimate_files_encoding_ratio()
+        self._file_metadata_shuffler = FileMetadataShuffler()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -289,11 +291,20 @@ class _ParquetDatasourceReader(Reader):
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side (do_write), however.
+        pq_metadata = self._metadata
+        if len(pq_metadata) < len(self._pq_fragments):
+            # Pad `pq_metadata` to be same length of `self._pq_fragments`.
+            pq_metadata += [None] * (len(self._pq_fragments) - len(pq_metadata))
+        files_metadata = self._file_metadata_shuffler.shuffle_files(
+            list(zip(self._pq_fragments, self._pq_paths, pq_metadata))
+        )
+        pq_fragments, pq_paths, pq_metadata = list(map(list, zip(*files_metadata)))
+
         read_tasks = []
         for fragments, paths, metadata in zip(
-            np.array_split(self._pq_fragments, parallelism),
-            np.array_split(self._pq_paths, parallelism),
-            np.array_split(self._metadata, parallelism),
+            np.array_split(pq_fragments, parallelism),
+            np.array_split(pq_paths, parallelism),
+            np.array_split(pq_metadata, parallelism),
         ):
             if len(fragments) <= 0:
                 continue
