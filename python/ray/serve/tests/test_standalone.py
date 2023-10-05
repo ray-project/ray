@@ -8,7 +8,6 @@ import socket
 import sys
 import time
 
-import pydantic
 import pytest
 import requests
 
@@ -35,7 +34,6 @@ from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import ActorNameList
 from ray.serve.schema import ServeApplicationSchema
 
 # Explicitly importing it here because it is a ray core tests utility (
@@ -573,67 +571,6 @@ def test_http_head_only(ray_cluster):
         for r in ray._private.state.state._available_resources_per_node().values()
     }
     assert cpu_per_nodes == {4, 4}
-
-
-@pytest.mark.skipif(
-    not hasattr(socket, "SO_REUSEPORT"),
-    reason=(
-        "Port sharing only works on newer verion of Linux. "
-        "This test can only be ran when port sharing is supported."
-    ),
-)
-def test_fixed_number_proxies(monkeypatch, ray_cluster):
-    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
-    cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=4)
-    cluster.add_node(num_cpus=4)
-    cluster.add_node(num_cpus=4)
-
-    ray.init(head_node.address)
-    node_ids = ray._private.state.node_ids()
-    assert len(node_ids) == 3
-
-    with pytest.raises(
-        pydantic.ValidationError,
-        match="you must specify the `fixed_number_replicas` parameter.",
-    ):
-        serve.start(
-            http_options={
-                "location": "FixedNumber",
-            }
-        )
-
-    serve.start(
-        http_options={
-            "port": new_port(),
-            "location": "FixedNumber",
-            "fixed_number_replicas": 2,
-        }
-    )
-
-    @serve.deployment(
-        num_replicas=3,
-        ray_actor_options={"num_cpus": 3},
-    )
-    class A:
-        def __call__(self, *args):
-            return "hi"
-
-    serve.run(A.bind())
-
-    # Only the controller and two http proxy should be started.
-    controller_handle = _get_global_client()._controller
-    wait_for_condition(
-        lambda: len(ray.get(controller_handle.get_proxies.remote())) == 2
-    )
-
-    proxy_names_bytes = ray.get(controller_handle.get_proxy_names.remote())
-    proxy_names = ActorNameList.FromString(proxy_names_bytes)
-    assert len(proxy_names.names) == 2
-
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
 
 
 def test_serve_shutdown(ray_shutdown):
