@@ -55,7 +55,6 @@ class FakeProxyWrapper(ProxyWrapper):
         self.actor_handle = actor_handle or FakeProxyActor(*args, **kwargs)
         self.ready = ProxyWrapperCallStatus.FINISHED_SUCCEED
         self.health = ProxyWrapperCallStatus.FINISHED_SUCCEED
-        # self.drained = ProxyWrapperCallStatus.FINISHED_SUCCEED
         self.worker_id = "mock_worker_id"
         self.log_file_path = "mock_log_file_path"
         self.health_check_ongoing = False
