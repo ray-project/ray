@@ -8,7 +8,7 @@ import logging
 import ray._private.ray_constants as ray_constants
 import ray._private.utils as utils
 import re
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 
 def update_resources_with_accelerator_type(resources: dict):
@@ -27,18 +27,18 @@ def update_resources_with_accelerator_type(resources: dict):
     _detect_and_configure_custom_accelerator(
         resources=resources,
         accelerator_key=ray_constants.NEURON_CORES,
-        accelerator_type=utils.get_neuron_core_constraint_name(),
-        visible_ids=utils.get_aws_neuron_core_visible_ids(),
-        autodetected_accelerators=_autodetect_aws_neuron_cores(),
+        get_accelerator_type=utils.get_neuron_core_constraint_name,
+        get_visible_ids=utils.get_aws_neuron_core_visible_ids,
+        autodetect_accelerators=_autodetect_aws_neuron_cores,
         visible_devices_env_variable=ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
     )
     # Autodetect Google Cloud TPUs
     _detect_and_configure_custom_accelerator(
         resources=resources,
         accelerator_key=ray_constants.TPU,
-        accelerator_type=_autodetect_tpu_version(),
-        visible_ids=utils.get_tpu_visible_chips(),
-        autodetected_accelerators=_autodetect_num_tpus(),
+        get_accelerator_type=_autodetect_tpu_version,
+        get_visible_ids=utils.get_tpu_visible_chips,
+        autodetect_accelerators=_autodetect_num_tpus,
         visible_devices_env_variable=ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
     )
 
@@ -46,9 +46,9 @@ def update_resources_with_accelerator_type(resources: dict):
 def _detect_and_configure_custom_accelerator(
     resources: dict,
     accelerator_key: str,
-    accelerator_type: str,
-    visible_ids: Optional[Iterable[str]],
-    autodetected_accelerators: int,
+    get_accelerator_type: Callable[[None], str],
+    get_visible_ids: Callable[[None], Optional[Iterable[str]]],
+    autodetect_accelerators: Callable[[None], int],
     visible_devices_env_variable: str,
 ):
     """Configure and autodetect custom accelerators counts and types.
@@ -71,14 +71,14 @@ def _detect_and_configure_custom_accelerator(
         accelerator_key: The key used to access the number of accelerators
             within `resources`. This can be:
             ray_constants.NEURON_CORES or ray_constants.TPU
-        accelerator_type: The name of the accelerator type. This
-            is the unique identifier of the accelerator version, e.g.
+        get_accelerator_type: A function that returns the name of the accelerator
+            type. This is the unique identifier of the accelerator version, e.g.
             ray_constants.AWS_NEURON_CORE or ray_constants.GOOGLE_TPU_V4.
-        visible_ids: The visible IDs specified by the user. This is typically
-            controlled by an environment variable, e.g. NEURON_RT_VISIBLE_CORES
-            or TPU_VISIBLE_CHIPS.
-        autodetected_accelerators: The number of accelerators autodetected
-            on the machine.
+        get_visible_ids: A function that returns the visible IDs specified by the user.
+            This is typically controlled by an environment variable, e.g.
+            NEURON_RT_VISIBLE_CORES or TPU_VISIBLE_CHIPS.
+        autodetected_accelerators: A function that returns the number of
+            accelerators autodetected on the machine.
         visible_devices_env_variable: The environment variable a user uses
             to specify which devices are visible.
 
@@ -90,6 +90,7 @@ def _detect_and_configure_custom_accelerator(
     # 1. Check if the user specified accelerator_count in resources
     accelerator_count = resources.get(accelerator_key, None)
     # 2. Check if the user specified visible cores/chips (within `visible_ids`)
+    visible_ids = get_visible_ids()
     if (
         accelerator_count is not None
         and visible_ids is not None
@@ -102,17 +103,17 @@ def _detect_and_configure_custom_accelerator(
         )
     # 3. Auto-detect accelerator_count if not specified in resources
     if accelerator_count is None:
-        accelerator_count = autodetected_accelerators
+        accelerator_count = autodetect_accelerators()
         # Don't use more resources than allowed by the user's pre-set values.
         if accelerator_count is not None and visible_ids is not None:
             accelerator_count = min(accelerator_count, len(visible_ids))
-    if accelerator_count is not None:
+    if accelerator_count is not None and accelerator_count > 0:
         # 4. Update accelerator_type and accelerator_count with
         # number of accelerators detected or configured.
         resources.update(
             {
                 accelerator_key: accelerator_count,
-                accelerator_type: accelerator_count,
+                get_accelerator_type(): accelerator_count,
             }
         )
 
@@ -168,7 +169,7 @@ def _autodetect_num_tpus() -> int:
         numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
         return len(numeric_entries)
     except FileNotFoundError as e:
-        logging.info("Failed to detect number of TPUs: %s", e)
+        logging.debug("Failed to detect number of TPUs: %s", e)
         return 0
 
 
@@ -194,31 +195,65 @@ def _autodetect_tpu_version() -> Optional[str]:
     """
 
     def accelerator_type_to_version(accelerator_type: str) -> str:
-        assert_tpu_accelerator_type(accelerator_type)
-        return "TPU-" + str(accelerator_type.split("-")[0]).upper()
+        if valid_tpu_accelerator_type(accelerator_type):
+            return "TPU-" + str(accelerator_type.split("-")[0]).upper()
+        else:
+            return None
 
+    detected_tpu_version = None
     # GKE-based check
     accelerator_type = os.getenv(
         ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, None
     )
     if accelerator_type is not None:
-        return accelerator_type_to_version(accelerator_type)
+        detected_tpu_version = accelerator_type_to_version(accelerator_type)
+        if detected_tpu_version is None:
+            logging.info(
+                "While trying to autodetect a TPU type and "
+                f"parsing {ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR}, "
+                f"received malformed accelerator_type: {accelerator_type}"
+            )
+    else:
+        # GCE-based VM check
+        try:
+            accelerator_type_request = requests.get(
+                ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
+                headers=ray_constants.RAY_GCE_TPU_HEADERS,
+                timeout=30,
+            )
+            if (
+                accelerator_type_request.status_code == 200
+                and accelerator_type_request.text
+            ):
+                detected_tpu_version = accelerator_type_to_version(
+                    accelerator_type_request.text
+                )
+                if detected_tpu_version is None:
+                    logging.info(
+                        "While trying to autodetect a TPU type, the TPU GCE metadata "
+                        "returned a malformed accelerator type: "
+                        f"{accelerator_type_request.text}."
+                    )
+            else:
+                logging.info(
+                    "While trying to autodetect a TPU type, "
+                    "unable to poll TPU GCE metadata. Got "
+                    f"status code: {accelerator_type_request.status_code} and "
+                    f"content: {accelerator_type_request.text}"
+                )
+        except requests.RequestException as e:
+            logging.info(
+                "While trying to autodetect a TPU type, "
+                " unable to poll TPU GCE metadata: %s",
+                e,
+            )
 
-    # GCE-based VM check
-    try:
-        accelerator_type_request = requests.get(
-            ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
-            headers=ray_constants.RAY_GCE_TPU_HEADERS,
-        )
-        if accelerator_type_request.status_code == 200:
-            return accelerator_type_to_version(accelerator_type_request.text)
-    except requests.RequestException as e:
-        logging.info("Unable to poll TPU GCE metadata: %s", e)
-
-    return None
+    if detected_tpu_version is None:
+        logging.info("Failed to auto-detect TPU type.")
+    return detected_tpu_version
 
 
-def assert_tpu_accelerator_type(accelerator_type: str):
+def valid_tpu_accelerator_type(accelerator_type: str):
     """Assert that the inputed accelerator_type is formatted correctly.
 
     The accelerator_type field follows a form of v{generation}-{cores/chips}.
@@ -236,7 +271,5 @@ def assert_tpu_accelerator_type(accelerator_type: str):
     """
     expected_pattern = re.compile(r"^v\d+[a-zA-Z]*-\d+$")
     if not expected_pattern.match(accelerator_type):
-        raise ValueError(
-            "`acceleratorType` should match v(generation)-(cores/chips). "
-            f"Got {accelerator_type}."
-        )
+        return False
+    return True

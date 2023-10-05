@@ -12,7 +12,7 @@ from ray.serve._private.deployment_graph_build import (
     transform_serve_dag_to_serve_executor_dag,
 )
 from ray.serve.handle import RayServeHandle
-from ray.serve.tests.resources.test_dags import (
+from ray.serve.tests.common.test_dags import (
     get_func_class_with_class_method_dag,
     get_multi_instantiation_class_deployment_in_init_args_dag,
     get_multi_instantiation_class_nested_deployment_arg_dag,
@@ -20,7 +20,7 @@ from ray.serve.tests.resources.test_dags import (
     get_simple_class_with_class_method_dag,
     get_simple_func_dag,
 )
-from ray.serve.tests.resources.test_modules import NESTED_HANDLE_KEY, Model, combine
+from ray.serve.tests.common.test_modules import NESTED_HANDLE_KEY, Model, combine
 
 pytestmark = pytest.mark.asyncio
 

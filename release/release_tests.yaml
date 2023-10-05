@@ -3251,59 +3251,6 @@
         cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
 
 
-- name: serve_micro_protocol_grpc_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_protocol_benchmark.py --data-size=1048576
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_gce.yaml
-
-- name: serve_micro_protocol_http_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_protocol_benchmark.py --data-size=1048576 --http-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_gce.yaml
-
-
 - name: serve_resnet_benchmark
   group: Serve tests
   working_dir: serve_tests
@@ -6860,8 +6807,8 @@
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
-    timeout: 3600
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20
+    timeout: 4800
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30
 
 - name: gcp_cluster_launcher_latest_image
   group: cluster-launcher-test
