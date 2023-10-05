@@ -1782,7 +1782,7 @@ def read_databricks_tables(
 
         import ray
 
-        ds = ray.data.read_databricks_uc_tables(
+        ds = ray.data.read_databricks_tables(
             warehouse_id='a885ad08b64951ad',
             catalog='catalog_1',
             schema='db_1',
