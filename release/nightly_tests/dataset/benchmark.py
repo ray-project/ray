@@ -2,10 +2,9 @@ import gc
 import json
 import os
 import time
-from typing import Callable, Dict, Union
+from typing import Callable, Dict
 
 from ray.data.dataset import Dataset
-from ray.data.iterator import _IterableFromIterator
 from typing import Any
 
 
@@ -13,8 +12,6 @@ from enum import Enum
 
 import pyarrow as pa
 import pandas as pd
-import tensorflow as tf
-import torch
 
 
 class BenchmarkMetric(Enum):
@@ -81,31 +78,24 @@ class Benchmark:
     def run_iterate_ds(
         self,
         name: str,
-        dataset: Union[
-            Dataset,
-            _IterableFromIterator,
-            torch.utils.data.DataLoader,
-            tf.data.Dataset,
-        ],
+        dataset: Any,
     ):
-        """Run a benchmark iterating over a dataset. Supported dataset types are:
-        Ray Dataset, iterator over Ray Dataset (`.iter_batches()`,
-        `.iter_torch_batches()`, `.iter_tf_batches()`), Torch DataLoader,
-        TensorFlow Dataset. Runtime and throughput are automatically calculated
-        and reported."""
+        """Run a benchmark iterating over a dataset. Runtime and throughput
+        are automatically calculated and reported. Supported dataset types are:
+        - Ray Dataset (`ray.data.Dataset`)
+        - iterator over Ray Dataset (`ray.data.iterator._IterableFromIterator` from
+            `.iter_batches()`,`.iter_torch_batches()`, `.iter_tf_batches()`)
+        - Torch DataLoader (`torch.utils.data.DataLoader`)
+        - TensorFlow Dataset (`tf.data.Dataset`)
+        """
+        # Import TF/Torch within this method, as not all benchmarks
+        # will use/install these libraries.
+        import tensorflow as tf
+        import torch
 
         gc.collect()
 
         print(f"Running case: {name}")
-        assert isinstance(
-            dataset,
-            (
-                Dataset,
-                _IterableFromIterator,
-                torch.utils.data.DataLoader,
-                tf.data.Dataset,
-            ),
-        ), f"Unexpected dataset type: {type(dataset)}"
         start_time = time.perf_counter()
         record_count = 0
         ds_iterator = iter(dataset)
@@ -118,12 +108,14 @@ class Benchmark:
             if isinstance(first_batch, dict):
                 feature_lengths = {k: len(first_batch[k]) for k in first_batch}
                 batch_size = max(feature_lengths.values())
+                continue
+            elif isinstance(first_batch, (pa.Table, pd.DataFrame)):
+                batch_size = len(first_batch)
+                continue
             elif isinstance(first_batch, torch.Tensor):
                 batch_size = first_batch.size(dim=0)
             elif isinstance(first_batch, tf.Tensor):
                 batch_size = first_batch.shape.as_list()[0]
-            elif isinstance(first_batch, (pa.Table, pd.DataFrame)):
-                batch_size = len(first_batch)
             else:
                 raise TypeError(f"Unexpected batch type: {type(first_batch)}")
             record_count += batch_size
