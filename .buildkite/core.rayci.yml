@@ -1,7 +1,7 @@
 group: core tests
 steps:
   - label: ":ray: core: python tests"
-    tags: [RAY_CI_PYTHON_AFFECTED]
+    tags: python
     instance_type: large
     parallelism: 4
     commands:
@@ -12,7 +12,7 @@ steps:
     job_env: forge
 
   - label: ":ray: core: redis tests"
-    tags: [RAY_CI_PYTHON_AFFECTED]
+    tags: python
     instance_type: large
     parallelism: 4
     commands:
@@ -24,7 +24,7 @@ steps:
     job_env: forge
 
   - label: ":ray: core: flaky tests"
-    tags: [RAY_CI_PYTHON_AFFECTED]
+    tags: python
     instance_type: large
     soft_fail: true
     commands:

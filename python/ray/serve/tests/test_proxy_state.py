@@ -294,12 +294,22 @@ def test_proxy_state_update_starting_ready_succeed():
     # Ensure the proxy status before update is STARTING.
     assert proxy_state.status == ProxyStatus.STARTING
 
+    # Ensure actor_details are set to the initial state when the proxy_state is created.
+    assert proxy_state.actor_details.worker_id is None
+    assert proxy_state.actor_details.log_file_path is None
+    assert proxy_state.actor_details.status == ProxyStatus.STARTING.value
+
     # Continuously trigger update and wait for status to be changed.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
         status=ProxyStatus.HEALTHY,
     )
+
+    # Ensure actor_details are updated.
+    assert proxy_state.actor_details.worker_id == "mock_worker_id"
+    assert proxy_state.actor_details.log_file_path == "mock_log_file_path"
+    assert proxy_state.actor_details.status == ProxyStatus.HEALTHY.value
 
 
 def test_proxy_state_update_starting_ready_failed_once():
