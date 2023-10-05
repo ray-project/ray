@@ -893,9 +893,8 @@ def get_or_create_head_node(
         )
         cli_logger.print(
             cf.bold(
-                "  ray job submit --address "
-                f"http://{get_head_node_ip(printable_config_file)}"
-                ":<dashboard-port> --working-dir . -- python my_script.py"
+                "  ray job submit --address http://localhost:<dashboard-port> "
+                "--working-dir . -- python my_script.py"
             )
         )
         cli_logger.newline()
