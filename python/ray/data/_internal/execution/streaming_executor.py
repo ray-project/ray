@@ -30,7 +30,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, _get_or_create_dataset_metrics
+from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
 from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
@@ -73,7 +73,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
 
-        self._dataset_metrics = _get_or_create_dataset_metrics()
+        self._stats_actor = _get_or_create_stats_actor()
         self._prev_metrics_state = {}
         self._dataset_uuid = dataset_uuid
 
@@ -322,7 +322,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _update_dataset_metrics(self, op_state):
         metrics = op_state.op.get_metrics()
-        self._dataset_metrics.inc_bytes_spilled.remote(
+        self._stats_actor.inc_bytes_spilled.remote(
             metrics.get("obj_store_mem_spilled", 0)
             - self._prev_metrics_state[op_state].get("bytes_spilled", 0),
             self._dataset_uuid or "None",
