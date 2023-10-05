@@ -413,8 +413,8 @@ class DataParallelTrainer(BaseTrainer):
             at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
 
             if at_least_one_reported_checkpoint:
-                # NOTE: This is where the coordinator AND workers increment their
-                # checkpoint index.
+                # Update the coordinator's checkpoint index to the latest.
+                # This is what keeps the checkpoint index in line with the workers.
                 tune_session.storage._update_checkpoint_index(
                     first_worker_result.metrics
                 )
