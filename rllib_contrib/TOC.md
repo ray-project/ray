@@ -9,6 +9,7 @@
 * [APEX DQN](./apex_dqn/)
 * [Bandit](./bandit)
 * [CRR](./crr)
+* [Decision Transformer](./dt)
 * [DDPG](./ddpg)
 * [ES](./es)
 * [LeelaChessZero](./leela_chess_zero)
