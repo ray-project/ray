@@ -1,22 +1,16 @@
-import asyncio
 import json
-import time
-from typing import Any, List, Tuple
+from typing import List, Tuple
 from unittest.mock import patch
 
 import pytest
 
-import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
-from ray._raylet import GcsClient
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import ProxyStatus
 from ray.serve._private.constants import (
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_CONTROLLER_NAME,
-    SERVE_NAMESPACE,
 )
-from ray.serve._private.controller import ServeController
 from ray.serve._private.proxy_state import (
     ProxyState,
     ProxyStateManager,
@@ -114,6 +108,7 @@ def _create_proxy_state_manager(
         cluster_node_info_cache,
     )
 
+
 def _create_proxy_state(
     proxy_actor_class=FakeProxyActor,
     actor_proxy_wrapper_class=FakeProxyWrapper,
@@ -122,9 +117,7 @@ def _create_proxy_state(
     **kwargs,
 ) -> ProxyState:
     state = ProxyState(
-        actor_proxy_wrapper=actor_proxy_wrapper_class(
-            actor_handle=proxy_actor_class()
-        ),
+        actor_proxy_wrapper=actor_proxy_wrapper_class(actor_handle=proxy_actor_class()),
         actor_name="alice",
         node_id=node_id,
         node_ip="mock_node_ip",
@@ -519,6 +512,7 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
     because the failures weren't consecutive with the previous ones. And then
     it finally fails enough times to become UNHEALTHY.
     """
+
     class NewMockProxyActor:
         def __init__(self):
             self._should_succeed = True
@@ -553,9 +547,7 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
         state: ProxyState, num_health_checks: int
     ):
         state.update()
-        assert (
-            state.actor_handle.get_num_health_checks()
-        ) == num_health_checks
+        assert (state.actor_handle.get_num_health_checks()) == num_health_checks
         return True
 
     def incur_health_checks(
@@ -570,13 +562,15 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
         """
         proxy_state.actor_handle.should_succeed(pass_checks)
         if pass_checks:
-            proxy_state._actor_proxy_wrapper.health = ProxyWrapperCallStatus.FINISHED_SUCCEED
+            proxy_state._actor_proxy_wrapper.health = (
+                ProxyWrapperCallStatus.FINISHED_SUCCEED
+            )
         else:
-            proxy_state._actor_proxy_wrapper.health = ProxyWrapperCallStatus.FINISHED_FAILED
+            proxy_state._actor_proxy_wrapper.health = (
+                ProxyWrapperCallStatus.FINISHED_FAILED
+            )
 
-        cur_num_health_checks = (
-            proxy_state.actor_handle.get_num_health_checks()
-        )
+        cur_num_health_checks = proxy_state.actor_handle.get_num_health_checks()
 
         wait_for_condition(
             condition_predictor=_update_until_num_health_checks_received,
@@ -821,9 +815,7 @@ def test_proxy_actor_healthy_during_draining():
 @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
 @patch("ray.serve._private.proxy_state.PROXY_DRAIN_CHECK_PERIOD_S", 0)
 @pytest.mark.parametrize("number_of_worker_nodes", [1])
-def test_proxy_actor_unhealthy_during_draining(
-    all_nodes, number_of_worker_nodes
-):
+def test_proxy_actor_unhealthy_during_draining(all_nodes, number_of_worker_nodes):
     """Test the state transition from DRAINING to UNHEALTHY for the proxy actor."""
     manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
@@ -866,15 +858,15 @@ def test_proxy_actor_unhealthy_during_draining(
     )
 
     # Kill the draining proxy actor
-    manager._proxy_states[worker_node_id]._actor_proxy_wrapper.health = ProxyWrapperCallStatus.FINISHED_FAILED
+    manager._proxy_states[
+        worker_node_id
+    ]._actor_proxy_wrapper.health = ProxyWrapperCallStatus.FINISHED_FAILED
 
     def check_worker_node_proxy_actor_is_removed():
         manager.update(proxy_nodes=proxy_nodes)
         return len(manager._proxy_states) == 1
 
-    wait_for_condition(
-        condition_predictor=check_worker_node_proxy_actor_is_removed
-    )
+    wait_for_condition(condition_predictor=check_worker_node_proxy_actor_is_removed)
     assert manager._proxy_states[HEAD_NODE_ID].status == ProxyStatus.HEALTHY
 
 
