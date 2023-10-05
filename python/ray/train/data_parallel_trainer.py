@@ -434,11 +434,9 @@ class DataParallelTrainer(BaseTrainer):
                 else None
             )
 
-            metrics = first_worker_result.metrics.copy()
-
             tracked_training_result = _TrainingResult(
                 checkpoint=checkpoint,
-                metrics=metrics,
+                metrics=first_worker_result.metrics,
             )
 
             logger.debug(
