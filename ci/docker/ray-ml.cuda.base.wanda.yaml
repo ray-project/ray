@@ -1,5 +1,5 @@
-name: "ray-mlpy38cu118base"
-froms: ["cr.ray.io/rayproject/raypy38cu118base"]
+name: "ray-ml-py$PYTHON_VERSION-cu$CUDA_VERSION-base"
+froms: ["cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base"]
 dockerfile: docker/ray-ml/Dockerfile
 srcs:
   - python/requirements.txt
@@ -17,6 +17,6 @@ srcs:
   - python/requirements/docker/ray-docker-requirements.txt
   - docker/ray-ml/install-ml-docker-requirements.sh
 build_args:
-  - FULL_BASE_IMAGE=cr.ray.io/rayproject/raypy38cu118base
+  - FULL_BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base
 tags:
-  - cr.ray.io/rayproject/ray-mlpy38cu118base
+  - cr.ray.io/rayproject/ray-ml-py$PYTHON_VERSION-cu$CUDA_VERSION-base

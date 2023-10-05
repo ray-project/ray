@@ -24,7 +24,7 @@ from ci.ray_ci.utils import logger, docker_login
 )
 @click.option(
     "--platform",
-    default="cu118",
+    default="cu11.8.0",
     type=click.Choice(list(PLATFORM)),
     help=("Platform to build the docker with"),
 )

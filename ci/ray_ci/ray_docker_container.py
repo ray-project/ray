@@ -21,12 +21,12 @@ class RayDockerContainer(DockerContainer):
 
         base_image = (
             f"{_DOCKER_ECR_REPO}:{rayci_build_id}"
-            f"-{self.image_type}{self.python_version}{self.platform}base"
+            f"-{self.image_type}-py{self.python_version}-{self.platform}-base"
         )
+
         docker_pull(base_image)
 
-        bin_path_py_version = f"3.{self.python_version[3:]}"  # py38 -> 3.8
-        bin_path = PYTHON_VERSIONS[bin_path_py_version]["bin_path"]
+        bin_path = PYTHON_VERSIONS[self.python_version]["bin_path"]
         wheel_name = f"ray-{RAY_VERSION}-{bin_path}-manylinux2014_x86_64.whl"
 
         constraints_file = "requirements_compiled.txt"
