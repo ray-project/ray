@@ -68,17 +68,17 @@ class ProxyWrapper(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def is_ready(self) -> Any:
+    def is_ready(self) -> ProxyWrapperCallStatus:
         """Return the payload from proxy ready check when ready."""
         raise NotImplementedError
 
     @abstractmethod
-    def is_healthy(self) -> bool:
+    def is_healthy(self) -> ProxyWrapperCallStatus:
         """Return whether the proxy actor is healthy or not."""
         raise NotImplementedError
 
     @abstractmethod
-    def is_drained(self) -> bool:
+    def is_drained(self) -> ProxyWrapperCallStatus:
         """Return whether the proxy actor is drained or not."""
         raise NotImplementedError
 

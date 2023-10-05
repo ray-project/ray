@@ -17,14 +17,12 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.controller import ServeController
-from ray.serve._private.default_impl import create_cluster_node_info_cache
-from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import (
-    ActorProxyWrapper,
     ProxyState,
     ProxyStateManager,
+    ProxyWrapper,
+    ProxyWrapperCallStatus,
 )
-from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import DeploymentMode, HTTPOptions
 
 HEAD_NODE_ID = "node_id-index-head"
@@ -41,12 +39,65 @@ class MockClusterNodeInfoCache:
         return {node_id for node_id, _ in self.alive_nodes}
 
 
-def _make_proxy_state_manager(
-    http_options: HTTPOptions,
+class FakeProxyActor:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def ready(self):
+        return json.dumps(["mock_worker_id", "mock_log_file_path"])
+
+    async def check_health(self):
+        pass
+
+
+class FakeProxyWrapper(ProxyWrapper):
+    def __init__(self, *args, **kwargs):
+        self.actor_handle = FakeProxyActor(*args, **kwargs)
+        self.ready = ProxyWrapperCallStatus.FINISHED_SUCCEED
+        # self.healthy = ProxyWrapperCallStatus.FINISHED_SUCCEED
+        # self.drained = ProxyWrapperCallStatus.FINISHED_SUCCEED
+        self.worker_id = "mock_worker_id"
+        self.log_file_path = "mock_log_file_path"
+        self.health_check_ongoing = False
+
+    @property
+    def actor_id(self) -> str:
+        pass
+
+    def start_new_ready_check(self):
+        pass
+
+    def start_new_health_check(self):
+        pass
+
+    def start_new_drained_check(self):
+        pass
+
+    def is_ready(self) -> ProxyWrapperCallStatus:
+        return self.ready
+
+    def is_healthy(self) -> ProxyWrapperCallStatus:
+        pass
+
+    def is_drained(self) -> ProxyWrapperCallStatus:
+        pass
+
+    def is_shutdown(self):
+        pass
+
+    def update_draining(self, draining: bool):
+        pass
+
+    def kill(self):
+        pass
+
+
+def _create_proxy_state_manager(
+    http_options: HTTPOptions = HTTPOptions(),
     head_node_id: str = HEAD_NODE_ID,
     cluster_node_info_cache=MockClusterNodeInfoCache(),
-    proxy_actor_class=ProxyActor,
-    actor_proxy_wrapper_class=ActorProxyWrapper,
+    proxy_actor_class=FakeProxyActor,
+    actor_proxy_wrapper_class=FakeProxyWrapper,
 ) -> (ProxyStateManager, ClusterNodeInfoCache):
     return (
         ProxyStateManager(
@@ -59,6 +110,21 @@ def _make_proxy_state_manager(
         ),
         cluster_node_info_cache,
     )
+
+def _create_proxy_state(
+    proxy_actor_class: Any = FakeProxyWrapper,
+    status: ProxyStatus = ProxyStatus.STARTING,
+    node_id: str = "mock_node_id",
+    **kwargs,
+) -> ProxyState:
+    state = ProxyState(
+        actor_proxy_wrapper=proxy_actor_class(actor_handle=proxy_actor_class()),
+        actor_name="alice",
+        node_id=node_id,
+        node_ip="mock_node_ip",
+    )
+    state.set_status(status=status)
+    return state
 
 
 @pytest.fixture
@@ -74,62 +140,10 @@ def all_nodes(number_of_worker_nodes) -> List[Tuple[str, str]]:
     ]
 
 
-@pytest.fixture()
-def setup_controller():
-    try:
-        controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-    except ValueError:
-        controller = ServeController.options(
-            name=SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-        ).remote(
-            SERVE_CONTROLLER_NAME,
-            http_config=None,
-        )
-    controller_actor_id = controller._ray_actor_id.hex()
-
-    def check_controller_alive():
-        controller_actor_info = ray._private.state.actors(controller_actor_id)
-        controller_actor_state = controller_actor_info["State"]
-        return controller_actor_state == "ALIVE"
-
-    wait_for_condition(check_controller_alive)
-    yield
-
-
-@ray.remote(num_cpus=0)
-class MockProxyActor:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    async def ready(self):
-        return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-    async def check_health(self):
-        pass
-
-
-def _create_proxy_state(
-    proxy_actor_class: Any = MockProxyActor,
-    status: ProxyStatus = ProxyStatus.STARTING,
-    node_id: str = "mock_node_id",
-    **kwargs,
-) -> ProxyState:
-    if kwargs:
-        kwargs["node_id"] = node_id
-    proxy = proxy_actor_class.options(lifetime="detached").remote(**kwargs)
-    state = ProxyState(
-        actor_proxy_wrapper=ActorProxyWrapper(actor_handle=proxy),
-        actor_name="alice",
-        node_id=node_id,
-        node_ip="mock_node_ip",
-    )
-    state.set_status(status=status)
-    return state
-
-
 def _update_and_check_proxy_status(state: ProxyState, status: ProxyStatus):
     state.update()
-    return state.status == status
+    assert state.status == status, state.status
+    return True
 
 
 def _update_and_check_proxy_state_manager(
@@ -140,39 +154,40 @@ def _update_and_check_proxy_state_manager(
 ):
     proxy_state_manager.update(**kwargs)
     proxy_states = proxy_state_manager._proxy_states
-    return all(
+    assert all(
         [
             proxy_states[node_ids[idx]].status == statuses[idx]
             for idx in range(len(node_ids))
         ]
-    )
+    ), [proxy_state.status for proxy_state in proxy_states.values()]
+    return True
 
 
 def test_node_selection(all_nodes):
     all_node_ids = {node_id for node_id, _ in all_nodes}
     # Test NoServer
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
+    proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.NoServer)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == []
 
     # Test HeadOnly
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
+    proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.HeadOnly)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == all_nodes[:1]
 
     # Test EveryNode
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
+    proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == all_nodes
 
     # Test FixedReplica
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
+    proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.FixedNumber, fixed_number_replicas=5)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
@@ -186,7 +201,7 @@ def test_node_selection(all_nodes):
         # The selection should be deterministic.
         assert selected_nodes == proxy_state_manager._get_target_nodes(all_node_ids)
 
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
+    proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(
             location=DeploymentMode.FixedNumber,
             fixed_number_replicas=5,
@@ -200,7 +215,7 @@ def test_node_selection(all_nodes):
     assert set(another_seed) != set(selected_nodes)
 
     # Test specific nodes
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
+    proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
@@ -209,7 +224,7 @@ def test_node_selection(all_nodes):
     ]
 
 
-def test_proxy_state_update_restarts_unhealthy_proxies(ray_shutdown):
+def test_proxy_state_update_restarts_unhealthy_proxies(all_nodes):
     """Test the update method in ProxyStateManager would
        kill and restart unhealthy proxies.
 
@@ -218,43 +233,26 @@ def test_proxy_state_update_restarts_unhealthy_proxies(ray_shutdown):
     by a new proxy with STARTING status.
     The unhealthy proxy state is also shutting down.
     """
-    ray.init(num_cpus=5)
-    head_node_id = get_head_node_id()
 
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
-        http_options=HTTPOptions(location=DeploymentMode.HeadOnly),
-        head_node_id=head_node_id,
-        cluster_node_info_cache=create_cluster_node_info_cache(
-            GcsClient(address=ray.get_runtime_context().gcs_address)
-        ),
-        proxy_actor_class=MockProxyActor,
-    )
-    cluster_node_info_cache.update()
-    proxy_state_manager._proxy_states[head_node_id] = _create_proxy_state(
-        status=ProxyStatus.STARTING
-    )
+    proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager()
+    cluster_node_info_cache.alive_nodes = all_nodes
+    proxy_state_manager.update()
 
-    old_proxy_state = proxy_state_manager._proxy_states[head_node_id]
+    old_proxy_state = proxy_state_manager._proxy_states[HEAD_NODE_ID]
     old_proxy = old_proxy_state.actor_handle
 
-    # Kill the proxy actor to make it unhealthy.
-    old_proxy.__ray_terminate__.remote()
-
-    def _update_state_and_check_proxy_status(
-        _proxy_state_manager: ProxyStateManager,
-        _status: ProxyStatus,
-    ):
-        _proxy_state_manager.update()
-        return _proxy_state_manager._proxy_states[head_node_id].status == _status
+    # Make the old proxy unhealthy.
+    old_proxy_state.set_status(ProxyStatus.UNHEALTHY)
 
     # Continuously trigger update and wait for status to be changed to HEALTHY.
     wait_for_condition(
-        condition_predictor=_update_state_and_check_proxy_status,
-        _proxy_state_manager=proxy_state_manager,
-        _status=ProxyStatus.HEALTHY,
+        condition_predictor=_update_and_check_proxy_state_manager,
+        proxy_state_manager=proxy_state_manager,
+        node_ids=[HEAD_NODE_ID],
+        statuses=[ProxyStatus.HEALTHY],
     )
 
-    new_proxy = proxy_state_manager._proxy_states[head_node_id].actor_handle
+    new_proxy = proxy_state_manager._proxy_states[HEAD_NODE_ID].actor_handle
 
     # Ensure the old proxy is getting shutdown.
     assert old_proxy_state._shutting_down
@@ -321,21 +319,14 @@ def test_proxy_state_update_starting_ready_failed_once():
     and should stay as STARTING. The following ready call is unblocked and succeed. The
     status will then change to HEALTHY.
     """
-    signal = SignalActor.remote()
-
-    @ray.remote(num_cpus=0)
-    class NewMockProxyActor:
-        async def ready(self):
-            await signal.wait.remote()
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        async def check_health(self):
-            pass
-
-    proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
+    proxy_state = _create_proxy_state()
 
     # Ensure the proxy status before update is STARTING.
     assert proxy_state.status == ProxyStatus.STARTING
+
+    # When the proxy ready call is blocked, the proxy wrapper call
+    # status will be PENDING.
+    proxy_state._actor_proxy_wrapper.ready = ProxyWrapperCallStatus.PENDING
 
     # Trigger update. The status do not change even when ready call is blocked.
     wait_for_condition(
@@ -345,7 +336,7 @@ def test_proxy_state_update_starting_ready_failed_once():
     )
 
     # Unblock ready call, trigger update, and wait for status change to HEALTHY.
-    signal.send.remote()
+    proxy_state._actor_proxy_wrapper.ready = ProxyWrapperCallStatus.FINISHED_SUCCEED
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
@@ -361,16 +352,10 @@ def test_proxy_state_update_starting_ready_always_fails():
     exceptions. The state will eventually change to UNHEALTHY after all retries have
     exhausted.
     """
-
-    @ray.remote(num_cpus=0)
-    class NewMockProxyActor:
-        async def ready(self):
-            raise Exception("Never be ready")
-
-        async def check_health(self):
-            pass
-
-    proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
+    proxy_state = _create_proxy_state()
+    # When the proxy ready call is failing, the proxy wrapper call
+    # status will be FINISHED_FAILED.
+    proxy_state._actor_proxy_wrapper.ready = ProxyWrapperCallStatus.FINISHED_FAILED
 
     # Ensure the proxy status before update is STARTING.
     assert proxy_state.status == ProxyStatus.STARTING
@@ -820,7 +805,7 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
     node http proxy should continue to be healthy while worker node http proxy should
     be healthy.
     """
-    manager, cluster_node_info_cache = _make_proxy_state_manager(
+    manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
@@ -932,7 +917,7 @@ def test_proxy_actor_unhealthy_during_draining(
     all_nodes, setup_controller, number_of_worker_nodes
 ):
     """Test the state transition from DRAINING to UNHEALTHY for the proxy actor."""
-    manager, cluster_node_info_cache = _make_proxy_state_manager(
+    manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
@@ -1000,7 +985,7 @@ def test_is_ready_for_shutdown(all_nodes):
     `shutdown()` is called and all proxy actor are killed, `is_ready_for_shutdown()`
     should return true.
     """
-    manager, cluster_node_info_cache = _make_proxy_state_manager(
+    manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
