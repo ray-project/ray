@@ -51,10 +51,10 @@ class FakeProxyActor:
 
 
 class FakeProxyWrapper(ProxyWrapper):
-    def __init__(self, *args, **kwargs):
-        self.actor_handle = FakeProxyActor(*args, **kwargs)
+    def __init__(self, actor_handle=None, *args, **kwargs):
+        self.actor_handle = actor_handle or FakeProxyActor(*args, **kwargs)
         self.ready = ProxyWrapperCallStatus.FINISHED_SUCCEED
-        # self.healthy = ProxyWrapperCallStatus.FINISHED_SUCCEED
+        self.health = ProxyWrapperCallStatus.FINISHED_SUCCEED
         # self.drained = ProxyWrapperCallStatus.FINISHED_SUCCEED
         self.worker_id = "mock_worker_id"
         self.log_file_path = "mock_log_file_path"
@@ -68,7 +68,7 @@ class FakeProxyWrapper(ProxyWrapper):
         pass
 
     def start_new_health_check(self):
-        pass
+        self.health_check_ongoing = True
 
     def start_new_drained_check(self):
         pass
@@ -77,7 +77,9 @@ class FakeProxyWrapper(ProxyWrapper):
         return self.ready
 
     def is_healthy(self) -> ProxyWrapperCallStatus:
-        pass
+        self.health_check_ongoing = False
+        self.actor_handle.check_health()
+        return self.health
 
     def is_drained(self) -> ProxyWrapperCallStatus:
         pass
@@ -112,13 +114,16 @@ def _create_proxy_state_manager(
     )
 
 def _create_proxy_state(
-    proxy_actor_class: Any = FakeProxyWrapper,
+    proxy_actor_class=FakeProxyActor,
+    actor_proxy_wrapper_class=FakeProxyWrapper,
     status: ProxyStatus = ProxyStatus.STARTING,
     node_id: str = "mock_node_id",
     **kwargs,
 ) -> ProxyState:
     state = ProxyState(
-        actor_proxy_wrapper=proxy_actor_class(actor_handle=proxy_actor_class()),
+        actor_proxy_wrapper=actor_proxy_wrapper_class(
+            actor_handle=proxy_actor_class()
+        ),
         actor_name="alice",
         node_id=node_id,
         node_ip="mock_node_ip",
@@ -367,11 +372,8 @@ def test_proxy_state_update_starting_ready_always_fails():
         status=ProxyStatus.UNHEALTHY,
     )
 
-    # Ensure the _consecutive_health_check_failures is correct
-    assert proxy_state._consecutive_health_check_failures == 3
 
-
-@patch("ray.serve._private.proxy_state.PROXY_READY_CHECK_TIMEOUT_S", 1)
+@patch("ray.serve._private.proxy_state.PROXY_READY_CHECK_TIMEOUT_S", 0.1)
 def test_proxy_state_update_starting_ready_always_timeout():
     """Test calling update method on ProxyState when the proxy state is STARTING and
     when the ready call always timed out.
@@ -380,16 +382,10 @@ def test_proxy_state_update_starting_ready_always_timeout():
     very long time to finish. The state will eventually change to UNHEALTHY after all
     retries have exhausted.
     """
-
-    @ray.remote(num_cpus=0)
-    class NewMockProxyActor:
-        async def ready(self):
-            await asyncio.sleep(100)
-
-        async def check_health(self):
-            pass
-
-    proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
+    proxy_state = _create_proxy_state()
+    # When the proxy ready call always timeout, the proxy wrapper call
+    # status will be PENDING.
+    proxy_state._actor_proxy_wrapper.ready = ProxyWrapperCallStatus.PENDING
 
     # Ensure the proxy status before update is STARTING.
     assert proxy_state.status == ProxyStatus.STARTING
@@ -402,7 +398,7 @@ def test_proxy_state_update_starting_ready_always_timeout():
     )
 
 
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
 def test_proxy_state_update_healthy_check_health_succeed():
     """Test calling update method on ProxyState when the proxy state is HEALTHY and
     when the check_health call succeeded
@@ -433,7 +429,7 @@ def test_proxy_state_update_healthy_check_health_succeed():
     assert first_check_time != proxy_state._last_health_check_time
 
 
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
 def test_proxy_state_update_healthy_check_health_failed_once():
     """Test calling update method on ProxyState when the proxy state is HEALTHY and
     when the check_health call failed once and succeeded for the following call.
@@ -444,17 +440,7 @@ def test_proxy_state_update_healthy_check_health_failed_once():
     and should stay as HEALTHY. The following check_health call continue to succeed
     and the status continue to stay as HEALTHY.
     """
-    signal = SignalActor.remote()
-
-    @ray.remote(num_cpus=0)
-    class NewMockProxyActor:
-        async def ready(self):
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        async def check_health(self):
-            await signal.wait.remote()
-
-    proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
+    proxy_state = _create_proxy_state()
 
     # Continuously trigger update. The status should change from STARTING to HEALTHY
     # when ready.
@@ -476,7 +462,6 @@ def test_proxy_state_update_healthy_check_health_failed_once():
     assert first_check_time != proxy_state._last_health_check_time
 
     # Unblock ready check, trigger update, and the status is still HEALTHY.
-    signal.send.remote()
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
@@ -484,7 +469,7 @@ def test_proxy_state_update_healthy_check_health_failed_once():
     )
 
 
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
 def test_proxy_state_update_healthy_check_health_always_fails():
     """Test calling update method on ProxyState when the proxy state is HEALTHY and
     when the check_health call is always failing.
@@ -495,15 +480,10 @@ def test_proxy_state_update_healthy_check_health_always_fails():
     exhausted.
     """
 
-    @ray.remote(num_cpus=0)
-    class NewMockProxyActor:
-        async def ready(self):
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        async def check_health(self):
-            raise Exception("Never be healthy")
-
-    proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
+    proxy_state = _create_proxy_state()
+    # When the proxy health call is failing, the proxy wrapper call
+    # status will be FINISHED_FAILED.
+    proxy_state._actor_proxy_wrapper.health = ProxyWrapperCallStatus.FINISHED_FAILED
 
     # Continuously trigger update. The status should change from STARTING to HEALTHY
     # when ready.
@@ -528,7 +508,7 @@ def test_proxy_state_update_healthy_check_health_always_fails():
     assert proxy_state._consecutive_health_check_failures == 3
 
 
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
 def test_proxy_state_update_healthy_check_health_sometimes_fails():
     """Test that the proxy is UNHEALTHY after consecutive health-check failures.
 
@@ -538,8 +518,6 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
     because the failures weren't consecutive with the previous ones. And then
     it finally fails enough times to become UNHEALTHY.
     """
-
-    @ray.remote(num_cpus=0)
     class NewMockProxyActor:
         def __init__(self):
             self._should_succeed = True
@@ -551,10 +529,10 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
         def should_succeed(self, value: bool = True):
             self._should_succeed = value
 
-        async def ready(self):
+        def ready(self):
             return json.dumps(["mock_worker_id", "mock_log_file_path"])
 
-        async def check_health(self):
+        def check_health(self):
             self.num_health_checks += 1
             if self._should_succeed:
                 return "Success!"
@@ -575,8 +553,8 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
     ):
         state.update()
         assert (
-            ray.get(state.actor_handle.get_num_health_checks.remote())
-        ) == num_health_checks
+            state.actor_handle.get_num_health_checks()
+        ) == num_health_checks, state.actor_handle.get_num_health_checks()
         return True
 
     def incur_health_checks(
@@ -589,10 +567,14 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
             num_checks: number of checks to wait for.
             expected_final_status: the final status that should be asserted.
         """
-        ray.get(proxy_state.actor_handle.should_succeed.remote(pass_checks))
+        proxy_state.actor_handle.should_succeed(pass_checks)
+        if pass_checks:
+            proxy_state._actor_proxy_wrapper.health = ProxyWrapperCallStatus.FINISHED_SUCCEED
+        else:
+            proxy_state._actor_proxy_wrapper.health = ProxyWrapperCallStatus.FINISHED_FAILED
 
-        cur_num_health_checks = ray.get(
-            proxy_state.actor_handle.get_num_health_checks.remote()
+        cur_num_health_checks = (
+            proxy_state.actor_handle.get_num_health_checks()
         )
 
         wait_for_condition(
@@ -601,16 +583,16 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
             num_health_checks=cur_num_health_checks + num_checks,
         )
         assert (
-            ray.get(proxy_state.actor_handle.get_num_health_checks.remote())
+            proxy_state.actor_handle.get_num_health_checks()
             <= cur_num_health_checks + num_checks
-        )
+        ), proxy_state.actor_handle.get_num_health_checks()
 
         if expected_final_status:
             assert proxy_state.status == expected_final_status
 
     # Make sure that the proxy_state's status remains HEALTHY as long as
     # PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD failures don't occur consecutively.
-    for _ in range(3):
+    for i in range(3):
         incur_health_checks(
             pass_checks=True,
             num_checks=1,
@@ -627,15 +609,11 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
         pass_checks=True, num_checks=1, expected_final_status=ProxyStatus.HEALTHY
     )
 
-    # Check failing the health check PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 1
-    # times makes the proxy UNHEALTHY again. We do the `+ 1` to ensure that
-    # at least PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD checks have run and been
-    # processed by the ProxyState. Otherwise, incur_health_checks could
-    # return after the health check failed but before the ProxyState had
-    # time to ray.get() it and update its state.
+    # Check failing the health check PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+    # times makes the proxy UNHEALTHY again.
     incur_health_checks(
         pass_checks=False,
-        num_checks=PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 1,
+        num_checks=PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
         expected_final_status=ProxyStatus.UNHEALTHY,
     )
 

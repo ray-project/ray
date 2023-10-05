@@ -410,7 +410,7 @@ class ProxyState:
                     # the status should be unchanged.
                     self.try_update_status(self._status)
                 elif healthy_call_status == ProxyWrapperCallStatus.FINISHED_FAILED:
-                    self.set_status(ProxyStatus.UNHEALTHY)
+                    self.try_update_status(ProxyStatus.UNHEALTHY)
                 elif (
                     time.time() - self._last_health_check_time
                     > PROXY_HEALTH_CHECK_TIMEOUT_S
