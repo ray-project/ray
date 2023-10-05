@@ -2,10 +2,9 @@ import argparse
 import json
 
 # For compatibility under py2 to consider unicode as str
-from ray.air import CheckpointConfig
 from ray.tune.utils.serialization import TuneFunctionEncoder
 
-from ray.train import SyncConfig
+from ray.train import CheckpointConfig, SyncConfig
 from ray.tune import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.resources import json_to_resources
