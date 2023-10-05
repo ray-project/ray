@@ -112,7 +112,7 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
         return reload_log_state(log_state)
 
 
-def debug_status(status, error, verbose: bool = False, address: str = None) -> str:
+def debug_status(status : bytes, error, verbose: bool = False, address: str = None) -> str:
     """
     Return a debug string for the autoscaler.
 
@@ -527,7 +527,6 @@ def teardown_cluster(
 
     container_name = config.get("docker", {}).get("container_name")
     if container_name:
-
         # This is to ensure that the parallel SSH calls below do not mess with
         # the users terminal.
         output_redir = cmd_output_util.is_output_redirected()
@@ -783,7 +782,6 @@ def get_or_create_head_node(
         # cf.bold(provider.node_tags(head_node)[TAG_RAY_NODE_NAME]),
         _tags=dict(),
     ):  # add id, ARN to tags?
-
         # TODO(ekl) right now we always update the head node even if the
         # hash matches.
         # We could prompt the user for what they want to do here.
@@ -929,7 +927,6 @@ def _should_create_new_head(
         with cli_logger.group(
             "Currently running head node is out-of-date with cluster configuration"
         ):
-
             if hashes_mismatch:
                 cli_logger.print(
                     "Current hash is {}, expected {}",
@@ -1498,7 +1495,6 @@ def get_cluster_dump_archive(
     processes_verbose: bool = False,
     tempfile: Optional[str] = None,
 ) -> Optional[str]:
-
     # Inform the user what kind of logs are collected (before actually
     # collecting, so they can abort)
     content_str = ""

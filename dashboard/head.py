@@ -361,7 +361,7 @@ class DashboardHead:
 
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
-        concurrent_tasks = [
+    concurrent_tasks = [
             self._gcs_check_alive(),
             _async_notify(),
             DataOrganizer.purge(),
