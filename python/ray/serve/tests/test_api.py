@@ -388,7 +388,7 @@ def test_run_get_ingress_node(serve_instance):
             self._h = handle.options(use_new_handle_api=True)
 
         async def __call__(self, *args):
-            return await self._h
+            return await self._h.remote()
 
     @serve.deployment
     class f:
