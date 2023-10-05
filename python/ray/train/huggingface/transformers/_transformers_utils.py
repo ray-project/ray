@@ -14,10 +14,8 @@ from ray.data.iterator import _IterableFromIterator
 from ray.data.dataset import MaterializedDataset
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.train import Checkpoint
-from ray.train._internal.storage import _use_storage_context
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
-    LegacyTransformersCheckpoint,
 )
 from ray.util import PublicAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -198,12 +196,7 @@ class TrainReportCallback(TrainerCallback):
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
         if checkpoint_path:
-            if _use_storage_context():
-                checkpoint = TransformersCheckpoint.from_directory(str(checkpoint_path))
-            else:
-                checkpoint = LegacyTransformersCheckpoint.from_directory(
-                    str(checkpoint_path)
-                )
+            checkpoint = TransformersCheckpoint.from_directory(str(checkpoint_path))
             self.delayed_report["checkpoint"] = checkpoint
 
     def _report(self):

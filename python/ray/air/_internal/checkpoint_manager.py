@@ -11,10 +11,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray._private.dict import flatten_dict
-from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
 from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
 from ray.air._internal.util import is_nan
+from ray.train import Checkpoint, CheckpointConfig
 from ray.util import log_once
 from ray._private.ray_constants import env_integer
 
