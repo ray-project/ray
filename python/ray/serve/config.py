@@ -28,6 +28,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
+    """Config for the Serve Autoscaler."""
+
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
 
