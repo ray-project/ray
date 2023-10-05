@@ -24,7 +24,6 @@ from ray.air.constants import (
 from ray.data import Dataset, DatasetPipeline
 from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
-from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
     WORKER_HOSTNAME,
@@ -246,8 +245,7 @@ class _TrainSession:
         self.continue_lock.release()
 
         # Force a final (blocking) sync of artifacts in the trial path to storage.
-        if _use_storage_context():
-            self.storage.persist_artifacts(force=True)
+        self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
