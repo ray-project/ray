@@ -733,7 +733,7 @@ def _setup_ray_cluster(
         address=cluster_address,
         head_proc=ray_head_proc,
         spark_job_group_id=None,
-        num_workers_nodes=num_worker_nodes,
+        num_worker_nodes=num_worker_nodes,
         temp_dir=ray_temp_dir,
         cluster_unique_id=cluster_unique_id,
         start_hook=start_hook,
