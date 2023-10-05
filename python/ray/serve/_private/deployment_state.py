@@ -1335,23 +1335,31 @@ class DeploymentState:
         self._last_notified_running_replica_infos = running_replica_infos
         self._multiplexed_model_ids_updated = False
 
-    def set_cluster_scale(self, cluster_scale: float):
-        update_message = (
-            f"Scaling cluster from {self._target_state.cluster_scale} to "
-            f"{cluster_scale}. The target num_replicas for deployment "
-            f"{self.deployment_name} will scale from "
-            f"{self.target_num_replicas} to "
-            f"{math.ceil(self._target_state.num_replicas * cluster_scale)}."
-        )
-        target_state = replace(self._target_state, cluster_scale=cluster_scale)
-        self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
-        self._target_state = target_state
-        self._curr_status_info = DeploymentStatusInfo(
-            self.deployment_name,
-            DeploymentStatus.UPDATING,
-            message=update_message,
-        )
-        logger.info(update_message)
+    def set_cluster_scale(self, cluster_scale: float) -> bool:
+        """Sets the cluster scale for this deployment.
+
+        Return:
+            Whether or not the cluster scale was changed.
+        """
+        if cluster_scale == self._target_state.cluster_scale:
+            return False
+        else:
+            update_message = (
+                f"Scaling cluster from {self._target_state.cluster_scale} to "
+                f"{cluster_scale}. The target num_replicas for deployment "
+                f"{self.deployment_name} will scale from "
+                f"{self.target_num_replicas} to "
+                f"{math.ceil(self._target_state.num_replicas * cluster_scale)}."
+            )
+            target_state = replace(self._target_state, cluster_scale=cluster_scale)
+            self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
+            self._target_state = target_state
+            self._curr_status_info = DeploymentStatusInfo(
+                self.deployment_name,
+                DeploymentStatus.UPDATING,
+                message=update_message,
+            )
+            return True
 
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
