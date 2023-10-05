@@ -273,6 +273,7 @@ class Dataset:
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
+        self._write_ds = None
 
     @staticmethod
     def copy(
@@ -4768,6 +4769,8 @@ class Dataset:
             * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
 
         """
+        if self._write_ds is not None and self._write_ds._plan.has_computed_output():
+            return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:

@@ -6,11 +6,9 @@ from inspect import isclass
 from typing import Any, Dict, Optional, Type
 
 from ray.air import session
-from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY
-from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
-from ray.train import DataConfig
+from ray.train import Checkpoint, DataConfig, CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
