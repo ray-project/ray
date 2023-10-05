@@ -43,7 +43,6 @@ steps:
       env:
         BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
       matrix:
-        - py37
         - py38
         - py39
         - py310
@@ -63,7 +62,6 @@ steps:
       env:
         BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
       matrix:
-        - py37
         - py38
         - py39
         - py310
@@ -85,7 +83,6 @@ steps:
       env:
         BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
       matrix:
-          - py37
           - py38
           - py39
           - py310
@@ -119,7 +116,6 @@ steps:
       env:
         BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
       matrix:
-        - py37
         - py38
         - py39
         - py310
@@ -142,7 +138,6 @@ steps:
       matrix:
         setup:
           py:
-            - py37
             - py38
             - py39
             - py310
@@ -172,7 +167,6 @@ steps:
       matrix:
         setup:
           py:
-            - py37
             - py38
             - py39
             - py310
@@ -201,7 +195,6 @@ steps:
       matrix:
         setup:
           py:
-            - py37
             - py38
             - py39
             - py310

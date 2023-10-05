@@ -32,9 +32,7 @@ else
     IMG_SUFFIX="-aarch64"
 fi
 
-if [[ "${PY_VERSION_CODE}" == "py37" ]]; then
-    WHEEL_FILE="ray-${RAY_VERSION}-cp37-cp37m-manylinux2014_${HOSTTYPE}.whl"
-elif [[ "${PY_VERSION_CODE}" == "py38" ]]; then
+if [[ "${PY_VERSION_CODE}" == "py38" ]]; then
     WHEEL_FILE="ray-${RAY_VERSION}-cp38-cp38-manylinux2014_${HOSTTYPE}.whl"
 elif [[ "${PY_VERSION_CODE}" == "py39" ]]; then
     WHEEL_FILE="ray-${RAY_VERSION}-cp39-cp39-manylinux2014_${HOSTTYPE}.whl"
@@ -103,13 +101,9 @@ mkdir -p "${CPU_TMP}/.whl"
 cp "${BUILD_TMP}/.whl/${WHEEL_FILE}" "${CPU_TMP}/.whl/${WHEEL_FILE}"
 cp docker/ray/Dockerfile "${CPU_TMP}/Dockerfile"
 cp python/requirements_compiled.txt "${CPU_TMP}/."
-cp python/requirements_compiled_py37.txt "${CPU_TMP}/."
+touch "${CPU_TMP}/requirements_compiled_py37.txt"
 
-if [[ "${PY_VERSION_CODE}" == "py37" ]]; then
-    CONSTRAINTS_FILE="requirements_compiled_py37.txt"
-else
-    CONSTRAINTS_FILE="requirements_compiled.txt"
-fi
+CONSTRAINTS_FILE="requirements_compiled.txt"
 
 (
     cd "${CPU_TMP}"
