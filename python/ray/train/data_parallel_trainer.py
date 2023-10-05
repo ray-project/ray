@@ -378,6 +378,14 @@ class DataParallelTrainer(BaseTrainer):
                 result.checkpoint for result in results if result.checkpoint is not None
             ]
             at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
+
+            if at_least_one_reported_checkpoint:
+                # Update the coordinator's checkpoint index to the latest.
+                # This is what keeps the checkpoint index in line with the workers.
+                tune_session.storage._update_checkpoint_index(
+                    first_worker_result.metrics
+                )
+
             # Make sure that all workers uploaded to the same location.
             assert all(
                 checkpoint.path == tune_session.storage.checkpoint_fs_path
@@ -387,14 +395,12 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint = (
                 Checkpoint(
                     filesystem=tune_session.storage.storage_filesystem,
-                    # NOTE: The checkpoint index has not been incremented yet
-                    # at this point, which is why `checkpoint_fs_path` points
-                    # to the most recent checkpoint.
                     path=tune_session.storage.checkpoint_fs_path,
                 )
                 if at_least_one_reported_checkpoint
                 else None
             )
+
             tracked_training_result = _TrainingResult(
                 checkpoint=checkpoint,
                 metrics=first_worker_result.metrics,
