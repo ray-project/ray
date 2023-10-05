@@ -102,27 +102,16 @@ class SyncConfig:
     def __post_init__(self):
         for (attr_name, extra_msg) in [
             ("upload_dir", "\nPlease specify `train.RunConfig(storage_path)` instead."),
-            # TODO(justinvyu): Point users to some user guide for custom fs.
             (
                 "syncer",
                 "\nPlease implement custom syncing logic with a custom "
                 "`pyarrow.fs.FileSystem` instead, and pass it into "
-                "`train.RunConfig(storage_filesystem)`.",
+                "`train.RunConfig(storage_filesystem)`. "
+                "See here: https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html#custom-storage",  # noqa: E501
             ),
             ("sync_on_checkpoint", ""),
         ]:
             self._deprecation_warning(attr_name, extra_msg)
-
-        # TODO(justinvyu): [code_removal]
-        from ray.train._internal.storage import _use_storage_context
-
-        if not _use_storage_context():
-            if self.upload_dir == _DEPRECATED_VALUE:
-                self.upload_dir = None
-            if self.syncer == _DEPRECATED_VALUE:
-                self.syncer = "auto"
-            if self.sync_on_checkpoint == _DEPRECATED_VALUE:
-                self.sync_on_checkpoint = True
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig."""
