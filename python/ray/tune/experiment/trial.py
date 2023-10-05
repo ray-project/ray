@@ -1027,10 +1027,10 @@ class Trial:
             checkpoint: Checkpoint taken.
         """
         self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
-        # Increment the checkpoint index to keep the checkpoint index in sync.
+        # Update the checkpoint index to keep the checkpoint index in sync.
         # This index will get restored when the trial is restored and will
         # be passed to the Trainable as the starting checkpoint index.
-        self.storage._increase_checkpoint_index(checkpoint_result.metrics)
+        self.storage._update_checkpoint_index(checkpoint_result.metrics)
 
         self.invalidate_json_state()
         self.run_metadata.invalidate_cache()

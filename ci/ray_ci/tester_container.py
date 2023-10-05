@@ -17,6 +17,7 @@ class TesterContainer(Container):
         docker_tag: str,
         shard_count: int = 1,
         shard_ids: Optional[List[int]] = None,
+        skip_ray_installation: bool = False,
     ) -> None:
         """
         :param docker_tag: Name of the wanda build to be used as test container.
@@ -28,7 +29,8 @@ class TesterContainer(Container):
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
 
-        self.install_ray()
+        if not skip_ray_installation:
+            self.install_ray()
 
     def run_tests(
         self,
