@@ -1389,7 +1389,7 @@ def test_spilled_stats(shutdown_only):
     mock_metrics = _MockDatasetMetrics()
 
     with patch(
-        "ray.data._internal.execution.streaming_executor._get_or_create_dataset_metrics",
+        "ray.data._internal.execution.streaming_executor._get_or_create_stats_actor",
         lambda: mock_metrics,
     ):
         # The size of dataset is 1000*80*80*4*8B, about 200MB.
