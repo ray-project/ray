@@ -604,6 +604,18 @@
     - pytest rllib_contrib/leela_chess_zero/tests/
     - python rllib_contrib/leela_chess_zero/examples/leela_chess_zero_connect_4.py --run-as-test
 
+- label: ":exploding_death_star: RLlib Contrib: MADDPG Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/maddpg && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/maddpg/tests/
+    - python rllib_contrib/maddpg/examples/two_step_game.py --run-as-test
+
 - label: ":exploding_death_star: RLlib Contrib: MAML Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
