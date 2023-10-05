@@ -8,6 +8,7 @@
 * [APEX DQN](./apex_dqn/)
 * [Bandit](./bandit)
 * [DDPG](./ddpg)
+* [Decision Transformer](./dt)
 * [MAML](./maml)
 * [R2D2](./r2d2)
 
