@@ -5595,32 +5595,6 @@
       cluster:
         cluster_compute: inference_gce.yaml
 
-- name: shuffle_data_loader
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: manual
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: shuffle_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python dataset_shuffle_data_loader.py --cloud aws
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: shuffle_compute_gce.yaml
-      run:
-        script: python dataset_shuffle_data_loader.py --cloud gcp
-
 - name: parquet_metadata_resolution
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -5677,32 +5651,6 @@
       cluster:
         cluster_compute: pipelined_training_compute_gce.yaml
 
-- name: pipelined_data_ingest_benchmark_1tb
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: manual
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: data_ingest_benchmark_compute.yaml
-
-  run:
-    timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: data_ingest_benchmark_compute_gce.yaml
-
 - name: stable_diffusion_benchmark
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -5741,7 +5689,7 @@
 
   run:
     timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --new_streaming
+    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
     wait_for_nodes:
       num_nodes: 20
 
@@ -5767,7 +5715,7 @@
 
   run:
     timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --new_streaming --use-gpu
+    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --streaming --use-gpu
     wait_for_nodes:
       num_nodes: 3
 
@@ -5798,7 +5746,7 @@
 
   run:
     timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --new_streaming --use-gpu --early-stop
+    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --streaming --use-gpu --early-stop
     wait_for_nodes:
       num_nodes: 3
 
