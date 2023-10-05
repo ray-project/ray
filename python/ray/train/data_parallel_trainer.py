@@ -13,7 +13,7 @@ from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
 from ray.train._internal.utils import construct_train_func
-from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY, CHECKPOINT_DIR_NAME
+from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
@@ -428,9 +428,6 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint = (
                 Checkpoint(
                     filesystem=tune_session.storage.storage_filesystem,
-                    # NOTE: The checkpoint index has not been incremented yet
-                    # at this point, which is why `checkpoint_fs_path` points
-                    # to the most recent checkpoint.
                     path=tune_session.storage.checkpoint_fs_path,
                 )
                 if at_least_one_reported_checkpoint
@@ -438,8 +435,6 @@ class DataParallelTrainer(BaseTrainer):
             )
 
             metrics = first_worker_result.metrics.copy()
-            if at_least_one_reported_checkpoint:
-                metrics[CHECKPOINT_DIR_NAME] = tune_session.storage.checkpoint_dir_name
 
             tracked_training_result = _TrainingResult(
                 checkpoint=checkpoint,

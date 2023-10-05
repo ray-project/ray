@@ -102,6 +102,7 @@ def test_checkpoint_freq_dir_name(
 
         class CustomStorageContext(StorageContext):
             def _update_checkpoint_index(self, metrics):
+                # Todo: Support auto-fille metrics for function trainables
                 self.current_checkpoint_index = metrics.get(
                     "step", self.current_checkpoint_index + 1
                 )

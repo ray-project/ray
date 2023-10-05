@@ -417,8 +417,6 @@ class _TrainSession:
 
         persisted_checkpoint = None
         if checkpoint:
-            # NOTE: This is where the coordinator AND workers increment their
-            # checkpoint index.
             self.storage._update_checkpoint_index(metrics)
 
             # Persist the reported checkpoint files to storage.

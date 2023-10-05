@@ -892,8 +892,7 @@ def test_custom_searcher_and_scheduler_restore(ray_start_2_cpus, tmpdir):
     )
 
 
-# @pytest.mark.parametrize("trainable_type", ["function", "class", "data_parallel"])
-@pytest.mark.parametrize("trainable_type", ["class"])
+@pytest.mark.parametrize("trainable_type", ["function", "class", "data_parallel"])
 def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, trainable_type):
     """Checkpoints saved after experiment restore should pick up at the correct
     iteration and should not overwrite the checkpoints from the original run.
