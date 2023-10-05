@@ -2,13 +2,19 @@ import gc
 import json
 import os
 import time
-from typing import Callable, Dict, Iterator
+from typing import Callable, Dict, Union
 
 from ray.data.dataset import Dataset
+from ray.data.iterator import _IterableFromIterator
 from typing import Any
 
 
 from enum import Enum
+
+import pyarrow as pa
+import pandas as pd
+import tensorflow as tf
+import torch
 
 
 class BenchmarkMetric(Enum):
@@ -30,9 +36,12 @@ class Benchmark:
     ...
 
     benchmark.run_materialize_ds("case-1", fn_1)
-    benchmark.run_iterate_ds("case-2", ds_iter)
+    # Could be Ray Data iterator, Torch DataLoader, TF Dataset...
+    benchmark.run_iterate_ds("case-2", dataset)
     benchmark.run_fn("case-3", fn_3)
 
+    # Writes a JSON with metrics of the form:
+    # {"case-1": {...}, "case-2": {...}, "case-3": {...}}
     benchmark.write_result("output.json")
 
     See example usage in ``aggregate_benchmark.py``.
@@ -48,7 +57,7 @@ class Benchmark:
         name: str,
         fn: Callable[..., Dataset],
         *fn_args,
-        **fn_run_args,
+        **fn_kwargs,
     ):
         """Run a benchmark on materializing a Ray Dataset. ``fn`` is expected to
         return the Dataset which is to be materialized. Runtime and throughput
@@ -58,7 +67,7 @@ class Benchmark:
 
         print(f"Running case: {name}")
         start_time = time.perf_counter()
-        output_ds = fn(*fn_args, **fn_run_args)
+        output_ds = fn(*fn_args, **fn_kwargs)
         output_ds.materialize()
         duration = time.perf_counter() - start_time
 
@@ -72,23 +81,49 @@ class Benchmark:
     def run_iterate_ds(
         self,
         name: str,
-        ds_iterator: Iterator[Any],
-        batch_size: int,
+        dataset: Union[
+            Dataset,
+            _IterableFromIterator,
+            torch.utils.data.DataLoader,
+            tf.data.Dataset,
+        ],
     ):
-        """Run a benchmark iterating over a dataset (not limited to Ray Data,
-        e.g. could be an iterator over Torch dataloader). ``ds_iterator`` is expected
-        to be an iterator over the dataset, yielding batches of the given size.
-        Runtime and throughput are automatically calculated and reported."""
+        """Run a benchmark iterating over a dataset. Supported dataset types are:
+        Ray Dataset, iterator over Ray Dataset (`.iter_batches()`,
+        `.iter_torch_batches()`, `.iter_tf_batches()`), Torch DataLoader,
+        TensorFlow Dataset. Runtime and throughput are automatically calculated
+        and reported."""
 
         gc.collect()
 
         print(f"Running case: {name}")
+        assert isinstance(dataset, (
+            Dataset,
+            _IterableFromIterator,
+            torch.utils.data.DataLoader,
+            tf.data.Dataset,
+            )
+        ), f"Unexpected dataset type: {type(dataset)}"
         start_time = time.perf_counter()
         record_count = 0
-        for batch in ds_iterator:
-            # Note, we are using `batch_size` as an approximate way to get the total
-            # record count, because each batch type has its own method of getting
-            # batch length, also may depend on the underlying data structure, etc.
+        ds_iterator = iter(dataset)
+        for first_batch in ds_iterator:
+            # Unwrap list to get the underlying batch format.
+            if isinstance(first_batch, (list, tuple)) and len(first_batch) > 0:
+                first_batch = first_batch[0]
+
+            # Get the batch size for various batch formats.
+            if isinstance(first_batch, dict):
+                feature_lengths = {k: len(first_batch[k]) for k in first_batch}
+                batch_size = max(feature_lengths.values())
+            elif isinstance(first_batch, torch.Tensor):
+                batch_size = first_batch.size(dim=0)
+            elif isinstance(first_batch, tf.Tensor):
+                batch_size = first_batch.shape.as_list()[0]
+            elif isinstance(first_batch, (pa.Table, pd.DataFrame)):
+                batch_size = len(first_batch)
+            else:
+                raise TypeError(f"Unexpected batch type: {type(first_batch)}")
             record_count += batch_size
 
         duration = time.perf_counter() - start_time
@@ -101,9 +136,12 @@ class Benchmark:
     def run_fn(
         self, name: str, fn: Callable[..., Dict[str, Any]], *fn_args, **fn_kwargs
     ):
-        """Run a benchmark for a specific function. ``fn`` is expected to return a
-        Dict[str, Any] of metric labels to metric values, which are reported at
-        the end of the benchmark. Runtime is automatically calculated and reported."""
+        """Run a benchmark for a specific function; this is the most general
+        benchmark utility available and will work if the other benchmark methods
+        are too specific. However, ``fn`` is expected to return a
+        `Dict[str, Any]` of metric labels to metric values, which are reported
+        at the end of the benchmark. Runtime is automatically calculated and reported,
+        but all other metrics of interest must be calculated and returned by ``fn``."""
 
         gc.collect()
 

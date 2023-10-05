@@ -260,5 +260,4 @@ if __name__ == "__main__":
             fn_args=(args.dataset_size_gb, args.num_workers),
         )
 
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
-    benchmark.write_result(test_output_json)
+    benchmark.write_result()

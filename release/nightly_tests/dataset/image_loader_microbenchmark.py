@@ -408,8 +408,7 @@ if __name__ == "__main__":
         for i in range(args.num_epochs):
             benchmark.run_iterate_ds(
                 "tf_data",
-                iter(tf_dataset),
-                args.batch_size,
+                tf_dataset,
             )
 
         # tf.data, with transform.
@@ -419,8 +418,7 @@ if __name__ == "__main__":
         for i in range(args.num_epochs):
             benchmark.run_iterate_ds(
                 "tf_data+transform",
-                iter(tf_dataset),
-                args.batch_size,
+                tf_dataset,
             )
 
         # torch, load images.
@@ -439,8 +437,7 @@ if __name__ == "__main__":
         for i in range(args.num_epochs):
             benchmark.run_iterate_ds(
                 "torch",
-                iter(torch_dataset),
-                args.batch_size,
+                torch_dataset,
             )
 
         # torch, with transform.
@@ -450,8 +447,7 @@ if __name__ == "__main__":
         for i in range(args.num_epochs):
             benchmark.run_iterate_ds(
                 "torch+transform",
-                iter(torch_dataset),
-                args.batch_size,
+                torch_dataset,
             )
 
         # ray.data, load images.
@@ -462,7 +458,6 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data",
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-                args.batch_size,
             )
 
         # ray.data, with transform.
@@ -473,7 +468,6 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data+map_transform",
                 ray_dataset.iter_batches(batch_size=args.batch_size),
-                args.batch_size,
             )
 
         # Pass size to read_images when using map_batches to make sure that all
@@ -485,7 +479,6 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data+transform",
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-                args.batch_size,
             )
 
         ray_dataset = ray.data.read_images(
@@ -495,7 +488,6 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data+transform+zerocopy",
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-                args.batch_size,
             )
 
     if args.tf_data_root is not None:
@@ -503,8 +495,7 @@ if __name__ == "__main__":
         for i in range(args.num_epochs):
             benchmark.run_iterate_ds(
                 "tf_data_tfrecords+transform",
-                iter(tf_dataset),
-                args.batch_size,
+                tf_dataset,
             )
 
         ray_dataset = ray.data.read_tfrecords(args.tf_data_root)
@@ -521,8 +512,7 @@ if __name__ == "__main__":
             )
             benchmark.run_iterate_ds(
                 "ray_data_tfrecords+transform",
-                iter(tf_dataset),
-                args.batch_size,
+                tf_dataset,
             )
 
     if args.parquet_data_root is not None:
@@ -531,7 +521,6 @@ if __name__ == "__main__":
             benchmark.run_iterate_ds(
                 "ray_data_parquet+map_transform",
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-                args.batch_size,
             )
         print(ray_dataset.stats())
 
@@ -545,7 +534,7 @@ if __name__ == "__main__":
         )
 
         for i in range(args.num_epochs):
-            benchmark.run_iterate_ds("mosaicml_mds", iter(mosaic_dl), args.batch_size)
+            benchmark.run_iterate_ds("mosaicml_mds", mosaic_dl)
 
         # ray.data.
         use_s3 = args.mosaic_data_root.startswith("s3://")
@@ -559,7 +548,6 @@ if __name__ == "__main__":
                 benchmark.run_iterate_ds(
                     "ray_data_mds+map_transform",
                     ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-                    args.batch_size,
                 )
 
     test_output_json = os.environ.get(
