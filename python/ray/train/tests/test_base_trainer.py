@@ -57,12 +57,6 @@ def test_validate_datasets(ray_start_4_cpus):
         DummyTrainer(train_loop=None, datasets={"train": 1})
     assert "The Dataset under train key is not a `ray.data.Dataset`"
 
-    with pytest.raises(ValueError) as e:
-        DummyTrainer(
-            train_loop=None, datasets={"train": ray.data.from_items([1]).repeat()}
-        )
-    assert "The Dataset under train key is a `ray.data.DatasetPipeline`."
-
 
 def test_resources(ray_start_4_cpus):
     def check_cpus(self):

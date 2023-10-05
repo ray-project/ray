@@ -21,7 +21,7 @@ from ray.air.constants import (
     TIMESTAMP,
     TIME_THIS_ITER_S,
 )
-from ray.data import Dataset, DatasetPipeline
+from ray.data import Dataset
 from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import _use_storage_context, StorageContext
@@ -119,7 +119,7 @@ class _TrainSession:
         local_world_size: int,
         world_size: int,
         trial_info: Optional[TrialInfo] = None,
-        dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
+        dataset_shard: Optional[Dataset] = None,
         metadata: Dict[str, Any] = None,
         checkpoint: Optional[Checkpoint] = None,
         detailed_autofilled_metrics: bool = False,
