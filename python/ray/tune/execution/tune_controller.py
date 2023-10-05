@@ -16,11 +16,10 @@ import os
 import ray
 from ray.air import ResourceRequest
 from ray.air._internal.uri_utils import URI
-from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
-from ray.train import Checkpoint, CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.train._internal.session import _FutureTrainingResult
 from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.exceptions import RayActorError, RayTaskError
@@ -52,7 +51,6 @@ from ray.tune.result import (
     DEFAULT_EXPERIMENT_NAME,
 )
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
-from ray.tune.trainable import TrainableUtil
 from ray.tune import TuneError
 from ray.tune.callback import Callback, CallbackList
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -1620,33 +1618,19 @@ class TuneController:
             self._schedule_trial_stop(trial)
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
-        if _use_storage_context():
-            if trial not in self._trial_to_actor:
-                logger.debug(
-                    f"Trial PAUSE requested for trial {trial} but trial is already "
-                    f"stopping. Ignoring."
-                )
-                return
-
-            if should_checkpoint:
-                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
-                self._schedule_trial_save(
-                    trial=trial, storage=CheckpointStorage.PERSISTENT
-                )
-            else:
-                self._schedule_trial_stop(trial)
-                self._set_trial_status(trial, Trial.PAUSED)
-
+        if trial not in self._trial_to_actor:
+            logger.debug(
+                f"Trial PAUSE requested for trial {trial} but trial is already "
+                f"stopping. Ignoring."
+            )
             return
 
         if should_checkpoint:
-            self._schedule_trial_save(
-                trial,
-                CheckpointStorage.MEMORY,
-            )
-
-        self._schedule_trial_stop(trial)
-        self._set_trial_status(trial, Trial.PAUSED)
+            self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
+            self._schedule_trial_save(trial=trial)
+        else:
+            self._schedule_trial_stop(trial)
+            self._set_trial_status(trial, Trial.PAUSED)
 
     ###
     # TRAIN
@@ -1880,9 +1864,8 @@ class TuneController:
     def _schedule_trial_save(
         self,
         trial: Trial,
-        storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> Optional[Union[_TrackedCheckpoint, _FutureTrainingResult]]:
+    ) -> Optional[_FutureTrainingResult]:
         if trial not in self._trial_to_actor:
             logger.debug(
                 f"Trial SAVE requested for trial {trial} but trial is already "
@@ -1892,63 +1875,24 @@ class TuneController:
 
         result = result or trial.last_result
 
-        if _use_storage_context():
-            assert (
-                storage == CheckpointStorage.PERSISTENT
-            ), "Memory checkpoints are no longer supported in the new persistence mode."
-            future = self._schedule_trial_task(
-                trial=trial,
-                method_name="save",
-                on_result=self._on_saving_result,
-                on_error=self._trial_task_failure,
-                _return_future=True,
-            )
-            # TODO(justinvyu): `trial.saving_to` (and trial.is_saving) is needed
-            # in order to prevent a done=True result from executing a STOP decision
-            # (which clears all futures) before the save gets processed.
-            # Keep this in for now while `train` and `save` are 2 separate steps.
-            trial.temporary_state.saving_to = _FutureTrainingResult(future)
+        future = self._schedule_trial_task(
+            trial=trial,
+            method_name="save",
+            on_result=self._on_saving_result,
+            on_error=self._trial_task_failure,
+            _return_future=True,
+        )
+        # TODO(justinvyu): `trial.saving_to` (and trial.is_saving) is needed
+        # in order to prevent a done=True result from executing a STOP decision
+        # (which clears all futures) before the save gets processed.
+        # Keep this in for now while `train` and `save` are 2 separate steps.
+        trial.temporary_state.saving_to = _FutureTrainingResult(future)
 
-            # `trial.saving_to` holds a future training result -- this is only used
-            # in the case of PBT to block until the checkpoint is ready.
-            # In all other situations, the checkpoint future is processed by the
-            # actor event manager when it is ready.
-            return trial.temporary_state.saving_to
-
-        if storage == CheckpointStorage.MEMORY:
-            # This is now technically a persistent checkpoint, but
-            # we don't resolve it. Instead, we register it directly.
-            future = self._schedule_trial_task(
-                trial=trial,
-                method_name="save",
-                on_result=None,
-                on_error=self._trial_task_failure,
-                _return_future=True,
-            )
-            checkpoint = _TrackedCheckpoint(
-                dir_or_data=future, storage_mode=storage, metrics=result
-            )
-            trial.on_checkpoint(checkpoint)
-        else:
-            if trial.temporary_state.saving_to:
-                # If a save is already in progress, don't schedule another one.
-                return trial.temporary_state.saving_to
-
-            future = self._schedule_trial_task(
-                trial=trial,
-                method_name="save",
-                on_result=self._on_saving_result,
-                on_error=self._trial_task_failure,
-                _return_future=True,
-            )
-            checkpoint = _TrackedCheckpoint(
-                dir_or_data=future,
-                storage_mode=storage,
-                metrics=result,
-            )
-            trial.temporary_state.saving_to = checkpoint
-
-        return checkpoint
+        # `trial.saving_to` holds a future training result -- this is only used
+        # in the case of PBT to block until the checkpoint is ready.
+        # In all other situations, the checkpoint future is processed by the
+        # actor event manager when it is ready.
+        return trial.temporary_state.saving_to
 
     def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
         with warn_if_slow("process_trial_save"):
@@ -1973,47 +1917,32 @@ class TuneController:
         """
         logger.debug("Trial %s: Processing trial save.", trial)
 
-        from ray.train._internal.checkpoint_manager import _TrainingResult
-
         try:
-            if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
-                if not checkpoint_value.checkpoint:
-                    logger.debug(f"Got empty checkpoint for trial {trial}")
-                else:
-                    try:
-                        self._callbacks.on_checkpoint(
-                            iteration=self._iteration,
-                            trials=self._trials,
-                            trial=trial,
-                            checkpoint=checkpoint_value.checkpoint,
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Error encountered during processing of callbacks. "
-                            "Ray Train/Tune recently changed the checkpoint interface "
-                            "that is passed to callbacks. If you implemented your own "
-                            "callback with an `on_checkpoint` handler, please review "
-                            "the checkpoint interface and adjust your code "
-                            "accordingly."
-                        )
-                        raise
-
-                    trial.on_checkpoint(checkpoint_value)
-
-                    self._checkpoint_manager.on_trial_checkpoint(trial)
-                    self._mark_trial_to_checkpoint(trial)
+            if not checkpoint_value.checkpoint:
+                logger.debug(f"Got empty checkpoint for trial {trial}")
             else:
-                trial.temporary_state.saving_to.dir_or_data = checkpoint_value
-                self._callbacks.on_checkpoint(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial,
-                    checkpoint=trial.temporary_state.saving_to,
-                )
-                trial.on_checkpoint(trial.temporary_state.saving_to)
+                try:
+                    self._callbacks.on_checkpoint(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial,
+                        checkpoint=checkpoint_value.checkpoint,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Error encountered during processing of callbacks. "
+                        "Ray Train/Tune recently changed the checkpoint interface "
+                        "that is passed to callbacks. If you implemented your own "
+                        "callback with an `on_checkpoint` handler, please review "
+                        "the checkpoint interface and adjust your code "
+                        "accordingly."
+                    )
+                    raise
+
+                trial.on_checkpoint(checkpoint_value)
+
                 self._checkpoint_manager.on_trial_checkpoint(trial)
-                if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
-                    self._mark_trial_to_checkpoint(trial)
+                self._mark_trial_to_checkpoint(trial)
         except Exception:
             logger.exception(
                 "Trial %s: Error handling checkpoint %s", trial, checkpoint_value
@@ -2029,78 +1958,27 @@ class TuneController:
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible.
             if trial.temporary_state.ray_actor:
-                self._schedule_trial_save(trial, storage=CheckpointStorage.PERSISTENT)
+                self._schedule_trial_save(trial)
 
     ###
     # RESTORE
     def _schedule_trial_restore(self, trial: Trial) -> bool:
-        if _use_storage_context():
-            checkpoint_result = trial.latest_checkpoint_result
+        checkpoint_result = trial.latest_checkpoint_result
 
-            if not checkpoint_result:
-                logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
-                return False
-
-            # TODO(justinvyu): Is this really needed?
-            trial.temporary_state.restoring_from = checkpoint_result
-
-            method_name = "restore"
-            args = (checkpoint_result,)
-            self._schedule_trial_task(
-                trial=trial,
-                method_name=method_name,
-                args=args,
-                kwargs={},
-                on_result=self._on_restoring_result,
-                on_error=self._trial_task_failure,
-            )
-            return True
-
-        checkpoint = trial.checkpoint
-
-        if checkpoint.dir_or_data is None:
+        if not checkpoint_result:
             logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
             return False
 
-        kwargs = {}
+        # TODO(justinvyu): Is this really needed?
+        trial.temporary_state.restoring_from = checkpoint_result
 
-        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            method_name = "restore"
-            args = (checkpoint.dir_or_data,)
-        elif (
-            trial.uses_cloud_checkpointing
-            or not trial.sync_on_checkpoint
-            or not os.path.exists(checkpoint.dir_or_data)
-        ):
-            fallback_to_latest = bool(
-                int(os.environ.get("TUNE_FALLBACK_TO_LATEST_CHECKPOINT", "1"))
-            )
-
-            method_name = "restore"
-            args = (checkpoint.dir_or_data,)
-            kwargs = {
-                "checkpoint_node_ip": checkpoint.node_ip,
-                "fallback_to_latest": fallback_to_latest,
-            }
-        elif trial.sync_on_checkpoint:
-            checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint.dir_or_data)
-            obj = Checkpoint.from_directory(checkpoint_path)
-
-            method_name = "restore"
-            args = (obj,)
-        else:
-            raise _AbortTrialExecution(
-                "Pass in `sync_on_checkpoint=True` for driver-based trial"
-                "restoration. Pass in an `upload_dir` for remote "
-                "storage-based restoration"
-            )
-
-        trial.temporary_state.restoring_from = checkpoint
+        method_name = "restore"
+        args = (checkpoint_result,)
         self._schedule_trial_task(
             trial=trial,
             method_name=method_name,
             args=args,
-            kwargs=kwargs,
+            kwargs={},
             on_result=self._on_restoring_result,
             on_error=self._trial_task_failure,
         )
@@ -2471,12 +2349,9 @@ class _FakeRayTrialExecutor:
     def save(
         self,
         trial: Trial,
-        storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> _TrackedCheckpoint:
-        return self._tune_controller._schedule_trial_save(
-            trial=trial, storage=storage, result=result
-        )
+    ) -> Optional[_FutureTrainingResult]:
+        return self._tune_controller._schedule_trial_save(trial=trial, result=result)
 
     def has_resources_for_trial(self, trial: Trial):
         return True
