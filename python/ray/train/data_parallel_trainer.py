@@ -5,15 +5,14 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
 from ray import air
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train import BackendConfig, Checkpoint, TrainingIterator
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
-from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
+from ray.train._internal.data_config import DataConfig
 from ray.train._internal.utils import construct_train_func
-from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
@@ -243,47 +242,15 @@ class DataParallelTrainer(BaseTrainer):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
 
-        if isinstance(dataset_config, dict) or self._dataset_config or preprocessor:
-            # Warn about deprecated cases (will raise error in future).
-            if isinstance(dataset_config, dict):
-                logger.warning(
-                    "The dict form of `dataset_config` is deprecated. Use the "
-                    "DataConfig class instead. Support for this will be dropped "
-                    "in a future release."
-                )
-            # If using the new API, hard-disallow deprecated features.
-            if isinstance(dataset_config, DataConfig):
-                if self._dataset_config:
-                    raise ValueError(
-                        "The DataConfig class is not compatible with the "
-                        "Trainer._dataset_config field. Remove `_dataset_config` "
-                        "from your trainer subclass to use DataConfig."
-                    )
-                elif preprocessor:
-                    raise ValueError(
-                        "The DataConfig class is not compatible with the "
-                        "Trainer preprocessor arg. Remove the `preprocessor` arg "
-                        "to use DataConfig."
-                    )
-            if self._dataset_config is None:
-                base_dataset_config = {
-                    TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
-                    WILDCARD_KEY: DatasetConfig(split=False),
-                }
-            else:
-                base_dataset_config = self._dataset_config
-            self._data_config = _LegacyDataConfigWrapper(
-                base_dataset_config, dataset_config, datasets
-            )
-        elif isinstance(dataset_config, DataConfig):
-            self._data_config = dataset_config
-        elif dataset_config is None:
-            self._data_config = DataConfig()
-        else:
+        if dataset_config is None:
+            dataset_config = DataConfig()
+
+        if not isinstance(dataset_config, DataConfig):
             raise ValueError(
                 "`dataset_config` must be an instance of ray.train.DataConfig, "
                 f"was: {dataset_config}"
             )
+        self._data_config = dataset_config
 
         backend_config = (
             backend_config if backend_config is not None else BackendConfig()
@@ -497,10 +464,8 @@ class DataParallelTrainer(BaseTrainer):
         Returns:
             The merged default + user-supplied dataset config.
         """
-        if isinstance(self._data_config, _LegacyDataConfigWrapper):
-            return self._data_config._dataset_config
-        else:
-            return self._data_config
+
+        return self._data_config
 
     @repr_with_fallback(["ipywidgets", "8"])
     def _repr_mimebundle_(self, **kwargs):
