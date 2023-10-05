@@ -8,6 +8,7 @@ import signal
 import socket
 import logging
 import threading
+
 from ray.util.spark.cluster_init import (
     RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
     RAY_ON_SPARK_START_RAY_PARENT_PID,
