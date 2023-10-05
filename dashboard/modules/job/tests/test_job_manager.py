@@ -41,8 +41,6 @@ from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.tests.conftest import call_ray_start  # noqa: F401
 
-TEST_NAMESPACE = "jobs_test_namespace"
-
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -162,6 +160,7 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
             assert job_info.end_time > job_info.start_time
             assert job_info.entrypoint_num_cpus == 0
             assert job_info.entrypoint_num_gpus == 0
+            assert job_info.entrypoint_memory == 0
             assert job_info.driver_agent_http_address.startswith(
                 "http://"
             ) and job_info.driver_agent_http_address.endswith(
@@ -684,6 +683,7 @@ class TestRuntimeEnv:
             {},
             {"entrypoint_num_cpus": 1},
             {"entrypoint_num_gpus": 1},
+            {"entrypoint_memory": 4},
             {"entrypoint_resources": {"Custom": 1}},
         ],
     )

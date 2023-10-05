@@ -429,6 +429,7 @@ The following metrics are exposed by Ray Serve:
      - * route
        * error_code
        * method
+       * application
      - The number of non-200 HTTP responses.
    * - ``ray_serve_num_grpc_error_requests`` [*]
      - * route
