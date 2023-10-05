@@ -219,12 +219,15 @@ class GenericProxy(ABC):
 
         self.request_error_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_error_requests",
-            description=f"The number of non-{self.success_status_code} "
-            "{self.protocol} responses.",
+            description=(
+                f"The number of non-{self.success_status_code} "
+                f"{self.protocol} responses."
+            ),
             tag_keys=(
                 "route",
                 "error_code",
                 "method",
+                "application",
             ),
         )
 
@@ -445,6 +448,7 @@ class GenericProxy(ABC):
                         "route": route_path,
                         "error_code": proxy_response.status_code,
                         "method": method,
+                        "application": "",
                     }
                 )
                 self.request_counter.inc(
@@ -521,6 +525,7 @@ class GenericProxy(ABC):
                         "route": route_path,
                         "error_code": proxy_response.status_code,
                         "method": method,
+                        "application": handle.deployment_id.app,
                     }
                 )
                 self.deployment_request_error_counter.inc(
