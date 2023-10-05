@@ -135,6 +135,10 @@ if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
     fi
 fi
 
+if [[ "${IMG_TYPE}" != "cpu" && "${IMG_TYPE}" != "${ML_CUDA_VERSION}" ]]; then
+    echo "Skipping ML image for ${IMG_TYPE}"
+    exit 0
+fi
 if [[ "${PY_VERSION_CODE}" == "py37" || "${PY_VERSION_CODE}" == "py311" || "${HOSTTYPE}" == "aarch64" ]]; then
     echo "Skipping ML image for ${PY_VERSION_CODE}" and host ${HOSTTYPE}
     exit 0
@@ -180,6 +184,6 @@ if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
 
     if [[ "${IMG_TYPE}" == "${ML_CUDA_VERSION}" ]]; then
         docker_push_as "${RAY_ML_IMG}" "${RUNTIME_ML_REPO}:${COMMIT_GPU_TAG}"
-        docker_push_as "${ANYSCALE_ML_IMG}" "${RUNTIME_ML_REPO}:${COMMIT_TAG}-as"
+        docker_push_as "${ANYSCALE_ML_IMG}" "${RUNTIME_ML_REPO}:${COMMIT_GPU_TAG}-as"
     fi
 fi
