@@ -562,6 +562,17 @@ class _Episode:
         )
 
     def to_sample_batch(self):
+        """Converts an episode to a 'SampleBatch'.
+
+        Note that, if the ' SampleBatch API' will be depcrecated
+        this method will be deprecated, too.
+        """
+        # If the episode is not done, yet, we need to convert
+        # to arrays first.
+        if not self.is_done:
+            self.convert_lists_to_numpy()
+
+        # Return the sample batch.
         return SampleBatch(
             {
                 SampleBatch.EPS_ID: np.array([self.id_] * len(self)),

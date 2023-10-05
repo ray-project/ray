@@ -68,7 +68,7 @@ class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # TODO (simon): Remove before merge.
-        ray.init(local_mode=False)
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):

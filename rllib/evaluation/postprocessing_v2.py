@@ -37,21 +37,16 @@ def postprocess_episodes_to_sample_batch(samples: List[List[_Episode]]) -> Sampl
     batches = []
     for sample in samples:
         for episode in sample:
-            # If the episode is terminated or truncated it is
-            # ready to be converted to a `SampleBatch`
-            if episode.is_terminated or episode.is_truncated:
-                batches.append(episode.to_sample_batch())
-            # We need to convert to arrays first.
-            else:
-                episode.convert_lists_to_numpy()
-                batches.append(episode.to_sample_batch())
+            batches.append(episode.to_sample_batch())
+
     batch = concat_samples(batches)
+
     # This is right now the default to work on sample batches without
     # infos.
     del batch[SampleBatch.INFOS]
 
-    # SampleBatch handling in the Learner API runs on `MultiAgentSampleBatch`.
-    return batch.as_multi_agent()
+    # Return the ' SampleBatch'.
+    return batch
 
 
 @DeveloperAPI

@@ -9,17 +9,14 @@ from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from ray.experimental.tqdm_ray import tqdm
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.rllib.utils.typing import TensorStructType, TensorType
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
@@ -28,6 +25,10 @@ torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    # TODO (sven): This gives a tricky circular import that goes
+    # deep into the library. We have to see, where to dissolve it.
+    from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 
 
 @ExperimentalAPI
@@ -168,19 +169,28 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Create our own instance of the single-agent `RLModule` (which
         # the needs to be weight-synched) each iteration.
-        module_dict: dict = {DEFAULT_POLICY_ID: None}
+        # TODO (sven, simon): We need to get rid here of the policy_dict,
+        # but the 'RLModule' takes the 'policy_spec.observation_space'
+        # from it.
+        # Below is the non nice solution.
+        # policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
+        module_spec: SingleAgentRLModuleSpec = self.config.get_default_rl_module_spec()
+        module_spec.observation_space = self.env.envs[0].observation_space
+        module_spec.action_space = self.env.action_space
+        module_spec.model_config_dict = self.config.model
+
         # TODO (sven): By time the `AlgorithmConfig` will get rid of `PolicyDict`
         # as well. Then we have to change this function parameter.
-        module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-            policy_dict=module_dict
-        )
-        self.module: RLModule = module_spec.build(module_id=DEFAULT_POLICY_ID)
+        # module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
+        #     policy_dict=module_dict
+        # )
+        self.module: RLModule = module_spec.build()
 
         # This should be the default.
         self._needs_initial_reset: bool = True
         self._episodes: List[Optional["Episode"]] = [None for _ in range(self.num_envs)]
 
-        self._done_episodes_for_metrics: List[Episode] = []
+        self._done_episodes_for_metrics: List["Episode"] = []
         self._ongoing_episodes_for_metrics: Dict[List] = defaultdict(list)
         self._ts_since_last_metrics: int = 0
 
@@ -234,7 +244,13 @@ class SingleAgentEnvRunner(EnvRunner):
     ) -> List["Episode"]:
         """Helper method to sample n timesteps."""
 
-        done_episodes_to_return = []
+        # TODO (sven): This gives a tricky circular import that goes
+        # deep into the library. We have to see, where to dissolve it.
+        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
+            _Episode as Episode,
+        )
+
+        done_episodes_to_return: List["Episode"] = []
 
         # Get initial states for all 'batch_size_B` rows in the forward batch,
         # i.e. for all vector sub_envs.
@@ -355,14 +371,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
                     )
-                    if explore and self.config.use_gae:
-                        # Make postprocessing here. Calculate advantages and value
-                        # targets.
-                        self._episodes[i] = compute_gae_for_episode(
-                            self._episodes[i],
-                            self.config,
-                            self.marl_module,
-                        )
+
                     # Reset h-states to nthe model's intiial ones b/c we are starting a
                     # new episode.
                     for k, v in self.module.get_initial_state().items():
@@ -392,13 +401,6 @@ class SingleAgentEnvRunner(EnvRunner):
         self._episodes = [eps.create_successor() for eps in self._episodes]
         for eps in ongoing_episodes:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-        # Make postprocessing here for ongoing episodes. Compute
-        # advantages and value targets.
-        if explore and self.config.use_gae:
-            ongoing_episodes = [
-                compute_gae_for_episode(eps, self.config, self.marl_module)
-                for eps in ongoing_episodes
-            ]
 
         # Record last metrics collection.
         self._ts_since_last_metrics += ts
@@ -411,12 +413,19 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List[Episode]:
+    ) -> List["Episode"]:
         """Helper method to run n episodes.
 
         See docstring of `self.sample()` for more details.
         """
-        done_episodes_to_return = []
+
+        # TODO (sven): This gives a tricky circular import that goes
+        # deep into the library. We have to see, where to dissolve it.
+        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
+            _Episode as Episode,
+        )
+
+        done_episodes_to_return: List["Episode"] = []
 
         obs, infos = self.env.reset()
         episodes = [Episode() for _ in range(self.num_envs)]
@@ -456,13 +465,9 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 # Explore or not.
                 if explore:
-                    fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_exploration(
-                        batch
-                    )
+                    fwd_out = self.module.forward_exploration(batch)
                 else:
-                    fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_inference(
-                        batch
-                    )
+                    fwd_out = self.module.forward_inference(batch)
 
                 actions, action_logp = self._sample_actions_if_necessary(
                     fwd_out, explore
@@ -505,15 +510,6 @@ class SingleAgentEnvRunner(EnvRunner):
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
                     )
-
-                    if explore and self.config.use_gae:
-                        # Make postprocessing here.Calculate advantages and
-                        # value targets.
-                        episodes[i] = compute_gae_for_episode(
-                            episodes[i],
-                            self.config,
-                            self.marl_module,
-                        )
 
                     done_episodes_to_return.append(episodes[i])
 

@@ -28,6 +28,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import (
@@ -284,6 +285,14 @@ class WorkerSet:
                         m.config.action_space,
                     ),
                 )
+                if hasattr(worker, "marl_module")
+                else [
+                    (
+                        DEFAULT_POLICY_ID,
+                        worker.module.config.observation_space,
+                        worker.module.config.action_space,
+                    ),
+                ]
             )
 
         if not remote_spaces:

@@ -37,7 +37,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import concat_samples, DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -53,6 +53,7 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     ALL_MODULES,
 )
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -449,28 +450,17 @@ class PPO(Algorithm):
             # New Episode-returning EnvRunner API.
             if self.config.env_runner_cls is not None:
                 if self.workers.num_remote_workers() <= 0:
-                    train_samples = [self.workers.local_worker().sample()]
+                    episodes = [self.workers.local_worker().sample()]
                 else:
-                    train_samples = self.workers.foreach_worker(
+                    episodes = self.workers.foreach_worker(
                         lambda w: w.sample(), local_worker=False
                     )
-                train_batches = []
-                for sample in train_samples:
-                    # Each sample is a list of terminated and ongoing episodes.
-                    for episode in sample:
-                        if episode.is_terminated or episode.is_truncated:
-                            train_batches.append(episode.to_sample_batch())
-                        else:
-                            # We need to convert to arrays first.
-                            episode.observations = np.array(episode.observations)
-                            episode.actions = np.array(episode.actions)
-                            episode.rewards = np.array(episode.rewards)
-                            episode.render_images = np.array(
-                                episode.render_images, dtype=np.uint8
-                            )
-                            train_batches.append(episode.to_sample_batch())
-                train_batch = concat_samples(train_batches)
+                postprocessed_episodes = self.postprocess_episodes(episodes)
+                train_batch = postprocess_episodes_to_sample_batch(
+                    postprocessed_episodes
+                )
                 del train_batch[SampleBatch.INFOS]
+
             # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
             else:
                 if self.config.count_steps_by == "agent_steps":
@@ -1056,3 +1046,20 @@ class PPO(Algorithm):
         # Run evaluation with the old Sampler API.
         else:
             return super().evaluate(duration_fn=duration_fn)
+
+    def postprocess_episodes(self, episodes: List[Episode]) -> List[Episode]:
+        """Calculate advantages and value targets."""
+        from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
+
+        # Bootstrap values.
+        postprocessed_episodes = []
+        for episode in episodes:
+            # TODO (sven): Calling 'module' on the 'EnvRunner' only works
+            # for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
+            postprocessed_episodes.append(
+                compute_gae_for_episode(
+                    episode, self.config, self.workers.local_worker().module
+                )
+            )
+
+        return postprocessed_episodes

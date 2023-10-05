@@ -8,6 +8,8 @@ config = (
     .rollouts(
         num_rollout_workers=1,
         env_runner_cls=PPOEnvRunner,
+        # TODO (simon): Add the "MeanStd' filtering
+        # when available in the EnvRunner stack.
     )
     .evaluation(
         evaluation_interval=1,
