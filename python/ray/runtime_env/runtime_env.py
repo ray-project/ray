@@ -284,7 +284,7 @@ class RuntimeEnv(dict):
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
         worker_process_setup_hook: Optional[Union[Callable, str]] = None,
-        nsight: Optional[Dict[str, List[str]]] = None,
+        nsight: Optional[Union[str, Dict[str, str]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         **kwargs,
@@ -451,7 +451,7 @@ class RuntimeEnv(dict):
             return list(self["java_jars"])
         return []
 
-    def nsight(self) -> Optional[List[str]]:
+    def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
         return self.get("nsight", None)
 
     def env_vars(self) -> Dict:
