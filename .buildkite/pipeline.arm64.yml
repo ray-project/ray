@@ -44,7 +44,6 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions {{matrix}} -T cpu -T cu115 -T cu116 --build-type BUILDKITE --build-base --suffix aarch64
   matrix:
-    - py37
     - py38
     - py39
     - py310
@@ -60,7 +59,6 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions {{matrix}} -T cu117 -T cu118 -T cu121 --build-type BUILDKITE --build-base --suffix aarch64
   matrix:
-    - py37
     - py38
     - py39
     - py310
