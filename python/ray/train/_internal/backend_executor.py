@@ -133,13 +133,13 @@ class BackendExecutor:
         self._create_placement_group()
         placement_group = self._placement_group or "default"
         # Always propagate the driver's DataContext to each worker in the group.
-        if (
-            isinstance(train_cls_kwargs, dict)
-            and "data_context" not in train_cls_kwargs
-        ):
+        if train_cls_kwargs is None:
+            train_cls_kwargs = {}
+        if not train_cls_kwargs.get("data_context"):
             from ray.data import DataContext
 
-            train_cls_args["data_context"] = DataContext.get_current()
+            train_cls_kwargs["data_context"] = DataContext.get_current()
+
         self.worker_group = WorkerGroup(
             num_workers=self._num_workers,
             num_cpus_per_worker=self._num_cpus_per_worker,
