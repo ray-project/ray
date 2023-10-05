@@ -19,14 +19,12 @@ import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.poll.LongPollClientFactory;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
-import io.ray.serve.util.CommonUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,19 +39,10 @@ public class Serve {
   /**
    * Initialize a serve instance.
    *
-   * <p>By default, the instance will be scoped to the lifetime of the returned Client object (or
-   * when the script exits). If detached is set to True, the instance will instead persist until
-   * Serve.shutdown() is called. This is only relevant if connecting to a long-running Ray cluster.
-   *
-   * @param detached Whether not the instance should be detached from this script. If set, the
-   *     instance will live on the Ray cluster until it is explicitly stopped with Serve.shutdown().
-   * @param dedicatedCpu Whether to reserve a CPU core for the internal Serve controller actor.
-   *     Defaults to False.
    * @param config Configuration options for Serve.
    * @return
    */
-  public static synchronized ServeControllerClient start(
-      boolean detached, boolean dedicatedCpu, Map<String, String> config) {
+  public static synchronized ServeControllerClient start(Map<String, String> config) {
     // Initialize ray if needed.
     if (!Ray.isInitialized()) {
       System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
@@ -68,12 +57,6 @@ public class Serve {
       LOGGER.info("There is no instance running on this Ray cluster. A new one will be started.");
     }
 
-    String controllerName =
-        detached
-            ? Constants.SERVE_CONTROLLER_NAME
-            : CommonUtil.formatActorName(
-                Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
-
     int httpPort =
         Optional.ofNullable(config)
             .map(m -> m.get(RayServeConfig.PROXY_HTTP_PORT))
@@ -82,12 +65,10 @@ public class Serve {
     PyActorHandle controllerAvatar =
         Ray.actor(
                 PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"),
-                controllerName,
-                detached,
-                dedicatedCpu,
+                Constants.SERVE_CONTROLLER_NAME,
                 httpPort)
-            .setName(controllerName + "_AVATAR")
-            .setLifetime(detached ? ActorLifetime.DETACHED : ActorLifetime.NON_DETACHED)
+            .setName(Constants.SERVE_CONTROLLER_NAME + "_AVATAR")
+            .setLifetime(ActorLifetime.DETACHED)
             .setMaxRestarts(-1)
             .setMaxConcurrency(1)
             .remote();
@@ -95,7 +76,8 @@ public class Serve {
     controllerAvatar.task(PyActorMethod.of("check_alive")).remote().get();
 
     PyActorHandle controller =
-        (PyActorHandle) Ray.getActor(controllerName, Constants.SERVE_NAMESPACE).get();
+        (PyActorHandle)
+            Ray.getActor(Constants.SERVE_CONTROLLER_NAME, Constants.SERVE_NAMESPACE).get();
 
     ActorNameList actorNameList =
         ServeProtoUtil.bytesToProto(
@@ -119,13 +101,29 @@ public class Serve {
       }
     }
 
-    ServeControllerClient client = new ServeControllerClient(controller, controllerName, detached);
+    ServeControllerClient client =
+        new ServeControllerClient(controller, Constants.SERVE_CONTROLLER_NAME);
     setGlobalClient(client);
-    LOGGER.info(
-        "Started{}Serve instance in namespace {}",
-        detached ? " detached " : " ",
-        Constants.SERVE_NAMESPACE);
+    LOGGER.info("Started Serve in namespace {}", Constants.SERVE_NAMESPACE);
     return client;
+  }
+
+  public static synchronized ServeControllerClient start(
+      boolean detached, boolean dedicatedCpu, Map<String, String> config) {
+
+    if (!detached) {
+      throw new IllegalArgumentException(
+          "`detached=false` is no longer supported. "
+              + "In a future release, it will be removed altogether.");
+    }
+
+    if (dedicatedCpu) {
+      throw new IllegalArgumentException(
+          "`dedicatedCpu=true` is no longer supported. "
+              + "In a future release, it will be removed altogether.");
+    }
+
+    return start(config);
   }
 
   /**
@@ -176,9 +174,11 @@ public class Serve {
       String replicaTag,
       String controllerName,
       Object servableObject,
-      Map<String, String> config) {
+      Map<String, String> config,
+      String appName) {
     INTERNAL_REPLICA_CONTEXT =
-        new ReplicaContext(deploymentName, replicaTag, controllerName, servableObject, config);
+        new ReplicaContext(
+            deploymentName, replicaTag, controllerName, servableObject, config, appName);
   }
 
   public static void setInternalReplicaContext(ReplicaContext replicaContext) {
@@ -266,13 +266,13 @@ public class Serve {
         optional.isPresent(),
         LogUtil.format(
             "There is no instance running on this Ray cluster. "
-                + "Please call `serve.start(detached=True) to start one."));
+                + "Please call `serve.start() to start one."));
     LOGGER.info(
         "Got controller handle with name `{}` in namespace `{}`.",
         controllerName,
         Constants.SERVE_NAMESPACE);
 
-    ServeControllerClient client = new ServeControllerClient(optional.get(), controllerName, true);
+    ServeControllerClient client = new ServeControllerClient(optional.get(), controllerName);
 
     setGlobalClient(client);
     return client;

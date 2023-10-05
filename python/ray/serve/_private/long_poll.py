@@ -17,6 +17,7 @@ from ray.serve.generated.serve_pb2 import ActorNameList
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet, LongPollRequest, LongPollResult
 from ray.serve.generated.serve_pb2 import UpdatedObject as UpdatedObjectProto
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -201,6 +202,11 @@ class LongPollHost:
         )
 
         self._listen_for_change_request_timeout_s = listen_for_change_request_timeout_s
+        self.transmission_counter = metrics.Counter(
+            "serve_long_poll_host_transmission_counter",
+            description="The number of times the long poll host transmits data.",
+            tag_keys=("namespace_or_state",),
+        )
 
     def _get_num_notifier_events(self, key: Optional[KeyType] = None):
         """Used for testing."""
@@ -208,6 +214,28 @@ class LongPollHost:
             return len(self.notifier_events[key])
         else:
             return sum(len(events) for events in self.notifier_events.values())
+
+    def _count_send(
+        self, timeout_or_data: Union[LongPollState, Dict[KeyType, UpdatedObject]]
+    ):
+        """Helper method that tracks the data sent by listen_for_change.
+
+        Records number of times long poll host sends data in the
+        ray_serve_long_poll_host_send_counter metric.
+        """
+
+        if isinstance(timeout_or_data, LongPollState):
+            # The only LongPollState is TIME_OUT– the long poll
+            # connection has timed out.
+            self.transmission_counter.inc(
+                value=1, tags={"namespace_or_state": "TIMEOUT"}
+            )
+        else:
+            data = timeout_or_data
+            for key in data.keys():
+                self.transmission_counter.inc(
+                    value=1, tags={"namespace_or_state": str(key)}
+                )
 
     async def listen_for_change(
         self,
@@ -217,20 +245,21 @@ class LongPollHost:
 
         This method will returns a dictionary of updated objects. It returns
         immediately if the snapshot_ids are outdated, otherwise it will block
-        until there's one updates.
+        until there's an update.
         """
         watched_keys = keys_to_snapshot_ids.keys()
         existent_keys = set(watched_keys).intersection(set(self.snapshot_ids.keys()))
 
-        # If there are any outdated keys (by comparing snapshot ids)
-        # return immediately.
-        client_outdated_keys = {
+        # If there are any keys with outdated snapshot ids,
+        # return their updated values immediately.
+        updated_objects = {
             key: UpdatedObject(self.object_snapshots[key], self.snapshot_ids[key])
             for key in existent_keys
             if self.snapshot_ids[key] != keys_to_snapshot_ids[key]
         }
-        if len(client_outdated_keys) > 0:
-            return client_outdated_keys
+        if len(updated_objects) > 0:
+            self._count_send(updated_objects)
+            return updated_objects
 
         # Otherwise, register asyncio events to be waited.
         async_task_to_events = {}
@@ -264,15 +293,18 @@ class LongPollHost:
                 pass
 
         if len(done) == 0:
+            self._count_send(LongPollState.TIME_OUT)
             return LongPollState.TIME_OUT
         else:
             updated_object_key: str = async_task_to_watched_keys[done.pop()]
-            return {
+            updated_object = {
                 updated_object_key: UpdatedObject(
                     self.object_snapshots[updated_object_key],
                     self.snapshot_ids[updated_object_key],
                 )
             }
+            self._count_send(updated_object)
+            return updated_object
 
     async def listen_for_change_java(
         self,

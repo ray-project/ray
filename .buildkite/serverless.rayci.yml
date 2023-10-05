@@ -1,16 +1,17 @@
 group: serverless tests
 steps:
   - label: ":serverless: serverless: python tests"
+    tags: python
     instance_type: medium
-    parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless 
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --parallelism-per-worker 3
         --except-tags manual,kuberay_operator,spark_plugin_tests
     depends_on: serverlessbuild
     job_env: forge
 
   - label: ":serverless: serverless: flaky tests"
+    tags: python
     instance_type: medium
     soft_fail: true
     commands:

@@ -1,7 +1,6 @@
 import subprocess
 import sys
 import time
-from typing import Dict
 
 import pytest
 import requests
@@ -20,10 +19,10 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client
-from ray.serve.drivers import DAGDriver, DefaultgRPCDriver
+from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
 from ray.serve.schema import ServeDeploySchema
-from ray.serve.tests.utils import (
+from ray.serve.tests.common.utils import (
     TELEMETRY_ROUTE_PREFIX,
     TelemetryStorage,
     check_ray_started,
@@ -96,63 +95,6 @@ def test_fastapi_detected(manage_ray_with_telemetry):
     assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) is None
     assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
     assert ServeUsageTag.GRPC_INGRESS_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
-
-
-def test_grpc_detected(manage_ray_with_telemetry):
-    """
-    Check that gRPCIngress is detected by telemetry.
-    """
-
-    subprocess.check_output(["ray", "start", "--head"])
-    wait_for_condition(check_ray_started, timeout=5)
-
-    storage_handle = start_telemetry_app()
-
-    wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
-    )
-
-    # Check that telemetry related to gRPC ingress app is not set
-    report = ray.get(storage_handle.get_report.remote())
-    assert ServeUsageTag.GRPC_INGRESS_USED.get_value_from_report(report) is None
-
-    @serve.deployment(ray_actor_options={"num_cpus": 0})
-    def greeter(inputs: Dict[str, bytes]):
-        return "Hello!"
-
-    with InputNode() as grpc_input:
-        greeter_node = greeter.bind(grpc_input)
-        grpc_app = DefaultgRPCDriver.bind(greeter_node)
-
-    serve.run(grpc_app, name="grpc_app", route_prefix="/grpc")
-
-    wait_for_condition(
-        lambda: serve.status().applications["grpc_app"].status
-        == ApplicationStatus.RUNNING,
-        timeout=15,
-    )
-
-    current_num_reports = ray.get(storage_handle.get_reports_received.remote())
-
-    wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote())
-        > current_num_reports,
-        timeout=5,
-    )
-    report = ray.get(storage_handle.get_report.remote())
-
-    # Check all telemetry relevant to the Serve apps on this cluster
-    assert ServeUsageTag.GRPC_INGRESS_USED.get_value_from_report(report) == "1"
-    assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
-    assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 2
-    assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 3
-    assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
-
-    # Check that Serve telemetry not relevant to the running apps is omitted
-    assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.FASTAPI_USED.get_value_from_report(report) is None
     assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
 
 
@@ -260,13 +202,13 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
     serve.delete(name="telemetry", _blocking=True)
 
     if version == "v1":
-        config = {"import_path": "ray.serve.tests.utils.receiver_app"}
+        config = {"import_path": "ray.serve.tests.common.utils.receiver_app"}
     elif version == "v2":
         config = {
             "applications": [
                 {
                     "name": "receiver_app",
-                    "import_path": "ray.serve.tests.utils.receiver_app",
+                    "import_path": "ray.serve.tests.common.utils.receiver_app",
                     "route_prefix": TELEMETRY_ROUTE_PREFIX,
                 },
                 {
@@ -335,7 +277,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
             "applications": [
                 {
                     "name": "receiver_app",
-                    "import_path": "ray.serve.tests.utils.receiver_app",
+                    "import_path": "ray.serve.tests.common.utils.receiver_app",
                     "route_prefix": TELEMETRY_ROUTE_PREFIX,
                 },
             ]
@@ -418,7 +360,7 @@ def test_lightweight_config_options(
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.utils.receiver_app",
+                "import_path": "ray.serve.tests.common.utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
             {

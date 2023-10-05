@@ -19,7 +19,11 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.proxy import ProxyActor
-from ray.serve._private.proxy_state import ProxyState, ProxyStateManager
+from ray.serve._private.proxy_state import (
+    ActorProxyWrapper,
+    ProxyState,
+    ProxyStateManager,
+)
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import DeploymentMode, HTTPOptions
 
@@ -41,14 +45,17 @@ def _make_proxy_state_manager(
     http_options: HTTPOptions,
     head_node_id: str = HEAD_NODE_ID,
     cluster_node_info_cache=MockClusterNodeInfoCache(),
+    proxy_actor_class=ProxyActor,
+    actor_proxy_wrapper_class=ActorProxyWrapper,
 ) -> (ProxyStateManager, ClusterNodeInfoCache):
     return (
         ProxyStateManager(
             SERVE_CONTROLLER_NAME,
-            detached=True,
             config=http_options,
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
+            proxy_actor_class=proxy_actor_class,
+            actor_proxy_wrapper_class=actor_proxy_wrapper_class,
         ),
         cluster_node_info_cache,
     )
@@ -77,8 +84,6 @@ def setup_controller():
         ).remote(
             SERVE_CONTROLLER_NAME,
             http_config=None,
-            detached=True,
-            _disable_proxy=True,
         )
     controller_actor_id = controller._ray_actor_id.hex()
 
@@ -112,9 +117,13 @@ def _create_proxy_state(
     if kwargs:
         kwargs["node_id"] = node_id
     proxy = proxy_actor_class.options(lifetime="detached").remote(**kwargs)
-    state = ProxyState(proxy, "alice", node_id, "mock_node_ip")
+    state = ProxyState(
+        actor_proxy_wrapper=ActorProxyWrapper(actor_handle=proxy),
+        actor_name="alice",
+        node_id=node_id,
+        node_ip="mock_node_ip",
+    )
     state.set_status(status=status)
-    print(f"The proxy state created has the status of: {state.status}")
     return state
 
 
@@ -200,7 +209,6 @@ def test_node_selection(all_nodes):
     ]
 
 
-@patch("ray.serve._private.proxy_state.ProxyActor", new=MockProxyActor)
 def test_proxy_state_update_restarts_unhealthy_proxies(ray_shutdown):
     """Test the update method in ProxyStateManager would
        kill and restart unhealthy proxies.
@@ -214,11 +222,12 @@ def test_proxy_state_update_restarts_unhealthy_proxies(ray_shutdown):
     head_node_id = get_head_node_id()
 
     proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.HeadOnly),
-        head_node_id,
-        create_cluster_node_info_cache(
+        http_options=HTTPOptions(location=DeploymentMode.HeadOnly),
+        head_node_id=head_node_id,
+        cluster_node_info_cache=create_cluster_node_info_cache(
             GcsClient(address=ray.get_runtime_context().gcs_address)
         ),
+        proxy_actor_class=MockProxyActor,
     )
     cluster_node_info_cache.update()
     proxy_state_manager._proxy_states[head_node_id] = _create_proxy_state(
@@ -285,12 +294,22 @@ def test_proxy_state_update_starting_ready_succeed():
     # Ensure the proxy status before update is STARTING.
     assert proxy_state.status == ProxyStatus.STARTING
 
+    # Ensure actor_details are set to the initial state when the proxy_state is created.
+    assert proxy_state.actor_details.worker_id is None
+    assert proxy_state.actor_details.log_file_path is None
+    assert proxy_state.actor_details.status == ProxyStatus.STARTING.value
+
     # Continuously trigger update and wait for status to be changed.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
         status=ProxyStatus.HEALTHY,
     )
+
+    # Ensure actor_details are updated.
+    assert proxy_state.actor_details.worker_id == "mock_worker_id"
+    assert proxy_state.actor_details.log_file_path == "mock_log_file_path"
+    assert proxy_state.actor_details.status == ProxyStatus.HEALTHY.value
 
 
 def test_proxy_state_update_starting_ready_failed_once():
@@ -778,11 +797,11 @@ def test_unhealthy_retry_correct_number_of_times():
     )
 
     # Ensure _health_check_obj_ref is set again
-    def check_health_obj_ref_not_none():
+    def health_check_ongoing():
         proxy_state.update()
-        return proxy_state._health_check_obj_ref is not None
+        return proxy_state._actor_proxy_wrapper.health_check_ongoing
 
-    wait_for_condition(check_health_obj_ref_not_none)
+    wait_for_condition(health_check_ongoing)
 
     # Fail the next 3 check_health calls should change the status to UNHEALTHY
     for _ in range(3):
@@ -962,7 +981,7 @@ def test_proxy_actor_unhealthy_during_draining(
     )
 
     # Kill the draining proxy actor
-    ray.kill(manager._proxy_states[worker_node_id]._actor_handle, no_restart=True)
+    ray.kill(manager._proxy_states[worker_node_id].actor_handle, no_restart=True)
 
     def check_worker_node_proxy_actor_is_removed():
         manager.update(proxy_nodes=proxy_nodes)

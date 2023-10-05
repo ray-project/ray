@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import TypeVar, Union
+from typing import TypeVar
 
 import numpy as np
 import pytest
@@ -10,23 +10,11 @@ import starlette.requests
 import ray
 from ray import serve
 from ray.serve._private.deployment_graph_build import build as pipeline_build
-from ray.serve.api import build as build_app
-from ray.serve.built_application import BuiltApplication
-from ray.serve.deployment import Application
 from ray.serve.deployment_graph import InputNode, RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
-
-
-def maybe_build(
-    app: Application, use_build: bool
-) -> Union[Application, BuiltApplication]:
-    if use_build:
-        return build_app(app)
-    else:
-        return app
 
 
 @serve.deployment
@@ -123,13 +111,11 @@ class NoargDriver:
         return await (await self.dag.remote())
 
 
-# TODO(Shreyas): Enable use_build once serve.build() PR is out.
-@pytest.mark.parametrize("use_build", [False])
-def test_single_func_no_input(serve_instance, use_build):
+def test_single_func_no_input(serve_instance):
     dag = fn_hello.bind()
     serve_dag = NoargDriver.bind(dag)
 
-    handle = serve.run(maybe_build(serve_dag, use_build))
+    handle = serve.run(serve_dag)
     assert ray.get(handle.remote()) == "hello"
     assert requests.get("http://127.0.0.1:8000/").text == "hello"
 
@@ -270,11 +256,9 @@ class Echo:
         return self._s
 
 
-# TODO(Shreyas): Enable use_build once serve.build() PR is out.
-@pytest.mark.parametrize("use_build", [False])
-def test_single_node_deploy_success(serve_instance, use_build):
+def test_single_node_deploy_success(serve_instance):
     m1 = Adder.bind(1)
-    handle = serve.run(maybe_build(m1, use_build))
+    handle = serve.run(m1)
     assert ray.get(handle.remote(41)) == 42
 
 
@@ -333,14 +317,10 @@ class DictParent:
         return await (await self._d[key].remote())
 
 
-# TODO(Shreyas): Enable use_build once serve.build() PR is out.
-@pytest.mark.parametrize("use_build", [False])
-def test_passing_handle_in_obj(serve_instance, use_build):
+def test_passing_handle_in_obj(serve_instance):
     child1 = Echo.bind("ed")
     child2 = Echo.bind("simon")
-    parent = maybe_build(
-        DictParent.bind({"child1": child1, "child2": child2}), use_build
-    )
+    parent = DictParent.bind({"child1": child1, "child2": child2})
 
     handle = serve.run(parent)
     assert ray.get(handle.remote("child1")) == "ed"
@@ -376,12 +356,10 @@ class GrandParent:
         return "ok"
 
 
-# TODO(Shreyas): Enable use_build once serve.build() PR is out.
-@pytest.mark.parametrize("use_build", [False])
-def test_pass_handle_to_multiple(serve_instance, use_build):
+def test_pass_handle_to_multiple(serve_instance):
     child = Child.bind()
     parent = Parent.bind(child)
-    grandparent = maybe_build(GrandParent.bind(child, parent), use_build)
+    grandparent = GrandParent.bind(child, parent)
 
     handle = serve.run(grandparent)
     assert ray.get(handle.remote()) == "ok"

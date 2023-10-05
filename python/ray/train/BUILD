@@ -713,6 +713,14 @@ py_test(
 )
 
 py_test(
+    name = "test_windows",
+    size = "small",
+    srcs = ["tests/test_windows.py"],
+    tags = ["team:ml", "exclusive", "minimal"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_xgboost_predictor",
     size = "small",
     srcs = ["tests/test_xgboost_predictor.py"],

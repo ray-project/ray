@@ -399,8 +399,6 @@ class FunctionTrainable(Trainable):
                 world_size=None,
                 dataset_shard=None,
                 checkpoint=None,
-                # Deprecated configs
-                enable_lazy_checkpointing=False,
             )
             self._last_training_result = None
             return

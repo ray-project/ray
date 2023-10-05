@@ -159,10 +159,6 @@ MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-
-# [EXPERIMENTAL] Disable the proxy actor
-SERVE_EXPERIMENTAL_DISABLE_PROXY = "SERVE_EXPERIMENTAL_DISABLE_PROXY"
-
 # Message
 MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "
@@ -196,17 +192,6 @@ SERVE_LOG_RECORD_FORMAT = {
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
-
-# Feature flag to enable StreamingResponse support.
-# When turned on, *all* HTTP responses will use Ray streaming object refs.
-RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
-    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "1") == "1"
-)
-
-# Request ID used for logging. Can be provided as a request
-# header and will always be returned as a response header.
-# DEPRECATED: use `X-Request-Id` instead
-RAY_SERVE_REQUEST_ID_HEADER = "RAY_SERVE_REQUEST_ID"
 
 # Feature flag to enable new handle API.
 RAY_SERVE_ENABLE_NEW_HANDLE_API = (

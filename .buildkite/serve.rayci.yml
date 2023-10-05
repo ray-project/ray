@@ -1,22 +1,24 @@
 group: serve tests
 steps:
-  - label: ":ray-serve: serve: core tests"
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serve --except-tags worker-container
-    depends_on: servebuild
-    job_env: forge
-
   - label: ":ray-serve: serve: serve tests"
-    parallelism: 3
+    parallelism: 2
+    tags: 
+      - serve
+      - ml
+      - python
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve --except-tags post_wheel_build,gpu,xcommit
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
+        --except-tags post_wheel_build,gpu,worker-container,xcommit
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
     depends_on: servebuild
     job_env: forge
 
   - label: ":ray-serve: serve: flaky tests"
+    tags: 
+      - serve
+      - ml
+      - python
     instance_type: medium
     soft_fail: true
     commands:

@@ -25,10 +25,8 @@ class DeploymentVersion:
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
         if code_version is None:
-            self.unversioned = True
             self.code_version = get_random_letters()
         else:
-            self.unversioned = False
             self.code_version = code_version
 
         # Options for this field may be mutated over time, so any logic that uses this

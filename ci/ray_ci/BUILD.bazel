@@ -109,9 +109,24 @@ py_test(
 )
 
 py_test(
-    name = "test_docker_container",
+    name = "test_ray_docker_container",
     size = "small",
-    srcs = ["test_docker_container.py"],
+    srcs = ["test_ray_docker_container.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_anyscale_docker_container",
+    size = "small",
+    srcs = ["test_anyscale_docker_container.py"],
     tags = [
         "ci_unit",
         "team:ci",
