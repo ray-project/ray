@@ -97,12 +97,14 @@ class Benchmark:
         gc.collect()
 
         print(f"Running case: {name}")
-        assert isinstance(dataset, (
-            Dataset,
-            _IterableFromIterator,
-            torch.utils.data.DataLoader,
-            tf.data.Dataset,
-            )
+        assert isinstance(
+            dataset,
+            (
+                Dataset,
+                _IterableFromIterator,
+                torch.utils.data.DataLoader,
+                tf.data.Dataset,
+            ),
         ), f"Unexpected dataset type: {type(dataset)}"
         start_time = time.perf_counter()
         record_count = 0
