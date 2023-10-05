@@ -1770,8 +1770,9 @@ def read_databricks_tables(
     """
     Read from a Databricks unity catalog table or Databricks SQL execution result that
     queries from Databricks UC tables.
-    If this API isn't called in Databricks runtime, set the 'DATABRICKS_HOST' and
-    'DATABRICKS_TOKEN' environment variables.
+    Before calling `read_databricks_tables`, set the 'DATABRICKS_HOST' environment
+    variable, if this API isn't called in Databricks runtime, set the
+    'DATABRICKS_TOKEN' environment variable as well.
 
     This reader is implemented based on
     [Databricks statement execution API](https://docs.databricks.com/api/workspace/statementexecution).
@@ -1814,22 +1815,24 @@ def read_databricks_tables(
     from ray.util.spark.databricks_hook import get_dbutils
     from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
-    host = os.environ.get("DATABRICKS_HOST")
     token = os.environ.get("DATABRICKS_TOKEN")
 
-    if not host or not token:
+    if not token:
+        raise ValueError(
+            "Please set environment variable 'DATABRICKS_TOKEN'."
+        )
+
+    host = os.environ.get("DATABRICKS_HOST")
+    if not host:
         if is_in_databricks_runtime():
             ctx = (
                 get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
             )
-            if not host:
-                host = ctx.tags().get("browserHostName").get()
-            if not token:
-                token = ctx.apiToken().get()
+            host = ctx.tags().get("browserHostName").get()
         else:
             raise ValueError(
                 "You are not in databricks runtime, please set environment variable "
-                "'DATABRICKS_HOST' and 'DATABRICKS_TOKEN'."
+                "'DATABRICKS_HOST'."
             )
 
     spark = get_spark_session()
