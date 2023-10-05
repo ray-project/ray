@@ -59,6 +59,8 @@ class FakeProxyWrapper(ProxyWrapper):
         self.worker_id = "mock_worker_id"
         self.log_file_path = "mock_log_file_path"
         self.health_check_ongoing = False
+        self.is_draining = False
+        self.shutdown = False
 
     @property
     def actor_id(self) -> str:
@@ -85,13 +87,13 @@ class FakeProxyWrapper(ProxyWrapper):
         pass
 
     def is_shutdown(self):
-        pass
+        return self.shutdown
 
     def update_draining(self, draining: bool):
         pass
 
     def kill(self):
-        pass
+        self.shutdown = True
 
 
 def _create_proxy_state_manager(
@@ -373,7 +375,7 @@ def test_proxy_state_update_starting_ready_always_fails():
     )
 
 
-@patch("ray.serve._private.proxy_state.PROXY_READY_CHECK_TIMEOUT_S", 0.1)
+@patch("ray.serve._private.proxy_state.PROXY_READY_CHECK_TIMEOUT_S", 0)
 def test_proxy_state_update_starting_ready_always_timeout():
     """Test calling update method on ProxyState when the proxy state is STARTING and
     when the ready call always timed out.
@@ -554,7 +556,7 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
         state.update()
         assert (
             state.actor_handle.get_num_health_checks()
-        ) == num_health_checks, state.actor_handle.get_num_health_checks()
+        ) == num_health_checks
         return True
 
     def incur_health_checks(
@@ -585,14 +587,14 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
         assert (
             proxy_state.actor_handle.get_num_health_checks()
             <= cur_num_health_checks + num_checks
-        ), proxy_state.actor_handle.get_num_health_checks()
+        )
 
         if expected_final_status:
             assert proxy_state.status == expected_final_status
 
     # Make sure that the proxy_state's status remains HEALTHY as long as
     # PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD failures don't occur consecutively.
-    for i in range(3):
+    for _ in range(3):
         incur_health_checks(
             pass_checks=True,
             num_checks=1,
@@ -618,27 +620,20 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
     )
 
 
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 0.1)
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_proxy_state_check_health_always_timeout_timeout_eq_period():
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 0)
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
+def test_proxy_state_check_health_always_timeout():
     """Test calling update method on ProxyState when the proxy state is HEALTHY and
     when the ready call always timed out and health check timeout and period equals.
 
     The proxy state started with STARTING. After update is called and ready call
     succeeded, the status will change to HEALTHY. After the next few check_health calls
-    takes very long time to finished, the status will eventually change to UNHEALTHY
+    never finishes and always pending, the status will eventually change to UNHEALTHY
     after all retries have exhausted.
     """
 
-    @ray.remote(num_cpus=0)
-    class NewMockProxyActor:
-        async def ready(self):
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        async def check_health(self):
-            await asyncio.sleep(100)
-
-    proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
+    proxy_state = _create_proxy_state()
+    proxy_state._actor_proxy_wrapper.health = ProxyWrapperCallStatus.PENDING
 
     # Continuously trigger update. The status should change from STARTING to HEALTHY
     # when ready.
@@ -663,52 +658,7 @@ def test_proxy_state_check_health_always_timeout_timeout_eq_period():
     assert proxy_state._consecutive_health_check_failures == 3
 
 
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 1)
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_proxy_state_check_health_always_timeout_timeout_greater_than_period():
-    """Test calling update method on ProxyState when the proxy state is HEALTHY and
-    when the ready call always timed out and health check timeout greater than period.
-
-    The proxy state started with STARTING. After update is called and ready call
-    succeeded, the status will change to HEALTHY. After the next few check_health calls
-    takes very long time to finished, the status will eventually change to UNHEALTHY
-    after all retries have exhausted.
-    """
-
-    @ray.remote(num_cpus=0)
-    class NewMockProxyActor:
-        async def ready(self):
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        async def check_health(self):
-            await asyncio.sleep(100)
-
-    proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
-
-    # Continuously trigger update. The status should change from STARTING to HEALTHY
-    # when ready.
-    wait_for_condition(
-        condition_predictor=_update_and_check_proxy_status,
-        state=proxy_state,
-        status=ProxyStatus.HEALTHY,
-    )
-    first_check_time = proxy_state._last_health_check_time
-
-    # Continuously trigger update and status should change to UNHEALTHY.
-    wait_for_condition(
-        condition_predictor=_update_and_check_proxy_status,
-        state=proxy_state,
-        status=ProxyStatus.UNHEALTHY,
-    )
-
-    # Ensure the check time have changed since the last update
-    assert first_check_time != proxy_state._last_health_check_time
-
-    # Ensure _consecutive_health_check_failures is correct
-    assert proxy_state._consecutive_health_check_failures == 3
-
-
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
 def test_proxy_state_update_unhealthy_check_health_succeed():
     """Test calling update method on ProxyState when the proxy state has
     failed health checks and the next check_health call succeeded.
@@ -741,15 +691,8 @@ def test_unhealthy_retry_correct_number_of_times():
     should change from HEALTHY to UNHEALTHY.
     """
 
-    @ray.remote(num_cpus=0)
-    class NewMockProxyActor:
-        async def ready(self):
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        async def check_health(self):
-            await asyncio.sleep(100)
-
-    proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
+    proxy_state = _create_proxy_state()
+    proxy_state._actor_proxy_wrapper.health = ProxyWrapperCallStatus.PENDING
 
     # Continuously trigger update. The status should change from STARTING to HEALTHY
     # when ready.
@@ -768,14 +711,13 @@ def test_unhealthy_retry_correct_number_of_times():
 
     # Fail the next 3 check_health calls should change the status to UNHEALTHY
     for _ in range(3):
-        time.sleep(0.1)
         proxy_state.update()
     assert proxy_state.status == ProxyStatus.UNHEALTHY
 
 
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
 @pytest.mark.parametrize("number_of_worker_nodes", [0, 1, 2, 3])
-def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
+def test_update_draining(all_nodes, number_of_worker_nodes):
     """Test update draining logics.
 
     When update nodes to inactive, head node http proxy should never be draining while
@@ -788,16 +730,10 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
-    for node_id, node_ip_address in all_nodes:
+    for node_id, _ in all_nodes:
         manager._proxy_states[node_id] = _create_proxy_state(
-            proxy_actor_class=ProxyActor,
             status=ProxyStatus.HEALTHY,
             node_id=node_id,
-            host="localhost",
-            port=8000,
-            root_path="/",
-            controller_name=SERVE_CONTROLLER_NAME,
-            node_ip_address=node_ip_address,
         )
     node_ids = [node_id for node_id, _ in all_nodes]
 
@@ -808,7 +744,6 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
     # Worker node proxy should turn DRAINING.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_state_manager,
-        timeout=20,
         proxy_state_manager=manager,
         node_ids=node_ids,
         statuses=[ProxyStatus.HEALTHY]
@@ -823,7 +758,6 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
     # Worker node proxy should turn HEALTHY.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_state_manager,
-        timeout=20,
         proxy_state_manager=manager,
         node_ids=node_ids,
         statuses=[ProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
@@ -831,11 +765,10 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
     )
 
 
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
 def test_proxy_actor_healthy_during_draining():
     """Test that the proxy will remain DRAINING even if health check succeeds."""
 
-    @ray.remote(num_cpus=0)
     class NewMockProxyActor:
         def __init__(self):
             self.num_health_checks = 0
@@ -843,17 +776,17 @@ def test_proxy_actor_healthy_during_draining():
         def get_num_health_checks(self) -> int:
             return self.num_health_checks
 
-        async def ready(self):
+        def ready(self):
             return json.dumps(["mock_worker_id", "mock_log_file_path"])
 
-        async def check_health(self):
+        def check_health(self):
             self.num_health_checks = self.num_health_checks + 1
             return "Success!"
 
-        async def update_draining(self, draining, _after):
+        def update_draining(self, draining, _after):
             pass
 
-        async def is_drained(self, _after):
+        def is_drained(self, _after):
             return False
 
     proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
@@ -869,16 +802,14 @@ def test_proxy_actor_healthy_during_draining():
     proxy_state.update(draining=True)
     assert proxy_state.status == ProxyStatus.DRAINING
 
-    cur_num_health_checks = ray.get(
-        proxy_state.actor_handle.get_num_health_checks.remote()
-    )
+    cur_num_health_checks = proxy_state.actor_handle.get_num_health_checks()
 
     def _update_until_two_more_health_checks():
         # Check 2 more health checks to make sure the proxy state
         # at least sees the first successful health check.
         proxy_state.update(draining=True)
         return (
-            ray.get(proxy_state.actor_handle.get_num_health_checks.remote())
+            proxy_state.actor_handle.get_num_health_checks()
             == cur_num_health_checks + 2
         )
 
@@ -888,11 +819,11 @@ def test_proxy_actor_healthy_during_draining():
     assert proxy_state.status == ProxyStatus.DRAINING
 
 
-@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 1)
-@patch("ray.serve._private.proxy_state.PROXY_DRAIN_CHECK_PERIOD_S", 0.1)
+@patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
+@patch("ray.serve._private.proxy_state.PROXY_DRAIN_CHECK_PERIOD_S", 0)
 @pytest.mark.parametrize("number_of_worker_nodes", [1])
 def test_proxy_actor_unhealthy_during_draining(
-    all_nodes, setup_controller, number_of_worker_nodes
+    all_nodes, number_of_worker_nodes
 ):
     """Test the state transition from DRAINING to UNHEALTHY for the proxy actor."""
     manager, cluster_node_info_cache = _create_proxy_state_manager(
@@ -903,14 +834,8 @@ def test_proxy_actor_unhealthy_during_draining(
     worker_node_id = None
     for node_id, node_ip_address in all_nodes:
         manager._proxy_states[node_id] = _create_proxy_state(
-            proxy_actor_class=ProxyActor,
             status=ProxyStatus.STARTING,
             node_id=node_id,
-            host="localhost",
-            port=8000,
-            root_path="/",
-            controller_name=SERVE_CONTROLLER_NAME,
-            node_ip_address=node_ip_address,
         )
         if node_id != HEAD_NODE_ID:
             worker_node_id = node_id
@@ -921,7 +846,6 @@ def test_proxy_actor_unhealthy_during_draining(
     proxy_nodes = set(node_ids)
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_state_manager,
-        timeout=20,
         proxy_state_manager=manager,
         node_ids=node_ids,
         statuses=[ProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
@@ -935,7 +859,6 @@ def test_proxy_actor_unhealthy_during_draining(
     # Worker node proxy should turn DRAINING.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_state_manager,
-        timeout=20,
         proxy_state_manager=manager,
         node_ids=node_ids,
         statuses=[ProxyStatus.HEALTHY]
@@ -944,14 +867,14 @@ def test_proxy_actor_unhealthy_during_draining(
     )
 
     # Kill the draining proxy actor
-    ray.kill(manager._proxy_states[worker_node_id].actor_handle, no_restart=True)
+    manager._proxy_states[worker_node_id]._actor_proxy_wrapper.health = ProxyWrapperCallStatus.FINISHED_FAILED
 
     def check_worker_node_proxy_actor_is_removed():
         manager.update(proxy_nodes=proxy_nodes)
         return len(manager._proxy_states) == 1
 
     wait_for_condition(
-        condition_predictor=check_worker_node_proxy_actor_is_removed, timeout=5
+        condition_predictor=check_worker_node_proxy_actor_is_removed
     )
     assert manager._proxy_states[HEAD_NODE_ID].status == ProxyStatus.HEALTHY
 
@@ -970,14 +893,8 @@ def test_is_ready_for_shutdown(all_nodes):
 
     for node_id, node_ip_address in all_nodes:
         manager._proxy_states[node_id] = _create_proxy_state(
-            proxy_actor_class=ProxyActor,
             status=ProxyStatus.HEALTHY,
             node_id=node_id,
-            host="localhost",
-            port=8000,
-            root_path="/",
-            controller_name=SERVE_CONTROLLER_NAME,
-            node_ip_address=node_ip_address,
         )
 
     # Ensure before shutdown, manager is not shutdown
