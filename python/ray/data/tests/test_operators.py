@@ -809,7 +809,7 @@ def test_block_ref_bundler_uniform(
     assert flat_out == list(range(n))
 
 
-def test_estimated_output_blocks():
+def test_map_estimated_output_blocks():
     # Test map operator estimation
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
 
@@ -838,6 +838,8 @@ def test_estimated_output_blocks():
     # 100 inputs -> 100 / 10 = 10 tasks -> 10 * 5 = 50 output blocks
     assert op._estimated_output_blocks == 50
 
+
+def test_limit_estimated_output_blocks():
     # Test limit operator estimation
     input_op = InputDataBuffer(make_ref_bundles([[i, i] for i in range(100)]))
     op = LimitOperator(100, input_op)
@@ -866,6 +868,8 @@ def test_estimated_output_blocks():
     # all blocks are outputted
     assert op._estimated_output_blocks == 100
 
+
+def test_all_to_all_estimated_output_blocks():
     # Test all to all operator
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
 
