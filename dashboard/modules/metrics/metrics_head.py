@@ -164,6 +164,10 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
                 text = await resp.text()
                 # Basic sanity check of prometheus health check schema
+<<<<<<< HEAD
+=======
+                # Different flavors of Prometheus may use different health check strings
+>>>>>>> 014a2169cb ([Serve] Add `application` tag to `ray_serve_num_http_error_requests` metric (#40115))
                 if "Prometheus" not in text:
                     return dashboard_optional_utils.rest_response(
                         success=False,
