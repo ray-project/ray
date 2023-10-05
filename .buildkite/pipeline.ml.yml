@@ -498,7 +498,19 @@
     - pytest rllib_contrib/alpha_star/tests/
     - python rllib_contrib/alpha_star/examples/multi-agent-cartpole-alpha-star.py --run-as-test
 
-- label: ":exploding_death_star: RLlib Contrib: CRR Tests"
+- label: ":exploding_death_star: RLlib Contrib: AlphaZero Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/alpha_zero && pip install -r requirements.txt && pip install -e ".[development"])
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/alpha_zero/tests/
+    - python rllib_contrib/alpha_zero/examples/alpha_zero_cartpole_sparse_rewards.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: APEX DDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -521,7 +533,19 @@
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/apex_dqn/tests/
     - python rllib_contrib/apex_dqn/examples/apex_dqn_cartpole_v1.py --run-as-test
-    
+
+- label: ":exploding_death_star: RLlib Contrib: CRR Tests"
+  conditions: [ "NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED" ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/crr && pip install -r requirements.txt && pip install -e ".[development"])
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/crr/tests/
+    - python rllib_contrib/crr/examples/crr_cartpole_v1.py --run-as-test
+
 - label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
