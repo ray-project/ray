@@ -15,9 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, U
 import numpy as np
 import psutil
 import ray
-from ray.air.checkpoint import Checkpoint
-from ray.air._internal.remote_storage import delete_at_uri, _is_local_windows_path
-from ray.air.util.node import _get_node_id_from_node_ip, _force_on_node
+from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.air._internal.json import SafeFallbackEncoder  # noqa
 from ray.air._internal.util import (  # noqa: F401
@@ -44,8 +42,6 @@ def _import_gputil():
     return GPUtil
 
 
-_pinned_objects = []
-PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
 START_OF_TIME = time.time()
 
 
@@ -164,6 +160,7 @@ def retry_fn(
     return False
 
 
+# TODO(justinvyu): [code_removal]
 def _split_remote_local_path(
     path: str, default_local_path: Optional[str]
 ) -> Tuple[Optional[str], Optional[str]]:
@@ -234,41 +231,17 @@ def _resolve_storage_path(
     return local_path, remote_path
 
 
+# TODO(justinvyu): [code_removal]
 @ray.remote
 def _serialize_checkpoint(checkpoint_path) -> bytes:
-    checkpoint = Checkpoint.from_directory(checkpoint_path)
-    return checkpoint.to_bytes()
+    raise DeprecationWarning
 
 
+# TODO(justinvyu): [code_removal]
 def _get_checkpoint_from_remote_node(
     checkpoint_path: str, node_ip: str, timeout: float = 300.0
-) -> Optional[Checkpoint]:
-    node_id = _get_node_id_from_node_ip(node_ip)
-
-    if node_id is None:
-        logger.warning(
-            f"Could not fetch checkpoint with path {checkpoint_path} from "
-            f"node with IP {node_ip} because the node is not available "
-            f"anymore."
-        )
-        return None
-
-    fut = _serialize_checkpoint.options(num_cpus=0, **_force_on_node(node_id)).remote(
-        checkpoint_path
-    )
-    try:
-        checkpoint_data = ray.get(fut, timeout=timeout)
-    except Exception as e:
-        logger.warning(
-            f"Could not fetch checkpoint with path {checkpoint_path} from "
-            f"node with IP {node_ip} because serialization failed: {e}"
-        )
-        return None
-    return Checkpoint.from_bytes(checkpoint_data)
-
-
-def _delete_external_checkpoint(checkpoint_uri: str):
-    delete_at_uri(checkpoint_uri)
+):
+    raise DeprecationWarning
 
 
 @DeveloperAPI

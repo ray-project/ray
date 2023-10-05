@@ -9,8 +9,7 @@ import ray._private.ray_constants as ray_constants
 from ray.data import Dataset
 from ray._private.ray_constants import env_integer
 from ray.exceptions import RayActorError
-from ray.train import DataConfig
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint, DataConfig
 from ray.train._internal.session import (
     _TrainingResult,
     TrialInfo,

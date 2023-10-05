@@ -21,13 +21,11 @@ import pyarrow.fs
 
 from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
-    from ray.data import Dataset
     from ray.tune.callback import Callback
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.search.sample import Domain
@@ -46,6 +44,10 @@ SampleRange = Union["Domain", Dict[str, List]]
 MAX = "max"
 MIN = "min"
 _DEPRECATED_VALUE = "DEPRECATED"
+
+DATASET_CONFIG_DEPRECATION_MSG = """
+Use `ray.train.DataConfig` instead of DatasetConfig to configure data ingest for training. See https://docs.ray.io/en/releases-2.6.3/ray-air/check-ingest.html#migrating-from-the-legacy-datasetconfig-api for more details.
+"""  # noqa: E501
 
 
 logger = logging.getLogger(__name__)
@@ -293,11 +295,7 @@ class ScalingConfig:
 
 
 @dataclass
-@Deprecated(
-    message="Use `ray.train.DataConfig` instead of DatasetConfig to "
-    "configure data ingest for training. "
-    "See https://docs.ray.io/en/master/ray-air/check-ingest.html#migrating-from-the-legacy-datasetconfig-api for more details."  # noqa: E501
-)
+@Deprecated(DATASET_CONFIG_DEPRECATION_MSG)
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
@@ -365,157 +363,8 @@ class DatasetConfig:
     use_stream_api: Optional[int] = None
     stream_window_size: Optional[int] = None
 
-    def __repr__(self):
-        return _repr_dataclass(self)
-
-    def _repr_html_(self, title=None) -> str:
-        if title is None:
-            title = type(self).__name__
-        return make_table_html_repr(obj=self, title=title)
-
     def __post_init__(self):
-        if self.use_stream_api is not None or self.stream_window_size is not None:
-            raise DeprecationWarning(
-                "DatasetConfig.use_stream_api and DatasetConfig.stream_window_size "
-                "have been removed as of Ray 2.3. Instead, use "
-                "DatasetConfig.max_object_store_memory_fraction with a value "
-                "0 or greater "
-                "(https://docs.ray.io/en/latest/ray-air/package-ref.html"
-                "#ray.air.config.DatasetConfig)."
-            )
-
-    def fill_defaults(self) -> "DatasetConfig":
-        """Return a copy of this config with all default values filled in."""
-        return DatasetConfig(
-            fit=self.fit or False,
-            split=self.split or False,
-            required=self.required or False,
-            max_object_store_memory_fraction=self.max_object_store_memory_fraction
-            if self.max_object_store_memory_fraction is not None
-            else -1,
-            global_shuffle=self.global_shuffle or False,
-            transform=self.transform if self.transform is not None else True,
-            randomize_block_order=self.randomize_block_order
-            if self.randomize_block_order is not None
-            else True,
-            per_epoch_preprocessor=self.per_epoch_preprocessor,
-        )
-
-    @staticmethod
-    def merge(
-        a: Dict[str, "DatasetConfig"], b: Optional[Dict[str, "DatasetConfig"]]
-    ) -> Dict[str, "DatasetConfig"]:
-        """Merge two given DatasetConfigs, the second taking precedence.
-
-        Raises:
-            ValueError: if validation fails on the merged configs.
-        """
-        has_wildcard = WILDCARD_KEY in a
-        result = a.copy()
-        if b is None:
-            return result
-        for key in b:
-            if key in a:
-                result[key] = a[key]._merge(b[key])
-            elif has_wildcard:
-                result[key] = a[WILDCARD_KEY]._merge(b[key])
-            else:
-                raise ValueError(
-                    f"Invalid dataset config `{key}`. It must be one of `{list(a)}`."
-                )
-        return result
-
-    @staticmethod
-    def validated(
-        config: Dict[str, "DatasetConfig"], datasets: Optional[Dict[str, "Dataset"]]
-    ) -> Dict[str, "DatasetConfig"]:
-        """Validate the given config and datasets are usable.
-
-        Returns dict of validated configs with defaults filled out.
-        """
-        datasets = datasets or {}
-        has_wildcard = WILDCARD_KEY in config
-        fittable = set()
-        result = {k: v.fill_defaults() for k, v in config.items()}
-        for k, v in result.items():
-            if v.fit:
-                fittable.add(k)
-                if not v.transform:
-                    raise ValueError(
-                        f"Error configuring dataset `{k}`: cannot specify both "
-                        "fit=True and transform=False."
-                    )
-            if v.required:
-                if k not in datasets:
-                    raise ValueError(
-                        f"The required dataset `{k}` was not found in {datasets}."
-                    )
-            if not isinstance(v.max_object_store_memory_fraction, (float, int)):
-                raise ValueError(
-                    f"Error configuring dataset `{k}`: "
-                    "max_object_store_memory_fraction "
-                    "must be None or a float with value -1 or >=0, but got "
-                    f"{v.max_object_store_memory_fraction}."
-                )
-            if not (
-                v.max_object_store_memory_fraction == -1
-                or v.max_object_store_memory_fraction >= 0
-            ):
-                raise ValueError(
-                    f"Error configuring dataset `{k}`: "
-                    "max_object_store_memory_fraction "
-                    "must be None or a float with value -1 or >=0, but got "
-                    f"{v.max_object_store_memory_fraction}."
-                )
-            if v.per_epoch_preprocessor is not None:
-                if not isinstance(v.per_epoch_preprocessor, Preprocessor):
-                    raise ValueError(
-                        "`per_epoch_preprocessor` must be a ray.data.Preprocessor "
-                        f"but got {v.per_epoch_preprocessor}."
-                    )
-                if (
-                    v.per_epoch_preprocessor.fit_status()
-                    != Preprocessor.FitStatus.NOT_FITTABLE
-                ):
-                    raise ValueError(
-                        "`per_epoch_preprocessor` currently does not support "
-                        "fittable ray.data.Preprocessors."
-                    )
-
-        if len(fittable) > 1:
-            raise ValueError(
-                f"More than one dataset was specified to be fit: {fittable}"
-            )
-        if not has_wildcard:
-            for k, v in datasets.items():
-                if k not in result:
-                    raise ValueError(
-                        f"An unexpected dataset `{k}` was given. The list of expected "
-                        f"datasets is `{list(result)}`."
-                    )
-        return result
-
-    def _merge(self, other: "DatasetConfig") -> "DatasetConfig":
-        """Merge the given DatasetConfig into this one."""
-        new_config = DatasetConfig(
-            fit=self.fit if other.fit is None else other.fit,
-            split=self.split if other.split is None else other.split,
-            required=self.required if other.required is None else other.required,
-            transform=self.transform if other.transform is None else other.transform,
-            max_object_store_memory_fraction=self.max_object_store_memory_fraction
-            if other.max_object_store_memory_fraction is None
-            else other.max_object_store_memory_fraction,
-            global_shuffle=self.global_shuffle
-            if other.global_shuffle is None
-            else other.global_shuffle,
-            randomize_block_order=self.randomize_block_order
-            if other.randomize_block_order is None
-            else other.randomize_block_order,
-            per_epoch_preprocessor=self.per_epoch_preprocessor
-            if other.per_epoch_preprocessor is None
-            else other.per_epoch_preprocessor,
-        )
-        return new_config
+        raise DeprecationWarning(DATASET_CONFIG_DEPRECATION_MSG)
 
 
 @dataclass

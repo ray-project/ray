@@ -44,7 +44,6 @@ __all__ = [
     "get_deployment",
     "list_deployments",
     "run",
-    "PredictorDeployment",
     "delete",
     "Application",
     "Deployment",

@@ -15,7 +15,6 @@ from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
-from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import (
@@ -26,7 +25,7 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
-from ray.train import Checkpoint
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
 from ray.train._internal.checkpoint_manager import (
     _CheckpointManager as _NewCheckpointManager,
@@ -1101,10 +1100,10 @@ class Trial:
             checkpoint_result = checkpoint
             assert isinstance(checkpoint_result, _TrainingResult)
             self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
-            # Increment the checkpoint index to keep the checkpoint index in sync.
+            # Update the checkpoint index to keep the checkpoint index in sync.
             # This index will get restored when the trial is restored and will
             # be passed to the Trainable as the starting checkpoint index.
-            self.storage._increase_checkpoint_index(checkpoint_result.metrics)
+            self.storage._update_checkpoint_index(checkpoint_result.metrics)
         else:
             self.run_metadata.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()
