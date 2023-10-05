@@ -108,6 +108,24 @@ public class Serve {
     return client;
   }
 
+  public static synchronized ServeControllerClient start(
+      boolean detached, boolean dedicatedCpu, Map<String, String> config) {
+
+    if (!detached) {
+      throw new IllegalArgumentException(
+          "`detached=false` is no longer supported. "
+              + "In a future release, it will be removed altogether.");
+    }
+
+    if (dedicatedCpu) {
+      throw new IllegalArgumentException(
+          "`dedicatedCpu=true` is no longer supported. "
+              + "In a future release, it will be removed altogether.");
+    }
+
+    return start(config);
+  }
+
   /**
    * Completely shut down the connected Serve instance.
    *
