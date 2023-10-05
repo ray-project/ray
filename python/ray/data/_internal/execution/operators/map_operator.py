@@ -93,7 +93,6 @@ class MapOperator(OneToOneOperator, ABC):
 
         self._concurrency_cap = INIT_CONCURRENCY_CAP
         self._num_tasks_running = 0
-        self._num_tasks_outputted = 0
 
         super().__init__(name, input_op)
 
@@ -275,8 +274,6 @@ class MapOperator(OneToOneOperator, ABC):
         self._next_data_task_idx += 1
         self._num_tasks_running += 1
 
-        task_outputted = False
-
         def _output_ready_callback(task_index, output: RefBundle):
             # Since output is streamed, it should only contain one block.
             assert len(output.blocks) == 1
@@ -291,15 +288,6 @@ class MapOperator(OneToOneOperator, ABC):
             if self._metrics.cur > self._metrics.peak:
                 self._metrics.peak = self._metrics.cur
             self._data_tasks[task_index].add_num_output_blocks(len(output.blocks))
-
-            nonlocal task_outputted
-            if not task_outputted:
-                task_outputted = True
-                # Handle concurrency cap.
-                self._num_tasks_outputted += 1
-                if self._num_tasks_outputted * CONCURRENCY_CAP_RAMP_UP_RATIO >= self._concurrency_cap:
-                    self._concurrency_cap *= CONCURRENCY_CAP_MULTIPLIER
-                    print(self, "Ramping up concurrency cap to", self._concurrency_cap)
 
         def _task_done_callback(task_index, inputs):
             # We should only destroy the input bundle when the whole task is done.
@@ -336,6 +324,10 @@ class MapOperator(OneToOneOperator, ABC):
                 estimated_num_tasks * self._num_output_blocks / self._num_tasks_finished
             )
             self._num_tasks_running -= 1
+            # Handle concurrency cap.
+            if self._num_tasks_finished >= self._concurrency_cap * CONCURRENCY_CAP_RAMP_UP_RATIO:
+                self._concurrency_cap *= CONCURRENCY_CAP_MULTIPLIER
+                print(self, "Ramping up concurrency cap to", self._concurrency_cap)
             if task_done_callback:
                 task_done_callback()
 
