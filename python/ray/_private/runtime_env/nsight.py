@@ -83,29 +83,11 @@ class NsightPlugin(RuntimeEnvPlugin):
 
     def __init__(self, resources_dir: str):
         self.nsight_cmd = []
-        self._resources_dir = os.path.join(resources_dir, "nsight")
-        try_to_create_directory(self._resources_dir)
 
         # replace this with better way to get logs dir
         session_dir, runtime_dir = os.path.split(resources_dir)
         self._logs_dir = os.path.join(session_dir + "/logs/nsight")
         try_to_create_directory(self._logs_dir)
-
-    def delete_uri(
-        self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> int:
-        """Delete URI and return the number of bytes deleted."""
-        logger.info("Got request to delete nsight URI %s", uri)
-        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
-        local_dir_size = get_directory_size_bytes(local_dir)
-
-        # move package to head node
-        deleted = delete_package(uri, self._resources_dir)
-        if not deleted:
-            logger.warning(f"Tried to delete nonexistent URI: {uri}.")
-            return 0
-
-        return local_dir_size
 
     async def create(
         self,

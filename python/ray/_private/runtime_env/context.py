@@ -83,7 +83,6 @@ class RuntimeEnvContext:
                 + command_str
             )
         logger.debug(f"Exec'ing worker with command: {command_str}")
-
         if sys.platform == "win32":
             cmd = [*self.command_prefix, executable, *passthrough_args]
             subprocess.Popen(cmd, shell=True).wait()
@@ -95,5 +94,3 @@ class RuntimeEnvContext:
             # instead of os.execvp(file="executable", args=[])
             os.execvp("bash", args=["bash", "-c", command_str])
 
-
-# post process: kill ray worker process and move file to local
