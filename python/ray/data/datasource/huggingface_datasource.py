@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _check_pyarrow_version
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import Datasource, Reader, ReadTask
 from ray.util.annotations import DeveloperAPI
 
@@ -91,8 +91,13 @@ class _HuggingFaceDatasourceReader(Reader):
         import pyarrow
 
         def _read_dataset(dataset: "datasets.IterableDataset") -> Iterable[Block]:
-            for batch in dataset.with_format("arrow").iter(batch_size=self._batch_size):
-                block = pyarrow.Table.from_pydict(batch)
+            for batch in dataset.iter(batch_size=self._batch_size):
+                # Block could be a pyarrow.Table or a dict, depending on the
+                # formatting configuration of the HF Dataset.
+                if isinstance(batch, dict):
+                    batch = pyarrow.Table.from_pydict(batch)
+                # Ensure that we return the default block type.
+                block = BlockAccessor.for_block(batch).to_default()
                 yield block
 
         # TODO(scottjlee): IterableDataset doesn't provide APIs
