@@ -679,22 +679,6 @@ class ProxyStateManager:
             )
             return nodes
 
-        if location == DeploymentMode.FixedNumber:
-            num_replicas = self._config.fixed_number_replicas
-            if num_replicas > len(target_nodes):
-                logger.warning(
-                    "You specified fixed_number_replicas="
-                    f"{num_replicas} but there are only "
-                    f"{len(target_nodes)} target nodes. Serve will start one "
-                    "proxy per node."
-                )
-                num_replicas = len(target_nodes)
-
-            # Seed the random state so sample is deterministic.
-            # i.e. it will always return the same set of nodes.
-            random.seed(self._config.fixed_number_selection_seed)
-            return random.sample(sorted(target_nodes), k=num_replicas)
-
         return target_nodes
 
     def _generate_actor_name(self, node_id: str) -> str:
