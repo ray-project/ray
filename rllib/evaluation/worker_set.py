@@ -25,7 +25,6 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -279,7 +278,7 @@ class WorkerSet:
         else:
             remote_spaces = self.foreach_worker(
                 lambda worker: worker.marl_module.foreach_module(
-                    lambda m, mid: (
+                    lambda mid, m: (
                         mid,
                         m.config.observation_space,
                         m.config.action_space,
@@ -305,7 +304,7 @@ class WorkerSet:
             for e in remote_spaces[0]
         }
 
-        if not issubclass(self.env_runner_cls, EnvRunner):
+        if issubclass(self.env_runner_cls, RolloutWorker):
             # Try to add the actual env's obs/action spaces.
             env_spaces = self.foreach_worker(
                 lambda worker: worker.foreach_env(

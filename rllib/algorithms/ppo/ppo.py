@@ -37,7 +37,6 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -411,15 +410,6 @@ class PPO(Algorithm):
     def setup(self, config: AlgorithmConfig):
         super().setup(config=config)
 
-        if self.config._enable_learner_api and self.config.env_runner_cls is not None:
-            # Share RLModule between EnvRunner and single (local) Learner instance.
-            # To avoid possibly expensive weight synching step.
-            if self.config.share_module_between_env_runner_and_learner:
-                assert self.workers.local_worker().module is None
-                self.workers.local_worker().module = self.learner_group._learner.module[
-                    DEFAULT_POLICY_ID
-                ]
-
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
@@ -459,7 +449,10 @@ class PPO(Algorithm):
                 train_batch = postprocess_episodes_to_sample_batch(
                     postprocessed_episodes
                 )
-                del train_batch[SampleBatch.INFOS]
+                # TODO (simon): Check how this works for cases when infos are
+                # provided. Traditionally, SampleBatches in Training do not carry
+                # infos and conversion also sometimes errors out.
+                # del train_batch[SampleBatch.INFOS]
 
             # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
             else:
@@ -1053,13 +1046,16 @@ class PPO(Algorithm):
 
         # Bootstrap values.
         postprocessed_episodes = []
-        for episode in episodes:
-            # TODO (sven): Calling 'module' on the 'EnvRunner' only works
-            # for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
-            postprocessed_episodes.append(
-                compute_gae_for_episode(
-                    episode, self.config, self.workers.local_worker().module
+        # TODO (simon): Remove somehow the double list.
+        # episodes = [episode for episode_list in episodes for episode in episode_list]
+        for episode_list in episodes:
+            for episode in episode_list:
+                # TODO (sven): Calling 'module' on the 'EnvRunner' only works
+                # for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
+                postprocessed_episodes.append(
+                    compute_gae_for_episode(
+                        episode, self.config, self.workers.local_worker().module
+                    )
                 )
-            )
 
         return postprocessed_episodes

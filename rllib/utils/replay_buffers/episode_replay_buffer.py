@@ -586,7 +586,6 @@ class _Episode:
                 SampleBatch.TRUNCATEDS: np.array(
                     [False] * (len(self) - 1) + [self.is_truncated]
                 ),
-                # TODO (simon): Check, if indexing is right here.
                 SampleBatch.INFOS: self.infos[:-1],
                 **self.extra_model_outputs,
             }

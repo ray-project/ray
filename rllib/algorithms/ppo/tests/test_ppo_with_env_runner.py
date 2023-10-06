@@ -1,7 +1,5 @@
 import unittest
 
-# import numpy as np
-
 import ray
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo_learner import (
@@ -9,14 +7,10 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
 )
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
-# from ray.rllib.algorithms.ppo.tests.test_ppo import PENDULUM_FAKE_BATCH
 from ray.rllib.core.learner.learner import (
     LEARNER_RESULTS_CURR_LR_KEY,
 )
 
-# from ray.rllib.evaluation.postprocessing import (
-#     compute_gae_for_sample_batch,
-# )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import (
@@ -76,8 +70,8 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether PPO can be built with all frameworks."""
-        # from ray.rllib.algorithms.ppo.utils.ppo_env_runner import PPOEnvRunner
-        from ray.rllib.env.env_runner import SingleAgentEnvRunner
+        # TODO (sven): Gives circular import error.
+        from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
         # Build a PPOConfig object.
         config = (
@@ -93,7 +87,7 @@ class TestPPO(unittest.TestCase):
                 _enable_learner_api=True,
             )
             .rollouts(
-                num_rollout_workers=1,
+                num_rollout_workers=0,
                 # Test with compression.
                 # compress_observations=True,
                 enable_connectors=True,
@@ -102,6 +96,7 @@ class TestPPO(unittest.TestCase):
             .callbacks(MyCallbacks)
             .rl_module(_enable_rl_module_api=True)
             .evaluation(
+                # Also test evaluation with remote workers.
                 evaluation_num_workers=2,
                 evaluation_duration=3,
                 evaluation_duration_unit="episodes",
@@ -110,7 +105,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, frameworks=("tf2")):
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in [
                 # "CliffWalking-v0",
