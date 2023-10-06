@@ -30,7 +30,12 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
+from ray.data._internal.stats import (
+    DataMetric,
+    DatasetStats,
+    _get_or_create_stats_actor,
+    _update_stats_actor_metrics,
+)
 from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
@@ -54,7 +59,7 @@ class StreamingExecutor(Executor, threading.Thread):
     a way that maximizes throughput under resource constraints.
     """
 
-    def __init__(self, options: ExecutionOptions, dataset_uuid: Optional[str] = None):
+    def __init__(self, options: ExecutionOptions, dataset_uuid: str = "dataset_uuid"):
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
@@ -106,8 +111,9 @@ class StreamingExecutor(Executor, threading.Thread):
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
 
-        for op_state in self._topology.values():
-            self._prev_metrics_state[op_state] = {}
+        # Keep track of previous state to calculate deltas for metrics.
+        for op in self._topology:
+            self._prev_metrics_state[op] = {}
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
@@ -278,7 +284,8 @@ class StreamingExecutor(Executor, threading.Thread):
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():
             op_state.refresh_progress_bar()
-            self._update_dataset_metrics(op_state)
+
+        self._update_dataset_metrics()
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
@@ -320,17 +327,32 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._global_info:
             self._global_info.set_description(resources_status)
 
-    def _update_dataset_metrics(self, op_state):
-        metrics = op_state.op.get_metrics()
-        self._stats_actor.inc_bytes_spilled.remote(
-            metrics.get("obj_store_mem_spilled", 0)
-            - self._prev_metrics_state[op_state].get("bytes_spilled", 0),
-            self._dataset_uuid or "None",
-        )
+    def _update_dataset_metrics(self):
+        stats = {metric: 0 for metric in DataMetric}
 
-        self._prev_metrics_state[op_state]["bytes_spilled"] = metrics.get(
-            "obj_store_mem_spilled", 0
-        )
+        for op in self._topology:
+            metrics = op.get_metrics()
+            resource_usage = op.current_resource_usage()
+
+            # Record deltas for Counter metrics
+            stats[DataMetric.BYTES_SPILLED] += metrics.get(
+                "obj_store_mem_spilled", 0
+            ) - self._prev_metrics_state[op].get("bytes_spilled", 0)
+            # TODO: get these stats from op metrics
+            stats[DataMetric.ROWS_OUTPUTTED] += 0
+            stats[DataMetric.BYTES_OUTPUTTED] += 0
+
+            # Record new totals for Gauge metrics
+            stats[DataMetric.BYTES_ALLOCATED] += metrics.get("obj_store_mem_alloc", 0)
+            stats[DataMetric.CPU_USAGE] += resource_usage.cpu or 0
+            stats[DataMetric.GPU_USAGE] += resource_usage.gpu or 0
+
+            # Update operator's previous metrics
+            self._prev_metrics_state[op]["bytes_spilled"] = metrics.get(
+                "obj_store_mem_spilled", 0
+            )
+
+        _update_stats_actor_metrics(self._stats_actor, stats, self._dataset_uuid)
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:

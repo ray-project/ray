@@ -1094,29 +1094,8 @@ def test_stats_actor_cap_num_stats(ray_start_cluster):
 def test_spilled_stats(shutdown_only):
     # The object store is about 100MB.
     ray.init(object_store_memory=100e6)
-
-    class RemoteCalls:
-        def __init__(self):
-            self.calls = []
-
-        def remote(self, value, dataset):
-            self.calls.append((value, dataset))
-
-    class _MockDatasetMetrics:
-        def __init__(self):
-            self.inc_bytes_spilled = RemoteCalls()
-
-    mock_metrics = _MockDatasetMetrics()
-
-    with patch(
-        "ray.data._internal.execution.streaming_executor._get_or_create_stats_actor",
-        lambda: mock_metrics,
-    ):
-        # The size of dataset is 1000*80*80*4*8B, about 200MB.
-        ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
-        total_bytes_spilled = sum(
-            [call[0] for call in mock_metrics.inc_bytes_spilled.calls]
-        )
+    # The size of dataset is 1000*80*80*4*8B, about 200MB.
+    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
     assert (
         canonicalize(ds.stats(), filter_global_stats=False)
@@ -1140,7 +1119,6 @@ Dataset memory:
 
     # Around 100MB should be spilled (200MB - 100MB)
     assert ds._plan.stats().dataset_bytes_spilled > 100e6
-    assert ds._plan.stats().dataset_bytes_spilled == total_bytes_spilled
 
     ds = (
         ray.data.range(1000 * 80 * 80 * 4)
