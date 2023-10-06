@@ -3,23 +3,19 @@ import inspect
 import os
 import sys
 import warnings
-from packaging.version import Version
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
+from packaging.version import Version
 from torch.utils.data import Dataset as TorchDataset
 
 import ray.train
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train.constants import (
-    EVALUATION_DATASET_KEY,
-    TRAIN_DATASET_KEY,
-)
 from ray.train import Checkpoint, DataConfig
+from ray.train.constants import EVALUATION_DATASET_KEY, TRAIN_DATASET_KEY
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
 from ray.util.annotations import Deprecated
-
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
 
