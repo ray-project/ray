@@ -4,9 +4,16 @@ from typing import List
 from ci.ray_ci.container import Container
 
 
-PLATFORM = ["cu118"]
-GPU_PLATFORM = "cu118"
-DEFAULT_PYTHON_VERSION = "py38"
+PLATFORM = [
+    "cpu",
+    "cu11.5.2",
+    "cu11.6.2",
+    "cu11.7.1",
+    "cu11.8.0",
+    "cu12.1.1",
+]
+GPU_PLATFORM = "cu11.8.0"
+DEFAULT_PYTHON_VERSION = "3.8"
 
 
 class DockerContainer(Container):
@@ -17,7 +24,7 @@ class DockerContainer(Container):
     def __init__(self, python_version: str, platform: str, image_type: str) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
-        self.python_version = f"py{python_version.replace('.', '')}"  # 3.8 -> py38
+        self.python_version = python_version
         self.platform = platform
         self.image_type = image_type
 
@@ -49,13 +56,22 @@ class DockerContainer(Container):
         # e.g. sha-pyversion-platform
         return self._get_image_tags()[0]
 
+    def get_python_version_tag(self) -> str:
+        return f"-py{self.python_version.replace('.', '')}"  # 3.8 -> py38
+
+    def get_platform_tag(self) -> str:
+        if self.platform == "cpu":
+            return "-cpu"
+        versions = self.platform.split(".")
+        return f"-{versions[0]}{versions[1]}"  # cu11.8.0 -> cu118
+
     def _get_image_tags(self) -> List[str]:
         # An image tag is composed by ray version tag, python version and platform.
         # See https://docs.ray.io/en/latest/ray-overview/installation.html for
         # more information on the image tags.
         versions = self._get_image_version_tags()
 
-        platforms = [f"-{self.platform}"]
+        platforms = [self.get_platform_tag()]
         if self.platform == "cpu" and self.image_type == "ray":
             # no tag is alias to cpu for ray image
             platforms.append("")
@@ -66,7 +82,7 @@ class DockerContainer(Container):
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 
-        py_versions = [f"-{self.python_version}"]
+        py_versions = [self.get_python_version_tag()]
         if self.python_version == DEFAULT_PYTHON_VERSION:
             py_versions.append("")
 

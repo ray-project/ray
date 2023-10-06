@@ -1,8 +1,0 @@
-name: "raypy38cu118base"
-froms: ["nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"]
-dockerfile: docker/base-deps/Dockerfile
-build_args:
-  - PYTHON_VERSION=3.8
-  - BASE_IMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
-tags:
-  - cr.ray.io/rayproject/raypy38cu118base
