@@ -1,38 +1,38 @@
-import os
+import functools
 import logging
+import os
 import platform
 import queue
 import sys
 import threading
 import time
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
-import functools
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type, Union
-import warnings
 
 import ray
 from ray.air._internal.session import _get_session
-from ray.air._internal.util import StartTraceback, RunnerThread
+from ray.air._internal.util import RunnerThread, StartTraceback
 from ray.air.constants import (
-    _RESULT_FETCH_TIMEOUT,
     _ERROR_FETCH_TIMEOUT,
+    _RESULT_FETCH_TIMEOUT,
     SESSION_MISUSE_LOG_ONCE_KEY,
-    TIMESTAMP,
     TIME_THIS_ITER_S,
+    TIMESTAMP,
 )
 from ray.data import Dataset, DatasetPipeline
 from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.train.constants import (
+    CHECKPOINT_DIR_NAME,
     DETAILED_AUTOFILLED_KEYS,
+    RAY_CHDIR_TO_TRIAL_DIR,
+    TIME_TOTAL_S,
     WORKER_HOSTNAME,
     WORKER_NODE_IP,
     WORKER_PID,
-    TIME_TOTAL_S,
-    RAY_CHDIR_TO_TRIAL_DIR,
-    CHECKPOINT_DIR_NAME,
 )
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -42,7 +42,6 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
-
 
 if TYPE_CHECKING:
     from ray.data import DataIterator

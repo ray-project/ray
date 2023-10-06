@@ -1,30 +1,28 @@
+import logging
 import os
-import pytorch_lightning as pl
-
 from copy import copy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
 
+import pytorch_lightning as pl
+
 from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.data.preprocessor import Preprocessor
-from ray.train import Checkpoint, DataConfig, CheckpointConfig, RunConfig, ScalingConfig
-from ray.train.trainer import GenDataset
-from ray.train.torch import TorchTrainer
-from ray.train.torch.config import TorchConfig
-from ray.util.annotations import Deprecated
+from ray.train import Checkpoint, CheckpointConfig, DataConfig, RunConfig, ScalingConfig
 from ray.train.lightning._lightning_utils import (
-    RayDDPStrategy,
-    RayFSDPStrategy,
-    RayDeepSpeedStrategy,
-    RayLightningEnvironment,
     RayDataModule,
+    RayDDPStrategy,
+    RayDeepSpeedStrategy,
+    RayFSDPStrategy,
+    RayLightningEnvironment,
     RayModelCheckpoint,
     prepare_trainer,
 )
-
-
-import logging
+from ray.train.torch import TorchTrainer
+from ray.train.torch.config import TorchConfig
+from ray.train.trainer import GenDataset
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
