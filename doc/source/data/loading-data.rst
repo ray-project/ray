@@ -956,5 +956,6 @@ hence the more opportunity for parallel execution.
    :width: 650px
    :align: center
 
-This default parallelism can be overridden via the ``parallelism`` argument; see the
-:ref:`performance guide <data_performance_tips>`  for more information on how to tune this read parallelism.
+You can override the default parallelism by setting the ``parallelism`` argument. For 
+more information on how to tune the read parallelism, see 
+:ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
