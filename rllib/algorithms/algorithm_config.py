@@ -743,6 +743,16 @@ class AlgorithmConfig(_Config):
         """Validates all values in this config."""
 
         # Validate rollout settings.
+        if (
+            self.env_runner_cls.__name__ != "RolloutWorker"
+            and not self.enable_async_evaluation
+        ):
+            raise ValueError(
+                "When using an EnvRunner class that's not `RolloutWorker` (yours is "
+                f"{self.env_runner_cls.__name__}), `config.enable_async_evaluation` "
+                "must be set to True! Call `config.evaluation(enable_async_evaluation="
+                "True) on your config object to fix this problem."
+            )
         if not (
             (
                 isinstance(self.rollout_fragment_length, int)
@@ -798,6 +808,13 @@ class AlgorithmConfig(_Config):
                         f"policy ID ({pid}) that was not defined in "
                         f"`config.multi_agent(policies=..)`!"
                     )
+
+        # If async evaluation is enabled, custom_eval_functions are not allowed.
+        if self.enable_async_evaluation and self.custom_evaluation_function:
+            raise ValueError(
+                "`config.custom_evaluation_function` not supported in combination "
+                "with `enable_async_evaluation=True` config setting!"
+            )
 
         # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
         # None.

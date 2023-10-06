@@ -2,7 +2,7 @@ import numpy as np
 import scipy
 import tree
 
-from typing import List, Union
+from typing import List
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN
@@ -29,10 +29,8 @@ class Postprocessing:
 
 
 @DeveloperAPI
-def postprocess_episodes_to_sample_batch(
-    episodes: Union[List[_Episode], List[List[_Episode]]]
-) -> SampleBatch:
-    """Converts the result from sampling with `EnvRunner` to a `SampleBatch'.
+def postprocess_episodes_to_sample_batch(episodes: List[_Episode]) -> SampleBatch:
+    """Converts the results from sampling with an `EnvRunner` to one `SampleBatch'.
 
     Once the `SampleBatch` will be deprecated this function will be
     deprecated, too.
@@ -51,11 +49,7 @@ def postprocess_episodes_to_sample_batch(
 
     batch = concat_samples(batches)
 
-    # This is right now the default to work on sample batches without
-    # infos.
-    del batch[SampleBatch.INFOS]
-
-    # Return the ' SampleBatch'.
+    # Return the SampleBatch.
     return batch
 
 
