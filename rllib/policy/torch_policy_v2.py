@@ -1211,7 +1211,11 @@ class TorchPolicyV2(Policy):
                 # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
                 # Create a distribution object.
                 action_dist = None
-                if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+                # Eventually the RLModule has already computed actions.
+                if (
+                    SampleBatch.ACTION_DIST_INPUTS in fwd_out
+                    and SampleBatch.ACTION_LOGP not in fwd_out
+                ):
                     dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                     action_dist_class = self.model.get_exploration_action_dist_cls()
                     action_dist = action_dist_class.from_logits(dist_inputs)

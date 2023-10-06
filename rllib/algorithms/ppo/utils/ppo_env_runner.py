@@ -1,147 +1,53 @@
-import abc
 import gymnasium as gym
 import numpy as np
 import tree
 
-from collections import defaultdict
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
-
+from typing import Dict, List, Optional
+from collections import defaultdict
 from ray.experimental.tqdm_ray import tqdm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
-from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.actor_manager import FaultAwareApply
-from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import TensorStructType, TensorType
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
-tf1, tf, _ = try_import_tf()
-torch, _ = try_import_torch()
-
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
-    # TODO (sven): This gives a tricky circular import that goes
-    # deep into the library. We have to see, where to dissolve it.
-    from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
+_, tf, _ = try_import_tf()
 
 
-@ExperimentalAPI
-class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
-    """Base class for distributed RL-style data collection from an environment.
+# TODO (simon): MultiAgent Version.
+# TODO (sven): Connectors.
+# TODO (simon): Batch postprocessing on local worker in training step (TIMING) or as
+#  callback `postprocess_trajectory`.
+# TODO (simon): Include callbacks.
+# TODO (simon): Framework-agnostic.
 
-    The EnvRunner API's core functionalities can be summarized as:
-    - Gets configured via passing a AlgorithmConfig object to the constructor.
-    Normally, subclasses of EnvRunner then construct their own environment (possibly
-    vectorized) copies and RLModules/Policies and use the latter to step through the
-    environment in order to collect training data.
-    - Clients of EnvRunner can use the `sample()` method to collect data for training
-    from the environment(s).
-    - EnvRunner offers parallelism via creating n remote Ray Actors based on this class.
-    Use `ray.remote([resources])(EnvRunner)` method to create the corresponding Ray
-    remote class. Then instantiate n Actors using the Ray `[ctor].remote(...)` syntax.
-    - EnvRunner clients can get information about the server/node on which the
-    individual Actors are running.
-    """
 
-    def __init__(self, *, config: "AlgorithmConfig", **kwargs):
-        """Initializes an EnvRunner instance.
+class PPOEnvRunner(EnvRunner):
+    """An environment runner to collect data from vectorized gymnasium environments."""
+
+    def __init__(self, config: AlgorithmConfig, **kwargs):
+        """Initializes a PPOEnvRunner instance.
 
         Args:
-            config: The config to use to setup this EnvRunner.
-            **kwargs: Forward compatibility kwargs.
+            config: The config to use for setup of this EnvRunner.
         """
-        self.config = config
-        super().__init__(**kwargs)
-
-        # Get the framework string.
-        self.framework_str = self.config.framework_str
-        # This eager check is necessary for certain all-framework tests
-        # that use tf's eager_mode() context generator.
-        if (
-            tf1
-            and (self.framework_str == "tf2" or config.enable_tf1_exec_eagerly)
-            and not tf1.executing_eagerly()
-        ):
-            tf1.enable_eager_execution()
-
-    @abc.abstractmethod
-    def assert_healthy(self):
-        """Checks that self.__init__() has been completed properly.
-
-        Useful in case an `EnvRunner` is run as @ray.remote (Actor) and the owner
-        would like to make sure the Ray Actor has been properly initialized.
-
-        Raises:
-            AssertionError: If the EnvRunner Actor has NOT been properly initialized.
-        """
-
-    @abc.abstractmethod
-    def sample(self, **kwargs) -> Any:
-        """Returns experiences (of any form) sampled from this EnvRunner.
-
-        The exact nature and size of collected data are defined via the EnvRunner's
-        config and may be overridden by the given arguments.
-
-        Args:
-            **kwargs: Forward compatibility kwargs.
-
-        Returns:
-            The collected experience in any form.
-        """
-
-    def get_state(self) -> Dict[str, Any]:
-        """Returns this EnvRunner's (possibly serialized) current state as a dict.
-
-        Returns:
-            The current state of this EnvRunner.
-        """
-        return {}
-
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Restores this EnvRunner's state from the given state dict.
-
-        Args:
-            state: The state dict to restore the state from.
-
-        Examples:
-            >>> from ray.rllib.env.env_runner import EnvRunner
-            >>> env_runner = ... # doctest: +SKIP
-            >>> state = env_runner.get_state() # doctest: +SKIP
-            >>> new_runner = EnvRunner(...) # doctest: +SKIP
-            >>> new_runner.set_state(state) # doctest: +SKIP
-        """
-        pass
-
-    def stop(self) -> None:
-        """Releases all resources used by this EnvRunner."""
-        pass
-
-    def __del__(self) -> None:
-        """If this Actor is deleted, clears all resources used by it."""
-        pass
-
-
-@ExperimentalAPI
-class SingleAgentEnvRunner(EnvRunner):
-    """The generic environment runner for the single agent case."""
-
-    @override(EnvRunner)
-    def __init__(self, config: "AlgorithmConfig", **kwargs):
         super().__init__(config=config)
 
         # Get the worker index on which this instance is running.
-        self.worker_index = kwargs.get("worker_index")
+        self.worker_index: int = kwargs.get("worker_index")
 
-        # Register env for the local context.
-        # Note, `gym.register` has to be called on each worker.
+        # Register env for the local context here.
         gym.register(
-            "custom-env-v0",
+            "ppo-custom-env-v0",
             partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
                 self.config.env_config,
@@ -153,12 +59,11 @@ class SingleAgentEnvRunner(EnvRunner):
                 env_descriptor=self.config.env,
             ),
         )
-
         # Create the vectorized gymnasium env.
-        # Wrap into `VectorListInfo`` wrapper to get infos as lists.
-        self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
+        # Wrap into VectorListInfo wrapper to get infos as lists.
+        self.env = gym.wrappers.VectorListInfo(
             gym.vector.make(
-                "custom-env-v0",
+                "ppo-custom-env-v0",
                 num_envs=self.config.num_envs_per_worker,
                 asynchronous=self.config.remote_worker_envs,
             )
@@ -167,30 +72,19 @@ class SingleAgentEnvRunner(EnvRunner):
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
-        # Create our own instance of the single-agent `RLModule` (which
-        # the needs to be weight-synched) each iteration.
-        # TODO (sven, simon): We need to get rid here of the policy_dict,
-        # but the 'RLModule' takes the 'policy_spec.observation_space'
-        # from it.
-        # Below is the non nice solution.
-        # policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
-        module_spec: SingleAgentRLModuleSpec = self.config.get_default_rl_module_spec()
-        module_spec.observation_space = self.env.envs[0].observation_space
-        module_spec.action_space = self.env.action_space
-        module_spec.model_config_dict = self.config.model
+        # Create our won instance of a PPORLModule (which then needs
+        # to be weight-synched each iteration).
+        policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
+        module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
+        # TODO (simon): This here is only for single agent. Later introduce MA.
+        # This is a MARL.
+        self.marl_module: MultiAgentRLModule = module_spec.build()
 
-        # TODO (sven): By time the `AlgorithmConfig` will get rid of `PolicyDict`
-        # as well. Then we have to change this function parameter.
-        # module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-        #     policy_dict=module_dict
-        # )
-        self.module: RLModule = module_spec.build()
-
-        # This should be the default.
+        # Let us set this as default for PPO.
         self._needs_initial_reset: bool = True
-        self._episodes: List[Optional["Episode"]] = [None for _ in range(self.num_envs)]
+        self._episodes: List[Optional[Episode]] = [None for _ in range(self.num_envs)]
 
-        self._done_episodes_for_metrics: List["Episode"] = []
+        self._done_episodes_for_metrics: List[Episode] = []
         self._ongoing_episodes_for_metrics: Dict[List] = defaultdict(list)
         self._ts_since_last_metrics: int = 0
 
@@ -203,10 +97,10 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List["Episode"]:
+    ) -> List[Episode]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s)."""
 
-        # If not execution details are provided, use the config.
+        # If not execution details are provided, use self.config.
         if num_timesteps is None and num_episodes is None:
             if self.config.batch_mode == "truncate_episodes":
                 num_timesteps = (
@@ -228,6 +122,8 @@ class SingleAgentEnvRunner(EnvRunner):
             )
         # Sample m episodes.
         else:
+            # `_sample_episodes` returns only a single list (with completed episodes)
+            # therefore add the empty list for the truncated episodes.
             return self._sample_episodes(
                 num_episodes=num_episodes,
                 explore=explore,
@@ -241,23 +137,17 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         force_reset: bool = False,
-    ) -> List["Episode"]:
+    ) -> List[Episode]:
         """Helper method to sample n timesteps."""
 
-        # TODO (sven): This gives a tricky circular import that goes
-        # deep into the library. We have to see, where to dissolve it.
-        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
-            _Episode as Episode,
-        )
-
-        done_episodes_to_return: List["Episode"] = []
+        done_episodes_to_return = []
 
         # Get initial states for all 'batch_size_B` rows in the forward batch,
         # i.e. for all vector sub_envs.
-        if hasattr(self.module, "get_initial_state"):
+        if hasattr(self.marl_module, "get_initial_state"):
             initial_states = tree.map_structure(
                 lambda s: np.repeat(s, self.num_envs, axis=0),
-                self.module.get_initial_state(),
+                self.marl_module[DEFAULT_POLICY_ID].get_initial_state(),
             )
         else:
             initial_states = {}
@@ -310,34 +200,51 @@ class SingleAgentEnvRunner(EnvRunner):
                 # TODO (simon): Framework-agnostic.
                 batch = {
                     STATE_IN: tree.map_structure(
-                        lambda s: self._convert_from_numpy(s),
+                        lambda s: tf.convert_to_tensor(s),
                         states,
                     ),
-                    SampleBatch.OBS: self._convert_from_numpy(obs),
+                    SampleBatch.OBS: tf.convert_to_tensor(obs),
                 }
 
                 # Explore or not.
                 if explore:
-                    fwd_out = self.module.forward_exploration(batch)
+                    # TODO (simon) Implement this for MARL.
+                    fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_exploration(
+                        batch
+                    )
+                    # `self.module` is a MARL module.
+                    action_dist_cls = self.marl_module.foreach_module(
+                        lambda m, mid: (mid, m.get_exploration_action_dist_cls()),
+                    )
+
                 else:
-                    fwd_out = self.module.forward_inference(batch)
+                    fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_inference(
+                        batch
+                    )
+                    # `self.module` is a MARL module.
+                    action_dist_cls = self.marl_module.foreach_module(
+                        lambda m, mid: (mid, m.get_inference_action_dist_cls()),
+                    )
 
-                actions, action_logp = self._sample_actions_if_necessary(
-                    fwd_out, explore
+                action_dist_cls = {mid: dist_cls for mid, dist_cls in action_dist_cls}
+                action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                 )
-
+                actions = action_dist.sample()
+                action_logp = convert_to_numpy(action_dist.logp(actions))
+                actions = convert_to_numpy(actions)
                 fwd_out = convert_to_numpy(fwd_out)
 
                 if STATE_OUT in fwd_out:
-                    # TODO (simon): Check if still needed when full `fwd_out`
-                    # is converted.
                     states = convert_to_numpy(fwd_out[STATE_OUT])
+                    # states = tree.map_structure(lambda s: s.numpy(),
+                    # fwd_out[STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
 
-            # Record only every `10 * self.num_envs`` as otherwise
-            # logging is too fast for `tqdm_ray`.
+            # Record only every 10 * self.num_envs as otherwise
+            # logging is too fast for `ray.tqdm`.
             if ts % (self.num_envs * 10) == 0:
                 pbar.update(self.num_envs * 10)
 
@@ -349,14 +256,24 @@ class SingleAgentEnvRunner(EnvRunner):
                 # TODO (simon): This might be unfortunate if a user needs to set a
                 # certain env parameter during different episodes (for example for
                 # benchmarking).
-                extra_model_output = {}
-                for k, v in fwd_out.items():
-                    if SampleBatch.ACTIONS not in k:
-                        extra_model_output[k] = v[i]
-                # TODO (simon, sven): Some algos do not have logps.
-                extra_model_output[SampleBatch.ACTION_LOGP] = action_logp
-
-                # In inference we have only the action logits.
+                # TODO (simon): Check, if there is more efficient conversion. Maybe
+                # converting once before the loop for all vector sub_envs.
+                if explore:
+                    extra_model_output = {
+                        SampleBatch.ACTION_DIST_INPUTS: fwd_out[
+                            SampleBatch.ACTION_DIST_INPUTS
+                        ][i],
+                        SampleBatch.ACTION_LOGP: action_logp[i],
+                        SampleBatch.VF_PREDS: fwd_out[SampleBatch.VF_PREDS][i],
+                    }
+                    # In inference we have only the action logits.
+                else:
+                    extra_model_output = {
+                        SampleBatch.ACTION_DIST_INPUTS: fwd_out[
+                            SampleBatch.ACTION_DIST_INPUTS
+                        ][i],
+                        SampleBatch.ACTION_LOGP: action_logp[i],
+                    }
                 if terminateds[i] or truncateds[i]:
                     # Finish the episode with the actual terminal observation stored in
                     # the info dict.
@@ -371,11 +288,18 @@ class SingleAgentEnvRunner(EnvRunner):
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
                     )
-
+                    # Make postprocessing here. Calculate advantages and value targets.
+                    self._episodes[i] = compute_gae_for_episode(
+                        self._episodes[i],
+                        self.config,
+                        self.marl_module,
+                    )
                     # Reset h-states to nthe model's intiial ones b/c we are starting a
                     # new episode.
-                    for k, v in self.module.get_initial_state().items():
-                        states[k][i] = convert_to_numpy(v)
+                    for k, v in (
+                        self.marl_module[DEFAULT_POLICY_ID].get_initial_state().items()
+                    ):
+                        states[k][i] = v.numpy()
 
                     done_episodes_to_return.append(self._episodes[i])
                     # Create a new episode object.
@@ -401,8 +325,12 @@ class SingleAgentEnvRunner(EnvRunner):
         self._episodes = [eps.create_successor() for eps in self._episodes]
         for eps in ongoing_episodes:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-
-        # Record last metrics collection.
+        # Make postprocessing here for ongoing episodes. Compute
+        # advantages and value targets.
+        ongoing_episodes = [
+            compute_gae_for_episode(eps, self.config, self.marl_module)
+            for eps in ongoing_episodes
+        ]
         self._ts_since_last_metrics += ts
 
         return done_episodes_to_return + ongoing_episodes
@@ -413,19 +341,12 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List["Episode"]:
+    ) -> List[Episode]:
         """Helper method to run n episodes.
 
         See docstring of `self.sample()` for more details.
         """
-
-        # TODO (sven): This gives a tricky circular import that goes
-        # deep into the library. We have to see, where to dissolve it.
-        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
-            _Episode as Episode,
-        )
-
-        done_episodes_to_return: List["Episode"] = []
+        done_episodes_to_return = []
 
         obs, infos = self.env.reset()
         episodes = [Episode() for _ in range(self.num_envs)]
@@ -433,7 +354,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Multiply states n times according to our vector env batch size (num_envs).
         states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module.get_initial_state(),
+            self.marl_module[DEFAULT_POLICY_ID].get_initial_state(),
         )
 
         render_images = [None] * self.num_envs
@@ -458,20 +379,38 @@ class SingleAgentEnvRunner(EnvRunner):
             else:
                 batch = {
                     STATE_IN: tree.map_structure(
-                        lambda s: self._convert_from_numpy(s), states
+                        lambda s: tf.convert_to_tensor(s), states
                     ),
-                    SampleBatch.OBS: self._convert_from_numpy(obs),
+                    SampleBatch.OBS: tf.convert_to_tensor(obs),
                 }
 
-                # Explore or not.
                 if explore:
-                    fwd_out = self.module.forward_exploration(batch)
+                    # TODO (simon) Implement this for MARL.
+                    fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_exploration(
+                        batch
+                    )
+                    # `self.module` is a MARL module.
+                    action_dist_cls = self.marl_module.foreach_module(
+                        lambda m, mid: (mid, m.get_exploration_action_dist_cls()),
+                    )
                 else:
-                    fwd_out = self.module.forward_inference(batch)
+                    # TODO (simon) Implement this for MARL.
+                    fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_inference(
+                        batch
+                    )
+                    # `self.module` is a MARL module.
+                    action_dist_cls = self.marl_module.foreach_module(
+                        lambda m, mid: (mid, m.get_inference_action_dist_cls()),
+                    )
 
-                actions, action_logp = self._sample_actions_if_necessary(
-                    fwd_out, explore
+                action_dist_cls = {mid: dist_cls for mid, dist_cls in action_dist_cls}
+                action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                 )
+                actions = action_dist.sample()
+                action_logp = convert_to_numpy(action_dist.logp(actions))
+                actions = convert_to_numpy(actions)
+                fwd_out = convert_to_numpy(fwd_out)
 
                 if STATE_OUT in fwd_out:
                     states = convert_to_numpy(fwd_out[STATE_OUT])
@@ -489,13 +428,22 @@ class SingleAgentEnvRunner(EnvRunner):
                 s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
-                extra_model_output = {}
-                for k, v in fwd_out.items():
-                    if SampleBatch.ACTIONS not in k:
-                        extra_model_output[k] = v[i]
-                # TODO (simon, sven): Some algos do not have logps.
-                extra_model_output[SampleBatch.ACTION_LOGP] = action_logp
-
+                if explore:
+                    extra_model_output = {
+                        SampleBatch.ACTION_DIST_INPUTS: fwd_out[
+                            SampleBatch.ACTION_DIST_INPUTS
+                        ][i],
+                        SampleBatch.ACTION_LOGP: action_logp[i],
+                        SampleBatch.VF_PREDS: fwd_out[SampleBatch.VF_PREDS][i],
+                    }
+                    # In inference we have only the action logits.
+                else:
+                    extra_model_output = {
+                        SampleBatch.ACTION_DIST_INPUTS: fwd_out[
+                            SampleBatch.ACTION_DIST_INPUTS
+                        ][i],
+                        SampleBatch.ACTION_LOGP: action_logp[i],
+                    }
                 if terminateds[i] or truncateds[i]:
                     eps += 1
                     pbar.update(1)
@@ -511,6 +459,15 @@ class SingleAgentEnvRunner(EnvRunner):
                         extra_model_output=extra_model_output,
                     )
 
+                    if explore:
+                        # Make postprocessing here.Calculate advantages and
+                        # value targets.
+                        episodes[i] = compute_gae_for_episode(
+                            episodes[i],
+                            self.config,
+                            self.marl_module,
+                        )
+
                     done_episodes_to_return.append(episodes[i])
 
                     # Also early-out if we reach the number of episodes within this
@@ -520,8 +477,10 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     # Reset h-states to the model's initial ones b/c we are starting
                     # a new episode.
-                    for k, v in self.module.get_initial_state().items():
-                        states[k][i] = (convert_to_numpy(v),)
+                    for k, v in (
+                        self.marl_module[DEFAULT_POLICY_ID].get_initial_state().items()
+                    ):
+                        states[k][i] = v.numpy()
 
                     # Create a new episode object.
                     episodes[i] = Episode(
@@ -584,54 +543,19 @@ class SingleAgentEnvRunner(EnvRunner):
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
     def set_weights(self, weights, global_vars=None):
         """Writes the weights of our (single-agent) RLModule."""
-        self.module.set_state(weights)
+        self.marl_module.set_state(weights)
+        # self.module[DEFAULT_POLICY_ID].set_state(weights[DEFAULT_POLICY_ID])
 
     def get_weights(self, modules=None):
         """Returns the weights of our (single-agent) RLModule."""
-        return self.module.get_state(modules)
+        return self.marl_module.get_state(modules)
 
     @override(EnvRunner)
     def assert_healthy(self):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
-        assert self.env and self.module
+        assert self.env and self.marl_module
 
     @override(EnvRunner)
     def stop(self):
         # Close our env object via gymnasium's API.
         self.env.close()
-
-    def _sample_actions_if_necessary(
-        self, fwd_out: TensorStructType, explore: bool = True
-    ) -> Tuple[np.array, np.array]:
-        """Samples actions from action distribution if necessary."""
-
-        # If actions are provided just load them.
-        if SampleBatch.ACTIONS in fwd_out:
-            actions = convert_to_numpy(fwd_out[SampleBatch.ACTIONS])
-            # TODO (simon, sven): Some algos do not return logps.
-            action_logp = convert_to_numpy(fwd_out[SampleBatch.ACTION_LOGP])
-        # If no actions are provided we need to sample them.
-        else:
-            # Explore or not.
-            if explore:
-                action_dist_cls = self.module.get_exploration_action_dist_cls()
-            else:
-                action_dist_cls = self.module.get_inference_action_dist_cls()
-            # Generate action distribution and sample actions.
-            action_dist = action_dist_cls.from_logits(
-                fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-            )
-            actions = action_dist.sample()
-            # We need numpy actions for gym environments.
-            action_logp = convert_to_numpy(action_dist.logp(actions))
-            actions = convert_to_numpy(actions)
-
-        return actions, action_logp
-
-    def _convert_from_numpy(self, array: np.array) -> TensorType:
-        """Converts a numpy array to a framework-specific tensor."""
-
-        if self.framework_str == "torch":
-            return torch.from_numpy(array)
-        else:
-            return tf.convert_to_tensor(array)
