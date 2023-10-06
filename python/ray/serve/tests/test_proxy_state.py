@@ -171,34 +171,6 @@ def test_node_selection(all_nodes):
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == all_nodes
 
-    # Test FixedReplica
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.FixedNumber, fixed_number_replicas=5)
-    )
-    cluster_node_info_cache.alive_nodes = all_nodes
-    selected_nodes = proxy_state_manager._get_target_nodes(all_node_ids)
-
-    # it should have selection a subset of 5 nodes.
-    assert len(selected_nodes) == 5
-    assert set(all_nodes).issuperset(set(selected_nodes))
-
-    for _ in range(5):
-        # The selection should be deterministic.
-        assert selected_nodes == proxy_state_manager._get_target_nodes(all_node_ids)
-
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
-        HTTPOptions(
-            location=DeploymentMode.FixedNumber,
-            fixed_number_replicas=5,
-            fixed_number_selection_seed=42,
-        )
-    )
-    cluster_node_info_cache.alive_nodes = all_nodes
-    another_seed = proxy_state_manager._get_target_nodes(all_node_ids)
-    assert len(another_seed) == 5
-    assert set(all_nodes).issuperset(set(another_seed))
-    assert set(another_seed) != set(selected_nodes)
-
     # Test specific nodes
     proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
@@ -294,12 +266,22 @@ def test_proxy_state_update_starting_ready_succeed():
     # Ensure the proxy status before update is STARTING.
     assert proxy_state.status == ProxyStatus.STARTING
 
+    # Ensure actor_details are set to the initial state when the proxy_state is created.
+    assert proxy_state.actor_details.worker_id is None
+    assert proxy_state.actor_details.log_file_path is None
+    assert proxy_state.actor_details.status == ProxyStatus.STARTING.value
+
     # Continuously trigger update and wait for status to be changed.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
         status=ProxyStatus.HEALTHY,
     )
+
+    # Ensure actor_details are updated.
+    assert proxy_state.actor_details.worker_id == "mock_worker_id"
+    assert proxy_state.actor_details.log_file_path == "mock_log_file_path"
+    assert proxy_state.actor_details.status == ProxyStatus.HEALTHY.value
 
 
 def test_proxy_state_update_starting_ready_failed_once():

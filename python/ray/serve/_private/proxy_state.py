@@ -492,6 +492,11 @@ class ProxyState:
                 ready_call_status = self._actor_proxy_wrapper.is_ready()
                 if ready_call_status == ProxyWrapperCallStatus.FINISHED_SUCCEED:
                     self.try_update_status(ProxyStatus.HEALTHY)
+                    self.update_actor_details(
+                        worker_id=self._actor_proxy_wrapper.worker_id,
+                        log_file_path=self._actor_proxy_wrapper.log_file_path,
+                        status=self._status,
+                    )
                 elif ready_call_status == ProxyWrapperCallStatus.FINISHED_FAILED:
                     self.set_status(ProxyStatus.UNHEALTHY)
                     logger.warning(
@@ -673,22 +678,6 @@ class ProxyStateManager:
                 f"all nodes: {target_nodes}."
             )
             return nodes
-
-        if location == DeploymentMode.FixedNumber:
-            num_replicas = self._config.fixed_number_replicas
-            if num_replicas > len(target_nodes):
-                logger.warning(
-                    "You specified fixed_number_replicas="
-                    f"{num_replicas} but there are only "
-                    f"{len(target_nodes)} target nodes. Serve will start one "
-                    "proxy per node."
-                )
-                num_replicas = len(target_nodes)
-
-            # Seed the random state so sample is deterministic.
-            # i.e. it will always return the same set of nodes.
-            random.seed(self._config.fixed_number_selection_seed)
-            return random.sample(sorted(target_nodes), k=num_replicas)
 
         return target_nodes
 

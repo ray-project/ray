@@ -283,6 +283,8 @@ html_theme_options = {
 # "<project> v<release> documentation".
 html_title = f"Ray {release}"
 
+autodoc_typehints_format = "short"
+
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None
 
@@ -486,6 +488,18 @@ for mock_target in autodoc_mock_imports:
         "autodoc_mock_imports cannot mock modules that have already"
         "been loaded into sys.modules when the sphinx build starts."
     )
+
+from sphinx.ext import autodoc
+
+
+class MockedClassDocumenter(autodoc.ClassDocumenter):
+    def add_line(self, line: str, source: str, *lineno: int) -> None:
+        if line == "   Bases: :py:class:`object`":
+            return
+        super().add_line(line, source, *lineno)
+
+
+autodoc.ClassDocumenter = MockedClassDocumenter
 
 # Other sphinx docs can be linked to if the appropriate URL to the docs
 # is specified in the `intersphinx_mapping` - for example, types annotations

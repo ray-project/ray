@@ -4,33 +4,30 @@ import inspect
 import json
 import logging
 import os
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
-import warnings
 
 import pyarrow.fs
 
 import ray
 import ray.cloudpickle as pickle
-from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
+from ray._private.dict import merge_dicts
 from ray.air._internal import usage as air_usage
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
+from ray.train import Checkpoint
 from ray.train._internal.session import _get_session
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
-
-from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
-from ray._private.dict import merge_dicts
-
 
 if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.data.preprocessor import Preprocessor
-
     from ray.tune import Trainable
 
 _TRAINER_PKL = "trainer.pkl"
@@ -578,8 +575,8 @@ class BaseTrainer(abc.ABC):
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``, or during the Tune execution loop.
         """
-        from ray.tune.tuner import Tuner, TunerInternal
         from ray.tune import TuneError
+        from ray.tune.tuner import Tuner, TunerInternal
 
         trainable = self.as_trainable()
         param_space = self._extract_fields_for_tuner_param_space()
