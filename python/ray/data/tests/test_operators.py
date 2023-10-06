@@ -831,7 +831,7 @@ def test_estimated_output_blocks():
     op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-        if op._num_inputs_received % min_rows_per_bundle == 0:
+        if op._metrics.num_inputs_received % min_rows_per_bundle == 0:
             # enough inputs for a task bundle
             run_op_tasks_sync(op)
             assert op._estimated_output_blocks == 50
