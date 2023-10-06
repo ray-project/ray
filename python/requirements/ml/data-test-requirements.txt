@@ -7,5 +7,5 @@ tensorflow-datasets
 datasets
 pytest-repeat
 soundfile
-google-cloud-bigquery==3.11.0
-google-cloud-bigquery-storage==2.20.0
+google-cloud-bigquery
+google-cloud-bigquery-storage
