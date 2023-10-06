@@ -369,7 +369,12 @@ def read_datasource(
             _get_reader, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        (requested_parallelism, min_safe_parallelism, inmemory_size, reader,) = ray.get(
+        (
+            requested_parallelism,
+            min_safe_parallelism,
+            inmemory_size,
+            reader,
+        ) = ray.get(
             get_reader.remote(
                 datasource,
                 ctx,
@@ -1836,7 +1841,7 @@ def read_databricks_tables(
             raise ValueError(
                 "You are not in databricks runtime, please set environment variable "
                 "'DATABRICKS_HOST' to databricks workspace URL"
-                "(e.g. \"adb-<workspace-id>.<random-number>.azuredatabricks.net\")."
+                '(e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").'
             )
 
     spark = get_spark_session()
