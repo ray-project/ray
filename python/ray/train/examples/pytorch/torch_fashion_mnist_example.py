@@ -1,12 +1,12 @@
 import os
-from filelock import FileLock
 from typing import Dict
 
 import torch
+from filelock import FileLock
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
-from torchvision.transforms import ToTensor, Normalize
+from torchvision.transforms import Normalize, ToTensor
 from tqdm import tqdm
 
 import ray.train

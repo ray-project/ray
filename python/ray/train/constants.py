@@ -2,11 +2,11 @@ import os
 from pathlib import Path
 
 from ray.air.constants import (  # noqa: F401
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     EVALUATION_DATASET_KEY,
     MODEL_KEY,
     PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,
-    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
 )
 
 

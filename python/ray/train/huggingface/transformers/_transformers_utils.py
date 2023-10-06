@@ -1,24 +1,24 @@
-import os
 import logging
+import os
 import shutil
 from pathlib import Path
-from typing import Any, Iterator, Optional, Tuple, Type
 from tempfile import TemporaryDirectory
+from typing import Any, Iterator, Optional, Tuple, Type
 
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 import ray
 from ray import train
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data import DataIterator
-from ray.data.iterator import _IterableFromIterator
-from ray.data.dataset import MaterializedDataset
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
+from ray.data.dataset import MaterializedDataset
+from ray.data.iterator import _IterableFromIterator
 from ray.train import Checkpoint
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
 )
 from ray.util import PublicAPI
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 logger = logging.getLogger(__name__)
 

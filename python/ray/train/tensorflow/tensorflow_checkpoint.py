@@ -1,8 +1,8 @@
 import os
 import shutil
+import tempfile
 from typing import TYPE_CHECKING, Optional
 
-import tempfile
 import tensorflow as tf
 from tensorflow import keras
 
