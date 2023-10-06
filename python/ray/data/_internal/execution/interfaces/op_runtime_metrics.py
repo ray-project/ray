@@ -15,7 +15,11 @@ class RunningTaskInfo:
 
 @dataclass
 class OpRuntimeMetrics:
-    """Runtime metrics for a PhysicalOperator."""
+    """Runtime metrics for a PhysicalOperator.
+
+    Metrics are updated dynamically during the execution of the Dataset.
+    This class can be used for either observablity or scheduling purposes.
+    """
 
     # === Inputs-related metrics ===
 
