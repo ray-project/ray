@@ -1,6 +1,7 @@
 import argparse
 
-from rllib_bandit.bandit import BanditLinUCB, BanditLinUCBConfig
+#from rllib_bandit.bandit import BanditLinUCB, BanditLinUCBConfig
+from ray.rllib.algorithms.bandit import BanditLinUCB, BanditLinUCBConfig
 
 import ray
 from ray import air, tune
@@ -19,7 +20,7 @@ def get_cli_args():
 if __name__ == "__main__":
     args = get_cli_args()
 
-    ray.init()
+    ray.init(local_mode=True)
 
     config = (
         BanditLinUCBConfig()
