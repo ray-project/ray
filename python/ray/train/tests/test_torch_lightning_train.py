@@ -1,23 +1,20 @@
-import pytest
-import numpy as np
 import os
 
+import numpy as np
+import pytest
+import pytorch_lightning as pl
+
 import ray
-from ray.train.torch import TorchTrainer
+from ray.train import ScalingConfig
 from ray.train.lightning import (
-    RayDeepSpeedStrategy,
     RayDDPStrategy,
+    RayDeepSpeedStrategy,
     RayFSDPStrategy,
     RayLightningEnvironment,
     RayTrainReportCallback,
 )
-
-from ray.train import ScalingConfig
-from ray.train.tests.lightning_test_utils import (
-    LinearModule,
-    DummyDataModule,
-)
-import pytorch_lightning as pl
+from ray.train.tests.lightning_test_utils import DummyDataModule, LinearModule
+from ray.train.torch import TorchTrainer
 
 
 @pytest.fixture

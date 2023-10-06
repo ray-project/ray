@@ -771,7 +771,24 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
     .. tab-item:: Databricks
 
-        To read from Databricks, install the
+        To read from Databricks, call ``ray.data.read_databricks_tables`` API (recommended) or ``ray.data.ray.data.read_sql`` API.
+
+        For using ``ray.data.read_databricks_tables`` API, set 'DATABRICKS_HOST' environment variable to databricks warehouse access token, then read from the Databricks SQL warehouse.
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            # Get movies after the year 1980
+            dataset = ray.data.read_databricks_tables(
+                warehouse_id='...',  # Databricks SQL warehouse ID
+                catalog='...',  # Unity catalog name
+                schema='...',  # Schema name
+                query="SELECT title, score FROM movie WHERE year >= 1980",
+            )
+
+        For using ``ray.data.ray.data.read_sql`` API,
+        install the
         `Databricks SQL Connector for Python <https://docs.databricks.com/dev-tools/python-sql-connector.html>`_.
 
         .. code-block:: console
