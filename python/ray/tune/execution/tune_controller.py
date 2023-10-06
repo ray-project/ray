@@ -1970,7 +1970,6 @@ class TuneController:
             args=(extra_config,),
             kwargs={
                 "logger_creator": logger_creator,
-                "remote_checkpoint_dir": trial.remote_checkpoint_dir,
                 "storage": trial.storage,
             },
             on_result=self._on_trial_reset,
