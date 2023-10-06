@@ -61,7 +61,7 @@ swap:
   in order to: to
   ingest: import|load
   k8s: Kubernetes
-  "[kK]ube[rR]ray": KubeRay
+  "[Kk]uberay": KubeRay
   long press: touch & hold
   network IP address: internal IP address
   omnibox: address bar
