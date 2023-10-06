@@ -1,6 +1,5 @@
 import pytest
 
-from ray.air.config import DatasetConfig
 from ray.train import (
     ScalingConfig,
     FailureConfig,
@@ -15,8 +14,6 @@ from ray.air.constants import MAX_REPR_LENGTH
     [
         ScalingConfig(),
         ScalingConfig(use_gpu=True),
-        DatasetConfig(),
-        DatasetConfig(fit=True),
         FailureConfig(),
         FailureConfig(max_failures=2),
         CheckpointConfig(),
