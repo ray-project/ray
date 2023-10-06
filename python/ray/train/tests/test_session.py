@@ -6,28 +6,26 @@ import pytest
 
 import ray
 from ray.air._internal.util import StartTraceback
-from ray.train._internal.accelerator import Accelerator
-from ray.train._internal.storage import StorageContext
 from ray.air.constants import SESSION_MISUSE_LOG_ONCE_KEY
-from ray.train._internal.session import (
-    init_session,
-    shutdown_session,
-    get_session,
-    get_accelerator,
-    set_accelerator,
-)
 from ray.air.session import (
     get_checkpoint,
-    get_world_rank,
-    get_local_rank,
-    report,
     get_dataset_shard,
+    get_local_rank,
+    get_world_rank,
     get_world_size,
+    report,
 )
+from ray.train._internal.accelerator import Accelerator
+from ray.train._internal.session import (
+    get_accelerator,
+    get_session,
+    init_session,
+    set_accelerator,
+    shutdown_session,
+)
+from ray.train._internal.storage import StorageContext
 from ray.train.error import SessionMisuseError
-
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-
 
 storage = StorageContext(
     storage_path=tempfile.mkdtemp(),
@@ -384,7 +382,8 @@ def test_application_error_raised():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

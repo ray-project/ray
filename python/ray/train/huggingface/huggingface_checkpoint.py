@@ -1,6 +1,5 @@
-from ray.util.annotations import Deprecated
-
 from ._deprecation_msg import deprecation_msg
+from ray.util.annotations import Deprecated
 
 
 # TODO(ml-team): [code_removal]

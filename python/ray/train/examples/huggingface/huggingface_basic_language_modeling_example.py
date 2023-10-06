@@ -18,8 +18,8 @@ from transformers import (
 
 import ray
 import ray.data
-from ray.train.huggingface import TransformersTrainer
 from ray.train import ScalingConfig
+from ray.train.huggingface import TransformersTrainer
 
 
 def main(
