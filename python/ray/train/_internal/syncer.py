@@ -487,11 +487,3 @@ class _BackgroundSyncer(Syncer):
         state = self.__dict__.copy()
         state["_sync_process"] = None
         return state
-
-
-# TODO(justinvyu): [code_removal]
-@DeveloperAPI
-def get_node_to_storage_syncer(
-    sync_config: SyncConfig, upload_dir: Optional[str] = None
-) -> Optional[Syncer]:
-    raise DeprecationWarning
