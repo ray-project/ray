@@ -17,7 +17,7 @@ class DockerContainer(Container):
     def __init__(self, python_version: str, platform: str, image_type: str) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
-        self.python_version = python_version
+        self.python_version = f"py{python_version.replace('.', '')}"  # 3.8 -> py38
         self.platform = platform
         self.image_type = image_type
 
