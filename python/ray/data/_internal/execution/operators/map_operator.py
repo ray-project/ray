@@ -260,7 +260,6 @@ class MapOperator(OneToOneOperator, ABC):
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
-            self._data_tasks[task_index].add_num_output_blocks(len(output.blocks))
 
         def _task_done_callback(task_index):
             self._metrics.on_task_finished(task_index)
