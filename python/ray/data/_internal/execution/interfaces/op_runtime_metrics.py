@@ -124,27 +124,26 @@ class OpRuntimeMetrics:
         self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
 
     def on_output_generated(self, task_index: int, output: RefBundle):
-        # Since output is streamed, it should only contain one block.
-        assert len(output.blocks) == 1
+        num_outputs = len(output)
         output_bytes = output.size_bytes()
 
-        self.num_outputs_generated += 1
+        self.num_outputs_generated += num_outputs
         self.bytes_outputs_generated += output_bytes
 
         task_info = self._running_tasks[task_index]
-        task_info.num_outputs += 1
-        task_info.bytes_outputs += output_bytes
-        if task_info.num_outputs == 1:
+        if task_info.num_outputs == 0:
             self.num_tasks_have_outputs += 1
-
-        for block_ref, _ in output.blocks:
-            trace_allocation(block_ref, "operator_output")
+        task_info.num_outputs += num_outputs
+        task_info.bytes_outputs += output_bytes
 
         # Update object store metrics.
         self.object_store.alloc += output_bytes
         self.object_store.cur += output_bytes
         if self.object_store.cur > self.object_store.peak:
             self.object_store.peak = self.object_store.cur
+
+        for block_ref, _ in output.blocks:
+            trace_allocation(block_ref, "operator_output")
 
     def on_task_finished(self, task_index: int):
         self.num_tasks_running -= 1

@@ -255,6 +255,8 @@ class MapOperator(OneToOneOperator, ABC):
         self._metrics.on_task_submitted(task_index, inputs)
 
         def _output_ready_callback(task_index, output: RefBundle):
+            # Since output is streamed, it should only contain one block.
+            assert len(output) == 1
             self._metrics.on_output_generated(task_index, output)
 
             # Notify output queue that the task has produced an new output.
