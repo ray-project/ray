@@ -35,6 +35,7 @@ from ray.data.read_api import (  # noqa: F401
     range_tensor,
     read_binary_files,
     read_csv,
+    read_databricks_tables,
     read_datasource,
     read_images,
     read_json,

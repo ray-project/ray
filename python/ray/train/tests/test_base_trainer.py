@@ -5,9 +5,9 @@ import pytest
 
 import ray
 from ray import train, tune
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.context import DataContext
 from ray.train import Checkpoint, ScalingConfig
-from ray.air.constants import MAX_REPR_LENGTH
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group

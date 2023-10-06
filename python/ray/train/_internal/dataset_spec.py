@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
-
 from ray.data import Dataset, DatasetPipeline
 
 RayDataset = Union["Dataset", "DatasetPipeline"]

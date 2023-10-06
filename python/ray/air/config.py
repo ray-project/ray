@@ -1,7 +1,4 @@
-import copy
 import logging
-import os
-import warnings
 from collections import defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
 from pathlib import Path
@@ -19,7 +16,6 @@ from typing import (
 
 import pyarrow.fs
 
-from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.widgets import Template, make_table_html_repr
@@ -656,62 +652,6 @@ class RunConfig:
 
         if isinstance(self.storage_path, Path):
             self.storage_path = self.storage_path.as_posix()
-
-        # TODO(justinvyu): [code_removal] Legacy stuff below.
-        from ray.tune.utils.util import _resolve_storage_path
-        from ray.train._internal.storage import _use_storage_context
-        from ray.train._internal.syncer import Syncer
-
-        if _use_storage_context():
-            return
-
-        local_path, remote_path = _resolve_storage_path(
-            self.storage_path, self.local_dir, self.sync_config.upload_dir
-        )
-
-        if self.sync_config.upload_dir:
-            assert remote_path == self.sync_config.upload_dir
-            warnings.warn(
-                "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
-                "in the future. Pass `RunConfig.storage_path` instead."
-            )
-            # Set upload_dir to None to avoid further downstream resolution.
-            # Copy object first to not alter user input.
-            self.sync_config = copy.copy(self.sync_config)
-            self.sync_config.upload_dir = None
-
-        if self.local_dir:
-            assert local_path == self.local_dir
-            warnings.warn(
-                "Setting a `RunConfig.local_dir` is deprecated and will be removed "
-                "in the future. If you are not using remote storage,"
-                "set the `RunConfig.storage_path` instead. Otherwise, set the"
-                "`RAY_AIR_LOCAL_CACHE_DIR` environment variable to control "
-                "the local cache location."
-            )
-            self.local_dir = None
-
-        if not remote_path:
-            remote_path = _get_storage_uri()
-            if remote_path:
-                logger.info(
-                    "Using configured Ray storage URI as storage path: "
-                    f"{remote_path}"
-                )
-
-        if remote_path:
-            self.storage_path = remote_path
-            if local_path:
-                # If storage_path is a remote path set by SyncConfig.upload_dir,
-                # this may not have been set in the previous if clause.
-                os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
-        elif local_path:
-            self.storage_path = local_path
-
-        if isinstance(self.sync_config.syncer, Syncer) and not remote_path:
-            raise ValueError(
-                "Must specify a remote `storage_path` to use a custom `syncer`."
-            )
 
     def __repr__(self):
         from ray.train import SyncConfig
