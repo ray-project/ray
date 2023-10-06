@@ -9,14 +9,12 @@ import os
 from pathlib import Path
 import platform
 import re
-import shutil
 import time
 from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
 from ray.air._internal.uri_utils import URI
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import (
     EXPR_ERROR_PICKLE_FILE,
     EXPR_ERROR_FILE,
@@ -27,14 +25,11 @@ import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
-from ray.train._internal.checkpoint_manager import (
-    _CheckpointManager as _NewCheckpointManager,
-)
+from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
-from ray.tune.execution.checkpoint_manager import _CheckpointManager
 from ray.tune.logger import NoopLogger
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -60,7 +55,6 @@ from ray.tune.execution.placement_groups import (
 )
 from ray.tune.trainable.metadata import _TrainingRunMetadata
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
-from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.tune.utils.util import _split_remote_local_path
 from ray.util.annotations import DeveloperAPI, Deprecated
@@ -121,46 +115,6 @@ class ExportFormat:
                 ExportFormat.H5,
             ]:
                 raise TuneError("Unsupported import/export format: " + formats[i])
-
-
-class _CheckpointDeleter:
-    """Checkpoint deleter callback for a runner."""
-
-    def __init__(self, trial_id, ray_actor):
-        self.trial_id = trial_id
-        self.ray_actor = ray_actor
-
-    def __call__(self, checkpoint: _TrackedCheckpoint):
-        """Requests checkpoint deletion asynchronously.
-
-        Args:
-            checkpoint: Checkpoint to delete.
-        """
-        if not self.ray_actor:
-            return
-
-        if (
-            checkpoint.storage_mode == CheckpointStorage.PERSISTENT
-            and checkpoint.dir_or_data
-        ):
-            checkpoint_path = checkpoint.dir_or_data
-
-            logger.debug(
-                "Trial %s: Deleting checkpoint %s", self.trial_id, checkpoint_path
-            )
-
-            # TODO(ujvl): Batch remote deletes.
-            # We first delete the remote checkpoint. If it is on the same
-            # node as the driver, it will also remove the local copy.
-            ray.get(self.ray_actor.delete_checkpoint.remote(checkpoint_path))
-
-            # Delete local copy, if any exists.
-            if os.path.exists(checkpoint_path):
-                try:
-                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-                    shutil.rmtree(checkpoint_dir)
-                except FileNotFoundError:
-                    logger.debug("Local checkpoint dir not found during deletion.")
 
 
 class _TrialInfo:
@@ -528,15 +482,9 @@ class Trial:
                 checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
             )
 
-        if _use_storage_context():
-            self.run_metadata.checkpoint_manager = _NewCheckpointManager(
-                checkpoint_config=checkpoint_config
-            )
-        else:
-            self.run_metadata.checkpoint_manager = _CheckpointManager(
-                checkpoint_config=checkpoint_config,
-                delete_fn=_CheckpointDeleter(str(self), self.temporary_state.ray_actor),
-            )
+        self.run_metadata.checkpoint_manager = _CheckpointManager(
+            checkpoint_config=checkpoint_config
+        )
 
         # Restoration fields
         self.restore_path = restore_path
@@ -841,25 +789,11 @@ class Trial:
     @property
     def checkpoint(self) -> Optional[Checkpoint]:
         """Returns the most recent checkpoint if one has been saved."""
-        if _use_storage_context():
-            return (
-                self.latest_checkpoint_result.checkpoint
-                if self.latest_checkpoint_result
-                else None
-            )
-
-        if self.status == Trial.ERROR:
-            checkpoint = (
-                self.run_metadata.checkpoint_manager.newest_persistent_checkpoint
-            )
-        else:
-            checkpoint = self.run_metadata.checkpoint_manager.newest_checkpoint
-        if checkpoint.dir_or_data is None:
-            checkpoint = _TrackedCheckpoint(
-                dir_or_data=self.restore_path,
-                storage_mode=CheckpointStorage.PERSISTENT,
-            )
-        return checkpoint
+        return (
+            self.latest_checkpoint_result.checkpoint
+            if self.latest_checkpoint_result
+            else None
+        )
 
     @classmethod
     def generate_id(cls):
@@ -967,10 +901,6 @@ class Trial:
             # property is accessed
             self._default_result_or_future = ray_actor.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
-            )
-        if not _use_storage_context():
-            self.run_metadata.checkpoint_manager.set_delete_fn(
-                _CheckpointDeleter(str(self), ray_actor)
             )
 
     def set_location(self, location):
@@ -1090,22 +1020,18 @@ class Trial:
         self.temporary_state.restoring_from = None
         self.run_metadata.invalidate_cache()
 
-    def on_checkpoint(self, checkpoint: Union[_TrackedCheckpoint, _TrainingResult]):
+    def on_checkpoint(self, checkpoint_result: _TrainingResult):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
             checkpoint: Checkpoint taken.
         """
-        if _use_storage_context():
-            checkpoint_result = checkpoint
-            assert isinstance(checkpoint_result, _TrainingResult)
-            self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
-            # Update the checkpoint index to keep the checkpoint index in sync.
-            # This index will get restored when the trial is restored and will
-            # be passed to the Trainable as the starting checkpoint index.
-            self.storage._update_checkpoint_index(checkpoint_result.metrics)
-        else:
-            self.run_metadata.checkpoint_manager.on_checkpoint(checkpoint)
+        self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
+        # Update the checkpoint index to keep the checkpoint index in sync.
+        # This index will get restored when the trial is restored and will
+        # be passed to the Trainable as the starting checkpoint index.
+        self.storage._update_checkpoint_index(checkpoint_result.metrics)
+
         self.invalidate_json_state()
         self.run_metadata.invalidate_cache()
 
@@ -1162,8 +1088,9 @@ class Trial:
             return None
         return get_trainable_cls(self.trainable_name)
 
-    def get_trial_checkpoints(self) -> List[_TrackedCheckpoint]:
-        return self.run_metadata.checkpoint_manager.best_checkpoints()
+    # TODO(justinvyu): [code_removal]
+    def get_trial_checkpoints(self):
+        raise DeprecationWarning
 
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]

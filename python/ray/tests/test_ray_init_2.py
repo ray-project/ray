@@ -285,9 +285,11 @@ def test_non_default_ports_visible_on_init(shutdown_only):
 
 def test_get_and_write_node_ip_address(shutdown_only):
     ray.init()
-    node = ray._private.worker.global_worker.node
     node_ip = ray.util.get_node_ip_address()
-    cached_node_ip_address = node._get_cached_node_ip_address()
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
+    cached_node_ip_address = ray._private.services.get_cached_node_ip_address(
+        session_dir
+    )
     assert cached_node_ip_address == node_ip
 
 

@@ -1,7 +1,6 @@
 import os
 import tempfile
-from typing import TYPE_CHECKING, Type, Optional, Union
-
+from typing import TYPE_CHECKING, Optional, Type, Union
 
 import torch
 
