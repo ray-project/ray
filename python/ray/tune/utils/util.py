@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import datetime
 from numbers import Number
 from threading import Thread
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
 import numpy as np
 import psutil
@@ -156,16 +156,6 @@ def retry_fn(
 
     # Timed out, so return False
     return False
-
-
-# TODO(justinvyu): [code_removal]
-def _resolve_storage_path(
-    path: str,
-    legacy_local_dir: Optional[str],
-    legacy_upload_dir: Optional[str],
-    error_location: str = "air.RunConfig",
-) -> Tuple[Optional[str], Optional[str]]:
-    raise DeprecationWarning
 
 
 @DeveloperAPI

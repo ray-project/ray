@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.train.constants import _DEPRECATED_VALUE
 from ray.util import log_once
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI
 from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
