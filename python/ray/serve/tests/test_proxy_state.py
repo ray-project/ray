@@ -638,16 +638,17 @@ def test_unhealthy_retry_correct_number_of_times():
     proxy_state.update()
     assert proxy_state.status == ProxyStatus.HEALTHY
 
-    proxy_state._actor_proxy_wrapper.health_check_ongoing = True
-
-    for _ in range(3):
+    # Wait for the first failure to be triggered
+    def proxy_state_failed_once():
         proxy_state.update()
-        time.sleep(0.1)
-        print("status", proxy_state.status)
-        print(
-            "consecutive_health_check_failures",
-            proxy_state._consecutive_health_check_failures,
-        )
+        assert proxy_state._consecutive_health_check_failures == 1
+        return True
+
+    wait_for_condition(proxy_state_failed_once)
+
+    # 3 consecutive failures should trigger the proxy state to be UNHEALTHY
+    for _ in range(2):
+        proxy_state.update()
     assert proxy_state.status == ProxyStatus.UNHEALTHY
 
 
