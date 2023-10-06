@@ -10,7 +10,7 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.stats import DatasetStats, _StatsActor
+from ray.data._internal.stats import DataMetric, DatasetStats, _StatsActor
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
@@ -1138,6 +1138,54 @@ Dataset memory:
     )
 
     assert ds._plan.stats().dataset_bytes_spilled == 0
+
+
+def test_stats_actor_metrics():
+    ray.init(object_store_memory=100e6, num_gpus=1)
+    with patch(
+        "ray.data._internal.execution.streaming_executor._update_stats_actor_metrics"
+    ) as update_fn:
+        ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+
+    total_bytes_spilled = 0
+    total_bytes_allocated = 0
+    total_bytes_freed = 0
+    sum_cpu_usage = 0
+    sum_gpu_usage = 0
+    for call in update_fn.call_args_list:
+        stats = call.args[0]
+        total_bytes_spilled += stats[DataMetric.BYTES_SPILLED]
+        total_bytes_allocated += stats[DataMetric.BYTES_ALLOCATED]
+        total_bytes_freed += stats[DataMetric.BYTES_FREED]
+        sum_cpu_usage += stats[DataMetric.CPU_USAGE]
+        sum_gpu_usage += stats[DataMetric.GPU_USAGE]
+
+    assert total_bytes_spilled == ds._plan.stats().dataset_bytes_spilled
+    assert (
+        total_bytes_allocated == ds._plan.stats().extra_metrics["obj_store_mem_alloc"]
+    )
+    assert total_bytes_freed == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
+    # There should be nothing in object store at the end of execution.
+    assert update_fn.call_args_list[-1].args[0][DataMetric.BYTES_CURRENT] == 0
+
+    # Check that some CPU was used, and no GPU was used
+    assert sum_cpu_usage > 0
+    assert sum_gpu_usage == 0
+
+    # map_batches with GPU
+    with patch(
+        "ray.data._internal.execution.streaming_executor._update_stats_actor_metrics"
+    ) as update_fn:
+        ds = (
+            ray.data.range(1024)
+            .map_batches(lambda x: x, num_cpus=0, num_gpus=1, batch_size=1024)
+            .materialize()
+        )
+
+    sum_gpu_usage = sum(
+        [call.args[0][DataMetric.GPU_USAGE] for call in update_fn.call_args_list]
+    )
+    assert sum_gpu_usage > 0
 
 
 if __name__ == "__main__":
