@@ -4,17 +4,14 @@ import logging
 import os
 from pathlib import Path
 import platform
-import shutil
 import sys
 import tempfile
 import time
 from contextlib import redirect_stderr, redirect_stdout
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
 import ray.cloudpickle as ray_pickle
-from ray.air._internal.remote_storage import list_at_uri
-from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.air.constants import (
     TIMESTAMP,
@@ -22,11 +19,7 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.train._internal.checkpoint_manager import _TrainingResult
-from ray.train._internal.storage import (
-    _use_storage_context,
-    StorageContext,
-    _exists_at_fs_path,
-)
+from ray.train._internal.storage import StorageContext, _exists_at_fs_path
 from ray.train import Checkpoint
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -47,18 +40,11 @@ from ray.tune.result import (
     TRIAL_ID,
     TRIAL_INFO,
 )
-from ray.tune import TuneError
-from ray.tune.utils import UtilMonitor, warn_if_slow
-from ray.tune.utils.callback import (
-    DEFAULT_CALLBACK_CLASSES,
-    _get_artifact_templates_for_callbacks,
-)
+from ray.tune.utils import UtilMonitor
 from ray.tune.utils.log import disable_ipython
+from ray.tune.utils.util import Tee
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.train._internal.syncer import SyncConfig, get_node_to_storage_syncer
-from ray.tune.trainable.util import TrainableUtil
-from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.logger import Logger
@@ -107,16 +93,12 @@ class Trainable:
     described above should be used instead.
 
     This class supports checkpointing to and restoring from remote storage.
-
-
     """
 
     def __init__(
         self,
         config: Dict[str, Any] = None,
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
-        remote_checkpoint_dir: Optional[str] = None,
-        sync_config: Optional[SyncConfig] = None,
         storage: Optional[StorageContext] = None,
     ):
         """Initialize a Trainable.
@@ -132,11 +114,7 @@ class Trainable:
                 will be saved as ``self.config``.
             logger_creator: (Deprecated) Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
-            remote_checkpoint_dir: Upload directory (S3 or GS path).
-                This is **per trial** directory,
-                which is different from **per checkpoint** directory.
-            sync_config: Configuration object for syncing.
-                See :class:`~ray.train.SyncConfig`.
+            storage: StorageContext object that contains persistent storage paths
         """
 
         self.config = config or {}
@@ -146,6 +124,7 @@ class Trainable:
             disable_ipython()
 
         # TODO(ml-team): Remove `logger_creator` in 2.7.
+        # TODO(justinvyu): Rename/remove logdir.
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
 
@@ -189,27 +168,6 @@ class Trainable:
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
-        # TODO(justinvyu): [code_removal] These attrs can be removed.
-        if _use_storage_context():
-            self.remote_checkpoint_dir = None
-            self.sync_config = None
-            self._last_artifact_sync_iter = None
-        else:
-            self.remote_checkpoint_dir = remote_checkpoint_dir
-            # If no sync_config is provided, but we save to a remote_checkpoint_dir,
-            # then provide a default syncer. `upload_dir` here is just a dummy directory
-            # that tells the SyncConfig to create a default syncer.
-            self.sync_config = sync_config or SyncConfig(
-                upload_dir=self.remote_checkpoint_dir, syncer="auto"
-            )
-
-            # Resolves syncer="auto" to an actual syncer cloud storage is used
-            # If sync_config.syncer is a custom Syncer instance, this is a no-op.
-            self.sync_config.syncer = get_node_to_storage_syncer(
-                self.sync_config, self.remote_checkpoint_dir
-            )
-            self._last_artifact_sync_iter = None
-
         # TODO(justinvyu): These env vars aren't used at the moment.
         # Consider having these be settings in SyncConfig if we want to
         # keep this feature.
@@ -217,17 +175,6 @@ class Trainable:
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
-
-    # TODO(justinvyu): [code_removal]
-    @property
-    def uses_cloud_checkpointing(self):
-        raise DeprecationWarning
-
-    # TODO(justinvyu): [code_removal]
-    def _remote_storage_path(self, local_path):
-        """Converts a `local_path` to be based off of
-        `self.remote_checkpoint_dir`."""
-        raise DeprecationWarning
 
     @classmethod
     def default_resource_request(
@@ -701,7 +648,6 @@ class Trainable:
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
-        self._last_artifact_sync_iter = None
         self._restored = False
 
         return True
