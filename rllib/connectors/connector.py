@@ -243,7 +243,6 @@ class AgentConnector(Connector):
         """
         pass
 
-    
     def __call__(
         self, acd_list: List[AgentConnectorDataType]
     ) -> List[AgentConnectorDataType]:
