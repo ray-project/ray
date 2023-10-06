@@ -99,25 +99,25 @@ class Benchmark:
         start_time = time.perf_counter()
         record_count = 0
         ds_iterator = iter(dataset)
-        for first_batch in ds_iterator:
+        for batch in ds_iterator:
             # Unwrap list to get the underlying batch format.
-            if isinstance(first_batch, (list, tuple)) and len(first_batch) > 0:
-                first_batch = first_batch[0]
+            if isinstance(batch, (list, tuple)) and len(batch) > 0:
+                batch = batch[0]
 
             # Get the batch size for various batch formats.
-            if isinstance(first_batch, dict):
-                feature_lengths = {k: len(first_batch[k]) for k in first_batch}
+            if isinstance(batch, dict):
+                feature_lengths = {k: len(batch[k]) for k in batch}
                 batch_size = max(feature_lengths.values())
                 continue
-            elif isinstance(first_batch, (pa.Table, pd.DataFrame)):
-                batch_size = len(first_batch)
+            elif isinstance(batch, (pa.Table, pd.DataFrame)):
+                batch_size = len(batch)
                 continue
-            elif isinstance(first_batch, torch.Tensor):
-                batch_size = first_batch.size(dim=0)
-            elif isinstance(first_batch, tf.Tensor):
-                batch_size = first_batch.shape.as_list()[0]
+            elif isinstance(batch, torch.Tensor):
+                batch_size = batch.size(dim=0)
+            elif isinstance(batch, tf.Tensor):
+                batch_size = batch.shape.as_list()[0]
             else:
-                raise TypeError(f"Unexpected batch type: {type(first_batch)}")
+                raise TypeError(f"Unexpected batch type: {type(batch)}")
             record_count += batch_size
 
         duration = time.perf_counter() - start_time
