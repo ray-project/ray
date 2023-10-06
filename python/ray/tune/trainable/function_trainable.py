@@ -1,11 +1,6 @@
 import inspect
 import logging
 import os
-import shutil
-import sys
-import threading
-import time
-import uuid
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
@@ -15,10 +10,8 @@ import queue
 
 from ray.air.constants import (
     _ERROR_FETCH_TIMEOUT,
-    TIME_THIS_ITER_S,
 )
 import ray.train
-from ray.train import Checkpoint
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.session import (
     init_session,
@@ -33,7 +26,7 @@ from ray.tune.result import (
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
 )
-from ray.tune.trainable import Trainable, TrainableUtil
+from ray.tune.trainable import Trainable
 from ray.tune.utils import (
     _detect_checkpoint_function,
     _detect_config_single,
@@ -107,184 +100,6 @@ def train_fn(config):
 
 tuner = tune.Tuner(train_fn)
 tuner.fit()"""  # noqa: E501
-
-
-# TODO(justinvyu): [code_removal]
-@DeveloperAPI
-class _StatusReporter:
-    def __init__(
-        self,
-        result_queue: queue.Queue,
-        continue_semaphore: threading.Semaphore,
-        end_event: threading.Event,
-        training_iteration_func: Callable[[], int],
-        experiment_name: Optional[str] = None,
-        trial_name: Optional[str] = None,
-        trial_id: Optional[str] = None,
-        logdir: Optional[str] = None,
-        trial_resources: Optional[PlacementGroupFactory] = None,
-    ):
-        self._queue = result_queue
-        self._last_report_time = None
-        self._continue_semaphore = continue_semaphore
-        self._end_event = end_event
-        self._get_training_iteration = training_iteration_func
-        self._experiment_name = experiment_name
-        self._trial_name = trial_name
-        self._trial_id = trial_id
-        self._logdir = logdir
-        self._last_checkpoint = None
-        self._fresh_checkpoint = False
-        self._trial_resources = trial_resources
-        # Mark whether the `ray.air.session.report()` API is being used,
-        # to throw an error if `tune.report()` is called as well
-        self._air_session_has_reported = False
-
-    def reset(self, trial_name=None, trial_id=None, logdir=None, trial_resources=None):
-        self._trial_name = trial_name
-        self._trial_id = trial_id
-        self._logdir = logdir
-        self._last_checkpoint = None
-        self._latest_checkpoint_result = None
-        self._fresh_checkpoint = False
-        self._trial_resources = trial_resources
-        self._air_session_has_reported = False
-
-    def __call__(self, _metric=None, **kwargs):
-        """Report updated training status.
-
-        Pass in `done=True` when the training job is completed.
-
-        Args:
-            kwargs: Latest training result status.
-
-        Raises:
-            StopIteration: A StopIteration exception is raised if the trial has
-                been signaled to stop.
-        """
-
-        assert self._last_report_time is not None, (
-            "_StatusReporter._start() must be called before the first "
-            "report __call__ is made to ensure correct runtime metrics."
-        )
-
-        if _metric:
-            kwargs[DEFAULT_METRIC] = _metric
-
-        # time per iteration is recorded directly in the reporter to ensure
-        # any delays in logging results aren't counted
-        report_time = time.time()
-        if TIME_THIS_ITER_S not in kwargs:
-            kwargs[TIME_THIS_ITER_S] = report_time - self._last_report_time
-        self._last_report_time = report_time
-
-        # add results to a thread-safe queue
-        self._queue.put(kwargs.copy(), block=True)
-
-        # This blocks until notification from the FunctionRunner that the last
-        # result has been returned to Tune and that the function is safe to
-        # resume training.
-        self._continue_semaphore.acquire()
-
-        # If the trial should be terminated, exit gracefully.
-        if self._end_event.is_set():
-            self._end_event.clear()
-            sys.exit(0)
-
-    def make_checkpoint_dir(self, step):
-        checkpoint_dir = TrainableUtil.make_checkpoint_dir(self.logdir, index=step)
-        logger.debug("Making checkpoint dir at %s", checkpoint_dir)
-        return checkpoint_dir
-
-    def set_checkpoint(self, checkpoint, is_new=True):
-        """Sets the checkpoint to be returned upon get_checkpoint.
-
-        If this is a "new" checkpoint, it will notify Tune
-        (via has_new_checkpoint). Otherwise, it will NOT notify Tune.
-        """
-        if isinstance(checkpoint, str):
-            try:
-                TrainableUtil.find_checkpoint_dir(checkpoint)
-            except FileNotFoundError:
-                logger.error(
-                    "Checkpoint must be created with path given from "
-                    "make_checkpoint_dir."
-                )
-                raise
-        previous_checkpoint = self._last_checkpoint
-        self._last_checkpoint = checkpoint
-        if is_new:
-            self._fresh_checkpoint = True
-
-        # Delete temporary checkpoint folder from `restore_from_object`
-        if previous_checkpoint and FuncCheckpointUtil.is_temp_checkpoint_dir(
-            previous_checkpoint
-        ):
-            previous_checkpoint_dir = TrainableUtil.find_checkpoint_dir(
-                previous_checkpoint
-            )
-            shutil.rmtree(previous_checkpoint_dir, ignore_errors=True)
-
-    def has_new_checkpoint(self):
-        return self._fresh_checkpoint
-
-    def get_checkpoint(self):
-        # NOTE: This is not the same as `train.get_checkpoint`.
-        # This is used internally by `FunctionTrainable.save_checkpoint`.
-        # `loaded_checkpoint` is the checkpoint accessible by the user.
-        self._fresh_checkpoint = False
-        return self._last_checkpoint
-
-    def _start(self):
-        self._last_report_time = time.time()
-
-    def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
-        # TODO(xwjiang): Tons of optimizations.
-        self._air_session_has_reported = True
-        if checkpoint:
-            training_iteration = self._get_training_iteration()
-            checkpoint_dir = self.make_checkpoint_dir(step=training_iteration)
-            self.set_checkpoint(checkpoint_dir)
-            checkpoint.to_directory(checkpoint_dir)
-            # TODO(krfricke): Remove this once support is added in Checkpoint.
-            open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
-        self.__call__(**metrics)
-
-    @property
-    def loaded_checkpoint(self) -> Optional[Checkpoint]:
-        if self._last_checkpoint:
-            assert isinstance(self._last_checkpoint, str)
-            return Checkpoint.from_directory(self._last_checkpoint)
-        return None
-
-    @property
-    def logdir(self):
-        return self._logdir
-
-    @property
-    def experiment_name(self):
-        """Trial name for the corresponding trial of this Trainable."""
-        return self._experiment_name
-
-    @property
-    def trial_name(self):
-        """Trial name for the corresponding trial of this Trainable."""
-        return self._trial_name
-
-    @property
-    def trial_id(self):
-        """Trial id for the corresponding trial of this Trainable."""
-        return self._trial_id
-
-    @property
-    def trial_resources(self):
-        """Resources assigned to the trial of this Trainable."""
-        return self._trial_resources
-
-    @property
-    def trial_dir(self) -> str:
-        """Trial-level log directory for the corresponding trial."""
-        return self._logdir
 
 
 @DeveloperAPI
