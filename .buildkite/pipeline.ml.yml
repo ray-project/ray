@@ -358,7 +358,6 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       --test_tag_filters=client
       python/ray/tune/...
 

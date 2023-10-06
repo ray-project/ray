@@ -44,11 +44,9 @@ logger = logging.getLogger(__name__)
 _VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
 
 
+# TODO(justinvyu): [code_removal] Remove after all dependencies are gone.
 def _use_storage_context() -> bool:
-    # Whether to enable the new simple persistence mode.
-    from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
-
-    return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "1")))
+    return True
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
