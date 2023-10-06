@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import time
+from functools import partial
 from concurrent.futures import Executor, Future
 from typing import (
     Any,
@@ -86,6 +87,10 @@ class _ActorPool(ABC):
 
     @abstractmethod
     def submit(self, fn: Callable[[], T]) -> Future[T]:
+        ...
+
+    @abstractmethod
+    def get_actor_ids(self) -> list[str]:
         ...
 
 
@@ -213,11 +218,11 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
         ]
         return
 
-    def _get_actor_ids(self) -> list[str]:
+    def get_actor_ids(self) -> list[str]:
         return [i["actor"]._ray_actor_id.hex() for i in self.pool]
 
     def _get_actor_task_counts(self) -> dict[str, int]:
-        actor_tasks = {actor_id: 0 for actor_id in self._get_actor_ids()}
+        actor_tasks = {actor_id: 0 for actor_id in self.get_actor_ids()}
         for task_state in rus.list_tasks():
             t_actor_id = task_state.actor_id
             assert t_actor_id is not None
@@ -337,6 +342,9 @@ class _RoundRobinActorPool(_ActorPoolBoilerPlate):
         }
         self.index: int = 0
         return
+
+    def get_actor_ids(self) -> list[str]:
+        return [i["actor"]._ray_actor_id.hex() for i in self.pool.values()]
 
     def next(self) -> "ActorHandle":
         """

@@ -3,11 +3,15 @@ import sys
 import pytest
 from ray.util.concurrent.futures.ray_executor import (
     RayExecutor,
+    _ActorPool,
     _RoundRobinActorPool,
     _BalancedActorPool,
     ActorPoolType,
 )
 import time
+import typing as T
+from functools import partial
+
 import ray
 from ray.util.state import list_actors
 from concurrent.futures import (
@@ -30,27 +34,26 @@ class InitializerException(Exception):
     pass
 
 
-def unsafe(exc):
-    raise exc
+class Helpers:
+    @staticmethod
+    def unsafe(exc):
+        raise exc
 
+    @staticmethod
+    def safe(_):
+        pass
 
-def safe(_):
-    pass
+    @staticmethod
+    def get_actor_states(actor_pool: _ActorPool):
 
-
-class TestShared:
-
-    # This class is for tests that do not need to be run with isolated ray instances
-
-    def get_actor_states(self, actor_pool):
-        actor_ids = [i["actor"]._ray_actor_id.hex() for i in actor_pool.pool.values()]
         return [
             actor_state["state"]
             for actor_state in list_actors()
-            if actor_state.actor_id in actor_ids
+            if actor_state.actor_id in actor_pool.get_actor_ids()
         ]
 
-    def get_actor_state(self, actor):
+    @staticmethod
+    def get_actor_state(actor):
         [actor_state] = [
             actor_state["state"]
             for actor_state in list_actors()
@@ -58,9 +61,22 @@ class TestShared:
         ]
         return actor_state
 
-    def wait_actor_state(self, actor_pool, state, timeout=20):
+    @staticmethod
+    def wait_assert(f: T.Callable[[], bool], timeout=5):
+        res = False
         while timeout > 0:
-            states = self.get_actor_states(actor_pool)
+            if f():
+                res = True
+                break
+            else:
+                time.sleep(1)
+                timeout -= 1
+        assert res
+
+    @classmethod
+    def wait_actor_state(cls, actor_pool, state, timeout=20):
+        while timeout > 0:
+            states = cls.get_actor_states(actor_pool)
             if not all(i == state for i in states):
                 time.sleep(1)
                 timeout -= 1
@@ -71,9 +87,10 @@ class TestShared:
         else:
             return True
 
-    def wait_actor_state_(self, actor, expected_state, timeout=20):
+    @classmethod
+    def wait_actor_state_(cls, actor, expected_state, timeout=20):
         while timeout > 0:
-            state = self.get_actor_state(actor)
+            state = cls.get_actor_state(actor)
             if state != expected_state:
                 time.sleep(1)
                 timeout -= 1
@@ -83,6 +100,11 @@ class TestShared:
             return False
         else:
             return True
+
+
+class TestShared:
+
+    # This class is for tests that do not need to be run with isolated ray instances
 
     def test_remote_function_runs_on_specified_instance(self, call_ray_start):
         with RayExecutor(address=call_ray_start) as ex:
@@ -104,6 +126,32 @@ class TestShared:
     def test_balanced_actor_pool_must_have_actor(self):
         with pytest.raises(ValueError):
             _BalancedActorPool(num_actors=0)
+
+    def test_balanced_actor_pool_prioritises_free_actors(self):
+        def f():
+            time.sleep(10)
+            return True
+
+        pool = _BalancedActorPool(num_actors=2)
+        assert len(pool.pool) == 2
+        assert Helpers.wait_actor_state(pool, "ALIVE")
+
+        tasks = sum(pool._get_actor_task_counts().values())
+        assert tasks == 0
+
+        pool.submit(f)
+        Helpers.wait_assert(
+            partial(
+                lambda p: [0, 1] == sorted(p._get_actor_task_counts().values()), pool
+            )
+        )
+
+        pool.submit(f)
+        Helpers.wait_assert(
+            partial(
+                lambda p: [1, 1] == sorted(p._get_actor_task_counts().values()), pool
+            )
+        )
 
     def test_balanced_actor_pool_can_get_task_count(self):
         pool = _BalancedActorPool(num_actors=2)
@@ -131,10 +179,10 @@ class TestShared:
         assert pool.index == 0
 
         # wait for actors to live
-        assert self.wait_actor_state(pool, "ALIVE")
+        assert Helpers.wait_actor_state(pool, "ALIVE")
         pool.kill()
         # wait for actors to die
-        assert self.wait_actor_state(pool, "DEAD")
+        assert Helpers.wait_actor_state(pool, "DEAD")
 
     def test_actor_pool_kills_actors_and_does_not_wait_for_tasks_to_complete(
         self, call_ray_start
@@ -146,7 +194,7 @@ class TestShared:
 
         future = pool.submit(f)
         pool.kill()
-        assert self.wait_actor_state(pool, "DEAD")
+        assert Helpers.wait_actor_state(pool, "DEAD")
         with pytest.raises(RayActorError):
             future.result()
 
@@ -160,7 +208,7 @@ class TestShared:
 
         future = pool.submit(f)
         actor = pool._exit_actor(0)
-        assert self.wait_actor_state_(actor, "DEAD")
+        assert Helpers.wait_actor_state_(actor, "DEAD")
         assert future.result() == 123
 
     def test_round_robin_actor_pool_replaces_expired_actors(self, call_ray_start):
@@ -616,12 +664,12 @@ class TestIsolated:
 
         # ----------------------------
         with ThreadPoolExecutor(
-            max_workers=2, initializer=safe, initargs=(InitializerException,)
+            max_workers=2, initializer=Helpers.safe, initargs=(InitializerException,)
         ) as tpe:
             tpe_iter = tpe.map(f_process1, range(10))
             _ = list(tpe_iter)
         with ThreadPoolExecutor(
-            max_workers=2, initializer=unsafe, initargs=(InitializerException,)
+            max_workers=2, initializer=Helpers.unsafe, initargs=(InitializerException,)
         ) as tpe:
             tpe_iter = tpe.map(f_process1, range(10))
             with pytest.raises(BrokenThreadPool):
@@ -631,7 +679,7 @@ class TestIsolated:
         # ----------------------------
         with RayExecutor(
             max_workers=2,
-            initializer=safe,
+            initializer=Helpers.safe,
             initargs=(InitializerException,),
             runtime_env={"working_dir": "./python/ray/tests/."},
         ) as ex:
@@ -639,7 +687,7 @@ class TestIsolated:
             _ = list(ray_iter)
         with RayExecutor(
             max_workers=2,
-            initializer=unsafe,
+            initializer=Helpers.unsafe,
             initargs=(InitializerException,),
             runtime_env={"working_dir": "./python/ray/tests/."},
         ) as ex:
@@ -652,12 +700,14 @@ class TestIsolated:
 
         with pytest.raises(ValueError):
             with RayExecutor(
-                max_workers=2, initializer=safe, initargs=(InitializerException,)
+                max_workers=2,
+                initializer=Helpers.safe,
+                initargs=(InitializerException,),
             ) as _:
                 pass
         with RayExecutor(
             max_workers=2,
-            initializer=unsafe,
+            initializer=Helpers.unsafe,
             initargs=(InitializerException,),
             runtime_env={"working_dir": "./python/ray/tests/."},
         ) as _:
