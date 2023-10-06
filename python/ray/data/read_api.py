@@ -1782,7 +1782,8 @@ def read_databricks_tables(
     (e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").
 
     This reader is implemented based on
-    [Databricks statement execution API](https://docs.databricks.com/api/workspace/statementexecution).
+    [Databricks statement execution API]
+    (https://docs.databricks.com/api/workspace/statementexecution).
 
     Examples:
     .. testcode::
