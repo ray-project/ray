@@ -58,6 +58,7 @@ swap:
   Googling: search with Google
   grayed-out: unavailable
   HTTPs: HTTPS
+  "[Hh]uggingface": HuggingFace
   in order to: to
   ingest: import|load
   k8s: Kubernetes
