@@ -35,6 +35,8 @@ class RunningTaskInfo:
 
 @dataclass
 class OpRuntimeMetrics:
+    """Runtime metrics for a PhysicalOperator."""
+
     # Object store metrics
     object_store: ObjectStoreMetrics = field(default_factory=ObjectStoreMetrics)
 

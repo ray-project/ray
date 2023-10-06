@@ -363,25 +363,6 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
 
-@dataclass
-class _ObjectStoreMetrics:
-    """Metrics for object store memory allocations."""
-
-    alloc: int
-    freed: int
-    cur: int
-    peak: int
-    spilled: int
-
-    def to_metrics_dict(self) -> Dict[str, int]:
-        return {
-            "obj_store_mem_alloc": self.alloc,
-            "obj_store_mem_freed": self.freed,
-            "obj_store_mem_peak": self.peak,
-            "obj_store_mem_spilled": self.spilled,
-        }
-
-
 def _map_task(
     map_transformer: MapTransformer,
     data_context: DataContext,
