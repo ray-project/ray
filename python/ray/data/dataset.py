@@ -117,6 +117,7 @@ from ray.data.datasource import (
     BlockWritePathProvider,
     Connection,
     CSVDatasource,
+    Datasink,
     Datasource,
     DefaultBlockWritePathProvider,
     ImageDatasource,
@@ -3456,6 +3457,81 @@ class Dataset:
                 raise
             finally:
                 progress.close()
+
+    @ConsumptionAPI(pattern="Time complexity:")
+    def write_datasink(
+        self,
+        datasink: Datasink,
+        *,
+        ray_remote_args: Dict[str, Any] = None,
+        **write_args,
+    ) -> None:
+        """Writes the dataset to a custom :class:`~ray.data.Datasource`.
+
+        For an example of how to use this method, see
+        :ref:`Implementing a Custom Datasource <custom_datasources>`.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            datasource: The :class:`~ray.data.Datasource` to write to.
+            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+            write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
+        """  # noqa: E501
+        if ray_remote_args is None:
+            ray_remote_args = {}
+        path = write_args.get("path", None)
+        if path and _is_local_scheme(path):
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    f"The local scheme paths {path} are not supported in Ray Client."
+                )
+            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
+
+        write_fn = generate_write_fn(datasink, **write_args)
+
+        def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
+            return write_fn(blocks, ctx)
+
+        plan = self._plan.with_stage(
+            OneToOneStage(
+                "Write",
+                write_fn_wrapper,
+                TaskPoolStrategy(),
+                ray_remote_args,
+                fn=lambda x: x,
+            )
+        )
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            write_op = Write(
+                logical_plan.dag,
+                datasink,
+                ray_remote_args=ray_remote_args,
+                **write_args,
+            )
+            logical_plan = LogicalPlan(write_op)
+
+        try:
+            import pandas as pd
+
+            datasink.on_write_start()
+            self._write_ds = Dataset(
+                plan, self._epoch, self._lazy, logical_plan
+            ).materialize()
+            blocks = ray.get(self._write_ds._plan.execute().get_blocks())
+            assert all(
+                isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
+            )
+            write_results = [block["write_result"][0] for block in blocks]
+            datasink.on_write_complete(write_results)
+        except Exception as e:
+            datasink.on_write_failed(e)
+            raise
 
     @ConsumptionAPI(
         delegate=(
