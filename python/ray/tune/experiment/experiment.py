@@ -394,12 +394,6 @@ class Experiment:
         return self.local_path
 
     @property
-    @Deprecated("Replaced by `remote_path`")
-    def remote_checkpoint_dir(self) -> Optional[str]:
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.remote_path
-
-    @property
     def run_identifier(self):
         """Returns a string representing the trainable identifier."""
         return self._run_identifier
