@@ -354,7 +354,6 @@ def read_datasource(
     if force_local:
         (
             requested_parallelism,
-            min_safe_parallelism,
             inmemory_size,
             reader,
         ) = _get_reader(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
@@ -370,7 +369,7 @@ def read_datasource(
             _get_reader, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        (requested_parallelism, min_safe_parallelism, inmemory_size, reader,) = ray.get(
+        (requested_parallelism, inmemory_size, reader,) = ray.get(
             get_reader.remote(
                 datasource,
                 ctx,
@@ -2446,7 +2445,7 @@ def _get_reader(
     parallelism: int,
     local_uri: bool,
     kwargs: dict,
-) -> Tuple[int, int, Optional[int], Reader]:
+) -> Tuple[int, Optional[int], Reader]:
     """Generates reader.
 
     Args:
@@ -2457,8 +2456,8 @@ def _get_reader(
         kwargs: Additional kwargs to pass to the reader.
 
     Returns:
-        Request parallelism from the datasource, the min safe parallelism to avoid
-        OOM, the estimated inmemory data size, and the reader generated.
+        Request parallelism from the datasource, the estimated inmemory data size, and
+        the reader generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     # NOTE: `ParquetDatasource` has separate steps to fetch metadata and sample rows,
@@ -2469,12 +2468,11 @@ def _get_reader(
         kwargs["local_uri"] = local_uri
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
-    requested_parallelism, min_safe_parallelism, mem_size = _autodetect_parallelism(
+    requested_parallelism, mem_size = _autodetect_parallelism(
         parallelism, cur_pg, DataContext.get_current(), reader
     )
     return (
         requested_parallelism,
-        min_safe_parallelism,
         mem_size,
         reader,
     )
