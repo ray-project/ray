@@ -240,6 +240,8 @@ void OpenCensusProtoExporter::ExportViewData(
     addGlobalTagsToGrpcMetric(*request_point_proto);
   }
 
+  RAY_LOG(DEBUG) << "Exproting metrics. request_proto numbers: " << request_proto.metrics_size() << ", request_proto size bytes: " << request_proto.ByteSizeLong();
+
   {
     absl::MutexLock l(&mu_);
     client_->ReportOCMetrics(
