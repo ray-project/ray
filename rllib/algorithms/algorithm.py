@@ -3040,11 +3040,13 @@ class Algorithm(Trainable, AlgorithmBase):
             The results dict from the evaluation call.
         """
         eval_func_to_use = (
-            self._evaluate_async_with_env_runner if (
+            self._evaluate_async_with_env_runner
+            if (
                 self.config.enable_async_evaluation
                 and self.config.env_runner_cls is not RolloutWorker
             )
-            else self._evaluate_async if self.config.enable_async_evaluation
+            else self._evaluate_async
+            if self.config.enable_async_evaluation
             else self.evaluate
         )
 

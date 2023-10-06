@@ -9,10 +9,9 @@ See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
-from collections import defaultdict
 import dataclasses
 import logging
-from typing import Callable, List, Optional, Type, Union, TYPE_CHECKING
+from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 import numpy as np
 import tree
@@ -26,7 +25,6 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -45,9 +43,7 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
     ALL_MODULES,
