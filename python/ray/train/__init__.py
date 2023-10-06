@@ -1,4 +1,18 @@
 # Try import ray[train] core requirements (defined in setup.py)
+# isort: off
+try:
+    import fsspec  # noqa: F401
+    import pandas  # noqa: F401
+    import pyarrow  # noqa: F401
+    import requests  # noqa: F401
+except ImportError as exc:
+    raise ImportError(
+        "Can't import ray.train as some dependencies are missing. "
+        'Run `pip install "ray[train]"` to fix.'
+    ) from exc
+# isort: on
+
+
 from ray._private.usage import usage_lib
 from ray.air.config import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
 from ray.air.result import Result
@@ -12,21 +26,6 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import get_context
 from ray.train.trainer import TrainingIterator
-
-try:
-    import fsspec  # noqa: F401
-    import pandas  # noqa: F401
-    import pyarrow  # noqa: F401
-    import requests  # noqa: F401
-except ImportError as exc:
-    raise ImportError(
-        "Can't import ray.train as some dependencies are missing. "
-        'Run `pip install "ray[train]"` to fix.'
-    ) from exc
-
-
-
-
 
 usage_lib.record_library_usage("train")
 

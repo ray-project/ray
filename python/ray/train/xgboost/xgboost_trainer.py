@@ -16,8 +16,6 @@ except ImportError:
     from distutils.version import LooseVersion as Version
 
 
-
-
 @PublicAPI(stability="beta")
 class XGBoostTrainer(GBDTTrainer):
     """A Trainer for data parallel XGBoost training.

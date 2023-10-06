@@ -17,8 +17,6 @@ except ImportError:
     from distutils.version import LooseVersion as Version
 
 
-
-
 @PublicAPI(stability="beta")
 class LightGBMTrainer(GBDTTrainer):
     """A Trainer for data parallel LightGBM training.

@@ -1,10 +1,10 @@
+# isort: skip_file
+from lightning_exp_tracking_model_dl import DummyModel, dataloader
+
 # __lightning_experiment_tracking_comet_start__
 import os
-
 import pytorch_lightning as pl
-from lightning_exp_tracking_model_dl import DummyModel, dataloader
 from pytorch_lightning.loggers.comet import CometLogger
-
 import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
