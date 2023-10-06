@@ -1,4 +1,4 @@
-# __torch_trainer_base_start__
+# __torch_train_base_start__
 import tempfile
 import torch
 from torchvision.models import resnet18
@@ -57,4 +57,4 @@ scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
 # [5] Launch distributed training job.
 trainer = TorchTrainer(train_func, scaling_config=scaling_config)
 result = trainer.fit()
-# __torch_trainer_base_end__
+# __torch_train_base_end__

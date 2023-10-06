@@ -83,8 +83,8 @@ Compare a PyTorch training script with and without Ray Train.
         .. literalinclude:: ../doc_code/getting_started_pytorch.py
             :emphasize-lines: 10, 11, 13, 18-19, 27-28, 42-43, 45-50
             :language: python
-            :start-after: __torch_trainer_base_start__
-            :end-before: __torch_trainer_base_end__
+            :start-after: __torch_train_base_start__
+            :end-before: __torch_train_base_end__
 
 Set up a training function
 --------------------------
