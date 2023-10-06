@@ -17,7 +17,7 @@ Quickstart
 
 For reference, the final code is as follows:
 
-.. code-block:: python
+.. testcode:: python
 
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
@@ -39,7 +39,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
 
     .. group-tab:: PyTorch Lightning
 
-        .. code-block:: python
+        .. testcode:: python
 
             import torch
             from torchvision.models import resnet18
@@ -83,7 +83,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
 
     .. group-tab:: PyTorch Lightning + Ray Train
 
-        .. code-block:: python
+        .. testcode:: python
             :emphasize-lines: 8-10, 34, 43, 48-50, 52, 53, 55-60
 
             import torch
@@ -154,7 +154,7 @@ Set up a training function
 First, update your training code to support distributed training. 
 Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
-.. code-block:: python
+.. testcode:: python
 
     def train_func(config):
         # Your PyTorch Lightning training code here.
@@ -165,7 +165,7 @@ Each distributed training worker executes this function.
 Ray Train sets up your distributed process group on each worker. You only need to 
 make a few changes to your Lightning Trainer definition.
 
-.. code-block:: diff
+.. testcode:: diff
 
      import pytorch_lightning as pl
     -from pl.strategies import DDPStrategy
@@ -205,7 +205,7 @@ sampler arguments.
 - :class:`~ray.train.lightning.RayDeepSpeedStrategy` 
 
 
-.. code-block:: diff
+.. testcode:: diff
 
      import pytorch_lightning as pl
     -from pl.strategies import DDPStrategy
@@ -229,7 +229,7 @@ as a specification for the Ray Cluster. This utility class configures the worker
 local, global, and node rank and world size.
 
 
-.. code-block:: diff
+.. testcode:: diff
 
      import pytorch_lightning as pl
     -from pl.plugins.environments import LightningEnvironment
@@ -254,7 +254,7 @@ In addition, Ray TorchTrainer has already configured the correct
 GPUs by setting ``devices="auto"`` and ``acelerator="auto"``.
 
 
-.. code-block:: diff
+.. testcode:: diff
 
      import pytorch_lightning as pl
 
@@ -278,7 +278,7 @@ To persist your checkpoints and monitor training progress, add a
 :class:`ray.train.lightning.RayTrainReportCallback` utility callback to your Trainer. 
 
                     
-.. code-block:: diff
+.. testcode:: diff
 
      import pytorch_lightning as pl
      from ray.train.lightning import RayTrainReportCallback
@@ -304,7 +304,7 @@ Finally, pass your Lightning Trainer into
 your configurations. 
 
 
-.. code-block:: diff
+.. testcode:: diff
 
      import pytorch_lightning as pl
      import ray.train.lightning
@@ -324,7 +324,7 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 1. `num_workers` - The number of distributed training worker processes.
 2. `use_gpu` - Whether each worker should use a GPU (or CPU).
 
-.. code-block:: python
+.. testcode:: python
 
     from ray.train import ScalingConfig
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
@@ -338,7 +338,7 @@ Launch a training job
 Tying this all together, you can now launch a distributed training job 
 with a :class:`~ray.train.torch.TorchTrainer`.
 
-.. code-block:: python
+.. testcode:: python
 
     from ray.train.torch import TorchTrainer
 
@@ -353,7 +353,7 @@ Access training results
 After training completes, Ray Train returns a :class:`~ray.train.Result` object, which contains
 information about the training run, including the metrics and checkpoints reported during training.
 
-.. code-block:: python
+.. testcode:: python
 
     result.metrics     # The metrics reported during training.
     result.checkpoint  # The latest checkpoint reported during training.
@@ -404,7 +404,7 @@ control over their native Lightning code.
     .. group-tab:: (Deprecating) LightningTrainer
 
 
-        .. code-block:: python
+        .. testcode:: python
             
             from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 
@@ -445,7 +445,7 @@ control over their native Lightning code.
 
     .. group-tab:: (New API) TorchTrainer
 
-        .. code-block:: python
+        .. testcode:: python
             
             import pytorch_lightning as pl
             from ray.train.torch import TorchTrainer

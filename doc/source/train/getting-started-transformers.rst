@@ -16,7 +16,7 @@ Quickstart
 
 For reference, the final code follows:
 
-.. code-block:: python
+.. testcode:: python
 
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
@@ -38,7 +38,7 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
 
     .. group-tab:: Hugging Face Transformers
 
-        .. code-block:: python
+        .. testcode:: python
 
             # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
 
@@ -95,7 +95,7 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
 
     .. group-tab:: Hugging Face Transformers + Ray Train
 
-        .. code-block:: python
+        .. testcode:: python
             :emphasize-lines: 11-13, 15-18, 55-72
 
             import numpy as np
@@ -178,7 +178,7 @@ Set up a training function
 First, update your training code to support distributed training. 
 You can begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
-.. code-block:: python
+.. testcode:: python
 
     def train_func(config):
         # Your Transformers training code here.
@@ -203,7 +203,7 @@ To persist your checkpoints and monitor training progress, add a
 :class:`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Trainer. 
 
 
-.. code-block:: diff
+.. testcode:: diff
 
      import transformers
      from ray.train.huggingface.transformers import RayTrainReportCallback
@@ -227,7 +227,7 @@ Finally, pass your Transformers Trainer into
 your configurations and enable Ray Data Integration. 
 
 
-.. code-block:: diff
+.. testcode:: diff
 
      import transformers
      import ray.train.huggingface.transformers
@@ -248,7 +248,7 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 1. `num_workers` - The number of distributed training worker processes.
 2. `use_gpu` - Whether each worker should use a GPU (or CPU).
 
-.. code-block:: python
+.. testcode:: python
 
     from ray.train import ScalingConfig
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
@@ -262,7 +262,7 @@ Launch a training job
 Tying this all together, you can now launch a distributed training job 
 with a :class:`~ray.train.torch.TorchTrainer`.
 
-.. code-block:: python
+.. testcode:: python
 
     from ray.train.torch import TorchTrainer
 
@@ -277,7 +277,7 @@ Access training results
 After training completes, a :class:`~ray.train.Result` object is returned which contains
 information about the training run, including the metrics and checkpoints reported during training.
 
-.. code-block:: python
+.. testcode:: python
 
     result.metrics     # The metrics reported during training.
     result.checkpoint  # The latest checkpoint reported during training.
@@ -315,7 +315,7 @@ native Transformers training code.
     .. group-tab:: (Deprecating) TransformersTrainer
 
 
-        .. code-block:: python
+        .. testcode:: python
             
             import transformers
             from transformers import AutoConfig, AutoModelForCausalLM
@@ -368,7 +368,7 @@ native Transformers training code.
 
     .. group-tab:: (New API) TorchTrainer
 
-        .. code-block:: python
+        .. testcode:: python
             
             import transformers
             from transformers import AutoConfig, AutoModelForCausalLM
