@@ -427,3 +427,55 @@ with checkpoint.as_directory() as checkpoint_dir:
 checkpoint_dir = checkpoint.to_directory()
 assert Path(checkpoint_dir).joinpath("model.pt").exists()
 # __inspect_checkpoint_example_end__
+
+# __inspect_transformers_checkpoint_example_start__
+import ray.train
+import transformers
+
+
+def train_func(config):
+    ...
+    hf_trainer = transformers.Trainer(...)
+
+    # Use Ray Train default report callback
+    callback = ray.train.huggingface.transformers.RayTrainReportCallback()
+    hf_trainer.add_callback(callback)
+
+    ...
+    hf_trainer.train()
+
+
+# Kick-off training
+ray_trainer = ray.train.TorchTrainer(train_func, ...)
+result = ray_trainer.fit()
+
+# After training finished
+checkpoint = result.checkpoint
+with checkpoint.as_directory() as checkpoint_dir:
+    hf_checkpoint_path = f"{checkpoint_dir}/checkpoint"
+# __inspect_transformers_checkpoint_example_end__
+
+# __inspect_lightning_checkpoint_example_start__
+import pytorch_lightning as pl
+from ray.train.lightning import RayTrainReportCallback
+
+
+def train_func(config):
+    ...
+    trainer = pl.Trainer(
+        ...,
+        # Use Ray Train default report callback
+        callbacks=[RayTrainReportCallback()],
+    )
+    trainer.fit()
+
+
+# Kick-off training
+ray_trainer = ray.train.TorchTrainer(train_func, ...)
+result = ray_trainer.fit()
+
+# After training finished
+checkpoint = result.checkpoint
+with checkpoint.as_directory() as checkpoint_dir:
+    lightning_checkpoint_path = f"{checkpoint_dir}/checkpoint.ckpt"
+# __inspect_lightning_checkpoint_example_end__
