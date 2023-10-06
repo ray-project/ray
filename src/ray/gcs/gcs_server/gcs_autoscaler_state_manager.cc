@@ -135,15 +135,17 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
   // Iterate through each placement group load.
   for (const auto &pg_data : placement_group_load->placement_group_data()) {
     auto gang_resource_req = state->add_pending_gang_resource_requests();
+    auto pg_state = pg_data.state();
+    auto pg_id = PlacementGroupID::FromBinary(pg_data.placement_group_id());
     // For each placement group, if it's not pending/rescheduling, skip it since.
     // it's not part of the load.
-    RAY_CHECK(pg_data.state() == rpc::PlacementGroupTableData::PENDING ||
-              pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING)
-        << "Placement group load should only include pending/rescheduling PGs. ";
+    if (pg_state != rpc::PlacementGroupTableData::PENDING &&
+        pg_state != rpc::PlacementGroupTableData::RESCHEDULING) {
+      continue;
+    }
 
-    const auto pg_constraint = GenPlacementConstraintForPlacementGroup(
-        PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex(),
-        pg_data.strategy());
+    const auto pg_constraint =
+        GenPlacementConstraintForPlacementGroup(pg_id.Hex(), pg_data.strategy());
 
     // Add the strategy as detail info for the gang resource request.
     gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
@@ -154,7 +156,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         // We will be skipping **placed** bundle (which has node id associated with it).
         // This is to avoid double counting the bundles that are already placed when
         // reporting PG related load.
-        RAY_CHECK(pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING);
+        RAY_CHECK(pg_state == rpc::PlacementGroupTableData::RESCHEDULING);
         // NOTE: This bundle is placed in a PG, this must be a bundle that was lost due
         // to node crashed.
         continue;
@@ -218,7 +220,10 @@ void GcsAutoscalerStateManager::GetNodeStates(
       return;
     }
 
-    // THe node is alive. We need to check if the node is idle.
+    node_state_proto->mutable_node_activity()->CopyFrom(
+        gcs_node_info.state_snapshot().node_activity());
+
+    // The node is alive. We need to check if the node is idle.
     auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
         scheduling::NodeID(node_state_proto->node_id()));
     if (node_resource_data.is_draining) {

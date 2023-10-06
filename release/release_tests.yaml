@@ -1037,21 +1037,22 @@
   team: ml
   cluster:
     byod:
-      type: gpu
+      type: cu121
+      # This needs to be in sync with requirements under go/llm-forge.
+      post_build_script: byod_finetune_llvms.sh
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
-    timeout: 600
+    timeout: 1000
     script: chmod +x ./run_llama_ft.sh && RAY_AIR_NEW_PERSISTENCE_MODE=1 ./run_llama_ft.sh --size=7b --as-test
 
   variations:
       - __suffix__: aws
-      # TODO (Kourosh): Enable once GCE is ready
-      # - __suffix__: gce
-      #   env: gce
-      #   frequency: manual
-      #   cluster:
-      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
+      - __suffix__: gce
+        env: gce
+        frequency: manual
+        cluster:
+          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
 
 
 
@@ -3250,59 +3251,6 @@
         cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
 
 
-- name: serve_micro_protocol_grpc_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_protocol_benchmark.py --data-size=1048576
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_gce.yaml
-
-- name: serve_micro_protocol_http_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_protocol_benchmark.py --data-size=1048576 --http-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_gce.yaml
-
-
 - name: serve_resnet_benchmark
   group: Serve tests
   working_dir: serve_tests
@@ -3363,6 +3311,37 @@
         cluster_compute: compute_tpl_gce.yaml
 
   alert: default
+
+
+- name: train_multinode_persistence
+  group: Train tests
+  working_dir: train_tests/e2e
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      post_build_script: byod_train_persistence_test.sh
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 3000
+    script: pytest -v test_persistence.py -s
+
+    wait_for_nodes:
+      num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce.yaml
+
+  alert: default
+
 
 ########################
 # Alpa tests
@@ -5724,6 +5703,30 @@
       cluster:
         cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
+- name: stable_diffusion_benchmark
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: stable_diffusion_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python stable_diffusion_benchmark.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: stable_diffusion_benchmark_compute_gce.yaml
+
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -5904,30 +5907,6 @@
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
-- name: read_preprocessed_images_comparison_microbenchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: bash run_preprocessed_image_loader_microbenchmark.sh
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
 - name: read_images_train_4_gpu
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -5941,7 +5920,7 @@
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 1800
+    timeout: 3600
     script: python multi_node_train_benchmark.py --num-workers 4 --file-type image
 
   variations:
@@ -5962,10 +5941,10 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+    cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 1800
+    timeout: 4800
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image
 
   variations:
@@ -5986,10 +5965,10 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+    cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 1800
+    timeout: 7200
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order
 
   variations:
@@ -6010,11 +5989,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+    cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 1800
-    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet
+    timeout: 3600
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet --target-worker-gb 50
 
   variations:
     - __suffix__: aws
@@ -6034,11 +6013,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+    cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 1800
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet
+    timeout: 4800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet --target-worker-gb 50
 
   variations:
     - __suffix__: aws
@@ -6828,8 +6807,8 @@
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
-    timeout: 3600
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20
+    timeout: 4800
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30
 
 - name: gcp_cluster_launcher_latest_image
   group: cluster-launcher-test
@@ -6885,3 +6864,26 @@
   run:
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
+
+
+- name: autoscaler_aws
+  group: autoscaler-test
+  working_dir: autoscaling_tests
+
+  stable: False
+
+  frequency: nightly
+  team: core 
+
+  cluster:
+    # leave oom disabled as test is marked unstable at the moment.
+    byod:
+      runtime_env:
+        - RAY_memory_monitor_refresh_ms=0
+      pip:
+        - ray[default]
+    cluster_compute: aws.yaml 
+
+  run:
+    timeout: 1800
+    script: python run.py 

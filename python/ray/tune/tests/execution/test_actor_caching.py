@@ -8,7 +8,7 @@ from ray.tune.tests.execution.utils import create_execution_test_objects, Testin
 
 def test_actor_cached(tmpdir):
     tune_controller, actor_manger, resource_manager = create_execution_test_objects(
-        tmpdir, max_pending_trials=8
+        max_pending_trials=8
     )
 
     assert not actor_manger.added_actors
@@ -37,7 +37,7 @@ def test_actor_reuse_unstaged(tmpdir):
     lead to errors in those cases.
     """
     tune_controller, actor_manger, resource_manager = create_execution_test_objects(
-        tmpdir, max_pending_trials=1
+        max_pending_trials=1
     )
     tune_controller._reuse_actors = True
 

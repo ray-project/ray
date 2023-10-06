@@ -1,12 +1,14 @@
 import pytest
 
 import ray
-from ray.exceptions import RayError
-from ray._private.test_utils import wait_for_condition
 from ray import serve
+from ray._private.test_utils import wait_for_condition
+from ray.exceptions import RayError
 from ray.serve._private.common import DeploymentStatus
-from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+    SERVE_DEFAULT_APP_NAME,
+)
 
 
 class Counter:

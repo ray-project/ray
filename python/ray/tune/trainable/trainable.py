@@ -16,7 +16,6 @@ import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
-from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
 from ray.air.constants import (
     TIMESTAMP,
     TIME_THIS_ITER_S,
@@ -59,7 +58,7 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.train._internal.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.logger import Logger
@@ -223,18 +222,16 @@ class Trainable:
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
 
+    # TODO(justinvyu): [code_removal]
     @property
     def uses_cloud_checkpointing(self):
-        return bool(self.remote_checkpoint_dir)
+        raise DeprecationWarning
 
+    # TODO(justinvyu): [code_removal]
     def _remote_storage_path(self, local_path):
         """Converts a `local_path` to be based off of
         `self.remote_checkpoint_dir`."""
-        return TrainableUtil.get_remote_storage_path(
-            local_path=local_path,
-            local_path_prefix=self.logdir,
-            remote_path_prefix=self.remote_checkpoint_dir,
-        )
+        raise DeprecationWarning
 
     @classmethod
     def default_resource_request(
@@ -495,6 +492,7 @@ class Trainable:
         )
         return checkpoint_dir
 
+    @DeveloperAPI
     def save(
         self, checkpoint_dir: Optional[str] = None, prevent_upload: bool = False
     ) -> str:
@@ -545,13 +543,14 @@ class Trainable:
                 metrics = self._last_result.copy() if self._last_result else {}
 
                 if self._storage:
+                    # The checkpoint index is updated with the current result.
+                    # NOTE: This is no longer using "iteration" as the folder indexing
+                    # to be consistent with fn trainables.
+                    self._storage._update_checkpoint_index(metrics)
+
                     persisted_checkpoint = self._storage.persist_current_checkpoint(
                         local_checkpoint
                     )
-                    # The checkpoint index needs to be incremented.
-                    # NOTE: This is no longer using "iteration" as the folder indexing
-                    # to be consistent with fn trainables.
-                    self._storage.current_checkpoint_index += 1
 
                     checkpoint_result = _TrainingResult(
                         checkpoint=persisted_checkpoint, metrics=metrics
@@ -871,6 +870,7 @@ class Trainable:
 
         return True
 
+    @Deprecated
     def save_to_object(self):
         raise DeprecationWarning(
             "Trainable.save_to_object() has been removed. "
@@ -884,6 +884,7 @@ class Trainable:
                 checkpoint_node_ip=None,
             )
 
+    @DeveloperAPI
     def restore(
         self,
         checkpoint_path: Union[str, Checkpoint],
@@ -978,9 +979,7 @@ class Trainable:
 
             self._restored = True
 
-            logger.info(
-                f"Restored on {self._local_ip} from checkpoint: " f"{checkpoint}"
-            )
+            logger.info(f"Restored on {self._local_ip} from checkpoint: {checkpoint}")
             return True
 
         # Ensure Checkpoints are converted
@@ -1034,9 +1033,6 @@ class Trainable:
             checkpoint_dict = self._checkpoint_cls.from_directory(
                 checkpoint_dir
             ).to_dict()
-            # If other files were added to the directory after converting from the
-            # original dict (e.g. marker files), clean these up
-            checkpoint_dict.pop(_DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, None)
             to_load = checkpoint_dict
         else:
             # Otherwise, pass the relative checkpoint path
@@ -1072,12 +1068,14 @@ class Trainable:
         }
         logger.info("Current state after restoring: %s", state)
 
+    @Deprecated
     def restore_from_object(self, obj):
         raise DeprecationWarning(
             "Trainable.restore_from_object() has been removed. "
             "Use Trainable.restore() instead."
         )
 
+    @Deprecated
     def delete_checkpoint(self, checkpoint_path: Union[str, Checkpoint]):
         """Deletes local copy of checkpoint.
 
@@ -1142,20 +1140,11 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(
-        self, new_config, logger_creator=None, remote_checkpoint_dir=None, storage=None
-    ):
+    def reset(self, new_config, logger_creator=None, storage=None):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
-
-        # TODO(justinvyu): remote_checkpoint_dir can be removed.
-        # Save artifacts one last time, if this actor has been swapped to a
-        # different trial.
-        if remote_checkpoint_dir != self.remote_checkpoint_dir:
-            self._maybe_save_artifacts_to_cloud()
-
         self.config = new_config
 
         self._storage = storage
@@ -1195,7 +1184,6 @@ class Trainable:
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
-        self.remote_checkpoint_dir = remote_checkpoint_dir
         self._last_artifact_sync_iter = None
         self._restored = False
 

@@ -1,18 +1,16 @@
 import math
-import pytest
-import pandas as pd
 
 import lightgbm as lgbm
+import pandas as pd
+import pytest
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
 
 import ray
 from ray import tune
-from ray.train.constants import TRAIN_DATASET_KEY
-
-from ray.train.lightgbm import LightGBMTrainer
 from ray.train import ScalingConfig
-
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
+from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.lightgbm import LightGBMTrainer
 
 
 @pytest.fixture
@@ -198,8 +196,17 @@ def test_default_parameters_scaling_config():
     assert trainer._ray_params.cpus_per_actor == 4
 
 
+def test_lightgbm_trainer_resources():
+    """`trainer_resources` is not allowed in the scaling config"""
+    with pytest.raises(ValueError):
+        LightGBMTrainer._validate_scaling_config(
+            ScalingConfig(trainer_resources={"something": 1})
+        )
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

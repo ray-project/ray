@@ -95,5 +95,3 @@ You can find more application patterns and examples in the following resources
 from other Ray libraries built on top of Ray DAG API with the same mechanism.
 
 | `Visualization of DAGs <https://docs.ray.io/en/master/serve/model_composition.html#visualizing-the-graph>`_
-| `DAG Cookbook and patterns <https://docs.ray.io/en/master/serve/tutorials/deployment-graph-patterns.html>`_
-| `Serve Deployment Graph's original REP <https://github.com/ray-project/enhancements/blob/main/reps/2022-03-08-serve_pipeline.md>`_

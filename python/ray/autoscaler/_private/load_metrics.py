@@ -266,6 +266,8 @@ class LoadMetrics:
         out = "{} CPUs".format(int(total_resources.get("CPU", 0)))
         if "GPU" in total_resources:
             out += ", {} GPUs".format(int(total_resources["GPU"]))
+        if "TPU" in total_resources:
+            out += ", {} TPUs".format(int(total_resources["TPU"]))
         return out
 
     def summary(self):

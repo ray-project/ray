@@ -24,9 +24,10 @@ Deploy the KubeRay operator with the [Helm chart repository](https://github.com/
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
 
-# Install both CRDs and KubeRay operator v0.6.0.
-helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
+# Install both CRDs and KubeRay operator v1.0.0-rc.0.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.0
 
 # Confirm that the operator is running in the namespace `default`.
 kubectl get pods
@@ -42,7 +43,7 @@ Once the KubeRay operator is running, we are ready to deploy a RayCluster. To do
 
 ```sh
 # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-helm install raycluster kuberay/ray-cluster --version 0.6.0
+helm install raycluster kuberay/ray-cluster --version 1.0.0-rc.0
 
 # Once the RayCluster CR has been created, you can view it by running:
 kubectl get rayclusters
