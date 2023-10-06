@@ -646,7 +646,7 @@ def test_unhealthy_retry_correct_number_of_times():
 
     wait_for_condition(
         condition_predictor=proxy_state_consecutive_health_check_failures,
-        num_failures=3
+        num_failures=3,
     )
 
     assert proxy_state.status == ProxyStatus.UNHEALTHY
