@@ -28,24 +28,19 @@ class Postprocessing:
 
 
 @DeveloperAPI
-def postprocess_episodes_to_sample_batch(samples: List[List[_Episode]]) -> SampleBatch:
-    """Converts the result from sampling with `EnvRunner` to a `SampleBatch'.
+def postprocess_episodes_to_sample_batch(episodes: List[_Episode]) -> SampleBatch:
+    """Converts the results from sampling with an `EnvRunner` to one `SampleBatch'.
 
     Once the `SampleBatch` will be deprecated this function will be
     deprecated, too.
     """
     batches = []
-    for sample in samples:
-        for episode in sample:
-            batches.append(episode.to_sample_batch())
+    for episode in episodes:
+        batches.append(episode.to_sample_batch())
 
     batch = concat_samples(batches)
 
-    # This is right now the default to work on sample batches without
-    # infos.
-    del batch[SampleBatch.INFOS]
-
-    # Return the ' SampleBatch'.
+    # Return the SampleBatch.
     return batch
 
 
