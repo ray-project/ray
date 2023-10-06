@@ -339,47 +339,13 @@ def read_datasource(
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
-    force_local = False
     cur_pg = ray.util.get_current_placement_group()
-    pa_ds = _lazy_import_pyarrow_dataset()
-    if pa_ds:
-        partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
-        if isinstance(partitioning, pa_ds.Partitioning):
-            logger.info(
-                "Forcing local metadata resolution since the provided partitioning "
-                f"{partitioning} is not serializable."
-            )
-            force_local = True
-
-    if force_local:
-        (
-            requested_parallelism,
-            min_safe_parallelism,
-            inmemory_size,
-            reader,
-        ) = _get_reader(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
-    else:
-        # Prepare read in a remote task at same node.
-        # NOTE: in Ray client mode, this is expected to be run on head node.
-        # So we aren't attempting metadata resolution from the client machine.
-        scheduling_strategy = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
-        get_reader = cached_remote_fn(
-            _get_reader, retry_exceptions=False, num_cpus=0
-        ).options(scheduling_strategy=scheduling_strategy)
-
-        (requested_parallelism, min_safe_parallelism, inmemory_size, reader,) = ray.get(
-            get_reader.remote(
-                datasource,
-                ctx,
-                cur_pg,
-                parallelism,
-                local_uri,
-                _wrap_arrow_serialization_workaround(read_args),
-            )
-        )
+    (
+        requested_parallelism,
+        min_safe_parallelism,
+        inmemory_size,
+        reader,
+    ) = _get_reader(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
 
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
