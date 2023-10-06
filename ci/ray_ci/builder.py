@@ -18,13 +18,13 @@ from ci.ray_ci.utils import logger, docker_login
 )
 @click.option(
     "--python-version",
-    default="py38",
+    default="3.8",
     type=click.Choice(list(PYTHON_VERSIONS.keys())),
     help=("Python version to build the wheel with"),
 )
 @click.option(
     "--platform",
-    default="cu118",
+    default="cu11.8.0",
     type=click.Choice(list(PLATFORM)),
     help=("Platform to build the docker with"),
 )

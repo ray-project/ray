@@ -16,7 +16,6 @@ import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
-from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
 from ray.air.constants import (
     TIMESTAMP,
     TIME_THIS_ITER_S,
@@ -223,18 +222,16 @@ class Trainable:
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
 
+    # TODO(justinvyu): [code_removal]
     @property
     def uses_cloud_checkpointing(self):
-        return bool(self.remote_checkpoint_dir)
+        raise DeprecationWarning
 
+    # TODO(justinvyu): [code_removal]
     def _remote_storage_path(self, local_path):
         """Converts a `local_path` to be based off of
         `self.remote_checkpoint_dir`."""
-        return TrainableUtil.get_remote_storage_path(
-            local_path=local_path,
-            local_path_prefix=self.logdir,
-            remote_path_prefix=self.remote_checkpoint_dir,
-        )
+        raise DeprecationWarning
 
     @classmethod
     def default_resource_request(
@@ -1036,9 +1033,6 @@ class Trainable:
             checkpoint_dict = self._checkpoint_cls.from_directory(
                 checkpoint_dir
             ).to_dict()
-            # If other files were added to the directory after converting from the
-            # original dict (e.g. marker files), clean these up
-            checkpoint_dict.pop(_DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, None)
             to_load = checkpoint_dict
         else:
             # Otherwise, pass the relative checkpoint path
@@ -1146,20 +1140,11 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(
-        self, new_config, logger_creator=None, remote_checkpoint_dir=None, storage=None
-    ):
+    def reset(self, new_config, logger_creator=None, storage=None):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
-
-        # TODO(justinvyu): remote_checkpoint_dir can be removed.
-        # Save artifacts one last time, if this actor has been swapped to a
-        # different trial.
-        if remote_checkpoint_dir != self.remote_checkpoint_dir:
-            self._maybe_save_artifacts_to_cloud()
-
         self.config = new_config
 
         self._storage = storage
@@ -1199,7 +1184,6 @@ class Trainable:
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
-        self.remote_checkpoint_dir = remote_checkpoint_dir
         self._last_artifact_sync_iter = None
         self._restored = False
 

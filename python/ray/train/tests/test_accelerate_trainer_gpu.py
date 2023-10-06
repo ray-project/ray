@@ -1,16 +1,16 @@
 import os
-import pytest
-import torch
 from tempfile import TemporaryDirectory
 
-import ray
+import pytest
+import torch
 import torch.nn as nn
-from ray.train.examples.pytorch.torch_linear_example import LinearDataset
-from ray.train import ScalingConfig
-import ray.train as train
-from ray.train import Checkpoint
-from ray.train.huggingface import AccelerateTrainer
 from accelerate import Accelerator
+
+import ray
+import ray.train as train
+from ray.train import Checkpoint, ScalingConfig
+from ray.train.examples.pytorch.torch_linear_example import LinearDataset
+from ray.train.huggingface import AccelerateTrainer
 
 ACCELERATE_CONFIG_CPU = """compute_environment: LOCAL_MACHINE
 deepspeed_config: {}
