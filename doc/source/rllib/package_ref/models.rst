@@ -11,6 +11,7 @@ Base Model classes
 -------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~modelv2.ModelV2
@@ -20,6 +21,7 @@ Base Model classes
 Feed Forward methods
 ---------------------
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~modelv2.ModelV2.forward
@@ -29,6 +31,7 @@ Feed Forward methods
 Recurrent Models API
 ---------------------
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~modelv2.ModelV2.get_initial_state
@@ -37,6 +40,7 @@ Recurrent Models API
 Acessing variables
 ---------------------
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~modelv2.ModelV2.variables
@@ -45,6 +49,7 @@ Acessing variables
 Customization
 --------------
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~modelv2.ModelV2.custom_loss

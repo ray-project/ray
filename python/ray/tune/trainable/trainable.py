@@ -16,7 +16,6 @@ import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
-from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
 from ray.air.constants import (
     TIMESTAMP,
     TIME_THIS_ITER_S,
@@ -546,13 +545,14 @@ class Trainable:
                 metrics = self._last_result.copy() if self._last_result else {}
 
                 if self._storage:
+                    # The checkpoint index is updated with the current result.
+                    # NOTE: This is no longer using "iteration" as the folder indexing
+                    # to be consistent with fn trainables.
+                    self._storage._update_checkpoint_index(metrics)
+
                     persisted_checkpoint = self._storage.persist_current_checkpoint(
                         local_checkpoint
                     )
-                    # The checkpoint index needs to be incremented.
-                    # NOTE: This is no longer using "iteration" as the folder indexing
-                    # to be consistent with fn trainables.
-                    self._storage.current_checkpoint_index += 1
 
                     checkpoint_result = _TrainingResult(
                         checkpoint=persisted_checkpoint, metrics=metrics
@@ -981,9 +981,7 @@ class Trainable:
 
             self._restored = True
 
-            logger.info(
-                f"Restored on {self._local_ip} from checkpoint: " f"{checkpoint}"
-            )
+            logger.info(f"Restored on {self._local_ip} from checkpoint: {checkpoint}")
             return True
 
         # Ensure Checkpoints are converted
@@ -1037,9 +1035,6 @@ class Trainable:
             checkpoint_dict = self._checkpoint_cls.from_directory(
                 checkpoint_dir
             ).to_dict()
-            # If other files were added to the directory after converting from the
-            # original dict (e.g. marker files), clean these up
-            checkpoint_dict.pop(_DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, None)
             to_load = checkpoint_dict
         else:
             # Otherwise, pass the relative checkpoint path

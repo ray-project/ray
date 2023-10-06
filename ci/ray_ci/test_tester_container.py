@@ -51,6 +51,23 @@ def test_run_script_in_docker() -> None:
         container.run_script_with_output(["run command"])
 
 
+def test_skip_ray_installation() -> None:
+    install_ray_called = []
+
+    def _mock_install_ray() -> None:
+        install_ray_called.append(True)
+
+    with mock.patch(
+        "ci.ray_ci.tester_container.TesterContainer.install_ray",
+        side_effect=_mock_install_ray,
+    ):
+        assert len(install_ray_called) == 0
+        TesterContainer("team", skip_ray_installation=False)
+        assert len(install_ray_called) == 1
+        TesterContainer("team", skip_ray_installation=True)
+        assert len(install_ray_called) == 1
+
+
 def test_run_tests() -> None:
     def _mock_run_tests_in_docker(
         test_targets: List[str],
@@ -70,14 +87,14 @@ def test_run_tests() -> None:
         "ci.ray_ci.tester_container.TesterContainer.install_ray",
         return_value=None,
     ):
-        container = TesterContainer("team")
+        container = TesterContainer("team", shard_count=2, shard_ids=[0, 1])
         # test_targets are not empty
-        assert container.run_tests(["t1", "t2"], [], 2)
+        assert container.run_tests(["t1", "t2"], [])
         # test_targets is empty after chunking, but not creating popen
-        assert container.run_tests(["t1"], [], 2)
-        assert container.run_tests([], [], 2)
+        assert container.run_tests(["t1"], [])
+        assert container.run_tests([], [])
         # test targets contain bad_test
-        assert not container.run_tests(["bad_test"], [], 2)
+        assert not container.run_tests(["bad_test"], [])
 
 
 if __name__ == "__main__":

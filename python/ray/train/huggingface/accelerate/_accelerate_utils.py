@@ -16,21 +16,15 @@
 
 import logging
 import os
-from argparse import Namespace
-from typing import Optional, Tuple, Union
 import tempfile
-from pathlib import Path
-from packaging.version import Version
-
+from argparse import Namespace
 from contextlib import nullcontext
+from pathlib import Path
+from typing import Optional, Tuple, Union
 
 import accelerate
-
-if Version(accelerate.__version__) < Version("0.17.0.dev0"):
-    raise ImportError(
-        f"AccelerateTrainer requires accelerate>=0.17.0, got {accelerate.__version__}"
-    )
-
+from accelerate.commands.config import default_config_file, load_config_from_file
+from accelerate.commands.config.config_args import ClusterConfig
 from accelerate.commands.launch import (
     ComputeEnvironment,
     _validate_launch_command,
@@ -40,8 +34,13 @@ from accelerate.commands.launch import (
     prepare_simple_launcher_cmd_env,
 )
 from accelerate.utils import is_deepspeed_available
-from accelerate.commands.config import default_config_file, load_config_from_file
-from accelerate.commands.config.config_args import ClusterConfig
+from packaging.version import Version
+
+if Version(accelerate.__version__) < Version("0.17.0.dev0"):
+    raise ImportError(
+        f"AccelerateTrainer requires accelerate>=0.17.0, got {accelerate.__version__}"
+    )
+
 
 logger = logging.getLogger(__name__)
 

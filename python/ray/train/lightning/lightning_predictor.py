@@ -1,11 +1,12 @@
 import logging
 from typing import Optional, Type
 
+import pytorch_lightning as pl
+
 from ray.data.preprocessor import Preprocessor
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.util.annotations import PublicAPI
-import pytorch_lightning as pl
 
 logger = logging.getLogger(__name__)
 

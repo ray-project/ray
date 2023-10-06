@@ -48,7 +48,7 @@ public class ReplicaSetTest {
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
-
+      String appName = "app1";
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
@@ -58,7 +58,9 @@ public class ReplicaSetTest {
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs =
-          new Object[] {deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
+          new Object[] {
+            deploymentName, replicaTag, controllerName, new Object(), new HashMap<>(), appName
+          };
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()

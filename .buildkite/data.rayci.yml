@@ -2,7 +2,7 @@ group: data tests
 steps:
   - label: ":database: data: arrow 6 tests"
     instance_type: medium
-    parallelism: 3
+    parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
@@ -15,7 +15,7 @@ steps:
 
   - label: ":database: data: arrow 12 tests"
     instance_type: medium
-    parallelism: 3
+    parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
@@ -28,7 +28,7 @@ steps:
 
   - label: ":database: data: arrow nightly tests"
     instance_type: medium
-    parallelism: 3
+    parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
@@ -37,19 +37,6 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: datanbuild
-    job_env: forge
-
-  - label: ":database: data: bulk executor tests"
-    instance_type: medium
-    parallelism: 3
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
-        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name databbuild
-        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
-        --except-tags data_integration,doctest
-    depends_on: databbuild
     job_env: forge
 
   - label: ":database: data: flaky tests"

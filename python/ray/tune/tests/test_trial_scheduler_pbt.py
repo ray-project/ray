@@ -16,7 +16,6 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import cloudpickle, train, tune
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
 from ray.train import Checkpoint
 from ray.tune import Trainable, Callback
@@ -570,11 +569,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         class MockTrial(Trial):
             @property
             def checkpoint(self):
-                return _TrackedCheckpoint(
-                    dir_or_data={"data": "None"},
-                    storage_mode=CheckpointStorage.MEMORY,
-                    metrics={},
-                )
+                return Checkpoint.from_directory("dummy")
 
             @property
             def status(self):
