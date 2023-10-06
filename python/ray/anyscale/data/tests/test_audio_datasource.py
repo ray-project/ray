@@ -17,7 +17,9 @@ def audio_uri():
     ]
 
 
-def _verify_audio_ds(ds, expected_num_channels):
+def test_audio_datasource(ray_start_regular_shared, audio_uri):
+    ds = ray.data.read_datasource(AudioDatasource(), paths=audio_uri)
+
     # Verify basic audio properties
     assert ds.count() == NUM_AUDIO_FILES, ds.count()
     assert ds.schema().names == ["amplitude"], ds.schema()
@@ -30,24 +32,7 @@ def _verify_audio_ds(ds, expected_num_channels):
     # # Try a map_batches() (select_columns()) and take_all() on the dataset
     audio_data = ds.select_columns(["amplitude"]).take_all()
     for a in audio_data:
-        assert a["amplitude"].shape[0] == expected_num_channels
-
-
-def test_audio_datasource(ray_start_regular_shared, audio_uri):
-    ds = ray.data.read_datasource(AudioDatasource(), paths=audio_uri)
-    _verify_audio_ds(ds, 1)
-
-
-def test_audio_datasource_custom_sample_rate(ray_start_regular_shared, audio_uri):
-    # Custom sample rate of 48k hertz, common in modern video
-    ds = ray.data.read_datasource(AudioDatasource(), paths=audio_uri, sample_rate=48000)
-    _verify_audio_ds(ds, 1)
-
-
-def test_audio_datasource_mono_audio(ray_start_regular_shared, audio_uri):
-    # Mono audio
-    ds = ray.data.read_datasource(AudioDatasource(), paths=audio_uri, mono_audio=True)
-    _verify_audio_ds(ds, 1)
+        assert a["amplitude"].shape[0] == 1
 
 
 if __name__ == "__main__":

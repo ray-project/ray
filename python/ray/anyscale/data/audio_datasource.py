@@ -1,3 +1,4 @@
+import io
 from typing import TYPE_CHECKING, Iterator
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -19,19 +20,17 @@ class AudioDatasource(FileBasedDatasource):
         path: str,
         **reader_args,
     ) -> Iterator[Block]:
-        """Args parsed from `reader_args`:
-        - `sample_rate`: Sample rate for reading audio
-        - `mono_audio`: If true, use mono signal; if false, use original layout
-        """
-        from decord import AudioReader
+        import soundfile
 
-        sample_rate = reader_args.get(
-            "sample_rate", AudioDatasource.DEFAULT_SAMPLE_RATE
-        )
-        mono_audio = reader_args.get("mono_audio", False)
-        reader = AudioReader(f, sample_rate=sample_rate, mono=mono_audio)
+        # `soundfile` doesn't support reading from a `pyarrow.NativeFile` directly, so
+        # we need to read the file into memory first.
+        stream = io.BytesIO(f.read())
+        amplitude, _ = soundfile.read(stream, always_2d=True, dtype="float32")
 
-        item = {"amplitude": reader[:].asnumpy()}
+        # (amplitude, channels) -> (channels, amplitude)
+        amplitude = amplitude.transpose((1, 0))
+
+        item = {"amplitude": amplitude}
         if reader_args.get("include_paths", False):
             item["path"] = path
 
