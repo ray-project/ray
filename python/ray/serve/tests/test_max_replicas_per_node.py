@@ -5,7 +5,6 @@ import pytest
 
 import ray
 from ray import serve
-from ray.cluster_utils import AutoscalingCluster
 from ray.serve.drivers import DAGDriver
 from ray.util.state import list_actors
 
@@ -32,24 +31,32 @@ def get_node_to_deployment_to_num_replicas():
     return node_to_deployment_to_num_replicas
 
 
-def test_basic():
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Flaky on Windows due to https://github.com/ray-project/ray/issues/36926.",
+)
+@pytest.mark.parametrize(
+    "ray_autoscaling_cluster",
+    [
+        {
+            "head_resources": {"CPU": 0},
+            "worker_node_types": {
+                "cpu_node": {
+                    "resources": {
+                        "CPU": 9999,
+                    },
+                    "node_config": {},
+                    "min_workers": 0,
+                    "max_workers": 100,
+                },
+            },
+        }
+    ],
+    indirect=True,
+)
+def test_basic(ray_autoscaling_cluster):
     """Test that max_replicas_per_node is honored."""
 
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 0},
-        worker_node_types={
-            "cpu_node": {
-                "resources": {
-                    "CPU": 9999,
-                },
-                "node_config": {},
-                "min_workers": 0,
-                "max_workers": 100,
-            },
-        },
-    )
-
-    cluster.start()
     ray.init()
 
     @serve.deployment
@@ -78,29 +85,33 @@ def test_basic():
         assert deployment_to_num_replicas["deploy1"] == 3
         assert deployment_to_num_replicas["deploy2"] == 1
 
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
 
-
-def test_update_max_replicas_per_node():
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Flaky on Windows due to https://github.com/ray-project/ray/issues/36926.",
+)
+@pytest.mark.parametrize(
+    "ray_autoscaling_cluster",
+    [
+        {
+            "head_resources": {"CPU": 0},
+            "worker_node_types": {
+                "cpu_node": {
+                    "resources": {
+                        "CPU": 9999,
+                    },
+                    "node_config": {},
+                    "min_workers": 0,
+                    "max_workers": 100,
+                },
+            },
+        }
+    ],
+    indirect=True,
+)
+def test_update_max_replicas_per_node(ray_autoscaling_cluster):
     """Test re-deploying a deployment with different max_replicas_per_node."""
 
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 0},
-        worker_node_types={
-            "cpu_node": {
-                "resources": {
-                    "CPU": 9999,
-                },
-                "node_config": {},
-                "min_workers": 0,
-                "max_workers": 100,
-            },
-        },
-    )
-
-    cluster.start()
     ray.init()
 
     @serve.deployment
@@ -135,10 +146,6 @@ def test_update_max_replicas_per_node():
     for _, deployment_to_num_replicas in node_to_deployment_to_num_replicas.items():
         # Every node has 1 replica.
         assert deployment_to_num_replicas["deploy1"] == 1
-
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
 
 
 if __name__ == "__main__":

@@ -66,6 +66,7 @@ while True:
     try:
         cluster.start()
         ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
 
         run_string_as_driver_nonblocking(driver_script)
 
@@ -81,7 +82,7 @@ while True:
 
         for _ in range(30):
             # verify no pending task + with resource used.
-            status = get_cluster_status()
+            status = get_cluster_status(gcs_address)
             has_task_demand = len(status.resource_demands.ray_task_actor_demand) > 0
             has_task_usage = False
 
@@ -139,6 +140,7 @@ while True:
     try:
         cluster.start()
         ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
 
         run_string_as_driver_nonblocking(driver_script)
 
@@ -152,7 +154,7 @@ while True:
 
         for _ in range(30):
             # verify no pending request + resource used.
-            status = get_cluster_status()
+            status = get_cluster_status(gcs_address)
             has_pg_demand = len(status.resource_demands.placement_group_demand) > 0
             has_pg_usage = False
             for usage in status.cluster_resource_usage:
@@ -181,6 +183,7 @@ def test_placement_group_removal_idle_node():
     try:
         cluster.start()
         ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
 
         # Schedule a pg on nodes
         pg = placement_group([{"CPU": 2}] * 3, strategy="STRICT_SPREAD")
@@ -192,7 +195,7 @@ def test_placement_group_removal_idle_node():
         from ray.autoscaler.v2.sdk import get_cluster_status
 
         def verify():
-            cluster_state = get_cluster_status()
+            cluster_state = get_cluster_status(gcs_address)
 
             # Verify that nodes are idle.
             assert len((cluster_state.idle_nodes)) == 3
@@ -213,9 +216,10 @@ def test_object_store_memory_idle_node(shutdown_only):
     ray.init()
 
     obj = ray.put("hello")
+    gcs_address = ray.get_runtime_context().gcs_address
 
     def verify():
-        state = get_cluster_status()
+        state = get_cluster_status(gcs_address)
         for node in state.active_nodes:
             assert node.node_status == "RUNNING"
             assert node.used_resources()["object_store_memory"] > 0
@@ -231,7 +235,7 @@ def test_object_store_memory_idle_node(shutdown_only):
     time.sleep(1)
 
     def verify():
-        state = get_cluster_status()
+        state = get_cluster_status(gcs_address)
         for node in state.idle_nodes:
             assert node.node_status == "IDLE"
             assert node.used_resources()["object_store_memory"] == 0
@@ -270,10 +274,11 @@ def test_serve_num_replica_idle_node():
         # = 4 cpus used
         serve.run(Deployment.options(num_replicas=10).bind())
 
+        gcs_address = ray.get_runtime_context().gcs_address
         expected_num_workers = 5
 
         def verify():
-            cluster_state = get_cluster_status()
+            cluster_state = get_cluster_status(gcs_address)
 
             # Verify that nodes are busy.
             assert len(cluster_state.active_nodes) == expected_num_workers + 1
@@ -291,7 +296,7 @@ def test_serve_num_replica_idle_node():
         serve.run(Deployment.options(num_replicas=1).bind())
 
         def verify():
-            cluster_state = get_cluster_status()
+            cluster_state = get_cluster_status(gcs_address)
             # We should only have 1 running worker for the 1 replica, the rest idle.
             expected_idle_workers = expected_num_workers - 1
 
@@ -365,12 +370,13 @@ while True:
                 "raylet_check_gc_period_milliseconds": 10,
             },
         )
-        ray.init("auto")
+        ctx = ray.init("auto")
+        gcs_address = ctx.address_info["gcs_address"]
 
         from ray.autoscaler.v2.sdk import get_cluster_status
 
         def nodes_up():
-            cluster_state = get_cluster_status()
+            cluster_state = get_cluster_status(gcs_address)
             return len(cluster_state.idle_nodes) == num_worker_nodes + 1
 
         wait_for_condition(nodes_up)
@@ -381,7 +387,7 @@ while True:
 
         # Check the cluster state for 10 seconds
         while time.time() - start < 10:
-            cluster_state = get_cluster_status()
+            cluster_state = get_cluster_status(gcs_address)
 
             # Verify total cluster resources never change
             assert (

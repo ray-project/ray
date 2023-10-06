@@ -3,20 +3,19 @@
 # https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras
 # https://blog.keras.io/building-autoencoders-in-keras.html
 import argparse
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 import tensorflow_datasets as tfds
-from ray import train
-from ray.data.datasource import SimpleTensorFlowDatasource
-from ray.train import Result
-from ray.train.tensorflow import TensorflowTrainer
-from ray.train.tensorflow import prepare_dataset_shard
-from ray.air.integrations.keras import ReportCheckpointCallback
 
 import ray
-
+from ray import train
+from ray.air.integrations.keras import ReportCheckpointCallback
+from ray.data.datasource import SimpleTensorFlowDatasource
 from ray.data.extensions import TensorArray
+from ray.train import Result
+from ray.train.tensorflow import TensorflowTrainer, prepare_dataset_shard
 
 
 def get_dataset(split_type="train"):

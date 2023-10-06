@@ -2,8 +2,8 @@ import logging
 from typing import Optional, Type
 
 from ray.data.preprocessor import Preprocessor
-from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from ray.train.lightning._lightning_utils import import_lightning
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.util.annotations import PublicAPI
 

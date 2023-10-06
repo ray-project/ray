@@ -1,16 +1,16 @@
 import re
-import pytest
-import torch
 
 import numpy as np
+import pytest
+import torch
 from torch.utils.data import DataLoader
 
 from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY
-from ray.train.tests.conftest import *  # noqa
 from ray.train.lightning import LightningCheckpoint, LightningPredictor
+from ray.train.lightning._lightning_utils import import_lightning
+from ray.train.tests.conftest import *  # noqa
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.tests.lightning_test_utils import LightningMNISTClassifier
-from ray.train.lightning._lightning_utils import import_lightning
 
 pl = import_lightning()
 
