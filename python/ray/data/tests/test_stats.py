@@ -1281,6 +1281,55 @@ Dataset iterator time breakdown:
     )
 
 
+def test_write_ds_stats(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(100, parallelism=100)
+    ds.write_parquet(str(tmp_path))
+    stats = ds.stats()
+
+    assert (
+        canonicalize(stats)
+        == f"""Stage N ReadRange->Write: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {STANDARD_EXTRA_METRICS}
+"""
+    )
+
+    assert stats == ds._write_ds.stats()
+
+    ds = ray.data.range(100, parallelism=100).map_batches(lambda x: x).materialize()
+    ds.write_parquet(str(tmp_path))
+    stats = ds.stats()
+
+    assert (
+        canonicalize(stats)
+        == f"""Stage N ReadRange->MapBatches(<lambda>): N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {STANDARD_EXTRA_METRICS}
+
+Stage N Write: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {STANDARD_EXTRA_METRICS}
+"""
+    )
+
+    assert stats == ds._write_ds.stats()
+
+
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
 

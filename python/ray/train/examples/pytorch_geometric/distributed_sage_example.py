@@ -1,21 +1,20 @@
 # Adapted from https://github.com/pyg-team/pytorch_geometric/blob/2.1.0
 # /examples/multi_gpu/distributed_sampling.py
 
-import os
 import argparse
-from filelock import FileLock
+import os
 
 import torch
 import torch.nn.functional as F
-
-from torch_geometric.datasets import Reddit, FakeDataset
+from filelock import FileLock
+from torch_geometric.datasets import FakeDataset, Reddit
 from torch_geometric.loader import NeighborSampler
 from torch_geometric.nn import SAGEConv
+from torch_geometric.transforms import RandomNodeSplit
 
 from ray import train
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
-from torch_geometric.transforms import RandomNodeSplit
 
 
 class SAGE(torch.nn.Module):

@@ -13,13 +13,13 @@ from typing import Any, Callable, Dict, Optional, Type
 from ray.air._internal.util import StartTraceback, RunnerThread
 import queue
 
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     _ERROR_FETCH_TIMEOUT,
     _RESULT_FETCH_TIMEOUT,
     TIME_THIS_ITER_S,
 )
 import ray.train
+from ray.train import Checkpoint
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.session import (
@@ -113,6 +113,7 @@ tuner = tune.Tuner(train_fn)
 tuner.fit()"""  # noqa: E501
 
 
+# TODO(justinvyu): [code_removal]
 @DeveloperAPI
 class FuncCheckpointUtil:
     """Utility class holding various function-checkpointing mechanisms.
@@ -192,6 +193,7 @@ class FuncCheckpointUtil:
         return perm_checkpoint_dir
 
 
+# TODO(justinvyu): [code_removal]
 @DeveloperAPI
 class _StatusReporter:
     def __init__(

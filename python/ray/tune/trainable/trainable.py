@@ -16,7 +16,6 @@ import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
-from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
 from ray.air.constants import (
     TIMESTAMP,
     TIME_THIS_ITER_S,
@@ -1036,9 +1035,6 @@ class Trainable:
             checkpoint_dict = self._checkpoint_cls.from_directory(
                 checkpoint_dir
             ).to_dict()
-            # If other files were added to the directory after converting from the
-            # original dict (e.g. marker files), clean these up
-            checkpoint_dict.pop(_DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, None)
             to_load = checkpoint_dict
         else:
             # Otherwise, pass the relative checkpoint path
