@@ -11,7 +11,6 @@ doctest(
             "impl/test_utils.py",
             # Deprecated
             "automl/**",
-            "checkpoint_manager.py",
             "cluster_info.py",
             "config_parser.py",
             "function_runner.py",
@@ -63,17 +62,17 @@ py_test(
 )
 
 py_test(
-    name = "test_callbacks",
-    size = "small",
-    srcs = ["tests/test_callbacks.py"],
+    name = "test_api_checkpoint_integration",
+    size = "medium",
+    srcs = ["tests/test_api_checkpoint_integration.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
 
 py_test(
-    name = "test_checkpoint_manager",
+    name = "test_callbacks",
     size = "small",
-    srcs = ["tests/test_checkpoint_manager.py"],
+    srcs = ["tests/test_callbacks.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )

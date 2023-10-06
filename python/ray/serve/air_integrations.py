@@ -7,12 +7,11 @@ import numpy as np
 from fastapi import Depends, FastAPI
 from pydantic import BaseModel
 
-from ray import serve
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.utils import install_serve_encoders_to_fastapi, require_packages
 from ray.serve.drivers_utils import HTTPAdapterFn, load_http_adapter
-from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util.annotations import DeveloperAPI
 
 try:
     import pandas as pd
@@ -180,55 +179,3 @@ class SimpleSchemaIngress(ASGIAppReplicaWrapper):
     @abstractmethod
     async def predict(self, inp):
         raise NotImplementedError()
-
-
-@Deprecated
-class PredictorWrapper(SimpleSchemaIngress):
-    """Serve any Ray AIR predictor from an AIR checkpoint.
-
-    Args:
-        predictor_cls: The class or path for predictor class.
-            The type must be a subclass of :class:`ray.train.predictor.Predictor`.
-        checkpoint: The checkpoint object or a uri to load checkpoint
-            from
-
-            - The checkpoint object must be an instance of
-              :class:`ray.air.checkpoint.Checkpoint`.
-            - The uri string will be called to construct a checkpoint object using
-              ``Checkpoint.from_uri("uri_to_load_from")``.
-
-        http_adapter: The FastAPI input conversion
-            function. By default, Serve will use the
-            :ref:`NdArray <serve-ndarray-schema>` schema and convert to numpy array.
-            You can pass in any FastAPI dependency resolver that returns
-            an array. When you pass in a string, Serve will import it.
-            Please refer to :ref:`Serve HTTP adatpers <serve-http-adapters>`
-            documentation to learn more.
-        batching_params: override the default parameters to
-            :func:`ray.serve.batch`. Pass ``False`` to disable batching.
-        predict_kwargs: optional keyword arguments passed to the
-            ``Predictor.predict`` method upon each call.
-        **predictor_from_checkpoint_kwargs: Additional keyword arguments passed to the
-            ``Predictor.from_checkpoint()`` call.
-    """
-
-    def __init__(self, *args, **kwargs):
-        raise DeprecationWarning(
-            "`PredictorWrapper` and `PredictorDeployment` are deprecated. "
-            "See https://github.com/ray-project/ray/issues/37868 for a migration guide "
-            "to the latest recommended API."
-        )
-
-    async def predict(self, inp):
-        """Perform inference directly without HTTP."""
-        raise NotImplementedError
-
-    def reconfigure(self, config):
-        """Reconfigure model from config checkpoint"""
-        raise NotImplementedError
-
-
-@serve.deployment
-@Deprecated
-class PredictorDeployment(PredictorWrapper):
-    """Ray Serve Deployment for AIRPredictorWrapper."""

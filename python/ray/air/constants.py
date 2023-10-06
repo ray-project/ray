@@ -13,9 +13,6 @@ EVALUATION_DATASET_KEY = "evaluation"
 # This is the dataset that the preprocessor is fit on.
 TRAIN_DATASET_KEY = "train"
 
-# Key to denote all user-specified auxiliary datasets in DatasetConfig.
-WILDCARD_KEY = "*"
-
 # Name to use for the column when representing tensors in table format.
 TENSOR_COLUMN_NAME = "__value__"
 
