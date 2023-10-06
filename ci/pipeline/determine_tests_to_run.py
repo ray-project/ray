@@ -89,7 +89,7 @@ if __name__ == "__main__":
     RAY_CI_RLLIB_AFFECTED = 0
     # Whether all RLlib tests should be run.
     # Set to 1 only when a source file in `ray/rllib` has been changed.
-    RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
+    RAY_CI_RLLIB_DIRECTLY_AFFECTED = 0
     # Whether to run all RLlib contrib tests
     RAY_CI_RLLIB_CONTRIB_AFFECTED = 0
     RAY_CI_SERVE_AFFECTED = 0
