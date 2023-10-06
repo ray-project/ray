@@ -922,11 +922,8 @@ class Trainable:
             ...        print(my_checkpoint_path)
             >>> trainer = Example()
             >>> # This is used when PAUSED.
-            >>> checkpoint = trainer.save() # doctest: +SKIP
-            <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/path
-            >>> # Note the different prefix.
-            >>> trainer.restore(checkpoint) # doctest: +SKIP
-            <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/path
+            >>> checkpoint_result = trainer.save() # doctest: +SKIP
+            >>> trainer.restore(checkpoint_result) # doctest: +SKIP
 
         If `Trainable.save_checkpoint` returned a dict, then Tune will directly pass
         the dict data as the argument to this method.
