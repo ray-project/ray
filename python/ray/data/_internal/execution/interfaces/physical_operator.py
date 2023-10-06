@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Union
 
 import ray
+
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from .ref_bundle import RefBundle
 from ray._raylet import StreamingObjectRefGenerator
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -163,6 +165,7 @@ class PhysicalOperator(Operator):
         self._inputs_complete = not input_dependencies
         self._dependents_complete = False
         self._started = False
+        self._metrics = OpRuntimeMetrics()
         self._estimated_output_blocks = None
 
     def __reduce__(self):
