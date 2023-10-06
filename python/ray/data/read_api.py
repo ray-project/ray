@@ -1770,9 +1770,10 @@ def read_databricks_tables(
     """
     Read from a Databricks unity catalog table or Databricks SQL execution result that
     queries from Databricks UC tables.
-    Before calling `read_databricks_tables`, set the 'DATABRICKS_HOST' environment
-    variable, if this API isn't called in Databricks runtime, set the
-    'DATABRICKS_TOKEN' environment variable as well.
+    Before calling `read_databricks_tables`, set the 'DATABRICKS_TOKEN' environment
+    variable to databricks workspace access token, if this API isn't called
+    in Databricks runtime, set the 'DATABRICKS_HOST' environment variable to databricks
+    workspace URL (without 'https://' prefix).
 
     This reader is implemented based on
     [Databricks statement execution API](https://docs.databricks.com/api/workspace/statementexecution).
@@ -1819,7 +1820,8 @@ def read_databricks_tables(
 
     if not token:
         raise ValueError(
-            "Please set environment variable 'DATABRICKS_TOKEN'."
+            "Please set environment variable 'DATABRICKS_TOKEN' to "
+            "databricks workspace access token."
         )
 
     host = os.environ.get("DATABRICKS_HOST")
@@ -1832,7 +1834,8 @@ def read_databricks_tables(
         else:
             raise ValueError(
                 "You are not in databricks runtime, please set environment variable "
-                "'DATABRICKS_HOST'."
+                "'DATABRICKS_HOST' to databricks workspace URL"
+                "(without 'https://' prefix)."
             )
 
     spark = get_spark_session()
