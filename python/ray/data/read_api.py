@@ -2,6 +2,7 @@ import collections
 import logging
 import math
 import os
+import sys
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -85,6 +86,11 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import dask
@@ -632,6 +638,7 @@ def read_parquet(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    shuffle: Union[Literal["files"], None] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -738,6 +745,8 @@ def read_parquet(
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
@@ -783,6 +792,7 @@ def read_images(
     mode: Optional[str] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -875,6 +885,8 @@ def read_images(
             stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
@@ -901,6 +913,7 @@ def read_images(
         mode=mode,
         include_paths=include_paths,
         ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
     )
 
 
@@ -918,6 +931,7 @@ def read_parquet_bulk(
     partition_filter: Optional[PathPartitionFilter] = (
         ParquetBaseDatasource.file_extension_filter()
     ),
+    shuffle: Union[Literal["files"], None] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Create :class:`~ray.data.Dataset` from parquet files without reading metadata.
@@ -986,6 +1000,8 @@ def read_parquet_bulk(
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.parquet*".
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see
             the `PyArrow API <https://arrow.apache.org/docs/python/generated/\
@@ -1028,6 +1044,7 @@ def read_json(
     ] = JSONDatasource.file_extension_filter(),
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
     **arrow_json_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from JSON and JSONL files.
@@ -1113,6 +1130,8 @@ def read_json(
                 hive-style-partitioning/>`_.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
         arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
             arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
             json.read_json>`_.
@@ -1149,6 +1168,7 @@ def read_csv(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
     **arrow_csv_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from CSV files.
@@ -1262,6 +1282,8 @@ def read_csv(
                 hive-style-partitioning/>`_.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
         arrow_csv_args: CSV read options to pass to
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
             pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
@@ -1302,6 +1324,7 @@ def read_text(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
@@ -1360,6 +1383,8 @@ def read_text(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
@@ -1396,6 +1421,7 @@ def read_numpy(
     ] = NumpyDatasource.file_extension_filter(),
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
@@ -1435,6 +1461,8 @@ def read_numpy(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         Dataset holding Tensor records read from the specified paths.
@@ -1466,6 +1494,7 @@ def read_tfrecords(
     partition_filter: Optional[PathPartitionFilter] = None,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
+    shuffle: Union[Literal["files"], None] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1537,6 +1566,8 @@ def read_tfrecords(
             found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
             of the underlying Dataset.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1575,6 +1606,7 @@ def read_webdataset(
     filerename: Optional[Union[list, callable]] = None,
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
@@ -1600,6 +1632,8 @@ def read_webdataset(
         filerename: A function or list of tuples to rename files prior to grouping.
         suffixes: A function or list of suffixes to select for creating samples.
         verbose_open: Whether to print the file names as they are opened.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1642,6 +1676,7 @@ def read_binary_files(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from binary files of arbitrary contents.
 
@@ -1706,6 +1741,8 @@ def read_binary_files(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            Defaults to not shuffle with ``None``.
 
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.

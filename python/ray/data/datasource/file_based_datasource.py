@@ -511,7 +511,9 @@ class _FileBasedDatasourceReader(Reader):
                     "No input files found to read. Please double check that "
                     "'partition_filter' field is set properly."
                 )
-        self._file_metadata_shuffler = FileMetadataShuffler()
+        self._file_metadata_shuffler = FileMetadataShuffler(
+            reader_args.get("shuffle", None)
+        )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0

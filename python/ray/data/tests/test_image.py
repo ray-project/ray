@@ -168,25 +168,10 @@ class TestReadImages:
             "image-datasets/simple/image3.jpg",
         ]
 
-    @pytest.mark.parametrize(
-        "is_shuffle_enabled,shuffle_seed",
-        [
-            (True, None),
-            (True, 9176),
-        ],
-    )
-    def test_random_shuffle2(
-        self, ray_start_regular_shared, is_shuffle_enabled, shuffle_seed
-    ):
+    def test_random_shuffle(self, ray_start_regular_shared):
         # NOTE: set preserve_order to True to allow consistent output behavior.
         context = ray.data.DataContext.get_current()
         preserve_order = context.execution_options.preserve_order
-        shuffle_input = context.execution_options.shuffle_input
-        context.execution_options.preserve_order = True
-        if shuffle_seed is None:
-            context.execution_options.shuffle_input = is_shuffle_enabled
-        else:
-            context.execution_options.shuffle_input = (is_shuffle_enabled, shuffle_seed)
 
         try:
             dir_path = "s3://anonymous@air-example-data/mnist"
@@ -207,6 +192,7 @@ class TestReadImages:
             ds = ray.data.read_images(
                 paths=input_uris,
                 include_paths=True,
+                shuffle="files",
             )
 
             # Execute 10 times to get a set of output paths.
@@ -220,7 +206,7 @@ class TestReadImages:
 
             # Check when shuffle is enabled, output order has at least one different
             # case.
-            assert not all(all_paths_matched) == is_shuffle_enabled
+            assert not all(all_paths_matched)
             # Check all files are output properly without missing one.
             assert all(
                 [
@@ -230,7 +216,6 @@ class TestReadImages:
             )
         finally:
             context.preserve_order = preserve_order
-            context.shuffle_input = shuffle_input
 
     def test_e2e_prediction(self, shutdown_only):
         import torch

@@ -276,7 +276,9 @@ class _ParquetDatasourceReader(Reader):
         self._columns = columns
         self._schema = schema
         self._encoding_ratio = self._estimate_files_encoding_ratio()
-        self._file_metadata_shuffler = FileMetadataShuffler()
+        self._file_metadata_shuffler = FileMetadataShuffler(
+            reader_args.get("shuffle", None)
+        )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0

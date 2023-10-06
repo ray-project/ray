@@ -1,29 +1,24 @@
-from typing import Any, List
+import sys
+from typing import Any, List, Union
 
 import numpy as np
 
-from ray.data.context import DataContext
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 
 class FileMetadataShuffler:
-    """Random shuffle file metadata when the `DataContext` enables it.
+    """Random shuffle file metadata when the `shuffle` parameter enables it.
     Otherwise returns file metadata in its original order.
     """
 
-    def __init__(self):
-        ctx = DataContext.get_current()
-        shuffle_input = ctx.execution_options.shuffle_input
-        is_shuffle_enabled = False
-        shuffle_seed = None
-        if isinstance(shuffle_input, bool):
-            is_shuffle_enabled = shuffle_input
-        else:
-            assert isinstance(shuffle_input, tuple) and len(shuffle_input) == 2
-            is_shuffle_enabled, shuffle_seed = shuffle_input
-
-        self._is_shuffle_enabled = is_shuffle_enabled
-        if self._is_shuffle_enabled:
-            self._generator = np.random.default_rng(shuffle_seed)
+    def __init__(self, shuffle: Union[Literal["files"], None]):
+        self._is_shuffle_enabled = False
+        if shuffle == "files":
+            self._is_shuffle_enabled = True
+            self._generator = np.random.default_rng()
 
     def shuffle_files(
         self,
