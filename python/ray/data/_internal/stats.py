@@ -2,6 +2,7 @@ import collections
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
@@ -12,7 +13,7 @@ from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
-from ray.util.metrics import Counter
+from ray.util.metrics import Counter, Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
@@ -122,6 +123,15 @@ class _DatasetStatsBuilder:
         return stats
 
 
+class DataMetric(Enum):
+    BYTES_SPILLED = "data_spilled_bytes"
+    BYTES_ALLOCATED = "data_allocated_bytes"
+    CPU_USAGE = "data_cpu_usage_cores"
+    GPU_USAGE = "data_gpu_usage_cores"
+    ROWS_OUTPUTTED = "data_output_rows"
+    BYTES_OUTPUTTED = "data_output_bytes"
+
+
 @ray.remote(num_cpus=0)
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
@@ -142,10 +152,37 @@ class _StatsActor:
         self.max_stats = max_stats
         self.fifo_queue = []
 
+        # Ray Data dashboard metrics
+        tags_keys = ("dataset",)
         self.bytes_spilled = Counter(
-            "data_spilled_bytes",
+            DataMetric.BYTES_SPILLED.value,
             description="Bytes spilled by dataset operators",
-            tag_keys=("dataset",),
+            tag_keys=tags_keys,
+        )
+        self.bytes_allocated = Gauge(
+            DataMetric.BYTES_ALLOCATED.value,
+            description="Bytes allocated by dataset operators",
+            tag_keys=tags_keys,
+        )
+        self.cpu_usage = Gauge(
+            DataMetric.CPU_USAGE.value,
+            description="CPU cores used by dataset operators",
+            tag_keys=tags_keys,
+        )
+        self.gpu_usage = Gauge(
+            DataMetric.GPU_USAGE.value,
+            description="GPU cores used by dataset operators",
+            tag_keys=tags_keys,
+        )
+        self.rows_outputted = Counter(
+            DataMetric.ROWS_OUTPUTTED.value,
+            description="Rows outputted by dataset operators",
+            tag_keys=tags_keys,
+        )
+        self.bytes_outputted = Counter(
+            DataMetric.BYTES_OUTPUTTED.value,
+            description="Bytes outputted by dataset operators",
+            tag_keys=tags_keys,
         )
 
     def record_start(self, stats_uuid):
@@ -183,9 +220,26 @@ class _StatsActor:
     def _get_stats_dict_size(self):
         return len(self.start_time), len(self.last_time), len(self.metadata)
 
-    def inc_bytes_spilled(self, bytes_spilled, dataset):
+    def inc_bytes_spilled(self, bytes_spilled, tags):
         if bytes_spilled > 0:
-            self.bytes_spilled.inc(bytes_spilled, {"dataset": dataset})
+            self.bytes_spilled.inc(bytes_spilled, tags)
+
+    def inc_rows_outputted(self, rows_outputted, tags):
+        if rows_outputted > 0:
+            self.rows_outputted.inc(rows_outputted, tags)
+
+    def inc_bytes_outputted(self, bytes_outputted, tags):
+        if bytes_outputted > 0:
+            self.bytes_outputted.inc(bytes_outputted, tags)
+
+    def set_bytes_allocated(self, bytes_allocated, tags):
+        self.bytes_allocated.set(bytes_allocated, tags)
+
+    def set_cpu_usage(self, cpu_usage, tags):
+        self.cpu_usage.set(cpu_usage, tags)
+
+    def set_gpu_usage(self, gpu_usage, tags):
+        self.gpu_usage.set(gpu_usage, tags)
 
 
 def _get_or_create_stats_actor():
@@ -205,6 +259,19 @@ def _get_or_create_stats_actor():
         lifetime="detached",
         scheduling_strategy=scheduling_strategy,
     ).remote()
+
+
+def _update_stats_actor_metrics(
+    stats_actor: _StatsActor, stats: Dict[DataMetric, Any], dataset: str
+):
+    tags = {"dataset": dataset}
+
+    stats_actor.inc_bytes_spilled.remote(stats[DataMetric.BYTES_SPILLED], tags)
+    stats_actor.inc_rows_outputted.remote(stats[DataMetric.ROWS_OUTPUTTED], tags)
+    stats_actor.inc_bytes_outputted.remote(stats[DataMetric.BYTES_OUTPUTTED], tags)
+    stats_actor.set_bytes_allocated.remote(stats[DataMetric.BYTES_ALLOCATED], tags)
+    stats_actor.set_cpu_usage.remote(stats[DataMetric.CPU_USAGE], tags)
+    stats_actor.set_gpu_usage.remote(stats[DataMetric.GPU_USAGE], tags)
 
 
 class DatasetStats:
