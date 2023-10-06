@@ -185,9 +185,8 @@ class MapOperator(OneToOneOperator, ABC):
         # in case it's large (i.e., closure captures large objects).
         self._map_transformer_ref = ray.put(self._map_transformer)
 
-    def add_input(self, refs: RefBundle, input_index: int):
+    def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
-        self._metrics.on_input_received(refs)
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         if self._block_ref_bundler.has_bundle():
@@ -322,10 +321,9 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         return self._output_queue.has_next()
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         assert self._started
         bundle = self._output_queue.get_next()
-        self._metrics.on_output_taken(bundle)
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
         return bundle

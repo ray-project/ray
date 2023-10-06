@@ -84,7 +84,7 @@ class OutputSplitter(PhysicalOperator):
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         return self._output_queue.popleft()
 
     def get_stats(self) -> StatsDict:
@@ -96,7 +96,7 @@ class OutputSplitter(PhysicalOperator):
             stats[f"num_output_{i}"] = num
         return stats
 
-    def add_input(self, bundle, input_index) -> None:
+    def _add_input_inner(self, bundle, input_index) -> None:
         if bundle.num_rows() is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
         self._buffer.append(bundle)

@@ -51,7 +51,7 @@ class ZipOperator(PhysicalOperator):
         else:
             return right_num_outputs
 
-    def add_input(self, refs: RefBundle, input_index: int) -> None:
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0 or input_index == 1, input_index
         if input_index == 0:
@@ -70,7 +70,7 @@ class ZipOperator(PhysicalOperator):
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         return self._output_buffer.pop(0)
 
     def get_stats(self) -> StatsDict:

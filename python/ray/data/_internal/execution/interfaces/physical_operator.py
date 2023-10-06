@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Union
+from numpy import who
 
 import ray
 
@@ -249,6 +250,10 @@ class PhysicalOperator(Operator):
                 input. For most operators, this is always `0` since there is only
                 one upstream input operator.
         """
+        self._metrics.on_input_received(refs)
+        self._add_input_inner(refs, input_index)
+
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
@@ -286,6 +291,11 @@ class PhysicalOperator(Operator):
 
         It is only allowed to call this if `has_next()` has returned True.
         """
+        output = self._get_next_inner()
+        self._metrics.on_output_taken(output)
+        return output
+
+    def _get_next_inner(self) -> RefBundle:
         raise NotImplementedError
 
     def get_active_tasks(self) -> List[OpTask]:

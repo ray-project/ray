@@ -37,7 +37,7 @@ class LimitOperator(OneToOneOperator):
     def need_more_inputs(self) -> bool:
         return not self._limit_reached()
 
-    def add_input(self, refs: RefBundle, input_index: int) -> None:
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0, input_index
         if self._limit_reached():
@@ -84,7 +84,7 @@ class LimitOperator(OneToOneOperator):
     def has_next(self) -> bool:
         return len(self._buffer) > 0
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         return self._buffer.popleft()
 
     def get_stats(self) -> StatsDict:
