@@ -235,7 +235,7 @@ class Searcher:
             trials = trials_or_analysis
         elif isinstance(trials_or_analysis, Trial):
             trials = [trials_or_analysis]
-        elif isinstance(trials_or_analysis, (ExperimentAnalysis)):
+        elif isinstance(trials_or_analysis, ExperimentAnalysis):
             trials = trials_or_analysis.trials
         else:
             raise NotImplementedError(
