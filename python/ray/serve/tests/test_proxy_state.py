@@ -635,13 +635,10 @@ def test_unhealthy_retry_correct_number_of_times():
     proxy_state = _create_proxy_state()
     proxy_state._actor_proxy_wrapper.health = ProxyWrapperCallStatus.PENDING
 
-    # Continuously trigger update. The status should change from STARTING to HEALTHY
-    # when ready.
-    wait_for_condition(
-        condition_predictor=_update_and_check_proxy_status,
-        state=proxy_state,
-        status=ProxyStatus.HEALTHY,
-    )
+    # Trigger update once. The status should change from STARTING to HEALTHY
+    proxy_state.update()
+    assert proxy_state.status == ProxyStatus.HEALTHY
+
     proxy_state._actor_proxy_wrapper.health_check_ongoing = True
 
     for _ in range(3):
