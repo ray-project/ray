@@ -6,7 +6,6 @@ import pyarrow.fs
 
 import ray
 from ray.air.config import RunConfig
-from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
