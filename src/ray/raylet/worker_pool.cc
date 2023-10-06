@@ -88,24 +88,23 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       node_id_(node_id),
       node_address_(node_address),
       get_num_cpus_available_(get_num_cpus_available),
-      maximum_startup_concurrency_(maximum_startup_concurrency),
+      maximum_startup_concurrency_(
+          RayConfig::instance().worker_maximum_startup_concurrency() > 0
+              ?
+              // Overwrite the maximum concurrency.
+              RayConfig::instance().worker_maximum_startup_concurrency()
+              : maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       native_library_path_(native_library_path),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
       ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(
-          std::min(num_prestarted_python_workers, maximum_startup_concurrency)),
+          std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(io_service),
       get_time_(get_time) {
-  if (RayConfig::instance().worker_maximum_startup_concurrency() > 0) {
-    // Overwrite the maximum concurrency.
-    maximum_startup_concurrency_ =
-        RayConfig::instance().worker_maximum_startup_concurrency();
-  }
-
-  RAY_CHECK(maximum_startup_concurrency > 0);
+  RAY_CHECK(maximum_startup_concurrency_ > 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
   // metric not existing at all).
@@ -122,7 +121,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
-    state.multiple_for_warning = maximum_startup_concurrency;
+    state.multiple_for_warning = maximum_startup_concurrency_;
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
@@ -1189,10 +1188,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     }
   };
 
-  if (task_spec.IsActorTask()) {
-    // Code path of actor task.
-    RAY_CHECK(false) << "Direct call shouldn't reach here.";
-  }
+  // Code path of actor task.
+  RAY_CHECK(!task_spec.IsActorTask()) << "Direct call shouldn't reach here.";
 
   bool is_actor_creation = task_spec.IsActorCreationTask();
   std::vector<std::string> dynamic_options{};

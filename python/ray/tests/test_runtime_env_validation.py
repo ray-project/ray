@@ -68,7 +68,7 @@ class TestValidateWorkingDir:
             "gs://bucket/file",
         ]:
             with pytest.raises(
-                ValueError, match="Only .zip files supported for remote URIs."
+                ValueError, match="Only .zip or .whl files supported for remote URIs."
             ):
                 parse_and_validate_working_dir(uri)
 
@@ -102,7 +102,7 @@ class TestValidatePyModules:
             "gs://bucket/file",
         ]
         with pytest.raises(
-            ValueError, match="Only .zip files supported for remote URIs."
+            ValueError, match="Only .zip or .whl files supported for remote URIs."
         ):
             parse_and_validate_py_modules(uris)
 
@@ -111,6 +111,9 @@ class TestValidatePyModules:
             "https://some_domain.com/path/file.zip",
             "s3://bucket/file.zip",
             "gs://bucket/file.zip",
+            "https://some_domain.com/path/file.whl",
+            "s3://bucket/file.whl",
+            "gs://bucket/file.whl",
         ]
         py_modules = parse_and_validate_py_modules(uris)
         assert py_modules == uris

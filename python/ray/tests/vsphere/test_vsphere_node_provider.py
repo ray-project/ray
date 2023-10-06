@@ -7,6 +7,10 @@ from unittest.mock import MagicMock, patch
 from ray.autoscaler._private.vsphere.node_provider import VsphereNodeProvider
 from com.vmware.vcenter_client import VM
 from com.vmware.vcenter.vm_client import Power as HardPower
+from ray.autoscaler._private.vsphere.config import (
+    update_vsphere_configs,
+    validate_frozen_vm_configs,
+)
 
 _CLUSTER_NAME = "test"
 _PROVIDER_CONFIG = {
@@ -27,6 +31,9 @@ def mock_vsphere_node_provider():
         self.cluster_name = cluster_name
         self.tag_cache = {}
         self.cached_nodes = {}
+        self.vsphere_config = {}
+        self.vsphere_credentials = {}
+        self.pyvmomi_sdk_provider = MagicMock()
 
     with patch.object(VsphereNodeProvider, "__init__", __init__):
         node_provider = VsphereNodeProvider(_PROVIDER_CONFIG, _CLUSTER_NAME)
@@ -271,6 +278,7 @@ def test__create_node():
     vnp.attach_tag = MagicMock(return_value=None)
     vnp.get_frozen_vm_obj = MagicMock(return_value=MagicMock())
     vnp.delete_vm = MagicMock(return_value=None)
+    vnp.create_new_or_fetch_existing_frozen_vms = MagicMock(return_value={"vm": "vm-d"})
     vnp.lock = RLock()
 
     created_nodes_dict = vnp._create_node(
@@ -361,6 +369,178 @@ def test__get_node():
     vnp.vsphere_sdk_client.vcenter.VM.list.return_value = []
     vm = vnp._get_node("node_id_1")
     assert vm is None
+
+
+def test_create_new_or_fetch_existing_frozen_vms():
+    vnp = mock_vsphere_node_provider()
+    vnp.get_frozen_vm_obj = MagicMock()
+    vnp.check_frozen_vm_status = MagicMock()
+    vnp.choose_frozen_vm_obj = MagicMock()
+    vnp.create_frozen_vm_from_ovf = MagicMock()
+    vnp.create_frozen_vm_on_each_host = MagicMock()
+    vnp.initialize_frozen_vm_scheduler = MagicMock()
+
+    node_config = {"frozen_vm": {"name": "frozen"}}
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.check_frozen_vm_status.assert_called()
+
+    node_config = {"frozen_vm": {"name": "frozen", "resource_pool": "frozen-rp"}}
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.initialize_frozen_vm_scheduler.assert_called()
+
+    node_config = {"frozen_vm": {"name": "frozen", "library_item": "frozen"}}
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.create_frozen_vm_from_ovf.assert_called()
+
+    node_config = {
+        "frozen_vm": {
+            "name": "frozen",
+            "library_item": "frozen",
+            "resource_pool": "frozen-rp",
+        }
+    }
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.create_frozen_vm_on_each_host.assert_called()
+    vnp.initialize_frozen_vm_scheduler.assert_called()
+
+
+def test_update_vsphere_configs():
+    input_config = {
+        "available_node_types": {
+            "ray.head.default": {
+                "resources": {},
+                "node_config": {"resource_pool": "ray", "datastore": "vsan"},
+            },
+            "worker": {"resources": {}, "node_config": {}},
+        },
+        "provider": {"vsphere_config": {}},
+        "head_node_type": "ray.head.default",
+    }
+
+    with pytest.raises(KeyError):
+        update_vsphere_configs(input_config)
+
+    input_config = {
+        "provider": {
+            "vsphere_config": {
+                "frozen_vm": {
+                    "name": "frozen",
+                    "resource_pool": "frozen-rp",
+                    "library_item": "frozen",
+                    "cluster": "cluster",
+                    "datastore": "vsanDatastore",
+                }
+            }
+        },
+        "available_node_types": {
+            "ray.head.default": {
+                "resources": {},
+                "node_config": {"resource_pool": "ray", "datastore": "vsan"},
+            },
+            "worker": {"resources": {}, "node_config": {}},
+        },
+        "head_node_type": "ray.head.default",
+    }
+
+    update_vsphere_configs(input_config)
+    assert (
+        "frozen_vm"
+        in input_config["available_node_types"]["ray.head.default"]["node_config"]
+    )
+    assert "frozen_vm" in input_config["available_node_types"]["worker"]["node_config"]
+
+
+def test_validate_frozen_vm_configs():
+    # Test a valid case with OVF deployment
+    config = {
+        "name": "single-frozen-vm",
+        "library_item": "frozen-vm-template",
+        "cluster": "vsanCluster",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test a valid case with existing frozen VM
+    config = {"name": "existing-single-frozen-vm"}
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test a valid case with OVF deployment and resource pool
+    config = {
+        "name": "frozen-vm-prefix",
+        "library_item": "frozen-vm-template",
+        "resource_pool": "frozen-vm-resource-pool",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test a valid case with existing resource pool
+    config = {"resource_pool": "frozen-vm-resource-pool"}
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test an invalid case missing everything for OVF deployment
+    with pytest.raises(
+        ValueError,
+        match="'datastore' is not given when trying to deploy the frozen VM from OVF.",
+    ):
+        config = {
+            "library_item": "frozen-vm-template",
+        }
+        validate_frozen_vm_configs(config)
+
+    # Test an invalid case missing datastore for OVF deployment
+    with pytest.raises(
+        ValueError,
+        match="'datastore' is not given when trying to deploy the frozen VM from OVF.",
+    ):
+        config = {
+            "name": "single-frozen-vm",
+            "library_item": "frozen-vm-template",
+            "cluster": "vsanCluster",
+        }
+        validate_frozen_vm_configs(config)
+
+    # Test an invalid case missing cluster and resource pool for OVF deployment
+    with pytest.raises(
+        ValueError,
+        match="both 'cluster' and 'resource_pool' are missing when trying to deploy "
+        "the frozen VM from OVF, at least one should be given.",
+    ):
+        config = {
+            "name": "single-frozen-vm",
+            "library_item": "frozen-vm-template",
+            "datastore": "vsanDatastore",
+        }
+        validate_frozen_vm_configs(config)
+
+    # Test an invalid case missing name for OVF deployment
+    with pytest.raises(
+        ValueError, match="'name' must be given when deploying the frozen VM from OVF."
+    ):
+        config = {
+            "library_item": "frozen-vm-template",
+            "cluster": "vsanCluster",
+            "datastore": "vsanDatastore",
+        }
+        validate_frozen_vm_configs(config)
+
+    # Test an valid case with redundant data
+    config = {
+        "name": "single-frozen-vm",
+        "library_item": "frozen-vm-template",
+        "resource_pool": "frozen-vm-resource-pool",
+        "cluster": "vsanCluster",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
+
+    # Another case with redundant data
+    config = {
+        "name": "single-frozen-vm",
+        "resource_pool": "frozen-vm-resource-pool",
+        "cluster": "vsanCluster",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
 
 
 if __name__ == "__main__":
