@@ -644,7 +644,10 @@ def test_unhealthy_retry_correct_number_of_times():
         proxy_state.update()
         time.sleep(0.1)
         print("status", proxy_state.status)
-        print("consecutive_health_check_failures", proxy_state._consecutive_health_check_failures)
+        print(
+            "consecutive_health_check_failures",
+            proxy_state._consecutive_health_check_failures,
+        )
     assert proxy_state.status == ProxyStatus.UNHEALTHY
 
 
