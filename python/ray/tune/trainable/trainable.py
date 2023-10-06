@@ -153,8 +153,9 @@ class Trainable:
         self._local_ip = ray.util.get_node_ip_address()
 
         self._storage = storage
-        assert storage.trial_fs_path
-        logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
+        if storage:
+            assert storage.trial_fs_path
+            logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
 
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - self._start_time
