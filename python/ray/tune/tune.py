@@ -29,9 +29,7 @@ from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train import CheckpointConfig, SyncConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
-from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.analysis.experiment_analysis import LegacyExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
@@ -673,27 +671,12 @@ def run(
             f"Got '{type(config)}' instead."
         )
 
-    if _use_storage_context():
-        local_path, remote_path = None, None
-        sync_config = sync_config or SyncConfig()
+    sync_config = sync_config or SyncConfig()
 
-        # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-        # For now, keep accepting both options.
-        if local_dir is not None:
-            os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_dir
-    else:
-        (
-            storage_path,
-            local_path,
-            remote_path,
-            sync_config,
-        ) = _resolve_and_validate_storage_path(
-            storage_path=storage_path, local_dir=local_dir, sync_config=sync_config
-        )
-
-        air_usage.tag_ray_air_storage_config(
-            local_path=local_path, remote_path=remote_path, sync_config=sync_config
-        )
+    # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
+    # For now, keep accepting both options.
+    if local_dir is not None:
+        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_dir
 
     checkpoint_config = checkpoint_config or CheckpointConfig()
 
@@ -756,8 +739,6 @@ def run(
     if num_samples == -1:
         num_samples = sys.maxsize
 
-    result_buffer_length = None
-
     # Create scheduler here as we need access to some of its properties
     if isinstance(scheduler, str):
         # importing at top level causes a recursive dependency
@@ -780,7 +761,7 @@ def run(
                 f"and faulty behavior, so the buffer length was forcibly set "
                 f"to 1 instead."
             )
-        result_buffer_length = 1
+            os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"
 
     # If reuse_actors is unset, default to False for string and class trainables,
     # and default to True for everything else (i.e. function trainables)
@@ -951,8 +932,7 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
-    if _use_storage_context():
-        air_usage.tag_storage_type(experiments[0].storage)
+    air_usage.tag_storage_type(experiments[0].storage)
 
     # NOTE: Report callback telemetry before populating the list with default callbacks.
     # This tracks user-specified callback usage.
@@ -1005,9 +985,6 @@ def run(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
-        experiment_path=experiments[0].path,
-        experiment_dir_name=experiments[0].legacy_dir_name,
-        sync_config=sync_config,
         stopper=experiments[0].stopper,
         resume=resume,
         server_port=server_port,
@@ -1069,12 +1046,8 @@ def run(
     with contextlib.ExitStack() as stack:
         from ray.tune.experimental.output import TuneRichReporter
 
-        if _use_storage_context():
-            experiment_local_path = runner._storage.experiment_local_path
-            experiment_dir_name = runner._storage.experiment_dir_name
-        else:
-            experiment_local_path = runner._legacy_local_experiment_path
-            experiment_dir_name = runner._legacy_experiment_dir_name
+        experiment_local_path = runner._storage.experiment_local_path
+        experiment_dir_name = runner._storage.experiment_dir_name
 
         if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
             tensorboard_path = experiment_local_path
@@ -1159,22 +1132,13 @@ def run(
                 f"saved.\nResume experiment with: {restore_entrypoint}"
             )
 
-    if _use_storage_context():
-        return ExperimentAnalysis(
-            experiment_checkpoint_path=runner.experiment_path,
-            default_metric=metric,
-            default_mode=mode,
-            trials=all_trials,
-            storage_filesystem=experiments[0].storage.storage_filesystem,
-        )
-    else:
-        return LegacyExperimentAnalysis(
-            runner.experiment_state_path,
-            trials=all_trials,
-            default_metric=metric,
-            default_mode=mode,
-            remote_storage_path=remote_path,
-        )
+    return ExperimentAnalysis(
+        experiment_checkpoint_path=runner.experiment_path,
+        default_metric=metric,
+        default_mode=mode,
+        trials=all_trials,
+        storage_filesystem=experiments[0].storage.storage_filesystem,
+    )
 
 
 @PublicAPI
