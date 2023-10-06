@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.datasource.datasource import Datasource, Reader
@@ -10,7 +10,7 @@ class Read(AbstractMap):
     def __init__(
         self,
         datasource: Datasource,
-        reader: Reader,
+        datasource_or_legacy_reader: Union[Datasource, Reader],
         parallelism: int,
         additional_split_factor: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -23,7 +23,7 @@ class Read(AbstractMap):
             self._estimated_num_blocks = parallelism * additional_split_factor
         super().__init__(f"Read{datasource.get_name()}{suffix}", None, ray_remote_args)
         self._datasource = datasource
-        self._reader = reader
+        self._datasource_or_legacy_reader = datasource_or_legacy_reader
         self._parallelism = parallelism
         self._additional_split_factor = additional_split_factor
 

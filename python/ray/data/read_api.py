@@ -356,8 +356,10 @@ def read_datasource(
             requested_parallelism,
             min_safe_parallelism,
             inmemory_size,
-            reader,
-        ) = _get_reader(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
+            datasource_or_legacy_reader,
+        ) = _get_datasource_or_legacy_reader(
+            datasource, ctx, cur_pg, parallelism, local_uri, read_args
+        )
     else:
         # Prepare read in a remote task at same node.
         # NOTE: in Ray client mode, this is expected to be run on head node.
@@ -367,10 +369,15 @@ def read_datasource(
             soft=False,
         )
         get_reader = cached_remote_fn(
-            _get_reader, retry_exceptions=False, num_cpus=0
+            _get_datasource_or_legacy_reader, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        (requested_parallelism, min_safe_parallelism, inmemory_size, reader,) = ray.get(
+        (
+            requested_parallelism,
+            min_safe_parallelism,
+            inmemory_size,
+            datasource_or_legacy_reader,
+        ) = ray.get(
             get_reader.remote(
                 datasource,
                 ctx,
@@ -383,7 +390,7 @@ def read_datasource(
 
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
-    read_tasks = reader.get_read_tasks(requested_parallelism)
+    read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
     # Compute the number of blocks the read will return. If the number of blocks is
     # expected to be less than the requested parallelism, boost the number of blocks
@@ -450,7 +457,7 @@ def read_datasource(
 
     read_op = Read(
         datasource,
-        reader,
+        datasource_or_legacy_reader,
         requested_parallelism,
         additional_split_factor,
         ray_remote_args,
@@ -2439,7 +2446,7 @@ def from_torch(
     )
 
 
-def _get_reader(
+def _get_datasource_or_legacy_reader(
     ds: Datasource,
     ctx: DataContext,
     cur_pg: Optional[PlacementGroup],

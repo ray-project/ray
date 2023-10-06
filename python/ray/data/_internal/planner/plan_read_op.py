@@ -94,7 +94,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     """
 
     def get_input_data() -> List[RefBundle]:
-        read_tasks = op._reader.get_read_tasks(op._parallelism)
+        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(op._parallelism)
         return [
             RefBundle(
                 [

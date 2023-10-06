@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from ray.data._internal.compute import ComputeStrategy
     from ray.data._internal.sort import SortKey
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
-    from ray.data.datasource import Reader
+    from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ def _autodetect_parallelism(
     parallelism: int,
     cur_pg: Optional["PlacementGroup"],
     ctx: DataContext,
-    reader: Optional["Reader"] = None,
+    datasource_or_legacy_reader: Optional[Union["Datasource", "Reader"]] = None,
     avail_cpus: Optional[int] = None,
 ) -> (int, int, Optional[int]):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
@@ -120,7 +120,7 @@ def _autodetect_parallelism(
         parallelism: The user-requested parallelism, or -1 for auto-detection.
         cur_pg: The current placement group, to be used for avail cpu calculation.
         ctx: The current Dataset context to use for configs.
-        reader: The datasource reader, to be used for data size estimation.
+        datasource_or_legacy_reader: TODO
         avail_cpus: Override avail cpus detection (for testing only).
 
     Returns:
@@ -130,8 +130,8 @@ def _autodetect_parallelism(
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
-    if reader:
-        mem_size = reader.estimate_inmemory_data_size()
+    if datasource_or_legacy_reader:
+        mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
         if mem_size is not None and not np.isnan(mem_size):
             min_safe_parallelism = max(1, int(mem_size / ctx.target_max_block_size))
             max_reasonable_parallelism = max(

@@ -1,4 +1,5 @@
 import builtins
+import warnings
 from copy import copy
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -30,11 +31,11 @@ class Datasource:
 
     .. note::
         Datasource instances must be serializable, since
-        :meth:`~ray.data.Datasource.create_reader` and
-        :meth:`~ray.data.Datasource.write` are called in remote tasks.
+        :meth:`~ray.data.Datasource.write` is called in remote tasks.
 
     """  # noqa: E501
 
+    @Deprecated(message="TODO")
     def create_reader(self, **read_args) -> "Reader":
         """Return a Reader for the given read arguments.
 
@@ -44,6 +45,7 @@ class Datasource:
         Args:
             read_args: Additional kwargs to pass to the datasource impl.
         """
+        warnings.warn("TODO", DeprecationWarning)
         return _LegacyDatasourceReader(self, **read_args)
 
     @Deprecated
@@ -141,8 +143,28 @@ class Datasource:
             name = name[: -len(datasource_suffix)]
         return name
 
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        """Return an estimate of the in-memory data size, or None if unknown.
 
-@PublicAPI
+        Note that the in-memory data size may be larger than the on-disk data size.
+        """
+        raise NotImplementedError
+
+    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+        """Execute the read and return read tasks.
+
+        Args:
+            parallelism: The requested read parallelism. The number of read
+                tasks should equal to this value if possible.
+
+        Returns:
+            A list of read tasks that can be executed to read blocks from the
+            datasource in parallel.
+        """
+        raise NotImplementedError
+
+
+@Deprecated(message="TODO")
 class Reader:
     """A bound read operation for a :class:`~ray.data.Datasource`.
 
