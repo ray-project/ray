@@ -54,6 +54,7 @@ def test_from_huggingface_streaming(ray_start_regular_shared):
     ds = ray.data.from_huggingface(hfds)
     assert ds.count() == 3257
 
+    # Returns dict batches.
     hfds = datasets.load_dataset(
         "tweet_eval", "emotion", streaming=True, split="train"
     ).with_format(None)
