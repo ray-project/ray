@@ -109,7 +109,6 @@ def _create_proxy_state_manager(
             config=http_options,
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
-            proxy_actor_class=FakeProxyActor,
             actor_proxy_wrapper_class=actor_proxy_wrapper_class,
         ),
         cluster_node_info_cache,
@@ -644,6 +643,8 @@ def test_unhealthy_retry_correct_number_of_times():
     for _ in range(3):
         proxy_state.update()
         time.sleep(0.1)
+        print("status", proxy_state.status)
+        print("consecutive_health_check_failures", proxy_state._consecutive_health_check_failures)
     assert proxy_state.status == ProxyStatus.UNHEALTHY
 
 
