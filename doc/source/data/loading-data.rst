@@ -771,56 +771,33 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
     .. tab-item:: Databricks
 
-        To read from Databricks, call ``ray.data.read_databricks_tables`` API (recommended) or ``ray.data.ray.data.read_sql`` API.
-
-        For using ``ray.data.read_databricks_tables`` API, set 'DATABRICKS_HOST' environment variable to databricks warehouse access token, then read from the Databricks SQL warehouse.
-
-        .. testcode::
-            :skipif: True
-
-            import ray
-            # Get movies after the year 1980
-            dataset = ray.data.read_databricks_tables(
-                warehouse_id='...',  # Databricks SQL warehouse ID
-                catalog='...',  # Unity catalog name
-                schema='...',  # Schema name
-                query="SELECT title, score FROM movie WHERE year >= 1980",
-            )
-
-        For using ``ray.data.ray.data.read_sql`` API,
-        install the
-        `Databricks SQL Connector for Python <https://docs.databricks.com/dev-tools/python-sql-connector.html>`_.
+        To read from Databricks, set the ``DATABRICKS_HOST`` environment variable to
+        your Databricks warehouse access token.
 
         .. code-block:: console
 
-            pip install databricks-sql-connector
+            export DATABRICKS_TOKEN=...
 
+        If you're running your program on the Databricks runtime, also set the 
+        ``DATABRICKS_HOST`` environment variable.
 
-        Then, define your connection logic and read from the Databricks SQL warehouse.
+        .. code-block:: console
+
+            export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
+
+        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks 
+        SQL warehouse.
 
         .. testcode::
             :skipif: True
 
-            from databricks import sql
-
             import ray
 
-            def create_connection():
-                return sql.connect(
-                    server_hostname="dbc-1016e3a4-d292.cloud.databricks.com",
-                    http_path="/sql/1.0/warehouses/a918da1fc0b7fed0",
-                    access_token=...,
-
-
-            # Get all movies
-            dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
-            # Get movies after the year 1980
-            dataset = ray.data.read_sql(
-                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-            )
-            # Get the number of movies per year
-            dataset = ray.data.read_sql(
-                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+            dataset = ray.data.read_databricks_tables(
+                warehouse_id='a885ad08b64951ad',  # Databricks SQL warehouse ID
+                catalog='catalog_1',  # Unity catalog name
+                schema='db_1',  # Schema name
+                query="SELECT title, score FROM movie WHERE year >= 1980",
             )
 
     .. tab-item:: BigQuery
