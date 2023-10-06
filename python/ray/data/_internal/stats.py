@@ -126,6 +126,8 @@ class _DatasetStatsBuilder:
 class DataMetric(Enum):
     BYTES_SPILLED = "data_spilled_bytes"
     BYTES_ALLOCATED = "data_allocated_bytes"
+    BYTES_FREED = "data_freed_bytes"
+    BYTES_CURRENT = "data_current_bytes"
     CPU_USAGE = "data_cpu_usage_cores"
     GPU_USAGE = "data_gpu_usage_cores"
     ROWS_OUTPUTTED = "data_output_rows"
@@ -159,9 +161,19 @@ class _StatsActor:
             description="Bytes spilled by dataset operators",
             tag_keys=tags_keys,
         )
-        self.bytes_allocated = Gauge(
+        self.bytes_allocated = Counter(
             DataMetric.BYTES_ALLOCATED.value,
             description="Bytes allocated by dataset operators",
+            tag_keys=tags_keys,
+        )
+        self.bytes_freed = Counter(
+            DataMetric.BYTES_FREED.value,
+            description="Bytes freed by dataset operators",
+            tag_keys=tags_keys,
+        )
+        self.bytes_current = Gauge(
+            DataMetric.BYTES_CURRENT.value,
+            description="Bytes currently in memory store used by dataset operators",
             tag_keys=tags_keys,
         )
         self.cpu_usage = Gauge(
@@ -217,29 +229,16 @@ class _StatsActor:
             self.last_time[stats_uuid] - self.start_time[stats_uuid],
         )
 
-    def _get_stats_dict_size(self):
-        return len(self.start_time), len(self.last_time), len(self.metadata)
-
-    def inc_bytes_spilled(self, bytes_spilled, tags):
-        if bytes_spilled > 0:
-            self.bytes_spilled.inc(bytes_spilled, tags)
-
-    def inc_rows_outputted(self, rows_outputted, tags):
-        if rows_outputted > 0:
-            self.rows_outputted.inc(rows_outputted, tags)
-
-    def inc_bytes_outputted(self, bytes_outputted, tags):
-        if bytes_outputted > 0:
-            self.bytes_outputted.inc(bytes_outputted, tags)
-
-    def set_bytes_allocated(self, bytes_allocated, tags):
-        self.bytes_allocated.set(bytes_allocated, tags)
-
-    def set_cpu_usage(self, cpu_usage, tags):
-        self.cpu_usage.set(cpu_usage, tags)
-
-    def set_gpu_usage(self, gpu_usage, tags):
-        self.gpu_usage.set(gpu_usage, tags)
+    def update_metrics(
+        self, stats: Dict[DataMetric, Union[int, float]], tags: Dict[str, str]
+    ):
+        self.bytes_spilled.inc(stats[DataMetric.BYTES_SPILLED], tags)
+        self.rows_outputted.inc(stats[DataMetric.ROWS_OUTPUTTED], tags)
+        self.bytes_outputted.inc(stats[DataMetric.BYTES_OUTPUTTED], tags)
+        self.bytes_allocated.inc(stats[DataMetric.BYTES_ALLOCATED], tags)
+        self.bytes_current.set(stats[DataMetric.BYTES_CURRENT], tags)
+        self.cpu_usage.set(stats[DataMetric.CPU_USAGE], tags)
+        self.gpu_usage.set(stats[DataMetric.GPU_USAGE], tags)
 
 
 def _get_or_create_stats_actor():
@@ -261,17 +260,13 @@ def _get_or_create_stats_actor():
     ).remote()
 
 
-def _update_stats_actor_metrics(
-    stats_actor: _StatsActor, stats: Dict[DataMetric, Any], dataset: str
-):
-    tags = {"dataset": dataset}
+stats_actor = None
 
-    stats_actor.inc_bytes_spilled.remote(stats[DataMetric.BYTES_SPILLED], tags)
-    stats_actor.inc_rows_outputted.remote(stats[DataMetric.ROWS_OUTPUTTED], tags)
-    stats_actor.inc_bytes_outputted.remote(stats[DataMetric.BYTES_OUTPUTTED], tags)
-    stats_actor.set_bytes_allocated.remote(stats[DataMetric.BYTES_ALLOCATED], tags)
-    stats_actor.set_cpu_usage.remote(stats[DataMetric.CPU_USAGE], tags)
-    stats_actor.set_gpu_usage.remote(stats[DataMetric.GPU_USAGE], tags)
+
+def _update_stats_actor_metrics(stats: Dict[DataMetric, Any], tags: Dict[str, str]):
+    if stats_actor is None:
+        stats_actor = _get_or_create_stats_actor()
+    stats_actor.update_metrics.remote(stats, tags)
 
 
 class DatasetStats:
