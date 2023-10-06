@@ -4,8 +4,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train import BackendConfig, Checkpoint, TrainingIterator
+from ray.train import BackendConfig, Checkpoint, TrainingIterator, RunConfig, ScalingConfig
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
