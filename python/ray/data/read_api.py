@@ -771,6 +771,7 @@ def read_parquet(
         ray_remote_args=ray_remote_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        shuffle=shuffle,
         **arrow_parquet_args,
     )
 
@@ -1026,6 +1027,7 @@ def read_parquet_bulk(
         open_stream_args=arrow_open_file_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        shuffle=shuffle,
         **arrow_parquet_args,
     )
 
@@ -1152,6 +1154,7 @@ def read_json(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
         **arrow_json_args,
     )
 
@@ -1306,6 +1309,7 @@ def read_csv(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
         **arrow_csv_args,
     )
 
@@ -1405,6 +1409,7 @@ def read_text(
         drop_empty_lines=drop_empty_lines,
         encoding=encoding,
         ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
     )
 
 
@@ -1479,6 +1484,7 @@ def read_numpy(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
         **numpy_load_args,
     )
 
@@ -1589,6 +1595,7 @@ def read_tfrecords(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         tf_schema=tf_schema,
+        shuffle=shuffle,
     )
 
 
@@ -1660,6 +1667,7 @@ def read_webdataset(
         filerename=filerename,
         suffixes=suffixes,
         verbose_open=verbose_open,
+        shuffle=shuffle,
     )
 
 
@@ -1762,6 +1770,7 @@ def read_binary_files(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
         output_arrow_format=output_arrow_format,
     )
 
