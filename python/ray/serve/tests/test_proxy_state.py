@@ -37,16 +37,16 @@ class FakeProxyActor:
     def __init__(self, *args, **kwargs):
         pass
 
-    async def ready(self):
+    def ready(self):
         return json.dumps(["mock_worker_id", "mock_log_file_path"])
 
-    async def check_health(self):
+    def check_health(self):
         pass
 
 
 class FakeProxyWrapper(ProxyWrapper):
-    def __init__(self, actor_handle=None, *args, **kwargs):
-        self.actor_handle = actor_handle or FakeProxyActor(*args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        self.actor_handle = FakeProxyActor(*args, **kwargs)
         self.ready = ProxyWrapperCallStatus.FINISHED_SUCCEED
         self.health = ProxyWrapperCallStatus.FINISHED_SUCCEED
         self.worker_id = "mock_worker_id"
@@ -54,9 +54,13 @@ class FakeProxyWrapper(ProxyWrapper):
         self.health_check_ongoing = False
         self.is_draining = False
         self.shutdown = False
+        self.num_health_checks = 0
 
     @property
     def actor_id(self) -> str:
+        pass
+
+    def reset_health_check(self):
         pass
 
     def start_new_ready_check(self):
@@ -72,8 +76,8 @@ class FakeProxyWrapper(ProxyWrapper):
         return self.ready
 
     def is_healthy(self) -> ProxyWrapperCallStatus:
+        self.num_health_checks += 1
         self.health_check_ongoing = False
-        self.actor_handle.check_health()
         return self.health
 
     def is_drained(self) -> ProxyWrapperCallStatus:
@@ -88,12 +92,14 @@ class FakeProxyWrapper(ProxyWrapper):
     def kill(self):
         self.shutdown = True
 
+    def get_num_health_checks(self):
+        return self.num_health_checks
+
 
 def _create_proxy_state_manager(
     http_options: HTTPOptions = HTTPOptions(),
     head_node_id: str = HEAD_NODE_ID,
     cluster_node_info_cache=MockClusterNodeInfoCache(),
-    proxy_actor_class=FakeProxyActor,
     actor_proxy_wrapper_class=FakeProxyWrapper,
 ) -> (ProxyStateManager, ClusterNodeInfoCache):
     return (
@@ -102,7 +108,7 @@ def _create_proxy_state_manager(
             config=http_options,
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
-            proxy_actor_class=proxy_actor_class,
+            proxy_actor_class=FakeProxyActor,
             actor_proxy_wrapper_class=actor_proxy_wrapper_class,
         ),
         cluster_node_info_cache,
@@ -110,14 +116,13 @@ def _create_proxy_state_manager(
 
 
 def _create_proxy_state(
-    proxy_actor_class=FakeProxyActor,
     actor_proxy_wrapper_class=FakeProxyWrapper,
     status: ProxyStatus = ProxyStatus.STARTING,
     node_id: str = "mock_node_id",
     **kwargs,
 ) -> ProxyState:
     state = ProxyState(
-        actor_proxy_wrapper=actor_proxy_wrapper_class(actor_handle=proxy_actor_class()),
+        actor_proxy_wrapper=actor_proxy_wrapper_class(),
         actor_name="alice",
         node_id=node_id,
         node_ip="mock_node_ip",
@@ -384,12 +389,9 @@ def test_proxy_state_update_healthy_check_health_succeed():
     )
     first_check_time = proxy_state._last_health_check_time
 
-    # Continuously trigger update and status continue to be HEALTHY.
-    wait_for_condition(
-        condition_predictor=_update_and_check_proxy_status,
-        state=proxy_state,
-        status=ProxyStatus.HEALTHY,
-    )
+    # Trigger update few more times and the status continue to be HEALTHY.
+    for _ in range(3):
+        _update_and_check_proxy_status(proxy_state, ProxyStatus.HEALTHY)
 
     # Ensure the check time have changed since the last update
     assert first_check_time != proxy_state._last_health_check_time
@@ -407,6 +409,7 @@ def test_proxy_state_update_healthy_check_health_failed_once():
     and the status continue to stay as HEALTHY.
     """
     proxy_state = _create_proxy_state()
+    proxy_state._actor_proxy_wrapper.health = ProxyWrapperCallStatus.FINISHED_FAILED
 
     # Continuously trigger update. The status should change from STARTING to HEALTHY
     # when ready.
@@ -415,19 +418,12 @@ def test_proxy_state_update_healthy_check_health_failed_once():
         state=proxy_state,
         status=ProxyStatus.HEALTHY,
     )
-    first_check_time = proxy_state._last_health_check_time
 
-    # Continuously trigger update and status continue to be HEALTHY.
-    wait_for_condition(
-        condition_predictor=_update_and_check_proxy_status,
-        state=proxy_state,
-        status=ProxyStatus.HEALTHY,
-    )
+    # Trigger update once and status continue to be HEALTHY.
+    _update_and_check_proxy_status(proxy_state, ProxyStatus.HEALTHY)
 
-    # Ensure the check time have changed since the last update
-    assert first_check_time != proxy_state._last_health_check_time
-
-    # Unblock ready check, trigger update, and the status is still HEALTHY.
+    # Unblock health check, trigger update, and the status is still HEALTHY.
+    proxy_state._actor_proxy_wrapper.health = ProxyWrapperCallStatus.FINISHED_SUCCEED
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
@@ -485,28 +481,7 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
     it finally fails enough times to become UNHEALTHY.
     """
 
-    class NewMockProxyActor:
-        def __init__(self):
-            self._should_succeed = True
-            self.num_health_checks = 0
-
-        def get_num_health_checks(self) -> int:
-            return self.num_health_checks
-
-        def should_succeed(self, value: bool = True):
-            self._should_succeed = value
-
-        def ready(self):
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        def check_health(self):
-            self.num_health_checks += 1
-            if self._should_succeed:
-                return "Success!"
-            else:
-                raise RuntimeError("self._should_succeed is disabled!")
-
-    proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
+    proxy_state = _create_proxy_state()
 
     # Wait for the proxy to become ready.
     wait_for_condition(
@@ -519,7 +494,7 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
         state: ProxyState, num_health_checks: int
     ):
         state.update()
-        assert (state.actor_handle.get_num_health_checks()) == num_health_checks
+        assert (state._actor_proxy_wrapper.get_num_health_checks()) == num_health_checks
         return True
 
     def incur_health_checks(
@@ -532,7 +507,6 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
             num_checks: number of checks to wait for.
             expected_final_status: the final status that should be asserted.
         """
-        proxy_state.actor_handle.should_succeed(pass_checks)
         if pass_checks:
             proxy_state._actor_proxy_wrapper.health = (
                 ProxyWrapperCallStatus.FINISHED_SUCCEED
@@ -542,7 +516,7 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
                 ProxyWrapperCallStatus.FINISHED_FAILED
             )
 
-        cur_num_health_checks = proxy_state.actor_handle.get_num_health_checks()
+        cur_num_health_checks = proxy_state._actor_proxy_wrapper.get_num_health_checks()
 
         wait_for_condition(
             condition_predictor=_update_until_num_health_checks_received,
@@ -550,7 +524,7 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
             num_health_checks=cur_num_health_checks + num_checks,
         )
         assert (
-            proxy_state.actor_handle.get_num_health_checks()
+            proxy_state._actor_proxy_wrapper.get_num_health_checks()
             <= cur_num_health_checks + num_checks
         )
 
@@ -666,15 +640,8 @@ def test_unhealthy_retry_correct_number_of_times():
         state=proxy_state,
         status=ProxyStatus.HEALTHY,
     )
+    proxy_state._actor_proxy_wrapper.health_check_ongoing = True
 
-    # Ensure _health_check_obj_ref is set again
-    def health_check_ongoing():
-        proxy_state.update()
-        return proxy_state._actor_proxy_wrapper.health_check_ongoing
-
-    wait_for_condition(health_check_ongoing)
-
-    # Fail the next 3 check_health calls should change the status to UNHEALTHY
     for _ in range(3):
         proxy_state.update()
     assert proxy_state.status == ProxyStatus.UNHEALTHY
@@ -734,27 +701,7 @@ def test_update_draining(all_nodes, number_of_worker_nodes):
 def test_proxy_actor_healthy_during_draining():
     """Test that the proxy will remain DRAINING even if health check succeeds."""
 
-    class NewMockProxyActor:
-        def __init__(self):
-            self.num_health_checks = 0
-
-        def get_num_health_checks(self) -> int:
-            return self.num_health_checks
-
-        def ready(self):
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        def check_health(self):
-            self.num_health_checks = self.num_health_checks + 1
-            return "Success!"
-
-        def update_draining(self, draining, _after):
-            pass
-
-        def is_drained(self, _after):
-            return False
-
-    proxy_state = _create_proxy_state(proxy_actor_class=NewMockProxyActor)
+    proxy_state = _create_proxy_state()
 
     # Wait for the proxy to become ready.
     wait_for_condition(
@@ -767,14 +714,14 @@ def test_proxy_actor_healthy_during_draining():
     proxy_state.update(draining=True)
     assert proxy_state.status == ProxyStatus.DRAINING
 
-    cur_num_health_checks = proxy_state.actor_handle.get_num_health_checks()
+    cur_num_health_checks = proxy_state._actor_proxy_wrapper.get_num_health_checks()
 
     def _update_until_two_more_health_checks():
         # Check 2 more health checks to make sure the proxy state
         # at least sees the first successful health check.
         proxy_state.update(draining=True)
         return (
-            proxy_state.actor_handle.get_num_health_checks()
+            proxy_state._actor_proxy_wrapper.get_num_health_checks()
             == cur_num_health_checks + 2
         )
 
