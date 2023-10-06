@@ -275,6 +275,28 @@ def test_invalid_tpu_chip_configuration_warning(propagate_logs, caplog, num_tpus
         assert "not a supported chip configuration" in caplog.text
 
 
+@pytest.mark.parametrize(
+    "test_config",
+    [
+        (0, {"TPU-v4-16": 1, "my-tpu": 1, "TPU": 4}),
+        (1, {"my-tpu": 1, "TPU": 4}),
+    ],
+)
+def test_tpu_pod_detect_and_configure_worker(test_config):
+    worker_id, expected_value = test_config
+    resources = {"TPU": 4}
+    with patch("ray._private.accelerator.get_tpu_id", return_value="my-tpu"):
+        with patch(
+            "ray._private.accelerator.get_tpu_accelerator_type", return_value="v4-16"
+        ):
+            with patch(
+                "ray._private.accelerator.get_tpu_worker_id", return_value=worker_id
+            ):
+                accelerator._detect_and_configure_tpu_pod(resources=resources)
+
+    assert resources == expected_value
+
+
 if __name__ == "__main__":
     import sys
 

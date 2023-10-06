@@ -41,6 +41,8 @@ def update_resources_with_accelerator_type(resources: dict):
         autodetect_accelerators=_autodetect_num_tpus,
         visible_devices_env_variable=ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
     )
+    if ray_constants.TPU in resources:
+        _detect_and_configure_tpu_pod(resources=resources)
 
 
 def _detect_and_configure_custom_accelerator(
@@ -107,7 +109,7 @@ def _detect_and_configure_custom_accelerator(
         # Don't use more resources than allowed by the user's pre-set values.
         if accelerator_count is not None and visible_ids is not None:
             accelerator_count = min(accelerator_count, len(visible_ids))
-    if accelerator_count is not None:
+    if accelerator_count is not None and accelerator_count > 0:
         # 4. Update accelerator_type and accelerator_count with
         # number of accelerators detected or configured.
         resources.update(
@@ -115,6 +117,64 @@ def _detect_and_configure_custom_accelerator(
                 accelerator_key: accelerator_count,
                 get_accelerator_type(): accelerator_count,
             }
+        )
+
+
+def _detect_and_configure_tpu_pod(resources: dict):
+    """Configure resources specific to TPU pods.
+
+    When running workloads on a TPU pod, we need a way to run
+    the same binary on every worker in the TPU pod.
+
+    See https://jax.readthedocs.io/en/latest/multi_process.html
+    for more information.
+
+    To do this in ray, we take advantage of custom resources. We
+    mark worker 0 of the TPU pod as a "coordinator" that identifies
+    the other workers in the TPU pod. We therefore need:
+    - worker 0 to be targetable.
+    - all workers in the TPU pod to have a unique identifier consistent
+      within a TPU pod.
+
+    So assuming we want to run the following workload:
+
+    @ray.remote
+    def my_jax_fn():
+        import jax
+        return jax.device_count()
+
+    We could broadcast this on a TPU pod (e.g. a v4-16) as follows:
+
+    @ray.remote(resources={"tpu-v4-16"})
+    def run_jax_fn(executable):
+        # Note this will execute on worker 0
+        tpu_name = ray.util.accelerators.tpu.get_tpu_pod_name()
+        num_workers = ray.util.accelerators.tpu.get_tpu_num_workers()
+
+        tpu_executable = executable.options(resources={"TPU": 4, tpu_name: 1})
+        return [tpu_executable.remote() for _ in range(num_workers)]
+
+    """
+    tpu_id = get_tpu_id()
+    worker_id = get_tpu_worker_id()
+    accelerator_type = get_tpu_accelerator_type()
+    if tpu_id and worker_id is not None and accelerator_type:
+        pod_resource_name = f"TPU-{accelerator_type}"
+        # Add the name of the TPU ID to the resource.
+        resources[tpu_id] = 1
+        # Only add in the TPU pod resource type to worker 0.
+        if worker_id == 0:
+            resources[pod_resource_name] = 1
+        else:
+            if pod_resource_name in resources:
+                resources.pop(pod_resource_name)
+    else:
+        logging.info(
+            "Failed to configure TPU pod. Got: "
+            "tpu_id: %s, worker_id: %s, accelerator_type: %s",
+            tpu_id,
+            worker_id,
+            accelerator_type,
         )
 
 
@@ -193,63 +253,12 @@ def _autodetect_tpu_version() -> Optional[str]:
         e.g. "TPU-V2", "TPU-V3", "TPU-V4" if applicable, else None.
 
     """
-
-    def accelerator_type_to_version(accelerator_type: str) -> str:
-        if valid_tpu_accelerator_type(accelerator_type):
-            return "TPU-" + str(accelerator_type.split("-")[0]).upper()
-        else:
-            return None
-
-    detected_tpu_version = None
-    # GKE-based check
-    accelerator_type = os.getenv(
-        ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, None
-    )
-    if accelerator_type is not None:
-        detected_tpu_version = accelerator_type_to_version(accelerator_type)
-        if detected_tpu_version is None:
-            logging.info(
-                "While trying to autodetect a TPU type and "
-                f"parsing {ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR}, "
-                f"received malformed accelerator_type: {accelerator_type}"
-            )
+    accelerator_type = get_tpu_accelerator_type()
+    if accelerator_type:
+        return "TPU-" + str(accelerator_type.split("-")[0]).upper()
     else:
-        # GCE-based VM check
-        try:
-            accelerator_type_request = requests.get(
-                ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
-                headers=ray_constants.RAY_GCE_TPU_HEADERS,
-            )
-            if (
-                accelerator_type_request.status_code == 200
-                and accelerator_type_request.text
-            ):
-                detected_tpu_version = accelerator_type_to_version(
-                    accelerator_type_request.text
-                )
-                if detected_tpu_version is None:
-                    logging.info(
-                        "While trying to autodetect a TPU type, the TPU GCE metadata "
-                        "returned a malformed accelerator type: "
-                        f"{accelerator_type_request.text}."
-                    )
-            else:
-                logging.info(
-                    "While trying to autodetect a TPU type, "
-                    "unable to poll TPU GCE metadata. Got "
-                    f"status code: {accelerator_type_request.status_code} and "
-                    f"content: {accelerator_type_request.text}"
-                )
-        except requests.RequestException as e:
-            logging.info(
-                "While trying to autodetect a TPU type, "
-                " unable to poll TPU GCE metadata: %s",
-                e,
-            )
-
-    if detected_tpu_version is None:
         logging.info("Failed to auto-detect TPU type.")
-    return detected_tpu_version
+        return None
 
 
 def valid_tpu_accelerator_type(accelerator_type: str):
@@ -272,3 +281,71 @@ def valid_tpu_accelerator_type(accelerator_type: str):
     if not expected_pattern.match(accelerator_type):
         return False
     return True
+
+
+def _get_tpu_metadata(key: str) -> str:
+    """Poll and get TPU metadata."""
+    try:
+        accelerator_type_request = requests.get(
+            os.path.join(ray_constants.RAY_GCE_TPU_METADATA_ENDPOINT, key),
+            headers=ray_constants.RAY_GCE_TPU_HEADERS,
+        )
+        if (
+            accelerator_type_request.status_code == 200
+            and accelerator_type_request.text
+        ):
+            return accelerator_type_request.text
+        else:
+            logging.debug(
+                "Unable to poll TPU GCE Metadata. Got "
+                f"status code: {accelerator_type_request.status_code} and "
+                f"content: {accelerator_type_request.text}"
+            )
+    except requests.RequestException as e:
+        logging.debug("Unable to poll the TPU GCE Metadata: %s", e)
+    return ""
+
+
+def get_tpu_accelerator_type() -> str:
+    """Get the TPU accelerator type if applicable, e.g. v4-16."""
+    # GKE-based check
+    accelerator_type = os.getenv(ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
+    if not accelerator_type:
+        # GCE-based VM check
+        accelerator_type = _get_tpu_metadata(
+            key=ray_constants.RAY_GCE_TPU_ACCELERATOR_KEY
+        )
+    if valid_tpu_accelerator_type(accelerator_type=accelerator_type):
+        return accelerator_type
+    logging.debug("Failed to get a valid accelerator type.")
+    return ""
+
+
+def get_tpu_id() -> str:
+    """Return the name of the TPU pod that this worker node is a part of."""
+    return _get_tpu_metadata(key=ray_constants.RAY_GCE_TPU_INSTANCE_ID_KEY)
+
+
+def get_tpu_worker_id() -> Optional[int]:
+    """Return the worker index of the TPU pod."""
+    try:
+        worker_id = _get_tpu_metadata(key=ray_constants.RAY_GCE_TPU_WORKER_ID_KEY)
+        return int(worker_id)
+    except ValueError as e:
+        logging.debug("Could not get TPU worker id: %s", e)
+        return None
+
+
+def num_workers_in_tpu_pod() -> Optional[int]:
+    """Return the total number of workers in a TPU pod."""
+    accelerator_type = get_tpu_accelerator_type()
+    if accelerator_type:
+        version = accelerator_type.split("-")[0]
+        num_chips_or_cores = int(accelerator_type.split("-")[1])
+        if version in ray_constants.TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP:
+            return num_chips_or_cores // 8
+        else:
+            return num_chips_or_cores // 4
+    else:
+        logging.debug("Could not get num workers in TPU pod.")
+        return None

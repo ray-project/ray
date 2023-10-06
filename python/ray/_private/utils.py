@@ -496,6 +496,9 @@ def set_tpu_visible_ids_and_bounds(tpu_chips: List[str]) -> None:
         os.environ[
             ray_constants.TPU_HOST_BOUNDS_ENV_VAR
         ] = ray_constants.TPU_SINGLE_HOST_BOUNDS
+    elif num_chips == 4:
+        os.environ[ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = None
+        os.environ[ray_constants.TPU_HOST_BOUNDS_ENV_VAR] = None
     last_set_tpu_chips = tpu_chips
 
 

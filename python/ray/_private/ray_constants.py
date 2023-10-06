@@ -493,10 +493,12 @@ RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
 # instance metadata.
 # See https://cloud.google.com/compute/docs/metadata/overview
 # for more details about VM instance metadata.
-RAY_GCE_TPU_ACCELERATOR_ENDPOINT = (
-    "http://metadata.google.internal/computeMetadata/"
-    "v1/instance/attributes/accelerator-type"
+RAY_GCE_TPU_METADATA_ENDPOINT = (
+    "http://metadata.google.internal/computeMetadata/" "v1/instance/attributes/"
 )
+RAY_GCE_TPU_ACCELERATOR_KEY = "accelerator-type"
+RAY_GCE_TPU_INSTANCE_ID_KEY = "instance-id"
+RAY_GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 RAY_GCE_TPU_HEADERS = {"Metadata-Flavor": "Google"}
 
 # TPU VMs come with 4 chips per host and 2 tensorcores per chip.
@@ -512,6 +514,8 @@ TPU_VALID_CHIP_OPTIONS = (1, 2, 4)
 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
 TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
 TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
+
+TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP = {"v2", "v3", "v4"}
 
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
