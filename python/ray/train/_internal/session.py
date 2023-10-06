@@ -24,6 +24,7 @@ from ray.air.constants import (
 from ray.data import Dataset, DatasetPipeline
 from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
+from ray.train._internal.storage import StorageContext
 from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS,
     WORKER_HOSTNAME,
@@ -147,10 +148,6 @@ class _TrainSession:
         self.node_rank = node_rank
         self.local_world_size = local_world_size
         self.world_size = world_size
-
-        # Checkpoint configurations
-        # Only used if checkpoint_upload_from_workers is True.
-        self.legacy_checkpoint_uri = None
 
         assert storage
         logger.debug(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
