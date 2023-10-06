@@ -191,6 +191,43 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
       },
     ],
   },
+  {
+    title: "Ray Data Metrics",
+    contents: [
+      {
+        title: "Bytes Spilled",
+        pathParams: "orgId=1&theme=light&panelId=45",
+      },
+      {
+        title: "Bytes Allocated",
+        pathParams: "orgId=1&theme=light&panelId=46",
+      },
+      {
+        title: "Bytes Freed",
+        pathParams: "orgId=1&theme=light&panelId=47",
+      },
+      {
+        title: "Memory Store Usage",
+        pathParams: "orgId=1&theme=light&panelId=48",
+      },
+      {
+        title: "CPU Usage",
+        pathParams: "orgId=1&theme=light&panelId=49",
+      },
+      {
+        title: "GPU Usage",
+        pathParams: "orgId=1&theme=light&panelId=50",
+      },
+      {
+        title: "Rows Outputted",
+        pathParams: "orgId=1&theme=light&panelId=51",
+      },
+      {
+        title: "Bytes Outputted",
+        pathParams: "orgId=1&theme=light&panelId=52",
+      },
+    ],
+  },
 ];
 
 export const Metrics = () => {
