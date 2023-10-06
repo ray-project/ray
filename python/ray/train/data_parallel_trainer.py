@@ -1,15 +1,15 @@
 import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
-from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train import BackendConfig, Checkpoint, TrainingIterator
 from ray.train._internal import session
-from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
+from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.utils import construct_train_func
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -485,7 +485,7 @@ class DataParallelTrainer(BaseTrainer):
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.
         """
-        from ipywidgets import HTML, VBox, Tab, Layout
+        from ipywidgets import HTML, Layout, Tab, VBox
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
 
@@ -557,7 +557,7 @@ class DataParallelTrainer(BaseTrainer):
         return Template("rendered_html_common.html.j2").render(content=content)
 
     def _datasets_repr_(self) -> str:
-        from ipywidgets import HTML, VBox, Layout
+        from ipywidgets import HTML, Layout, VBox
 
         content = []
         if self.datasets:
