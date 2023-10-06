@@ -1,29 +1,9 @@
-from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Dict, Optional
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
-
-
-@dataclass
-class ObjectStoreMetrics:
-    """Metrics for object store memory allocations."""
-
-    alloc: int = 0
-    freed: int = 0
-    cur: int = 0
-    peak: int = 0
-    spilled: int = 0
-
-    def to_metrics_dict(self) -> Dict[str, int]:
-        return {
-            "obj_store_mem_alloc": self.alloc,
-            "obj_store_mem_freed": self.freed,
-            "obj_store_mem_peak": self.peak,
-            "obj_store_mem_spilled": self.spilled,
-        }
 
 
 @dataclass
@@ -36,9 +16,6 @@ class RunningTaskInfo:
 @dataclass
 class OpRuntimeMetrics:
     """Runtime metrics for a PhysicalOperator."""
-
-    # Object store metrics
-    object_store: ObjectStoreMetrics = field(default_factory=ObjectStoreMetrics)
 
     # === Inputs-related metrics ===
 
@@ -83,6 +60,29 @@ class OpRuntimeMetrics:
     # Keep track of running tasks.
     _running_tasks: Dict[int, RunningTaskInfo] = field(default_factory=dict)
 
+    # === Object store memory metrics ===
+
+    # Allocated memory size in the object store.
+    obj_store_mem_alloc: int = 0
+    # Freed memory size in the object store.
+    obj_store_mem_freed: int = 0
+    # Current memory size in the object store.
+    obj_store_mem_cur: int = 0
+    # Peak memory size in the object store.
+    obj_store_mem_peak: int = 0
+    # Spilled memory size in the object store.
+    obj_store_mem_spilled: int = 0
+
+    def as_dict(self):
+        """Return a dict representation of the metrics."""
+        result = []
+        for f in fields(self):
+            if f.name.startswith("_"):
+                continue
+            value = getattr(self, f.name)
+            result.append((f.name, value))
+        return dict(result)
+
     @property
     def average_num_outputs_per_task(self) -> Optional[float]:
         """Average number of output blocks per task, or None if no task has finished."""
@@ -110,20 +110,30 @@ class OpRuntimeMetrics:
         return self.bytes_outputs_generated - self.bytes_outputs_taken
 
     def on_input_received(self, input: RefBundle):
+        """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
         input_size = input.size_bytes()
         self.bytes_inputs_received += input_size
         # Update object store metrics.
-        self.object_store.cur += input_size
-        if self.object_store.cur > self.object_store.peak:
-            self.object_store.peak = self.object_store.cur
+        self.obj_store_mem_cur += input_size
+        if self.obj_store_mem_cur > self.obj_store_mem_peak:
+            self.obj_store_mem_peak = self.obj_store_mem_cur
+
+    def on_output_taken(self, output: RefBundle):
+        """Callback when an output is taken from the operator."""
+        output_bytes = output.size_bytes()
+        self.num_outputs_taken += 1
+        self.bytes_outputs_taken += output_bytes
+        self.obj_store_mem_cur -= output_bytes
 
     def on_task_submitted(self, task_index: int, inputs: RefBundle):
+        """Callback when the operator submits a task."""
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
         self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
 
     def on_output_generated(self, task_index: int, output: RefBundle):
+        """Callback when a new task generates an output."""
         num_outputs = len(output)
         output_bytes = output.size_bytes()
 
@@ -137,15 +147,16 @@ class OpRuntimeMetrics:
         task_info.bytes_outputs += output_bytes
 
         # Update object store metrics.
-        self.object_store.alloc += output_bytes
-        self.object_store.cur += output_bytes
-        if self.object_store.cur > self.object_store.peak:
-            self.object_store.peak = self.object_store.cur
+        self.obj_store_mem_alloc += output_bytes
+        self.obj_store_mem_cur += output_bytes
+        if self.obj_store_mem_cur > self.obj_store_mem_peak:
+            self.obj_store_mem_peak = self.obj_store_mem_cur
 
         for block_ref, _ in output.blocks:
             trace_allocation(block_ref, "operator_output")
 
     def on_task_finished(self, task_index: int):
+        """Callback when a task is finished."""
         self.num_tasks_running -= 1
         self.num_tasks_finished += 1
 
@@ -168,17 +179,11 @@ class OpRuntimeMetrics:
         for block, meta in zip(blocks, metadata):
             if locations[block]["did_spill"]:
                 assert meta.size_bytes != None
-                self.object_store.spilled += meta.size_bytes
+                self.obj_store_mem_spilled += meta.size_bytes
 
-        self.object_store.freed += total_input_size
-        self.object_store.cur -= total_input_size
+        self.obj_store_mem_freed += total_input_size
+        self.obj_store_mem_cur -= total_input_size
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]
-
-    def on_output_taken(self, output: RefBundle):
-        output_bytes = output.size_bytes()
-        self.num_outputs_taken += 1
-        self.bytes_outputs_taken += output_bytes
-        self.object_store.cur -= output_bytes
 

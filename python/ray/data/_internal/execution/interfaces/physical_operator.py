@@ -61,7 +61,6 @@ class DataOpTask(OpTask):
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
-        self._num_output_blocks = 0
 
     def get_waitable(self) -> StreamingObjectRefGenerator:
         return self._streaming_gen
@@ -94,14 +93,6 @@ class DataOpTask(OpTask):
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
-
-    def add_num_output_blocks(self, num_output_blocks):
-        self._num_output_blocks += num_output_blocks
-
-    def get_num_output_blocks(
-        self,
-    ):
-        return self._num_output_blocks
 
 
 class MetadataOpTask(OpTask):
@@ -188,12 +179,21 @@ class PhysicalOperator(Operator):
         """Return recorded execution stats for use with DatasetStats."""
         raise NotImplementedError
 
+    @property
+    def metrics(self) -> OpRuntimeMetrics:
+        return self._metrics
+
     def get_metrics(self) -> Dict[str, int]:
         """Returns dict of metrics reported from this operator.
 
         These should be instant values that can be queried at any time, e.g.,
         obj_store_mem_allocated, obj_store_mem_freed.
         """
+        metrics = self.metrics.as_dict()
+        metrics.update(self._extra_metrics())
+        return metrics
+
+    def _extra_metrics(self) -> Dict[str, int]:
         return {}
 
     def progress_str(self) -> str:

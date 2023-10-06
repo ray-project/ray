@@ -90,7 +90,7 @@ class OutputSplitter(PhysicalOperator):
     def get_stats(self) -> StatsDict:
         return {"split": []}  # TODO(ekl) add split metrics?
 
-    def get_metrics(self) -> Dict[str, int]:
+    def _extra_metrics(self) -> Dict[str, int]:
         stats = {}
         for i, num in enumerate(self._num_output):
             stats[f"num_output_{i}"] = num

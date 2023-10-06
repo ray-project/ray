@@ -334,12 +334,8 @@ class MapOperator(OneToOneOperator, ABC):
     def progress_str(self) -> str:
         raise NotImplementedError
 
-    def get_metrics(self) -> Dict[str, int]:
-        sorted_ray_args = dict(sorted(self._remote_args_for_metrics.items()))
-        return dict(
-            self._metrics.object_store.to_metrics_dict(),
-            ray_remote_args=sorted_ray_args,
-        )
+    def _extra_metrics(self) -> Dict[str, int]:
+        return dict(sorted(self._remote_args_for_metrics.items()))
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
