@@ -33,6 +33,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import (
     DataMetric,
     DatasetStats,
+    _remove_metrics,
     _update_stats_actor_metrics,
 )
 from ray.data.context import DataContext
@@ -205,6 +206,7 @@ class StreamingExecutor(Executor, threading.Thread):
         finally:
             # Signal end of results.
             self._output_node.outqueue.append(None)
+            _remove_metrics({"dataset": self._dataset_uuid})
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -332,35 +334,16 @@ class StreamingExecutor(Executor, threading.Thread):
             metrics = op.get_metrics()
             resource_usage = op.current_resource_usage()
 
-            # Record deltas for Counter metrics
-            stats[DataMetric.BYTES_SPILLED] += metrics.get(
-                "obj_store_mem_spilled", 0
-            ) - self._prev_metrics_state[op].get(DataMetric.BYTES_SPILLED, 0)
-            stats[DataMetric.BYTES_ALLOCATED] += metrics.get(
-                "obj_store_mem_alloc", 0
-            ) - self._prev_metrics_state[op].get(DataMetric.BYTES_ALLOCATED, 0)
-            stats[DataMetric.BYTES_FREED] += metrics.get(
-                "obj_store_mem_freed", 0
-            ) - self._prev_metrics_state[op].get(DataMetric.BYTES_FREED, 0)
-            # TODO: get these stats from op metrics
-            stats[DataMetric.ROWS_OUTPUTTED] += 0
-            stats[DataMetric.BYTES_OUTPUTTED] += 0
-
-            # Record new totals for Gauge metrics
-            stats[DataMetric.BYTES_CURRENT] += metrics.get("obj_store_mem_cur", 0)
+            stats[DataMetric.BYTES_SPILLED] += metrics.get("obj_store_mem_spilled", 0)
+            stats[DataMetric.BYTES_ALLOCATED] += metrics.get("obj_store_mem_alloc", 0)
+            stats[DataMetric.BYTES_FREED] += metrics.get("obj_store_mem_freed", 0)
             stats[DataMetric.CPU_USAGE] += resource_usage.cpu or 0
             stats[DataMetric.GPU_USAGE] += resource_usage.gpu or 0
 
-            # Update operator's previous metrics
-            self._prev_metrics_state[op][DataMetric.BYTES_SPILLED] = metrics.get(
-                "obj_store_mem_spilled", 0
-            )
-            self._prev_metrics_state[op][DataMetric.BYTES_ALLOCATED] = metrics.get(
-                "obj_store_mem_alloc", 0
-            )
-            self._prev_metrics_state[op][DataMetric.BYTES_FREED] = metrics.get(
-                "obj_store_mem_freed", 0
-            )
+            # TODO: get these stats from op metrics
+            stats[DataMetric.ROWS_OUTPUTTED] += 0
+            stats[DataMetric.BYTES_OUTPUTTED] += 0
+            stats[DataMetric.BYTES_CURRENT] += 0
 
         _update_stats_actor_metrics(stats, {"dataset": self._dataset_uuid})
 

@@ -13,7 +13,7 @@ from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
-from ray.util.metrics import Counter, Gauge
+from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
@@ -155,18 +155,20 @@ class _StatsActor:
         self.fifo_queue = []
 
         # Ray Data dashboard metrics
+        # Everything is a gauge because we need to reset all of 
+        # a dataset's metrics to 0 after each finishing execution.
         tags_keys = ("dataset",)
-        self.bytes_spilled = Counter(
+        self.bytes_spilled = Gauge(
             DataMetric.BYTES_SPILLED.value,
             description="Bytes spilled by dataset operators",
             tag_keys=tags_keys,
         )
-        self.bytes_allocated = Counter(
+        self.bytes_allocated = Gauge(
             DataMetric.BYTES_ALLOCATED.value,
             description="Bytes allocated by dataset operators",
             tag_keys=tags_keys,
         )
-        self.bytes_freed = Counter(
+        self.bytes_freed = Gauge(
             DataMetric.BYTES_FREED.value,
             description="Bytes freed by dataset operators",
             tag_keys=tags_keys,
@@ -186,12 +188,12 @@ class _StatsActor:
             description="GPU cores used by dataset operators",
             tag_keys=tags_keys,
         )
-        self.rows_outputted = Counter(
+        self.rows_outputted = Gauge(
             DataMetric.ROWS_OUTPUTTED.value,
             description="Rows outputted by dataset operators",
             tag_keys=tags_keys,
         )
-        self.bytes_outputted = Counter(
+        self.bytes_outputted = Gauge(
             DataMetric.BYTES_OUTPUTTED.value,
             description="Bytes outputted by dataset operators",
             tag_keys=tags_keys,
@@ -232,13 +234,25 @@ class _StatsActor:
     def update_metrics(
         self, stats: Dict[DataMetric, Union[int, float]], tags: Dict[str, str]
     ):
-        self.bytes_spilled.inc(stats[DataMetric.BYTES_SPILLED], tags)
-        self.rows_outputted.inc(stats[DataMetric.ROWS_OUTPUTTED], tags)
-        self.bytes_outputted.inc(stats[DataMetric.BYTES_OUTPUTTED], tags)
-        self.bytes_allocated.inc(stats[DataMetric.BYTES_ALLOCATED], tags)
+        self.bytes_spilled.set(stats[DataMetric.BYTES_SPILLED], tags)
+        self.bytes_allocated.set(stats[DataMetric.BYTES_ALLOCATED], tags)
+        self.bytes_freed.set(stats[DataMetric.BYTES_FREED], tags)
         self.bytes_current.set(stats[DataMetric.BYTES_CURRENT], tags)
+        self.rows_outputted.set(stats[DataMetric.ROWS_OUTPUTTED], tags)
+        self.bytes_outputted.set(stats[DataMetric.BYTES_OUTPUTTED], tags)
         self.cpu_usage.set(stats[DataMetric.CPU_USAGE], tags)
         self.gpu_usage.set(stats[DataMetric.GPU_USAGE], tags)
+
+    def remove_metrics(self, tags):
+        # This doesn't actually delete the metric, just sets it to 0.
+        self.bytes_spilled.set(0, tags)
+        self.bytes_allocated.set(0, tags)
+        self.bytes_freed.set(0, tags)
+        self.bytes_current.set(0, tags)
+        self.rows_outputted.set(0, tags)
+        self.bytes_outputted.set(0, tags)
+        self.cpu_usage.set(0, tags)
+        self.gpu_usage.set(0, tags)
 
 
 def _get_or_create_stats_actor():
@@ -260,13 +274,21 @@ def _get_or_create_stats_actor():
     ).remote()
 
 
-stats_actor = None
+_stats_actor = None
 
 
 def _update_stats_actor_metrics(stats: Dict[DataMetric, Any], tags: Dict[str, str]):
-    if stats_actor is None:
-        stats_actor = _get_or_create_stats_actor()
-    stats_actor.update_metrics.remote(stats, tags)
+    global _stats_actor
+    if _stats_actor is None:
+        _stats_actor = _get_or_create_stats_actor()
+    _stats_actor.update_metrics.remote(stats, tags)
+
+
+def _remove_metrics(tags: Dict[str, str]):
+    global _stats_actor
+    if _stats_actor is None:
+        _stats_actor = _get_or_create_stats_actor()
+    _stats_actor.remove_metrics.remote(tags)
 
 
 class DatasetStats:

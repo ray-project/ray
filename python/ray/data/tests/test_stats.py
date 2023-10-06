@@ -1427,16 +1427,15 @@ def test_stats_actor_metrics():
     ) as update_fn:
         ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
-    total_bytes_spilled = 0
-    total_bytes_allocated = 0
-    total_bytes_freed = 0
+    last_stats = update_fn.call_args_list[-1].args[0]
+
+    total_bytes_spilled = last_stats[DataMetric.BYTES_SPILLED]
+    total_bytes_allocated = last_stats[DataMetric.BYTES_ALLOCATED]
+    total_bytes_freed = last_stats[DataMetric.BYTES_FREED]
     sum_cpu_usage = 0
     sum_gpu_usage = 0
     for call in update_fn.call_args_list:
         stats = call.args[0]
-        total_bytes_spilled += stats[DataMetric.BYTES_SPILLED]
-        total_bytes_allocated += stats[DataMetric.BYTES_ALLOCATED]
-        total_bytes_freed += stats[DataMetric.BYTES_FREED]
         sum_cpu_usage += stats[DataMetric.CPU_USAGE]
         sum_gpu_usage += stats[DataMetric.GPU_USAGE]
 
