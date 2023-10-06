@@ -171,34 +171,6 @@ def test_node_selection(all_nodes):
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == all_nodes
 
-    # Test FixedReplica
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.FixedNumber, fixed_number_replicas=5)
-    )
-    cluster_node_info_cache.alive_nodes = all_nodes
-    selected_nodes = proxy_state_manager._get_target_nodes(all_node_ids)
-
-    # it should have selection a subset of 5 nodes.
-    assert len(selected_nodes) == 5
-    assert set(all_nodes).issuperset(set(selected_nodes))
-
-    for _ in range(5):
-        # The selection should be deterministic.
-        assert selected_nodes == proxy_state_manager._get_target_nodes(all_node_ids)
-
-    proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
-        HTTPOptions(
-            location=DeploymentMode.FixedNumber,
-            fixed_number_replicas=5,
-            fixed_number_selection_seed=42,
-        )
-    )
-    cluster_node_info_cache.alive_nodes = all_nodes
-    another_seed = proxy_state_manager._get_target_nodes(all_node_ids)
-    assert len(another_seed) == 5
-    assert set(all_nodes).issuperset(set(another_seed))
-    assert set(another_seed) != set(selected_nodes)
-
     # Test specific nodes
     proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
