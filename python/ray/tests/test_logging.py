@@ -25,6 +25,7 @@ from ray._private.log_monitor import (
 from ray._private.test_utils import (
     get_log_batch,
     get_log_message,
+    get_log_data,
     init_log_pubsub,
     run_string_as_driver,
     wait_for_condition,
@@ -551,7 +552,7 @@ def test_log_monitor(tmp_path, live_dead_pids):
 
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
     )
 
     # files
@@ -706,7 +707,7 @@ def test_log_monitor_actor_task_name_and_job_id(tmp_path):
 
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, lambda _: True, max_files_open=5
     )
     worker_out_log_file = f"worker-{worker_id}-{job_id}-{pid}.out"
     first_line = "First line\n"
@@ -792,7 +793,7 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     log_dir.mkdir()
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, lambda _: True, max_files_open=5
     )
 
     current = 0
@@ -816,7 +817,7 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     assert log_monitor.should_update_filenames(current)
 
 
-def test_repr_inheritance():
+def test_repr_inheritance(shutdown_only):
     """Tests that a subclass's repr is used in logging."""
     logger = logging.getLogger(__name__)
 
@@ -950,6 +951,28 @@ def test_log_with_import():
     ray.log.logger_initialized = False
     ray.log.generate_logging_config()
     assert not logger.disabled
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_log_monitor_ip_correct(ray_start_cluster):
+    cluster = ray_start_cluster
+    # add first node
+    cluster.add_node(node_ip_address="127.0.0.2")
+    address = cluster.address
+    ray.init(address)
+    # add second node
+    cluster.add_node(node_ip_address="127.0.0.3")
+
+    @ray.remote
+    def print_msg():
+        print("abc")
+
+    p = init_log_pubsub()
+    print_msg.remote()
+    data = get_log_data(
+        p, num=6, timeout=10, job_id=ray.get_runtime_context().get_job_id()
+    )
+    assert data[0]["ip"] == "127.0.0.2"
 
 
 if __name__ == "__main__":

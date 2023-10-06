@@ -73,8 +73,6 @@ def batch_block_refs(
     Returns:
         An iterator over record batches.
     """
-    if stats:
-        stats._legacy_iter_batches = True
     context = DataContext.get_current()
 
     if (
