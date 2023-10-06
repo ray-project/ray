@@ -28,6 +28,7 @@ from ray.tune.trainable.session import (
     get_trial_id,
     get_trial_resources,
     checkpoint_dir,
+    is_session_enabled,
 )
 from ray.tune.progress_reporter import (
     ProgressReporter,
@@ -91,6 +92,7 @@ __all__ = [
     "get_trial_name",
     "get_trial_id",
     "get_trial_resources",
+    "is_session_enabled",
     "checkpoint_dir",
     "ResultGrid",
     "create_searcher",

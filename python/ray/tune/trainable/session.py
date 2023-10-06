@@ -159,6 +159,12 @@ def get_trial_resources():
     )
 
 
+# TODO(justinvyu): [code_removal] Remove after xgboost_ray dependency is updated.
+@Deprecated
+def is_session_enabled() -> bool:
+    return False
+
+
 __all__ = [
     "report",
     "get_trial_dir",
