@@ -1,4 +1,5 @@
 import json
+import time
 from typing import List, Tuple
 from unittest.mock import patch
 
@@ -392,6 +393,7 @@ def test_proxy_state_update_healthy_check_health_succeed():
     # Trigger update few more times and the status continue to be HEALTHY.
     for _ in range(3):
         _update_and_check_proxy_status(proxy_state, ProxyStatus.HEALTHY)
+        time.sleep(0.1)
 
     # Ensure the check time have changed since the last update
     assert first_check_time != proxy_state._last_health_check_time
@@ -644,6 +646,7 @@ def test_unhealthy_retry_correct_number_of_times():
 
     for _ in range(3):
         proxy_state.update()
+        time.sleep(0.1)
     assert proxy_state.status == ProxyStatus.UNHEALTHY
 
 
