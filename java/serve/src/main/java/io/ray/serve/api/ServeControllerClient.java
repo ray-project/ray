@@ -74,8 +74,11 @@ public class ServeControllerClient {
    * @return
    */
   @SuppressWarnings("unchecked")
-  public DeploymentHandle getHandle(String deploymentName, String appName, boolean missingOk) {
-    String cacheKey = StringUtils.join(new Object[] {deploymentName, appName, missingOk}, "#");
+  public DeploymentHandle getDeploymentHandle(
+      String deploymentName, String appName, boolean missingOk) {
+    String cacheKey =
+        StringUtils.join(
+            new Object[] {deploymentName, appName, missingOk}, Constants.SEPARATOR_HASH);
     if (handleCache.containsKey(cacheKey)) {
       return handleCache.get(cacheKey);
     }

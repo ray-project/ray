@@ -55,4 +55,6 @@ public class Constants {
 
   public static final String MIGRATION_MESSAGE =
       "See https://docs.ray.io/en/latest/serve/index.html for more information.";
+
+  public static final String SEPARATOR_HASH = "#";
 }

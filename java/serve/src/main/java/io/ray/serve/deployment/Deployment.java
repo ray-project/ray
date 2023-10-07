@@ -78,7 +78,7 @@ public class Deployment {
   @Deprecated
   public DeploymentHandle getHandle() {
     LOGGER.warn(Constants.MIGRATION_MESSAGE);
-    return Serve.getGlobalClient().getHandle(name, "", true);
+    return Serve.getGlobalClient().getDeploymentHandle(name, "", true);
   }
 
   /**

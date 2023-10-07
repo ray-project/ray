@@ -48,7 +48,7 @@ public class ServeControllerClientTest {
       ServeControllerClient client = new ServeControllerClient(controllerHandle, controllerName);
 
       // Get handle.
-      DeploymentHandle handle = client.getHandle(endpointName, "", false);
+      DeploymentHandle handle = client.getDeploymentHandle(endpointName, "", false);
       Assert.assertNotNull(handle);
     } finally {
       BaseServeTest.clearAndShutdownRay();

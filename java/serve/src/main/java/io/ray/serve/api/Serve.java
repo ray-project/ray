@@ -402,7 +402,9 @@ public class Serve {
     client.deployApplication(name, deployments, blocking);
 
     return Optional.ofNullable(ingress)
-        .map(ingressDeployment -> client.getHandle(ingressDeployment.getName(), name, true));
+        .map(
+            ingressDeployment ->
+                client.getDeploymentHandle(ingressDeployment.getName(), name, true));
   }
 
   private static void init() {
@@ -429,7 +431,7 @@ public class Serve {
       throw new RayServeException(
           MessageFormatter.format("Application '{}' does not exist.", ingress));
     }
-    return client.getHandle(ingress, name, false);
+    return client.getDeploymentHandle(ingress, name, false);
   }
 
   /**

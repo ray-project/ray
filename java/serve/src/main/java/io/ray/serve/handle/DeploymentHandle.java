@@ -43,8 +43,12 @@ public class DeploymentHandle implements Serializable {
     this.handleOptions = handleOptions != null ? handleOptions : new HandleOptions();
     this.handleTag =
         StringUtils.isBlank(appName)
-            ? deploymentName + "#" + RandomStringUtils.randomAlphabetic(6)
-            : appName + "#" + deploymentName + "#" + RandomStringUtils.randomAlphabetic(6);
+            ? deploymentName + Constants.SEPARATOR_HASH + RandomStringUtils.randomAlphabetic(6)
+            : appName
+                + Constants.SEPARATOR_HASH
+                + deploymentName
+                + Constants.SEPARATOR_HASH
+                + RandomStringUtils.randomAlphabetic(6);
     this.router = router;
     initMetrics();
   }
@@ -101,8 +105,8 @@ public class DeploymentHandle implements Serializable {
   }
 
   /**
-   * When `DeploymentHandle` is passed as a parameter, `Router` and `Count` cannot be serialized, so
-   * we do not serialize them. During deserialization, we reconstruct them.
+   * The constructor of DeploymentHandle is not invoked during deserialization, so it is necessary
+   * to customize some initialization behavior during the deserialization process.
    *
    * @param in
    * @throws IOException
