@@ -93,4 +93,3 @@ class RuntimeEnvContext:
             # signature. So, we use os.execvp("executable", args=[])
             # instead of os.execvp(file="executable", args=[])
             os.execvp("bash", args=["bash", "-c", command_str])
-

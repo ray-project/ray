@@ -513,6 +513,14 @@ install_thirdparty_packages() {
   CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
 }
 
+install_nsight_profiler() {
+  # install nsight cli
+  if [[ "${OSTYPE}" = linux* ]]; then
+    wget https://nvidia-nsight.s3.us-west-2.amazonaws.com/NsightSystems-linux-cli-public-2022.4.1.21-0db2c85.deb
+    sudo apt install ./NsightSystems-linux-cli-public-2022.4.1.21-0db2c85.deb
+  fi
+}
+
 install_dependencies() {
   install_bazel
 
@@ -546,6 +554,8 @@ install_dependencies() {
   fi
 
   install_thirdparty_packages
+
+  install_nsight_profiler
 }
 
 install_dependencies

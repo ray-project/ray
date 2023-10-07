@@ -6,12 +6,7 @@ from typing import Tuple, List, Dict, Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.runtime_env.packaging import (
-    delete_package,
-    get_local_dir_from_uri,
-)
 from ray._private.utils import (
-    get_directory_size_bytes,
     try_to_create_directory,
 )
 
@@ -20,8 +15,8 @@ default_logger = logging.getLogger(__name__)
 NSIGHT_DEFEAULT_CONFIG = {
     "-t": "cuda,cudnn,cublas,nvtx",
     "-o": "'worker_process_%p'",
-    "--cudabacktrace": "True",
-    "--stop-on-exit": "True",
+    "--cudabacktrace": "true",
+    "--stop-on-exit": "true",
 }
 
 
@@ -51,6 +46,7 @@ def check_nsight_script(nsight_config: Dict[str, str]) -> Tuple[bool, str]:
             subprocess.run(["rm", "empty.nsight-rep"])
             return True, None
         else:
+            subprocess.run(["rm", "empty.nsight-rep"])
             error_msg = (
                 result.stderr.strip()
                 if result.stderr.strip() != ""
