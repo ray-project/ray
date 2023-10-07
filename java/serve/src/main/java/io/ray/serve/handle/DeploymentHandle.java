@@ -4,6 +4,8 @@ import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
+import io.ray.serve.context.ContextUtil;
+import io.ray.serve.context.RequestContext;
 import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
@@ -30,6 +32,10 @@ public class DeploymentHandle implements Serializable {
   private transient Count requestCounter;
 
   private transient volatile Router router;
+
+  public DeploymentHandle(String deploymentName, String appName) {
+    this(deploymentName, appName, null, null);
+  }
 
   public DeploymentHandle(
       String deploymentName, String appName, HandleOptions handleOptions, Router router) {
@@ -69,9 +75,10 @@ public class DeploymentHandle implements Serializable {
    * @return ObjectRef
    */
   public DeploymentResponse remote(Object... parameters) {
+    RequestContext requestContext = ContextUtil.getRequestContext();
     RayServeMetrics.execute(() -> requestCounter.inc(1.0));
     RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
-    requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
+    requestMetadata.setRequestId(requestContext.getRequestId());
     requestMetadata.setEndpoint(deploymentId.getName());
     requestMetadata.setCallMethod(
         handleOptions != null ? handleOptions.getMethodName() : Constants.CALL_METHOD);

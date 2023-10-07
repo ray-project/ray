@@ -47,7 +47,7 @@ public class Graph {
                   + "{} on non-ingress deployment of the "
                   + "serve DAG. ",
               deployment.getRoutePrefix()));
-      deployment.setRoutePrefix("");
+      deployment.setRoutePrefix(null);
     }
     return deployments;
   }
@@ -135,7 +135,7 @@ public class Graph {
     if (node instanceof DeploymentNode) {
       DeploymentNode deploymentNode = (DeploymentNode) node;
       return new DeploymentHandle(
-          deploymentNode.getDeployment().getName(), deploymentNode.getAppName(), null, null);
+          deploymentNode.getDeployment().getName(), deploymentNode.getAppName());
     }
     return null;
   }

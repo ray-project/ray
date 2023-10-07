@@ -9,6 +9,7 @@ import io.ray.runtime.metric.Metrics;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.context.ContextUtil;
 import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.exception.RayServeException;
@@ -182,6 +183,8 @@ public class RayServeReplicaImpl implements RayServeReplica {
     long start = System.currentTimeMillis();
     Method methodToCall = null;
     try {
+      ContextUtil.setRequestContext(null, requestItem.getMetadata().getRequestId(), null, null);
+      // TODO (by liuyang-my) add route, app and multiplexedModelId into context.
       LOGGER.debug(
           "Replica {} started executing request {}",
           replicaTag,
@@ -206,6 +209,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
     } finally {
       RayServeMetrics.execute(
           () -> processingLatencyTracker.update(System.currentTimeMillis() - start));
+      ContextUtil.clean();
     }
   }
 

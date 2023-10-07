@@ -620,7 +620,7 @@ class ServeController:
 
         return updating
 
-    def deploy_application(self, name: str, deployment_args_list: List[Dict]) -> None:
+    def deploy_application(self, name: str, deployment_args_list_bytes: bytes) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwrriten.
@@ -630,12 +630,6 @@ class ServeController:
             deployment_args_list: List of deployment infomation, each item in the list
                 contains all the information for the single deployment.
         """
-
-        self.application_state_manager.apply_deployment_args(name, deployment_args_list)
-
-    def deploy_application_xlang(
-        self, name: str, deployment_args_list_bytes: bytes
-    ) -> None:
         deployment_args_list_proto = DeploymentArgsList.FromString(
             deployment_args_list_bytes
         )
@@ -645,15 +639,17 @@ class ServeController:
                 "deployment_config_proto_bytes": deployment_args.deployment_config,
                 "replica_config_proto_bytes": deployment_args.replica_config,
                 "deployer_job_id": deployment_args.deployer_job_id,
-                "route_prefix": None
-                if deployment_args.route_prefix == ""
-                else deployment_args.route_prefix,
+                "route_prefix": deployment_args.route_prefix
+                if deployment_args.HasField("route_prefix")
+                else None,
                 "ingress": deployment_args.ingress,
-                "docs_path": None,
+                "docs_path": deployment_args.docs_path
+                if deployment_args.HasField("docs_path")
+                else None,
             }
             for deployment_args in deployment_args_list_proto.deployment_args
         ]
-        self.deploy_application(name, deployment_args_list)
+        self.application_state_manager.apply_deployment_args(name, deployment_args_list)
 
     def deploy_config(
         self,

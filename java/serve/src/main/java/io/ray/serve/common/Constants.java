@@ -52,4 +52,7 @@ public class Constants {
 
   /** Default Serve application name */
   public static final String SERVE_DEFAULT_APP_NAME = "default";
+
+  public static final String MIGRATION_MESSAGE =
+      "See https://docs.ray.io/en/latest/serve/index.html for more information.";
 }

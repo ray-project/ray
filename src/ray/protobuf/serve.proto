@@ -307,15 +307,18 @@ service RayServeBenchmarkService {
   rpc grpc_call(RawData) returns (ModelOutput);
 }
 
+// The parameters required to deploy a deployment, which are needed when deploying an application.
 message DeploymentArgs {
   string deployment_name = 1;
   bytes deployment_config = 2;
   bytes replica_config = 3;
-  bytes deployer_job_id = 4;
-  string route_prefix = 5;
+  string deployer_job_id = 4;
+  optional string route_prefix = 5;
   bool ingress = 6;
+  optional string docs_path = 7;
 }
 
+// Used for deploying an application, describes the parameter list of all deployments associated with the application.
 message DeploymentArgsList {
   repeated DeploymentArgs deployment_args = 1;
 }

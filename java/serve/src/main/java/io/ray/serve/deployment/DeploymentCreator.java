@@ -128,12 +128,8 @@ public class DeploymentCreator {
     return create(true);
   }
 
-  public Application bind() {
-    return create().bind();
-  }
-
-  public Application bind(Object firstArg, Object... otherArgs) {
-    return create().bind(firstArg, otherArgs);
+  public Application bind(Object... args) {
+    return create().bind(args);
   }
 
   public String getDeploymentDef() {

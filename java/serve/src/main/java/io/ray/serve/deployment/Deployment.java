@@ -2,16 +2,17 @@ package io.ray.serve.deployment;
 
 import com.google.common.base.Preconditions;
 import io.ray.serve.api.Serve;
+import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.dag.ClassNode;
 import io.ray.serve.dag.DAGNode;
 import io.ray.serve.handle.DeploymentHandle;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
@@ -20,6 +21,8 @@ import org.apache.commons.lang3.StringUtils;
  * `Serve.getDeployment`, and `Deployment.options.create`, respectively.
  */
 public class Deployment {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(Deployment.class);
 
   private final String name;
 
@@ -66,18 +69,15 @@ public class Deployment {
     this.url = routePrefix != null ? Serve.getGlobalClient().getRootUrl() + routePrefix : null;
   }
 
-  /** Delete this deployment. */
-  public void delete() {
-    Serve.getGlobalClient().deleteDeployment(name, true);
-  }
-
   /**
    * Get a ServeHandle to this deployment to invoke it from Java.
    *
    * @return ServeHandle
+   * @deprecated {@value Constants#MIGRATION_MESSAGE}
    */
   @Deprecated
   public DeploymentHandle getHandle() {
+    LOGGER.warn(Constants.MIGRATION_MESSAGE);
     return Serve.getGlobalClient().getHandle(name, "", true);
   }
 
@@ -109,20 +109,16 @@ public class Deployment {
         .setLanguage(this.deploymentConfig.getDeploymentLanguage());
   }
 
-  public Application bind() {
-    return bind(null);
-  }
-
-  public Application bind(Object firstArg, Object... otherArgs) {
-    Object[] args = null;
-    if (firstArg != null) {
-      if (otherArgs == null) {
-        args = new Object[] {firstArg};
-      } else {
-        args = Stream.concat(Stream.of(firstArg), Arrays.stream(otherArgs)).toArray(Object[]::new);
-      }
-    }
-
+  /**
+   * Bind the arguments to the deployment and return an Application.
+   *
+   * <p>The returned Application can be deployed using `serve.run` (or via config file) or bound to
+   * another deployment for composition.
+   *
+   * @param args
+   * @return
+   */
+  public Application bind(Object... args) {
     Map<String, Object> otherArgsToResolve = new HashMap<>();
     otherArgsToResolve.put("deployment_schema", this);
     otherArgsToResolve.put("is_from_serve_deployment", true);

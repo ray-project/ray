@@ -118,12 +118,13 @@ public class DeploymentGraphTest extends BaseServeTest2 {
         Serve.deployment().setDeploymentDef(Counter.class.getName()).setNumReplicas(1).bind("2");
     Serve.run(deployment);
 
-    StatusOverview status = Serve.status(Constants.SERVE_DEFAULT_APP_NAME);
+    StatusOverview status =
+        Serve.getGlobalClient().getServeStatus(Constants.SERVE_DEFAULT_APP_NAME);
     Assert.assertEquals(
         status.getAppStatus().getStatus(), ApplicationStatus.APPLICATION_STATUS_RUNNING);
 
     Serve.delete(Constants.SERVE_DEFAULT_APP_NAME);
-    status = Serve.status(Constants.SERVE_DEFAULT_APP_NAME);
+    status = Serve.getGlobalClient().getServeStatus(Constants.SERVE_DEFAULT_APP_NAME);
     Assert.assertEquals(
         status.getAppStatus().getStatus(), ApplicationStatus.APPLICATION_STATUS_NOT_STARTED);
   }

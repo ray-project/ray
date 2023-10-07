@@ -21,7 +21,7 @@ public class DeploymentNode extends DAGNode {
     super(deploymentInitArgs, rayActorOptions, otherArgsToResolve);
     this.appName = appName;
     this.deployment = deployment;
-    this.deploymentHandle = new DeploymentHandle(deployment.getName(), appName, null, null);
+    this.deploymentHandle = new DeploymentHandle(deployment.getName(), appName);
   }
 
   @Override
