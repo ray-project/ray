@@ -222,18 +222,16 @@ class Trainable:
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
 
+    # TODO(justinvyu): [code_removal]
     @property
     def uses_cloud_checkpointing(self):
-        return bool(self.remote_checkpoint_dir)
+        raise DeprecationWarning
 
+    # TODO(justinvyu): [code_removal]
     def _remote_storage_path(self, local_path):
         """Converts a `local_path` to be based off of
         `self.remote_checkpoint_dir`."""
-        return TrainableUtil.get_remote_storage_path(
-            local_path=local_path,
-            local_path_prefix=self.logdir,
-            remote_path_prefix=self.remote_checkpoint_dir,
-        )
+        raise DeprecationWarning
 
     @classmethod
     def default_resource_request(
@@ -1142,20 +1140,11 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(
-        self, new_config, logger_creator=None, remote_checkpoint_dir=None, storage=None
-    ):
+    def reset(self, new_config, logger_creator=None, storage=None):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
-
-        # TODO(justinvyu): remote_checkpoint_dir can be removed.
-        # Save artifacts one last time, if this actor has been swapped to a
-        # different trial.
-        if remote_checkpoint_dir != self.remote_checkpoint_dir:
-            self._maybe_save_artifacts_to_cloud()
-
         self.config = new_config
 
         self._storage = storage
@@ -1195,7 +1184,6 @@ class Trainable:
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
-        self.remote_checkpoint_dir = remote_checkpoint_dir
         self._last_artifact_sync_iter = None
         self._restored = False
 
