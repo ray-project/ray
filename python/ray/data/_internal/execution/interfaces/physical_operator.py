@@ -1,16 +1,16 @@
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Union
+
 from numpy import who
 
 import ray
-
-from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from .ref_bundle import RefBundle
 from ray._raylet import StreamingObjectRefGenerator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.stats import StatsDict
 
@@ -182,19 +182,12 @@ class PhysicalOperator(Operator):
 
     @property
     def metrics(self) -> OpRuntimeMetrics:
+        """Returns the runtime metrics of this operator."""
+        self._metrics._extra_metrics = self._extra_metrics()
         return self._metrics
 
-    def get_metrics(self) -> Dict[str, int]:
-        """Returns dict of metrics reported from this operator.
-
-        These should be instant values that can be queried at any time, e.g.,
-        obj_store_mem_allocated, obj_store_mem_freed.
-        """
-        metrics = self.metrics.as_dict()
-        metrics.update(self._extra_metrics())
-        return metrics
-
     def _extra_metrics(self) -> Dict[str, int]:
+        """Subclasses should override this method to report extra metrics that are specific to them."""
         return {}
 
     def progress_str(self) -> str:
@@ -254,6 +247,7 @@ class PhysicalOperator(Operator):
         self._add_input_inner(refs, input_index)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
+        """Subclasses should override this method to implement `add_input`."""
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
@@ -296,6 +290,7 @@ class PhysicalOperator(Operator):
         return output
 
     def _get_next_inner(self) -> RefBundle:
+        """Subclasses should override this method to implement `get_next`."""
         raise NotImplementedError
 
     def get_active_tasks(self) -> List[OpTask]:

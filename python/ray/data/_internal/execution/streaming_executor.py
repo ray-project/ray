@@ -213,7 +213,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 continue
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multistage(op.get_stats())
-            stats.extra_metrics = op.get_metrics()
+            stats.extra_metrics = op.metrics.as_dict()
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, fields
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
@@ -19,6 +19,9 @@ class OpRuntimeMetrics:
 
     Metrics are updated dynamically during the execution of the Dataset.
     This class can be used for either observablity or scheduling purposes.
+
+    DO NOT modify the fields of this class directly. Instead, use the provided
+    callback methods.
     """
 
     # === Inputs-related metrics ===
@@ -77,14 +80,24 @@ class OpRuntimeMetrics:
     # Spilled memory size in the object store.
     obj_store_mem_spilled: int = 0
 
+    # Extra metrics that are specific to each concrete operator.
+    _extra_metrics: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def extra_metrics(self) -> Dict[str, Any]:
+        """Return a dict of extra metrics."""
+        return self._extra_metrics
+
     def as_dict(self):
         """Return a dict representation of the metrics."""
+        # Note, private fields starting with "_" are ignored.
         result = []
         for f in fields(self):
             if f.name.startswith("_"):
                 continue
             value = getattr(self, f.name)
             result.append((f.name, value))
+        result.extend(self._extra_metrics.items())
         return dict(result)
 
     @property
