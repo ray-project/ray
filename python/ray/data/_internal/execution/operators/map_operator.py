@@ -2,7 +2,6 @@ import copy
 import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
 
 import ray
@@ -29,7 +28,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
-from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext

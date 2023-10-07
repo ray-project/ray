@@ -110,7 +110,8 @@ class OpRuntimeMetrics:
 
     @property
     def average_bytes_outputs_per_task(self) -> Optional[float]:
-        """Average size in bytes of output blocks per task, or None if no task has finished."""
+        """Average size in bytes of output blocks per task,
+        or None if no task has finished."""
         if self.num_tasks_finished == 0:
             return None
         else:
@@ -191,16 +192,13 @@ class OpRuntimeMetrics:
         ctx = ray.data.context.DataContext.get_current()
         if ctx.enable_get_object_locations_for_metrics:
             locations = ray.experimental.get_object_locations(blocks)
-        else:
-            locations = {ref: {"did_spill": False} for ref in blocks}
-        for block, meta in zip(blocks, metadata):
-            if locations[block]["did_spill"]:
-                assert meta.size_bytes != None
-                self.obj_store_mem_spilled += meta.size_bytes
+            for block, meta in zip(blocks, metadata):
+                if locations[block]["did_spill"]:
+                    assert meta.size_bytes is not None
+                    self.obj_store_mem_spilled += meta.size_bytes
 
         self.obj_store_mem_freed += total_input_size
         self.obj_store_mem_cur -= total_input_size
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]
-

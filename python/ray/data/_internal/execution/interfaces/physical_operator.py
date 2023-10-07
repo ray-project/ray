@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Union
 
-from numpy import who
-
 import ray
 from .ref_bundle import RefBundle
 from ray._raylet import StreamingObjectRefGenerator
@@ -187,7 +185,8 @@ class PhysicalOperator(Operator):
         return self._metrics
 
     def _extra_metrics(self) -> Dict[str, int]:
-        """Subclasses should override this method to report extra metrics that are specific to them."""
+        """Subclasses should override this method to report extra metrics
+        that are specific to them."""
         return {}
 
     def progress_str(self) -> str:
