@@ -567,67 +567,32 @@ class ExecutionPlan:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            if self._run_with_new_execution_backend():
-                from ray.data._internal.execution.bulk_executor import BulkExecutor
-                from ray.data._internal.execution.legacy_compat import (
-                    execute_to_legacy_block_list,
-                )
-                from ray.data._internal.execution.streaming_executor import (
-                    StreamingExecutor,
-                )
+            from ray.data._internal.execution.legacy_compat import (
+                execute_to_legacy_block_list,
+            )
+            from ray.data._internal.execution.streaming_executor import (
+                StreamingExecutor,
+            )
 
-                if context.use_streaming_executor:
-                    executor = StreamingExecutor(
-                        copy.deepcopy(context.execution_options)
-                    )
-                else:
-                    executor = BulkExecutor(copy.deepcopy(context.execution_options))
-                blocks = execute_to_legacy_block_list(
-                    executor,
-                    self,
-                    allow_clear_input_blocks=allow_clear_input_blocks,
-                    dataset_uuid=self._dataset_uuid,
-                    preserve_order=preserve_order,
-                )
-                # TODO(ekl) we shouldn't need to set this in the future once we move
-                # to a fully lazy execution model, unless .materialize() is used. Th
-                # reason we need it right now is since the user may iterate over a
-                # Dataset multiple times after fully executing it once.
-                if not self._run_by_consumer:
-                    blocks._owned_by_consumer = False
-                stats = executor.get_stats()
-                stats_summary_string = stats.to_summary().to_string(
-                    include_parent=False
-                )
-                logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                    stats_summary_string,
-                )
-
-            else:
-                blocks, stats, stages = self._optimize()
-
-                for stage_idx, stage in enumerate(stages):
-                    if allow_clear_input_blocks:
-                        clear_input_blocks = self._should_clear_input_blocks(
-                            blocks, stage_idx
-                        )
-                    else:
-                        clear_input_blocks = False
-                    stats_builder = stats.child_builder(stage.name)
-                    blocks, stage_info = stage(
-                        blocks, clear_input_blocks, self._run_by_consumer
-                    )
-                    if stage_info:
-                        stats = stats_builder.build_multistage(stage_info)
-                    else:
-                        stats = stats_builder.build(blocks)
-                    stats.dataset_uuid = self._dataset_uuid
-                    stats_summary_string = stats.to_summary().to_string(
-                        include_parent=False,
-                    )
-                    logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                        stats_summary_string,
-                    )
+            executor = StreamingExecutor(copy.deepcopy(context.execution_options))
+            blocks = execute_to_legacy_block_list(
+                executor,
+                self,
+                allow_clear_input_blocks=allow_clear_input_blocks,
+                dataset_uuid=self._dataset_uuid,
+                preserve_order=preserve_order,
+            )
+            # TODO(ekl) we shouldn't need to set this in the future once we move
+            # to a fully lazy execution model, unless .materialize() is used. Th
+            # reason we need it right now is since the user may iterate over a
+            # Dataset multiple times after fully executing it once.
+            if not self._run_by_consumer:
+                blocks._owned_by_consumer = False
+            stats = executor.get_stats()
+            stats_summary_string = stats.to_summary().to_string(include_parent=False)
+            logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
+                stats_summary_string,
+            )
 
             # Retrieve memory-related stats from ray.
             reply = get_memory_info_reply(
