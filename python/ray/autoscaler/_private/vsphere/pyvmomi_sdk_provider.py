@@ -47,6 +47,7 @@ class PyvmomiSdkProvider:
                 f"Unexpected: cannot find vSphere object {vimtype} with moid: {moid}"
             )
         return obj
+
     def get_pyvmomi_obj_by_name(self, vimtype, name):
         """
         This function finds the vSphere object by the object name and the object type.
