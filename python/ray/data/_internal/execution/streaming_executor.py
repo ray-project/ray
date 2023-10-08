@@ -33,6 +33,8 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 
+from ray.data._internal.execution.back_pressure_policy import get_back_pressure_policies
+
 logger = DatasetLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
@@ -72,6 +74,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # generator `yield`s.
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
+        self._back_pressure_policies = get_back_pressure_policies(self._topology)
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -244,6 +247,7 @@ class StreamingExecutor(Executor, threading.Thread):
             topology,
             cur_usage,
             limits,
+            self._back_pressure_policies,
             ensure_at_least_one_running=self._consumer_idling(),
             execution_id=self._execution_id,
             autoscaling_state=self._autoscaling_state,
@@ -261,6 +265,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 topology,
                 cur_usage,
                 limits,
+                self._back_pressure_policies,
                 ensure_at_least_one_running=self._consumer_idling(),
                 execution_id=self._execution_id,
                 autoscaling_state=self._autoscaling_state,
