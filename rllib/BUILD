@@ -299,7 +299,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_w_100_policies_appo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi-agent-cartpole-w-100-policies-appo.py"],
     args = ["--dir=tuned_examples/appo"]
@@ -329,7 +329,7 @@ py_test(
     name = "learning_tests_stateless_cartpole_appo_vtrace",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/stateless-cartpole-appo-vtrace.py"],
     args = ["--dir=tuned_examples/appo"]
@@ -367,7 +367,7 @@ py_test(
    name = "learning_tests_pendulum_crr",
    main = "tests/run_regression_tests.py",
    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
-   size = "large",
+   size = "enormous",
    srcs = ["tests/run_regression_tests.py"],
    # Include an offline json data file as well.
    data = [
@@ -441,7 +441,7 @@ py_test(
     name = "learning_tests_pendulum_ddppo",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddppo/pendulum-ddppo.yaml"]),
     args = ["--dir=tuned_examples/ddppo"]
@@ -787,7 +787,7 @@ py_test(
     name = "learning_tests_stateless_cartpole_r2d2",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "stateless_cartpole"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/r2d2/stateless-cartpole-r2d2.yaml"],
     args = ["--dir=tuned_examples/r2d2"]
@@ -797,7 +797,7 @@ py_test(
     name = "learning_tests_stateless_cartpole_r2d2_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "stateless_cartpole", "fake_gpus"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/r2d2/stateless-cartpole-r2d2-fake-gpus.yaml"],
     args = ["--dir=tuned_examples/r2d2"]

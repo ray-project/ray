@@ -6,14 +6,9 @@ import pyarrow.fs
 
 import ray
 from ray.air.config import RunConfig
-from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
-from ray.train._internal.storage import (
-    _exists_at_fs_path,
-    _use_storage_context,
-    get_fs_and_path,
-)
+from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
 from ray.tune import TuneError
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.experimental.output import (
@@ -314,11 +309,8 @@ class Tuner:
         Returns:
             bool: True if this path exists and contains the Tuner state to resume from
         """
-        if _use_storage_context():
-            fs, fs_path = get_fs_and_path(path, storage_filesystem)
-            return _exists_at_fs_path(fs, os.path.join(fs_path, _TUNER_PKL))
-
-        return _TUNER_PKL in list_at_uri(str(path))
+        fs, fs_path = get_fs_and_path(path, storage_filesystem)
+        return _exists_at_fs_path(fs, os.path.join(fs_path, _TUNER_PKL))
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
         run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
