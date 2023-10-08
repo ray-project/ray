@@ -31,7 +31,7 @@ class PyvmomiSdkProvider:
             raise ValueError("Must init pyvmomi_sdk_client first.")
 
         container = self.pyvmomi_sdk_client.viewManager.CreateContainerView(
-            self.pyvmomi_sdk_client.content.rootFolder, vimtype, True
+            self.pyvmomi_sdk_client.rootFolder, vimtype, True
         )
 
         for c in container.view:
