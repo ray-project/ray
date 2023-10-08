@@ -134,7 +134,6 @@ class Trainable:
 
         stdout_file = self.config.pop(STDOUT_FILE, None)
         stderr_file = self.config.pop(STDERR_FILE, None)
-        self._open_logfiles(stdout_file, stderr_file)
 
         self._iteration = 0
         self._time_total = 0.0
@@ -156,6 +155,8 @@ class Trainable:
         if storage:
             assert storage.trial_fs_path
             logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
+
+        self._open_logfiles(stdout_file, stderr_file)
 
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - self._start_time
@@ -741,8 +742,6 @@ class Trainable:
         Calls ``Trainable.cleanup`` internally. Subclasses should override
         ``Trainable.cleanup`` for custom cleanup procedures.
         """
-        self._maybe_save_artifacts_to_cloud()
-
         self._result_logger.flush()
         self._result_logger.close()
         if self._monitor.is_alive():
