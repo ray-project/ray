@@ -4,7 +4,6 @@ import subprocess
 import sys
 import time
 from collections import OrderedDict
-from typing import List
 
 import requests
 from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
