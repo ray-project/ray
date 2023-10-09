@@ -44,11 +44,6 @@ logger = logging.getLogger(__name__)
 _VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
 
 
-# TODO(justinvyu): [code_removal] Remove after all dependencies are gone.
-def _use_storage_context() -> bool:
-    return True
-
-
 class _ExcludingLocalFilesystem(LocalFileSystem):
     """LocalFileSystem wrapper to exclude files according to patterns.
 
