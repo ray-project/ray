@@ -3,7 +3,6 @@ import io
 import os
 import math
 import logging
-import tempfile
 from pathlib import Path
 from typing import (
     Any,
