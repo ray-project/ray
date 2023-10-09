@@ -317,12 +317,6 @@ def test_cache_uri_query():
     assert id(fs) != id(fs3)
 
 
-def test_windows_path():
-    with patch("sys.platform", "win32"):
-        assert _is_local_windows_path("c:/some/where")
-        assert _is_local_windows_path("c:\\some\\where")
-        assert _is_local_windows_path("c:\\some\\where/mixed")
-
 
 if __name__ == "__main__":
     import sys

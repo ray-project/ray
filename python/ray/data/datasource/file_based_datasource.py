@@ -837,6 +837,23 @@ def _decode_url(path):
     return urllib.parse.unquote(path)
 
 
+def _is_local_windows_path(path: str) -> bool:
+    """Determines if path is a Windows file-system location."""
+    if sys.platform != "win32":
+        return False
+
+    if len(path) >= 1 and path[0] == "\\":
+        return True
+    if (
+        len(path) >= 3
+        and path[1] == ":"
+        and (path[2] == "/" or path[2] == "\\")
+        and path[0].isalpha()
+    ):
+        return True
+    return False
+
+
 def _unwrap_protocol(path):
     """
     Slice off any protocol prefixes on path.
