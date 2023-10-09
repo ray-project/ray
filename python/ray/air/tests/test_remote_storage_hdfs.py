@@ -4,6 +4,9 @@ import os
 import pytest
 
 
+# TODO(ml-team): Add an HDFS integration test (borrow from test_new_persistence)
+
+
 @pytest.fixture
 def setup_hdfs():
     """Set env vars required by pyarrow to talk to hdfs correctly.
