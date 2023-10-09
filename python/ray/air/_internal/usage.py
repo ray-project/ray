@@ -203,28 +203,6 @@ def tag_callbacks(callbacks: Optional[List["Callback"]]) -> bool:
         record_extra_usage_tag(TagKey.AIR_CALLBACKS, callback_counts_str)
 
 
-def _get_tag_for_remote_path(remote_path: str) -> str:
-    scheme = urllib.parse.urlparse(remote_path).scheme
-    if scheme == "file":
-        # NOTE: We treat a file:// storage_path as a "remote" path, so this case
-        # differs from the local path only case.
-        # In particular, default syncing to head node is not enabled here.
-        tag = "local_uri"
-    elif scheme == "memory":
-        # NOTE: This is used in tests and does not make sense to actually use.
-        # This condition filters the tag out of the `custom` catch-all.
-        tag = "memory"
-    elif scheme == "hdfs":
-        tag = "hdfs"
-    elif scheme in {"s3", "s3a"}:
-        tag = "s3"
-    elif scheme in {"gs", "gcs"}:
-        tag = "gs"
-    else:
-        tag = "custom_remote_storage"
-    return tag
-
-
 def tag_storage_type(storage: "StorageContext"):
     """Records the storage configuration of an experiment.
 
