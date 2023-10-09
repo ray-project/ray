@@ -309,7 +309,7 @@ Handling compressed files
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To read a compressed file, specify ``compression`` in ``arrow_open_stream_args``.
-You can use any `Codec supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`__.
+You can use any `codec supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`__.
 
 .. testcode::
 
@@ -569,6 +569,8 @@ Ray Data interoperates with distributed data processing frameworks like
             {'col1': 1, 'col2': '1'}
             {'col1': 2, 'col2': '2'}
 
+.. _loading_datasets_from_ml_libraries:
+
 Loading data from ML libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -640,7 +642,7 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
 Reading databases
 =================
 
-Ray Data reads from databases like MySQL, Postgres, and MongoDB.
+Ray Data reads from databases like MySQL, PostgreSQL, and MongoDB.
 
 .. _reading_sql:
 
@@ -769,7 +771,24 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
     .. tab-item:: Databricks
 
-        To read from Databricks, install the
+        To read from Databricks, call ``ray.data.read_databricks_tables`` API (recommended) or ``ray.data.ray.data.read_sql`` API.
+
+        For using ``ray.data.read_databricks_tables`` API, set 'DATABRICKS_HOST' environment variable to databricks warehouse access token, then read from the Databricks SQL warehouse.
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            # Get movies after the year 1980
+            dataset = ray.data.read_databricks_tables(
+                warehouse_id='...',  # Databricks SQL warehouse ID
+                catalog='...',  # Unity catalog name
+                schema='...',  # Schema name
+                query="SELECT title, score FROM movie WHERE year >= 1980",
+            )
+
+        For using ``ray.data.ray.data.read_sql`` API,
+        install the
         `Databricks SQL Connector for Python <https://docs.databricks.com/dev-tools/python-sql-connector.html>`_.
 
         .. code-block:: console
@@ -923,7 +942,7 @@ Synthetic datasets can be useful for testing and benchmarking.
             ------  ----
             data    numpy.ndarray(shape=(64, 64), dtype=int64)
 
-Loading other data sources
+Loading other datasources
 ==========================
 
 If Ray Data can't load your data, subclass
@@ -944,8 +963,8 @@ For an example, see :ref:`Implementing a Custom Datasource <custom_datasources>`
 Performance considerations
 ==========================
 
-The dataset ``parallelism`` determines the number of blocks the base data will be split
-into for parallel reads. Ray Data will decide internally how many read tasks to run
+The dataset ``parallelism`` determines the number of blocks the base data is split
+into for parallel reads. Ray Data decides internally how many read tasks to run
 concurrently to best utilize the cluster, ranging from ``1...parallelism`` tasks. In
 other words, the higher the parallelism, the smaller the data blocks in the Dataset and
 hence the more opportunity for parallel execution.

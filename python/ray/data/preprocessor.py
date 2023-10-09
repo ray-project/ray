@@ -1,5 +1,7 @@
 import abc
+import base64
 import collections
+import pickle
 import warnings
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
@@ -61,10 +63,24 @@ class Preprocessor(abc.ABC):
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
 
+    def _check_has_fitted_state(self):
+        """Checks if the Preprocessor has fitted state.
+
+        This is also used as an indiciation if the Preprocessor has been fit, following
+        convention from Ray versions prior to 2.6.
+        This allows preprocessors that have been fit in older versions of Ray to be
+        used to transform data in newer versions.
+        """
+
+        fitted_vars = [v for v in vars(self) if v.endswith("_")]
+        return bool(fitted_vars)
+
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
             return Preprocessor.FitStatus.NOT_FITTABLE
-        elif hasattr(self, "_fitted") and self._fitted:
+        elif (
+            hasattr(self, "_fitted") and self._fitted
+        ) or self._check_has_fitted_state():
             return Preprocessor.FitStatus.FITTED
         else:
             return Preprocessor.FitStatus.NOT_FITTED
@@ -326,3 +342,18 @@ class Preprocessor(abc.ABC):
         path is the most optimal.
         """
         return BatchFormat.PANDAS
+
+    @DeveloperAPI
+    def serialize(self) -> str:
+        """Return this preprocessor serialized as a string.
+        Note: this is not a stable serialization format as it uses `pickle`.
+        """
+        # Convert it to a plain string so that it can be included as JSON metadata
+        # in Trainer checkpoints.
+        return base64.b64encode(pickle.dumps(self)).decode("ascii")
+
+    @staticmethod
+    @DeveloperAPI
+    def deserialize(serialized: str) -> "Preprocessor":
+        """Load the original preprocessor serialized via `self.serialize()`."""
+        return pickle.loads(base64.b64decode(serialized))

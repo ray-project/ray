@@ -1,11 +1,12 @@
 import logging
 from typing import Optional, Type
 
+import pytorch_lightning as pl
+
 from ray.data.preprocessor import Preprocessor
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.util.annotations import PublicAPI
-import pytorch_lightning as pl
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,10 @@ class LightningPredictor(TorchPredictor):
             .. testcode::
 
                 import pytorch_lightning as pl
-                from ray.train.lightning import LightningCheckpoint, LightningPredictor
+                from ray.train.lightning import (
+                    LightningCheckpoint,
+                    LightningPredictor,
+                )
 
                 class MyLightningModule(pl.LightningModule):
                     def __init__(self, input_dim, output_dim) -> None:
@@ -102,7 +106,7 @@ class LightningPredictor(TorchPredictor):
 
                     # ...
 
-                # After the training is finished, LightningTrainer saves AIR
+                # After the training is finished, LightningTrainer saves
                 # checkpoints in the result directory, for example:
                 # ckpt_dir = "{storage_path}/LightningTrainer_.*/checkpoint_000000"
 

@@ -2,13 +2,12 @@ import logging
 import json
 import os
 from packaging import version
-import tempfile
 import re
 from typing import Any, Dict, Union
 
 import ray
-from ray.air.checkpoint import Checkpoint
 from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
+from ray.train import Checkpoint
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
@@ -71,9 +70,7 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
     # `checkpoint` is a Checkpoint instance: Translate to directory and continue.
     if isinstance(checkpoint, Checkpoint):
-        tmp_dir = tempfile.mkdtemp()
-        checkpoint.to_directory(tmp_dir)
-        checkpoint = tmp_dir
+        checkpoint: str = checkpoint.to_directory()
 
     # Checkpoint is dir.
     if os.path.isdir(checkpoint):
@@ -266,6 +263,42 @@ def convert_to_msgpack_checkpoint(
 
     # Release all resources used by the Algorithm.
     algo.stop()
+
+    return msgpack_checkpoint_dir
+
+
+@PublicAPI(stability="beta")
+def convert_to_msgpack_policy_checkpoint(
+    policy_checkpoint: Union[str, Checkpoint],
+    msgpack_checkpoint_dir: str,
+) -> str:
+    """Converts a Policy checkpoint (pickle based) to a msgpack based one.
+
+    Msgpack has the advantage of being python version independent.
+
+    Args:
+        policy_checkpoint: The directory, in which to find the Policy checkpoint (pickle
+            based).
+        msgpack_checkpoint_dir: The directory, in which to create the new msgpack
+            based checkpoint.
+
+    Returns:
+        The directory in which the msgpack checkpoint has been created. Note that
+        this is the same as `msgpack_checkpoint_dir`.
+    """
+    from ray.rllib.policy.policy import Policy
+
+    policy = Policy.from_checkpoint(policy_checkpoint)
+
+    os.makedirs(msgpack_checkpoint_dir, exist_ok=True)
+    policy.export_checkpoint(
+        msgpack_checkpoint_dir,
+        policy_state=policy.get_state(),
+        checkpoint_format="msgpack",
+    )
+
+    # Release all resources used by the Policy.
+    del policy
 
     return msgpack_checkpoint_dir
 

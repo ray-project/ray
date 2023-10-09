@@ -1,12 +1,11 @@
 import os
-from typing import TYPE_CHECKING, Type, Optional, Union
-
+import tempfile
+from typing import TYPE_CHECKING, Optional, Type, Union
 
 import torch
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
 
 from ray.air._internal.torch_utils import load_torch_model
-from ray.air.checkpoint import Checkpoint
+from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.util.annotations import PublicAPI
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
@@ -25,9 +24,8 @@ if TYPE_CHECKING:
 
 
 @PublicAPI(stability="alpha")
-class TransformersCheckpoint(Checkpoint):
-    """A :py:class:`~ray.air.checkpoint.Checkpoint` with HuggingFace-specific
-    functionality.
+class TransformersCheckpoint(FrameworkCheckpoint):
+    """A :py:class:`~ray.train.Checkpoint` with HuggingFace-specific functionality.
 
     Use ``TransformersCheckpoint.from_model`` to create this type of checkpoint.
     """
@@ -38,17 +36,17 @@ class TransformersCheckpoint(Checkpoint):
         model: Union["transformers.modeling_utils.PreTrainedModel", "torch.nn.Module"],
         tokenizer: Optional["transformers.PreTrainedTokenizer"] = None,
         *,
-        path: os.PathLike,
+        path: Union[str, os.PathLike] = None,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "TransformersCheckpoint":
-        """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores a
-        HuggingFace model.
+        """Create a :py:class:`~ray.train.Checkpoint` that stores a HuggingFace model.
 
         Args:
             model: The pretrained transformer or Torch model to store in the
                 checkpoint.
             tokenizer: The Tokenizer to use in the Transformers pipeline for inference.
             path: The directory where the checkpoint will be stored.
+                Defaults to a temp directory.
             preprocessor: A fitted preprocessor to be applied before inference.
 
         Returns:
@@ -57,6 +55,8 @@ class TransformersCheckpoint(Checkpoint):
 
         if TRANSFORMERS_IMPORT_ERROR is not None:
             raise TRANSFORMERS_IMPORT_ERROR
+
+        path = path or tempfile.mkdtemp()
 
         if not isinstance(model, transformers.modeling_utils.PreTrainedModel):
             state_dict = model.state_dict()
@@ -67,10 +67,9 @@ class TransformersCheckpoint(Checkpoint):
         if tokenizer:
             tokenizer.save_pretrained(path)
 
-        if preprocessor:
-            save_preprocessor_to_dir(preprocessor, path)
-
         checkpoint = cls.from_directory(path)
+        if preprocessor:
+            checkpoint.set_preprocessor(preprocessor)
 
         return checkpoint
 

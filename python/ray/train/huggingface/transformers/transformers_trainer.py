@@ -3,24 +3,19 @@ import inspect
 import os
 import sys
 import warnings
-from packaging.version import Version
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
+from packaging.version import Version
 from torch.utils.data import Dataset as TorchDataset
 
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+import ray.train
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train.constants import (
-    EVALUATION_DATASET_KEY,
-    TRAIN_DATASET_KEY,
-)
-from ray.train import DataConfig
+from ray.train import Checkpoint, DataConfig
+from ray.train.constants import EVALUATION_DATASET_KEY, TRAIN_DATASET_KEY
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
-from ray.util import PublicAPI
-
+from ray.util.annotations import Deprecated
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
 
@@ -71,8 +66,15 @@ if TYPE_CHECKING:
 
 TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
 
+TRANSFORMERS_TRAINER_DEPRECATION_MESSAGE = (
+    "The TransformersTransformers will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-transformers.html#transformerstrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated(message=TRANSFORMERS_TRAINER_DEPRECATION_MESSAGE, warning=True)
 class TransformersTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
 
@@ -82,7 +84,7 @@ class TransformersTrainer(TorchTrainer):
     configured for distributed PyTorch training. If you have PyTorch >= 1.12.0
     installed, you can also run FSDP training by specifying the ``fsdp`` argument
     in ``TrainingArguments``. DeepSpeed is
-    also supported - see :doc:`/ray-air/examples/gptj_deepspeed_fine_tuning`.
+    also supported - see :doc:`/train/examples/deepspeed/gptj_deepspeed_fine_tuning`.
     For more information on configuring FSDP or DeepSpeed, refer to `Hugging Face
     documentation <https://huggingface.co/docs/transformers/\
 main/en/main_classes/trainer#transformers.TrainingArguments>`__.
@@ -132,7 +134,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
             import ray
             from ray.train.huggingface import TransformersTrainer
-            from ray.air.config import ScalingConfig
+            from ray.train import ScalingConfig
 
             # If using GPUs, set this to True.
             use_gpu = True
@@ -237,12 +239,9 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             dataset and key "evaluation" to denote the evaluation
             dataset. Can only contain a training dataset
             and up to one extra dataset to be used for evaluation.
-            If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be
-            transformed by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -258,8 +257,10 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
 
         if TRANSFORMERS_IMPORT_ERROR is not None:
@@ -290,6 +291,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
     @classmethod
@@ -391,8 +393,8 @@ def _huggingface_train_loop_per_worker(config):
     """Per-worker training loop for HuggingFace Transformers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
 
-    train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
-    eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
+    train_dataset = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
+    eval_dataset = ray.train.get_dataset_shard(EVALUATION_DATASET_KEY)
 
     train_torch_dataset, eval_torch_dataset = process_datasets(
         train_dataset,
@@ -442,14 +444,13 @@ def _huggingface_train_loop_per_worker(config):
 
     if trainer.args.load_best_model_at_end:
         raise ValueError(
-            "As Ray AIR replaces Transformers checkpointing, "
+            "Since Ray Train replaces Transformers checkpointing, "
             "`load_best_model_at_end` must be set to False.\n"
-            "You can obtain the AIR Checkpoint with "
-            "`Result.checkpoint` returned by the `fit()` method "
-            "of this Trainer, and the model itself by calling "
-            "`Checkpoint.get_model()`.\n"
-            "You can configure the checkpointing by setting "
-            "`run_config.checkpoint_config`."
+            "You can obtain the ray.train.Checkpoint with "
+            "`Result.checkpoint` from the result returned by the `fit()` method "
+            "of this Trainer, and access the model itself by inspecting the "
+            "checkpoint directory via `Checkpoint.as_directory` "
+            "/ `Checkpoint.to_directory`.\n"
         )
 
     if trainer.args.push_to_hub and not trainer.args.hub_token:
@@ -474,7 +475,7 @@ def _huggingface_train_loop_per_worker(config):
 
     trainer.add_callback(TrainReportCallback)
 
-    checkpoint = session.get_checkpoint()
+    checkpoint = ray.train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_path:
             trainer.train(resume_from_checkpoint=checkpoint_path)
