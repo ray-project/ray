@@ -10,7 +10,6 @@ import time
 import warnings
 
 from ray.train._internal.storage import StorageContext, get_fs_and_path
-from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 
@@ -86,6 +85,8 @@ def _find_newest_experiment_checkpoint(experiment_dir: str) -> Optional[str]:
         str: The local or remote path to the latest experiment checkpoint file
             based on timestamp. None if no experiment checkpoints were found.
     """
+    from ray.tune.analysis import ExperimentAnalysis
+
     fs, path = get_fs_and_path(experiment_dir)
     return ExperimentAnalysis._find_newest_experiment_checkpoint(
         fs=fs, experiment_fs_path=path
