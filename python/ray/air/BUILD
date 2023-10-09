@@ -125,14 +125,6 @@ py_test(
 )
 
 py_test(
-    name = "test_remote_storage",
-    size = "small",
-    srcs = ["tests/test_remote_storage.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_remote_storage_hdfs",
     size = "small",
     srcs = ["tests/test_remote_storage_hdfs.py"],
