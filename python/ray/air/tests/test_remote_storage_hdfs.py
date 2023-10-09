@@ -4,9 +4,6 @@ import os
 import pytest
 
 
-# TODO(ml-team): Add an HDFS integration test (borrow from test_new_persistence)
-
-
 @pytest.fixture
 def setup_hdfs():
     """Set env vars required by pyarrow to talk to hdfs correctly.
@@ -25,6 +22,12 @@ def setup_hdfs():
     hostname = os.getenv("CONTAINER_ID")
     port = os.getenv("HDFS_PORT")
     yield hostname, port
+
+
+# TODO(ml-team): Add an HDFS integration test (borrow from test_new_persistence)
+# def test_hdfs_storage_path(setup_hdfs):
+#     hostname, port = setup_hdfs
+#     hdfs_uri = f"hdfs://{hostname}:{port}/test/"
 
 
 if __name__ == "__main__":
