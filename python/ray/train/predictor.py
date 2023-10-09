@@ -1,17 +1,17 @@
 import abc
-from typing import Dict, Type, Optional, Union, Callable
+from typing import Callable, Dict, Optional, Type, Union
 
 import numpy as np
 import pandas as pd
 
-from ray.air.checkpoint import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import (
     BatchFormat,
-    _convert_batch_type_to_pandas,
     _convert_batch_type_to_numpy,
+    _convert_batch_type_to_pandas,
 )
 from ray.data import Preprocessor
+from ray.train import Checkpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
@@ -53,8 +53,8 @@ class Predictor(abc.ABC):
 
     - The input batch is converted into a pandas DataFrame. Tensor input (like a
       ``np.ndarray``) will be converted into a single column Pandas Dataframe.
-    - If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided
-      :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to
+    - If there is a :ref:`Preprocessor <preprocessor-ref>` saved in the provided
+      :class:`Checkpoint <ray.train.Checkpoint>`, the preprocessor will be used to
       transform the DataFrame.
     - The transformed DataFrame will be passed to the model for inference (via the
       ``predictor._predict_pandas`` method).
@@ -68,8 +68,8 @@ class Predictor(abc.ABC):
 
     1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
        pandas.DataFrame containing predictions.
-    2. ``from_checkpoint``: Logic for creating a Predictor from an
-       :ref:`AIR Checkpoint <air-checkpoint-ref>`.
+    2. ``from_checkpoint``: Logic for creating a Predictor from a
+       :class:`Checkpoint <ray.train.Checkpoint>`.
     3. Optionally ``_predict_numpy`` for better performance when working with
        tensor data to avoid extra copies from Pandas conversions.
     """
@@ -108,13 +108,13 @@ class Predictor(abc.ABC):
 
         class PandasUDFPredictor(Predictor):
             @classmethod
-            def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs):
+            def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
                 return PandasUDFPredictor()
 
             def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
                 return pandas_udf(df, **kwargs)
 
-        return PandasUDFPredictor.from_checkpoint(Checkpoint.from_dict({"dummy": 1}))
+        return PandasUDFPredictor()
 
     def get_preprocessor(self) -> Optional[Preprocessor]:
         """Get the preprocessor to use prior to executing predictions."""

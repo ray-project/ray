@@ -15,9 +15,9 @@ from ray.data._internal.block_batching.util import (
     collate,
     finalize_batches,
     format_batches,
-    make_async_gen,
     resolve_block_refs,
 )
+from ray.data._internal.util import make_async_gen
 
 
 def block_generator(num_rows: int, num_blocks: int):
@@ -273,6 +273,13 @@ def test_queue():
 
 def test_calculate_ref_hits(ray_start_regular_shared):
     refs = [ray.put(0), ray.put(1)]
+    hits, misses, unknowns = _calculate_ref_hits(refs)
+    assert hits == 0
+    assert misses == 0
+    assert unknowns == 0
+
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.enable_get_object_locations_for_metrics = True
     hits, misses, unknowns = _calculate_ref_hits(refs)
     assert hits == 2
     assert misses == 0

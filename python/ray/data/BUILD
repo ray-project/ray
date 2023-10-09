@@ -170,6 +170,14 @@ py_test(
 )
 
 py_test(
+    name = "test_file_based_datasource",
+    size = "small",
+    srcs = ["tests/test_file_based_datasource.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],
@@ -211,7 +219,7 @@ py_test(
 
 py_test(
     name = "test_numpy",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_numpy.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -444,7 +452,7 @@ py_test(
 
 py_test(
     name = "test_stats",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_stats.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -452,7 +460,7 @@ py_test(
 
 py_test(
     name = "test_streaming_executor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],

@@ -893,12 +893,25 @@ class Learner:
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
         for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
+            # Report total loss per module and other registered metrics.
             module_learner_stats[module_id].update(
                 {
                     self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
                     **convert_to_numpy(metrics_per_module[module_id]),
                 }
             )
+            # Report registered optimizers' learning rates.
+            module_learner_stats[module_id].update(
+                {
+                    f"{optim_name}_lr": convert_to_numpy(
+                        self._get_optimizer_lr(optimizer)
+                    )
+                    for optim_name, optimizer in (
+                        self.get_optimizers_for_module(module_id=module_id)
+                    )
+                }
+            )
+
         return dict(module_learner_stats)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1334,13 +1347,15 @@ class Learner:
 
         Args:
             batch: The train batch already converted in to a (tensor) NestedDict.
-            **kwargs: Forward compatibility kwargs.
+            kwargs: Forward compatibility kwargs.
 
         Returns:
-            A tuple consisting of: 1) The `forward_train()` output of the RLModule,
-            2) the loss_per_module dictionary mapping module IDs to individual loss
-            tensors, and 3) a metrics dict mapping module
-            IDs to metrics key/value pairs.
+            A tuple consisting of:
+                1) The `forward_train()` output of the RLModule,
+                2) the loss_per_module dictionary mapping module IDs to individual loss
+                    tensors
+                3) a metrics dict mapping module IDs to metrics key/value pairs.
+
         """
 
     def set_state(self, state: Mapping[str, Any]) -> None:
@@ -1471,14 +1486,17 @@ class Learner:
 
         the state of the learner is saved in the following format:
 
-        checkpoint_dir/
-            learner_state.json
-            module_state/
-                module_1/
-                    ...
-            optimizer_state/
-                optimizers_module_1/
-                    ...
+        .. testcode::
+            :skipif: True
+
+            checkpoint_dir/
+                learner_state.json
+                module_state/
+                    module_1/
+                        ...
+                optimizer_state/
+                    optimizers_module_1/
+                        ...
 
         Args:
             path: The path to the directory to save the state to.
@@ -1638,6 +1656,18 @@ class Learner:
 
     @staticmethod
     @abc.abstractmethod
+    def _get_optimizer_lr(optimizer: Optimizer) -> float:
+        """Returns the current learning rate of the given local optimizer.
+
+        Args:
+            optimizer: The local optimizer to get the current learning rate for.
+
+        Returns:
+            The learning rate value (float) of the given optimizer.
+        """
+
+    @staticmethod
+    @abc.abstractmethod
     def _set_optimizer_lr(optimizer: Optimizer, lr: float) -> None:
         """Updates the learning rate of the given local optimizer.
 
@@ -1666,6 +1696,7 @@ class LearnerSpec:
             should be a subclass of LearnerHyperparameters. This is useful for passing
             in algorithm configs that contains the hyper-parameters for loss
             computation, change of training behaviors, etc. e.g lr, entropy_coeff.
+
     """
 
     learner_class: Type["Learner"]

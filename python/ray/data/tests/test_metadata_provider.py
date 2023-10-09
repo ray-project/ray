@@ -70,7 +70,7 @@ def test_file_metadata_providers_not_implemented():
         meta_provider.expand_paths(["/foo/bar.csv"], None)
     meta_provider = ParquetMetadataProvider()
     with pytest.raises(NotImplementedError):
-        meta_provider(["/foo/bar.csv"], None, pieces=[], prefetched_metadata=None)
+        meta_provider(["/foo/bar.csv"], None, num_fragments=0, prefetched_metadata=None)
     assert meta_provider.prefetch_file_metadata(["test"]) is None
 
 
@@ -107,12 +107,12 @@ def test_default_parquet_metadata_provider(fs, data_path):
 
     meta_provider = DefaultParquetMetadataProvider()
     pq_ds = pq.ParquetDataset(paths, filesystem=fs, use_legacy_dataset=False)
-    file_metas = meta_provider.prefetch_file_metadata(pq_ds.pieces)
+    file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
 
     meta = meta_provider(
-        [p.path for p in pq_ds.pieces],
+        [p.path for p in pq_ds.fragments],
         pq_ds.schema,
-        pieces=pq_ds.pieces,
+        num_fragments=len(pq_ds.fragments),
         prefetched_metadata=file_metas,
     )
     expected_meta_size_bytes = _get_parquet_file_meta_size_bytes(file_metas)
@@ -421,6 +421,15 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
     assert file_sizes == expected_file_sizes
+
+    # Many directories should not trigger error.
+    if isinstance(fs, LocalFileSystem):
+        dir_paths = [dir1, dir2] * num_dfs
+        with caplog.at_level(logging.WARNING), patcher as mock_get:
+            file_paths, file_sizes = map(
+                list, zip(*meta_provider.expand_paths(dir_paths, fs))
+            )
+        assert len(file_paths) == len(paths) * num_dfs
 
 
 @pytest.mark.parametrize(

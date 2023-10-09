@@ -1,18 +1,18 @@
-import os
+import tempfile
+
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import tempfile
+from torch.utils.data import DataLoader
 
 import ray
 from ray.air.constants import MODEL_KEY
-from torch.utils.data import DataLoader
-from ray.train.tests.lightning_test_utils import LinearModule, DummyDataModule
 from ray.train.lightning import (
     LightningCheckpoint,
     LightningConfigBuilder,
     LightningTrainer,
 )
+from ray.train.tests.lightning_test_utils import DummyDataModule, LinearModule
 
 
 class Net(pl.LightningModule):
@@ -59,12 +59,6 @@ def test_load_from_path():
             Net, input_dim=3, output_dim=3
         )
         assert torch.equal(checkpoint_model.linear.weight, model.linear.weight)
-
-        # Ensure the model checkpoint was copied into a tmp dir
-        cached_checkpoint_dir = lightning_checkpoint._cache_dir
-        cached_checkpoint_path = f"{cached_checkpoint_dir}/{MODEL_KEY}"
-        assert os.path.exists(cached_checkpoint_dir)
-        assert os.path.exists(cached_checkpoint_path)
 
         # Check the model outputs
         for i, batch in enumerate(dataloader):
@@ -126,7 +120,7 @@ def test_fsdp_checkpoint():
         .fit_params(datamodule=datamodule)
     )
 
-    scaling_config = ray.air.ScalingConfig(num_workers=2, use_gpu=True)
+    scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 
     trainer = LightningTrainer(
         lightning_config=config_builder.build(), scaling_config=scaling_config

@@ -1,28 +1,17 @@
-from collections import defaultdict
-import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
-from pydantic import BaseModel
-import numpy as np
 from abc import abstractmethod
-import starlette
+from collections import defaultdict
+from typing import Dict, List, Optional, Type, Union
+
+import numpy as np
 from fastapi import Depends, FastAPI
+from pydantic import BaseModel
 
-import ray
-from ray import serve
-from ray._private.utils import import_attr
-from ray.serve._private.utils import require_packages
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.serve.drivers_utils import load_http_adapter, HTTPAdapterFn
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
-from ray.serve._private.http_util import BufferedASGISender
-
-
-if TYPE_CHECKING:
-    from ray.train.predictor import Predictor
-    from ray.air.checkpoint import Checkpoint
-
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
+from ray.serve._private.utils import install_serve_encoders_to_fastapi, require_packages
+from ray.serve.drivers_utils import HTTPAdapterFn, load_http_adapter
+from ray.util.annotations import DeveloperAPI
 
 try:
     import pandas as pd
@@ -30,31 +19,6 @@ except ImportError:
     pd = None
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def _load_checkpoint(
-    checkpoint: Union["Checkpoint", str],
-) -> "Checkpoint":
-    from ray.air.checkpoint import Checkpoint
-
-    if isinstance(checkpoint, str):
-        checkpoint = Checkpoint.from_uri(checkpoint)
-    assert isinstance(checkpoint, Checkpoint)
-    return checkpoint
-
-
-def _load_predictor_cls(
-    predictor_cls: Union[str, Type["Predictor"]],
-) -> Type["Predictor"]:
-    from ray.train.predictor import Predictor
-
-    if isinstance(predictor_cls, str):
-        predictor_cls = import_attr(predictor_cls)
-    if Predictor is not None and not issubclass(predictor_cls, Predictor):
-        raise ValueError(
-            f"{predictor_cls} class must be a subclass of ray.air `Predictor`"
-        )
-    return predictor_cls
 
 
 def _unpack_dataframe_to_serializable(output_df: "pd.DataFrame") -> "pd.DataFrame":
@@ -187,7 +151,7 @@ class _BatchingManager:
 
 
 @DeveloperAPI
-class SimpleSchemaIngress:
+class SimpleSchemaIngress(ASGIAppReplicaWrapper):
     def __init__(
         self, http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]] = None
     ):
@@ -203,158 +167,15 @@ class SimpleSchemaIngress:
         """
         install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
-        self.app = FastAPI()
+        app = FastAPI()
 
-        @self.app.get("/")
-        @self.app.post("/")
+        @app.get("/")
+        @app.post("/")
         async def handle_request(inp=Depends(http_adapter)):
-            resp = await self.predict(inp)
-            return resp
+            return await self.predict(inp)
+
+        ASGIAppReplicaWrapper.__init__(self, app)
 
     @abstractmethod
     async def predict(self, inp):
         raise NotImplementedError()
-
-    async def __call__(self, request: starlette.requests.Request):
-        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
-        # generate FastAPI on the fly, we should find a way to unify the two.
-        sender = BufferedASGISender()
-        await self.app(request.scope, receive=request.receive, send=sender)
-        return sender.build_asgi_response()
-
-
-@PublicAPI(stability="alpha")
-class PredictorWrapper(SimpleSchemaIngress):
-    """Serve any Ray AIR predictor from an AIR checkpoint.
-
-    Args:
-        predictor_cls: The class or path for predictor class.
-            The type must be a subclass of :class:`ray.train.predictor.Predictor`.
-        checkpoint: The checkpoint object or a uri to load checkpoint
-            from
-
-            - The checkpoint object must be an instance of
-              :class:`ray.air.checkpoint.Checkpoint`.
-            - The uri string will be called to construct a checkpoint object using
-              ``Checkpoint.from_uri("uri_to_load_from")``.
-
-        http_adapter: The FastAPI input conversion
-            function. By default, Serve will use the
-            :ref:`NdArray <serve-ndarray-schema>` schema and convert to numpy array.
-            You can pass in any FastAPI dependency resolver that returns
-            an array. When you pass in a string, Serve will import it.
-            Please refer to :ref:`Serve HTTP adatpers <serve-http-adapters>`
-            documentation to learn more.
-        batching_params: override the default parameters to
-            :func:`ray.serve.batch`. Pass ``False`` to disable batching.
-        predict_kwargs: optional keyword arguments passed to the
-            ``Predictor.predict`` method upon each call.
-        **predictor_from_checkpoint_kwargs: Additional keyword arguments passed to the
-            ``Predictor.from_checkpoint()`` call.
-    """
-
-    def __init__(
-        self,
-        predictor_cls: Union[str, Type["Predictor"]],
-        checkpoint: Union["Checkpoint", str],
-        http_adapter: Union[
-            str, HTTPAdapterFn
-        ] = "ray.serve.http_adapters.json_to_ndarray",
-        batching_params: Optional[Union[Dict[str, int], bool]] = None,
-        predict_kwargs: Optional[Dict[str, Any]] = None,
-        **predictor_from_checkpoint_kwargs,
-    ):
-        predictor_cls = _load_predictor_cls(predictor_cls)
-        checkpoint = _load_checkpoint(checkpoint)
-
-        # Automatic set use_gpu in predictor constructor if user provided
-        # explicit GPU resources
-        if (
-            "use_gpu" in inspect.signature(predictor_cls.from_checkpoint).parameters
-            and "use_gpu" not in predictor_from_checkpoint_kwargs
-            and len(ray.get_gpu_ids()) > 0
-        ):
-            logger.info(
-                "GPU resources identified in `PredictorDeployment`. "
-                "Automatically enabling GPU prediction for this predictor. To "
-                "disable set `use_gpu` to `False` in `PredictorDeployment`."
-            )
-            predictor_from_checkpoint_kwargs["use_gpu"] = True
-
-        self.model = predictor_cls.from_checkpoint(
-            checkpoint, **predictor_from_checkpoint_kwargs
-        )
-
-        predict_kwargs = predict_kwargs or dict()
-
-        # Configure Batching
-        if batching_params is False:
-
-            async def predict_impl(inp: Union[np.ndarray, "pd.DataFrame"]):
-                out = self.model.predict(inp, **predict_kwargs)
-                if isinstance(out, ray.ObjectRef):
-                    out = await out
-                elif pd is not None and isinstance(out, pd.DataFrame):
-                    out = _unpack_dataframe_to_serializable(out)
-                return out
-
-        else:
-            batching_params = batching_params or dict()
-
-            @serve.batch(**batching_params)
-            async def predict_impl(inp: Union[List[np.ndarray], List["pd.DataFrame"]]):
-                batch_size = len(inp)
-                if isinstance(inp[0], np.ndarray):
-                    batched = _BatchingManager.batch_array(inp)
-                elif pd is not None and isinstance(inp[0], pd.DataFrame):
-                    batched = _BatchingManager.batch_dataframe(inp)
-                elif isinstance(inp[0], dict):
-                    batched = _BatchingManager.batch_dict_array(inp)
-                else:
-                    raise ValueError(
-                        "Predictor only accepts numpy array, dataframe, or dict of "
-                        "arrays as input "
-                        f"but got types {[type(i) for i in inp]}"
-                    )
-
-                out = self.model.predict(batched, **predict_kwargs)
-                if isinstance(out, ray.ObjectRef):
-                    out = await out
-
-                if isinstance(out, np.ndarray):
-                    return _BatchingManager.split_array(out, batch_size)
-                elif pd is not None and isinstance(out, pd.DataFrame):
-                    return _BatchingManager.split_dataframe(out, batch_size)
-                elif isinstance(out, dict):
-                    return _BatchingManager.split_dict_array(out, batch_size)
-                elif isinstance(out, list) and len(out) == batch_size:
-                    return out
-                else:
-                    raise ValueError(
-                        f"Predictor only accepts list of length {batch_size}, numpy "
-                        "array, dataframe, or dict of array as output "
-                        f"but got types {type(out)} with length "
-                        f"{len(out) if hasattr(out, '__len__') else 'unknown'}."
-                    )
-
-        self.predict_impl = predict_impl
-
-        super().__init__(http_adapter)
-
-    async def predict(self, inp):
-        """Perform inference directly without HTTP."""
-        return await self.predict_impl(inp)
-
-    def reconfigure(self, config):
-        """Reconfigure model from config checkpoint"""
-        from ray.air.checkpoint import Checkpoint
-
-        predictor_cls = _load_predictor_cls(config["predictor_cls"])
-        self.model = predictor_cls.from_checkpoint(
-            Checkpoint.from_dict(config["checkpoint"])
-        )
-
-
-@serve.deployment
-class PredictorDeployment(PredictorWrapper):
-    """Ray Serve Deployment for AIRPredictorWrapper."""

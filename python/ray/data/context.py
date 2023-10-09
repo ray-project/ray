@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
+from ray.data._default_config import DEFAULT_FILE_METADATA_SHUFFLER
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -30,10 +31,6 @@ DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 # This default appears to work well with most file sizes on remote storage systems,
 # which is very sensitive to the buffer size.
 DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
-
-# Whether dynamic block splitting is enabled.
-# NOTE: disable dynamic block splitting when using Ray client.
-DEFAULT_BLOCK_SPLITTING_ENABLED = True
 
 # Whether pandas block format is enabled.
 # TODO (kfstorm): Remove this once stable.
@@ -116,9 +113,6 @@ DEFAULT_OPTIMIZER_ENABLED = bool(
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
-# Set this to True to use the legacy iter_batches codepath prior to 2.4.
-DEFAULT_USE_LEGACY_ITER_BATCHES = False
-
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
 
@@ -136,6 +130,9 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
     env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
 )
 
+# Whether to enable get_object_locations for metric
+DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
+
 
 @DeveloperAPI
 class DataContext:
@@ -147,7 +144,6 @@ class DataContext:
 
     def __init__(
         self,
-        block_splitting_enabled: bool,
         target_max_block_size: int,
         target_min_block_size: int,
         streaming_read_buffer_size: int,
@@ -174,11 +170,11 @@ class DataContext:
         optimizer_enabled: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
-        use_legacy_iter_batches: bool,
         enable_progress_bars: bool,
+        file_metadata_shuffler: str,
+        enable_get_object_locations_for_metrics: bool,
     ):
         """Private constructor (use get_current() instead)."""
-        self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
         self.target_min_block_size = target_min_block_size
         self.streaming_read_buffer_size = streaming_read_buffer_size
@@ -208,8 +204,11 @@ class DataContext:
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
-        self.use_legacy_iter_batches = use_legacy_iter_batches
         self.enable_progress_bars = enable_progress_bars
+        self.file_metadata_shuffler = file_metadata_shuffler
+        self.enable_get_object_locations_for_metrics = (
+            enable_get_object_locations_for_metrics
+        )
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -224,7 +223,6 @@ class DataContext:
         with _context_lock:
             if _default_context is None:
                 _default_context = DataContext(
-                    block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
@@ -258,8 +256,9 @@ class DataContext:
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
                     execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
-                    use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
+                    file_metadata_shuffler=DEFAULT_FILE_METADATA_SHUFFLER,
+                    enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
                 )
 
             return _default_context

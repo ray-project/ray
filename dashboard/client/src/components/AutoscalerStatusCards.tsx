@@ -65,7 +65,7 @@ export const NodeStatusCard = ({ cluster_status }: StatusCardProps) => {
         overflowY: "scroll",
       }}
     >
-      {cluster_status?.data
+      {cluster_status?.data && cluster_status?.data?.clusterStatus
         ? formatNodeStatus(cluster_status?.data.clusterStatus)
         : "No cluster status."}
     </Box>
@@ -80,7 +80,7 @@ export const ResourceStatusCard = ({ cluster_status }: StatusCardProps) => {
         overflowY: "scroll",
       }}
     >
-      {cluster_status?.data
+      {cluster_status?.data && cluster_status?.data?.clusterStatus
         ? formatResourcesStatus(cluster_status?.data.clusterStatus)
         : "No cluster status."}
     </Box>

@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 import ray
 
 
@@ -27,7 +29,6 @@ def test_huggingface_imports(ray_start_4_cpus):
         import ray.train.huggingface  # noqa: F401, F811
         from ray.train.huggingface import (
             AccelerateTrainer,
-            HuggingFaceCheckpoint,
             HuggingFacePredictor,
             HuggingFaceTrainer,
             TransformersCheckpoint,
@@ -45,9 +46,6 @@ def test_huggingface_imports(ray_start_4_cpus):
 
         with pytest.raises(ImportError, match="accelerate"):
             AccelerateTrainer(DUMMY_TRAIN_LOOP_PER_WORKER)
-
-        with pytest.raises(ImportError, match="transformers"):
-            HuggingFaceCheckpoint.from_model(DUMMY_MODEL, path=DUMMY_PATH)
 
         with pytest.raises(ImportError, match="transformers"):
             HuggingFacePredictor(DUMMY_PIPELINE)

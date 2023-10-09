@@ -52,9 +52,16 @@ class ActorInfoAccessor {
 
   /// Get all actor specification from the GCS asynchronously.
   ///
+  /// \param  actor_id To filter actors by actor_id.
+  /// \param  job_id To filter actors by job_id.
+  /// \param  actor_state_name To filter actors based on actor state.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback);
+  virtual Status AsyncGetAllByFilter(
+      const std::optional<ActorID> &actor_id,
+      const std::optional<JobID> &job_id,
+      const std::optional<std::string> &actor_state_name,
+      const MultiItemCallback<rpc::ActorTableData> &callback);
 
   /// Get actor specification for a named actor from the GCS asynchronously.
   ///
@@ -188,11 +195,11 @@ class ActorInfoAccessor {
 
   /// Resubscribe operations for actors.
   absl::flat_hash_map<ActorID, SubscribeOperation> resubscribe_operations_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 
   /// Save the fetch data operation of actors.
   absl::flat_hash_map<ActorID, FetchDataOperation> fetch_data_operations_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 
   GcsClient *client_impl_;
 };
@@ -440,6 +447,12 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllAvailableResources(
       const MultiItemCallback<rpc::AvailableResources> &callback);
 
+  /// Get ids of draining nodes from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetDrainingNodes(const ItemCallback<std::vector<NodeID>> &callback);
+
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
@@ -455,9 +468,6 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncReportResourceUsage(
       const std::shared_ptr<rpc::ResourcesData> &data_ptr,
       const StatusCallback &callback);
-
-  /// Resend resource usage when GCS restarts from a failure.
-  virtual void AsyncReReportResourceUsage();
 
   /// Return resources in last report. Used by light heartbeat.
   virtual const std::shared_ptr<NodeResources> &GetLastResourceUsage() {
@@ -485,7 +495,7 @@ class NodeResourceInfoAccessor {
 
   /// Save the resource usage data, so we can resend it again when GCS server restarts
   /// from a failure.
-  rpc::ReportResourceUsageRequest cached_resource_usage_ GUARDED_BY(mutex_);
+  rpc::ReportResourceUsageRequest cached_resource_usage_ ABSL_GUARDED_BY(mutex_);
 
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
