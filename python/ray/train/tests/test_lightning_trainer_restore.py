@@ -1,21 +1,22 @@
 import os
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 import pytest
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 import ray
-from ray.train import RunConfig, CheckpointConfig
 from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
+from ray.train import CheckpointConfig, RunConfig
 from ray.train.constants import MODEL_KEY
-from ray.train.trainer import TrainingFailedError
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 from ray.train.tests.lightning_test_utils import (
     DoubleLinearModule,
     DummyDataModule,
     LinearModule,
 )
+from ray.train.trainer import TrainingFailedError
 from ray.tune import Callback
 
 

@@ -13,9 +13,6 @@ EVALUATION_DATASET_KEY = "evaluation"
 # This is the dataset that the preprocessor is fit on.
 TRAIN_DATASET_KEY = "train"
 
-# Key to denote all user-specified auxiliary datasets in DatasetConfig.
-WILDCARD_KEY = "*"
-
 # Name to use for the column when representing tensors in table format.
 TENSOR_COLUMN_NAME = "__value__"
 
@@ -88,16 +85,10 @@ COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
     "TRAIN_COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING"
 )
 
-# Integer value which if set will disable lazy checkpointing
-# (avoiding unnecessary serialization if worker is on the same node
-# as Trainable)
-DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
-
 # NOTE: When adding a new environment variable, please track it in this list.
 # TODO(ml-team): Most env var constants should get moved here.
 AIR_ENV_VARS = {
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
     "RAY_AIR_FULL_TRACEBACKS",
     "RAY_AIR_NEW_OUTPUT",
     "RAY_AIR_RICH_LAYOUT",

@@ -1,29 +1,25 @@
-import os
-import ray
-from ray import train
-from ray.air.constants import MODEL_KEY
-from ray.data.dataset import DataIterator
-from ray.util import PublicAPI
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-
 import logging
+import os
 import shutil
-import torch
 import tempfile
-from ray.train import Checkpoint
-from ray.train._internal.storage import _use_storage_context
-from ray.train.lightning.lightning_checkpoint import (
-    LightningCheckpoint,
-    LegacyLightningCheckpoint,
-)
-from packaging.version import Version
 from typing import Any, Dict, Optional
-from torch.utils.data import IterableDataset, DataLoader
 
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, Callback
+import torch
+from packaging.version import Version
+from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 from pytorch_lightning.plugins.environments import LightningEnvironment
 from pytorch_lightning.strategies import DDPStrategy, DeepSpeedStrategy
+from torch.utils.data import DataLoader, IterableDataset
+
+import ray
+from ray import train
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.air.constants import MODEL_KEY
+from ray.data.dataset import DataIterator
+from ray.train import Checkpoint
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
+from ray.util import PublicAPI
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
@@ -320,7 +316,7 @@ class RayModelCheckpoint(ModelCheckpoint):
         """Report latest metrics dict and checkpoint to AIR training session.
 
         This method is called whenever a new checkpoint is created. It creates
-        a `LegacyLightningCheckpoint` and reports it to the AIR session along with
+        a `LightningCheckpoint` and reports it to the AIR session along with
         the latest metrics.
         """
 
@@ -353,10 +349,7 @@ class RayModelCheckpoint(ModelCheckpoint):
 
             # Only the report_rank worker creates the actual checkpoints.
             # Other workers create placeholder checkpoints to prevent blocking.
-            if _use_storage_context():
-                checkpoint = LightningCheckpoint.from_directory(tmpdir)
-            else:
-                checkpoint = LegacyLightningCheckpoint.from_directory(path=tmpdir)
+            checkpoint = LightningCheckpoint.from_directory(tmpdir)
             train.report(metrics=metrics, checkpoint=checkpoint)
 
         self.is_checkpoint_step = False
