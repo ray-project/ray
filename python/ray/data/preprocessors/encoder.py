@@ -418,7 +418,19 @@ class LabelEncoder(Preprocessor):
         df[self.label_column] = df[self.label_column].transform(column_label_encoder)
         return df
 
-    def inverse_transform(self, ds: "Dataset"):
+    def inverse_transform(self, ds: "Dataset") -> "Dataset":
+        """Inverse transform the given dataset.
+
+        Args:
+            ds: Input Dataset that has been fitted and/or transformed.
+
+        Returns:
+            ray.data.Dataset: The inverse transformed Dataset.
+
+        Raises:
+            PreprocessorNotFittedException: if ``fit`` is not called yet.
+        """
+
         fit_status = self.fit_status()
 
         if fit_status in (
