@@ -32,9 +32,10 @@ click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
 commonmark==0.9.1
-conda @ file:///croot/conda_1694544150384/work
+conda @ file:///croot/conda_1696257509808/work
 conda-content-trust @ file:///tmp/abs_5952f1c8-355c-4855-ad2e-538535021ba5h26t22e5/croots/recipe/conda-content-trust_1658126371814/work
-conda-package-handling @ file:///croot/conda-package-handling_1666940373510/work
+conda-package-handling @ file:///croot/conda-package-handling_1690999929514/work
+conda_package_streaming @ file:///croot/conda-package-streaming_1690987966409/work
 cryptography==38.0.1
 Cython==0.29.32
 Deprecated==1.2.14
@@ -82,7 +83,7 @@ msrest==0.7.1
 msrestazure==0.6.4
 multidict==6.0.4
 networkx==2.6.3
-numpy==1.25.2
+numpy==1.26.0
 nvidia-ml-py==12.535.108
 oauthlib==3.2.2
 opencensus==0.11.2
@@ -102,7 +103,7 @@ Pillow==9.2.0
 pkginfo==1.9.6
 platformdirs==3.10.0
 pluggy @ file:///tmp/build/80754af9/pluggy_1648024445381/work
-portalocker==2.7.0
+portalocker==2.8.2
 prometheus-client==0.17.1
 protobuf==3.19.6
 psutil==5.9.5
@@ -110,7 +111,7 @@ py-spy==0.3.14
 pyarrow==12.0.1
 pyasn1==0.5.0
 pyasn1-modules==0.3.0
-pycosat @ file:///croot/pycosat_1666805502580/work
+pycosat @ file:///croot/pycosat_1696536503704/work
 pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
 pydantic==1.10.12
 Pygments==2.13.0
@@ -124,14 +125,14 @@ python-dateutil==2.8.2
 pytz==2022.7.1
 PyWavelets==1.4.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-2.7.0-cp39-cp39-manylinux2014_x86_64.whl#sha256=3fba5beb6ea6ceee8c26a0e66c0d1b5bbd14e00a40b76fbc786dff4f2b1b70a6
-ray-cpp==2.7.0
+ray @ file:///home/ray/ray-2.7.1-cp39-cp39-manylinux2014_x86_64.whl#sha256=ae14c7e21c0c62fb352ba6fda8ebf6222a5f9fa89971a152049b54b0ca665ee0
+ray-cpp==2.7.1
 redis==3.5.3
 referencing==0.30.2
 requests @ file:///croot/requests_1690400202158/work
 requests-oauthlib==1.3.1
 rich==12.6.0
-rpds-py==0.10.3
+rpds-py==0.10.4
 rsa==4.7.2
 ruamel.yaml @ file:///croot/ruamel.yaml_1666304550667/work
 ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1666302247304/work
@@ -145,7 +146,6 @@ starlette==0.27.0
 tabulate==0.9.0
 tensorboardX==2.6
 tifffile==2023.7.10
-toolz @ file:///croot/toolz_1667464077321/work
 tqdm @ file:///croot/tqdm_1679561862951/work
 typer==0.9.0
 typing_extensions==4.5.0
@@ -159,3 +159,4 @@ wcwidth==0.2.6
 wrapt==1.15.0
 yarl==1.9.2
 zipp==3.16.2
+zstandard @ file:///croot/zstandard_1677013143055/work
