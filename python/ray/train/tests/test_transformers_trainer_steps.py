@@ -2,20 +2,13 @@ import math
 
 import pandas as pd
 import pytest
-from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
-    Trainer,
-    TrainingArguments,
-)
+from transformers import AutoConfig, AutoModelForCausalLM, Trainer, TrainingArguments
 
 import ray.data
-from ray.train.huggingface import (
-    TransformersTrainer,
-)
-from ray.train.trainer import TrainingFailedError
 from ray.train import ScalingConfig
+from ray.train.huggingface import TransformersTrainer
 from ray.train.tests._huggingface_data import train_data, validation_data
+from ray.train.trainer import TrainingFailedError
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation
 train_df = pd.read_json(train_data)
