@@ -1751,7 +1751,6 @@ def shutdown(_exiting_interpreter: bool = False):
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
     """
-    # This API should not be used to kill worker processes.
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
@@ -1767,7 +1766,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
-        if global_worker.mode == SCRIPT_MODE:
+        if global_worker.mode == SCRIPT_MODE or global_worker.mode == LOCAL_MODE:
             global_worker.core_worker.shutdown_driver()
         del global_worker.core_worker
     # We need to reset function actor manager to clear the context
