@@ -128,6 +128,7 @@ from ray.includes.common cimport (
     PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
+    WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR,
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
@@ -1936,7 +1937,7 @@ cdef execute_task_with_cancellation_handler(
         actor = None
         actor_id = core_worker.get_actor_id()
         if not actor_id.is_nil():
-            actor = core_worker.actors[actor_id]
+            actor = worker.actors[actor_id]
 
         store_task_errors(
                 worker, e,
@@ -2076,7 +2077,6 @@ cdef CRayStatus task_execution_handler(
                         " The worker may have exceeded K8s pod memory limits.")
                 if hasattr(e, "unexpected_error_traceback"):
                     msg += (f"\n {e.unexpected_error_traceback}")
-                logger.exception(msg)
                 return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
@@ -3030,15 +3030,15 @@ cdef class CoreWorker:
         self._task_id_to_future = {}
         self.thread_pool_for_async_event_loop = None
 
-    def shutdown(self):
+    def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
         # shutdown. So we can't call
         # `CCoreWorkerProcess.GetCoreWorker().GetWorkerType()` here.
         # Instead, we use the cached `is_driver` flag to test if it's a
         # driver.
-        if self.is_driver:
-            with nogil:
-                CCoreWorkerProcess.Shutdown()
+        assert self.is_driver
+        with nogil:
+            CCoreWorkerProcess.Shutdown()
 
     def notify_raylet(self):
         with nogil:
@@ -3048,13 +3048,16 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.RunTaskExecutionLoop()
 
-    def exit_worker(self, exit_type: str, c_string detail):
+    def drain_and_exit_worker(self, exit_type: str, c_string detail):
         """
         Exit the current worker process. This API should only be used by
-        a worker. If this API is called, the worker will finish currently
-        executing task, initiate the shutdown, and stop itself gracefully.
-        The given exit_type and detail will be reported to GCS, and any
-        worker failure error will contain them.
+        a worker. If this API is called, the worker will wait to finish
+        currently executing task, initiate the shutdown, and stop
+        itself gracefully. The given exit_type and detail will be
+        reported to GCS, and any worker failure error will contain them.
+
+        The behavior of this API while a task is running is undefined.
+        Avoid using the API when a task is still running.
         """
         cdef:
             CWorkerExitType c_exit_type
@@ -3064,6 +3067,8 @@ cdef class CoreWorker:
             c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
         if exit_type == "system":
             c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
+        elif exit_type == "intentional_system_exit":
+            c_exit_type = WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR
         else:
             raise ValueError(f"Invalid exit type: {exit_type}")
         assert not self.is_driver
@@ -4449,6 +4454,14 @@ cdef class CoreWorker:
             self.job_config = common_pb2.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
+
+    def is_task_running(self):
+        cdef:
+            c_bool is_task_running
+        with nogil:
+            is_task_running = CCoreWorkerProcess.GetCoreWorker().IsTaskRunning()
+
+        return is_task_running
 
     def get_task_submission_stats(self):
         cdef:

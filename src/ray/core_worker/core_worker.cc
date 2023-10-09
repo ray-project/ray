@@ -794,8 +794,11 @@ void CoreWorker::Exit(
     exiting_detail_ = std::optional<std::string>{detail};
   }
   // Release the resources early in case draining takes a long time.
-  RAY_CHECK_OK(
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
+  auto status = 
+      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
+  if (!status.ok()) {
+    RAY_LOG(WARNING) << "Failed to notify Raylet. It is either the raylet is already dead or the raylet disconnects the client because it kills this worker.";
+  }
 
   RAY_LOG(DEBUG) << "Exit signal received, remove all local references.";
   /// Since this core worker is exiting, it's necessary to release all local references,
@@ -2509,6 +2512,14 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
+  PeriodicalRunner signal_checker(task_execution_service_);
+  signal_checker.RunFnPeriodically(
+      [this] {
+        /// The overhead of this is only a single digit microsecond.
+        RAY_UNUSED(options_.check_signals()); 
+      },
+      10,
+      "CoreWorker.CheckSignal");
   task_execution_service_.run();
   RAY_CHECK(is_shutdown_)
       << "Task execution loop was terminated without calling shutdown API.";

@@ -788,8 +788,21 @@ class Worker:
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
-            shutdown(True)
-            sys.exit(1)
+            if not hasattr(global_worker, "core_worker"):
+                sys.exit(1)
+
+            core_worker = global_worker.core_worker
+            if core_worker.is_task_running():
+                # If a task is running, sys.exit will
+                # raise a SystemExit exception, and exit
+                # will be proceeded.
+                sys.exit(1)
+            else:
+                # If nothing is running, exit the worker.
+                global_worker.core_worker.drain_and_exit_worker(
+                    "intentional_system_exit", "SIGTERM is received to the process."
+                )
+            # Note: shutdown() function is called from atexit handler.
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
@@ -1731,6 +1744,7 @@ def shutdown(_exiting_interpreter: bool = False):
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
     """
+    # This API should not be used to kill worker processes.
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
@@ -1746,7 +1760,8 @@ def shutdown(_exiting_interpreter: bool = False):
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
-        global_worker.core_worker.shutdown()
+        if global_worker.mode == SCRIPT_MODE:
+            global_worker.core_worker.shutdown_driver()
         del global_worker.core_worker
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)
