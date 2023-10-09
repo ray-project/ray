@@ -89,11 +89,11 @@ def ray_deps_setup():
     # This is copied from grpc's bazel/grpc_deps.bzl
     http_archive(
         name = "com_google_protobuf",
-        sha256 = "63c5539a8506dc6bccd352a857cea106e0a389ce047a3ff0a78fe3f8fede410d",
-        strip_prefix = "protobuf-24487dd1045c7f3d64a21f38a3f0c06cc4cf2edb",
+        sha256 = "660ce016f987550bc1ccec4a6ee4199afb871799b696227098e3641476a7d566",
+        strip_prefix = "protobuf-b2b7a51158418f41cff0520894836c15b1738721",
         urls = [
-            # https://github.com/protocolbuffers/protobuf/commits/v21.6
-            "https://github.com/protocolbuffers/protobuf/archive/24487dd1045c7f3d64a21f38a3f0c06cc4cf2edb.tar.gz"
+            # https://github.com/protocolbuffers/protobuf/commits/v24.3
+            "https://github.com/protocolbuffers/protobuf/archive/b2b7a51158418f41cff0520894836c15b1738721.tar.gz",
         ],
         patches = [
             "@com_github_grpc_grpc//third_party:protobuf.patch",
@@ -220,8 +220,11 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20220623.1.tar.gz",
-        sha256 = "91ac87d30cc6d79f9ab974c51874a704de9c2647c40f6932597329a282217ba8",
+        sha256 = "59d2976af9d6ecf001a81a35749a6e551a335b949d34918cfade07737b9d93c5",
+        strip_prefix = "abseil-cpp-20230802.0",
+        urls = [
+            "https://github.com/abseil/abseil-cpp/archive/20230802.0.tar.gz",
+        ],
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -240,8 +243,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.50.2.tar.gz",
-        sha256 = "e941752638a92f21e27566903e1eb9b4a6380d70ca5ce91116b4cff6cb8fe2f2",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.59.0.tar.gz",
+        sha256 = "585e219faaaa1ef82392d27f7ff41982c0dbf72a19abd0070eddd3df927c48f5",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
         ],
@@ -286,11 +289,10 @@ def ray_deps_setup():
         # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
-        sha256 = "ad0b806b6c5cbd6cae121c608945d5fed468748e330632e8d53315089ad52c67",
-        strip_prefix = "boringssl-6195bf8242156c9a2fa75702eee058f91b86a88b",
+        sha256 = "b21994a857a7aa6d5256ffe355c735ad4c286de44c6c81dfc04edc41a8feaeef",
+        strip_prefix = "boringssl-2ff4b968a7e0cfee66d9f151cb95635b43dc1d5b",
         urls = [
-            "https://storage.googleapis.com/grpc-bazel-mirror/github.com/google/boringssl/archive/6195bf8242156c9a2fa75702eee058f91b86a88b.tar.gz",
-            "https://github.com/google/boringssl/archive/6195bf8242156c9a2fa75702eee058f91b86a88b.tar.gz",
+            "https://github.com/google/boringssl/archive/2ff4b968a7e0cfee66d9f151cb95635b43dc1d5b.tar.gz",
         ],
     )
 
