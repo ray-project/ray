@@ -425,6 +425,7 @@ class StorageContext:
         self,
         storage_path: Optional[Union[str, os.PathLike]],
         experiment_dir_name: str,
+        storage_local_path: Optional[Union[str, os.PathLike]] = None,
         sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
@@ -432,7 +433,7 @@ class StorageContext:
     ):
         self.custom_fs_provided = storage_filesystem is not None
 
-        self.storage_local_path = _get_defaults_results_dir()
+        self.storage_local_path = storage_local_path or _get_defaults_results_dir()
 
         # If no remote path is set, try to get Ray Storage URI
         ray_storage_uri: Optional[str] = _get_storage_uri()

@@ -247,6 +247,7 @@ def run(
     num_samples: int = 1,
     storage_path: Optional[str] = None,
     storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    local_dir: Optional[str] = None,
     search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
     scheduler: Optional[Union[TrialScheduler, str]] = None,
     checkpoint_config: Optional[CheckpointConfig] = None,
@@ -272,7 +273,6 @@ def run(
     checkpoint_freq: int = 0,  # Deprecated (2.7)
     checkpoint_at_end: bool = False,  # Deprecated (2.7)
     chdir_to_trial_dir: bool = _DEPRECATED_VALUE,  # Deprecated (2.8)
-    local_dir: Optional[str] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
@@ -618,11 +618,6 @@ def run(
 
     sync_config = sync_config or SyncConfig()
 
-    # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-    # For now, keep accepting both options.
-    if local_dir is not None:
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_dir
-
     checkpoint_config = checkpoint_config or CheckpointConfig()
 
     # For backward compatibility
@@ -783,6 +778,7 @@ def run(
                 num_samples=num_samples,
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
+                local_dir=local_dir,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,

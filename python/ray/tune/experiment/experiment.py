@@ -118,6 +118,7 @@ class Experiment:
         num_samples: int = 1,
         storage_path: Optional[str] = None,
         storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        local_dir: Optional[str] = None,
         _experiment_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[Union[SyncConfig, dict]] = None,
         checkpoint_config: Optional[Union[CheckpointConfig, dict]] = None,
@@ -127,8 +128,6 @@ class Experiment:
         export_formats: Optional[Sequence] = None,
         max_failures: int = 0,
         restore: Optional[str] = None,
-        # Deprecated
-        local_dir: Optional[str] = None,
     ):
         if isinstance(checkpoint_config, dict):
             checkpoint_config = CheckpointConfig(**checkpoint_config)
@@ -172,6 +171,7 @@ class Experiment:
         self.storage = self._storage_context_cls(
             storage_path=storage_path,
             storage_filesystem=storage_filesystem,
+            storage_local_path=local_dir,
             sync_config=sync_config,
             experiment_dir_name=name,
         )

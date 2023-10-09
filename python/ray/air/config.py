@@ -622,8 +622,6 @@ class RunConfig:
     callbacks: Optional[List["Callback"]] = None
     progress_reporter: Optional["ProgressReporter"] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
-
-    # Deprecated
     local_dir: Optional[str] = None
 
     def __post_init__(self):
