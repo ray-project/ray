@@ -468,3 +468,14 @@ def _copy_dir(
 
 # Only export once
 _remote_copy_dir = ray.remote(_copy_dir)
+
+
+def _delete_path_unsafe(target_path: str):
+    """Delete path (files and directories). No filelock."""
+    if os.path.exists(target_path):
+        if os.path.isdir(target_path):
+            shutil.rmtree(target_path)
+        else:
+            os.remove(target_path)
+        return True
+    return False
