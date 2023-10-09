@@ -9,6 +9,10 @@ from ray._private.runtime_env.nsight import parse_nsight_config
 from ray._private.test_utils import wait_for_condition
 from ray.exceptions import RuntimeEnvSetupError
 
+def wait_for_report(logs_dir, num_reports):
+    assert len(os.listdir(logs_dir)) == num_reports
+    return True
+
 class TestNsightProfiler:
 
     @pytest.mark.skipif(
@@ -32,16 +36,27 @@ class TestNsightProfiler:
         
         ray.get(test_generate_report.remote())
 
-        wait_for_condition(lambda: len(os.listdir(logs_dir)) == 1)
+        wait_for_condition(wait_for_report, logs_dir=logs_dir, num_reports=1)
         nsys_reports = glob.glob(os.path.join(f"{logs_dir}/*.nsys-rep"))
         assert len(nsys_reports) == 1
         for report in nsys_reports:
             assert "worker_process_" in report
             os.remove(report)
-        
-        # wait cleanup to finish
-        wait_for_condition(lambda: len(os.listdir(logs_dir)) == 0)
-        
+
+    @pytest.mark.skipif(
+        os.environ.get("CI") and 
+        sys.platform != "linux",
+        reason="Requires PR wheels built in CI, so only run on linux CI machines.",
+    )
+    def test_nsight_custom_name(
+        self,
+        shutdown_only,
+    ):
+        """Test Nsight profile generate report on logs dir"""
+        ray.init()
+        session_dir = ray.worker._global_node.get_session_dir_path()
+        logs_dir = f"{session_dir}/logs/nsight"
+
         # test nsight custom filename
         CUSTOM_REPORT = "custom_report"
         @ray.remote(runtime_env={ "nsight": {
@@ -51,7 +66,8 @@ class TestNsightProfiler:
             return 0
         
         ray.get(test_generate_custom_report.remote())
-        wait_for_condition(lambda: len(os.listdir(logs_dir)) == 1)
+
+        wait_for_condition(wait_for_report, logs_dir=logs_dir, num_reports=1)
         nsys_reports = glob.glob(os.path.join(f"{logs_dir}/*.nsys-rep"))
         assert len(nsys_reports) == 1
         for report in nsys_reports:
@@ -78,7 +94,7 @@ class TestNsightProfiler:
             return 0
         
         ray.get([test_generate_report.remote(), test_generate_report.remote()])
-        wait_for_condition(lambda: len(os.listdir(logs_dir)) == 2)
+        wait_for_condition(wait_for_report, logs_dir=logs_dir, num_reports=2)
         nsys_reports = glob.glob(os.path.join(f"{logs_dir}/*.nsys-rep"))
         assert len(nsys_reports) == 2
         for report in nsys_reports:
@@ -106,7 +122,8 @@ class TestNsightProfiler:
         def test_invalid_nsight():
             return 0
 
-        with pytest.raises(RuntimeEnvSetupError) as option_error:
+        with pytest.raises(RuntimeEnvSetupError, match=\
+        "nsight profile failed to run with the following error message"):
             ray.get(test_invalid_nsight.remote())
 
         nsys_reports = glob.glob(os.path.join(f"{logs_dir}/*.nsys-rep"))
@@ -119,7 +136,8 @@ class TestNsightProfiler:
         def test_wrong_config_nsight():
             return 0
 
-        with pytest.raises(RuntimeEnvSetupError):
+        with pytest.raises(RuntimeEnvSetupError, match=\
+        "Unsupported nsight config: not_default."):
             ray.get(test_wrong_config_nsight.remote())
 
         nsys_reports = glob.glob(os.path.join(f"{logs_dir}/*.nsys-rep"))

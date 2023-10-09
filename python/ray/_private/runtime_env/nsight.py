@@ -12,10 +12,10 @@ from ray._private.utils import (
 
 default_logger = logging.getLogger(__name__)
 
-NSIGHT_DEFEAULT_CONFIG = {
+NSIGHT_DEFAULT_CONFIG = {
     "-t": "cuda,cudnn,cublas,nvtx",
     "-o": "'worker_process_%p'",
-    "--cudabacktrace": "true",
+    "--cudabacktrace": "all",
     "--stop-on-exit": "true",
 }
 
@@ -98,7 +98,7 @@ class NsightPlugin(RuntimeEnvPlugin):
 
         if isinstance(nsight_config, str):
             if nsight_config == "default":
-                nsight_config = NSIGHT_DEFEAULT_CONFIG
+                nsight_config = NSIGHT_DEFAULT_CONFIG
             else:
                 raise RuntimeError(
                     f"Unsupported nsight config: {nsight_config}. "
@@ -115,7 +115,7 @@ class NsightPlugin(RuntimeEnvPlugin):
             )
         # add set output path to logs dir
         nsight_config["-o"] = f"{self._logs_dir}/" + nsight_config.get(
-            "-o", NSIGHT_DEFEAULT_CONFIG["-o"]
+            "-o", NSIGHT_DEFAULT_CONFIG["-o"]
         )
 
         self.nsight_cmd = parse_nsight_config(nsight_config)
