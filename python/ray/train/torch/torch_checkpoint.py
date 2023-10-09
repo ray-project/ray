@@ -1,14 +1,15 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
 import os
 import tempfile
-import torch
 import warnings
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
+import torch
+
 from ray.air._internal.torch_utils import (
-    load_torch_model,
     consume_prefix_in_state_dict_if_present_not_in_place,
+    load_torch_model,
 )
+from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:

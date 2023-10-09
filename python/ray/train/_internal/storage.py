@@ -1,11 +1,5 @@
-import dataclasses
-import fnmatch
-import logging
-import os
-from pathlib import Path
-import shutil
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
-
+# Try import ray[train] core requirements (defined in setup.py)
+# isort: off
 try:
     import fsspec  # noqa
     from fsspec.implementations.local import LocalFileSystem
@@ -25,11 +19,19 @@ except (ImportError, ModuleNotFoundError) as e:
         "pyarrow is a required dependency of Ray Train and Ray Tune. "
         "Please install with: `pip install pyarrow`"
     ) from e
+# isort: on
 
+import dataclasses
+import fnmatch
+import logging
+import os
+import shutil
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray._private.storage import _get_storage_uri
 from ray.air._internal.filelock import TempFileLock
-from ray.train._internal.syncer import Syncer, SyncConfig, _BackgroundSyncer
+from ray.train._internal.syncer import SyncConfig, Syncer, _BackgroundSyncer
 from ray.train.constants import _get_defaults_results_dir
 
 if TYPE_CHECKING:

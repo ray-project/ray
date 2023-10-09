@@ -67,6 +67,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help="Environment variables to set for the test.",
 )
 @click.option(
+    "--test-arg",
+    type=str,
+    help=("Arguments to pass to the test."),
+)
+@click.option(
     "--build-name",
     type=str,
     help="Name of the build used to run tests",
@@ -82,6 +87,7 @@ def main(
     run_flaky_tests: bool,
     skip_ray_installation: bool,
     test_env: List[str],
+    test_arg: Optional[str],
     build_name: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
@@ -105,7 +111,7 @@ def main(
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(test_targets, test_env)
+    success = container.run_tests(test_targets, test_env, test_arg)
     sys.exit(0 if success else 1)
 
 
