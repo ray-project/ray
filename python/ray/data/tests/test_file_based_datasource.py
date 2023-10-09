@@ -9,8 +9,8 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource import FileBasedDatasource
 from ray.data.datasource.file_based_datasource import (
     OPEN_FILE_MAX_ATTEMPTS,
-    _open_file_with_retry,
     _is_local_windows_path,
+    _open_file_with_retry,
 )
 
 
