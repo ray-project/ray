@@ -429,17 +429,11 @@ class LabelEncoder(Preprocessor):
                 "`fit` must be called before `inverse_transform`, "
             )
 
-        transform_type = self._determine_transform_to_use()
-        if transform_type != BatchFormat.PANDAS:
-            raise ValueError("Only 'pandas' transform_type can be inverse_transformed")
-
         kwargs = self._get_transform_config()
 
         return ds.map_batches(
-            self._inverse_transform_pandas,
-            batch_format=BatchFormat.PANDAS,
-            **kwargs
-            )
+            self._inverse_transform_pandas, batch_format=BatchFormat.PANDAS, **kwargs
+        )
 
     def _inverse_transform_pandas(self, df: pd.DataFrame):
         def column_label_decoder(s: pd.Series):
