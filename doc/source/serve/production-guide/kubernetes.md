@@ -14,11 +14,7 @@ The recommended practice when running on Kubernetes is to use the [RayService] c
 
 A [RayService] CR encapsulates a multi-node Ray Cluster and a Serve application that runs on top of it into a single Kubernetes manifest.
 Deploying, upgrading, and getting the status of the application can be done using standard `kubectl` commands.
-This section walks through how to deploy, monitor, and upgrade the [`FruitStand` example](serve-in-production-example) on Kubernetes.
-
-:::{warning}
-Although it's actively developed and maintained, [KubeRay] is still considered alpha, or experimental, so some APIs may be subject to change.
-:::
+This section walks through how to deploy, monitor, and upgrade the [Text ML example](serve-in-production-example) on Kubernetes.
 
 (serve-installing-kuberay-operator)=
 
@@ -30,7 +26,7 @@ Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
 * Deploy a KubeRay operator
 
 ## Setting up a RayService custom resource (CR)
-Once the KubeRay controller is running, manage your Ray Serve application by creating and updating a `RayService` CR ([example](https://github.com/ray-project/kuberay/blob/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml)).
+Once the KubeRay controller is running, manage your Ray Serve application by creating and updating a `RayService` CR ([example](https://github.com/ray-project/kuberay/blob/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml)).
 
 Under the `spec` section in the `RayService` CR, set the following fields:
 
@@ -55,9 +51,9 @@ When the `RayService` is created, the `KubeRay` controller first creates a Ray c
 Then, once the cluster is running, it deploys the Serve application to the cluster using the [REST API](serve-in-production-deploying).
 The controller also creates a Kubernetes Service that can be used to route traffic to the Serve application.
 
-Let's see this in action by deploying the [`FruitStand` example](serve-in-production-example).
-The Serve config for the example is embedded into [this example `RayService` CR](https://github.com/ray-project/kuberay/blob/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml).
-To follow along, save this CR locally in a file named `ray_v1alpha1_rayservice.yaml`:
+To see an example, deploy the [Text ML example](serve-in-production-example).
+The Serve config for the example is embedded into [this sample `RayService` CR](https://github.com/ray-project/kuberay/blob/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml).
+Save this CR locally to a file named `ray-service.text-ml.yaml`:
 
 :::{note}
 - The example `RayService` uses very low `numCpus` values for demonstration purposes. In production, provide more resources to the Serve application.
@@ -66,14 +62,14 @@ Learn more about how to configure KubeRay clusters [here](kuberay-config).
 :::
 
 ```console
-$ curl -o ray_v1alpha1_rayservice.yaml https://raw.githubusercontent.com/ray-project/kuberay/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
+$ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/ray-project/kuberay/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml
 ```
 
 To deploy the example, we simply `kubectl apply` the CR.
 This creates the underlying Ray cluster, consisting of a head and worker node pod (see [Ray Clusters Key Concepts](../../cluster/key-concepts.rst) for more details on Ray clusters), as well as the service that can be used to query our application:
 
 ```console
-$ kubectl apply -f ray_v1alpha1_rayservice.yaml
+$ kubectl apply -f ray-service.text-ml.yaml
 
 $ kubectl get rayservices
 NAME                AGE
@@ -102,8 +98,8 @@ This service can be queried directly from inside the cluster, but to access it f
 
 ```console
 $ kubectl port-forward service/rayservice-sample-serve-svc 8000
-$ curl -X POST -H 'Content-Type: application/json' localhost:8000 -d '["MANGO", 2]'
-6
+$ curl -X POST -H "Content-Type: application/json" localhost:8000 -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
+c'était le meilleur des temps, c'était le pire des temps .
 ```
 
 (serve-getting-status-kubernetes)=
@@ -122,60 +118,37 @@ $ kubectl describe rayservice rayservice-sample
 ...
 Status:
   Active Service Status:
-    App Status:
-      Last Update Time:  2022-08-16T20:52:41Z
-      Status:            RUNNING
+    Application Statuses:
+      text_ml_app:
+        Health Last Update Time:  2023-09-07T01:21:30Z
+        Last Update Time:         2023-09-07T01:21:30Z
+        Serve Deployment Statuses:
+          text_ml_app_Summarizer:
+            Health Last Update Time:  2023-09-07T01:21:30Z
+            Last Update Time:         2023-09-07T01:21:30Z
+            Status:                   HEALTHY
+          text_ml_app_Translator:
+            Health Last Update Time:  2023-09-07T01:21:30Z
+            Last Update Time:         2023-09-07T01:21:30Z
+            Status:                   HEALTHY
+        Status:                       RUNNING
     Dashboard Status:
-      Health Last Update Time:  2022-08-16T20:52:41Z
+      Health Last Update Time:  2023-09-07T01:21:30Z
       Is Healthy:               true
-      Last Update Time:         2022-08-16T20:52:41Z
-    Ray Cluster Name:           rayservice-sample-raycluster-9ghjw
+      Last Update Time:         2023-09-07T01:21:30Z
+    Ray Cluster Name:           rayservice-sample-raycluster-kkd2p
     Ray Cluster Status:
-      Available Worker Replicas:  2
-      Desired Worker Replicas:    1
-      Endpoints:
-        Client:             10001
-        Dashboard:          8265
-        Dashboard - Agent:  52365
-        Gcs - Server:       6379
-        Serve:              8000
-      Last Update Time:     2022-08-16T20:51:14Z
-      Max Worker Replicas:  5
-      Min Worker Replicas:  1
-      State:                ready
-    Serve Deployment Statuses:
-      Health Last Update Time:  2022-08-16T20:52:41Z
-      Last Update Time:         2022-08-16T20:52:41Z
-      Name:                     MangoStand
-      Status:                   HEALTHY
-      Health Last Update Time:  2022-08-16T20:52:41Z
-      Last Update Time:         2022-08-16T20:52:41Z
-      Name:                     OrangeStand
-      Status:                   HEALTHY
-      Health Last Update Time:  2022-08-16T20:52:41Z
-      Last Update Time:         2022-08-16T20:52:41Z
-      Name:                     PearStand
-      Status:                   HEALTHY
-      Health Last Update Time:  2022-08-16T20:52:41Z
-      Last Update Time:         2022-08-16T20:52:41Z
-      Name:                     FruitMarket
-      Status:                   HEALTHY
-      Health Last Update Time:  2022-08-16T20:52:41Z
-      Last Update Time:         2022-08-16T20:52:41Z
-      Name:                     DAGDriver
-      Status:                   HEALTHY
+      Head:
+  Observed Generation:  1
   Pending Service Status:
-    App Status:
     Dashboard Status:
     Ray Cluster Status:
+      Head:
   Service Status:  Running
 Events:
-  Type    Reason                       Age                     From                   Message
-  ----    ------                       ----                    ----                   -------
-  Normal  WaitForDashboard             5m44s (x2 over 5m44s)   rayservice-controller  Service "rayservice-sample-raycluster-9ghjw-dashboard-svc" not found
-  Normal  WaitForServeDeploymentReady  4m37s (x17 over 5m42s)  rayservice-controller  Put "http://rayservice-sample-raycluster-9ghjw-dashboard-svc.default.svc.cluster.local:52365/api/serve/deployments/": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
-  Normal  WaitForServeDeploymentReady  4m35s (x6 over 5m38s)   rayservice-controller  Put "http://rayservice-sample-raycluster-9ghjw-dashboard-svc.default.svc.cluster.local:52365/api/serve/deployments/": dial tcp 10.121.3.243:52365: i/o timeout (Client.Timeout exceeded while awaiting headers)
-  Normal  Running                      44s (x129 over 94s)     rayservice-controller  The Serve applicaton is now running and healthy.
+  Type    Reason   Age                      From                   Message
+  ----    ------   ----                     ----                   -------
+  Normal  Running  2m15s (x29791 over 16h)  rayservice-controller  The Serve applicaton is now running and healthy.
 ```
 
 ## Updating the application
@@ -187,35 +160,35 @@ There are two types of updates that can occur:
 
 ### Example: Serve config update
 
-In the `FruitStand` example above, let's change the price of a mango in the Serve config to 4:
+In the Text ML example above, change the language of the Translator in the Serve config to German:
 
-```console
-  - name: MangoStand
-    numReplicas: 1
-    userConfig: |
-      price: 4
+```yaml
+  - name: Translator
+    num_replicas: 1
+    user_config:
+      language: german
 ```
 
 Now to update the application we apply the modified manifest:
 
 ```console
-$ kubectl apply -f ray_v1alpha1_rayservice.yaml
+$ kubectl apply -f ray-service.text-ml.yaml
 
 $ kubectl describe rayservice rayservice-sample
 ...
-  serveDeploymentStatuses:
-  - healthLastUpdateTime: "2022-07-18T21:51:37Z"
-    lastUpdateTime: "2022-07-18T21:51:41Z"
-    name: MangoStand
-    status: UPDATING
+  Serve Deployment Statuses:
+    text_ml_app_Translator:
+      Health Last Update Time:  2023-09-07T18:21:36Z
+      Last Update Time:         2023-09-07T18:21:36Z
+      Status:                   UPDATING
 ...
 ```
 
-If we query the application, we can see that we now get a different result reflecting the updated price:
+Query the application to see a different translation in German:
 
 ```console
-$ curl -X POST -H 'Content-Type: application/json' localhost:8000 -d '["MANGO", 2]'
-8
+$ curl -X POST -H "Content-Type: application/json" localhost:8000 -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
+Es war die beste Zeit, es war die schlimmste Zeit .
 ```
 
 ### Updating the RayCluster config
@@ -230,7 +203,7 @@ workerGroupSpecs:
 ```
 
 ```console
-$ kubectl apply -f ray_v1alpha1_rayservice.yaml
+$ kubectl apply -f ray-service.text-ml.yaml
 
 $ kubectl describe rayservice rayservice-sample
 ...
@@ -248,9 +221,9 @@ In the status, you can see that the `RayService` is preparing a pending cluster.
 After the pending cluster is healthy, it becomes the active cluster and the previous cluster is terminated.
 
 ## Autoscaling
-You can configure autoscaling for your Serve application by setting the autoscaling field in the Serve config. Learn more about the configuration options in [Scaling and Resource Allocation](serve-scaling-and-resource-allocation).
+You can configure autoscaling for your Serve application by setting the autoscaling field in the Serve config. Learn more about the configuration options in the [Serve Autoscaling Guide](serve-autoscaling).
 
-To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutoscaling` to True. Additionally, there are other options available to configure the autoscaling behavior. For further details, please refer to the documentation [here](serve-scaling-and-resource-allocation).
+To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutoscaling` to True. Additionally, there are other options available to configure the autoscaling behavior. For further details, please refer to the documentation [here](serve-autoscaling).
 
 
 :::{note}
@@ -279,7 +252,7 @@ Monitor your Serve application using the Ray Dashboard.
 
 ## Next Steps
 
-Check out [the end-to-end fault tolerance guide](serve-e2e-ft) to learn more about Serve's failure conditions and how to guard against them.
+See [Add End-to-End Fault Tolerance](serve-e2e-ft) to learn more about Serve's failure conditions and how to guard against them.
 
-[KubeRay]: https://ray-project.github.io/kuberay/
-[RayService]: https://ray-project.github.io/kuberay/guidance/rayservice/
+[KubeRay]: kuberay-quickstart
+[RayService]: kuberay-rayservice-quickstart

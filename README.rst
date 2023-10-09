@@ -12,8 +12,6 @@
 .. image:: https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
     :target: https://twitter.com/raydistributed
 
-|
-
 Ray is a unified framework for scaling AI and Python applications. Ray consists of a core distributed runtime and a set of AI libraries for simplifying ML compute:
 
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/what-is-ray-padded.svg
@@ -134,4 +132,3 @@ Getting Involved
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`Twitter`: https://twitter.com/raydistributed
 .. _`Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
-

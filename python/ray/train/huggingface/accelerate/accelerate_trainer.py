@@ -2,24 +2,22 @@ import functools
 import os
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 from ray import train
-from ray.train import Checkpoint, RunConfig, ScalingConfig
-from ray.train import DataConfig
-from ray.train.torch import TorchConfig
-from ray.train.trainer import GenDataset
-
-from ray.train.torch import TorchTrainer, get_device
+from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
+from ray.train.torch import TorchConfig, TorchTrainer, get_device
 from ray.train.torch.config import _set_torch_distributed_env_vars
+from ray.train.trainer import GenDataset
+from ray.util.annotations import Deprecated
 
 ACCELERATE_IMPORT_ERROR: Optional[ImportError] = None
 
 try:
     from ray.train.huggingface.accelerate._accelerate_utils import (
-        launch_command,
-        AccelerateDefaultNamespace,
         AccelerateConfigWrapper,
+        AccelerateDefaultNamespace,
+        launch_command,
         load_accelerate_config,
     )
 except ImportError as e:
@@ -34,6 +32,15 @@ if TYPE_CHECKING:
     from ray.tune.trainable import Trainable
 
 
+ACCELERATE_TRAINER_DEPRECATION_MESSAGE = (
+    "The AccelerateTrainer will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/huggingface-accelerate.html#acceleratetrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated(message=ACCELERATE_TRAINER_DEPRECATION_MESSAGE, warning=True)
 class AccelerateTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Accelerate training with PyTorch.
 

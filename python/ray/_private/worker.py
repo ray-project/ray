@@ -59,6 +59,7 @@ import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._raylet import StreamingObjectRefGenerator
+from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -426,7 +427,8 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) environment variables.
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # environment variables.
         self.original_gpu_and_accelerator_runtime_ids = (
             ray._private.utils.get_gpu_and_accelerator_runtime_ids()
         )
@@ -494,6 +496,12 @@ class Worker:
         return ActorID.nil()
 
     @property
+    def actor_name(self):
+        if hasattr(self, "core_worker"):
+            return self.core_worker.get_actor_name().decode("utf-8")
+        return None
+
+    @property
     def current_task_id(self):
         return self.core_worker.get_current_task_id()
 
@@ -551,6 +559,9 @@ class Worker:
             # https://github.com/ray-project/ray/issues/35598
             return
 
+        if not hasattr(self, "core_worker"):
+            return
+
         self.core_worker.record_task_log_start(
             self.get_out_file_path(),
             self.get_err_file_path(),
@@ -566,6 +577,9 @@ class Worker:
             # Recording actor task log is expensive and should be enabled only
             # when needed.
             # https://github.com/ray-project/ray/issues/35598
+            return
+
+        if not hasattr(self, "core_worker"):
             return
 
         self.core_worker.record_task_log_end(
@@ -861,9 +875,9 @@ class Worker:
                     assigned_ids.add(resource_id)
 
         # If the user had already set the environment variables
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) then respect that
-        # in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
-        # NEURON_RT_VISIBLE_CORES, ..) should be returned.
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
+        # respect that in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
         if (
             self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
             is not None
@@ -1151,6 +1165,7 @@ def init(
     This method handles two cases; either a Ray cluster already exists and we
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
+    Note: This method overwrite sigterm handler of the driver process.
 
     In most cases, it is enough to just call this method with no arguments.
     This will autodetect an existing Ray cluster or start a new Ray instance if
@@ -1301,9 +1316,7 @@ def init(
     )
     _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
-    _node_ip_address: str = kwargs.pop(
-        "_node_ip_address", ray_constants.NODE_DEFAULT_IP
-    )
+    _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
         "_driver_object_store_memory", None
     )
@@ -1321,16 +1334,27 @@ def init(
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
 
+    # terminate any signal before connecting driver
+    def sigterm_handler(signum, frame):
+        sys.exit(signum)
+
+    if threading.current_thread() is threading.main_thread():
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
+    else:
+        logger.warning(
+            "SIGTERM handler is not set because current thread "
+            "is not the main thread."
+        )
+
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
     address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if address_env_var:
-        if address is None or address == "auto":
-            address = address_env_var
-            logger.info(
-                f"Using address {address_env_var} set in the environment "
-                f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
-            )
+    if address_env_var and (address is None or address == "auto"):
+        address = address_env_var
+        logger.info(
+            f"Using address {address_env_var} set in the environment "
+            f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
+        )
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
@@ -1412,29 +1436,35 @@ def init(
         job_config = ray.job_config.JobConfig()
 
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
-        if runtime_env:
-            logger.warning(
-                "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
-                "are provided, only using JSON_ENV_VAR to construct "
-                "job_config. Please ensure no runtime_env is used in driver "
-                "script's ray.init() when using job submission API."
-            )
         injected_job_config_json = json.loads(
             os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR)
         )
         injected_job_config: ray.job_config.JobConfig = (
             ray.job_config.JobConfig.from_json(injected_job_config_json)
         )
-        # NOTE: We always prefer runtime_env injected via RAY_JOB_CONFIG_JSON_ENV_VAR,
-        #       as compared to via ray.init(runtime_env=...) to make sure runtime_env
-        #       specified via job submission API takes precedence
-        runtime_env = injected_job_config.runtime_env
+        driver_runtime_env = runtime_env
+        runtime_env = _merge_runtime_env(
+            injected_job_config.runtime_env,
+            driver_runtime_env,
+            override=os.getenv("RAY_OVERRIDE_JOB_RUNTIME_ENV") == "1",
+        )
+        if runtime_env is None:
+            # None means there was a conflict.
+            raise ValueError(
+                "Failed to merge the Job's runtime env "
+                f"{injected_job_config.runtime_env} with "
+                f"a ray.init's runtime env {driver_runtime_env} because "
+                "of a conflict. Specifying the same runtime_env fields "
+                "or the same environment variable keys is not allowed. "
+                "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
+                "combine Job and Driver's runtime environment in the event of "
+                "a conflict."
+            )
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
-
         job_config.set_runtime_env(runtime_env)
         # Similarly, we prefer metadata provided via job submission API
         for key, value in injected_job_config.metadata.items():
@@ -1457,10 +1487,6 @@ def init(
     if bootstrap_address is not None:
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
-
-    if _node_ip_address is not None:
-        node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
-    raylet_ip_address = node_ip_address
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -1506,8 +1532,7 @@ def init(
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=_node_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_output=None,
@@ -1590,8 +1615,7 @@ def init(
 
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=_node_ip_address,
             gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
@@ -1744,20 +1768,6 @@ def shutdown(_exiting_interpreter: bool = False):
 
 
 atexit.register(shutdown, True)
-
-
-# TODO(edoakes): this should only be set in the driver.
-def sigterm_handler(signum, frame):
-    sys.exit(signum)
-
-
-try:
-    ray._private.utils.set_sigterm_handler(sigterm_handler)
-except ValueError:
-    logger.warning(
-        "Failed to set SIGTERM handler, processes might"
-        "not be cleaned up properly on exit."
-    )
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.

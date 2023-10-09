@@ -1,10 +1,10 @@
-from abc import ABCMeta, abstractmethod
+import logging
 import math
+from abc import ABCMeta, abstractmethod
 from typing import List
 
-from ray.serve.config import AutoscalingConfig
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
-import logging
+from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -154,7 +154,6 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         current_num_ongoing_requests: List[float],
         current_handle_queued_queries: float,
     ) -> int:
-
         if len(current_num_ongoing_requests) == 0:
             # When 0 replicas and queries are queued, scale up the replicas
             if current_handle_queued_queries > 0:

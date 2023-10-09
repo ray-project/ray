@@ -17,7 +17,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
-from ray.data.dataset import Dataset, MaterializedDataset, _sliding_window
+from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
@@ -542,25 +542,6 @@ def test_take_all(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         assert ray.data.range(5).take_all(4)
-
-
-def test_sliding_window():
-    arr = list(range(10))
-
-    # Test all windows over this iterable.
-    window_sizes = list(range(1, len(arr) + 1))
-    for window_size in window_sizes:
-        windows = list(_sliding_window(arr, window_size))
-        assert len(windows) == len(arr) - window_size + 1
-        assert all(len(window) == window_size for window in windows)
-        assert all(
-            list(window) == arr[i : i + window_size] for i, window in enumerate(windows)
-        )
-
-    # Test window size larger than iterable length.
-    windows = list(_sliding_window(arr, 15))
-    assert len(windows) == 1
-    assert list(windows[0]) == arr
 
 
 def test_iter_rows(ray_start_regular_shared):

@@ -83,7 +83,6 @@ config_setting(
     name = "jemalloc",
     constraint_values = [
         "@platforms//os:linux",
-        "@platforms//cpu:x86_64",
     ],
     flag_values = {
         ":jemalloc_flag": "true",
@@ -616,6 +615,7 @@ ray_cc_library(
     deps = [
         ":reporter_rpc",
         ":stats_metric",
+        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
 
@@ -1493,6 +1493,21 @@ ray_cc_test(
     ],
 )
 
+ray_cc_test(
+    name = "metric_exporter_grpc_test",
+    size = "small",
+    srcs = [
+        "src/ray/stats/metric_exporter_grpc_test.cc"],
+    tags = [
+        "stats",
+        "team:core",
+    ],
+    deps = [
+        ":stats_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 ray_cc_library(
     name = "gcs_test_util_lib",
     hdrs = [
@@ -1841,6 +1856,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2352,6 +2368,7 @@ pyx_library(
     deps = [
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
+        "//:gcs_server_lib",
         "//:raylet_lib",
         "//:redis_client",
         "//:src/ray/ray_exported_symbols.lds",
@@ -2403,6 +2420,7 @@ filegroup(
         "python/ray/autoscaler/azure/defaults.yaml",
         "python/ray/autoscaler/gcp/defaults.yaml",
         "python/ray/autoscaler/local/defaults.yaml",
+        "python/ray/autoscaler/vsphere/defaults.yaml",
         "python/ray/cloudpickle/*.py",
         "python/ray/core/__init__.py",
         "python/ray/core/generated/__init__.py",
@@ -2517,45 +2535,11 @@ copy_to_workspace(
     dstdir = "python/ray/core/",
 )
 
-
-genrule(
-    name = "install_py_proto",
-    srcs = [
-        ":cp_all_py_proto",
-        ":cp_serve_py_proto",
-    ],
-    outs = ["install_py_proto.out"],
-    cmd = """
-        # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
-        # command to change the import path in the generated file.
-        # shellcheck disable=SC2006
-        files=(
-            `ls python/ray/core/generated/*_pb2*.py` \
-            `ls python/ray/serve/generated/*_pb2*.py` \
-            )
-        sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
-        # Help the generated serve files to have the correct module
-        serve_files=(`ls python/ray/serve/generated/*_pb2*.py`)
-        sed -i -E 's/'"'"'src.ray.protobuf./'"'"'ray.serve.generated./' "$${serve_files[@]}"
-        # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
-        # https://github.com/ray-project/ray/issues/31358
-        sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
-        sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
-        # TODO(rickyx): Remove this experimental path rewrite once we move autoscaler proto out
-        # of experimental.
-        autoscale_files=(`ls python/ray/core/generated/autoscaler_pb2*.py`)
-        sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
-        echo "$${PWD}" > $@
-    """,
-    local = 1,
-)
-
 genrule(
     name = "ray_pkg",
     srcs = [
         ":cp_raylet_so",
         ":python_sources",
-        ":install_py_proto",
         ":cp_redis",
         ":cp_raylet",
         ":cp_gcs_server",
@@ -2574,4 +2558,3 @@ genrule(
     """,
     local = 1,
 )
-
