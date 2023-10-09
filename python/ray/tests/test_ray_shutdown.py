@@ -353,8 +353,12 @@ def test_worker_sigterm(shutdown_only):
     os.kill(pid, signal.SIGTERM)
 
     def verify():
-        alive = get_worker(id=worker_id).is_alive
-        return not alive
+        w = get_worker(id=worker_id)
+        alive = w.is_alive
+        assert not alive
+        assert "SIGTERM" in w.exit_detail
+        assert w.exit_type == "INTENDED_SYSTEM_EXIT"
+        return True
 
     wait_for_condition(verify)
 
@@ -368,8 +372,12 @@ def test_worker_sigterm(shutdown_only):
     os.kill(pid, signal.SIGTERM)
 
     def verify():
-        alive = get_worker(id=worker_id).is_alive
-        return not alive
+        w = get_worker(id=worker_id)
+        alive = w.is_alive
+        assert not alive
+        assert "SIGTERM" in w.exit_detail
+        assert w.exit_type == "INTENDED_SYSTEM_EXIT"
+        return True
 
     wait_for_condition(verify)
 
@@ -391,7 +399,7 @@ def test_worker_proc_child_no_leak(shutdown_only):
 
             print(f"[pid={os.getpid()}ppid={os.getppid()}]sleeping for 1")
             time.sleep(1)
-            return self.p.pid
+            return ray.get_runtime_context().get_worker_id(), self.p.pid
 
     # Create a placement group
     pg = ray.util.placement_group([{"CPU": 1}])
@@ -405,7 +413,7 @@ def test_worker_proc_child_no_leak(shutdown_only):
     ).remote()
 
     ray.get(actor.__ray_ready__.remote())
-    child_pid = ray.get(actor.sleep.remote())
+    worker_id, child_pid = ray.get(actor.sleep.remote())
 
     # Remove the placement group
     ray.util.remove_placement_group(pg)
@@ -415,6 +423,14 @@ def test_worker_proc_child_no_leak(shutdown_only):
             psutil.Process(pid=child_pid).status()
         except psutil.NoSuchProcess:
             return True
+
+    wait_for_condition(verify)
+
+    def verify():
+        w = get_worker(id=worker_id)
+        assert "placement group was removed" in w.exit_detail
+        assert w.exit_type == "INTENDED_SYSTEM_EXIT"
+        return True
 
     wait_for_condition(verify)
 
