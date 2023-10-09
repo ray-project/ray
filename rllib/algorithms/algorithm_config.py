@@ -742,6 +742,13 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
+        # Check, if `env_runner_cls` is provided. If not set by
+        # default to traditional `RolloutWorker`.
+        if self.env_runner_cls is None:
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+
+            self.env_runner_cls = RolloutWorker
+
         # Validate rollout settings.
         if (
             self.env_runner_cls.__name__ != "RolloutWorker"

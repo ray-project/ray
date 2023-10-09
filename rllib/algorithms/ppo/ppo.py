@@ -433,8 +433,20 @@ class PPO(Algorithm):
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
+            # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
+            if self.config.env_runner_cls.__name__ == "RolloutWorker":
+                if self.config.count_steps_by == "agent_steps":
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_agent_steps=self.config.train_batch_size,
+                    )
+                else:
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_env_steps=self.config.train_batch_size,
+                    )
             # New Episode-returning EnvRunner API.
-            if self.config.env_runner_cls is not None:
+            else:
                 if self.workers.num_remote_workers() <= 0:
                     episodes = [self.workers.local_worker().sample()]
                 else:
@@ -453,19 +465,6 @@ class PPO(Algorithm):
                 # provided. Traditionally, SampleBatches in Training do not carry
                 # infos and conversion also sometimes errors out.
                 # del train_batch[SampleBatch.INFOS]
-
-            # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
-            else:
-                if self.config.count_steps_by == "agent_steps":
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_agent_steps=self.config.train_batch_size,
-                    )
-                else:
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_env_steps=self.config.train_batch_size,
-                    )
 
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
@@ -623,14 +622,13 @@ class PPO(Algorithm):
         postprocessed_episodes = []
         # TODO (simon): Remove somehow the double list.
         # episodes = [episode for episode_list in episodes for episode in episode_list]
-        for episode_list in episodes:
-            for episode in episode_list:
-                # TODO (sven): Calling 'module' on the 'EnvRunner' only works
-                # for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
-                postprocessed_episodes.append(
-                    compute_gae_for_episode(
-                        episode, self.config, self.workers.local_worker().module
-                    )
+        for episode in episodes:
+            # TODO (sven): Calling 'module' on the 'EnvRunner' only works
+            # for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
+            postprocessed_episodes.append(
+                compute_gae_for_episode(
+                    episode, self.config, self.workers.local_worker().module
                 )
+            )
 
         return postprocessed_episodes

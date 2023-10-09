@@ -266,7 +266,7 @@ class WorkerSet:
 
         # Try to figure out spaces from the first remote worker.
         # Traditional RolloutWorker.
-        if issubclass(self.env_runner_cls, RolloutWorker):
+        if self.env_runner_cls.__name__ == "RolloutWorker":
             remote_spaces = self.foreach_worker(
                 lambda worker: worker.foreach_policy(
                     lambda p, pid: (pid, p.observation_space, p.action_space)

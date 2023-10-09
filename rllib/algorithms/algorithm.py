@@ -1438,7 +1438,7 @@ class Algorithm(Trainable, AlgorithmBase):
             worker.set_weights(
                 weights=ray.get(weights_ref), weights_seq_no=weights_seq_no
             )
-            episodes = worker.sample()
+            episodes = worker.sample(explore=False)
             metrics = worker.get_metrics()
             return episodes, metrics, weights_seq_no
 
@@ -1478,7 +1478,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 i += 1
 
             # Convert our list of Episodes to a single SampleBatch.
-            batch = postprocess_episodes_to_sample_batch()
+            batch = postprocess_episodes_to_sample_batch(episodes)
             # Collect steps stats.
             _agent_steps = batch.agent_steps()
             _env_steps = batch.env_steps()

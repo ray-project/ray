@@ -48,7 +48,11 @@ def postprocess_episodes_to_sample_batch(episodes: List[_Episode]) -> SampleBatc
             batches.append(episode_or_list.to_sample_batch())
 
     batch = concat_samples(batches)
-
+    # TODO (sven): During evalaution we do not have infos at all.
+    # On the other side, if we leave in infos in training, conversion
+    # to tensors throws an exception.
+    if SampleBatch.INFOS in batch.keys():
+        del batch[SampleBatch.INFOS]
     # Return the SampleBatch.
     return batch
 

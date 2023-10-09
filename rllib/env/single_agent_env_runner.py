@@ -101,6 +101,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self._done_episodes_for_metrics: List["Episode"] = []
         self._ongoing_episodes_for_metrics: Dict[List] = defaultdict(list)
         self._ts_since_last_metrics: int = 0
+        self._weights_seq_no: int = 0
 
     @override(EnvRunner)
     def sample(
@@ -216,7 +217,6 @@ class SingleAgentEnvRunner(EnvRunner):
             # Compute an action using the RLModule.
             else:
                 # Note, RLModule `forward()` methods expect `NestedDict`s.
-                # TODO (simon): Framework-agnostic.
                 batch = {
                     STATE_IN: tree.map_structure(
                         lambda s: self._convert_from_numpy(s),
@@ -491,20 +491,29 @@ class SingleAgentEnvRunner(EnvRunner):
 
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
-    def set_weights(self, weights, global_vars=None):
+    def set_weights(self, weights, global_vars=None, weights_seq_no: int = 0):
         """Writes the weights of our (single-agent) RLModule."""
-        # In case of a `StateDict` we have to extract the `
-        # default_policy`.
-        # TODO (sven): Handle this probably in `RLModule` as the latter
-        # does not need a 'StateDict' in its `set_state()` method
-        # as the `keras.Model.base_layer` has weights as `List[TensorType]`.
-        if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
-            weights = weights[DEFAULT_POLICY_ID]
-        weights = self._convert_to_tensor(weights)
-        self.module.set_state(weights)
+
+        # Check, if an update happened since the last call. See
+        # `Algorithm._evaluate_async_with_env_runner`.
+        if self._weights_seq_no < weights_seq_no:
+            # In case of a `StateDict` we have to extract the `
+            # default_policy`.
+            # TODO (sven): Handle this probably in `RLModule` as the latter
+            # does not need a 'StateDict' in its `set_state()` method
+            # as the `keras.Model.base_layer` has weights as `List[TensorType]`.
+            self._weights_seq_no = weights_seq_no
+            if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
+                weights = weights[DEFAULT_POLICY_ID]
+            weights = self._convert_to_tensor(weights)
+            self.module.set_state(weights)
+        # Otherwise ignore.
+        else:
+            pass
 
     def get_weights(self, modules=None):
         """Returns the weights of our (single-agent) RLModule."""
+
         return self.module.get_state()
 
     @override(EnvRunner)
