@@ -23,7 +23,6 @@ class SplitReadOutputBlocksRule(Rule):
 
     def _split_read_op_if_needed(self, op: PhysicalOperator, logical_op: Read):
         num_read_tasks = len(logical_op._reader.get_read_tasks(logical_op._parallelism))
-        print("XXX", num_read_tasks, logical_op._parallelism)
         expected_block_size = None
         if logical_op._mem_size:
             expected_block_size = logical_op._mem_size / num_read_tasks
