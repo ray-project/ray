@@ -193,7 +193,7 @@ class OpRuntimeMetrics:
         if ctx.enable_get_object_locations_for_metrics:
             locations = ray.experimental.get_object_locations(blocks)
             for block, meta in zip(blocks, metadata):
-                if locations[block]["did_spill"]:
+                if locations[block].get("did_spill", False):
                     assert meta.size_bytes is not None
                     self.obj_store_mem_spilled += meta.size_bytes
 
