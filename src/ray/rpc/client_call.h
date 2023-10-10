@@ -307,7 +307,6 @@ class ClientCallManager {
         std::shared_ptr<StatsHandle> stats_handle = tag->GetCall()->GetStatsHandle();
         RAY_CHECK_NE(stats_handle, nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
-          EventTracker::RecordEnd(std::move(stats_handle));
           // Post the callback to the main event loop.
           main_service_.post(
               [tag]() {
@@ -316,6 +315,7 @@ class ClientCallManager {
                 delete tag;
               },
               stats_handle->event_name + ".OnReplyReceived");
+          EventTracker::RecordEnd(std::move(stats_handle));
         } else {
           delete tag;
         }
