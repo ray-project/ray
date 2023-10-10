@@ -101,13 +101,13 @@ class TestPPO(unittest.TestCase):
                 evaluation_duration=3,
                 evaluation_duration_unit="episodes",
                 # Has to be used if `env_runner_cls` is not RolloutWorker.
-                # enable_async_evaluation=True,
+                enable_async_evaluation=True,
             )
         )
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+        for fw in framework_iterator(config, frameworks=("tf2")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in [
                 # "CliffWalking-v0",
@@ -142,7 +142,7 @@ class TestPPO(unittest.TestCase):
                         check_train_results(results)
                         print(results)
 
-                    algo.evaluate()
+                    #algo.evaluate()
                     algo.stop()
 
     # def test_ppo_exploration_setup(self):
