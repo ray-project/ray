@@ -15,10 +15,8 @@ import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ApplicationStatus;
 import io.ray.serve.generated.DeploymentArgs;
-import io.ray.serve.generated.DeploymentArgsList;
 import io.ray.serve.generated.DeploymentRouteList;
 import io.ray.serve.generated.EndpointInfo;
-import io.ray.serve.generated.ListApplicationsResponse;
 import io.ray.serve.generated.StatusOverview;
 import io.ray.serve.handle.DeploymentHandle;
 import io.ray.serve.util.CollectionUtil;
@@ -205,9 +203,10 @@ public class ServeControllerClient {
    */
   public void deployApplication(String name, List<Deployment> deployments, boolean blocking) {
 
-    DeploymentArgsList.Builder deploymentArgsListBuilder = DeploymentArgsList.newBuilder();
+    Object[] deploymentArgsArray = new Object[deployments.size()];
 
-    for (Deployment deployment : deployments) {
+    for (int i = 0; i < deployments.size(); i++) {
+      Deployment deployment = deployments.get(i);
       DeploymentArgs.Builder deploymentArgs =
           DeploymentArgs.newBuilder()
               .setDeploymentName(deployment.getName())
@@ -219,15 +218,11 @@ public class ServeControllerClient {
       if (deployment.getRoutePrefix() != null) {
         deploymentArgs.setRoutePrefix(deployment.getRoutePrefix());
       }
-
-      deploymentArgsListBuilder.addDeploymentArgs(deploymentArgs);
+      deploymentArgsArray[i] = deploymentArgs.build().toByteArray();
     }
 
     ((PyActorHandle) controller)
-        .task(
-            PyActorMethod.of("deploy_application"),
-            name,
-            deploymentArgsListBuilder.build().toByteArray())
+        .task(PyActorMethod.of("deploy_application"), name, deploymentArgsArray)
         .remote()
         .get();
 
@@ -303,10 +298,8 @@ public class ServeControllerClient {
 
     LOGGER.info("Deleting app {}", names);
 
-    ListApplicationsResponse apps =
-        ListApplicationsResponse.newBuilder().addAllApplicationNames(names).build();
     ((PyActorHandle) controller)
-        .task(PyActorMethod.of("delete_apps_xlang"), apps.toByteArray())
+        .task(PyActorMethod.of("delete_apps"), names.toArray())
         .remote()
         .get();
 
