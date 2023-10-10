@@ -1,6 +1,6 @@
 group: serve tests
 steps:
-  - label: ":ray-serve: serve: serve tests"
+  - label: ":ray-serve: serve: tests"
     parallelism: 2
     tags: 
       - serve
@@ -14,7 +14,7 @@ steps:
     depends_on: servebuild
     job_env: forge
 
-  - label: ":ray-serve: serve: serve tests (pydantic >= 2.0)"
+  - label: ":ray-serve: serve: pydantic>=2.0 tests"
     parallelism: 2
     tags: 
       - serve
