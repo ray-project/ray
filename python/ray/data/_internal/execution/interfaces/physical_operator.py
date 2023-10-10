@@ -1,5 +1,11 @@
 from abc import ABC, abstractmethod
+<<<<<<< HEAD
 from typing import Any, Callable, Dict, List, Optional, Union
+||||||| 4b0aa5293a
+from typing import Callable, Dict, List, Optional, Union
+=======
+from typing import Callable, Dict, List, Union
+>>>>>>> master
 
 import ray
 from .ref_bundle import RefBundle
@@ -196,16 +202,17 @@ class PhysicalOperator(Operator):
         """
         return ""
 
-    def num_outputs_total(self) -> Optional[int]:
-        """Returns the total number of output bundles of this operator, if known.
+    def num_outputs_total(self) -> int:
+        """Returns the total number of output bundles of this operator.
 
+        The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
         """
         if self._estimated_output_blocks is not None:
             return self._estimated_output_blocks
         if len(self.input_dependencies) == 1:
             return self.input_dependencies[0].num_outputs_total()
-        return None
+        raise AttributeError
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.

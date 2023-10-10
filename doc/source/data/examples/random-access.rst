@@ -4,7 +4,7 @@
 Random Data Access (Experimental)
 ---------------------------------
 
-Any Arrow-format dataset can be enabled for random access by calling ``ds.to_random_access_dataset(key="col_name")``. This partitions the data across the cluster by the given sort key, providing efficient random access to records via binary search. A number of worker actors are created, each of which has zero-copy access to the underlying sorted data blocks of the Dataset.
+Any Arrow-format dataset can be enabled for random access by calling ``ds.to_random_access_dataset(key="col_name")``. This partitions the data across the cluster by the given sort key, providing efficient random access to records with a binary search. A number of worker actors are created, each of which has zero-copy access to the underlying sorted data blocks of the Dataset.
 
 .. testcode::
 
@@ -40,7 +40,7 @@ RandomAccessDataset spreads its workers evenly across the cluster. Each worker f
 
 Lookups occur as follows:
 
-* First, the id of the block that contains the given key is located via binary search on the central index.
+* First, the id of the block that contains the given key is located with a binary search on the central index.
 * Second, an actor that has the block pinned is selected (this is done randomly).
 * A method call is sent to the actor, which then performs binary search to locate the record for the key.
 
