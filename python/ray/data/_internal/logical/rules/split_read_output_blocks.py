@@ -26,7 +26,7 @@ class SplitReadOutputBlocksRule(Rule):
         expected_block_size = None
         if logical_op._mem_size:
             expected_block_size = logical_op._mem_size / num_read_tasks
-            logger.warn(
+            logger.debug(
                 f"Expected in-memory size {logical_op._mem_size},"
                 f" block size {expected_block_size}"
             )
@@ -37,9 +37,9 @@ class SplitReadOutputBlocksRule(Rule):
             size_based_splits = 1
         if op._additional_split_factor:
             size_based_splits *= op._additional_split_factor
-        logger.warn(f"Size based split factor {size_based_splits}")
+        logger.debug(f"Size based split factor {size_based_splits}")
         estimated_num_blocks = num_read_tasks * size_based_splits
-        logger.warn(f"Blocks after size splits {estimated_num_blocks}")
+        logger.debug(f"Blocks after size splits {estimated_num_blocks}")
 
         # Add more output splitting for each read task if needed.
         if estimated_num_blocks < logical_op._parallelism:
@@ -51,7 +51,7 @@ class SplitReadOutputBlocksRule(Rule):
             estimated_num_blocks = estimated_num_blocks * k
             op.set_additional_split_factor(k)
 
-        logger.warn(f"Estimated num output blocks {estimated_num_blocks}")
+        logger.debug(f"Estimated num output blocks {estimated_num_blocks}")
 
         # Set the number of expected output blocks in the read input, so that
         # we can set the progress bar.
