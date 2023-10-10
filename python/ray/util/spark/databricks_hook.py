@@ -71,7 +71,7 @@ def _get_db_api_entry():
     """
     Get databricks API entry point.
     """
-    return get_dbutils().entry_point
+    return get_dbutils().jobs.entry_point
 
 
 _DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
