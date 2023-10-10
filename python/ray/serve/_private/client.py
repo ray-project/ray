@@ -316,7 +316,7 @@ class ServeControllerClient:
             if deployment_args["docs_path"]:
                 deployment_args_proto.docs_path = deployment_args["docs_path"]
 
-            deployment_args_list.append(deployment_args_proto)
+            deployment_args_list.append(deployment_args_proto.SerializeToString())
 
         ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
         if _blocking:
