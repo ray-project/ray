@@ -239,7 +239,7 @@ class _StatsActor:
         self.cpu_usage.set(stats[DataMetric.CPU_USAGE], tags)
         self.gpu_usage.set(stats[DataMetric.GPU_USAGE], tags)
 
-    def remove_metrics(self, tags):
+    def remove_metrics(self, tags: Dict[str, str]):
         self.bytes_spilled.set(0, tags)
         self.bytes_allocated.set(0, tags)
         self.bytes_freed.set(0, tags)
@@ -270,8 +270,8 @@ def _get_or_create_stats_actor():
 
 _stats_actor = None
 """This global _stats_actor may be from a previous cluster that was shutdown.
-The below calls try to execute remote calls with the existing actor, and this
-call fails, we create a new StatsActor on the current cluster.
+The below calls try to execute remote calls with the existing actor, and if this
+call fails, we create a new _StatsActor on the current cluster.
 """
 
 
