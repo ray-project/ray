@@ -87,6 +87,7 @@ void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
   handle->handler_stats->stats.curr_count--;
   handle->handler_stats->stats.cum_execution_time +=
       (absl::GetCurrentTimeNanos() - handle->start_time);
+  handle->end_or_execution_recorded = true;
 }
 
 void EventTracker::RecordExecution(const std::function<void()> &fn,
@@ -140,6 +141,7 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
       global_stats->stats.max_queue_time = queue_time_ns;
     }
   }
+  handle->end_or_execution_recorded = true;
 }
 
 std::shared_ptr<GuardedEventStats> EventTracker::GetOrCreate(const std::string &name) {
