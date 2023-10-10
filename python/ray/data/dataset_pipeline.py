@@ -27,7 +27,7 @@ from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
-from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.plan import ExecutionManager
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import (
     Block,
@@ -1354,7 +1354,7 @@ class DatasetPipeline:
 
         # This dummy dataset will be used to get a set of optimized stages.
         dummy_ds = Dataset(
-            ExecutionPlan(
+            ExecutionManager(
                 BlockList([], [], owned_by_consumer=True),
                 DatasetStats(stages={}, parent=None),
                 run_by_consumer=True,

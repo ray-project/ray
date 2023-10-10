@@ -5,7 +5,7 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.plan import ExecutionManager
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import _ShufflePartitionOp
@@ -25,7 +25,7 @@ def fast_repartition(
     logical_plan = LogicalPlan(InputData(ref_bundles))
 
     wrapped_ds = Dataset(
-        ExecutionPlan(
+        ExecutionManager(
             blocks,
             DatasetStats(stages={}, parent=None),
             run_by_consumer=blocks._owned_by_consumer,

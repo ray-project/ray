@@ -28,7 +28,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage, Stage
+from ray.data._internal.plan import AllToAllStage, ExecutionManager, OneToOneStage, Stage
 from ray.data._internal.stage_impl import LimitStage, RandomizeBlocksStage
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data._internal.util import validate_compute
@@ -43,7 +43,7 @@ TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
 def execute_to_legacy_block_iterator(
     executor: Executor,
-    plan: ExecutionPlan,
+    plan: ExecutionManager,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
 ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
@@ -58,7 +58,7 @@ def execute_to_legacy_block_iterator(
 
 def execute_to_legacy_bundle_iterator(
     executor: Executor,
-    plan: ExecutionPlan,
+    plan: ExecutionManager,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
     dag_rewrite=None,
@@ -92,7 +92,7 @@ def execute_to_legacy_bundle_iterator(
 
 def execute_to_legacy_block_list(
     executor: Executor,
-    plan: ExecutionPlan,
+    plan: ExecutionManager,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
     preserve_order: bool,
@@ -124,7 +124,7 @@ def execute_to_legacy_block_list(
 
 def _get_execution_dag(
     executor: Executor,
-    plan: ExecutionPlan,
+    plan: ExecutionManager,
     allow_clear_input_blocks: bool,
     preserve_order: bool,
 ) -> Tuple[PhysicalOperator, DatasetStats]:
@@ -153,7 +153,7 @@ def _get_execution_dag(
     return dag, stats
 
 
-def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
+def _get_initial_stats_from_plan(plan: ExecutionManager) -> DatasetStats:
     assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
@@ -171,7 +171,7 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
 
 
 def _to_operator_dag(
-    plan: ExecutionPlan, allow_clear_input_blocks: bool
+    plan: ExecutionManager, allow_clear_input_blocks: bool
 ) -> Tuple[PhysicalOperator, DatasetStats]:
     """Translate a plan into an operator DAG for the new execution backend."""
 

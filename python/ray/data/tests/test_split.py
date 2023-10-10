@@ -14,7 +14,7 @@ from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.plan import ExecutionManager
 from ray.data._internal.split import (
     _drop_empty_block_split,
     _generate_global_split_results,
@@ -101,7 +101,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
 
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
     ds = Dataset(
-        ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
+        ExecutionManager(block_list, DatasetStats.TODO(), run_by_consumer=True),
         0,
         False,
         logical_plan,

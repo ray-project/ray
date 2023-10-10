@@ -66,7 +66,7 @@ from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
-from ray.data._internal.plan import ExecutionPlan, OneToOneStage
+from ray.data._internal.plan import ExecutionManager, OneToOneStage
 from ray.data._internal.planner.plan_udf_map_op import (
     generate_filter_fn,
     generate_flat_map_fn,
@@ -248,7 +248,7 @@ class Dataset:
 
     def __init__(
         self,
-        plan: ExecutionPlan,
+        plan: ExecutionManager,
         epoch: int,
         lazy: bool = True,
         logical_plan: Optional[LogicalPlan] = None,
@@ -258,7 +258,7 @@ class Dataset:
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
         read methods to construct a dataset.
         """
-        assert isinstance(plan, ExecutionPlan), type(plan)
+        assert isinstance(plan, ExecutionManager), type(plan)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
         self._plan = plan
@@ -1340,7 +1340,7 @@ class Dataset:
                     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
-                        ExecutionPlan(
+                        ExecutionManager(
                             block_list,
                             stats,
                             run_by_consumer=owned_by_consumer,
@@ -1467,7 +1467,7 @@ class Dataset:
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
             split_datasets.append(
                 MaterializedDataset(
-                    ExecutionPlan(
+                    ExecutionManager(
                         block_split,
                         stats,
                         run_by_consumer=owned_by_consumer,
@@ -1553,7 +1553,7 @@ class Dataset:
 
             splits.append(
                 MaterializedDataset(
-                    ExecutionPlan(
+                    ExecutionManager(
                         split_block_list,
                         stats,
                         run_by_consumer=block_list._owned_by_consumer,
@@ -1821,7 +1821,7 @@ class Dataset:
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),
+            ExecutionManager(blocklist, stats, run_by_consumer=owned_by_consumer),
             max_epoch,
             self._lazy,
             logical_plan,
@@ -4488,7 +4488,7 @@ class Dataset:
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(
+                        ExecutionManager(
                             blocks,
                             outer_stats,
                             dataset_uuid=uuid,
@@ -4608,7 +4608,7 @@ class Dataset:
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats, run_by_consumer=True),
+                        ExecutionManager(blocks, outer_stats, run_by_consumer=True),
                         self._epoch,
                         lazy=True,
                     )
@@ -4771,7 +4771,7 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         output = MaterializedDataset(
-            ExecutionPlan(
+            ExecutionManager(
                 blocks,
                 copy._plan.stats(),
                 run_by_consumer=False,
@@ -5029,14 +5029,14 @@ class Dataset:
         block_list = self._plan.execute()
         left, right = block_list.divide(block_idx)
         l_ds = Dataset(
-            ExecutionPlan(
+            ExecutionManager(
                 left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
             ),
             self._epoch,
             self._lazy,
         )
         r_ds = Dataset(
-            ExecutionPlan(
+            ExecutionManager(
                 right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
             ),
             self._epoch,

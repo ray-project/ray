@@ -80,7 +80,7 @@ class Stage:
         return repr(self)
 
 
-class ExecutionPlan:
+class ExecutionManager:
     """A lazy execution plan for a Dataset."""
 
     # Implementation Notes:
@@ -281,7 +281,7 @@ class ExecutionPlan:
             plan_str += f"{trailing_space}+- {dataset_str}"
         return plan_str
 
-    def with_stage(self, stage: "Stage") -> "ExecutionPlan":
+    def with_stage(self, stage: "Stage") -> "ExecutionManager":
         """Return a copy of this plan with the given stage appended.
 
         Args:
@@ -302,7 +302,7 @@ class ExecutionPlan:
         """
         self._logical_plan = logical_plan
 
-    def copy(self) -> "ExecutionPlan":
+    def copy(self) -> "ExecutionManager":
         """Create a shallow copy of this execution plan.
 
         This copy can be executed without mutating the original, but clearing the copy
@@ -311,7 +311,7 @@ class ExecutionPlan:
         Returns:
             A shallow copy of this execution plan.
         """
-        plan_copy = ExecutionPlan(
+        plan_copy = ExecutionManager(
             self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
         )
         plan_copy._generated_from_pipeline = self._generated_from_pipeline
@@ -323,7 +323,7 @@ class ExecutionPlan:
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
         return plan_copy
 
-    def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionPlan":
+    def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionManager":
         """Create a deep copy of this execution plan.
 
         This copy can be executed AND cleared without mutating the original.
@@ -340,7 +340,7 @@ class ExecutionPlan:
         in_blocks = self._in_blocks
         if isinstance(in_blocks, BlockList):
             in_blocks = in_blocks.copy()
-        plan_copy = ExecutionPlan(
+        plan_copy = ExecutionManager(
             in_blocks,
             copy.copy(self._in_stats),
             dataset_uuid=dataset_uuid,
