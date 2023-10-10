@@ -1,6 +1,5 @@
 import tempfile
 
-import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -12,7 +11,10 @@ from ray.train.lightning import (
     LightningConfigBuilder,
     LightningTrainer,
 )
+from ray.train.lightning._lightning_utils import import_lightning
 from ray.train.tests.lightning_test_utils import DummyDataModule, LinearModule
+
+pl = import_lightning()
 
 
 class Net(pl.LightningModule):
