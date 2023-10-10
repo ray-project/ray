@@ -620,7 +620,7 @@ class ServeController:
 
         return updating
 
-    def deploy_application(self, name: str, deployment_args_list: list[bytes]) -> None:
+    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwrriten.
