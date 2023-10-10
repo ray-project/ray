@@ -19,7 +19,7 @@ class TestAnyscaleDockerContainer(RayCITestBase):
             "ci.ray_ci.docker_container.Container.run_script",
             side_effect=_mock_run_script,
         ):
-            container = AnyscaleDockerContainer("3.8", "cu118", "ray")
+            container = AnyscaleDockerContainer("3.8", "cu11.8.0", "ray")
             container.run()
             cmd = self.cmds[-1]
             assert cmd == (

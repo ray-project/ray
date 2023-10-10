@@ -533,9 +533,7 @@ ray::Status NodeManager::RegisterGcs() {
     periodical_runner_.RunFnPeriodically(
         [this] {
           std::stringstream debug_msg;
-          debug_msg << "Event stats:\n\n"
-                    << io_service_.stats().StatsString() << "\n\n"
-                    << DebugString() << "\n\n";
+          debug_msg << DebugString() << "\n\n";
           RAY_LOG(INFO) << AppendToEachLine(debug_msg.str(), "[state-dump] ");
           ReportWorkerOOMKillStats();
         },

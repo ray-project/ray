@@ -1,9 +1,9 @@
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 import warnings
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
-from composer.trainer import Trainer
 from composer.loggers.logger_destination import LoggerDestination
+from composer.trainer import Trainer
 
 from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
 from ray.train.mosaic._mosaic_utils import RayLogger
