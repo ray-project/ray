@@ -5,7 +5,7 @@ import pytest
 from fastapi import FastAPI
 
 import ray
-from ray._private.pydantic_compat import BaseModel
+from ray._private.pydantic_compat import BaseModel, IS_PYDANTIC_2
 
 
 @pytest.fixture(scope="session")
@@ -148,6 +148,10 @@ def test_serialize_app_imported_closure(start_ray):
     ray.get(ray.put(closure))
 
 
+@pytest.mark.skipif(
+    not IS_PYDANTIC_2,
+    reason="Test fails with Pydantic 1.10.12, but succeeds with Pydantic 1.9.2.",
+)
 def test_serialize_serve_dataclass(start_ray):
     @dataclass
     class BackendMetadata:
