@@ -55,6 +55,7 @@ def monkeypatch_pydantic_2_for_cloudpickle():
 
 
 if pydantic is None:
+    IS_PYDANTIC_2 = False
     BaseModel = None
     Extra = None
     Field = None
@@ -66,7 +67,23 @@ if pydantic is None:
     root_validator = None
     validator = None
     ModelMetaclass = None
-elif packaging.version.parse(pydantic.__version__) > packaging.version.parse("2.0"):
+elif packaging.version.parse(pydantic.__version__) < packaging.version.parse("2.0"):
+    IS_PYDANTIC_2 = False
+    from pydantic import (
+        BaseModel,
+        Extra,
+        Field,
+        NonNegativeFloat,
+        NonNegativeInt,
+        PositiveFloat,
+        PositiveInt,
+        ValidationError,
+        root_validator,
+        validator,
+    )
+    from pydantic.main import ModelMetaclass
+elif pydantic is not None:
+    IS_PYDANTIC_2 = True
     # TODO(edoakes): compare this against the version that has the fixes.
     monkeypatch_pydantic_2_for_cloudpickle()
     from pydantic.v1 import (
@@ -84,17 +101,3 @@ elif packaging.version.parse(pydantic.__version__) > packaging.version.parse("2.
 
     # TODO: we shouldn't depend on this path in pydantic>=2.0 as it's not public.
     from pydantic._internal._model_construction import ModelMetaclass
-elif pydantic is not None:
-    from pydantic import (
-        BaseModel,
-        Extra,
-        Field,
-        NonNegativeFloat,
-        NonNegativeInt,
-        PositiveFloat,
-        PositiveInt,
-        ValidationError,
-        root_validator,
-        validator,
-    )
-    from pydantic.main import ModelMetaclass
