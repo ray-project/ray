@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
@@ -184,7 +184,7 @@ class PhysicalOperator(Operator):
         self._metrics._extra_metrics = self._extra_metrics()
         return self._metrics
 
-    def _extra_metrics(self) -> Dict[str, int]:
+    def _extra_metrics(self) -> Dict[str, Any]:
         """Subclasses should override this method to report extra metrics
         that are specific to them."""
         return {}

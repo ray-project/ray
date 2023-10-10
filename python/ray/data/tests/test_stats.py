@@ -16,22 +16,24 @@ from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
 
 STANDARD_EXTRA_METRICS = (
-    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
-    "'obj_store_mem_peak': N, 'obj_store_mem_spilled': Z, "
+    "{'num_inputs_received': N, 'bytes_inputs_received': N, "
+    "'num_inputs_processed': N, 'bytes_inputs_processed': N, "
+    "'num_outputs_generated': N, 'bytes_outputs_generated': N, "
+    "'num_outputs_taken': N, 'bytes_outputs_taken': N, "
+    "'num_outputs_of_finished_tasks': N, 'bytes_outputs_of_finished_tasks': N, "
+    "'num_tasks_submitted': N, 'num_tasks_running': Z, "
+    "'num_tasks_have_outputs': N, 'num_tasks_finished': N, "
+    "'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
+    "'obj_store_mem_cur': Z, 'obj_store_mem_peak': N, 'obj_store_mem_spilled': Z, "
     "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}}"
 )
 
-LARGE_ARGS_EXTRA_METRICS = (
-    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
-    "'obj_store_mem_peak': N, 'obj_store_mem_spilled': Z, "
-    "'ray_remote_args': {'num_cpus': Z.N, 'scheduling_strategy': 'DEFAULT'}}"
-)
+LARGE_ARGS_EXTRA_METRICS = STANDARD_EXTRA_METRICS \
+    .replace("'num_cpus': N", "'num_cpus': Z.N").replace("SPREAD", "DEFAULT")
 
-MEM_SPILLED_EXTRA_METRICS = (
-    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
-    "'obj_store_mem_peak': N, 'obj_store_mem_spilled': N, "
-    "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}}"
-)
+
+MEM_SPILLED_EXTRA_METRICS = STANDARD_EXTRA_METRICS \
+    .replace("'obj_store_mem_spilled': Z", "'obj_store_mem_spilled': N")
 
 
 CLUSTER_MEMORY_STATS = """

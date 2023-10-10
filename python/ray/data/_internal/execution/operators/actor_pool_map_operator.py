@@ -311,7 +311,7 @@ class ActorPoolMapOperator(MapOperator):
             num_gpus = 0
         return ExecutionResources(cpu=num_cpus, gpu=num_gpus)
 
-    def _extra_metrics(self) -> Dict[str, int]:
+    def _extra_metrics(self) -> Dict[str, Any]:
         res = {}
         if self._actor_locality_enabled:
             res["locality_hits"] = self._actor_pool._locality_hits

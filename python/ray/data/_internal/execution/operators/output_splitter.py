@@ -1,6 +1,6 @@
 import math
 from collections import deque
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -90,7 +90,7 @@ class OutputSplitter(PhysicalOperator):
     def get_stats(self) -> StatsDict:
         return {"split": []}  # TODO(ekl) add split metrics?
 
-    def _extra_metrics(self) -> Dict[str, int]:
+    def _extra_metrics(self) -> Dict[str, Any]:
         stats = {}
         for i, num in enumerate(self._num_output):
             stats[f"num_output_{i}"] = num
