@@ -19,47 +19,47 @@ from ray.tests.conftest import *  # noqa
 
 def gen_expected_metrics(
     is_map: bool,
-    spilled: bool,
-    extra_metrics: List[Tuple[str, str]] = [],
+    spilled: bool = False,
+    extra_metrics: List[str] = [],
 ):
     if is_map:
         metrics = [
-            ("num_inputs_received", "N"),
-            ("bytes_inputs_received", "N"),
-            ("num_inputs_processed", "N"),
-            ("bytes_inputs_processed", "N"),
-            ("num_outputs_generated", "N"),
-            ("bytes_outputs_generated", "N"),
-            ("num_outputs_taken", "N"),
-            ("bytes_outputs_taken", "N"),
-            ("num_outputs_of_finished_tasks", "N"),
-            ("bytes_outputs_of_finished_tasks", "N"),
-            ("num_tasks_submitted", "N"),
-            ("num_tasks_running", "Z"),
-            ("num_tasks_have_outputs", "N"),
-            ("num_tasks_finished", "N"),
-            ("obj_store_mem_alloc", "N"),
-            ("obj_store_mem_freed", "N"),
-            ("obj_store_mem_cur", "Z"),
-            ("obj_store_mem_peak", "N"),
-            ("obj_store_mem_spilled", "N" if spilled else "Z"),
+            "'num_inputs_received': N",
+            "'bytes_inputs_received': N",
+            "'num_inputs_processed': N",
+            "'bytes_inputs_processed': N",
+            "'num_outputs_generated': N",
+            "'bytes_outputs_generated': N",
+            "'num_outputs_taken': N",
+            "'bytes_outputs_taken': N",
+            "'num_outputs_of_finished_tasks': N",
+            "'bytes_outputs_of_finished_tasks': N",
+            "'num_tasks_submitted': N",
+            "'num_tasks_running': Z",
+            "'num_tasks_have_outputs': N",
+            "'num_tasks_finished': N",
+            "'obj_store_mem_alloc': N",
+            "'obj_store_mem_freed': N",
+            "'obj_store_mem_cur': Z",
+            "'obj_store_mem_peak': N",
+            f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
         ]
     else:
         metrics = [
-            ("num_inputs_received", "N"),
-            ("bytes_inputs_received", "N"),
-            ("num_outputs_taken", "N"),
-            ("bytes_outputs_taken", "N"),
+            "'num_inputs_received': N",
+            "'bytes_inputs_received': N",
+            "'num_outputs_taken': N",
+            "'bytes_outputs_taken': N",
         ]
     metrics.extend(extra_metrics)
-    return "{" + ", ".join(f"'{k}': {v}" for k, v in metrics) + "}"
+    return "{" + ", ".join(metrics) + "}"
 
 
 STANDARD_EXTRA_METRICS = gen_expected_metrics(
     is_map=True,
     spilled=False,
     extra_metrics=[
-        ("ray_remote_args", "{'num_cpus': N, 'scheduling_strategy': 'SPREAD'}")
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
     ],
 )
 
@@ -67,7 +67,7 @@ LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
     is_map=True,
     spilled=False,
     extra_metrics=[
-        ("ray_remote_args", "{'num_cpus': Z.N, 'scheduling_strategy': 'DEFAULT'}")
+        "'ray_remote_args': {'num_cpus': Z.N, 'scheduling_strategy': 'DEFAULT'}"
     ],
 )
 
@@ -75,6 +75,9 @@ LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
 MEM_SPILLED_EXTRA_METRICS = gen_expected_metrics(
     is_map=True,
     spilled=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
 )
 
 
@@ -147,7 +150,7 @@ def test_streaming_split_stats(ray_start_regular_shared):
 Stage N split(N, equal=False): \n"""
         # Workaround to preserve trailing whitespace in the above line without
         # causing linter failures.
-        "* Extra metrics: {'num_output_N': N}\n"
+        f"""* Extra metrics: {gen_expected_metrics(is_map=False, extra_metrics=["'num_output_N': N"])}\n"""
         """
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
@@ -523,8 +526,23 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
         "   extra_metrics={\n"
+        "      num_inputs_received: N,\n"
+        "      bytes_inputs_received: N,\n"
+        "      num_inputs_processed: N,\n"
+        "      bytes_inputs_processed: N,\n"
+        "      num_outputs_generated: N,\n"
+        "      bytes_outputs_generated: N,\n"
+        "      num_outputs_taken: N,\n"
+        "      bytes_outputs_taken: N,\n"
+        "      num_outputs_of_finished_tasks: N,\n"
+        "      bytes_outputs_of_finished_tasks: N,\n"
+        "      num_tasks_submitted: N,\n"
+        "      num_tasks_running: Z,\n"
+        "      num_tasks_have_outputs: N,\n"
+        "      num_tasks_finished: N,\n"
         "      obj_store_mem_alloc: N,\n"
         "      obj_store_mem_freed: N,\n"
+        "      obj_store_mem_cur: Z,\n"
         "      obj_store_mem_peak: N,\n"
         "      obj_store_mem_spilled: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
@@ -617,7 +635,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     stats = canonicalize(ds.materialize().stats())
     assert (
         stats
-        == """Stage N ReadRange->RandomShuffle: executed in T
+        == f"""Stage N ReadRange->RandomShuffle: executed in T
 
     Substage Z ReadRange->RandomShuffleMap: N/N blocks executed
     * Remote wall time: T min, T max, T mean, T total
@@ -634,6 +652,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Output num rows: N min, N max, N mean, N total
     * Output size bytes: N min, N max, N mean, N total
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Extra metrics: {gen_expected_metrics(is_map=False)}
 
 Stage N Repartition: executed in T
 
@@ -652,6 +671,7 @@ Stage N Repartition: executed in T
     * Output num rows: N min, N max, N mean, N total
     * Output size bytes: N min, N max, N mean, N total
     * Tasks per node: N min, N max, N mean; N nodes used
+    * Extra metrics: {gen_expected_metrics(is_map=False)}
 """
     )
 
