@@ -184,7 +184,7 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     assert len(stats["TestMapper"]) == 100, stats
 
     # Check memory stats.
-    metrics = op.get_metrics()
+    metrics = op.metrics.as_dict()
     assert metrics["obj_store_mem_alloc"] == pytest.approx(832200, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(1688000, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
@@ -379,7 +379,7 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
 
     # Check equivalent to bulk execution in order.
     assert np.array_equal(output, [[np.ones(100) * i * 2] for i in range(100)])
-    metrics = op.get_metrics()
+    metrics = op.metrics.as_dict()
     assert metrics["obj_store_mem_alloc"] == pytest.approx(92900, 0.5), metrics
     assert metrics["obj_store_mem_peak"] == pytest.approx(2096, 0.5), metrics
     assert metrics["obj_store_mem_freed"] == pytest.approx(92900, 0.5), metrics
