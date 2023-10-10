@@ -1,6 +1,7 @@
 import re
 import time
 from collections import Counter
+from typing import Dict
 from unittest.mock import patch
 
 import numpy as np
@@ -15,25 +16,66 @@ from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
 
-STANDARD_EXTRA_METRICS = (
-    "{'num_inputs_received': N, 'bytes_inputs_received': N, "
-    "'num_inputs_processed': N, 'bytes_inputs_processed': N, "
-    "'num_outputs_generated': N, 'bytes_outputs_generated': N, "
-    "'num_outputs_taken': N, 'bytes_outputs_taken': N, "
-    "'num_outputs_of_finished_tasks': N, 'bytes_outputs_of_finished_tasks': N, "
-    "'num_tasks_submitted': N, 'num_tasks_running': Z, "
-    "'num_tasks_have_outputs': N, 'num_tasks_finished': N, "
-    "'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, "
-    "'obj_store_mem_cur': Z, 'obj_store_mem_peak': N, 'obj_store_mem_spilled': Z, "
-    "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}}"
+
+def gen_expected_metrics(
+    is_map: bool,
+    spilled: bool,
+    extra_metrics: List[Tuple[str, str]] = [],
+):
+    if is_map:
+        metrics = [
+            ("num_inputs_received", "N"),
+            ("bytes_inputs_received", "N"),
+            ("num_inputs_processed", "N"),
+            ("bytes_inputs_processed", "N"),
+            ("num_outputs_generated", "N"),
+            ("bytes_outputs_generated", "N"),
+            ("num_outputs_taken", "N"),
+            ("bytes_outputs_taken", "N"),
+            ("num_outputs_of_finished_tasks", "N"),
+            ("bytes_outputs_of_finished_tasks", "N"),
+            ("num_tasks_submitted", "N"),
+            ("num_tasks_running", "Z"),
+            ("num_tasks_have_outputs", "N"),
+            ("num_tasks_finished", "N"),
+            ("obj_store_mem_alloc", "N"),
+            ("obj_store_mem_freed", "N"),
+            ("obj_store_mem_cur", "Z"),
+            ("obj_store_mem_peak", "N"),
+            ("obj_store_mem_spilled", "N" if spilled else "Z"),
+        ]
+    else:
+        metrics = [
+            ("num_inputs_received", "N"),
+            ("bytes_inputs_received", "N"),
+            ("num_outputs_taken", "N"),
+            ("bytes_outputs_taken", "N"),
+        ]
+    metrics.extend(extra_metrics)
+    return "{" + ", ".join(f"'{k}': {v}" for k, v in metrics) + "}"
+
+
+STANDARD_EXTRA_METRICS = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    extra_metrics=[
+        ("ray_remote_args", "{'num_cpus': N, 'scheduling_strategy': 'SPREAD'}")
+    ],
 )
 
-LARGE_ARGS_EXTRA_METRICS = STANDARD_EXTRA_METRICS \
-    .replace("'num_cpus': N", "'num_cpus': Z.N").replace("SPREAD", "DEFAULT")
+LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    extra_metrics=[
+        ("ray_remote_args", "{'num_cpus': Z.N, 'scheduling_strategy': 'DEFAULT'}")
+    ],
+)
 
 
-MEM_SPILLED_EXTRA_METRICS = STANDARD_EXTRA_METRICS \
-    .replace("'obj_store_mem_spilled': Z", "'obj_store_mem_spilled': N")
+MEM_SPILLED_EXTRA_METRICS = gen_expected_metrics(
+    is_map=True,
+    spilled=True,
+)
 
 
 CLUSTER_MEMORY_STATS = """

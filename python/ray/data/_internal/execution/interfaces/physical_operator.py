@@ -155,7 +155,7 @@ class PhysicalOperator(Operator):
         self._inputs_complete = not input_dependencies
         self._dependents_complete = False
         self._started = False
-        self._metrics = OpRuntimeMetrics()
+        self._metrics = OpRuntimeMetrics(self)
         self._estimated_output_blocks = None
 
     def __reduce__(self):

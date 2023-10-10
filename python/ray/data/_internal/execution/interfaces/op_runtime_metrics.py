@@ -1,9 +1,12 @@
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 
 
 @dataclass
@@ -32,16 +35,18 @@ class OpRuntimeMetrics:
     bytes_inputs_received: int = 0
 
     # Number of processed input blocks.
-    num_inputs_processed: int = 0
+    # TODO(hchen): Fields tagged with "map_only" currently only work for MapOperator.
+    # We should make them work for all operators by unifying the task execution code.
+    num_inputs_processed: int = field(default=0, metadata={"map_only": True})
     # Total size in bytes of processed input blocks.
-    bytes_inputs_processed: int = 0
+    bytes_inputs_processed: int = field(default=0, metadata={"map_only": True})
 
     # === Outputs-related metrics ===
 
     # Number of generated output blocks.
-    num_outputs_generated: int = 0
+    num_outputs_generated: int = field(default=0, metadata={"map_only": True})
     # Total size in bytes of generated output blocks.
-    bytes_outputs_generated: int = 0
+    bytes_outputs_generated: int = field(default=0, metadata={"map_only": True})
 
     # Number of output blocks that are already taken by the downstream.
     num_outputs_taken: int = 0
@@ -49,39 +54,40 @@ class OpRuntimeMetrics:
     bytes_outputs_taken: int = 0
 
     # Number of generated output blocks that are from finished tasks.
-    num_outputs_of_finished_tasks: int = 0
+    num_outputs_of_finished_tasks: int = field(default=0, metadata={"map_only": True})
     # Size in bytes of generated output blocks that are from finished tasks.
-    bytes_outputs_of_finished_tasks: int = 0
+    bytes_outputs_of_finished_tasks: int = field(default=0, metadata={"map_only": True})
 
     # === Tasks-related metrics ===
 
     # Number of submitted tasks.
-    num_tasks_submitted: int = 0
+    num_tasks_submitted: int = field(default=0, metadata={"map_only": True})
     # Number of running tasks.
-    num_tasks_running: int = 0
+    num_tasks_running: int = field(default=0, metadata={"map_only": True})
     # Number of tasks that have at least one output block.
-    num_tasks_have_outputs: int = 0
+    num_tasks_have_outputs: int = field(default=0, metadata={"map_only": True})
     # Number of finished tasks.
-    num_tasks_finished: int = 0
-
-    # Keep track of running tasks.
-    _running_tasks: Dict[int, RunningTaskInfo] = field(default_factory=dict)
+    num_tasks_finished: int = field(default=0, metadata={"map_only": True})
 
     # === Object store memory metrics ===
 
     # Allocated memory size in the object store.
-    obj_store_mem_alloc: int = 0
+    obj_store_mem_alloc: int = field(default=0, metadata={"map_only": True})
     # Freed memory size in the object store.
-    obj_store_mem_freed: int = 0
+    obj_store_mem_freed: int = field(default=0, metadata={"map_only": True})
     # Current memory size in the object store.
-    obj_store_mem_cur: int = 0
+    obj_store_mem_cur: int = field(default=0, metadata={"map_only": True})
     # Peak memory size in the object store.
-    obj_store_mem_peak: int = 0
+    obj_store_mem_peak: int = field(default=0, metadata={"map_only": True})
     # Spilled memory size in the object store.
-    obj_store_mem_spilled: int = 0
+    obj_store_mem_spilled: int = field(default=0, metadata={"map_only": True})
 
-    # Extra metrics that are specific to each concrete operator.
-    _extra_metrics: Dict[str, Any] = field(default_factory=dict)
+    def __init__(self, op: "PhysicalOperator"):
+        from ray.data._internal.execution.operators.map_operator import MapOperator
+
+        self._is_map = isinstance(op, MapOperator)
+        self._running_tasks: Dict[int, RunningTaskInfo] = {}
+        self._extra_metrics: Dict[str, Any] = {}
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -90,13 +96,13 @@ class OpRuntimeMetrics:
 
     def as_dict(self):
         """Return a dict representation of the metrics."""
-        # Note, private fields starting with "_" are ignored.
         result = []
         for f in fields(self):
-            if f.name.startswith("_"):
-                continue
-            value = getattr(self, f.name)
-            result.append((f.name, value))
+            if f.metadata.get("export", True):
+                if not self._is_map and f.metadata.get("map_only", False):
+                    continue
+                value = getattr(self, f.name)
+                result.append((f.name, value))
         result.extend(self._extra_metrics.items())
         return dict(result)
 
