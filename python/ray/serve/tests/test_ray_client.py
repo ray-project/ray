@@ -92,11 +92,12 @@ f._deploy()
 
     delete = """
 import ray
+from ray.serve._private import api as _private_api
 ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
-serve.get_deployment("test1")._delete()
+_private_api.get_deployment("test1")._delete()
 """.format(
         ray_client_instance
     )

@@ -228,7 +228,7 @@ async def test_args_kwargs(serve_instance, sync):
 
     f._deploy()
 
-    handle = f.get_handle(sync=sync)
+    handle = f._get_handle(sync=sync)
 
     def call():
         return handle.remote("hi", kwarg1=1, kwarg2="2")
@@ -250,7 +250,7 @@ async def test_nonexistent_method(serve_instance, sync):
             pass
 
     A._deploy()
-    handle = A.get_handle(sync=sync)
+    handle = A._get_handle(sync=sync)
 
     if sync:
         obj_ref = handle.does_not_exist.remote()
@@ -284,14 +284,14 @@ async def test_handle_across_loops(serve_instance):
     A._deploy()
 
     async def refresh_get():
-        handle = A.get_handle(sync=False)
+        handle = A._get_handle(sync=False)
         assert await (await handle.exists.remote())
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
         asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
 
-    handle = A.get_handle(sync=False)
+    handle = A._get_handle(sync=False)
 
     async def cache_get():
         assert await (await handle.exists.remote())
