@@ -2,9 +2,9 @@ import inspect
 from typing import Any, Callable, Optional, Type, Union
 
 from fastapi import Body
-from pydantic.v1 import BaseModel
 
 from ray._private.utils import import_attr
+from ray._private.pydantic_compat import BaseModel
 from ray.util.annotations import DeveloperAPI
 
 HTTPAdapterFn = Callable[[Any], Any]

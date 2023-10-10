@@ -5,11 +5,11 @@ from typing import Dict, List, Optional, Type, Union
 
 import numpy as np
 from fastapi import Depends, FastAPI
-from pydantic.v1 import BaseModel
 
 from ray import serve
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
+from ray._private.pydantic_compat import BaseModel
 from ray.serve._private.utils import install_serve_encoders_to_fastapi, require_packages
 from ray.serve.drivers_utils import HTTPAdapterFn, load_http_adapter
 from ray.util.annotations import Deprecated, DeveloperAPI

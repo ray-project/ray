@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Tuple
 import click
 import watchfiles
 import yaml
-from pydantic.v1 import ValidationError
 
 import ray
 from ray import serve
@@ -32,6 +31,7 @@ from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
+from ray._private.pydantic_compat import ValidationError
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (

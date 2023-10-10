@@ -3,8 +3,6 @@ import logging
 from types import FunctionType
 from typing import Any, Dict, Tuple, Union
 
-# from pydantic.main import ModelMetaclass
-
 import ray
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.usage import usage_lib
@@ -17,6 +15,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.controller import ServeController
+from ray._private.pydantic_compat import ModelMetaclass
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application, Deployment

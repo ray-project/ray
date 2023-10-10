@@ -3,52 +3,9 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 from fastapi import FastAPI
-from pydantic import BaseModel
 
 import ray
-
-import pydantic
-from pydantic import BaseModel
-from pydantic._internal._model_construction import ModelMetaclass
-
-from pydantic_core import SchemaSerializer
-from pydantic_core._pydantic_core import SchemaSerializer
-
-class CloudpickleableSchemaSerializer:
-    def __init__(self, schema, core_config):
-        self._schema = schema
-        self._core_config = core_config
-        self._schema_serializer = SchemaSerializer(schema, core_config)
-
-    def __reduce__(self):
-        return CloudpickleableSchemaSerializer, (self._schema, self._core_config)
-
-    def __getattr__(self, attr: str):
-        return getattr(self._schema_serializer, attr)
-
-pydantic._internal._model_construction.SchemaSerializer = CloudpickleableSchemaSerializer
-pydantic._internal._dataclasses.SchemaSerializer = CloudpickleableSchemaSerializer
-pydantic.type_adapter.SchemaSerializer = CloudpickleableSchemaSerializer
-
-import weakref
-
-class WeakRefWrapper:
-    def __init__(self, obj: Any):
-        if obj is None:
-            self._wr = None
-        else:
-            self._wr = weakref.ref(obj)
-
-    def __reduce__(self):
-        return WeakRefWrapper, (self(),)
-
-    def __call__(self) -> Any:
-        if self._wr is None:
-            return None
-        else:
-            return self._wr()
-
-pydantic._internal._model_construction._PydanticWeakRef = WeakRefWrapper
+from ray._private.pydantic_compat import BaseModel
 
 
 @pytest.fixture(scope="session")

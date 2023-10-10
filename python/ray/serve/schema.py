@@ -3,8 +3,6 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Union
 
-from pydantic.v1 import BaseModel, Extra, Field, root_validator, validator
-
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
@@ -21,6 +19,13 @@ from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
+)
+from ray._private.pydantic_compat import (
+    BaseModel,
+    Extra,
+    Field,
+    root_validator,
+    validator,
 )
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.serve.config import ProxyLocation

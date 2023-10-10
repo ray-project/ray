@@ -3,11 +3,11 @@ import sys
 import pytest
 import requests
 import starlette.requests
-from pydantic import BaseModel
 from starlette.testclient import TestClient
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import BaseModel
 from ray.serve.air_integrations import SimpleSchemaIngress
 from ray.serve.dag import InputNode
 from ray.serve.drivers import DAGDriver

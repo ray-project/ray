@@ -5,7 +5,6 @@ from typing import Dict, List
 
 import pytest
 import requests
-from pydantic import ValidationError
 
 import ray
 from ray import serve
@@ -14,6 +13,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     StatusOverview,
 )
+from ray._private.pydantic_compat import ValidationError
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment

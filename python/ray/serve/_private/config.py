@@ -3,14 +3,6 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.json_format import MessageToDict
-from pydantic.v1 import (
-    BaseModel,
-    Field,
-    NonNegativeFloat,
-    NonNegativeInt,
-    PositiveFloat,
-    validator,
-)
 
 from ray import cloudpickle
 from ray._private import ray_option_utils
@@ -23,6 +15,14 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_CONCURRENT_QUERIES,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
+)
+from ray._private.pydantic_compat import (
+    BaseModel,
+    Field,
+    NonNegativeFloat,
+    NonNegativeInt,
+    PositiveFloat,
+    validator,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
