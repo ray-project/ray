@@ -237,6 +237,8 @@ class PhysicalOperator(Operator):
         Inputs may be added in any order, and calls to `add_input` may be interleaved
         with calls to `get_next` / `has_next` to implement streaming execution.
 
+        Subclasses should override `_add_input_inner` instead of this method.
+
         Args:
             refs: The ref bundle that should be added as input.
             input_index: The index identifying the input dependency producing the
@@ -284,6 +286,8 @@ class PhysicalOperator(Operator):
         """Get the next downstream output.
 
         It is only allowed to call this if `has_next()` has returned True.
+
+        Subclasses should override `_get_next_inner` instead of this method.
         """
         output = self._get_next_inner()
         self._metrics.on_output_taken(output)
