@@ -5,17 +5,15 @@ import pyarrow.fs
 import pytest
 
 import ray
-from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
 from ray.train._checkpoint import (
     _CHECKPOINT_TEMP_DIR_PREFIX,
     _METADATA_FILE_NAME,
+    Checkpoint,
     _get_del_lock_path,
     _list_existing_del_locks,
-    Checkpoint,
 )
-
+from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
 from ray.train.tests.test_new_persistence import _create_mock_custom_fs
-
 
 _CHECKPOINT_CONTENT_FILE = "dummy.txt"
 

@@ -163,11 +163,9 @@ Saving and Restoring
     ~Algorithm.export_policy_model
     ~Algorithm.import_policy_model_from_h5
     ~Algorithm.restore
-    ~Algorithm.restore_from_object
     ~Algorithm.restore_workers
     ~Algorithm.save
     ~Algorithm.save_checkpoint
-    ~Algorithm.save_to_object
 
 
 Training
