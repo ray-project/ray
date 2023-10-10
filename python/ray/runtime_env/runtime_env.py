@@ -337,8 +337,8 @@ class RuntimeEnv(dict):
             )
 
         if self.get("nsight") and sys.platform != "linux":
-            raise ValueError(
-                "nsight client is only avaliable in Linux.\n"
+            raise RuntimeError(
+                "Nsight CLI is only available in Linux.\n"
                 "More information can be found in "
                 "https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html"
             )

@@ -199,6 +199,8 @@ class RuntimeEnvAgent:
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
+        # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
+        # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
         self._container_manager = ContainerManager(temp_dir)
 
