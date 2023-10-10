@@ -205,166 +205,142 @@ class RayActorOptionsConfig(BaseModel):
     )
 
 
-NumReplicasAnnotatedType = Annotated[
-    Optional[PositiveInt],
-    Field(
-        description=(
-            "The number of processes that handle requests to this "
-            "deployment. Uses a default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.LightWeight,
-    ),
-]
-MaxConcurrentQueriesAnnotatedType = Annotated[
-    PositiveInt,
-    Field(
-        description=(
-            "The max number of pending queries in a single replica. "
-            "Uses a default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
-    ),
-]
-UserConfigAnnotatedType = Annotated[
-    Optional[Union[Dict, bytes]],
-    Field(
-        description=(
-            "Config to pass into this deployment's "
-            "reconfigure method. This can be updated dynamically "
-            "without restarting replicas"
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
-    ),
-]
-AutoscalingConfigAnnotatedType = Annotated[
-    Optional[AutoscalingConfig],
-    Field(
-        description=(
-            "Config specifying autoscaling parameters for the "
-            "deployment's number of replicas. If null, the deployment "
-            "won't autoscale; the number of replicas will be fixed at "
-            "`num_replicas`."
-        ),
-        update_type=DeploymentOptionUpdateType.LightWeight,
-    ),
-]
-GracefulShutdownWaitLoopSAnnotatedType = Annotated[
-    NonNegativeFloat,
-    Field(
-        description=(
-            "Duration that deployment replicas will wait until there "
-            "is no more work to be done before shutting down. Uses a "
-            "default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
-    ),
-]
-GracefulShutdownTimeoutSAnnotatedType = Annotated[
-    NonNegativeFloat,
-    Field(
-        description=(
-            "Serve controller waits for this duration before "
-            "forcefully killing the replica for shutdown. Uses a "
-            "default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
-    ),
-]
-HealthCheckPeriodSAnnotatedType = Annotated[
-    NonNegativeFloat,
-    Field(
-        description=(
-            "Frequency at which the controller will health check "
-            "replicas. Uses a default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
-    ),
-]
-HealthCheckTimeoutSAnnotatedType = Annotated[
-    PositiveFloat,
-    Field(
-        description=(
-            "Timeout that the controller will wait for a response "
-            "from the replica's health check before marking it "
-            "unhealthy. Uses a default if null."
-        ),
-        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
-    ),
-]
-RayActorOptionsAnnotatedType = Annotated[
-    RayActorOptionsConfig,
-    Field(
-        description="Options set for each replica actor.",
-        update_type=DeploymentOptionUpdateType.HeavyWeight,
-    ),
-]
-PlacementGroupBundlesAnnotatedType = Annotated[
-    Optional[List[Dict[str, float]]],
-    Field(
-        description=(
-            "Define a set of placement group bundles to be "
-            "scheduled *for each replica* of this deployment. The replica actor will "
-            "be scheduled in the first bundle provided, so the resources specified in "
-            "`ray_actor_options` must be a subset of the first bundle's resources. All "
-            "actors and tasks created by the replica actor will be scheduled in the "
-            "placement group by default (`placement_group_capture_child_tasks` is set "
-            "to True)."
-        ),
-        update_type=DeploymentOptionUpdateType.HeavyWeight,
-    ),
-]
-PlacementGroupStrategyAnnotatedType = Annotated[
-    Optional[PlacementGroupStrategy],
-    Field(
-        description=(
-            "Strategy to use for the replica placement group "
-            "specified via `placement_group_bundles`. Defaults to `PACK`."
-        ),
-        update_type=DeploymentOptionUpdateType.HeavyWeight,
-    ),
-]
-MaxReplicasPerNodeAnnotatedType = Annotated[
-    Optional[int],
-    Field(
-        description=(
-            "[EXPERIMENTAL] The max number of deployment replicas can "
-            "run on a single node. Valid values are None (no limitation) "
-            "or an integer in the range of [1, 100]. "
-            "Defaults to no limitation."
-        ),
-        ge=1,
-        le=MAX_REPLICAS_PER_NODE_MAX_VALUE,
-        update_type=DeploymentOptionUpdateType.HeavyWeight,
-    ),
-]
-
-
 @PublicAPI(stability="stable")
 class BaseDeploymentModel(BaseModel, allow_population_by_field_name=True):
     """Defines options that can be used to configure a Serve deployment."""
 
-    num_replicas: NumReplicasAnnotatedType = 1
-    max_concurrent_queries: MaxConcurrentQueriesAnnotatedType = (
-        DEFAULT_MAX_CONCURRENT_QUERIES
-    )
-    user_config: UserConfigAnnotatedType = None
-    autoscaling_config: AutoscalingConfigAnnotatedType = None
-    graceful_shutdown_wait_loop_s: GracefulShutdownWaitLoopSAnnotatedType = (
-        DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S
-    )
-    graceful_shutdown_timeout_s: GracefulShutdownTimeoutSAnnotatedType = (
-        DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
-    )
-    health_check_period_s: HealthCheckPeriodSAnnotatedType = (
-        DEFAULT_HEALTH_CHECK_PERIOD_S
-    )
-    health_check_timeout_s: HealthCheckTimeoutSAnnotatedType = (
-        DEFAULT_HEALTH_CHECK_TIMEOUT_S
-    )
-    ray_actor_options: RayActorOptionsAnnotatedType = RayActorOptionsConfig()
-    placement_group_bundles: PlacementGroupBundlesAnnotatedType = None
-    placement_group_strategy: PlacementGroupStrategyAnnotatedType = None
-    max_replicas_per_node: MaxReplicasPerNodeAnnotatedType = None
+    num_replicas: Annotated[
+        Optional[PositiveInt],
+        Field(
+            description=(
+                "The number of processes that handle requests to this "
+                "deployment. Uses a default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.LightWeight,
+        ),
+    ] = 1
+    max_concurrent_queries: Annotated[
+        PositiveInt,
+        Field(
+            description=(
+                "The max number of pending queries in a single replica. "
+                "Uses a default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+        ),
+    ] = DEFAULT_MAX_CONCURRENT_QUERIES
+    user_config: Annotated[
+        Optional[Union[Dict, bytes]],
+        Field(
+            description=(
+                "Config to pass into this deployment's "
+                "reconfigure method. This can be updated dynamically "
+                "without restarting replicas"
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+        ),
+    ] = None
+    autoscaling_config: Annotated[
+        Optional[AutoscalingConfig],
+        Field(
+            description=(
+                "Config specifying autoscaling parameters for the "
+                "deployment's number of replicas. If null, the deployment "
+                "won't autoscale; the number of replicas will be fixed at "
+                "`num_replicas`."
+            ),
+            update_type=DeploymentOptionUpdateType.LightWeight,
+        ),
+    ] = None
+    graceful_shutdown_wait_loop_s: Annotated[
+        NonNegativeFloat,
+        Field(
+            description=(
+                "Duration that deployment replicas will wait until there "
+                "is no more work to be done before shutting down. Uses a "
+                "default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+        ),
+    ] = DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S
+    graceful_shutdown_timeout_s: Annotated[
+        NonNegativeFloat,
+        Field(
+            description=(
+                "Serve controller waits for this duration before "
+                "forcefully killing the replica for shutdown. Uses a "
+                "default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+        ),
+    ] = DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
+    health_check_period_s: Annotated[
+        NonNegativeFloat,
+        Field(
+            description=(
+                "Frequency at which the controller will health check "
+                "replicas. Uses a default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+        ),
+    ] = DEFAULT_HEALTH_CHECK_PERIOD_S
+    health_check_timeout_s: Annotated[
+        PositiveFloat,
+        Field(
+            description=(
+                "Timeout that the controller will wait for a response "
+                "from the replica's health check before marking it "
+                "unhealthy. Uses a default if null."
+            ),
+            update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+        ),
+    ] = DEFAULT_HEALTH_CHECK_TIMEOUT_S
+    ray_actor_options: Annotated[
+        RayActorOptionsConfig,
+        Field(
+            description="Options set for each replica actor.",
+            update_type=DeploymentOptionUpdateType.HeavyWeight,
+        ),
+    ] = RayActorOptionsConfig()
+    placement_group_bundles: Annotated[
+        Optional[List[Dict[str, float]]],
+        Field(
+            description=(
+                "Define a set of placement group bundles to be scheduled *for each "
+                "replica* of this deployment. The replica actor will be scheduled in "
+                "the first bundle provided, so the resources specified in "
+                "`ray_actor_options` must be a subset of the first bundle's resources. "
+                "All actors and tasks created by the replica actor will be scheduled "
+                "in the placement group by default "
+                "(`placement_group_capture_child_tasks` is set to True)."
+            ),
+            update_type=DeploymentOptionUpdateType.HeavyWeight,
+        ),
+    ] = None
+    placement_group_strategy: Annotated[
+        Optional[PlacementGroupStrategy],
+        Field(
+            description=(
+                "Strategy to use for the replica placement group "
+                "specified via `placement_group_bundles`. Defaults to `PACK`."
+            ),
+            update_type=DeploymentOptionUpdateType.HeavyWeight,
+        ),
+    ] = None
+    max_replicas_per_node: Annotated[
+        Optional[int],
+        Field(
+            description=(
+                "[EXPERIMENTAL] The max number of deployment replicas can "
+                "run on a single node. Valid values are None (no limitation) "
+                "or an integer in the range of [1, 100]. "
+                "Defaults to no limitation."
+            ),
+            ge=1,
+            le=MAX_REPLICAS_PER_NODE_MAX_VALUE,
+            update_type=DeploymentOptionUpdateType.HeavyWeight,
+        ),
+    ] = None
 
 
 @PublicAPI(stability="stable")

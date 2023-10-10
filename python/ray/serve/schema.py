@@ -1,7 +1,7 @@
 import json
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, Extra, Field, root_validator, validator
 
@@ -78,22 +78,6 @@ class ApplyDeploymentModel(BaseDeploymentModel):
         ),
     )
 
-    # Override default values
-    # num_replicas: NumReplicasAnnotatedType = DEFAULT.VALUE
-    # max_concurrent_queries: MaxConcurrentQueriesAnnotatedType = DEFAULT.VALUE
-    # user_config: UserConfigAnnotatedType = DEFAULT.VALUE
-    # autoscaling_config: AutoscalingConfigAnnotatedType = DEFAULT.VALUE
-    # graceful_shutdown_wait_loop_s: GracefulShutdownWaitLoopSAnnotatedType = (
-    #     DEFAULT.VALUE
-    # )
-    # graceful_shutdown_timeout_s: GracefulShutdownTimeoutSAnnotatedType = DEFAULT.VALUE
-    # health_check_period_s: HealthCheckPeriodSAnnotatedType = DEFAULT.VALUE
-    # health_check_timeout_s: HealthCheckTimeoutSAnnotatedType = DEFAULT.VALUE
-    # ray_actor_options: RayActorOptionsAnnotatedType = DEFAULT.VALUE
-    # placement_group_bundles: PlacementGroupBundlesAnnotatedType = DEFAULT.VALUE
-    # placement_group_strategy: PlacementGroupStrategyAnnotatedType = DEFAULT.VALUE
-    # max_replicas_per_node: MaxReplicasPerNodeAnnotatedType = DEFAULT.VALUE
-
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
         if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(
@@ -134,16 +118,6 @@ class ApplyDeploymentModel(BaseDeploymentModel):
     validate_route_prefix_format = validator("route_prefix", allow_reuse=True)(
         _route_prefix_format
     )
-
-    def _get_user_configured_option_names(self) -> Set[str]:
-        """Get set of names for all user-configured options.
-
-        Any field not set to DEFAULT.VALUE is considered a user-configured option.
-        """
-
-        return {
-            field for field, value in self.dict().items() if value is not DEFAULT.VALUE
-        }
 
 
 @PublicAPI(stability="stable")

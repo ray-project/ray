@@ -125,6 +125,8 @@ class InternalDeploymentConfig(BaseDeploymentModel):
             if not data["autoscaling_config"].get("downscale_smoothing_factor"):
                 data["autoscaling_config"]["downscale_smoothing_factor"] = None
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
+        if "num_replicas" in data and data["num_replicas"] == 0:
+            data["num_replicas"] = None
         if "version" in data:
             if data["version"] == "":
                 data["version"] = None

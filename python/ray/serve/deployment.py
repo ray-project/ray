@@ -619,9 +619,7 @@ def deployment_to_schema(
 
     deployment_options = {
         "name": d.name,
-        "num_replicas": None
-        if d._deployment_config.autoscaling_config
-        else d.num_replicas,
+        "num_replicas": d.num_replicas,
         "max_concurrent_queries": d.max_concurrent_queries,
         "user_config": d.user_config,
         "autoscaling_config": d._deployment_config.autoscaling_config,
@@ -649,6 +647,9 @@ def deployment_to_schema(
         ):
             del deployment_options[option]
 
+    if d._deployment_config.autoscaling_config:
+        deployment_options["num_replicas"] = None
+
     # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
     # because internally we use these two field for autoscale and deploy.
     # We can improve the code after we separate the user faced deployment config and
@@ -665,41 +666,22 @@ def schema_to_deployment(s: ApplyDeploymentModel) -> Deployment:
     before the deployment can be deployed.
     """
 
-    if s.ray_actor_options is DEFAULT.VALUE:
-        ray_actor_options = None
-    else:
-        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
-
-    if s.placement_group_bundles is DEFAULT.VALUE:
-        placement_group_bundles = None
-    else:
-        placement_group_bundles = s.placement_group_bundles
-
-    if s.placement_group_strategy is DEFAULT.VALUE:
-        placement_group_strategy = None
-    else:
-        placement_group_strategy = s.placement_group_strategy
-
-    if s.max_replicas_per_node is DEFAULT.VALUE:
-        max_replicas_per_node = None
-    else:
-        max_replicas_per_node = s.max_replicas_per_node
-
     user_configured_options = s.dict(
         exclude_unset=True, exclude={"name", "route_prefix"}
     )
     deployment_config = InternalDeploymentConfig.from_default(**user_configured_options)
-    deployment_config.user_configured_option_names = set(user_configured_options.keys())
-    # s._get_user_configured_option_names()
+    deployment_config.user_configured_option_names = s.__fields_set__
 
     replica_config = ReplicaInitInfo.create(
         deployment_def="",
         init_args=(),
         init_kwargs={},
-        ray_actor_options=ray_actor_options,
-        placement_group_bundles=placement_group_bundles,
-        placement_group_strategy=placement_group_strategy,
-        max_replicas_per_node=max_replicas_per_node,
+        ray_actor_options=None
+        if s.ray_actor_options is None
+        else s.ray_actor_options.dict(exclude_unset=True),
+        placement_group_bundles=s.placement_group_bundles,
+        placement_group_strategy=s.placement_group_strategy,
+        max_replicas_per_node=s.max_replicas_per_node,
     )
 
     return Deployment(
