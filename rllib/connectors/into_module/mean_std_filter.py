@@ -5,28 +5,31 @@ import numpy as np
 import tree
 
 from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
-from ray.rllib.connectors.connector import AgentConnector
-from ray.rllib.connectors.connector import (
-    ConnectorContext,
-)
+from ray.rllib.connectors.connector import AgentConnector, ConnectorContext
 from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.filter import Filter
-from ray.rllib.utils.filter import MeanStdFilter, ConcurrentMeanStdFilter
+from ray.rllib.utils.filter import (
+    ConcurrentMeanStdFilter,
+    Filter,
+    MeanStdFilter,
+    RunningStat,
+)
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentConnectorDataType
 from ray.util.annotations import PublicAPI
-from ray.rllib.utils.filter import RunningStat
 
 
 @PublicAPI(stability="alpha")
-class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
+class MeanStdObservationFilter(SyncedFilterAgentConnector):
     """A connector used to mean-std-filter observations.
 
     Incoming observations are filtered such that the output of this filter is on
-    average zero and has a standard deviation of 1. This filtering is applied
+    average zero and has a standard deviation of 1.0. This filtering is applied
     separately per element of the observation space.
+
+    The filter has a state (the current mean and std values) that needs to be part of any
+    checkpoint.
     """
 
     def __init__(
@@ -36,7 +39,7 @@ class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
         destd: bool = True,
         clip: float = 10.0,
     ):
-        SyncedFilterAgentConnector.__init__(self, ctx)
+        super().__init__(ctx)
         # We simply use the old MeanStdFilter until non-connector env_runner is fully
         # deprecated to avoid duplicate code
 

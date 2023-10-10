@@ -1211,7 +1211,7 @@ class TorchPolicyV2(Policy):
                 # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
                 # Create a distribution object.
                 action_dist = None
-                # Eventually the RLModule has already computed actions.
+                # Maybe the RLModule has already computed actions.
                 if (
                     SampleBatch.ACTION_DIST_INPUTS in fwd_out
                     and SampleBatch.ACTION_LOGP not in fwd_out

@@ -14,15 +14,15 @@ from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 
 class TestConnectorPipeline(unittest.TestCase):
     class Tom(Connector):
-        def to_state(self):
+        def serialize(self):
             return "tom"
 
     class Bob(Connector):
-        def to_state(self):
+        def serialize(self):
             return "bob"
 
     class Mary(Connector):
-        def to_state(self):
+        def serialize(self):
             return "mary"
 
     class MockConnectorPipeline(ConnectorPipeline):

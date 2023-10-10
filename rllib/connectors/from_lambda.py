@@ -16,10 +16,7 @@ from ray.rllib.utils.typing import (
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="alpha")
-def register_lambda_action_connector(
-    name: str, fn: Callable[[TensorStructType, StateBatches, Dict], PolicyOutputType]
-) -> Type[ActionConnector]:
+def connector_from_lambda(name: str, fn: Callable[[], ]):
     """A util to register any function transforming PolicyOutputType as an ActionConnector.
 
     The only requirement is that fn should take actions, states, and fetches as input,
@@ -33,14 +30,8 @@ def register_lambda_action_connector(
         A new ActionConnector class that transforms PolicyOutputType using fn.
     """
 
-    class LambdaActionConnector(ActionConnector):
-        def transform(
-            self, ac_data: ActionConnectorDataType
-        ) -> ActionConnectorDataType:
-            assert isinstance(
-                ac_data.output, tuple
-            ), "Action connector requires PolicyOutputType data."
-
+    class LambdaConnector(Connector):
+        def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
             actions, states, fetches = ac_data.output
             return ActionConnectorDataType(
                 ac_data.env_id,
@@ -60,19 +51,6 @@ def register_lambda_action_connector(
     LambdaActionConnector.__name__ = name
     LambdaActionConnector.__qualname__ = name
 
-    register_connector(name, LambdaActionConnector)
+    #register_connector(name, LambdaActionConnector)
 
-    return LambdaActionConnector
-
-
-# Convert actions and states into numpy arrays if necessary.
-ConvertToNumpyConnector = PublicAPI(stability="alpha")(
-    register_lambda_action_connector(
-        "ConvertToNumpyConnector",
-        lambda actions, states, fetches: (
-            convert_to_numpy(actions),
-            convert_to_numpy(states),
-            fetches,
-        ),
-    ),
-)
+    return LambdaConnector

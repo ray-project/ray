@@ -5,6 +5,7 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
 )
 from ray.rllib.connectors.registry import register_connector
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     unsquash_action,
@@ -33,7 +34,8 @@ class NormalizeActionsConnector(ActionConnector):
             (unsquash_action(actions, self._action_space_struct), states, fetches),
         )
 
-    def to_state(self):
+    @override(ActionConnector)
+    def serialize(self):
         return NormalizeActionsConnector.__name__, None
 
     @staticmethod

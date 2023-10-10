@@ -9,6 +9,7 @@ from ray.rllib.connectors.connector import (
 )
 from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
@@ -39,7 +40,8 @@ def register_lambda_agent_connector(
                 ac_data.env_id, ac_data.agent_id, fn(ac_data.data)
             )
 
-        def to_state(self):
+        @override(AgentConnector)
+        def serialize(self):
             return name, None
 
         @staticmethod
