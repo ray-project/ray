@@ -295,7 +295,7 @@ class ApplicationState:
                 deployment_id,
                 EndpointInfo(
                     route=deployment_info.route_prefix,
-                    app_is_cross_language=config.is_cross_language,
+                    app_is_cross_language=config._is_cross_language,
                 ),
             )
         else:

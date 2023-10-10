@@ -23,8 +23,8 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     controller = client._controller
 
     config = InternalDeploymentConfig()
-    config.deployment_language = JAVA
-    config.is_cross_language = True
+    config._deployment_language = JAVA
+    config._is_cross_language = True
 
     replica_config = ReplicaInitInfo.create(
         "io.ray.serve.util.ExampleEchoDeployment",

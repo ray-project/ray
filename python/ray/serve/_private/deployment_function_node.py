@@ -32,9 +32,9 @@ class DeploymentFunctionNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve,
         )
         if "deployment_schema" in self._bound_other_args_to_resolve:
-            deployment_schema: ApplyDeploymentModel = (
-                self._bound_other_args_to_resolve["deployment_schema"]
-            )
+            deployment_schema: ApplyDeploymentModel = self._bound_other_args_to_resolve[
+                "deployment_schema"
+            ]
             deployment_shell = schema_to_deployment(deployment_schema)
 
             # Set the route prefix, prefer the one user supplied,

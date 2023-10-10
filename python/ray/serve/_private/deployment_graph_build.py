@@ -203,9 +203,9 @@ def transform_ray_dag_to_serve_dag(
 
         # ClassNode is created via bind on serve.deployment decorated class
         # with no serve specific configs.
-        deployment_schema: ApplyDeploymentModel = (
-            dag_node._bound_other_args_to_resolve["deployment_schema"]
-        )
+        deployment_schema: ApplyDeploymentModel = dag_node._bound_other_args_to_resolve[
+            "deployment_schema"
+        ]
 
         deployment_shell: Deployment = schema_to_deployment(deployment_schema)
 

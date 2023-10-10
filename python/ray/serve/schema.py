@@ -23,22 +23,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
-from ray.serve.config import (
-    AutoscalingConfigAnnotatedType,
-    BaseDeploymentModel,
-    GracefulShutdownTimeoutSAnnotatedType,
-    GracefulShutdownWaitLoopSAnnotatedType,
-    HealthCheckPeriodSAnnotatedType,
-    HealthCheckTimeoutSAnnotatedType,
-    MaxConcurrentQueriesAnnotatedType,
-    MaxReplicasPerNodeAnnotatedType,
-    NumReplicasAnnotatedType,
-    PlacementGroupBundlesAnnotatedType,
-    PlacementGroupStrategyAnnotatedType,
-    ProxyLocation,
-    RayActorOptionsAnnotatedType,
-    UserConfigAnnotatedType,
-)
+from ray.serve.config import BaseDeploymentModel, ProxyLocation
 from ray.util.annotations import PublicAPI
 
 
@@ -94,20 +79,20 @@ class ApplyDeploymentModel(BaseDeploymentModel):
     )
 
     # Override default values
-    num_replicas: NumReplicasAnnotatedType = DEFAULT.VALUE
-    max_concurrent_queries: MaxConcurrentQueriesAnnotatedType = DEFAULT.VALUE
-    user_config: UserConfigAnnotatedType = DEFAULT.VALUE
-    autoscaling_config: AutoscalingConfigAnnotatedType = DEFAULT.VALUE
-    graceful_shutdown_wait_loop_s: GracefulShutdownWaitLoopSAnnotatedType = (
-        DEFAULT.VALUE
-    )
-    graceful_shutdown_timeout_s: GracefulShutdownTimeoutSAnnotatedType = DEFAULT.VALUE
-    health_check_period_s: HealthCheckPeriodSAnnotatedType = DEFAULT.VALUE
-    health_check_timeout_s: HealthCheckTimeoutSAnnotatedType = DEFAULT.VALUE
-    ray_actor_options: RayActorOptionsAnnotatedType = DEFAULT.VALUE
-    placement_group_bundles: PlacementGroupBundlesAnnotatedType = DEFAULT.VALUE
-    placement_group_strategy: PlacementGroupStrategyAnnotatedType = DEFAULT.VALUE
-    max_replicas_per_node: MaxReplicasPerNodeAnnotatedType = DEFAULT.VALUE
+    # num_replicas: NumReplicasAnnotatedType = DEFAULT.VALUE
+    # max_concurrent_queries: MaxConcurrentQueriesAnnotatedType = DEFAULT.VALUE
+    # user_config: UserConfigAnnotatedType = DEFAULT.VALUE
+    # autoscaling_config: AutoscalingConfigAnnotatedType = DEFAULT.VALUE
+    # graceful_shutdown_wait_loop_s: GracefulShutdownWaitLoopSAnnotatedType = (
+    #     DEFAULT.VALUE
+    # )
+    # graceful_shutdown_timeout_s: GracefulShutdownTimeoutSAnnotatedType = DEFAULT.VALUE
+    # health_check_period_s: HealthCheckPeriodSAnnotatedType = DEFAULT.VALUE
+    # health_check_timeout_s: HealthCheckTimeoutSAnnotatedType = DEFAULT.VALUE
+    # ray_actor_options: RayActorOptionsAnnotatedType = DEFAULT.VALUE
+    # placement_group_bundles: PlacementGroupBundlesAnnotatedType = DEFAULT.VALUE
+    # placement_group_strategy: PlacementGroupStrategyAnnotatedType = DEFAULT.VALUE
+    # max_replicas_per_node: MaxReplicasPerNodeAnnotatedType = DEFAULT.VALUE
 
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):

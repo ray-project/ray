@@ -653,7 +653,6 @@ def deployment_to_schema(
     # because internally we use these two field for autoscale and deploy.
     # We can improve the code after we separate the user faced deployment config and
     # internal deployment config.
-    print("deployment_options", deployment_options)
     return ApplyDeploymentModel(**deployment_options)
 
 
@@ -686,19 +685,12 @@ def schema_to_deployment(s: ApplyDeploymentModel) -> Deployment:
     else:
         max_replicas_per_node = s.max_replicas_per_node
 
-    deployment_config = InternalDeploymentConfig.from_default(
-        num_replicas=s.num_replicas,
-        user_config=s.user_config,
-        max_concurrent_queries=s.max_concurrent_queries,
-        autoscaling_config=s.autoscaling_config,
-        graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
-        graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
-        health_check_period_s=s.health_check_period_s,
-        health_check_timeout_s=s.health_check_timeout_s,
+    user_configured_options = s.dict(
+        exclude_unset=True, exclude={"name", "route_prefix"}
     )
-    deployment_config.user_configured_option_names = (
-        s._get_user_configured_option_names()
-    )
+    deployment_config = InternalDeploymentConfig.from_default(**user_configured_options)
+    deployment_config.user_configured_option_names = set(user_configured_options.keys())
+    # s._get_user_configured_option_names()
 
     replica_config = ReplicaInitInfo.create(
         deployment_def="",

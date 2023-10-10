@@ -334,7 +334,7 @@ class ActorReplicaWrapper:
         # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
         self._deployment_is_cross_language = (
-            deployment_info.deployment_config.is_cross_language
+            deployment_info.deployment_config._is_cross_language
         )
 
         app_msg = f" in application '{self.app_name}'" if self.app_name else ""
@@ -346,7 +346,7 @@ class ActorReplicaWrapper:
 
         actor_def = deployment_info.actor_def
         if (
-            deployment_info.deployment_config.deployment_language
+            deployment_info.deployment_config._deployment_language
             == DeploymentLanguage.PYTHON
         ):
             if deployment_info.replica_config.serialized_init_args is None:
@@ -378,7 +378,7 @@ class ActorReplicaWrapper:
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
-            deployment_info.deployment_config.deployment_language
+            deployment_info.deployment_config._deployment_language
             == DeploymentLanguage.JAVA
         ):
             self._is_cross_language = True
