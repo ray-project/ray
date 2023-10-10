@@ -1,3 +1,6 @@
+# flake8: noqa
+# isort: skip_file
+
 # __lightning_train_base_start__
 import torch
 from torchvision.models import resnet18
@@ -36,7 +39,6 @@ class ImageClassifier(pl.LightningModule):
 
 
 def train_func(config):
-
     # Data
     transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
     train_data = FashionMNIST(

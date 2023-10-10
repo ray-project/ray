@@ -96,8 +96,8 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
 
     .. group-tab:: Hugging Face Transformers + Ray Train
 
-        .. literalinclude:: ../doc_code/getting_started_transformers.py
-            :emphasize-lines: 11-13, 15-18, 55-72
+        .. literalinclude:: ./doc_code/getting_started_transformers.py
+            :emphasize-lines: 11-13, 62-63, 67, 75-78
             :language: python
             :start-after: __transformers_train_base_start__
             :end-before: __transformers_train_base_end__

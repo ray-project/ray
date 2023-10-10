@@ -83,8 +83,8 @@ Compare a PyTorch Lightning training script with and without Ray Train.
 
     .. group-tab:: PyTorch Lightning + Ray Train
 
-        .. literalinclude:: ../doc_code/getting_started_lightning.py
-            :emphasize-lines: 8-10, 34, 43, 48-50, 52, 53, 55-60
+        .. literalinclude:: ./doc_code/getting_started_lightning.py
+            :emphasize-lines: 8-10, 52-54, 56, 61, 64-65
             :language: python
             :start-after: __lightning_train_base_start__
             :end-before: __lightning_train_base_end__

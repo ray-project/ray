@@ -1,3 +1,6 @@
+# flake8: noqa
+# isort: skip_file
+
 # __transformeres_train_base_start__
 import numpy as np
 import evaluate

@@ -1,3 +1,6 @@
+# flake8: noqa
+# isort: skip_file
+
 # __torch_train_base_start__
 import tempfile
 import torch
@@ -7,13 +10,13 @@ from torchvision.transforms import ToTensor, Normalize, Compose
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.nn import CrossEntropyLoss
+
+import ray.train
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig, Checkpoint
-import ray.train
 
 
 def train_func(config):
-
     # Model, Loss, Optimizer
     model = resnet18(num_classes=10)
     model.conv1 = torch.nn.Conv2d(
