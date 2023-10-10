@@ -67,4 +67,4 @@ scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
 # [3] Launch distributed training job.
 trainer = TorchTrainer(train_func, scaling_config=scaling_config)
 result = trainer.fit()
-# __lightning_train_base_start__
+# __lightning_train_base_end__

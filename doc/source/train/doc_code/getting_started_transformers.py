@@ -1,7 +1,7 @@
 # flake8: noqa
 # isort: skip_file
 
-# __transformeres_train_base_start__
+# __transformers_train_base_start__
 import numpy as np
 import evaluate
 from datasets import load_dataset
@@ -80,4 +80,4 @@ ray_trainer = TorchTrainer(
     train_func, scaling_config=ScalingConfig(num_workers=4, use_gpu=True)
 )
 ray_trainer.fit()
-# __transformeres_train_base_end__
+# __transformers_train_base_end__
