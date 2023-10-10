@@ -1,7 +1,7 @@
 import re
 import time
 from collections import Counter
-from typing import Dict
+from typing import List, Optional
 from unittest.mock import patch
 
 import numpy as np
@@ -20,7 +20,7 @@ from ray.tests.conftest import *  # noqa
 def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
-    extra_metrics: List[str] = [],
+    extra_metrics: Optional[List[str]] = None,
 ):
     if is_map:
         metrics = [
@@ -51,7 +51,8 @@ def gen_expected_metrics(
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
         ]
-    metrics.extend(extra_metrics)
+    if extra_metrics:
+        metrics.extend(extra_metrics)
     return "{" + ", ".join(metrics) + "}"
 
 
@@ -136,6 +137,9 @@ def test_streaming_split_stats(ray_start_regular_shared):
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
     list(it.iter_batches())
     stats = it.stats()
+    extra_metrics = gen_expected_metrics(
+        is_map=False, extra_metrics=["'num_output_N': N"]
+    )
     assert (
         canonicalize(stats)
         == f"""Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
@@ -150,7 +154,7 @@ def test_streaming_split_stats(ray_start_regular_shared):
 Stage N split(N, equal=False): \n"""
         # Workaround to preserve trailing whitespace in the above line without
         # causing linter failures.
-        f"""* Extra metrics: {gen_expected_metrics(is_map=False, extra_metrics=["'num_output_N': N"])}\n"""
+        f"""* Extra metrics: {extra_metrics}\n"""
         """
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
