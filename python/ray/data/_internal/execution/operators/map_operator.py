@@ -35,7 +35,6 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-
 INIT_CONCURRENCY_CAP = 4
 CONCURRENCY_CAP_RAMP_UP_RATIO = 0.5
 CONCURRENCY_CAP_MULTIPLIER = 2
@@ -325,7 +324,10 @@ class MapOperator(OneToOneOperator, ABC):
             )
             self._num_tasks_running -= 1
             # Handle concurrency cap.
-            if self._num_tasks_finished >= self._concurrency_cap * CONCURRENCY_CAP_RAMP_UP_RATIO:
+            if (
+                self._num_tasks_finished
+                >= self._concurrency_cap * CONCURRENCY_CAP_RAMP_UP_RATIO
+            ):
                 self._concurrency_cap *= CONCURRENCY_CAP_MULTIPLIER
                 print(self, "Ramping up concurrency cap to", self._concurrency_cap)
             if task_done_callback:
