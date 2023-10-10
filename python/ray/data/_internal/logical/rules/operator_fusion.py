@@ -205,8 +205,9 @@ class OperatorFusionRule(Rule):
         ):
             return False
 
-        if not self._can_merge_target_max_block_size(up_op.target_max_block_size,
-                down_op.target_max_block_size):
+        if not self._can_merge_target_max_block_size(
+            up_op.target_max_block_size, down_op.target_max_block_size
+        ):
             return False
 
         # Otherwise, ops are compatible for fusion.
@@ -252,11 +253,18 @@ class OperatorFusionRule(Rule):
         # but if dag is the first op after a stage with read tasks, then we
         # also need to propagate the block size to the input data buffer.
         upstream_ops = dag.input_dependencies
-        if (len(upstream_ops) == 1 and isinstance(upstream_ops[0], InputDataBuffer) and
-            self._can_merge_target_max_block_size(
-                upstream_ops[0].target_max_block_size,
-                dag.target_max_block_size)):
-            upstream_ops[0]._target_max_block_size = self._get_merged_target_max_block_size(upstream_ops[0].target_max_block_size, dag.target_max_block_size)
+        if (
+            len(upstream_ops) == 1
+            and isinstance(upstream_ops[0], InputDataBuffer)
+            and self._can_merge_target_max_block_size(
+                upstream_ops[0].target_max_block_size, dag.target_max_block_size
+            )
+        ):
+            upstream_ops[
+                0
+            ]._target_max_block_size = self._get_merged_target_max_block_size(
+                upstream_ops[0].target_max_block_size, dag.target_max_block_size
+            )
 
     def _get_fused_map_operator(
         self, down_op: MapOperator, up_op: MapOperator
