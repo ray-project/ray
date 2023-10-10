@@ -828,38 +828,38 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 Reading BigQuery
 ~~~~~~~~~~~~~~~~
 
-    To read from BigQuery, install the
-    `Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>` and the `Python Client for Google BigQueryStorage <https://cloud.google.com/python/docs/reference/bigquerystorage/latest>`.
+To read from BigQuery, install the
+`Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_ and the `Python Client for Google BigQueryStorage <https://cloud.google.com/python/docs/reference/bigquerystorage/latest>`_.
 
-    .. code-block:: console
+.. code-block:: console
 
-        pip install google-cloud-bigquery
-        pip install google-cloud-bigquery-storage
+    pip install google-cloud-bigquery
+    pip install google-cloud-bigquery-storage
 
-    To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the project id, dataset, and query (if applicable).
+To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the project id, dataset, and query (if applicable).
 
-    .. testcode::
-        :skipif: True
+.. testcode::
+    :skipif: True
 
-        import ray
+    import ray
 
-        # Read the entire dataset (do not specify query)
-        ds = ray.data.read_bigquery(
-            project_id="my_gcloud_project_id",
-            dataset="bigquery-public-data.ml_datasets.iris",
-        )
+    # Read the entire dataset (do not specify query)
+    ds = ray.data.read_bigquery(
+        project_id="my_gcloud_project_id",
+        dataset="bigquery-public-data.ml_datasets.iris",
+    )
 
-        # Query the dataset (do not specify dataset)
-        ds = ray.data.read_bigquery(
-            project_id="my_gcloud_project_id",
-            query = "SELECT * FROM `bigquery-public-data.ml_datasets.iris` LIMIT 50",
-        )
+    # Read from a SQL query of the dataset (do not specify dataset)
+    ds = ray.data.read_bigquery(
+        project_id="my_gcloud_project_id",
+        query = "SELECT * FROM `bigquery-public-data.ml_datasets.iris` LIMIT 50",
+    )
 
-        # Write back to BigQuery
-        ds.write_bigquery(
-            project_id="my_gcloud_project_id",
-            dataset="destination_dataset.destination.table",
-        )
+    # Write back to BigQuery
+    ds.write_bigquery(
+        project_id="my_gcloud_project_id",
+        dataset="destination_dataset.destination.table",
+    )
 
 
 .. _reading_mongodb:
