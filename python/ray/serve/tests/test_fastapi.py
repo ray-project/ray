@@ -258,10 +258,9 @@ def test_fastapi_features(serve_instance):
     assert resp.status_code == 404
     assert "x-process-time" in resp.headers
 
-    # XXX: fails to generate API spec.
-    # resp = requests.get(f"{url}/my_api.json")
-    # assert resp.status_code == 200
-    # assert resp.json()  # it returns a well-formed json.
+    resp = requests.get(f"{url}/my_api.json")
+    assert resp.status_code == 200
+    assert resp.json()  # it returns a well-formed json.
 
     resp = requests.get(f"{url}/docs")
     assert resp.status_code == 200
@@ -283,8 +282,6 @@ def test_fastapi_features(serve_instance):
             "q": "common_arg",
         },
     )
-    # XXX: looking for body_val in query params?
-    """
     assert resp.status_code == 201, resp.text
     assert resp.json()["ok"]
     assert resp.json()["vals"] == [
@@ -301,10 +298,7 @@ def test_fastapi_features(serve_instance):
         "app.state",
     ]
     assert open(resp.json()["file_path"]).read() == "hello"
-    """
 
-    # XXX: looking for body_val in query params?
-    """
     resp = requests.get(
         f"{url}/path_arg",
         json={"name": "serve", "price": 12, "nests": {"val": 1}},
@@ -317,7 +311,6 @@ def test_fastapi_features(serve_instance):
     )
     assert resp.status_code == 500
     assert resp.json()["custom_error"] == "true"
-    """
 
     resp = requests.get(f"{url}/prefix/subpath")
     assert resp.status_code == 200
@@ -546,8 +539,6 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
 
     TestDeployment.deploy()
 
-    # XXX: fails to parse response JSON.
-    """
     resp = requests.get("http://localhost:8000/")
     assert resp.json() == {"a": "a", "b": ["b"]}
 
@@ -556,7 +547,6 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
 
     resp = requests.get("http://localhost:8000/inner2")
     assert resp.json() == [{"a": "a", "b": ["b"]}]
-    """
 
 
 def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
@@ -697,13 +687,10 @@ def test_fastapi_custom_serializers(serve_instance):
 
     D.deploy()
 
-    # XXX: got internal server error.
-    """
     resp = requests.get(D.url + "/np_array")
     print(resp.text)
     resp.raise_for_status()
     assert resp.json() == [0, 0]
-    """
 
 
 @pytest.mark.parametrize("two_fastapi", [True, False])
