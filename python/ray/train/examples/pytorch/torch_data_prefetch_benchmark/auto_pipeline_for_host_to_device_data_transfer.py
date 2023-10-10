@@ -7,8 +7,8 @@ import torch
 import torch.nn as nn
 
 import ray.train as train
-from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
+from ray.train.torch import TorchTrainer
 
 
 class Net(nn.Module):

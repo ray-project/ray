@@ -218,10 +218,8 @@ test_serve() {
       -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
       -python/ray/serve/tests:test_gradio
       -python/ray/serve/tests:test_gradio_visualization
-      -python/ray/serve/tests:test_air_integrations_gpu
       -python/ray/serve/tests:test_fastapi
       -python/ray/serve/tests:test_get_deployment # address violation
-      -python/ray/serve/tests:test_proxy_state # skip running on Windows until we refactor the test
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
