@@ -19,6 +19,7 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/common/asio/asio_chaos.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -234,7 +235,8 @@ class ServerCallImpl : public ServerCall {
     }
     if (!io_service_.stopped()) {
       io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
-                       call_name_ + ".HandleRequestImpl");
+                       call_name_ + ".HandleRequestImpl",
+                       ray::asio::testing::get_delay_us(call_name_));
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq

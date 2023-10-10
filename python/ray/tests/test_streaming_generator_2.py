@@ -193,7 +193,7 @@ def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster):
     with monkeypatch.context() as m:
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "CoreWorkerService.grpc_server." "ReportGeneratorItemReturns=10000:1000000",
+            "CoreWorkerService.grpc_server.ReportGeneratorItemReturns=10000:1000000",
         )
         cluster = ray_start_cluster
         # Head node with no resources.

@@ -84,9 +84,17 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
 void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
   RAY_CHECK(!handle->end_or_execution_recorded);
   absl::MutexLock lock(&(handle->handler_stats->mutex));
-  handle->handler_stats->stats.curr_count--;
-  handle->handler_stats->stats.cum_execution_time +=
-      (absl::GetCurrentTimeNanos() - handle->start_time);
+  const auto curr_count = --handle->handler_stats->stats.curr_count;
+  const auto execution_time_ns = absl::GetCurrentTimeNanos() - handle->start_time;
+  handle->handler_stats->stats.cum_execution_time += execution_time_ns;
+
+  if (RayConfig::instance().event_stats_metrics()) {
+    // Update event-specific stats.
+    ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
+                                                   handle->event_name);
+    ray::stats::STATS_operation_active_count.Record(curr_count, handle->event_name);
+  }
+
   handle->end_or_execution_recorded = true;
 }
 
