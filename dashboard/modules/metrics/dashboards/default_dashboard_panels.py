@@ -454,18 +454,6 @@ DEFAULT_GRAFANA_PANELS = [
     ),
     Panel(
         id=51,
-        title="Rows Outputted",
-        description="Total rows outputted by dataset operators.",
-        unit="rows",
-        targets=[
-            Target(
-                expr="sum(ray_data_output_rows{{{global_filters}}}) by (dataset)",
-                legend="Rows Outputted: {{dataset}}",
-            )
-        ],
-    ),
-    Panel(
-        id=52,
         title="Bytes Outputted",
         description="Total bytes outputted by dataset operators.",
         unit="bytes",
