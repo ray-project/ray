@@ -21,4 +21,4 @@ RUN pip install -U --ignore-installed \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt
 
-RUN if [[ -z "$PYDANTIC_VERSION" ]] ; then echo Not installing custom Pydantic version ; else pip install -U pydantic=="$PYDANTIC_VERSION" ; fi
+RUN if [[ -z "$PYDANTIC_VERSION" ]] ; then echo Not installing custom Pydantic version ; else pip install -U pydantic==$PYDANTIC_VERSION ; fi
