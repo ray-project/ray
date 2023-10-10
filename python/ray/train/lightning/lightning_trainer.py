@@ -4,8 +4,6 @@ from copy import copy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
 
-import pytorch_lightning as pl
-
 from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.data.preprocessor import Preprocessor
@@ -17,6 +15,7 @@ from ray.train.lightning._lightning_utils import (
     RayFSDPStrategy,
     RayLightningEnvironment,
     RayModelCheckpoint,
+    import_lightning,
     prepare_trainer,
 )
 from ray.train.torch import TorchTrainer
@@ -25,6 +24,8 @@ from ray.train.trainer import GenDataset
 from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
+
+pl = import_lightning()
 
 
 LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE = (
