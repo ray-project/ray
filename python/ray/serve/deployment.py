@@ -14,7 +14,7 @@ from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warni
 from ray.serve.config import AutoscalingConfig, RayActorOptionsConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import ApplyServeDeploymentModel
+from ray.serve.schema import ApplyDeploymentModel
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -433,7 +433,6 @@ class Deployment:
 
         if num_replicas not in [DEFAULT.VALUE, None]:
             new_deployment_config.num_replicas = num_replicas
-        print("setting user_config", user_config)
         if user_config is not DEFAULT.VALUE:
             new_deployment_config.user_config = user_config
         if max_concurrent_queries is not DEFAULT.VALUE:
@@ -602,7 +601,7 @@ class Deployment:
 
 def deployment_to_schema(
     d: Deployment, include_route_prefix: bool = True
-) -> ApplyServeDeploymentModel:
+) -> ApplyDeploymentModel:
     """Converts a live deployment object to a corresponding structured schema.
 
     Args:
@@ -655,10 +654,10 @@ def deployment_to_schema(
     # We can improve the code after we separate the user faced deployment config and
     # internal deployment config.
     print("deployment_options", deployment_options)
-    return ApplyServeDeploymentModel(**deployment_options)
+    return ApplyDeploymentModel(**deployment_options)
 
 
-def schema_to_deployment(s: ApplyServeDeploymentModel) -> Deployment:
+def schema_to_deployment(s: ApplyDeploymentModel) -> Deployment:
     """Creates a deployment with parameters specified in schema.
 
     The returned deployment CANNOT be deployed immediately. It's func_or_class

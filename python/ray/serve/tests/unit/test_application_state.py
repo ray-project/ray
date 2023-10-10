@@ -21,7 +21,7 @@ from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import ApplyServeDeploymentModel, ServeApplicationSchema
+from ray.serve.schema import ApplyDeploymentModel, ServeApplicationSchema
 from ray.serve.tests.common.utils import MockKVStore
 
 
@@ -757,7 +757,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             deployments=[
-                ApplyServeDeploymentModel(
+                ApplyDeploymentModel(
                     name="A",
                     num_replicas=3,
                     max_concurrent_queries=200,
@@ -786,7 +786,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             deployments=[
-                ApplyServeDeploymentModel(
+                ApplyDeploymentModel(
                     name="A",
                     autoscaling_config={
                         "min_replicas": 1,
@@ -809,7 +809,7 @@ class TestOverrideDeploymentInfo:
         config = ServeApplicationSchema(
             name="default",
             import_path="test.import.path",
-            deployments=[ApplyServeDeploymentModel(name="A", route_prefix="/alice")],
+            deployments=[ApplyDeploymentModel(name="A", route_prefix="/alice")],
         )
 
         updated_infos = override_deployment_info("default", {"A": info}, config)
@@ -822,7 +822,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             route_prefix="/bob",
-            deployments=[ApplyServeDeploymentModel(name="A")],
+            deployments=[ApplyDeploymentModel(name="A")],
         )
 
         updated_infos = override_deployment_info("default", {"A": info}, config)
@@ -835,7 +835,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             route_prefix="/bob",
-            deployments=[ApplyServeDeploymentModel(name="A", route_prefix="/alice")],
+            deployments=[ApplyDeploymentModel(name="A", route_prefix="/alice")],
         )
 
         updated_infos = override_deployment_info("default", {"A": info}, config)
@@ -849,7 +849,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             deployments=[
-                ApplyServeDeploymentModel(
+                ApplyDeploymentModel(
                     name="A",
                     ray_actor_options={"runtime_env": {"working_dir": "s3://B"}},
                 )
@@ -871,7 +871,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             runtime_env={"working_dir": "s3://C"},
-            deployments=[ApplyServeDeploymentModel(name="A")],
+            deployments=[ApplyDeploymentModel(name="A")],
         )
 
         updated_infos = override_deployment_info("default", {"A": info}, config)
@@ -892,7 +892,7 @@ class TestOverrideDeploymentInfo:
             import_path="test.import.path",
             runtime_env={"working_dir": "s3://C"},
             deployments=[
-                ApplyServeDeploymentModel(
+                ApplyDeploymentModel(
                     name="A",
                     ray_actor_options={"runtime_env": {"working_dir": "s3://B"}},
                 )
@@ -927,7 +927,7 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             runtime_env={"working_dir": "s3://C"},
-            deployments=[ApplyServeDeploymentModel(name="A")],
+            deployments=[ApplyDeploymentModel(name="A")],
         )
 
         updated_infos = override_deployment_info("default", {"A": info}, config)
@@ -962,7 +962,7 @@ class TestOverrideDeploymentInfo:
             import_path="test.import.path",
             runtime_env={"working_dir": "s3://C"},
             deployments=[
-                ApplyServeDeploymentModel(
+                ApplyDeploymentModel(
                     name="A",
                     ray_actor_options={"runtime_env": {"working_dir": "s3://B"}},
                 )

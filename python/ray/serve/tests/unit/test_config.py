@@ -14,7 +14,7 @@ from ray.serve.config import (
 )
 from ray.serve.generated.serve_pb2_grpc import add_UserDefinedServiceServicer_to_server
 from ray.serve.schema import (
-    ApplyServeDeploymentModel,
+    ApplyDeploymentModel,
     HTTPOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -409,7 +409,7 @@ def test_config_schemas_forward_compatible():
             ServeApplicationSchema(
                 import_path="module.app",
                 deployments=[
-                    ApplyServeDeploymentModel(
+                    ApplyDeploymentModel(
                         name="deployment",
                         new_version_config_key="this config is from newer version"
                         " of Ray",

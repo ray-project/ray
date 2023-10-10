@@ -74,7 +74,7 @@ def _route_prefix_format(cls, v):
 
 
 @PublicAPI(stability="stable")
-class ApplyServeDeploymentModel(BaseDeploymentModel):
+class ApplyDeploymentModel(BaseDeploymentModel):
     """Specifies options for one deployment within a Serve application.
 
     For each deployment this can optionally be included in
@@ -162,14 +162,14 @@ class ApplyServeDeploymentModel(BaseDeploymentModel):
 
 
 @PublicAPI(stability="stable")
-class ReadServeDeploymentModel(BaseDeploymentModel):
+class ReadDeploymentModel(BaseDeploymentModel):
     pass
 
 
-def _deployment_info_to_schema(info: DeploymentInfo) -> ReadServeDeploymentModel:
+def _deployment_info_to_schema(info: DeploymentInfo) -> ReadDeploymentModel:
     """Converts a DeploymentInfo object to ReadServeDeploymentModel."""
 
-    schema = ReadServeDeploymentModel(
+    schema = ReadDeploymentModel(
         num_replicas=info.deployment_config.num_replicas
         if info.deployment_config.autoscaling_config is None
         else None,
@@ -248,7 +248,7 @@ class ServeApplicationSchema(BaseModel):
             "must be shut down and restarted with the new port instead."
         ),
     )
-    deployments: List[ApplyServeDeploymentModel] = Field(
+    deployments: List[ApplyDeploymentModel] = Field(
         default=[],
         description="Deployment options that override options specified in the code.",
     )
@@ -652,7 +652,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "more detail."
         )
     )
-    deployment_config: ReadServeDeploymentModel = Field(
+    deployment_config: ReadDeploymentModel = Field(
         description=(
             "The set of deployment config options that are currently applied to this "
             "deployment. These options may come from the user's code, config file "

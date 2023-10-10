@@ -6,7 +6,7 @@ from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.handle import DeploymentHandle, RayServeHandle
-from ray.serve.schema import ApplyServeDeploymentModel
+from ray.serve.schema import ApplyDeploymentModel
 
 
 class DeploymentFunctionNode(DAGNode):
@@ -32,7 +32,7 @@ class DeploymentFunctionNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve,
         )
         if "deployment_schema" in self._bound_other_args_to_resolve:
-            deployment_schema: ApplyServeDeploymentModel = (
+            deployment_schema: ApplyDeploymentModel = (
                 self._bound_other_args_to_resolve["deployment_schema"]
             )
             deployment_shell = schema_to_deployment(deployment_schema)

@@ -25,7 +25,7 @@ from ray.serve._private.deployment_node import DeploymentNode
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.handle import DeploymentHandle, RayServeHandle
-from ray.serve.schema import ApplyServeDeploymentModel
+from ray.serve.schema import ApplyDeploymentModel
 
 
 def build(
@@ -203,7 +203,7 @@ def transform_ray_dag_to_serve_dag(
 
         # ClassNode is created via bind on serve.deployment decorated class
         # with no serve specific configs.
-        deployment_schema: ApplyServeDeploymentModel = (
+        deployment_schema: ApplyDeploymentModel = (
             dag_node._bound_other_args_to_resolve["deployment_schema"]
         )
 
