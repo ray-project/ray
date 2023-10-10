@@ -38,13 +38,6 @@ class instrumented_io_context : public boost::asio::io_context {
   /// for the provided handler.
   void post(std::function<void()> handler, const std::string name);
 
-  /// A proxy post function where the operation start is manually recorded. For example,
-  /// this is useful for tracking the number of active outbound RPC calls.
-  ///
-  /// \param handler The handler to be posted to the event loop.
-  /// \param handle The stats handle returned by RecordStart() previously.
-  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle);
-
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
   ///
