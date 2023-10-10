@@ -219,12 +219,8 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=50",
       },
       {
-        title: "Rows Outputted",
-        pathParams: "orgId=1&theme=light&panelId=51",
-      },
-      {
         title: "Bytes Outputted",
-        pathParams: "orgId=1&theme=light&panelId=52",
+        pathParams: "orgId=1&theme=light&panelId=51",
       },
     ],
   },
