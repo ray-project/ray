@@ -114,7 +114,7 @@
 # 1 g4dn.4xlarge
 - name: torch_batch_inference_1_gpu_10gb_raw
   group: AIR tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: nightly_tests/dataset
 
   frequency: nightly
   team: data
@@ -125,7 +125,7 @@
 
   run:
     timeout: 500
-    script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw --data-format raw
+    script: python gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw --data-format raw
 
   alert: default
 
@@ -141,7 +141,7 @@
 # 1 g4dn.4xlarge
 - name: torch_batch_inference_1_gpu_10gb_parquet
   group: AIR tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: nightly_tests/dataset
 
   frequency: nightly
   team: data
@@ -152,7 +152,7 @@
 
   run:
     timeout: 500
-    script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw-parquet --data-format parquet
+    script: python gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw-parquet --data-format parquet
 
   alert: default
 
@@ -169,7 +169,7 @@
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_raw
   group: AIR tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: nightly_tests/dataset
 
   frequency: nightly
   team: data
@@ -181,7 +181,7 @@
 
   run:
     timeout: 1000
-    script: python workloads/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
+    script: python gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
 
     wait_for_nodes:
         num_nodes: 4
@@ -201,7 +201,7 @@
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_parquet
   group: AIR tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: nightly_tests/dataset
 
   frequency: nightly
   team: data
@@ -213,7 +213,7 @@
 
   run:
     timeout: 1000
-    script: python workloads/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+    script: python gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
     wait_for_nodes:
         num_nodes: 4
@@ -232,7 +232,7 @@
 # 10 g4dn.12xlarge, 10 m5.16xlarge
 - name: torch_batch_inference_hetero_10tb_parquet
   group: AIR tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: nightly_tests/dataset
 
   frequency: weekly
   team: data
@@ -244,7 +244,7 @@
 
   run:
     timeout: 2000
-    script: python workloads/gpu_batch_inference.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+    script: python gpu_batch_inference.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
 
     wait_for_nodes:
       num_nodes: 20
@@ -3251,59 +3251,6 @@
         cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
 
 
-- name: serve_micro_protocol_grpc_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_protocol_benchmark.py --data-size=1048576
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_gce.yaml
-
-- name: serve_micro_protocol_http_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_protocol_benchmark.py --data-size=1048576 --http-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_gce.yaml
-
-
 - name: serve_resnet_benchmark
   group: Serve tests
   working_dir: serve_tests
@@ -5756,6 +5703,30 @@
       cluster:
         cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
+- name: stable_diffusion_benchmark
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: stable_diffusion_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python stable_diffusion_benchmark.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: stable_diffusion_benchmark_compute_gce.yaml
+
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -5949,7 +5920,7 @@
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 1800
+    timeout: 3600
     script: python multi_node_train_benchmark.py --num-workers 4 --file-type image
 
   variations:
@@ -5970,10 +5941,10 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+    cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 1800
+    timeout: 4800
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image
 
   variations:
@@ -5994,10 +5965,10 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+    cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 1800
+    timeout: 7200
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order
 
   variations:
@@ -6018,11 +5989,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+    cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 1800
-    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet
+    timeout: 3600
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet --target-worker-gb 50
 
   variations:
     - __suffix__: aws
@@ -6042,11 +6013,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+    cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 1800
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet
+    timeout: 4800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet --target-worker-gb 50
 
   variations:
     - __suffix__: aws
@@ -6836,8 +6807,8 @@
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
-    timeout: 3600
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20
+    timeout: 4800
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30
 
 - name: gcp_cluster_launcher_latest_image
   group: cluster-launcher-test

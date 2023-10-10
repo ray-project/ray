@@ -4,23 +4,18 @@ import re
 import numpy as np
 import pandas as pd
 import pytest
-from ray.air.constants import MAX_REPR_LENGTH
-from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
-from ray.train.predictor import TYPE_TO_ENUM
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     AutoTokenizer,
     GPT2LMHeadModel,
 )
-from transformers.pipelines import pipeline, Pipeline
+from transformers.pipelines import Pipeline, pipeline
 
-
-from ray.train.huggingface import (
-    TransformersCheckpoint,
-    TransformersPredictor,
-)
-
+from ray.air.constants import MAX_REPR_LENGTH
+from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
+from ray.train.huggingface import TransformersCheckpoint, TransformersPredictor
+from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 test_strings = ["Complete me", "And me", "Please complete"]
