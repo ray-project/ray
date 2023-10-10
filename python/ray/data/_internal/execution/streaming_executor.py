@@ -341,7 +341,6 @@ class StreamingExecutor(Executor, threading.Thread):
             stats[DataMetric.GPU_USAGE] += resource_usage.gpu or 0
 
             # TODO: get these stats from op metrics
-            stats[DataMetric.ROWS_OUTPUTTED] += 0
             stats[DataMetric.BYTES_OUTPUTTED] += 0
             stats[DataMetric.BYTES_CURRENT] += 0
 
