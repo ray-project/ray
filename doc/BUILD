@@ -203,9 +203,17 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/train/doc_code/*.py"],
-    exclude = [],
+    exclude = ["source/train/doc_code/getting_started_*.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
+)
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/train/doc_code/getting_started_*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "gpu"],
 )
 
 # --------------------------------------------------------------------
@@ -296,7 +304,8 @@ doctest(
 	    "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
-            "source/templates/04_finetuning_llms_with_deepspeed/README.md"
+            "source/templates/04_finetuning_llms_with_deepspeed/README.md",
+            "source/train/getting-started-*.rst",
         ]
     ),
     size = "large",
@@ -330,4 +339,12 @@ doctest(
 	"source/train/user-guides/data-loading-preprocessing.rst",
     ],
     tags = ["team:data"],
+)
+
+doctest(
+    files = [
+        "source/train/getting-started-*.rst",
+    ],
+    tags = ["team:ml"],
+    gpu = True
 )

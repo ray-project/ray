@@ -12,7 +12,7 @@ from transformers import (
     AutoModelForSequenceClassification,
 )
 
-import ray.train
+import ray.train.huggingface
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 

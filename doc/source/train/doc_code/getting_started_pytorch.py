@@ -37,7 +37,7 @@ def train_func(config):
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
     # Training
-    for epoch in range(10):
+    for epoch in range(3):
         for images, labels in train_loader:
             outputs = model(images)
             loss = criterion(outputs, labels)

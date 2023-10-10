@@ -11,7 +11,7 @@ import pytorch_lightning as pl
 
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
-import ray.train
+import ray.train.lightning
 
 
 # Model, Loss, Optimizer
@@ -50,7 +50,7 @@ def train_func(config):
     model = ImageClassifier()
     # [1] Configure PyTorch Lightning Trainer.
     trainer = pl.Trainer(
-        max_epochs=10,
+        max_epochs=3,
         devices="auto",
         accelerator="auto",
         strategy=ray.train.lightning.RayDDPStrategy(),

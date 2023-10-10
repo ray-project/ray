@@ -241,6 +241,7 @@ which offers enhanced transparency, flexibility, and simplicity. This API aligns
 with standard Hugging Face Transformers scripts, ensuring that you have better control over your 
 native Transformers training code.
 
+.. TODO(ml-team): Remove this migration guide in Ray 2.8
 
 .. tabs::
 
@@ -300,7 +301,7 @@ native Transformers training code.
 
     .. group-tab:: (New API) TorchTrainer
 
-        .. testcode:: python
+        .. code-block:: python
             
             import transformers
             from transformers import AutoConfig, AutoModelForCausalLM

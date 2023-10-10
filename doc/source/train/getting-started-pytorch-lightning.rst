@@ -24,6 +24,7 @@ For reference, the final code is as follows:
 
     def train_func(config):
         # Your PyTorch Lightning training code here.
+        ...
     
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
@@ -76,7 +77,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
 
             # Training
             model = ImageClassifier()
-            trainer = pl.Trainer(max_epochs=10)
+            trainer = pl.Trainer(max_epochs=2)
             trainer.fit(model, train_dataloaders=train_dataloader)
 
                 
@@ -341,6 +342,7 @@ enhanced transparency, flexibility, and simplicity. This API is more aligned
 with standard PyTorch Lightning scripts, ensuring users have better 
 control over their native Lightning code.
 
+.. TODO(ml-team): Remove this migration guide in Ray 2.8
 
 .. tabs::
 
@@ -388,7 +390,7 @@ control over their native Lightning code.
 
     .. group-tab:: (New API) TorchTrainer
 
-        .. testcode:: python
+        .. code-block:: python
             
             import pytorch_lightning as pl
             from ray.train.torch import TorchTrainer
