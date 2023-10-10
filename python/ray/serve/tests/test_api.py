@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private import api as _private_api
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
@@ -72,7 +73,7 @@ def test_starlette_response(serve_instance):
     def basic(_):
         return starlette.responses.Response("Hello, world!", media_type="text/plain")
 
-    basic.deploy()
+    basic._deploy()
     assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
 
     @serve.deployment(name="html")
@@ -81,7 +82,7 @@ def test_starlette_response(serve_instance):
             "<html><body><h1>Hello, world!</h1></body></html>"
         )
 
-    html.deploy()
+    html._deploy()
     assert (
         requests.get("http://127.0.0.1:8000/html").text
         == "<html><body><h1>Hello, world!</h1></body></html>"
@@ -91,21 +92,21 @@ def test_starlette_response(serve_instance):
     def plain_text(_):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
-    plain_text.deploy()
+    plain_text._deploy()
     assert requests.get("http://127.0.0.1:8000/plain_text").text == "Hello, world!"
 
     @serve.deployment(name="json")
     def json(_):
         return starlette.responses.JSONResponse({"hello": "world"})
 
-    json.deploy()
+    json._deploy()
     assert requests.get("http://127.0.0.1:8000/json").json()["hello"] == "world"
 
     @serve.deployment(name="redirect")
     def redirect(_):
         return starlette.responses.RedirectResponse(url="http://127.0.0.1:8000/basic")
 
-    redirect.deploy()
+    redirect._deploy()
     assert requests.get("http://127.0.0.1:8000/redirect").text == "Hello, world!"
 
     @serve.deployment(name="streaming")
@@ -119,7 +120,7 @@ def test_starlette_response(serve_instance):
             slow_numbers(), media_type="text/plain", status_code=418
         )
 
-    streaming.deploy()
+    streaming._deploy()
     resp = requests.get("http://127.0.0.1:8000/streaming")
     assert resp.text == "123"
     assert resp.status_code == 418
@@ -280,17 +281,17 @@ def test_delete_deployment(serve_instance):
     def function(_):
         return "hello"
 
-    function.deploy()
+    function._deploy()
 
     assert requests.get("http://127.0.0.1:8000/delete").text == "hello"
 
-    function.delete()
+    function._delete()
 
     @serve.deployment(name="delete")
     def function2(_):
         return "olleh"
 
-    function2.deploy()
+    function2._deploy()
 
     wait_for_condition(
         lambda: requests.get("http://127.0.0.1:8000/delete").text == "olleh", timeout=6
@@ -309,8 +310,8 @@ def test_delete_deployment_group(serve_instance, blocking):
 
     # Check redeploying after deletion
     for _ in range(2):
-        f.deploy()
-        g.deploy()
+        f._deploy()
+        g._deploy()
 
         wait_for_condition(
             lambda: requests.get("http://127.0.0.1:8000/f").text == "got f", timeout=5
@@ -359,11 +360,11 @@ def test_start_idempotent(serve_instance):
     def func(*args):
         pass
 
-    func.deploy()
+    func._deploy()
 
-    assert "start" in serve.list_deployments()
+    assert "start" in _private_api.list_deployments()
     serve.start()
-    assert "start" in serve.list_deployments()
+    assert "start" in _private_api.list_deployments()
 
 
 def test_shutdown_destructor(serve_instance):

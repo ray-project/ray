@@ -22,24 +22,24 @@ def test_deploy_basic(serve_instance, use_handle):
 
     def call():
         if use_handle:
-            ret = ray.get(d.get_handle().remote())
+            ret = ray.get(d._get_handle().remote())
         else:
             ret = requests.get("http://localhost:8000/d").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    d.deploy()
+    d._deploy()
     val1, pid1 = call()
     assert val1 == "1"
 
     # Redeploying with the same version and code should do nothing.
-    d.deploy()
+    d._deploy()
     val2, pid2 = call()
     assert val2 == "1"
     assert pid2 == pid1
 
     # Redeploying with a new version should start a new actor.
-    d.options(version="2").deploy()
+    d.options(version="2")._deploy()
     val3, pid3 = call()
     assert val3 == "1"
     assert pid3 != pid2
@@ -49,14 +49,14 @@ def test_deploy_basic(serve_instance, use_handle):
         return f"2|{os.getpid()}"
 
     # Redeploying with the same version and new code should do nothing.
-    d.deploy()
+    d._deploy()
     val4, pid4 = call()
     assert val4 == "1"
     assert pid4 == pid3
 
     # Redeploying with new code and a new version should start a new actor
     # running the new code.
-    d.options(version="3").deploy()
+    d.options(version="3")._deploy()
     val5, pid5 = call()
     assert val5 == "2"
     assert pid5 != pid4
@@ -91,13 +91,13 @@ def test_deploy_no_version(serve_instance, use_handle):
 
     def call():
         if use_handle:
-            ret = ray.get(v1.get_handle().remote())
+            ret = ray.get(v1._get_handle().remote())
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
-    v1.deploy()
+    v1._deploy()
     val1, pid1 = call()
     assert val1 == "1"
 
@@ -106,23 +106,23 @@ def test_deploy_no_version(serve_instance, use_handle):
         return f"2|{os.getpid()}"
 
     # Not specifying a version tag should cause it to always be updated.
-    v2.deploy()
+    v2._deploy()
     val2, pid2 = call()
     assert val2 == "2"
     assert pid2 != pid1
 
-    v2.deploy()
+    v2._deploy()
     val3, pid3 = call()
     assert val3 == "2"
     assert pid3 != pid2
 
     # Specifying the version should stop updates from happening.
-    v2.options(version="1").deploy()
+    v2.options(version="1")._deploy()
     val4, pid4 = call()
     assert val4 == "2"
     assert pid4 != pid3
 
-    v2.options(version="1").deploy()
+    v2.options(version="1")._deploy()
     val5, pid5 = call()
     assert val5 == "2"
     assert pid5 == pid4
@@ -143,38 +143,38 @@ def test_config_change(serve_instance, use_handle):
 
     def call():
         if use_handle:
-            ret = ray.get(D.get_handle().remote())
+            ret = ray.get(D._get_handle().remote())
         else:
             ret = requests.get("http://localhost:8000/D").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
     # First deploy with no user config set.
-    D.deploy()
+    D._deploy()
     val1, pid1 = call()
     assert val1 == "1"
 
     # Now update the user config without changing versions. Actor should stay
     # alive but return value should change.
-    D.options(user_config={"ret": "2"}).deploy()
+    D.options(user_config={"ret": "2"})._deploy()
     val2, pid2 = call()
     assert pid2 == pid1
     assert val2 == "2"
 
     # Update the user config without changing the version again.
-    D.options(user_config={"ret": "3"}).deploy()
+    D.options(user_config={"ret": "3"})._deploy()
     val3, pid3 = call()
     assert pid3 == pid2
     assert val3 == "3"
 
     # Update the version without changing the user config.
-    D.options(version="2", user_config={"ret": "3"}).deploy()
+    D.options(version="2", user_config={"ret": "3"})._deploy()
     val4, pid4 = call()
     assert pid4 != pid3
     assert val4 == "3"
 
     # Update the version and the user config.
-    D.options(version="3", user_config={"ret": "4"}).deploy()
+    D.options(version="3", user_config={"ret": "4"})._deploy()
     val5, pid5 = call()
     assert pid5 != pid4
     assert val5 == "4"
@@ -625,8 +625,8 @@ def test_init_args(serve_instance):
         def get_args(self, *args):
             return self._args
 
-    D.deploy()
-    handle = D.get_handle()
+    D._deploy()
+    handle = D._get_handle()
 
     def check(*args):
         assert ray.get(handle.get_args.remote()) == args
@@ -636,30 +636,30 @@ def test_init_args(serve_instance):
     check(1, 2, 3)
 
     # Check passing args to `.deploy()`.
-    D.deploy(4, 5, 6)
+    D._deploy(4, 5, 6)
     check(4, 5, 6)
 
     # Passing args to `.deploy()` shouldn't override those passed in decorator.
-    D.deploy()
+    D._deploy()
     check(1, 2, 3)
 
     # Check setting with `.options()`.
     new_D = D.options(init_args=(7, 8, 9))
-    new_D.deploy()
+    new_D._deploy()
     check(7, 8, 9)
 
     # Should not have changed old deployment object.
-    D.deploy()
+    D._deploy()
     check(1, 2, 3)
 
     # Check that args are only updated on version change.
-    D.options(version="1").deploy()
+    D.options(version="1")._deploy()
     check(1, 2, 3)
 
-    D.options(version="1").deploy(10, 11, 12)
+    D.options(version="1")._deploy(10, 11, 12)
     check(1, 2, 3)
 
-    D.options(version="2").deploy(10, 11, 12)
+    D.options(version="2")._deploy(10, 11, 12)
     check(10, 11, 12)
 
 
@@ -678,8 +678,8 @@ def test_init_kwargs(serve_instance):
         def get_kwargs(self, *args):
             return self._kwargs
 
-    D.deploy()
-    handle = D.get_handle()
+    D._deploy()
+    handle = D._get_handle()
 
     def check(kwargs):
         assert ray.get(handle.get_kwargs.remote()) == kwargs
@@ -688,30 +688,30 @@ def test_init_kwargs(serve_instance):
     check({"a": 1, "b": 2})
 
     # Check passing args to `.deploy()`.
-    D.deploy(a=3, b=4)
+    D._deploy(a=3, b=4)
     check({"a": 3, "b": 4})
 
     # Passing args to `.deploy()` shouldn't override those passed in decorator.
-    D.deploy()
+    D._deploy()
     check({"a": 1, "b": 2})
 
     # Check setting with `.options()`.
     new_D = D.options(init_kwargs={"c": 8, "d": 10})
-    new_D.deploy()
+    new_D._deploy()
     check({"c": 8, "d": 10})
 
     # Should not have changed old deployment object.
-    D.deploy()
+    D._deploy()
     check({"a": 1, "b": 2})
 
     # Check that args are only updated on version change.
-    D.options(version="1").deploy()
+    D.options(version="1")._deploy()
     check({"a": 1, "b": 2})
 
-    D.options(version="1").deploy(c=10, d=11)
+    D.options(version="1")._deploy(c=10, d=11)
     check({"a": 1, "b": 2})
 
-    D.options(version="2").deploy(c=10, d=11)
+    D.options(version="2")._deploy(c=10, d=11)
     check({"c": 10, "d": 11})
 
 

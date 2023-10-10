@@ -9,6 +9,7 @@ import requests
 import ray
 from ray import serve
 from ray._private.test_utils import run_string_as_driver
+from ray.serve._private import api as _private_api
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -80,13 +81,13 @@ from ray import serve
 def f(*args):
     return "hello"
 
-f.deploy()
+f._deploy()
 """.format(
         ray_client_instance
     )
     run_string_as_driver(deploy)
 
-    assert "test1" in serve.list_deployments()
+    assert "test1" in _private_api.list_deployments()
     assert requests.get("http://localhost:8000/hello").text == "hello"
 
     delete = """
@@ -95,13 +96,13 @@ ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
-serve.get_deployment("test1").delete()
+serve.get_deployment("test1")._delete()
 """.format(
         ray_client_instance
     )
     run_string_as_driver(delete)
 
-    assert "test1" not in serve.list_deployments()
+    assert "test1" not in _private_api.list_deployments()
 
     fastapi = """
 import ray
@@ -121,7 +122,7 @@ def hello():
 class A:
     pass
 
-A.deploy()
+A._deploy()
 """.format(
         ray_client_instance
     )

@@ -96,7 +96,7 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments)
             if len(self.all_deployment_async_handles) < len(all_deployment_names):
                 deployments = list(serve.list_deployments().values())
                 self.all_deployment_async_handles = [
-                    deployment.get_handle(sync=False) for deployment in deployments
+                    deployment._get_handle(sync=False) for deployment in deployments
                 ]
 
             return random.choice(self.all_deployment_async_handles)
@@ -115,7 +115,7 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments)
             return await self.handle_request(request, 0)
 
     for deployment in all_deployment_names:
-        Echo.options(name=deployment).deploy()
+        Echo.options(name=deployment)._deploy()
 
 
 @click.command()

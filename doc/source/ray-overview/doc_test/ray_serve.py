@@ -27,13 +27,13 @@ async def startup_event():
     serve.start(http_host=None)  # Start the Ray Serve instance.
 
     # Deploy our GPT2 Deployment.
-    GPT2.deploy()
+    GPT2._deploy()
 
 
 @app.get("/generate")
 async def generate(query: str):
     # Get a handle to our deployment so we can query it in Python.
-    handle = GPT2.get_handle()
+    handle = GPT2._get_handle()
     return await handle.predict.remote(query)
 
 

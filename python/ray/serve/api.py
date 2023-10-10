@@ -426,37 +426,13 @@ def deployment(
 @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
 @Deprecated(message=MIGRATION_MESSAGE)
 def get_deployment(name: str) -> Deployment:
-    """Dynamically fetch a handle to a Deployment object.
-
-    This can be used to update and redeploy a deployment without access to
-    the original definition. This should only be used to fetch deployments
-    that were deployed using 1.x API.
-
-    Example:
-    >>> from ray import serve
-    >>> MyDeployment = serve.get_deployment("name")  # doctest: +SKIP
-    >>> MyDeployment.options(num_replicas=10).deploy()  # doctest: +SKIP
-
-    Args:
-        name: name of the deployment. This must have already been
-        deployed.
-
-    Returns:
-        Deployment
-    """
-    ServeUsageTag.API_VERSION.record("v1")
-    return _private_api.get_deployment(name)
+    raise ValueError("serve.get_deployment is fully deprecated.")
 
 
 @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
 @Deprecated(message=MIGRATION_MESSAGE)
 def list_deployments() -> Dict[str, Deployment]:
-    """Returns a dictionary of all active deployments.
-
-    Dictionary maps deployment name to Deployment objects.
-    """
-    ServeUsageTag.API_VERSION.record("v1")
-    return _private_api.list_deployments()
+    raise ValueError("serve.list_deployments() is fully deprecated.")
 
 
 @PublicAPI(stability="stable")

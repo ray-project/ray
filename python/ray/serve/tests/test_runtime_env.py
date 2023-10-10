@@ -92,7 +92,7 @@ ray.init(address="auto", namespace="serve", job_config=job_config)
 Test = _private_api.get_deployment("Test", "app")
 handle = serve.run(Test.bind(), name="app")
 assert ray.get(handle.remote()) == "world"
-Test.delete()
+Test._delete()
 """
 
     run_string_as_driver(driver2)
@@ -120,8 +120,8 @@ class Test:
     def __call__(self, *args):
         return os.getpid(), open("hello").read()
 
-Test.deploy()
-handle = Test.get_handle()
+Test._deploy()
+handle = Test._get_handle()
 assert ray.get(handle.remote())[1] == "world"
 """
 
@@ -139,15 +139,15 @@ ray.init(address="auto", namespace="serve", job_config=job_config)
 serve.start()
 
 Test = serve.get_deployment("Test")
-Test.options(num_replicas=2).deploy()
-handle = Test.get_handle()
+Test.options(num_replicas=2)._deploy()
+handle = Test._get_handle()
 results = ray.get([handle.remote() for _ in range(1000)])
 print(set(results))
 assert all(r[1] == "world" for r in results), (
     "results should still come from the first env")
 assert len(set(r[0] for r in results)) == 2, (
     "make sure there are two replicas")
-Test.delete()
+Test._delete()
 """
 
     run_string_as_driver(driver2)

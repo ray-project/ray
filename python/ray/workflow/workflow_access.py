@@ -324,7 +324,7 @@ class WorkflowManagementActor:
         except KeyError:
             from ray.workflow.http_event_provider import HTTPEventProvider
 
-            HTTPEventProvider.deploy()
+            HTTPEventProvider._deploy()
 
     def ready(self) -> None:
         """A no-op to make sure the actor is ready."""
