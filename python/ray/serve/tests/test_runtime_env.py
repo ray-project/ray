@@ -133,12 +133,13 @@ assert ray.get(handle.remote())[1] == "world"
     driver2 = """
 import ray
 from ray import serve
+from ray.serve._private import api as _private_api
 
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 serve.start()
 
-Test = serve.get_deployment("Test")
+Test = _private_api.get_deployment("Test")
 Test.options(num_replicas=2)._deploy()
 handle = Test._get_handle()
 results = ray.get([handle.remote() for _ in range(1000)])

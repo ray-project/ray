@@ -530,7 +530,7 @@ def run(
             client.deploy_apps(config, _blocking=gradio)
             cli_logger.success("Submitted deploy config successfully.")
             if gradio:
-                handle = serve.get_deployment("DAGDriver")._get_handle()
+                handle = _private_api.get_deployment("DAGDriver")._get_handle()
         else:
             handle = serve.run(app, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")

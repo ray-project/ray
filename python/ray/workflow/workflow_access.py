@@ -320,7 +320,7 @@ class WorkflowManagementActor:
         """
         ray.serve.start(detached=True)
         try:
-            ray.serve.get_deployment(common.HTTP_EVENT_PROVIDER_NAME)
+            ray.serve._private.api.get_deployment(common.HTTP_EVENT_PROVIDER_NAME)
         except KeyError:
             from ray.workflow.http_event_provider import HTTPEventProvider
 

@@ -241,13 +241,13 @@ class HTTPListener(EventListener):
     def __init__(self):
         super().__init__()
         try:
-            self.handle = ray.serve.get_deployment(
+            self.handle = ray.serve._private.api.get_deployment(
                 common.HTTP_EVENT_PROVIDER_NAME
             ).get_handle(sync=True)
         except KeyError:
             mgr = workflow_access.get_management_actor()
             ray.get(mgr.create_http_event_provider.remote())
-            self.handle = ray.serve.get_deployment(
+            self.handle = ray.serve._private.api.get_deployment(
                 common.HTTP_EVENT_PROVIDER_NAME
             ).get_handle(sync=True)
 

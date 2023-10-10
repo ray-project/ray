@@ -92,7 +92,7 @@ def test_cluster_crash_before_checkpoint(workflow_start_regular_shared_serve):
 
     if utils.check_global_mark("simulate_cluster_crash"):
 
-        serve.get_deployment(common.HTTP_EVENT_PROVIDER_NAME)._delete()
+        _private_api.get_deployment(common.HTTP_EVENT_PROVIDER_NAME)._delete()
         serve.shutdown()
         ray.shutdown()
         subprocess.check_output(["ray", "stop", "--force"])
