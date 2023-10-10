@@ -130,7 +130,6 @@ class DataMetric(Enum):
     BYTES_CURRENT = "data_current_bytes"
     CPU_USAGE = "data_cpu_usage_cores"
     GPU_USAGE = "data_gpu_usage_cores"
-    ROWS_OUTPUTTED = "data_output_rows"
     BYTES_OUTPUTTED = "data_output_bytes"
 
 
@@ -155,7 +154,7 @@ class _StatsActor:
         self.fifo_queue = []
 
         # Ray Data dashboard metrics
-        # Everything is a gauge because we need to reset all of 
+        # Everything is a gauge because we need to reset all of
         # a dataset's metrics to 0 after each finishing execution.
         tags_keys = ("dataset",)
         self.bytes_spilled = Gauge(
@@ -186,11 +185,6 @@ class _StatsActor:
         self.gpu_usage = Gauge(
             DataMetric.GPU_USAGE.value,
             description="GPU cores used by dataset operators",
-            tag_keys=tags_keys,
-        )
-        self.rows_outputted = Gauge(
-            DataMetric.ROWS_OUTPUTTED.value,
-            description="Rows outputted by dataset operators",
             tag_keys=tags_keys,
         )
         self.bytes_outputted = Gauge(
@@ -231,6 +225,9 @@ class _StatsActor:
             self.last_time[stats_uuid] - self.start_time[stats_uuid],
         )
 
+    def _get_stats_dict_size(self):
+        return len(self.start_time), len(self.last_time), len(self.metadata)
+
     def update_metrics(
         self, stats: Dict[DataMetric, Union[int, float]], tags: Dict[str, str]
     ):
@@ -238,18 +235,15 @@ class _StatsActor:
         self.bytes_allocated.set(stats[DataMetric.BYTES_ALLOCATED], tags)
         self.bytes_freed.set(stats[DataMetric.BYTES_FREED], tags)
         self.bytes_current.set(stats[DataMetric.BYTES_CURRENT], tags)
-        self.rows_outputted.set(stats[DataMetric.ROWS_OUTPUTTED], tags)
         self.bytes_outputted.set(stats[DataMetric.BYTES_OUTPUTTED], tags)
         self.cpu_usage.set(stats[DataMetric.CPU_USAGE], tags)
         self.gpu_usage.set(stats[DataMetric.GPU_USAGE], tags)
 
     def remove_metrics(self, tags):
-        # This doesn't actually delete the metric, just sets it to 0.
         self.bytes_spilled.set(0, tags)
         self.bytes_allocated.set(0, tags)
         self.bytes_freed.set(0, tags)
         self.bytes_current.set(0, tags)
-        self.rows_outputted.set(0, tags)
         self.bytes_outputted.set(0, tags)
         self.cpu_usage.set(0, tags)
         self.gpu_usage.set(0, tags)
@@ -275,20 +269,32 @@ def _get_or_create_stats_actor():
 
 
 _stats_actor = None
+"""This global _stats_actor may be from a previous cluster that was shutdown.
+The below calls try to execute remote calls with the existing actor, and this
+call fails, we create a new StatsActor on the current cluster.
+"""
 
 
 def _update_stats_actor_metrics(stats: Dict[DataMetric, Any], tags: Dict[str, str]):
     global _stats_actor
     if _stats_actor is None:
         _stats_actor = _get_or_create_stats_actor()
-    _stats_actor.update_metrics.remote(stats, tags)
+    try:
+        _stats_actor.update_metrics.remote(stats, tags)
+    except Exception:
+        _stats_actor = _get_or_create_stats_actor()
+        _stats_actor.update_metrics.remote(stats, tags)
 
 
 def _remove_metrics(tags: Dict[str, str]):
     global _stats_actor
     if _stats_actor is None:
         _stats_actor = _get_or_create_stats_actor()
-    _stats_actor.remove_metrics.remote(tags)
+    try:
+        _stats_actor.remove_metrics.remote(tags)
+    except Exception:
+        _stats_actor = _get_or_create_stats_actor()
+        _stats_actor.remove_metrics.remote(tags)
 
 
 class DatasetStats:
