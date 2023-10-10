@@ -51,9 +51,9 @@ RAY_INIT_ADDRESS_HELP_STR = (
     "using the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard agent (defaults to "
-    "http://localhost:52365). Can also be specified using the "
-    "RAY_AGENT_ADDRESS environment variable."
+    "Address to use to query the Ray dashboard head (defaults to "
+    "http://localhost:8265). Can also be specified using the "
+    "RAY_DASHBOARD_ADDRESS environment variable."
 )
 
 
@@ -126,6 +126,15 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
         args_dict[split[0]] = split[1]
 
     return args_dict
+
+
+def warn_if_agent_address_set():
+    if "RAY_AGENT_ADDRESS" in os.environ:
+        cli_logger.warning(
+            "The `RAY_AGENT_ADDRESS` env var has been deprecated in favor of "
+            "the `RAY_DASHBOARD_ADDRESS` env var. The `RAY_AGENT_ADDRESS` is "
+            "ignored."
+        )
 
 
 @click.group(
@@ -240,12 +249,14 @@ def start(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 def deploy(config_file_name: str, address: str):
+    warn_if_agent_address_set()
+
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
@@ -579,7 +590,7 @@ def run(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -595,6 +606,8 @@ def run(
     ),
 )
 def config(address: str, name: Optional[str]):
+    warn_if_agent_address_set()
+
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -652,7 +665,7 @@ def config(address: str, name: Optional[str]):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -669,6 +682,8 @@ def config(address: str, name: Optional[str]):
     ),
 )
 def status(address: str, name: Optional[str]):
+    warn_if_agent_address_set()
+
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -708,13 +723,15 @@ def status(address: str, name: Optional[str]):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
+    warn_if_agent_address_set()
+
     if not yes:
         click.confirm(
             f"This will shut down Serve on the cluster at address "

@@ -183,7 +183,7 @@ def ping_grpc_call_method(channel, app_name, test_not_found=False):
     else:
         response, call = stub.__call__.with_call(request=request, metadata=metadata)
         assert call.code() == grpc.StatusCode.OK
-        assert response.greeting == "Hello foo from bar"
+        assert response.greeting == "Hello foo from bar", response.greeting
 
 
 def ping_grpc_another_method(channel, app_name):

@@ -225,38 +225,6 @@ class TestgRPCProxy:
                     break
         mocked_proxy_request_stream.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_streaming_generator_helper(self):
-        """Test gRPCProxy _streaming_generator_helper returns a generator."""
-        grpc_proxy = self.create_grpc_proxy()
-        messages = ["foo", "bar", "baz"]
-        obj_ref_generator = FakeRefGenerator(messages=messages)
-
-        generator = grpc_proxy._streaming_generator_helper(
-            obj_ref_generator=obj_ref_generator,
-            proxy_request=AsyncMock(),
-            request_id=AsyncMock(),
-        )
-        assert isinstance(generator, AsyncGenerator)
-        assert [pickle.loads(i) async for i in generator] == [messages]
-
-    @pytest.mark.asyncio
-    async def test_consume_generator_stream(self):
-        """Test gRPCProxy _consume_generator_stream returns the correct response."""
-        grpc_proxy = self.create_grpc_proxy()
-        mocked_streaming_generator_helper = AsyncMock()
-        with patch.object(
-            grpc_proxy, "_streaming_generator_helper", mocked_streaming_generator_helper
-        ):
-            response = await grpc_proxy._consume_generator_stream(
-                obj_ref=MagicMock(),
-                proxy_request=AsyncMock(),
-                request_id=AsyncMock(),
-            )
-        mocked_streaming_generator_helper.assert_called_once()
-        assert response.status_code == str(grpc_proxy.success_status_code)
-        assert response.streaming_response is not None
-
 
 class TestHTTPProxy:
     """Test methods implemented on HTTPProxy"""

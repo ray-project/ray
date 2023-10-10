@@ -17,6 +17,7 @@ class TesterContainer(Container):
         docker_tag: str,
         shard_count: int = 1,
         shard_ids: Optional[List[int]] = None,
+        skip_ray_installation: bool = False,
     ) -> None:
         """
         :param docker_tag: Name of the wanda build to be used as test container.
@@ -28,12 +29,14 @@ class TesterContainer(Container):
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
 
-        self.install_ray()
+        if not skip_ray_installation:
+            self.install_ray()
 
     def run_tests(
         self,
         test_targets: List[str],
         test_envs: List[str],
+        test_arg: Optional[str] = None,
     ) -> bool:
         """
         Run tests parallelly in docker.  Return whether all tests pass.
@@ -42,7 +45,9 @@ class TesterContainer(Container):
             shard_tests(test_targets, self.shard_count, i) for i in self.shard_ids
         ]
         runs = [
-            self._run_tests_in_docker(chunk, test_envs) for chunk in chunks if chunk
+            self._run_tests_in_docker(chunk, test_envs, test_arg)
+            for chunk in chunks
+            if chunk
         ]
         exits = [run.wait() for run in runs]
         return all(exit == 0 for exit in exits)
@@ -51,6 +56,7 @@ class TesterContainer(Container):
         self,
         test_targets: List[str],
         test_envs: List[str],
+        test_arg: Optional[str] = None,
     ) -> subprocess.Popen:
         logger.info("Running tests: %s", test_targets)
         commands = []
@@ -64,6 +70,8 @@ class TesterContainer(Container):
         test_cmd = "bazel test --config=ci $(./ci/run/bazel_export_options) "
         for env in test_envs:
             test_cmd += f"--test_env {env} "
+        if test_arg:
+            test_cmd += f"--test_arg {test_arg} "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
         return subprocess.Popen(self._get_run_command(commands))
