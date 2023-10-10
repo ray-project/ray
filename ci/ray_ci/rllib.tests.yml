@@ -3,5 +3,6 @@ flaky_tests:
   - //rllib:learning_tests_multi_agent_cartpole_impala 
   - //rllib:learning_tests_stateless_cartpole_r2d2
   - //rllib:learning_tests_cartpole_appo_fake_gpus
+  - //rllib:learning_tests_cartpole_ddppo
   - //rllib:learning_tests_two_step_game_qmix
   - //rllib:learning_tests_pendulum_cql
