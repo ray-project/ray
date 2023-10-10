@@ -59,7 +59,7 @@ class StreamingExecutor(Executor, threading.Thread):
     a way that maximizes throughput under resource constraints.
     """
 
-    def __init__(self, options: ExecutionOptions, dataset_uuid: str = "dataset_uuid"):
+    def __init__(self, options: ExecutionOptions, dataset_uuid: str = "unknown_uuid"):
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
@@ -78,7 +78,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
 
-        self._prev_metrics_state = {}
         self._dataset_uuid = dataset_uuid
 
         Executor.__init__(self, options)
@@ -109,10 +108,6 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
-
-        # Keep track of previous state to calculate deltas for metrics.
-        for op in self._topology:
-            self._prev_metrics_state[op] = {}
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
