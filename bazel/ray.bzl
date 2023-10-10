@@ -1,7 +1,7 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test", "cc_binary")
 
 COPTS_WITHOUT_LOG = select({
     "//:opt": ["-DBAZEL_OPT"],
@@ -171,18 +171,47 @@ def native_java_library(module_name, name, native_library_name):
         visibility = ["//visibility:public"],
     )
 
-def ray_cc_library(name, copts = [], **kwargs):
+def ray_cc_library(name, strip_include_prefix = "/src", copts = [], **kwargs):
     cc_library(
         name = name,
-        strip_include_prefix = "/src",
+        strip_include_prefix = strip_include_prefix,
         copts = COPTS + copts,
         visibility = ["//visibility:public"],
         **kwargs
     )
 
-def ray_cc_test(name, copts = [], **kwargs):
+
+def ray_cc_test(name, linkopts = [], copts = [], **kwargs):
     cc_test(
         name = name,
         copts = COPTS + copts,
+        linkopts = linkopts + ["-pie"],
         **kwargs
     )
+
+def ray_cc_binary(name, linkopts = [], copts = [], **kwargs):
+    cc_binary(
+        name = name,
+        copts = COPTS + copts,
+        linkopts = linkopts + ["-pie"],
+        **kwargs
+    )
+
+
+def _filter_files_with_suffix_impl(ctx):
+    suffix = ctx.attr.suffix
+    filtered_files = [f for f in ctx.files.srcs if f.basename.endswith(suffix)]
+    print(filtered_files)
+    return [
+        DefaultInfo(
+            files = depset(filtered_files),
+        ),
+    ]
+
+filter_files_with_suffix = rule(
+    implementation = _filter_files_with_suffix_impl,
+    attrs = {
+        "srcs": attr.label_list(allow_files=True),
+        "suffix": attr.string(),
+    },
+)

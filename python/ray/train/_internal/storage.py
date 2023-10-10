@@ -1,11 +1,5 @@
-import dataclasses
-import fnmatch
-import logging
-import os
-from pathlib import Path
-import shutil
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
-
+# Try import ray[train] core requirements (defined in setup.py)
+# isort: off
 try:
     import fsspec  # noqa
     from fsspec.implementations.local import LocalFileSystem
@@ -25,11 +19,19 @@ except (ImportError, ModuleNotFoundError) as e:
         "pyarrow is a required dependency of Ray Train and Ray Tune. "
         "Please install with: `pip install pyarrow`"
     ) from e
+# isort: on
 
+import dataclasses
+import fnmatch
+import logging
+import os
+import shutil
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray._private.storage import _get_storage_uri
 from ray.air._internal.filelock import TempFileLock
-from ray.train._internal.syncer import Syncer, SyncConfig, _BackgroundSyncer
+from ray.train._internal.syncer import SyncConfig, Syncer, _BackgroundSyncer
 from ray.train.constants import _get_defaults_results_dir
 
 if TYPE_CHECKING:
@@ -37,6 +39,9 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+_VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
 
 
 def _use_storage_context() -> bool:
@@ -418,14 +423,14 @@ class StorageContext:
 
     def __init__(
         self,
-        storage_path: Optional[str],
+        storage_path: Optional[Union[str, os.PathLike]],
         experiment_dir_name: str,
         sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
-        current_checkpoint_index: int = 0,
+        current_checkpoint_index: int = -1,
     ):
-        custom_fs_provided = storage_filesystem is not None
+        self.custom_fs_provided = storage_filesystem is not None
 
         self.storage_local_path = _get_defaults_results_dir()
 
@@ -451,12 +456,13 @@ class StorageContext:
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             self.storage_path, storage_filesystem
         )
+        self.storage_fs_path = Path(self.storage_fs_path).as_posix()
 
         # Syncing is always needed if a custom `storage_filesystem` is provided.
         # Otherwise, syncing is only needed if storage_local_path
         # and storage_fs_path point to different locations.
         syncing_needed = (
-            custom_fs_provided or self.storage_fs_path != self.storage_local_path
+            self.custom_fs_provided or self.storage_fs_path != self.storage_local_path
         )
         self.syncer: Optional[Syncer] = (
             _FilesystemSyncer(
@@ -489,20 +495,29 @@ class StorageContext:
         storage path to verify that the storage path can be written to.
         This validation file is also used to check whether the storage path is
         accessible by all nodes in the cluster."""
-        valid_file = os.path.join(self.experiment_fs_path, ".validate_storage_marker")
+        valid_file = os.path.join(
+            self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
+        )
         self.storage_filesystem.create_dir(self.experiment_fs_path)
         with self.storage_filesystem.open_output_stream(valid_file):
             pass
 
     def _check_validation_file(self):
         """Checks that the validation file exists at the storage path."""
-        valid_file = os.path.join(self.experiment_fs_path, ".validate_storage_marker")
+        valid_file = os.path.join(
+            self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
+        )
         if not _exists_at_fs_path(fs=self.storage_filesystem, fs_path=valid_file):
             raise RuntimeError(
                 f"Unable to set up cluster storage at storage_path={self.storage_path}"
                 "\nCheck that all nodes in the cluster have read/write access "
                 "to the configured storage path."
             )
+
+    def _update_checkpoint_index(self, metrics: Dict):
+        # Per default, increase by 1. This can be overwritten to customize checkpoint
+        # directories.
+        self.current_checkpoint_index += 1
 
     def persist_current_checkpoint(self, checkpoint: "Checkpoint") -> "Checkpoint":
         """Persists a given checkpoint to the current checkpoint path on the filesystem.
@@ -566,7 +581,7 @@ class StorageContext:
 
         Args:
             force: If True, wait for a previous sync to finish, launch a new one,
-                and wait for that one to finish. By the end of a `force=True call`, the
+                and wait for that one to finish. By the end of a `force=True` call, the
                 latest version of the trial artifacts will be persisted.
         """
         if not self.sync_config.sync_artifacts:
@@ -596,7 +611,7 @@ class StorageContext:
         by pyarrow.fs.FileSystem.from_uri already. The URI scheme information is
         kept in `storage_filesystem` instead.
         """
-        return os.path.join(self.storage_fs_path, self.experiment_dir_name)
+        return Path(self.storage_fs_path, self.experiment_dir_name).as_posix()
 
     @property
     def experiment_local_path(self) -> str:
@@ -605,7 +620,7 @@ class StorageContext:
         This local "cache" path refers to location where files are dumped before
         syncing them to the `storage_path` on the `storage_filesystem`.
         """
-        return os.path.join(self.storage_local_path, self.experiment_dir_name)
+        return Path(self.storage_local_path, self.experiment_dir_name).as_posix()
 
     @property
     def trial_local_path(self) -> str:
@@ -617,7 +632,7 @@ class StorageContext:
             raise RuntimeError(
                 "Should not access `trial_local_path` without setting `trial_dir_name`"
             )
-        return os.path.join(self.experiment_local_path, self.trial_dir_name)
+        return Path(self.experiment_local_path, self.trial_dir_name).as_posix()
 
     @property
     def trial_fs_path(self) -> str:
@@ -629,7 +644,7 @@ class StorageContext:
             raise RuntimeError(
                 "Should not access `trial_fs_path` without setting `trial_dir_name`"
             )
-        return os.path.join(self.experiment_fs_path, self.trial_dir_name)
+        return Path(self.experiment_fs_path, self.trial_dir_name).as_posix()
 
     @property
     def checkpoint_fs_path(self) -> str:
@@ -639,7 +654,7 @@ class StorageContext:
         The user of this class is responsible for setting the `current_checkpoint_index`
         (e.g., incrementing when needed).
         """
-        return os.path.join(self.trial_fs_path, self.checkpoint_dir_name)
+        return Path(self.trial_fs_path, self.checkpoint_dir_name).as_posix()
 
     @property
     def checkpoint_dir_name(self) -> str:

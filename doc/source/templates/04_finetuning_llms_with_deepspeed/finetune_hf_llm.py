@@ -33,7 +33,7 @@ import ray
 from ray import train
 import ray.util.scheduling_strategies
 from ray.train.torch import TorchTrainer
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 
 from utils import (
     get_checkpoint_and_refs_dir,
@@ -593,7 +593,10 @@ def main():
     with open(args.special_token_path, "r") as json_file:
         special_tokens = json.load(json_file)["tokens"]
 
-    artifact_storage = os.environ.get("ANYSCALE_ARTIFACT_STORAGE", "artifact_storage")
+    assert (
+        "ANYSCALE_ARTIFACT_STORAGE" in os.environ
+    ), "ANYSCALE_ARTIFACT_STORAGE env var must be set!"
+    artifact_storage = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
     user_name = re.sub(r"\s+", "__", os.environ.get("ANYSCALE_USERNAME", "user"))
     storage_path = (
         f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"

@@ -1,12 +1,18 @@
 :root {
   --ray-example-gallery-gap-x: 18px;
   --ray-example-gallery-gap-y: 22px;
+  --sidebar-top: 5em;
 }
 
 #site-navigation {
   width: 330px !important;
   border-right: none;
   margin-left: 32px;
+  overflow-y: auto;
+  max-height: calc(100vh - var(--sidebar-top));
+  position: sticky;
+  top: var(--sidebar-top) !important;
+  z-index: 1000;
 }
 
 #site-navigation h5 {

@@ -95,11 +95,13 @@ class TestCheckpointUtils(unittest.TestCase):
         config = SimpleQConfig().environment("CartPole-v1")
         # Build algorithm object.
         algo1 = config.build()
+        # Fake one result for the checkpoint saving to succeed
+        algo1._last_result = {}
         # Get its state.
         pickle_state = algo1.__getstate__()
         # Create standard (pickle-based) checkpoint.
         with tempfile.TemporaryDirectory() as pickle_cp_dir:
-            pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir)
+            pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir).checkpoint.path
             pickle_cp_info = get_checkpoint_info(pickle_cp_dir)
             # Now convert pickle checkpoint to msgpack using the provided
             # utility function.
@@ -164,11 +166,13 @@ class TestCheckpointUtils(unittest.TestCase):
         )
         # Build algorithm object.
         algo1 = config.build()
+        # Fake one result
+        algo1._last_result = {}
         # Get its state.
         pickle_state = algo1.__getstate__()
         # Create standard (pickle-based) checkpoint.
         with tempfile.TemporaryDirectory() as pickle_cp_dir:
-            pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir)
+            pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir).checkpoint.path
             pickle_cp_info = get_checkpoint_info(pickle_cp_dir)
             # Now convert pickle checkpoint to msgpack using the provided
             # utility function.

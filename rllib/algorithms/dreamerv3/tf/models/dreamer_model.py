@@ -181,9 +181,7 @@ class DreamerModel(tf.keras.Model):
             is_first=is_first,
         )
         # Compute action using our actor network and the current states.
-        _, distr_params = self.actor(
-            h=states["h"], z=states["z"], return_distr_params=True
-        )
+        _, distr_params = self.actor(h=states["h"], z=states["z"])
         # Use the mode of the distribution (Discrete=argmax, Normal=mean).
         distr = self.actor.get_action_dist_object(distr_params)
         actions = distr.mode()

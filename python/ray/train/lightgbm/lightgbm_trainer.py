@@ -1,20 +1,20 @@
 import os
-from typing import Dict, Any, Union
-
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
-
-from ray.air.checkpoint import Checkpoint
-from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.lightgbm import LightGBMCheckpoint
-from ray.util.annotations import PublicAPI
+from typing import Any, Dict, Union
 
 import lightgbm
 import lightgbm_ray
 import xgboost_ray
 from lightgbm_ray.tune import TuneReportCheckpointCallback
+
+from ray.train import Checkpoint
+from ray.train.gbdt_trainer import GBDTTrainer
+from ray.train.lightgbm import LightGBMCheckpoint
+from ray.util.annotations import PublicAPI
+
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
 
 
 @PublicAPI(stability="beta")

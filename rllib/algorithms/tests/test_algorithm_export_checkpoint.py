@@ -57,8 +57,9 @@ def save_test(alg_name, framework="tf", multi_agent=False):
         ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
 
+    algo.train()
     print("Exporting algo checkpoint", alg_name, export_dir)
-    export_dir = algo.save(export_dir)
+    export_dir = algo.save(export_dir).checkpoint.path
     model_dir = os.path.join(
         export_dir,
         "policies",

@@ -108,8 +108,6 @@ class ActorNetwork(tf.keras.Model):
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
-            return_distr_params: Whether to return (as a second tuple item) the action
-                distribution parameter tensor created by the policy.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
@@ -149,7 +147,7 @@ class ActorNetwork(tf.keras.Model):
             distr_params = action_logits
             distr = self.get_action_dist_object(distr_params)
 
-            action = tf.cast(tf.stop_gradient(distr.sample()), tf.float32) + (
+            action = tf.stop_gradient(distr.sample()) + (
                 action_probs - tf.stop_gradient(action_probs)
             )
 
@@ -187,7 +185,10 @@ class ActorNetwork(tf.keras.Model):
         """
         if isinstance(self.action_space, gym.spaces.Discrete):
             # Create the distribution object using the unimix'd logits.
-            distr = tfp.distributions.OneHotCategorical(logits=action_dist_params_T_B)
+            distr = tfp.distributions.OneHotCategorical(
+                logits=action_dist_params_T_B,
+                dtype=tf.float32,
+            )
 
         elif isinstance(self.action_space, gym.spaces.Box):
             # Compute Normal distribution from action_logits and std_logits

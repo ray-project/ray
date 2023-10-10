@@ -5,6 +5,8 @@ import shutil
 import tempfile
 import unittest
 
+import pytest
+
 import ray
 from ray import tune
 from ray.train import CheckpointConfig
@@ -36,6 +38,10 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             with open(checkpoint_path, "rb") as f:
                 extra_data = pickle.load(f)
             self.state.update(extra_data)
+
+    @pytest.fixture(autouse=True)
+    def setLocalDir(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
 
     def setUp(self):
         self.absolute_local_dir = None
@@ -81,15 +87,14 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         _, abs_trial_dir = self._get_trial_dir(exp_dir)
 
         self.assertIsNone(trial.error_file)
-        self.assertEqual(trial.local_dir, exp_dir)
-        self.assertEqual(trial.local_path, abs_trial_dir)
+        self.assertEqual(trial.path, abs_trial_dir)
 
         self.assertTrue(os.path.isdir(absolute_local_dir), absolute_local_dir)
         self.assertTrue(os.path.isdir(exp_dir))
         self.assertTrue(os.path.isdir(abs_trial_dir))
         self.assertTrue(
             os.path.isfile(
-                os.path.join(abs_trial_dir, "checkpoint_000001/checkpoint.pkl")
+                os.path.join(abs_trial_dir, "checkpoint_000000/checkpoint.pkl")
             )
         )
 
@@ -99,14 +104,9 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         )
 
         checkpoint_path = os.path.join(
-            local_dir, exp_name, trial_name, "checkpoint_000001/checkpoint.pkl"
-        )  # Relative checkpoint path
-
-        # The file tune would find. The absolute checkpoint path.
-        tune_find_file = os.path.abspath(os.path.expanduser(checkpoint_path))
-        self.assertTrue(
-            os.path.isfile(tune_find_file), "{} is not exist!".format(tune_find_file)
+            local_dir, exp_name, trial_name, "checkpoint_000000"
         )
+        assert os.path.exists(os.path.expanduser(checkpoint_path))
 
         (trial,) = tune.run(
             self.MockTrainable,
@@ -116,33 +116,6 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             config={"env": "CartPole-v0", "log_level": "DEBUG"},
         ).trials
         self.assertIsNone(trial.error_file)
-
-    def testDottedRelativePath(self):
-        local_dir = "./test_dotted_relative_local_dir"
-        exp_name = self.prefix + "DottedRelativeLocalDir"
-        absolute_local_dir = os.path.abspath(local_dir)
-        self.absolute_local_dir = absolute_local_dir
-        self.assertFalse(os.path.exists(absolute_local_dir))
-        self._train(exp_name, local_dir, absolute_local_dir)
-        self._restore(exp_name, local_dir, absolute_local_dir)
-
-    def testRelativePath(self):
-        local_dir = "test_relative_local_dir"
-        exp_name = self.prefix + "RelativePath"
-        absolute_local_dir = os.path.abspath(local_dir)
-        self.absolute_local_dir = absolute_local_dir
-        self.assertFalse(os.path.exists(absolute_local_dir))
-        self._train(exp_name, local_dir, absolute_local_dir)
-        self._restore(exp_name, local_dir, absolute_local_dir)
-
-    def testTildeAbsolutePath(self):
-        local_dir = "~/test_tilde_absolute_local_dir"
-        exp_name = self.prefix + "TildeAbsolutePath"
-        absolute_local_dir = os.path.abspath(os.path.expanduser(local_dir))
-        self.absolute_local_dir = absolute_local_dir
-        self.assertFalse(os.path.exists(absolute_local_dir))
-        self._train(exp_name, local_dir, absolute_local_dir)
-        self._restore(exp_name, local_dir, absolute_local_dir)
 
     def testTempfile(self):
         local_dir = tempfile.mkdtemp()
@@ -164,14 +137,12 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             def save_checkpoint(self, checkpoint_dir):
                 with open(os.path.join(checkpoint_dir, "test.txt"), "wb") as f:
                     pickle.dump("test", f)
-                return checkpoint_dir
 
             def load_checkpoint(self, checkpoint_dir):
                 with open(os.path.join(checkpoint_dir, "test.txt"), "rb") as f:
                     x = pickle.load(f)
 
                 assert x == "test"
-                return checkpoint_dir
 
         validate_save_restore(MockTrainable)
 

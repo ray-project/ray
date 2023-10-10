@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+import inspect
 import fnmatch
 import functools
 import io
@@ -579,8 +580,12 @@ async def async_wait_for_condition(
     last_ex = None
     while time.time() - start <= timeout:
         try:
-            if condition_predictor(**kwargs):
-                return
+            if inspect.iscoroutinefunction(condition_predictor):
+                if await condition_predictor(**kwargs):
+                    return
+            else:
+                if condition_predictor(**kwargs):
+                    return
         except Exception as ex:
             last_ex = ex
         await asyncio.sleep(retry_interval_ms / 1000.0)
@@ -1964,3 +1969,11 @@ def find_available_port(start, end, port_num=1):
             f"Can't find {port_num} available port from {start} to {end}."
         )
     return ports
+
+
+# TODO(rickyx): We could remove this once we unify the autoscaler v1 and v2
+# code path for ray status
+def reset_autoscaler_v2_enabled_cache():
+    import ray.autoscaler.v2.utils as u
+
+    u.cached_is_autoscaler_v2 = None

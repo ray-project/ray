@@ -2,30 +2,21 @@ import os
 import sys
 import time
 from collections import defaultdict
-import requests
 
 import pytest
+import requests
 
 import ray
-from ray.cluster_utils import Cluster
-from ray._private.test_utils import SignalActor, wait_for_condition
-
 from ray import serve
-from ray.serve.context import get_global_client
-from ray.serve.handle import RayServeHandle
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.cluster_utils import Cluster
+from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, ReplicaState
-from ray.serve._private.constants import SERVE_NAMESPACE, RAY_SERVE_ENABLE_NEW_ROUTING
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.utils import get_head_node_id
-
-
-@pytest.fixture
-def ray_cluster():
-    cluster = Cluster()
-    yield cluster
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
+from ray.serve.context import _get_global_client
+from ray.serve.handle import RayServeHandle
 
 
 def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
@@ -38,7 +29,13 @@ def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
             refs = [handle.remote()._to_object_ref_sync() for _ in range(10)]
 
         done, pending = ray.wait(refs)
-        pids = pids.union(set(ray.get(done)))
+        for ref in done:
+            try:
+                pids.add(ray.get(ref))
+            except RayActorError:
+                # Handle sent request to dead actor before running replicas were updated
+                # This can happen because health check period = 1s
+                pass
         refs = list(pending)
         if time.time() - start >= timeout:
             raise TimeoutError("Timed out waiting for pids.")
@@ -140,7 +137,7 @@ def test_replica_startup_status_transitions(ray_cluster):
     cluster.add_node(num_cpus=1)
     cluster.connect(namespace=SERVE_NAMESPACE)
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     signal = SignalActor.remote()
 
@@ -241,7 +238,7 @@ def test_replica_spread(ray_cluster):
     serve.run(D.bind())
 
     def get_num_nodes():
-        client = get_global_client()
+        client = _get_global_client()
         details = client.get_serve_details()
         dep = details["applications"]["default"]["deployments"]["D"]
         nodes = {r["node_id"] for r in dep["replicas"]}
@@ -260,9 +257,6 @@ def test_replica_spread(ray_cluster):
     wait_for_condition(lambda: get_num_nodes() == 1)
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
-)
 def test_handle_prefers_replicas_on_same_node(ray_cluster):
     """Verify that handle calls prefer replicas on the same node when possible.
 
@@ -318,9 +312,6 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
     assert ray.get(blocked_ref) == outer_node_id
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
-)
 @pytest.mark.parametrize("set_flag", [True, False])
 def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     """When the feature flag is turned on via env var, verify that http proxy routes to
@@ -329,7 +320,7 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     """
 
     if set_flag:
-        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING"] = "1"
+        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "1"
 
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
@@ -354,8 +345,8 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     else:
         assert len(set(responses)) == 2
 
-    if "RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING" in os.environ:
-        del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING"]
+    if "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING" in os.environ:
+        del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"]
 
 
 if __name__ == "__main__":

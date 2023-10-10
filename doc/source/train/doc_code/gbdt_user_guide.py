@@ -155,7 +155,6 @@ print(result.metrics)
 # __scaling_cpu_start__
 scaling_config = ScalingConfig(
     num_workers=4,
-    trainer_resources={"CPU": 0},
     resources_per_worker={"CPU": 8},
 )
 # __scaling_cpu_end__

@@ -132,6 +132,7 @@ ray_cc_library(
         ":constants",
         ":status",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
         "@com_github_google_flatbuffers//:flatbuffers",
         "@msgpack",

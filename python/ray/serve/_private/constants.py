@@ -159,10 +159,6 @@ MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-
-# [EXPERIMENTAL] Disable the http actor
-SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY = "SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY"
-
 # Message
 MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "
@@ -197,33 +193,19 @@ SERVE_LOG_RECORD_FORMAT = {
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
-# Feature flag to enable StreamingResponse support.
-# When turned on, *all* HTTP responses will use Ray streaming object refs.
-# Turning this FF on also enables RAY_SERVE_ENABLE_NEW_ROUTING.
-RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
-    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "1") == "1"
-)
-
-# Request ID used for logging. Can be provided as a request
-# header and will always be returned as a response header.
-# DEPRECATED: use `X-Request-Id` instead
-RAY_SERVE_REQUEST_ID_HEADER = "RAY_SERVE_REQUEST_ID"
-
-# Feature flag to enable power of two choices routing.
-RAY_SERVE_ENABLE_NEW_ROUTING = (
-    os.environ.get("RAY_SERVE_ENABLE_NEW_ROUTING", "1") == "1"
-    or RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
-)
-
 # Feature flag to enable new handle API.
 RAY_SERVE_ENABLE_NEW_HANDLE_API = (
     os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "0") == "1"
 )
 
-# Feature flag to turn on locality routing for HTTP proxies.
-# This is currently ON BY DEFAULT.
-RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING = (
-    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING", "0") == "1"
+# Feature flag to turn on node locality routing for proxies. Off by default.
+RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
+    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "0") == "1"
+)
+
+# Feature flag to turn on AZ locality routing for proxies. On by default.
+RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING = (
+    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING", "1") == "1"
 )
 
 # Serve HTTP proxy callback import path.

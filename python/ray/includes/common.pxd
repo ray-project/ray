@@ -86,6 +86,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus TimedOut(const c_string &msg)
 
         @staticmethod
+        CRayStatus InvalidArgument(const c_string &msg)
+
+        @staticmethod
         CRayStatus Interrupted(const c_string &msg)
 
         @staticmethod
@@ -115,6 +118,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsOutOfDisk()
         c_bool IsRedisError()
         c_bool IsTimedOut()
+        c_bool IsInvalidArgument()
         c_bool IsInterrupted()
         c_bool ShouldExitWorker()
         c_bool IsObjectNotFound()
@@ -355,6 +359,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         c_bool IsSpilled() const
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
+        const c_bool GetDidSpill() const
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":

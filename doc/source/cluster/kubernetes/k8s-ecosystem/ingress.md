@@ -2,15 +2,23 @@
 
 # Ingress
 
-Two examples show how to use ingress to access your Ray cluster:
+Three examples show how to use ingress to access your Ray cluster:
 
   * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
+  * [GKE Ingress support](kuberay-gke-ingress)
   * [Manually setting up NGINX Ingress on Kind](kuberay-nginx)
+
+
+```{admonition} Warning
+:class: warning
+**Only expose Ingresses to authorized users.** The Ray Dashboard provides read and write access to the Ray Cluster. Anyone with access to this Ingress can execute arbitrary code on the Ray Cluster.
+```
+
 
 (kuberay-aws-alb)=
 ## AWS Application Load Balancer (ALB) Ingress support on AWS EKS
 
-### Prerequisite
+### Prerequisites
 * Create an EKS cluster. See [Getting started with Amazon EKS – AWS Management Console and AWS CLI](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#eks-configure-kubectl).
 
 * Set up the [AWS Load Balancer controller](https://github.com/kubernetes-sigs/aws-load-balancer-controller), see [installation instructions](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/deploy/installation/). Note that the repository maintains a webpage for each release. Confirm that you are using the latest installation instructions.
@@ -23,10 +31,11 @@ Two examples show how to use ingress to access your Ray cluster:
 ```sh
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.0
 
 # Step 2: Install a RayCluster
-helm install raycluster kuberay/ray-cluster --version 0.6.0
+helm install raycluster kuberay/ray-cluster --version 1.0.0-rc.0
 
 # Step 3: Edit the `ray-operator/config/samples/ray-cluster-alb-ingress.yaml`
 #
@@ -52,7 +61,7 @@ kubectl describe ingress ray-cluster-ingress
 #  ----        ----  --------
 #  *
 #              /   ray-cluster-kuberay-head-svc:8265 (192.168.185.157:8265)
-# Annotations: alb.ingress.kubernetes.io/scheme: internet-facing
+# Annotations: alb.ingress.kubernetes.io/scheme: internal
 #              alb.ingress.kubernetes.io/subnets: ${SUBNET_1},${SUBNET_2}
 #              alb.ingress.kubernetes.io/tags: Environment=dev,Team=test
 #              alb.ingress.kubernetes.io/target-type: ip
@@ -69,6 +78,73 @@ kubectl describe ingress ray-cluster-ingress
 
 # Step 8: Delete the ingress, and AWS Load Balancer controller will remove ALB.
 #        Check ALB on AWS to make sure it is removed.
+kubectl delete ingress ray-cluster-ingress
+```
+
+(kuberay-gke-ingress)=
+
+## GKE Ingress support
+
+### Prerequisites
+
+* Create a GKE cluster and ensure that you have the kubectl tool installed and authenticated to communicate with your GKE cluster.  See [this tutorial](kuberay-gke-gpu-cluster-setup) for an example of how to create a GKE cluster with GPUs.  (GPUs are not necessary for this section.)
+
+* If you are using a `gce-internal` ingress, create a [Proxy-Only subnet](https://cloud.google.com/load-balancing/docs/proxy-only-subnets#proxy_only_subnet_create) in the same region as your GKE cluster.
+
+* It may be helpful to understand the concepts at <https://cloud.google.com/kubernetes-engine/docs/concepts/ingress>.
+
+### Instructions
+Save the following file as `ray-cluster-gclb-ingress.yaml`:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ray-cluster-ingress
+  annotations:
+    kubernetes.io/ingress.class: "gce-internal"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: raycluster-kuberay-head-svc # Update this line with your head service in Step 3 below.
+                port:
+                  number: 8265
+```
+
+Now run the following commands:
+
+```bash
+# Step 1: Install KubeRay operator and CRD
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.0
+
+# Step 2: Install a RayCluster
+helm install raycluster kuberay/ray-cluster --version 1.0.0-rc.0
+
+# Step 3: Edit ray-cluster-gclb-ingress.yaml to replace the service name with the name of the head service from the RayCluster. (Output of `kubectl get svc`)
+
+# Step 4: Apply the Ingress configuration
+kubectl apply -f ray-cluster-gclb-ingress.yaml
+
+# Step 5: Check ingress created by Step 4.
+kubectl describe ingress ray-cluster-ingress
+
+# Step 6: After a few minutes, GKE allocates an external IP for the ingress. Check it using:
+kubectl get ingress ray-cluster-ingress
+
+# Example output:
+# NAME                  CLASS    HOSTS   ADDRESS         PORTS   AGE
+# ray-cluster-ingress   <none>   *       34.160.82.156   80      54m
+
+# Step 7: Check Ray Dashboard by visiting the allocated external IP in your browser. (In this example, it is 34.160.82.156)
+
+# Step 8: Delete the ingress.
 kubectl delete ingress ray-cluster-ingress
 ```
 
@@ -108,7 +184,8 @@ kubectl wait --namespace ingress-nginx \
 
 # Step 3: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.0
 
 # Step 4: Install RayCluster and create an ingress separately.
 # More information about change of setting was documented in https://github.com/ray-project/kuberay/pull/699 

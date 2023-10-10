@@ -74,7 +74,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         # interval to 0
         os.environ["TUNE_PLACEMENT_GROUP_RECON_INTERVAL"] = "0"
 
-        def train(config):
+        def train_fn(config):
             time.sleep(1)
             now = time.time()
             tune.report(end=now - config["start_time"])
@@ -144,7 +144,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
 
         start = time.time()
         out = tune.run(
-            train,
+            train_fn,
             config={"start_time": start},
             resources_per_trial=placement_group_factory,
             num_samples=10,
@@ -199,7 +199,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                 time.sleep(1)
                 return val
 
-        def train(config):
+        def train_fn(config):
             base = config["base"]
             actors = [TrainingActor.remote() for _ in range(4)]
             futures = [
@@ -214,7 +214,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
 
         start = time.time()
         out = tune.run(
-            train,
+            train_fn,
             config={
                 "start_time": start,
                 "base": tune.grid_search(list(range(0, 100, 10))),
@@ -268,13 +268,13 @@ class TrialRunnerPlacementGroupHeterogeneousTest(unittest.TestCase):
         trial is ready. Thus, we opt to run the fourth trial instead.
         """
 
-        def train(config):
+        def train_fn(config):
             time.sleep(config["sleep"])
             return 4
 
         ray.init(num_cpus=2)
 
-        tune.register_trainable("het", train)
+        tune.register_trainable("het", train_fn)
         pgf1 = PlacementGroupFactory([{"CPU": 1}])
         pgf2 = PlacementGroupFactory([{"CPU": 2}])
 
@@ -304,11 +304,11 @@ def test_placement_group_no_cpu_trainer():
     ray.init(num_gpus=1, num_cpus=1)
     pgf = PlacementGroupFactory([{"GPU": 1, "CPU": 0}, {"CPU": 1}])
 
-    def train(config):
+    def train_fn(config):
         time.sleep(1)
         return 5
 
-    tune.run(train, resources_per_trial=pgf)
+    tune.run(train_fn, resources_per_trial=pgf)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ import tempfile
 import time
 
 from ray import train, tune
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.tune.callback import Callback
 from ray._private.test_utils import safe_write_to_results_json
 

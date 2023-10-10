@@ -116,7 +116,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   void ReconnectClient() {
-    ClusterID cluster_id = gcs_server_->rpc_server_.GetClusterId();
+    ClusterID cluster_id = gcs_server_->GetClusterId();
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_, cluster_id));
   }
 
@@ -287,7 +287,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::vector<rpc::ActorTableData> GetAllActors(bool filter_non_dead_actor = false) {
     std::promise<bool> promise;
     std::vector<rpc::ActorTableData> actors;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAllByFilter(
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
         [filter_non_dead_actor, &actors, &promise](
             Status status, std::vector<rpc::ActorTableData> &&result) {
           if (!result.empty()) {
