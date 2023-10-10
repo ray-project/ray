@@ -1,3 +1,4 @@
+# flake8: noqa
 import weakref
 from pkg_resources import packaging
 from typing import Any
@@ -6,8 +7,9 @@ from typing import Any
 # so handle the case where it isn't installed.
 try:
     import pydantic
-except:
+except ImportError:
     pydantic = None
+
 
 class CloudpickleableSchemaSerializer:
     def __init__(self, schema, core_config):
@@ -15,6 +17,7 @@ class CloudpickleableSchemaSerializer:
         self._core_config = core_config
 
         from pydantic_core import SchemaSerializer
+
         self._schema_serializer = SchemaSerializer(schema, core_config)
 
     def __reduce__(self):
@@ -43,12 +46,17 @@ class WeakRefWrapper:
 
 def monkeypatch_pydantic_2_for_cloudpickle():
     """XXX"""
-    pydantic._internal._model_construction.SchemaSerializer = CloudpickleableSchemaSerializer
+    pydantic._internal._model_construction.SchemaSerializer = (
+        CloudpickleableSchemaSerializer
+    )
     pydantic._internal._dataclasses.SchemaSerializer = CloudpickleableSchemaSerializer
     pydantic.type_adapter.SchemaSerializer = CloudpickleableSchemaSerializer
     pydantic._internal._model_construction._PydanticWeakRef = WeakRefWrapper
 
-IS_PYDANTIC_2 = pydantic is not None and packaging.version.parse(pydantic.__version__) > packaging.version.parse("2.0")
+
+IS_PYDANTIC_2 = pydantic is not None and packaging.version.parse(
+    pydantic.__version__
+) > packaging.version.parse("2.0")
 if IS_PYDANTIC_2:
     # TODO(edoakes): compare this against the version that has the fixes.
     monkeypatch_pydantic_2_for_cloudpickle()
@@ -64,6 +72,7 @@ if IS_PYDANTIC_2:
         root_validator,
         validator,
     )
+
     # TODO: we shouldn't depend on this path in pydantic>=2.0 as it's not public.
     from pydantic._internal._model_construction import ModelMetaclass
 elif pydantic is not None:

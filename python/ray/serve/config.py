@@ -3,14 +3,6 @@ import warnings
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
-from ray._private.utils import import_attr
-from ray.serve._private.constants import (
-    DEFAULT_GRPC_PORT,
-    DEFAULT_HTTP_HOST,
-    DEFAULT_HTTP_PORT,
-    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
-    SERVE_LOGGER_NAME,
-)
 from ray._private.pydantic_compat import (
     BaseModel,
     NonNegativeFloat,
@@ -18,6 +10,14 @@ from ray._private.pydantic_compat import (
     PositiveFloat,
     PositiveInt,
     validator,
+)
+from ray._private.utils import import_attr
+from ray.serve._private.constants import (
+    DEFAULT_GRPC_PORT,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    SERVE_LOGGER_NAME,
 )
 from ray.util.annotations import Deprecated, PublicAPI
 

@@ -5,8 +5,8 @@ import numpy as np
 import starlette.requests
 from fastapi import File, Request
 
-from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray._private.pydantic_compat import BaseModel, Field
+from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.utils import require_packages
 from ray.util.annotations import PublicAPI
 
