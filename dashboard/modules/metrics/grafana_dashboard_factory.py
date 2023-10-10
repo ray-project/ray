@@ -15,6 +15,9 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
 from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
+    data_dashboard_config,
+)
 
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
@@ -176,6 +179,9 @@ def generate_default_grafana_dashboard() -> Tuple[str, str]:
     Returns:
       Tuple with format content, uid
     """
+    # The Ray Data dashboard lives in the metrics page for now.
+    # TODO (Zandew): Move the data dashboard once the design is finalized.
+    default_dashboard_config.panels.extend(data_dashboard_config.panels)
     return _generate_grafana_dashboard(default_dashboard_config)
 
 
