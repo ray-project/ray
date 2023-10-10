@@ -28,7 +28,7 @@ from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
-    DeploymentArgsList,
+    DeploymentArgs,
     DeploymentRoute,
     DeploymentRouteList,
 )
@@ -289,7 +289,7 @@ class ServeControllerClient:
         deployments: List[Dict],
         _blocking: bool = True,
     ):
-        deployment_args_list = DeploymentArgsList()
+        deployment_args_list = []
         for deployment in deployments:
             deployment_args = get_deploy_args(
                 deployment["name"],
@@ -301,7 +301,7 @@ class ServeControllerClient:
                 docs_path=deployment["docs_path"],
             )
 
-            deployment_args_proto = deployment_args_list.deployment_args.add()
+            deployment_args_proto = DeploymentArgs()
             deployment_args_proto.deployment_name = deployment_args["deployment_name"]
             deployment_args_proto.deployment_config = deployment_args[
                 "deployment_config_proto_bytes"
@@ -316,11 +316,9 @@ class ServeControllerClient:
             if deployment_args["docs_path"]:
                 deployment_args_proto.docs_path = deployment_args["docs_path"]
 
-        ray.get(
-            self._controller.deploy_application.remote(
-                name, deployment_args_list.SerializeToString()
-            )
-        )
+            deployment_args_list.append(deployment_args_proto)
+
+        ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
         if _blocking:
             self._wait_for_application_running(name)
             for deployment in deployments:
