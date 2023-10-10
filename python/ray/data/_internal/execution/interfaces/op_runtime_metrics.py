@@ -1,12 +1,14 @@
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
 
 
 @dataclass

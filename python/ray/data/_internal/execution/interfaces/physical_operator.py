@@ -1,11 +1,5 @@
 from abc import ABC, abstractmethod
-<<<<<<< HEAD
 from typing import Any, Callable, Dict, List, Optional, Union
-||||||| 4b0aa5293a
-from typing import Callable, Dict, List, Optional, Union
-=======
-from typing import Callable, Dict, List, Union
->>>>>>> master
 
 import ray
 from .ref_bundle import RefBundle
@@ -17,6 +11,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.stats import StatsDict
+
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, StreamingObjectRefGenerator]
