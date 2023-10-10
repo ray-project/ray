@@ -379,3 +379,46 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
 
     def __repr__(self) -> str:
         return f"BuildOutputBlocksMapTransformFn(input_type={self._input_type})"
+
+
+def _splitrange(n, k):
+    """Calculates array lens of np.array_split().
+
+    This is the equivalent of
+    `[len(x) for x in np.array_split(range(n), k)]`.
+    """
+    base = n // k
+    output = [base] * k
+    rem = n - sum(output)
+    for i in range(len(output)):
+        if rem > 0:
+            output[i] += 1
+            rem -= 1
+    assert rem == 0, (rem, output, n, k)
+    assert sum(output) == n, (output, n, k)
+    return output
+
+
+class ApplyAdditionalSplitToOutputBlocks(MapTransformFn):
+    """Do additional splits on output blocks."""
+
+    def __init__(self, additional_split_factor: int):
+        """
+        Args:
+          additional_output_splits: The number of additional splits, must be
+          greater than 1.
+        """
+        assert additional_split_factor > 1
+        self._additional_split_factor = additional_split_factor
+        super().__init__(MapTransformFnDataType.Block, MapTransformFnDataType.Block)
+
+    def __call__(
+        self, blocks: Iterable[Block], target_max_block_size: int, ctx: TaskContext
+    ) -> Iterable[Block]:
+        for block in blocks:
+            block = BlockAccessor.for_block(block)
+            offset = 0
+            split_sizes = _splitrange(block.num_rows(), self._additional_split_factor)
+            for size in split_sizes:
+                yield block.slice(offset, offset + size)
+                offset += size

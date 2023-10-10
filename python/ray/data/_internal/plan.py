@@ -574,7 +574,7 @@ class ExecutionPlan:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            if self._run_with_new_execution_backend():
+            if self._context.new_execution_backend:
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
@@ -795,37 +795,6 @@ class ExecutionPlan:
             self._snapshot_blocks is not None
             and not self._stages_after_snapshot
             and not self._snapshot_blocks.is_cleared()
-        )
-
-    def _run_with_new_execution_backend(self) -> bool:
-        """Whether this plan should run with new backend."""
-        from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-        # The read-equivalent stage is handled in the following way:
-        # - Read only: handle with legacy backend
-        # - Read->randomize_block_order: handle with new backend
-        # Note that both are considered read equivalent, hence this extra check.
-        context = self._context
-        trailing_randomize_block_order_stage = (
-            self._stages_after_snapshot
-            and len(self._stages_after_snapshot) == 1
-            and isinstance(self._stages_after_snapshot[0], RandomizeBlocksStage)
-        )
-        return (
-            context.new_execution_backend
-            and (
-                not self.is_read_stage_equivalent()
-                or trailing_randomize_block_order_stage
-            )
-            and (
-                self._stages_after_snapshot
-                # If snapshot is cleared, we'll need to recompute from the source.
-                or (
-                    self._snapshot_blocks is not None
-                    and self._snapshot_blocks.is_cleared()
-                    and self._stages_before_snapshot
-                )
-            )
         )
 
     def require_preserve_order(self) -> bool:

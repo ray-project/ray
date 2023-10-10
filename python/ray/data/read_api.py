@@ -1,6 +1,5 @@
 import collections
 import logging
-import math
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -30,21 +29,19 @@ from ray.data._internal.logical.operators.from_operators import (
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.planner.plan_read_op import (
-    apply_output_blocks_handling_to_read_task,
-)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
     _is_local_scheme,
     _lazy_import_pyarrow_dataset,
+    _warn_on_high_parallelism,
     get_table_block_metadata,
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import WARN_PREFIX, DataContext
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -80,7 +77,6 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -338,7 +334,6 @@ def read_datasource(
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
     force_local = False
-    cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
         partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
@@ -355,7 +350,14 @@ def read_datasource(
             min_safe_parallelism,
             inmemory_size,
             reader,
-        ) = _get_reader(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
+        ) = _get_reader(
+            datasource,
+            ctx,
+            parallelism,
+            ctx.target_max_block_size,
+            local_uri,
+            read_args,
+        )
     else:
         # Prepare read in a remote task at same node.
         # NOTE: in Ray client mode, this is expected to be run on head node.
@@ -372,8 +374,8 @@ def read_datasource(
             get_reader.remote(
                 datasource,
                 ctx,
-                cur_pg,
                 parallelism,
+                ctx.target_max_block_size,
                 local_uri,
                 _wrap_arrow_serialization_workaround(read_args),
             )
@@ -383,63 +385,10 @@ def read_datasource(
     # removing LazyBlockList code path.
     read_tasks = reader.get_read_tasks(requested_parallelism)
 
-    # Compute the number of blocks the read will return. If the number of blocks is
-    # expected to be less than the requested parallelism, boost the number of blocks
-    # by adding an additional split into `k` pieces to each read task.
-    # TODO(swang): We should remove this codepath in favor of setting
-    # target_max_block_size on the read op.
-    additional_split_factor = None
-    if read_tasks:
-        if inmemory_size:
-            expected_block_size = inmemory_size / len(read_tasks)
-            logger.debug(f"Expected block size {expected_block_size}")
-            size_based_splits = round(
-                max(1, expected_block_size / ctx.target_max_block_size)
-            )
-        else:
-            size_based_splits = 1
-        logger.debug(f"Size based split factor {size_based_splits}")
-        estimated_num_blocks = len(read_tasks) * size_based_splits
-        logger.debug(f"Blocks after size splits {estimated_num_blocks}")
-
-        # Add more output splitting for each read task if needed.
-        if estimated_num_blocks < requested_parallelism:
-            k = math.ceil(requested_parallelism / estimated_num_blocks)
-            logger.info(
-                f"To satisfy the requested parallelism of {requested_parallelism}, "
-                f"each read task output is split into {k} smaller blocks."
-            )
-            estimated_num_blocks = estimated_num_blocks * k
-            additional_split_factor = k
-        logger.debug("Estimated num output blocks {estimated_num_blocks}")
-
-    else:
-        estimated_num_blocks = 0
-
-    for read_task in read_tasks:
-        apply_output_blocks_handling_to_read_task(
-            read_task,
-            ctx.target_max_block_size,
-            additional_split_factor,
-        )
+    if not ctx.use_streaming_executor:
+        _warn_on_high_parallelism(requested_parallelism, len(read_tasks))
 
     read_stage_name = f"Read{datasource.get_name()}"
-    available_cpu_slots = ray.available_resources().get("CPU", 1)
-    if (
-        requested_parallelism
-        and len(read_tasks) > available_cpu_slots * 4
-        and len(read_tasks) >= 5000
-    ):
-        logger.warn(
-            f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
-            "is more than 4x the number of available CPU slots in the cluster of "
-            f"{available_cpu_slots}. This can "
-            "lead to slowdowns during the data reading phase due to excessive "
-            "task creation. Reduce the parallelism to match with the available "
-            "CPU slots in the cluster, or set parallelism to -1 for Ray Data "
-            "to automatically determine the parallelism. "
-            "You can ignore this message if the cluster is expected to autoscale."
-        )
 
     block_list = LazyBlockList(
         read_tasks,
@@ -447,13 +396,13 @@ def read_datasource(
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )
-    block_list._estimated_num_blocks = estimated_num_blocks
+    block_list._estimated_num_blocks = len(read_tasks) if read_tasks else 0
 
     read_op = Read(
         datasource,
         reader,
-        requested_parallelism,
-        additional_split_factor,
+        parallelism,
+        inmemory_size,
         ray_remote_args,
     )
     logical_plan = LogicalPlan(read_op)
@@ -2323,8 +2272,8 @@ def from_torch(
 def _get_reader(
     ds: Datasource,
     ctx: DataContext,
-    cur_pg: Optional[PlacementGroup],
     parallelism: int,
+    target_max_block_size: int,
     local_uri: bool,
     kwargs: dict,
 ) -> Tuple[int, int, Optional[int], Reader]:
@@ -2333,7 +2282,6 @@ def _get_reader(
     Args:
         ds: Datasource to read from.
         ctx: Dataset config to use.
-        cur_pg: The current placement group, if any.
         parallelism: The user-requested parallelism, or -1 for autodetection.
         kwargs: Additional kwargs to pass to the reader.
 
@@ -2351,7 +2299,7 @@ def _get_reader(
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
     requested_parallelism, min_safe_parallelism, mem_size = _autodetect_parallelism(
-        parallelism, cur_pg, DataContext.get_current(), reader
+        parallelism, target_max_block_size, DataContext.get_current(), reader
     )
     return (
         requested_parallelism,

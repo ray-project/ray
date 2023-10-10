@@ -24,7 +24,7 @@ import numpy as np
 import ray
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-from ray.data.context import DataContext
+from ray.data.context import WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
     import pandas
@@ -99,9 +99,10 @@ def _check_pyarrow_version():
 
 def _autodetect_parallelism(
     parallelism: int,
-    cur_pg: Optional["PlacementGroup"],
+    target_max_block_size: int,
     ctx: DataContext,
     reader: Optional["Reader"] = None,
+    mem_size: Optional[int] = None,
     avail_cpus: Optional[int] = None,
 ) -> (int, int, Optional[int]):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
@@ -118,9 +119,14 @@ def _autodetect_parallelism(
 
     Args:
         parallelism: The user-requested parallelism, or -1 for auto-detection.
-        cur_pg: The current placement group, to be used for avail cpu calculation.
+        target_max_block_size: The target max block size to
+            produce. We pass this separately from the
+            DatasetContext because it may be set per-op instead of
+            per-Dataset.
         ctx: The current Dataset context to use for configs.
         reader: The datasource reader, to be used for data size estimation.
+        mem_size: If passed, then used to compute the parallelism according to
+            target_max_block_size.
         avail_cpus: Override avail cpus detection (for testing only).
 
     Returns:
@@ -130,19 +136,17 @@ def _autodetect_parallelism(
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
-    if reader:
+    if mem_size is None and reader:
         mem_size = reader.estimate_inmemory_data_size()
-        if mem_size is not None and not np.isnan(mem_size):
-            min_safe_parallelism = max(1, int(mem_size / ctx.target_max_block_size))
-            max_reasonable_parallelism = max(
-                1, int(mem_size / ctx.target_min_block_size)
-            )
-    else:
-        mem_size = None
+    if mem_size is not None and not np.isnan(mem_size):
+        min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
+        max_reasonable_parallelism = max(1, int(mem_size / ctx.target_min_block_size))
+
     if parallelism < 0:
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
         # Start with 2x the number of cores as a baseline, with a min floor.
+        cur_pg = ray.util.get_current_placement_group()
         avail_cpus = avail_cpus or _estimate_avail_cpus(cur_pg)
         parallelism = max(
             min(ctx.min_parallelism, max_reasonable_parallelism),
@@ -154,6 +158,7 @@ def _autodetect_parallelism(
             f"estimated_available_cpus={avail_cpus} and "
             f"estimated_data_size={mem_size}."
         )
+
     return parallelism, min_safe_parallelism, mem_size
 
 
@@ -196,6 +201,25 @@ def _estimate_available_parallelism() -> int:
     If we are currently in a placement group, take that into account."""
     cur_pg = ray.util.get_current_placement_group()
     return _estimate_avail_cpus(cur_pg)
+
+
+def _warn_on_high_parallelism(requested_parallelism, num_read_tasks):
+    available_cpu_slots = ray.available_resources().get("CPU", 1)
+    if (
+        requested_parallelism
+        and num_read_tasks > available_cpu_slots * 4
+        and num_read_tasks >= 5000
+    ):
+        logger.warn(
+            f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
+            "is more than 4x the number of available CPU slots in the cluster of "
+            f"{available_cpu_slots}. This can "
+            "lead to slowdowns during the data reading phase due to excessive "
+            "task creation. Reduce the parallelism to match with the available "
+            "CPU slots in the cluster, or set parallelism to -1 for Ray Data "
+            "to automatically determine the parallelism. "
+            "You can ignore this message if the cluster is expected to autoscale."
+        )
 
 
 def _check_import(obj, *, module: str, package: str) -> None:

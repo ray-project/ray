@@ -28,7 +28,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
 )
-from ray.data._internal.execution.operators.map_transformer import MapTransformer
+from ray.data._internal.execution.operators.map_transformer import (
+    ApplyAdditionalSplitToOutputBlocks,
+    MapTransformer,
+)
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
@@ -82,6 +85,22 @@ class MapOperator(OneToOneOperator, ABC):
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
         self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
         super().__init__(name, input_op, target_max_block_size)
+
+        # If set, then all output blocks will be split into
+        # this many sub-blocks. This is to avoid having
+        # too-large blocks, which may reduce parallelism for
+        # the subsequent stage.
+        self._additional_split_factor = None
+
+    def get_additional_split_factor(self) -> int:
+        if self._additional_split_factor is None:
+            return 1
+        return self._additional_split_factor
+
+    def set_additional_split_factor(self, k: int):
+        assert self._additional_split_factor is None, "Split factor already set"
+        self._additional_split_factor = k
+        self._name += f"->SplitBlocks({k})"
 
     @classmethod
     def create(
@@ -189,9 +208,16 @@ class MapOperator(OneToOneOperator, ABC):
 
             self._ray_remote_args_factory = RoundRobinAssign(locs)
 
+        map_transformer = self._map_transformer
+        # Apply additional block split if needed.
+        if self.get_additional_split_factor() > 1:
+            split_transformer = MapTransformer(
+                [ApplyAdditionalSplitToOutputBlocks(self.get_additional_split_factor())]
+            )
+            map_transformer = map_transformer.fuse(split_transformer)
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
-        self._map_transformer_ref = ray.put(self._map_transformer)
+        self._map_transformer_ref = ray.put(map_transformer)
 
     def add_input(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index

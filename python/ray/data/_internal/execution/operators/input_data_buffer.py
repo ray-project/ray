@@ -18,7 +18,7 @@ class InputDataBuffer(PhysicalOperator):
     def __init__(
         self,
         input_data: Optional[List[RefBundle]] = None,
-        input_data_factory: Callable[[], List[RefBundle]] = None,
+        input_data_factory: Callable[[int], List[RefBundle]] = None,
         num_output_blocks: Optional[int] = None,
     ):
         """Create an InputDataBuffer.
@@ -45,7 +45,9 @@ class InputDataBuffer(PhysicalOperator):
 
     def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:
-            self._input_data = self._input_data_factory()
+            self._input_data = self._input_data_factory(
+                self.actual_target_max_block_size
+            )
             self._is_input_initialized = True
             self._initialize_metadata()
         super().start(options)
@@ -55,6 +57,9 @@ class InputDataBuffer(PhysicalOperator):
 
     def get_next(self) -> RefBundle:
         return self._input_data.pop(0)
+
+    def _set_num_output_blocks(self, num_output_blocks):
+        self._num_output_blocks = num_output_blocks
 
     def num_outputs_total(self) -> Optional[int]:
         return self._num_output_blocks or self._num_output_bundles

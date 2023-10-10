@@ -38,7 +38,9 @@ def plan_all_to_all_op(
     elif isinstance(op, Repartition):
         fn = generate_repartition_fn(op._num_outputs, op._shuffle)
         if op._shuffle:
-            target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
+            target_max_block_size = (
+                DataContext.get_current().target_shuffle_max_block_size
+            )
     elif isinstance(op, Sort):
         fn = generate_sort_fn(op._sort_key)
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
