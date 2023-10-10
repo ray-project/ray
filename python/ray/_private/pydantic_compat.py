@@ -54,10 +54,19 @@ def monkeypatch_pydantic_2_for_cloudpickle():
     pydantic._internal._model_construction._PydanticWeakRef = WeakRefWrapper
 
 
-IS_PYDANTIC_2 = pydantic is not None and packaging.version.parse(
-    pydantic.__version__
-) > packaging.version.parse("2.0")
-if IS_PYDANTIC_2:
+if pydantic is None:
+    BaseModel = None
+    Extra = None
+    Field = None
+    NonNegativeFloat = None
+    NonNegativeInt = None
+    PositiveFloat = None
+    PositiveInt = None
+    ValidationError = None
+    root_validator = None
+    validator = None
+    ModelMetaclass = None
+elif packaging.version.parse(pydantic.__version__) > packaging.version.parse("2.0"):
     # TODO(edoakes): compare this against the version that has the fixes.
     monkeypatch_pydantic_2_for_cloudpickle()
     from pydantic.v1 import (
