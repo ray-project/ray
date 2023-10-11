@@ -352,8 +352,8 @@ doctest(
 )
 
 doctest(
-    name="doctest[train,gpu]"
-    files = [
+    name = "doctest[train,gpu]",
+    files=[
         "source/train/getting-started-pytorch.rst",
         "source/train/getting-started-pytorch-lightning.rst",
         "source/train/getting-started-transformers.rst",
