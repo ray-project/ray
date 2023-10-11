@@ -175,7 +175,6 @@ def _get_test_targets(
     """
     Get test targets that are owned by a particular team
     """
-
     query = _get_all_test_query(targets, team, except_tags, only_tags)
     test_targets = set(
         container.run_script_with_output(
