@@ -23,6 +23,7 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/state_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
@@ -165,10 +166,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \returns The mapping from node id to latest resource report.
   const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
 
-  /// Get aggregated resource load of all nodes.
-  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-  GetAggregatedResourceLoad() const;
-
   /// Get the placement group load info. This is used for autoscaler.
   const std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const {
     if (placement_group_load_.has_value()) {
@@ -178,14 +175,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   }
 
  private:
-  /// Aggregate nodes' pending task info.
-  ///
-  /// \param resources_data A node's pending task info (by shape).
-  /// \param aggregate_load[out] The aggregate pending task info (across the cluster).
-  void FillAggregateLoad(const rpc::ResourcesData &resources_data,
-                         std::unordered_map<google::protobuf::Map<std::string, double>,
-                                            rpc::ResourceDemand> *aggregate_load) const;
-
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.
   instrumented_io_context &io_context_;
@@ -220,34 +209,3 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
 
 }  // namespace gcs
 }  // namespace ray
-
-namespace std {
-template <>
-struct hash<google::protobuf::Map<std::string, double>> {
-  size_t operator()(google::protobuf::Map<std::string, double> const &k) const {
-    size_t seed = k.size();
-    for (auto &elem : k) {
-      seed ^= std::hash<std::string>()(elem.first);
-      seed ^= std::hash<double>()(elem.second);
-    }
-    return seed;
-  }
-};
-
-template <>
-struct equal_to<google::protobuf::Map<std::string, double>> {
-  bool operator()(const google::protobuf::Map<std::string, double> &left,
-                  const google::protobuf::Map<std::string, double> &right) const {
-    if (left.size() != right.size()) {
-      return false;
-    }
-    for (const auto &entry : left) {
-      auto iter = right.find(entry.first);
-      if (iter == right.end() || iter->second != entry.second) {
-        return false;
-      }
-    }
-    return true;
-  }
-};
-}  // namespace std

@@ -32,7 +32,7 @@ def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
 #  node B: 0 pending task, but **CPU used = 1**
 #
 # @pytest.mark.parametrize("mode", (["single_node", "multi_node"]))
-@pytest.mark.parametrize("mode", (["single_node"]))
+@pytest.mark.parametrize("mode", (["single_node", "multi_node"]))
 def test_scheduled_task_no_pending_demand(mode):
 
     # So that head node will need to dispatch tasks to worker node.

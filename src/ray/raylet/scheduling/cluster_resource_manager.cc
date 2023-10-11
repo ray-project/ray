@@ -71,6 +71,15 @@ void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
   }
 }
 
+// TODO(vitsai): We want to ensure (fix + write test) that:
+// 1. UpdateNode here and `GcsResourceManager::UpdateNodeResourceUsage`
+// are functionally equivalent.
+//
+// 2. Remove ClusterResourceManager from autoscaler path
+//
+// 3. Update usage and load in lockstep and use that for reporting
+//    - prefer gcsautoscalerstatemanager but either is fine
+//
 bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
                                         const rpc::ResourcesData &resource_data) {
   if (!nodes_.contains(node_id)) {
