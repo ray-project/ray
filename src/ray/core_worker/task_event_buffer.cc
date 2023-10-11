@@ -212,22 +212,23 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
   absl::MutexLock lock(&mutex_);
 
   // No data to send.
-  if (status_events_.empty() && dropped_task_attempts_since_last_flush_.empty()) {
+  if (status_events_.empty() && dropped_task_attempts_unreported_.empty()) {
     return;
   }
 
   // Get data loss info.
   size_t num_dropped_task_attempts_to_send = 0;
-  auto num_batch_size = RayConfig::instance().task_events_drop_task_attempt_batch_size();
+  auto num_batch_size =
+      RayConfig::instance().task_events_dropped_task_attempt_batch_size();
   // Iterate and erase task attempt dropped being tracked in buffer.
   while ((num_batch_size < 0 ||
           num_dropped_task_attempts_to_send < static_cast<size_t>(num_batch_size)) &&
-         !dropped_task_attempts_since_last_flush_.empty()) {
+         !dropped_task_attempts_unreported_.empty()) {
     // If there's more dropped task status events we are tracking, and we have not
     // reached the batch size limit, we take the first one.
-    auto itr = dropped_task_attempts_since_last_flush_.begin();
+    auto itr = dropped_task_attempts_unreported_.begin();
     dropped_task_attempts_to_send->insert(*itr);
-    dropped_task_attempts_since_last_flush_.erase(itr);
+    dropped_task_attempts_unreported_.erase(itr);
     num_dropped_task_attempts_to_send++;
   }
 
@@ -445,7 +446,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     return;
   }
 
-  if (dropped_task_attempts_since_last_flush_.count(status_event->GetTaskAttempt())) {
+  if (dropped_task_attempts_unreported_.count(status_event->GetTaskAttempt())) {
     // This task attempt has been dropped before, so we drop this event.
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
@@ -454,8 +455,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
 
   if (status_events_.full()) {
     const auto &to_evict = status_events_.front();
-    auto inserted =
-        dropped_task_attempts_since_last_flush_.insert(to_evict->GetTaskAttempt());
+    auto inserted = dropped_task_attempts_unreported_.insert(to_evict->GetTaskAttempt());
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
 

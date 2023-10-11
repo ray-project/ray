@@ -387,8 +387,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Buffered task attempts that were dropped due to status events being dropped.
   /// This will be sent to GCS to surface the dropped task attempts.
-  absl::flat_hash_set<TaskAttempt> dropped_task_attempts_since_last_flush_
-      GUARDED_BY(mutex_);
+  absl::flat_hash_set<TaskAttempt> dropped_task_attempts_unreported_ GUARDED_BY(mutex_);
 
   /// Buffered task profile events. A FIFO queue to be sent to GCS.
   boost::circular_buffer<std::unique_ptr<TaskEvent>> profile_events_
