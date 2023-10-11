@@ -30,7 +30,7 @@ You can propose changes to the main project by submitting a pull request to the 
 Prepare a Python virtual environment
 ------------------------------------
 
-It's recommended to create a virtual environment to prevent version conflicts and to develop with an isolated, project-specific Python setup.
+Create a virtual environment to prevent version conflicts and to develop with an isolated, project-specific Python setup.
 
 .. tab-set::
 
