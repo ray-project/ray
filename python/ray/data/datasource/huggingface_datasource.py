@@ -104,13 +104,13 @@ class _HuggingFaceDatasourceReader(Reader):
                 # See: https://github.com/huggingface/datasets/issues/3444
                 if not isinstance(batch, (pyarrow.Table, pd.DataFrame, dict, np.array)):
                     raise ValueError(
-                        f"Batch format {type(batch)} is not supported. Only the "
+                        f"Batch format {type(batch)} isn't supported. Only the "
                         f"following batch formats are supported: "
                         f"dict (corresponds to `None` in `dataset.with_format()`), "
                         f"pyarrow.Table, np.array, pd.DataFrame."
                     )
-                # With Ray Data strict mode, np.arrays must be wrapped in a dict
-                # (subsequently converted to pyarrow.Table).
+                # Ensure np.arrays are wrapped in a dict
+                # (subsequently converted to a pyarrow.Table).
                 if isinstance(batch, np.ndarray):
                     batch = {"item": batch}
                 if isinstance(batch, dict):
