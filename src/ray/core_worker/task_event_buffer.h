@@ -190,9 +190,10 @@ enum TaskEventBufferCounter {
 ///   1. If any of the gRPC call failed, the task events will be dropped and warnings
 ///   logged. This is probably fine since this usually indicated a much worse issue.
 ///
-///   2. More than `RAY_task_events_max_num_events_by_kind_in_worker` tasks have been
-///   stored in the buffer, any new task events will be dropped. In this case, the number
-///   of dropped task events will also be included in the next flush to surface this.
+///   2. More than `RAY_task_events_max_num_status_events_buffer_on_worker` tasks have
+///   been stored in the buffer, any new task events will be dropped. In this case, the
+///   number of dropped task events will also be included in the next flush to surface
+///   this.
 ///
 /// No overloading of GCS
 /// =====================
@@ -299,15 +300,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Get data related to task profile events to be send to GCS.
   ///
   /// \param[out] profile_events_to_send Task profile events to be sent.
-  /// \param dropped_task_attempts_to_send Task attempts that were dropped due to
-  ///        status events being dropped. We will not send any profile events for these
-  ///        task attempts.
-  /// \param status_events_to_send Task status events that will be sent to GCS. We will
-  ///        prioritize sending profile events for these task attempts first.
   void GetTaskProfileEventsToSend(
-      std::vector<std::unique_ptr<TaskEvent>> *profile_events_to_send,
-      const std::vector<std::unique_ptr<TaskEvent>> &status_events_to_send,
-      const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send)
+      std::vector<std::unique_ptr<TaskEvent>> *profile_events_to_send)
       LOCKS_EXCLUDED(profile_mutex_);
 
   /// Get the task events to GCS.
@@ -388,18 +382,21 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task status events.
-  boost::circular_buffer<std::unique_ptr<TaskEvent>> status_events_ ABSL_GUARDED_BY(mutex_);
+  boost::circular_buffer<std::unique_ptr<TaskEvent>> status_events_
+      ABSL_GUARDED_BY(mutex_);
 
   /// Buffered task attempts that were dropped due to status events being dropped.
   /// This will be sent to GCS to surface the dropped task attempts.
-  absl::flat_hash_set<TaskAttempt> dropped_task_attempts_since_last_flush_
-      GUARDED_BY(mutex_);
+  absl::flat_hash_set<TaskAttempt> dropped_task_attempts_unreported_ GUARDED_BY(mutex_);
 
-  /// Buffered task profile events. This is not a circular buffer since we don't need
-  /// to keep the most recent profile events. Once limit is reached, we will just drop
-  /// any new profile events.
-  absl::flat_hash_map<TaskAttempt, std::vector<std::unique_ptr<TaskEvent>>>
-      profile_events_ GUARDED_BY(profile_mutex_);
+  /// Buffered task profile events. A FIFO queue to be sent to GCS.
+  boost::circular_buffer<std::unique_ptr<TaskEvent>> profile_events_
+      GUARDED_BY(profile_mutex_);
+
+  /// Track profile events by task attempt. This is used to enforce the limit of
+  /// `RAY_` per task attempt.
+  absl::flat_hash_map<TaskAttempt, size_t> profile_events_count_by_task_attempt_
+      GUARDED_BY(profile_mutex_);
 
   /// Stats counter map.
   CounterMapThreadSafe<TaskEventBufferCounter> stats_counter_;
