@@ -1,38 +1,38 @@
-import os
+import functools
 import logging
+import os
 import platform
 import queue
 import sys
 import threading
 import time
-from dataclasses import dataclass
-from datetime import datetime
-import functools
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 import warnings
+from dataclasses import dataclass
+from datetime import datetime
 
 import ray
 from ray.air._internal.session import _get_session
-from ray.air._internal.util import StartTraceback, RunnerThread
+from ray.air._internal.util import RunnerThread, StartTraceback
 from ray.air.constants import (
-    _RESULT_FETCH_TIMEOUT,
     _ERROR_FETCH_TIMEOUT,
+    _RESULT_FETCH_TIMEOUT,
     SESSION_MISUSE_LOG_ONCE_KEY,
-    TIMESTAMP,
     TIME_THIS_ITER_S,
+    TIMESTAMP,
 )
 from ray.data import Dataset
 from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import StorageContext
 from ray.train.constants import (
+    CHECKPOINT_DIR_NAME,
     DETAILED_AUTOFILLED_KEYS,
+    RAY_CHDIR_TO_TRIAL_DIR,
+    TIME_TOTAL_S,
     WORKER_HOSTNAME,
     WORKER_NODE_IP,
     WORKER_PID,
-    TIME_TOTAL_S,
-    RAY_CHDIR_TO_TRIAL_DIR,
-    CHECKPOINT_DIR_NAME,
 )
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -42,7 +42,6 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
-
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -149,10 +148,6 @@ class _TrainSession:
         self.local_world_size = local_world_size
         self.world_size = world_size
 
-        # Checkpoint configurations
-        # Only used if checkpoint_upload_from_workers is True.
-        self.legacy_checkpoint_uri = None
-
         assert storage
         logger.debug(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
 
@@ -246,8 +241,7 @@ class _TrainSession:
         self.continue_lock.release()
 
         # Force a final (blocking) sync of artifacts in the trial path to storage.
-        if _use_storage_context():
-            self.storage.persist_artifacts(force=True)
+        self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including

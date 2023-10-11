@@ -114,6 +114,7 @@ from ray.data.context import (
     DataContext,
 )
 from ray.data.datasource import (
+    BigQueryDatasource,
     BlockWritePathProvider,
     Connection,
     CSVDatasource,
@@ -273,6 +274,7 @@ class Dataset:
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
+        self._write_ds = None
 
     @staticmethod
     def copy(
@@ -3279,6 +3281,7 @@ class Dataset:
             sql=sql,
         )
 
+    @PublicAPI(stability="alpha")
     @ConsumptionAPI
     def write_mongo(
         self,
@@ -3345,6 +3348,50 @@ class Dataset:
             uri=uri,
             database=database,
             collection=collection,
+        )
+
+    @ConsumptionAPI
+    def write_bigquery(
+        self,
+        project_id: str,
+        dataset: str,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Write the dataset to a BigQuery dataset table.
+
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Examples:
+             .. testcode::
+                :skipif: True
+
+                import ray
+                import pandas as pd
+
+                docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+                ds.write_bigquery(
+                    BigQueryDatasource(),
+                    project_id="my_project_id",
+                    dataset="my_dataset_table",
+                )
+
+        Args:
+            project_id: The name of the associated Google Cloud Project that hosts
+                the dataset to read. For more information, see details in
+                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+            dataset: The name of the dataset in the format of ``dataset_id.table_id``.
+                The dataset is created if it doesn't already exist. The table_id is
+                overwritten if it exists.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+        """
+
+        self.write_datasource(
+            BigQueryDatasource(),
+            ray_remote_args=ray_remote_args,
+            dataset=dataset,
+            project_id=project_id,
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -4768,6 +4815,8 @@ class Dataset:
             * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
 
         """
+        if self._write_ds is not None and self._write_ds._plan.has_computed_output():
+            return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
