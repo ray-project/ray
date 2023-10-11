@@ -19,38 +19,33 @@ DEEPSPEED_CONFIG = {
         "loss_scale_window": 1000,
         "initial_scale_power": 16,
         "hysteresis": 2,
-        "min_loss_scale": 1
+        "min_loss_scale": 1,
     },
-    "bf16": {
-        "enabled": "auto"
-    },
+    "bf16": {"enabled": "auto"},
     "optimizer": {
         "type": "AdamW",
         "params": {
             "lr": "auto",
             "weight_decay": "auto",
             "torch_adam": True,
-            "adam_w_mode": True
-        }
+            "adam_w_mode": True,
+        },
     },
     "zero_optimization": {
         "stage": 2,
-        "offload_optimizer": {
-            "device": "cpu",
-            "pin_memory": True
-        },
+        "offload_optimizer": {"device": "cpu", "pin_memory": True},
         "allgather_partitions": True,
         "allgather_bucket_size": 2e8,
         "overlap_comm": True,
         "reduce_scatter": True,
-        "contiguous_gradients": True
+        "contiguous_gradients": True,
     },
     "gradient_accumulation_steps": 1,
     "gradient_clipping": "auto",
     "steps_per_print": 2000,
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
-    "wall_clock_breakdown": False
+    "wall_clock_breakdown": False,
 }
 
 
