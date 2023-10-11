@@ -416,7 +416,7 @@ Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platfor
    * - 6 character Git SHA prefix
      - A specific development build (uses a SHA from the Github ``master``, e.g. ``8960af``).
 
-The optional ``Python version`` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. ``py37``, ``py38``, ``py39`` and ``py310``. If unspecified, the tag points to an image using ``Python 3.7``.
+The optional ``Python version`` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. ``py38``, ``py39`` and ``py310``. If unspecified, the tag points to an image using ``Python 3.8``.
 
 The optional ``Platform`` tag specifies the platform where the image is intended for:
 
@@ -520,12 +520,12 @@ Docker images for Python 3.9.
 
     .. group-tab:: ray (Python 3.9)
 
-        Ray version: nightly (`cc983fc <https://github.com/ray-project/ray/commit/cc983fc3e64c1ba215e981a43dd0119c03c74ff1>`_)
+        Ray version: nightly (`fd227e2 <https://github.com/ray-project/ray/commit/fd227e29c41a9650fbe847e4815f58fb67ecc86f>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
     .. group-tab:: ray-ml (Python 3.9)
 
-        Ray version: nightly (`cc983fc <https://github.com/ray-project/ray/commit/cc983fc3e64c1ba215e981a43dd0119c03c74ff1>`_)
+        Ray version: nightly (`fd227e2 <https://github.com/ray-project/ray/commit/fd227e29c41a9650fbe847e4815f58fb67ecc86f>`_)
 
         .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt

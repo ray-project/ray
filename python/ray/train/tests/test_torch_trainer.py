@@ -1,23 +1,22 @@
 import contextlib
-import uuid
-
-import pytest
-import time
-import torch
 import os
 import tempfile
+import time
+import uuid
+from unittest.mock import patch
+
+import pytest
+import torch
 
 import ray
+import ray.train as train
+from ray.cluster_utils import Cluster
+from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
-from ray.train.torch import TorchPredictor, TorchTrainer
-from ray.train import Checkpoint, RunConfig, ScalingConfig
-from ray.train.torch import TorchConfig, TorchCheckpoint
+from ray.train.torch import TorchCheckpoint, TorchConfig, TorchPredictor, TorchTrainer
 from ray.train.trainer import TrainingFailedError
-import ray.train as train
-from unittest.mock import patch
-from ray.cluster_utils import Cluster
 
 
 @pytest.fixture

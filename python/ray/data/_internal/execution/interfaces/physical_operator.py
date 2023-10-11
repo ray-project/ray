@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Union
 
 import ray
 from .ref_bundle import RefBundle
@@ -59,6 +59,7 @@ class DataOpTask(OpTask):
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self._num_output_blocks = 0
 
     def get_waitable(self) -> StreamingObjectRefGenerator:
         return self._streaming_gen
@@ -91,6 +92,14 @@ class DataOpTask(OpTask):
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
+
+    def add_num_output_blocks(self, num_output_blocks):
+        self._num_output_blocks += num_output_blocks
+
+    def get_num_output_blocks(
+        self,
+    ):
+        return self._num_output_blocks
 
 
 class MetadataOpTask(OpTask):
@@ -154,6 +163,7 @@ class PhysicalOperator(Operator):
         self._inputs_complete = not input_dependencies
         self._dependents_complete = False
         self._started = False
+        self._estimated_output_blocks = None
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -190,14 +200,17 @@ class PhysicalOperator(Operator):
         """
         return ""
 
-    def num_outputs_total(self) -> Optional[int]:
-        """Returns the total number of output bundles of this operator, if known.
+    def num_outputs_total(self) -> int:
+        """Returns the total number of output bundles of this operator.
 
+        The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
         """
+        if self._estimated_output_blocks is not None:
+            return self._estimated_output_blocks
         if len(self.input_dependencies) == 1:
             return self.input_dependencies[0].num_outputs_total()
-        return None
+        raise AttributeError
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.

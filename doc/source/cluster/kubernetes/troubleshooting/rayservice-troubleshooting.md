@@ -63,7 +63,7 @@ kubectl exec -it $HEAD_POD -- ray summary actors
 #     CLASS_NAME                          STATE_COUNTS
 # 0   ServeController                     ALIVE: 1
 # 1   ServeReplica:fruit_app_OrangeStand  ALIVE: 1
-# 2   HTTPProxyActor                      ALIVE: 3
+# 2   ProxyActor                          ALIVE: 3
 # 3   ServeReplica:math_app_DAGDriver     ALIVE: 1
 # 4   ServeReplica:math_app_Multiplier    ALIVE: 1
 # 5   ServeReplica:math_app_create_order  ALIVE: 1

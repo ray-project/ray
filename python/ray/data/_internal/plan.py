@@ -571,7 +571,7 @@ class ExecutionPlan:
                     "are freed up. A common reason is that cluster resources are "
                     "used by Actors or Tune trials; see the following link "
                     "for more details: "
-                    "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
+                    "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
@@ -646,6 +646,17 @@ class ExecutionPlan:
                 stats.global_bytes_restored = int(
                     reply.store_stats.restored_bytes_total
                 )
+
+            stats.dataset_bytes_spilled = 0
+
+            def collect_stats(cur_stats):
+                stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
+                    "obj_store_mem_spilled", 0
+                )
+                for parent in cur_stats.parents:
+                    collect_stats(parent)
+
+            collect_stats(stats)
 
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks

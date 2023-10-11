@@ -35,7 +35,7 @@ RAY_CONFIG(bool, event_stats_metrics, false)
 RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
 /// Whether to enable cluster authentication.
-RAY_CONFIG(bool, enable_cluster_auth, false)
+RAY_CONFIG(bool, enable_cluster_auth, true)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available to
@@ -862,3 +862,7 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
+
+// Python GCS client number of reconnection retry and timeout.
+RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
+RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
