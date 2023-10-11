@@ -6100,65 +6100,6 @@
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
-- name: pipelined_training_50_gb
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: manual
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_data_pipelined_test.sh
-    cluster_compute: pipelined_training_compute.yaml
-
-  run:
-    timeout: 4800
-    script: python pipelined_training.py --epochs 1
-    wait_for_nodes:
-      num_nodes: 15
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: pipelined_training_compute_gce.yaml
-
-- name: pipelined_ingestion_1500_gb
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: manual
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-        - RAY_record_ref_creation_sites=1
-      post_build_script: byod_data_pipelined_test.sh
-    cluster_compute: pipelined_ingestion_compute.yaml
-
-  run:
-    timeout: 9600
-    script: python pipelined_training.py --epochs 2 --num-windows 5 --num-files 915
-      --debug
-
-    wait_for_nodes:
-      num_nodes: 21
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: pipelined_training_compute_gce.yaml
-
 - name: dataset_shuffle_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
@@ -6424,40 +6365,6 @@
       frequency: manual
       cluster:
         cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
-
-- name: chaos_pipelined_ingestion_1500_gb_15_windows
-  group: data-tests
-  working_dir: nightly_tests
-
-  stable: false
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-        - RAY_record_ref_creation_sites=1
-      post_build_script: byod_data_pipelined_test.sh
-    cluster_compute: dataset/pipelined_ingestion_compute.yaml
-
-  run:
-    timeout: 7200
-    wait_for_nodes:
-      num_nodes: 21
-    prepare: ' python setup_chaos.py --node-kill-interval 300'
-    script: python dataset/pipelined_training.py --epochs 1 --num-windows 15  --num-files
-      915 --debug
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: dataset/pipelined_ingestion_compute_gce.yaml
 
 - name: chaos_dataset_shuffle_push_based_sort_1tb
   group: data-tests
