@@ -28,7 +28,6 @@ def test_huggingface_imports(ray_start_4_cpus):
         # Verify that importing these modules do not fail due to import errors.
         import ray.train.huggingface  # noqa: F401, F811
         from ray.train.huggingface import (
-            AccelerateTrainer,
             HuggingFacePredictor,
             HuggingFaceTrainer,
             TransformersCheckpoint,
@@ -37,15 +36,11 @@ def test_huggingface_imports(ray_start_4_cpus):
         )
 
         # Real values are not needed for these tests.
-        DUMMY_TRAIN_LOOP_PER_WORKER = None
         DUMMY_MODEL = None
         DUMMY_PATH = None
         DUMMY_PIPELINE = None
         DUMMY_CHECKPOINT = None
         DUMMY_TRAINER_INIT_PER_WORKER = None
-
-        with pytest.raises(ImportError, match="accelerate"):
-            AccelerateTrainer(DUMMY_TRAIN_LOOP_PER_WORKER)
 
         with pytest.raises(ImportError, match="transformers"):
             HuggingFacePredictor(DUMMY_PIPELINE)

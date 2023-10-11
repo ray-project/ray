@@ -10,107 +10,9 @@ import ray
 import ray.train as train
 from ray.train import Checkpoint, ScalingConfig
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
-from ray.train.huggingface import AccelerateTrainer
+from ray.train.torch import TorchTrainer
 
-ACCELERATE_CONFIG_CPU = """compute_environment: LOCAL_MACHINE
-deepspeed_config: {}
-distributed_type: MULTI_CPU
-downcast_bf16: 'no'
-dynamo_config: {}
-fsdp_config: {}
-machine_rank: 0
-main_process_ip: ''
-main_process_port: 1
-main_training_function: main
-megatron_lm_config: {}
-mixed_precision: 'no'
-num_machines: 2
-num_processes: 1
-rdzv_backend: static
-same_network: false
-tpu_env: []
-tpu_use_cluster: false
-tpu_use_sudo: false
-use_cpu: true
-"""
-
-ACCELERATE_CONFIG_GPU = """compute_environment: LOCAL_MACHINE
-deepspeed_config: {}
-distributed_type: MULTI_GPU
-downcast_bf16: 'no'
-dynamo_config: {}
-fsdp_config: {}
-gpu_ids: all
-machine_rank: 0
-main_process_ip: ''
-main_process_port: 1
-main_training_function: main
-megatron_lm_config: {}
-mixed_precision: 'no'
-num_machines: 2
-num_processes: 1
-rdzv_backend: static
-same_network: false
-tpu_env: []
-tpu_use_cluster: false
-tpu_use_sudo: false
-use_cpu: false
-"""
-
-ACCELERATE_CONFIG_DEEPSPEED = """compute_environment: LOCAL_MACHINE
-deepspeed_config:
-  deepspeed_hostfile: ''
-  deepspeed_multinode_launcher: pdsh
-  gradient_accumulation_steps: 1
-  offload_optimizer_device: cpu
-  offload_param_device: none
-  zero3_init_flag: false
-  zero_stage: 2
-distributed_type: DEEPSPEED
-downcast_bf16: 'no'
-dynamo_config: {}
-fsdp_config: {}
-machine_rank: 0
-main_process_ip: ''
-main_process_port: 1
-main_training_function: main
-megatron_lm_config: {}
-mixed_precision: 'no'
-num_machines: 2
-num_processes: 1
-rdzv_backend: static
-same_network: false
-tpu_env: []
-tpu_use_cluster: false
-tpu_use_sudo: false
-use_cpu: false
-"""
-
-ACCELERATE_CONFIG_DEEPSPEED_JSON = """compute_environment: LOCAL_MACHINE
-deepspeed_config:
-  deepspeed_config_file: deepspeed.json
-  deepspeed_multinode_launcher: standard
-  zero3_init_flag: false
-distributed_type: DEEPSPEED
-downcast_bf16: 'no'
-dynamo_config: {}
-fsdp_config: {}
-machine_rank: 0
-main_process_ip: ''
-main_process_port: 1
-main_training_function: main
-megatron_lm_config: {}
-num_machines: 2
-num_processes: 1
-rdzv_backend: static
-same_network: true
-tpu_env: []
-tpu_use_cluster: false
-tpu_use_sudo: false
-use_cpu: false
-"""
-
-DEEPSPEED_JSON = """{
+DEEPSPEED_CONFIG = {
     "fp16": {
         "enabled": "auto",
         "loss_scale": 0,
@@ -127,29 +29,29 @@ DEEPSPEED_JSON = """{
         "params": {
             "lr": "auto",
             "weight_decay": "auto",
-            "torch_adam": true,
-            "adam_w_mode": true
+            "torch_adam": True,
+            "adam_w_mode": True
         }
     },
     "zero_optimization": {
         "stage": 2,
         "offload_optimizer": {
             "device": "cpu",
-            "pin_memory": true
+            "pin_memory": True
         },
-        "allgather_partitions": true,
+        "allgather_partitions": True,
         "allgather_bucket_size": 2e8,
-        "overlap_comm": true,
-        "reduce_scatter": true,
-        "contiguous_gradients": true
+        "overlap_comm": True,
+        "reduce_scatter": True,
+        "contiguous_gradients": True
     },
     "gradient_accumulation_steps": 1,
     "gradient_clipping": "auto",
     "steps_per_print": 2000,
     "train_batch_size": "auto",
     "train_micro_batch_size_per_gpu": "auto",
-    "wall_clock_breakdown": false
-}"""
+    "wall_clock_breakdown": False
+}
 
 
 @pytest.fixture
@@ -249,19 +151,8 @@ def linear_train_func(accelerator: Accelerator, config):
     return results
 
 
-@pytest.mark.parametrize(
-    "accelerate_config_file_contents",
-    [
-        "ACCELERATE_CONFIG_DEEPSPEED_JSON",
-        "ACCELERATE_CONFIG_DEEPSPEED",
-        "ACCELERATE_CONFIG_CPU",
-        "ACCELERATE_CONFIG_GPU",
-    ],
-)
-def test_accelerate_linear(ray_2_node_2_gpu, accelerate_config_file_contents, tmpdir):
-    # Using strings to make test names nicer
-    accelerate_config_file_contents = globals()[accelerate_config_file_contents]
-
+@pytest.mark.parametrize("use_gpu", [True, False])
+def test_accelerate_base(ray_2_node_2_gpu, tmpdir, use_gpu):
     def train_func(config):
         accelerator = Accelerator()
         assert accelerator.device == train.torch.get_device()
@@ -274,28 +165,39 @@ def test_accelerate_linear(ray_2_node_2_gpu, accelerate_config_file_contents, tm
         assert len(result) == epochs
         assert result[-1]["loss"] < result[0]["loss"]
 
-    accelerate_config_path = tmpdir / "accelerate_config.yaml"
-    deepspeed_config_path = tmpdir / "deepspeed.json"
-
-    accelerate_config_file_contents = accelerate_config_file_contents.replace(
-        "deepspeed.json", f"'{deepspeed_config_path}'"
-    )
-    with open(accelerate_config_path, "w") as f:
-        f.write(accelerate_config_file_contents)
-    with open(deepspeed_config_path, "w") as f:
-        f.write(DEEPSPEED_JSON)
-
     epochs = 3
-    scaling_config = ScalingConfig(
-        num_workers=2,
-        use_gpu=accelerate_config_file_contents != ACCELERATE_CONFIG_CPU,
-    )
+    scaling_config = ScalingConfig(num_workers=2, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
 
-    trainer = AccelerateTrainer(
+    trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        accelerate_config=accelerate_config_path,
+        scaling_config=scaling_config,
+    )
+    trainer.fit()
+
+
+def test_accelerate_deepspeed(ray_2_node_2_gpu, tmpdir):
+    from accelerate import DeepSpeedPlugin
+
+    def train_func(config):
+        deepspeed_plugin = DeepSpeedPlugin(hf_ds_config=DEEPSPEED_CONFIG)
+        accelerator = Accelerator(deepspeed_plugin=deepspeed_plugin)
+
+        assert accelerator.device == train.torch.get_device()
+        assert accelerator.process_index == train.get_context().get_world_rank()
+        assert accelerator.local_process_index == train.get_context().get_local_rank()
+        result = linear_train_func(accelerator, config)
+        assert len(result) == epochs
+        assert result[-1]["loss"] < result[0]["loss"]
+
+    epochs = 3
+    scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        train_loop_config=config,
         scaling_config=scaling_config,
     )
     trainer.fit()
@@ -315,10 +217,9 @@ def test_accelerate_e2e(ray_start_4_cpus, num_workers):
             train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     scaling_config = ScalingConfig(num_workers=num_workers)
-    trainer = AccelerateTrainer(
+    trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
-        accelerate_config={},
     )
     trainer.fit()
 
