@@ -408,7 +408,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTest, TestFailedFlush);
   FRIEND_TEST(TaskEventBufferTest, TestBackPressure);
   FRIEND_TEST(TaskEventBufferTest, TestForcedFlush);
-  FRIEND_TEST(TaskEventBufferTestLimitBuffer, TestBufferSizeLimit);
+  FRIEND_TEST(TaskEventBufferTestLimitBuffer, TestBufferSizeLimitStatusEvents);
+  FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents);
   FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask);
 };
 
