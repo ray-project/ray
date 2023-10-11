@@ -37,7 +37,6 @@ def test_get_test_targets() -> None:
             "//python/ray/tests:good_test_02",
             "//python/ray/tests:good_test_03",
             "//python/ray/tests:flaky_test_01",
-            "",
         ]
         with mock.patch(
             "subprocess.check_output",
@@ -46,15 +45,27 @@ def test_get_test_targets() -> None:
             "ci.ray_ci.tester_container.TesterContainer.install_ray",
             return_value=None,
         ):
+            assert set(
+                _get_test_targets(
+                    TesterContainer("core"),
+                    "targets",
+                    "core",
+                    yaml_dir=tmp,
+                )
+            ) == {
+                "//python/ray/tests:good_test_01",
+                "//python/ray/tests:good_test_02",
+                "//python/ray/tests:good_test_03",
+            }
+
             assert _get_test_targets(
                 TesterContainer("core"),
                 "targets",
                 "core",
                 yaml_dir=tmp,
+                get_flaky_tests=True,
             ) == [
-                "//python/ray/tests:good_test_01",
-                "//python/ray/tests:good_test_02",
-                "//python/ray/tests:good_test_03",
+                "//python/ray/tests:flaky_test_01",
             ]
 
 

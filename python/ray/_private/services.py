@@ -19,12 +19,14 @@ from typing import List, Optional, IO, AnyStr
 
 # Import psutil after ray so the packaged version is used.
 import psutil
+from filelock import FileLock
 
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
+from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 
 resource = None
 if sys.platform != "win32":
@@ -649,6 +651,11 @@ def node_ip_address_from_perspective(address: str):
     return node_ip_address
 
 
+# NOTE: This API should not be used when you obtain the
+# IP address when ray.init is not called because
+# it cannot find the IP address if it is specified by
+# ray start --node-ip-address. You should instead use
+# get_cached_node_ip_address.
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
@@ -658,6 +665,103 @@ def get_node_ip_address(address="8.8.8.8:53"):
         # https://github.com/ray-project/ray/issues/18730.
         return "127.0.0.1"
     return node_ip_address_from_perspective(address)
+
+
+def get_cached_node_ip_address(session_dir: str) -> str:
+    """Get a node address cached on this session.
+
+    If a ray instance is started by `ray start --node-ip-address`,
+    the node ip address is cached to a file RAY_NODE_IP_FILENAME.
+    Otherwise, the file exists, but it is emptyl.
+
+    This API is process-safe, meaning the file access is protected by
+    a file lock.
+
+    Args:
+        session_dir: Path to the Ray session directory.
+
+    Returns:
+        node_ip_address cached on the current node. None if the node
+        the file doesn't exist, meaning ray instance hasn't been
+        started on a current node. If node_ip_address is not written
+        to a file, it means --node-ip-address is not given, and in this
+        case, we find the IP address ourselves.
+    """
+    file_path = Path(os.path.join(session_dir, RAY_NODE_IP_FILENAME))
+    cached_node_ip_address = {}
+
+    with FileLock(str(file_path.absolute()) + ".lock"):
+        if not file_path.exists():
+            return None
+
+        with file_path.open() as f:
+            cached_node_ip_address.update(json.load(f))
+
+        if "node_ip_address" in cached_node_ip_address:
+            return cached_node_ip_address["node_ip_address"]
+        else:
+            return ray.util.get_node_ip_address()
+
+
+def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> None:
+    """Write a node ip address of the current session to
+    RAY_NODE_IP_FILENAME.
+
+    If a ray instance is started by `ray start --node-ip-address`,
+    the node ip address is cached to a file RAY_NODE_IP_FILENAME.
+
+    This API is process-safe, meaning the file access is protected by
+    a file lock.
+
+    The file contains a single string node_ip_address. If nothing
+    is written, it means --node-ip-address was not given, and Ray
+    resolves the IP address on its own. It assumes in a single node,
+    you can have only 1 IP address (which is the assumption ray
+    has in general).
+
+    node_ip_address is the ip address of the current node.
+
+    Args:
+        session_dir: The path to Ray session directory.
+        node_ip_address: The node IP address of the current node.
+            If None, it means the node ip address is not given
+            by --node-ip-address. In this case, we don't write
+            anything to a file.
+    """
+    file_path = Path(os.path.join(session_dir, RAY_NODE_IP_FILENAME))
+    cached_node_ip_address = {}
+
+    with FileLock(str(file_path.absolute()) + ".lock"):
+        if not file_path.exists():
+            with file_path.open(mode="w") as f:
+                json.dump({}, f)
+
+        with file_path.open() as f:
+            cached_node_ip_address.update(json.load(f))
+
+        cached_node_ip = cached_node_ip_address.get("node_ip_address")
+
+        if node_ip_address is not None:
+            if cached_node_ip:
+                if cached_node_ip == node_ip_address:
+                    # Nothing to do.
+                    return
+                else:
+                    logger.warning(
+                        "The node IP address of the current host recorded "
+                        f"in {RAY_NODE_IP_FILENAME} ({cached_node_ip}) "
+                        "is different from the current IP address: "
+                        f"{node_ip_address}. Ray will use {node_ip_address} "
+                        "as the current node's IP address. "
+                        "Creating 2 instances in the same host with different "
+                        "IP address is not supported. "
+                        "Please create an enhnacement request to"
+                        "https://github.com/ray-project/ray/issues."
+                    )
+
+            cached_node_ip_address["node_ip_address"] = node_ip_address
+            with file_path.open(mode="w") as f:
+                json.dump(cached_node_ip_address, f)
 
 
 def create_redis_client(redis_address, password=None):
@@ -970,6 +1074,7 @@ def start_reaper(fate_share=None):
 
 
 def start_log_monitor(
+    session_dir: str,
     logs_dir: str,
     gcs_address: str,
     fate_share: Optional[bool] = None,
@@ -982,6 +1087,7 @@ def start_log_monitor(
     """Start a log monitor process.
 
     Args:
+        session_dir: The session directory.
         logs_dir: The directory of logging files.
         gcs_address: GCS address for pubsub.
         fate_share: Whether to share fate between log_monitor
@@ -1006,6 +1112,7 @@ def start_log_monitor(
         sys.executable,
         "-u",
         log_monitor_filepath,
+        f"--session-dir={session_dir}",
         f"--logs-dir={logs_dir}",
         f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",

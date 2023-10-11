@@ -53,8 +53,6 @@ PyOpenSSL==22.1.0
 pygame==2.1.2; python_version < '3.11'
 Pygments==2.13.0
 pymongo==4.3.2
-# TODO: Upgrade to pyspark 3.4.0 once raydp supports it
-# https://ml-team-public-read.s3.us-west-2.amazonaws.com/spark-pkgs/pyspark-3.4.0.dev0-0cb0fa313979e1b82ddd711a05d8c4e78cf6c9f5.tar.gz
 pyspark==3.3.1
 pytest==7.0.1
 pytest-asyncio==0.16.0
