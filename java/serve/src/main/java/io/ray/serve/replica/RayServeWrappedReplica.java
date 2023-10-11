@@ -12,7 +12,7 @@ import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.metrics.RayServeMetrics;
-import io.ray.serve.util.LogUtil;
+import io.ray.serve.util.MessageFormatter;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.io.IOException;
@@ -50,7 +50,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       initArgs = parseInitArgs(initArgsbytes);
     } catch (IOException e) {
       String errMsg =
-          LogUtil.format(
+          MessageFormatter.format(
               "Failed to initialize replica {} of deployment {}",
               replicaTag,
               deploymentInfo.getName());
@@ -122,7 +122,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       this.deploymentInfo = deploymentWrapper;
     } catch (Throwable e) {
       String errMsg =
-          LogUtil.format(
+          MessageFormatter.format(
               "Failed to initialize replica {} of deployment {}",
               replicaTag,
               deploymentWrapper.getName());

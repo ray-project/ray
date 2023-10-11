@@ -19,15 +19,6 @@ from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle
 
 
-@pytest.fixture
-def ray_cluster():
-    cluster = Cluster()
-    yield cluster
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
-
-
 def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
     handle = serve.get_deployment_handle(deployment_name, app_name)
     refs = []
