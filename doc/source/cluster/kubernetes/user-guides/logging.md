@@ -19,7 +19,7 @@ There are a number of open source log processing tools available within the Kube
 Other popular tools include [Vector][Vector], [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
 
 ## Log collection strategies
-Collected logs are written to a pod's filesystem using one of two logging strategies:
+To write collected logs to a pod's filesystem ,use one of two logging strategies:
 **sidecar containers** or **daemonsets**. Read more about these logging
 patterns in the [Kubernetes documentation][KubDoc].
 
@@ -135,10 +135,10 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 ```
 
 (kuberay-fluentbit-ds)=
-## Setting up logging DaemonSet with Fluent Bit
+## Set up logging on a DaemonSet with Fluent Bit
 
 Fluent Bit is a lightweight agent that allows you to collect logs from your Kubernetes cluster and send them to a variety of destinations such as Elasticsearch, CloudWatch, S3, etc.
-In the following steps, you will set up [Fluent Bit][FluentBit] as a DaemonSet to send logs to CloudWatch Logs.
+The following steps set up [Fluent Bit][FluentBit] as a DaemonSet to send logs to CloudWatch Logs.
 
 ### Setup for AWS EKS
 
@@ -157,7 +157,7 @@ ip-192-168-86-99.us-west-2.compute.internal   Ready    <none>   157m   v1.27.5-e
 ```
 
 EKS cluster nodes need to have access to CloudWatch Logs for Fluent Bit.
-To make this, attach `CloudWatchLogsFullAccess` policy to the IAM role that is attached to the cluster nodes:
+Attach the `CloudWatchLogsFullAccess` policy to the IAM role that is attached to the cluster nodes:
 
 ```shell
 ROLE_NAME=$(eksctl get nodegroup --cluster fluent-bit-demo --region us-west-2 -o json | jq -r '.[].NodeInstanceRoleARN' | cut -f2 -d/)
@@ -193,19 +193,19 @@ kubectl create configmap fluent-bit-cluster-info \
     --from-literal=logs.region=${RegionName} -n amazon-cloudwatch
 ```
 
-Deploy the Fluent Bit DaemonSet to the cluster by running thefollowing commands:
+Deploy the Fluent Bit DaemonSet to the cluster by running the following commands:
 
 ```shell
 kubectl apply -f https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/fluent-bit/fluent-bit.yaml
 ```
 
-Validate whether Fluent Bit has been deployed successfully by entering the following command:
+Validate whether you successfully deployed Fluent Bit by entering the following command:
 
 ```shell
 kubectl -n amazon-cloudwatch logs ds/fluent-bit
 ```
 
-You should see it created log groups:
+Verify that the command created log groups:
 
 ```shell
 ...
@@ -215,18 +215,18 @@ You should see it created log groups:
 ...
 ```
 
-### Check CloudWatch Dashboard
+### Check the CloudWatch dashboard
 
-Finally, you can check the CloudWatch dashboard to see the logs.
-OPen the CLoudWatch console at https://console.aws.amazon.com/cloudwatch/.
+Finally, check the CloudWatch dashboard to see the logs.
+Open the CLoudWatch console at https://console.aws.amazon.com/cloudwatch/.
 
-Type in `/aws/containerinsights/fluent-bit-demo/` in the search box.
+Type `/aws/containerinsights/fluent-bit-demo/` in the search box.
 
 ![CloudWatch Dashboard](images/cloudwatch-dashboard.png)
 
-Select `/aws/containerinsights/fluent-bit-demo/application`, you should see the logs from the application pods including Ray.
+Select `/aws/containerinsights/fluent-bit-demo/application`. You should see the logs from the application pods including Ray.
 
-Under the log streams, click any log stream, you should see the logs of pods:
+Under the log streams, click any log stream. You should see the logs from the pods:
 
 ![CloudWatch Logs](images/cloudwatch-logs.png)
 
