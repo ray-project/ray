@@ -101,12 +101,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         return self.get_num_timesteps()
 
     @override(ReplayBufferInterface)
-    def add(self, episodes: Union[List["_Episode"], "_Episode"]):
+    def add(self, episodes: Union[List["SingleAgentEpisode"], "SingleAgentEpisode"]):
         """Converts the incoming SampleBatch into a number of _Episode objects.
 
         Then adds these episodes to the internal deque.
         """
-        if isinstance(episodes, _Episode):
+        if isinstance(episodes, SingleAgentEpisode):
             episodes = [episodes]
 
         for eps in episodes:
@@ -350,7 +350,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
     @override(ReplayBufferInterface)
     def set_state(self, state) -> None:
         self.episodes = deque(
-            [_Episode.from_state(eps_data) for eps_data in state["episodes"]]
+            [SingleAgentEpisode.from_state(eps_data) for eps_data in state["episodes"]]
         )
         self.episode_id_to_index = dict(state["episode_id_to_index"])
         self._num_episodes_evicted = state["_num_episodes_evicted"]
@@ -363,7 +363,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 # TODO (sven): Make this EpisodeV3 - replacing EpisodeV2 - to reduce all the
 #  information leakage we currently have in EpisodeV2 (policy_map, worker, etc.. are
 #  all currently held by EpisodeV2 for no good reason).
-class _Episode:
+class SingleAgentEpisode:
     def __init__(
         self,
         id_: Optional[str] = None,
@@ -400,7 +400,7 @@ class _Episode:
         assert render_images is None or observations is not None
         self.render_images = [] if render_images is None else render_images
 
-    def concat_episode(self, episode_chunk: "_Episode"):
+    def concat_episode(self, episode_chunk: "SingleAgentEpisode"):
         """Adds the given `episode_chunk` to the right side of self."""
         assert episode_chunk.id_ == self.id_
         assert not self.is_done
@@ -494,7 +494,7 @@ class _Episode:
         """
         return self.is_terminated or self.is_truncated
 
-    def create_successor(self) -> "_Episode":
+    def create_successor(self) -> "SingleAgentEpisode":
         """Returns a successor episode chunk (of len=0) continuing with this one.
 
         The successor will have the same ID and state as self and its only observation
@@ -512,7 +512,7 @@ class _Episode:
         """
         assert not self.is_done
 
-        return _Episode(
+        return SingleAgentEpisode(
             # Same ID.
             id_=self.id_,
             # First (and only) observation of successor is this episode's last obs.
@@ -542,7 +542,7 @@ class _Episode:
 
     @staticmethod
     def from_sample_batch(batch):
-        return _Episode(
+        return SingleAgentEpisode(
             id_=batch[SampleBatch.EPS_ID][0],
             observations=np.concatenate(
                 [batch[SampleBatch.OBS], batch[SampleBatch.NEXT_OBS][None, -1]]
@@ -573,7 +573,7 @@ class _Episode:
 
     @staticmethod
     def from_state(state):
-        eps = _Episode(id_=state[0][1])
+        eps = SingleAgentEpisode(id_=state[0][1])
         eps.observations = state[1][1]
         eps.actions = state[2][1]
         eps.rewards = state[3][1]
