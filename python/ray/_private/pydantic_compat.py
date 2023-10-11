@@ -48,7 +48,7 @@ class WeakRefWrapper:
 
 
 def monkeypatch_pydantic_2_for_cloudpickle():
-    """Patches non-serializale types introduced in Pydantic 2.0.
+    """Patches non-serializable types introduced in Pydantic 2.0.
 
     See https://github.com/pydantic/pydantic/issues/6763 for details.
 

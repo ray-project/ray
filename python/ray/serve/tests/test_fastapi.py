@@ -53,6 +53,7 @@ def test_fastapi_function(serve_instance):
 
     resp = requests.get("http://localhost:8000/f/not-number")
     assert resp.status_code == 422  # Unprocessable Entity
+    # Pydantic 1.X returns `type_error.integer`, 2.X returns `int_parsing`.
     assert resp.json()["detail"][0]["type"] in {"type_error.integer", "int_parsing"}
 
 
