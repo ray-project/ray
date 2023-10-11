@@ -12,7 +12,6 @@ from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 from ray.air.constants import TRAINING_ITERATION
 from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
-from ray.train._internal.storage import _use_storage_context
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search import SearchGenerator
@@ -361,17 +360,6 @@ class PopulationBasedTraining(FIFOScheduler):
         require_attrs: bool = True,
         synch: bool = False,
     ):
-        if not _use_storage_context():
-            raise RuntimeError(
-                "Due to breaking API changes, PBT does not work with the old "
-                "persistence mode (enabled via RAY_AIR_NEW_PERSISTENCE_MODE=0). "
-                "Migrate your script to use the new APIs instead and disabled the "
-                "environment variable flag. "
-                "See this migration guide: "
-                "https://docs.google.com/document/d/"
-                "1J-09US8cXc-tpl2A1BpOrlHLTEDMdIJp6Ah1ifBUw7Y/view"
-            )
-
         hyperparam_mutations = hyperparam_mutations or {}
         for value in hyperparam_mutations.values():
             if not isinstance(value, (dict, list, tuple, Domain, Callable)):

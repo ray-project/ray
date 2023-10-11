@@ -3,14 +3,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
 
 import ray
 from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
 from ray.train import CheckpointConfig, RunConfig
 from ray.train.constants import MODEL_KEY
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
+from ray.train.lightning._lightning_utils import import_lightning
 from ray.train.tests.lightning_test_utils import (
     DoubleLinearModule,
     DummyDataModule,
@@ -18,6 +17,8 @@ from ray.train.tests.lightning_test_utils import (
 )
 from ray.train.trainer import TrainingFailedError
 from ray.tune import Callback
+
+pl = import_lightning()
 
 
 @pytest.fixture
@@ -148,7 +149,7 @@ def test_air_trainer_restore(
 
     if resume_from_ckpt_path:
         ckpt_dir = f"{tmpdir}/ckpts"
-        callback = ModelCheckpoint(dirpath=ckpt_dir, save_last=True)
+        callback = pl.callbacks.ModelCheckpoint(dirpath=ckpt_dir, save_last=True)
         pl_trainer = pl.Trainer(
             max_epochs=init_epoch, accelerator="cpu", callbacks=[callback]
         )

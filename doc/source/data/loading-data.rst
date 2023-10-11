@@ -823,47 +823,51 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
                 "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
 
-    .. tab-item:: BigQuery
+.. _reading_bigquery:
 
-        To read from BigQuery, install the
-        `Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_.
-        This package includes a DB API2-compliant database connector.
+Reading BigQuery
+~~~~~~~~~~~~~~~~
 
-        .. code-block:: console
+To read from BigQuery, install the
+`Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_ and the `Python Client for Google BigQueryStorage <https://cloud.google.com/python/docs/reference/bigquerystorage/latest>`_.
 
-            pip install google-cloud-bigquery
+.. code-block:: console
 
-        Then, define your connection logic and query the dataset.
+    pip install google-cloud-bigquery
+    pip install google-cloud-bigquery-storage
 
-        .. testcode::
-            :skipif: True
+To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the project id, dataset, and query (if applicable).
 
-            from google.cloud import bigquery
-            from google.cloud.bigquery import dbapi
+.. testcode::
+    :skipif: True
 
-            import ray
+    import ray
 
-            def create_connection():
-                client = bigquery.Client(...)
-                return dbapi.Connection(client)
+    # Read the entire dataset (do not specify query)
+    ds = ray.data.read_bigquery(
+        project_id="my_gcloud_project_id",
+        dataset="bigquery-public-data.ml_datasets.iris",
+    )
 
-            # Get all movies
-            dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
-            # Get movies after the year 1980
-            dataset = ray.data.read_sql(
-                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-            )
-            # Get the number of movies per year
-            dataset = ray.data.read_sql(
-                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-            )
+    # Read from a SQL query of the dataset (do not specify dataset)
+    ds = ray.data.read_bigquery(
+        project_id="my_gcloud_project_id",
+        query = "SELECT * FROM `bigquery-public-data.ml_datasets.iris` LIMIT 50",
+    )
+
+    # Write back to BigQuery
+    ds.write_bigquery(
+        project_id="my_gcloud_project_id",
+        dataset="destination_dataset.destination_table",
+    )
+
 
 .. _reading_mongodb:
 
 Reading MongoDB
 ~~~~~~~~~~~~~~~
 
-To read data from MongoDB, call :func:`~ray.data.read_mongo` and specify the
+To read data from MongoDB, call :func:`~ray.data.read_mongo` and specify
 the source URI, database, and collection. You also need to specify a pipeline to
 run against the collection.
 
@@ -973,5 +977,6 @@ hence the more opportunity for parallel execution.
    :width: 650px
    :align: center
 
-This default parallelism can be overridden via the ``parallelism`` argument; see the
-:ref:`performance guide <data_performance_tips>`  for more information on how to tune this read parallelism.
+You can override the default parallelism by setting the ``parallelism`` argument. For 
+more information on how to tune the read parallelism, see 
+:ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.

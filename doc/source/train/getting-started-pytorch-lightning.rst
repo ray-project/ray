@@ -47,7 +47,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
             from torchvision.datasets import FashionMNIST
             from torchvision.transforms import ToTensor, Normalize, Compose
             from torch.utils.data import DataLoader
-            import pytorch_lightning as pl
+            import lightning.pytorch as pl
 
             # Model, Loss, Optimizer
             class ImageClassifier(pl.LightningModule):
@@ -111,7 +111,7 @@ make a few changes to your Lightning Trainer definition.
 
 .. code-block:: diff
 
-     import pytorch_lightning as pl
+     import lightning.pytorch as pl
     -from pl.strategies import DDPStrategy
     -from pl.plugins.environments import LightningEnvironment
     +import ray.train.lightning 
@@ -151,7 +151,7 @@ sampler arguments.
 
 .. code-block:: diff
 
-     import pytorch_lightning as pl
+     import lightning.pytorch as pl
     -from pl.strategies import DDPStrategy
     +import ray.train.lightning
 
@@ -175,7 +175,7 @@ local, global, and node rank and world size.
 
 .. code-block:: diff
 
-     import pytorch_lightning as pl
+     import lightning.pytorch as pl
     -from pl.plugins.environments import LightningEnvironment
     +import ray.train.lightning
 
@@ -200,7 +200,7 @@ GPUs by setting ``devices="auto"`` and ``acelerator="auto"``.
 
 .. code-block:: diff
 
-     import pytorch_lightning as pl
+     import lightning.pytorch as pl
 
      def train_func(config):
          ...
@@ -224,7 +224,7 @@ To persist your checkpoints and monitor training progress, add a
                     
 .. code-block:: diff
 
-     import pytorch_lightning as pl
+     import lightning.pytorch as pl
      from ray.train.lightning import RayTrainReportCallback
 
      def train_func(config):
@@ -250,7 +250,7 @@ your configurations.
 
 .. code-block:: diff
 
-     import pytorch_lightning as pl
+     import lightning.pytorch as pl
      import ray.train.lightning
 
      def train_func(config):
@@ -322,6 +322,10 @@ Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.0.4`. For f
 Earlier versions aren't prohibited but may result in unexpected issues. If you run into any compatibility issues, consider upgrading your PyTorch Lightning version or 
 `file an issue <https://github.com/ray-project/ray/issues>`_. 
 
+.. note::
+
+    If you are using Lightning 2.x, please use the import path `lightning.pytorch.xxx` instead of `pytorch_lightning.xxx`.
+
 .. _lightning-trainer-migration-guide:
 
 LightningTrainer Migration Guide
@@ -392,7 +396,7 @@ control over their native Lightning code.
 
         .. code-block:: python
             
-            import pytorch_lightning as pl
+            import lightning.pytorch as pl
             from ray.train.torch import TorchTrainer
             from ray.train.lightning import (
                 RayDDPStrategy, 
