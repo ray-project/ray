@@ -127,22 +127,18 @@ TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_cli
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(io_service_),
       gcs_client_(std::move(gcs_client)),
-      status_events_(),
-      profile_events_() {}
+      status_events_() {}
 
 TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
-  absl::MutexLock profile_lock(&profile_mutex_);
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
 
   status_events_.set_capacity(
       RayConfig::instance().task_events_max_num_status_events_buffer_on_worker());
-  profile_events_.set_capacity(
-      RayConfig::instance().task_events_max_num_profile_events_buffer_on_worker());
 
   // Reporting to GCS, set up gcs client and and events flushing.
   auto status = gcs_client_->Connect(io_service_);
@@ -252,22 +248,22 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
 void TaskEventBufferImpl::GetTaskProfileEventsToSend(
     std::vector<std::unique_ptr<TaskEvent>> *profile_events_to_send) {
   absl::MutexLock lock(&profile_mutex_);
-  // Take enough profile events from the buffer to send.
-  auto num_to_send =
-      std::min(static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()),
-               profile_events_.size());
 
-  profile_events_to_send->insert(
-      profile_events_to_send->end(),
-      std::make_move_iterator(profile_events_.begin()),
-      std::make_move_iterator(profile_events_.begin() + num_to_send));
-  profile_events_.erase(profile_events_.begin(), profile_events_.begin() + num_to_send);
+  size_t batch_size =
+      static_cast<size_t>(RayConfig::instance().task_events_send_batch_size());
+  while (!profile_events_.empty() && profile_events_to_send->size() < batch_size) {
+    auto itr = profile_events_.begin();
+    auto num_to_send =
+        std::min(batch_size - profile_events_to_send->size(), itr->second.size());
 
-  // Adjust the count by task attempt.
-  for (const auto &profile_event : *profile_events_to_send) {
-    profile_events_count_by_task_attempt_[profile_event->GetTaskAttempt()]--;
-    if (profile_events_count_by_task_attempt_[profile_event->GetTaskAttempt()] == 0) {
-      profile_events_count_by_task_attempt_.erase(profile_event->GetTaskAttempt());
+    profile_events_to_send->insert(
+        profile_events_to_send->end(),
+        std::make_move_iterator(itr->second.begin()),
+        std::make_move_iterator(itr->second.begin() + num_to_send));
+    itr->second.erase(itr->second.begin(), itr->second.begin() + num_to_send);
+
+    if (itr->second.empty()) {
+      profile_events_.erase(itr);
     }
   }
 
@@ -472,54 +468,43 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
   if (!enabled_) {
     return;
   }
+  auto profile_events_itr = profile_events_.find(profile_event->GetTaskAttempt());
+  if (profile_events_itr == profile_events_.end()) {
+    auto inserted = profile_events_.insert(
+        {profile_event->GetTaskAttempt(), std::vector<std::unique_ptr<TaskEvent>>()});
+    RAY_CHECK(inserted.second);
+    profile_events_itr = inserted.first;
+  }
 
-  // If already storing more than allowed profile events for this task, we will
-  // simply drop the new profile event.
-  auto num_profile_events_by_task_attempt_itr =
-      profile_events_count_by_task_attempt_.find(profile_event->GetTaskAttempt());
-
-  const auto &max_num_profile_events_per_task =
+  auto max_num_profile_event_per_task =
       RayConfig::instance().task_events_max_num_profile_events_per_task();
-  if (max_num_profile_events_per_task >= 0 &&  // -1 means no limit..
-      num_profile_events_by_task_attempt_itr !=
-          profile_events_count_by_task_attempt_.end() &&
-      num_profile_events_by_task_attempt_itr->second >=
-          static_cast<size_t>(max_num_profile_events_per_task)) {
+  auto max_profile_events_stored =
+      RayConfig::instance().task_events_max_num_profile_events_buffer_on_worker();
+  auto profile_event_stored = static_cast<size_t>(
+      stats_counter_.Get(TaskEventBufferCounter::kNumTaskProfileEventsStored));
+
+  // If we store too many per task or too many per kind of event, we drop the new event.
+  if ((max_num_profile_event_per_task >= 0 &&
+       profile_events_itr->second.size() >=
+           static_cast<size_t>(max_num_profile_event_per_task)) ||
+      profile_event_stored >= max_profile_events_stored) {
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
-
+    // Data loss. We are dropping the newly reported profile event.
+    // This will likely happen on a driver task since the driver has a fixed placeholder
+    // driver task id and it could generate large number of profile events when submitting
+    // many tasks.
     RAY_LOG_EVERY_N(WARNING, 100000)
         << "Dropping profiling events for task: " << profile_event->GetTaskAttempt().first
         << ", set a higher value for RAY_task_events_max_num_profile_events_per_task("
-        << RayConfig::instance().task_events_max_num_profile_events_per_task()
-        << ") to avoid this.";
+        << max_num_profile_event_per_task
+        << "), or RAY_task_events_max_num_profile_events_buffer_on_worker ("
+        << max_profile_events_stored << ") to avoid this.";
     return;
   }
 
-  // Drop an older profile event if buffer is full.
-  if (profile_events_.full()) {
-    const auto &to_evict = profile_events_.front();
-    stats_counter_.Increment(
-        TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
-
-    RAY_LOG_EVERY_N(WARNING, 100000)
-        << "Dropping profiling events for task: " << to_evict->GetTaskAttempt().first
-        << ", set a higher value for "
-           "RAY_task_events_max_num_profile_events_buffer_on_worker("
-        << RayConfig::instance().task_events_max_num_profile_events_buffer_on_worker()
-        << ") to avoid this.";
-
-    // Adjust the count by task attempt.
-    profile_events_count_by_task_attempt_[to_evict->GetTaskAttempt()]--;
-    if (profile_events_count_by_task_attempt_[to_evict->GetTaskAttempt()] == 0) {
-      profile_events_count_by_task_attempt_.erase(to_evict->GetTaskAttempt());
-    }
-  } else {
-    stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventsStored);
-  }
-
-  profile_events_count_by_task_attempt_[profile_event->GetTaskAttempt()]++;
-  profile_events_.push_back(std::move(profile_event));
+  stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventsStored);
+  profile_events_itr->second.push_back(std::move(profile_event));
 }
 
 const std::string TaskEventBufferImpl::DebugString() {

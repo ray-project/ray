@@ -390,13 +390,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   absl::flat_hash_set<TaskAttempt> dropped_task_attempts_unreported_ GUARDED_BY(mutex_);
 
   /// Buffered task profile events. A FIFO queue to be sent to GCS.
-  boost::circular_buffer<std::unique_ptr<TaskEvent>> profile_events_
-      GUARDED_BY(profile_mutex_);
-
-  /// Track profile events by task attempt. This is used to enforce the limit of
-  /// `RAY_` per task attempt.
-  absl::flat_hash_map<TaskAttempt, size_t> profile_events_count_by_task_attempt_
-      GUARDED_BY(profile_mutex_);
+  absl::flat_hash_map<TaskAttempt, std::vector<std::unique_ptr<TaskEvent>>>
+      profile_events_ GUARDED_BY(profile_mutex_);
 
   /// Stats counter map.
   CounterMapThreadSafe<TaskEventBufferCounter> stats_counter_;
