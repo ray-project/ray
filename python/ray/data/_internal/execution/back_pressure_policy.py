@@ -1,7 +1,6 @@
 import logging
+import os
 from abc import ABC, abstractmethod
-
-from pyarrow.hdfs import os
 
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.streaming_executor_state import Topology
@@ -48,7 +47,7 @@ class ConcurrencyCapBackPressurePolicy(BackPressurePolicy):
     CAP_MULTIPLIER = 2.0
 
     def __init__(self, topology: Topology):
-        self._concurrency_cap: dict[PhysicalOperator, float] = {}
+        self._concurrency_caps: dict[PhysicalOperator, float] = {}
 
         self._init_cap = self.INIT_CAP
         self._cap_multiplier = self.CAP_MULTIPLIER
@@ -70,12 +69,15 @@ class ConcurrencyCapBackPressurePolicy(BackPressurePolicy):
         )
 
         for op, _ in topology.items():
-            self._concurrency_cap[op] = self._init_cap
+            self._concurrency_caps[op] = self._init_cap
 
     def can_run(self, op: PhysicalOperator) -> bool:
         metrics = op.metrics
         if metrics.num_tasks_finished >= (
-            self._concurrency_cap[op] * self._cap_multiply_threshold
+            self._concurrency_caps[op] * self._cap_multiply_threshold
         ):
-            self._concurrency_cap[op] *= self._cap_multiplier
-        return metrics.num_tasks_running < self._concurrency_cap[op]
+            self._concurrency_caps[op] *= self._cap_multiplier
+            logger.debug(
+                f"Concurrency cap for {op} increased to {self._concurrency_caps[op]}"
+            )
+        return metrics.num_tasks_running < self._concurrency_caps[op]
