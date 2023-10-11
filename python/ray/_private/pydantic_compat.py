@@ -7,8 +7,11 @@ from typing import Any
 # so handle the case where it isn't installed.
 try:
     import pydantic
+
+    PYDANTIC_INSTALLED = True
 except ImportError:
     pydantic = None
+    PYDANTIC_INSTALLED = False
 
 
 class CloudpickleableSchemaSerializer:
@@ -45,7 +48,13 @@ class WeakRefWrapper:
 
 
 def monkeypatch_pydantic_2_for_cloudpickle():
-    """XXX"""
+    """Patches non-serializale types introduced in Pydantic 2.0.
+
+    See https://github.com/pydantic/pydantic/issues/6763 for details.
+
+    This is a temporary workaround and will only work if Ray is imported *before*
+    Pydantic models are defined.
+    """
     pydantic._internal._model_construction.SchemaSerializer = (
         CloudpickleableSchemaSerializer
     )
@@ -54,7 +63,7 @@ def monkeypatch_pydantic_2_for_cloudpickle():
     pydantic._internal._model_construction._PydanticWeakRef = WeakRefWrapper
 
 
-if pydantic is None:
+if not PYDANTIC_INSTALLED:
     IS_PYDANTIC_2 = False
     BaseModel = None
     Extra = None
@@ -82,7 +91,7 @@ elif packaging.version.parse(pydantic.__version__) < packaging.version.parse("2.
         validator,
     )
     from pydantic.main import ModelMetaclass
-elif pydantic is not None:
+else:
     IS_PYDANTIC_2 = True
     # TODO(edoakes): compare this against the version that has the fixes.
     monkeypatch_pydantic_2_for_cloudpickle()
