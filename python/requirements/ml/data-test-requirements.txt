@@ -7,5 +7,7 @@ tensorflow-datasets
 datasets
 pytest-repeat
 soundfile
+google-cloud-bigquery
+google-cloud-bigquery-storage
 decord
 openai-whisper
