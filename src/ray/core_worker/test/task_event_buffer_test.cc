@@ -258,8 +258,16 @@ TEST_F(TaskEventBufferTest, TestFailedFlush) {
   // Mock gRPC sent failure.
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
       .Times(2)
-      .WillOnce(Return(Status::GrpcUnknown("grpc error")))
-      .WillOnce(Return(Status::OK()));
+      .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
+                    ray::gcs::StatusCallback callback) {
+        callback(Status::GrpcUnknown("grpc error"));
+        return Status::OK();
+      })
+      .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
+                    ray::gcs::StatusCallback callback) {
+        callback(Status::OK());
+        return Status::OK();
+      });
 
   // Flush
   task_event_buffer_->FlushEvents(false);
