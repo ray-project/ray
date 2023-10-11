@@ -12,7 +12,7 @@
       trap cleanup EXIT
     - echo "--- Preparing chaos testing environment"
     - ./python/ray/tests/chaos/prepare_env.sh
-    - chmod +x ./python/ray/tests/chaos/{{matrix.workload}}.sh"
+    - chmod +x ./python/ray/tests/chaos/{{matrix.workload}}.sh
     # First run: no faults
     - echo "--- Running the workload without faults"
     - "./python/ray/tests/chaos/{{matrix.workload}}.sh"
