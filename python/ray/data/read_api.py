@@ -1823,7 +1823,7 @@ def read_databricks_tables(
 
     Returns:
         A :class:`Dataset` containing the queried data.
-    """
+    """  # noqa: E501
     from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
     from ray.util.spark.databricks_hook import get_dbutils
     from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
