@@ -290,7 +290,7 @@ class ActorPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=self._metrics.cur,
+            object_store_memory=self.metrics.obj_store_mem_cur,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
@@ -311,12 +311,12 @@ class ActorPoolMapOperator(MapOperator):
             num_gpus = 0
         return ExecutionResources(cpu=num_cpus, gpu=num_gpus)
 
-    def get_metrics(self) -> Dict[str, int]:
-        parent = super().get_metrics()
+    def _extra_metrics(self) -> Dict[str, Any]:
+        res = {}
         if self._actor_locality_enabled:
-            parent["locality_hits"] = self._actor_pool._locality_hits
-            parent["locality_misses"] = self._actor_pool._locality_misses
-        return parent
+            res["locality_hits"] = self._actor_pool._locality_hits
+            res["locality_misses"] = self._actor_pool._locality_misses
+        return res
 
     @staticmethod
     def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
