@@ -203,14 +203,22 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/train/doc_code/*.py"],
-    exclude = ["source/train/doc_code/getting_started_*.py"],
+    exclude = [
+        "source/train/doc_code/getting_started_pytorch.py",
+        "source/train/doc_code/getting_started_lightning.py",
+        "source/train/doc_code/getting_started_transformers.py",
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
 
 py_test_run_all_subdirectory(
     size = "large",
-    include = ["source/train/doc_code/getting_started_*.py"],
+    include = [
+        "source/train/doc_code/getting_started_pytorch.py",
+        "source/train/doc_code/getting_started_lightning.py",
+        "source/train/doc_code/getting_started_transformers.py",
+    ],
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:ml", "gpu"],
@@ -301,11 +309,13 @@ doctest(
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
             "source/train/faq.rst",
-	    "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/getting-started-pytorch.rst",
+            "source/train/getting-started-pytorch-lightning.rst",
+            "source/train/getting-started-transformers.rst",
+	        "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md",
-            "source/train/getting-started-*.rst",
         ]
     ),
     size = "large",
@@ -343,7 +353,9 @@ doctest(
 
 doctest(
     files = [
-        "source/train/getting-started-*.rst",
+        "source/train/getting-started-pytorch.rst",
+        "source/train/getting-started-pytorch-lightning.rst",
+        "source/train/getting-started-transformers.rst",
     ],
     tags = ["team:ml"],
     gpu = True
