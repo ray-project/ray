@@ -42,6 +42,10 @@ class SplitReadOutputBlocksRule(Rule):
         logger.debug(f"Blocks after size splits {estimated_num_blocks}")
 
         # Add more output splitting for each read task if needed.
+        # TODO(swang): For parallelism=-1 (user did not explicitly set
+        # parallelism), and if the following stage produces much larger blocks,
+        # we should scale down the target max block size here instead of using
+        # splitting, which can have higher memory usage.
         if estimated_num_blocks < logical_op._parallelism:
             k = math.ceil(logical_op._parallelism / estimated_num_blocks)
             logger.info(
