@@ -6,8 +6,8 @@ from transformers import AutoConfig, AutoModelForCausalLM, Trainer, TrainingArgu
 
 import ray.data
 from ray.train import ScalingConfig
-from ray.train.huggingface import TransformersTrainer
 from ray.train.tests._huggingface_data import train_data, validation_data
+from ray.train.torch import TorchTrainer
 from ray.train.trainer import TrainingFailedError
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation
@@ -31,9 +31,13 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-def train_function(train_dataset, eval_dataset=None, **config):
-    # Check that train_dataset has len
-    assert len(train_dataset)
+def train_function(config):
+
+    train_dataset = ray.train.get_dataset_shard("train")
+    eval_dataset = ray.train.get_dataset_shard("evaluation")
+
+    train_dataset_iterable = train_dataset.iter_torch_batches(batch_size=2)
+    eval_dataset_iterable = eval_dataset.iter_torch_batches(batch_size=2)
 
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
@@ -52,10 +56,16 @@ def train_function(train_dataset, eval_dataset=None, **config):
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        train_dataset=train_dataset_iterable,
+        eval_dataset=eval_dataset_iterable,
     )
-    return trainer
+
+    checkpoint = ray.train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_path:
+            trainer.train(resume_from_checkpoint=checkpoint_path)
+    else:
+        trainer.train()
 
 
 @pytest.mark.parametrize("save_steps", [0, 2, 3, 8, 12])
@@ -66,9 +76,9 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
     epochs = 4
-    trainer = TransformersTrainer(
-        trainer_init_per_worker=train_function,
-        trainer_init_config={
+    trainer = TorchTrainer(
+        train_function,
+        train_loop_config={
             "epochs": epochs,
             "save_strategy": "no" if not save_steps else "steps",
             "logging_strategy": "steps",
@@ -92,9 +102,9 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     assert result.checkpoint
     assert "eval_loss" in result.metrics
 
-    trainer2 = TransformersTrainer(
-        trainer_init_per_worker=train_function,
-        trainer_init_config={
+    trainer2 = TorchTrainer(
+        train_function,
+        train_loop_config={
             "epochs": epochs + 1,
             "save_strategy": "no" if not save_steps else "steps",
             "logging_strategy": "steps",

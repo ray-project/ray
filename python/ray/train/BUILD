@@ -184,15 +184,6 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test (
-    name = "huggingface_basic_language_modeling_example",
-    size = "medium",
-    srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
-    args = ["--smoke-test", "--num-epochs 3"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
 py_test(
     name = "tensorflow_regression_example",
     size = "medium",
