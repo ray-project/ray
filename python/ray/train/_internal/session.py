@@ -6,10 +6,10 @@ import queue
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 
 import ray
 from ray.air._internal.session import _get_session
