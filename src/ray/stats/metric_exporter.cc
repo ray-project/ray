@@ -175,7 +175,7 @@ void OpenCensusProtoExporter::ExportViewData(
     }
   }
 
-  if (data_batched >= report_batch_size_) {
+  if (data_batched > 0) {
     SendData(request_proto);
   }
 }

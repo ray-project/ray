@@ -25,7 +25,7 @@ from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_initialized,
 )
-from ray.dashboard.consts import AGENT_GRPC_MAX_SEND_RECEIVE_MESSAGE_LENGTH
+from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -118,11 +118,11 @@ class DashboardAgent:
                 ("grpc.so_reuseport", 0),
                 (
                     "grpc.max_send_message_length",
-                    AGENT_GRPC_MAX_SEND_RECEIVE_MESSAGE_LENGTH,
+                    AGENT_GRPC_MAX_MESSAGE_LENGTH,
                 ),  # noqa
                 (
                     "grpc.max_receive_message_length",
-                    AGENT_GRPC_MAX_SEND_RECEIVE_MESSAGE_LENGTH,
+                    AGENT_GRPC_MAX_MESSAGE_LENGTH,
                 ),
             )  # noqa
         )
