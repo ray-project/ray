@@ -12,6 +12,7 @@ Generators
 that behave like an iterator, yielding one value per iteration. Ray supports the generators API.
 
 .. code:: python
+
     import ray
     import time
 
