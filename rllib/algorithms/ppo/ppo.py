@@ -461,6 +461,7 @@ class PPO(Algorithm):
                 train_batch = postprocess_episodes_to_sample_batch(
                     postprocessed_episodes
                 )
+
                 # TODO (simon): Check how this works for cases when infos are
                 # provided. Traditionally, SampleBatches in Training do not carry
                 # infos and conversion also sometimes errors out.

@@ -118,7 +118,7 @@ class TestPPO(unittest.TestCase):
                 for lstm in [False]:
                     print("LSTM={}".format(lstm))
                     config.training(model=get_model_config(fw, lstm=lstm)).framework(
-                        eager_tracing=True
+                        eager_tracing=False
                     )
 
                     algo = config.build(env=env)
@@ -142,7 +142,7 @@ class TestPPO(unittest.TestCase):
                         check_train_results(results)
                         print(results)
 
-                    #algo.evaluate()
+                    # algo.evaluate()
                     algo.stop()
 
     # def test_ppo_exploration_setup(self):

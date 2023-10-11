@@ -301,10 +301,12 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
-        # ... and all ongoing episode chunks. Also, make sure, we return
-        # a copy and start new chunks so that callers of this function
-        # do not alter the ongoing and returned Episode objects.
-        ongoing_episodes = self._episodes
+        # ... and all ongoing episode chunks.
+        # Initialized episodes do not have recorded any step and lack
+        # `extra_model_outputs`.
+        ongoing_episodes = [episode for episode in self._episodes if episode.t > 0]
+        # Also, make sure, we return a copy and start new chunks so that callers
+        # of this function do not alter the ongoing and returned Episode objects.
         self._episodes = [eps.create_successor() for eps in self._episodes]
         for eps in ongoing_episodes:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
@@ -459,7 +461,8 @@ class SingleAgentEnvRunner(EnvRunner):
         # at the beginning.
         self._needs_initial_reset = True
 
-        return done_episodes_to_return
+        # Initialized episodes have to be removed as they lack `extra_model_outputs`.
+        return [episode for episode in done_episodes_to_return if episode.t > 0]
 
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Instead Algorithm should compile episode metrics itself via its local
@@ -496,7 +499,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Check, if an update happened since the last call. See
         # `Algorithm._evaluate_async_with_env_runner`.
-        if self._weights_seq_no < weights_seq_no:
+        if self._weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
             # In case of a `StateDict` we have to extract the `
             # default_policy`.
             # TODO (sven): Handle this probably in `RLModule` as the latter
