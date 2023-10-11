@@ -379,7 +379,6 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   ResetCountersForFlush();
 
   auto on_complete = [this,
-                      &on_failed_to_send_to_gcs,
                       num_task_attempts_to_send,
                       num_dropped_task_attempts_to_send,
                       num_bytes_to_send](const Status &status) {
