@@ -78,15 +78,15 @@ class ApplyDeploymentModel(BaseDeploymentModel):
         ),
     )
 
-    @root_validator
+    @root_validator(pre=True)
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
-        if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(
-            "autoscaling_config", None
-        ) not in [DEFAULT.VALUE, None]:
-            raise ValueError(
-                "Manually setting num_replicas is not allowed "
-                "when autoscaling_config is provided."
-            )
+        if values.get("autoscaling_config") is not None:
+            if values.get("num_replicas") is not None:
+                raise ValueError(
+                    "Manually setting num_replicas is not allowed "
+                    "when autoscaling_config is provided."
+                )
+            values["num_replicas"] = None
 
         return values
 
