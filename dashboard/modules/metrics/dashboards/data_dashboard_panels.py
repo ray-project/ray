@@ -92,17 +92,3 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
 ]
-ids = []
-for panel in DATA_GRAFANA_PANELS:
-    ids.append(panel.id)
-assert len(ids) == len(
-    set(ids)
-), f"Duplicated id found. Use unique id for each panel. {ids}"
-
-data_dashboard_config = DashboardConfig(
-    name="DATA",
-    default_uid="rayDataDashboard",
-    panels=DATA_GRAFANA_PANELS,
-    standard_global_filters=[],
-    base_json_file_name="default_grafana_dashboard_base.json",
-)

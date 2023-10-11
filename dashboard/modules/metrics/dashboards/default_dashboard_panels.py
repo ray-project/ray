@@ -5,6 +5,9 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Panel,
     Target,
 )
+from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
+    DATA_GRAFANA_PANELS,
+)
 
 """
 Queries for autoscaler resources.
@@ -382,8 +385,11 @@ DEFAULT_GRAFANA_PANELS = [
     ),
 ]
 
+# The Ray Data dashboard lives in the metrics page for now.
+# TODO (Zandew): Move the data dashboard once the design is finalized.
+
 ids = []
-for panel in DEFAULT_GRAFANA_PANELS:
+for panel in DEFAULT_GRAFANA_PANELS + DATA_GRAFANA_PANELS:
     ids.append(panel.id)
 assert len(ids) == len(
     set(ids)
@@ -392,7 +398,7 @@ assert len(ids) == len(
 default_dashboard_config = DashboardConfig(
     name="DEFAULT",
     default_uid="rayDefaultDashboard",
-    panels=DEFAULT_GRAFANA_PANELS,
+    panels=DEFAULT_GRAFANA_PANELS + DATA_GRAFANA_PANELS,
     standard_global_filters=['SessionName=~"$SessionName"'],
     base_json_file_name="default_grafana_dashboard_base.json",
 )
