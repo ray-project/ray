@@ -169,7 +169,28 @@ def cleanup_cluster(cluster_config):
     """
     print("======================================")
     print("Cleaning up cluster...")
-    subprocess.run(["ray", "down", "-v", "-y", str(cluster_config)], check=True)
+
+    # We do multiple retries here because sometimes the cluster
+    # fails to clean up properly, resulting in a non-zero exit code (e.g.
+    # when processes have to be killed forcefully).
+
+    last_error = None
+    num_tries = 3
+    for i in range(num_tries):
+        try:
+            subprocess.run(
+                ["ray", "down", "-v", "-y", str(cluster_config)],
+                check=True,
+                capture_output=True,
+            )
+            # Final success
+            return
+        except subprocess.CalledProcessError as e:
+            print(f"ray down fails[{i+1}/{num_tries}]: ")
+            print(e.output)
+            last_error = e
+
+    raise last_error
 
 
 def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes=1):
@@ -192,7 +213,14 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
     if no_config_cache:
         cmd.append("--no-config-cache")
     cmd.append(str(cluster_config))
-    subprocess.run(cmd, check=True)
+
+    print(" ".join(cmd))
+
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        print(e.output)
+        raise e
 
     print("======================================")
     print("Verifying Ray is running...")

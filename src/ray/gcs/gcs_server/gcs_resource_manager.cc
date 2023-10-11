@@ -23,10 +23,12 @@ namespace gcs {
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &io_context,
     ClusterResourceManager &cluster_resource_manager,
+    GcsNodeManager &gcs_node_manager,
     NodeID local_node_id,
     std::shared_ptr<ClusterTaskManager> cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
+      gcs_node_manager_(gcs_node_manager),
       local_node_id_(std::move(local_node_id)),
       cluster_task_manager_(std::move(cluster_task_manager)) {}
 
@@ -148,7 +150,6 @@ void GcsResourceManager::UpdateFromResourceView(const rpc::ResourcesData &data) 
           << node_id;
     }
   }
-
   UpdateNodeResourceUsage(node_id, data);
 }
 
@@ -282,6 +283,22 @@ void GcsResourceManager::UpdateFromResourceCommand(const rpc::ResourcesData &dat
 
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
+  if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
+      maybe_node_info != absl::nullopt) {
+    auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
+
+    if (resources.idle_duration_ms() > 0) {
+      snapshot->set_state(rpc::NodeSnapshot::IDLE);
+      snapshot->set_idle_duration_ms(resources.idle_duration_ms());
+    } else {
+      snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
+      snapshot->mutable_node_activity()->CopyFrom(resources.node_activity());
+    }
+    if (resources.is_draining()) {
+      snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+    }
+  }
+
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
     // It will only happen when the node has been deleted.
@@ -358,7 +375,7 @@ std::string GcsResourceManager::DebugString() const {
   return stream.str();
 }
 
-void GcsResourceManager::AddResourcesChangedListener(std::function<void()> listener) {
+void GcsResourceManager::AddResourcesChangedListener(std::function<void()> &&listener) {
   RAY_CHECK(listener != nullptr);
   resources_changed_listeners_.emplace_back(std::move(listener));
 }

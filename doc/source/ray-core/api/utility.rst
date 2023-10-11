@@ -2,6 +2,7 @@ Utility
 =======
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ray.util.ActorPool
@@ -16,6 +17,7 @@ Custom Metrics
 --------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ray.util.metrics.Counter
@@ -28,6 +30,7 @@ Debugging
 ---------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ray.util.pdb.set_trace

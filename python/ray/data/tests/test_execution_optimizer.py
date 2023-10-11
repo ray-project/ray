@@ -1296,10 +1296,11 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     assert extract_values("item", actual_data) == expected_data
 
     # Check that metadata fetch is included in stats.
-    assert "FromItems" in ray_dataset.stats()
+    assert "ReadTorch" in ray_dataset.stats()
+
     # Underlying implementation uses `FromItems` operator
-    assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
-    _check_usage_record(["FromItems"])
+    assert ray_dataset._plan._logical_plan.dag.name == "ReadTorch"
+    _check_usage_record(["ReadTorch"])
 
 
 @pytest.mark.skip(

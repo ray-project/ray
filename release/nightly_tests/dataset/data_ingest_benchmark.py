@@ -1,10 +1,9 @@
 import numpy as np
-import json
-import os
 import sys
 import time
 import argparse
 
+from benchmark import Benchmark
 import ray
 from ray.data import Dataset
 from ray.data import DatasetPipeline
@@ -235,18 +234,29 @@ if __name__ == "__main__":
     parser.add_argument("--early-stop", action="store_true", default=False)
     args = parser.parse_args()
 
-    start = time.time()
+    benchmark = Benchmark("streaming-data-ingest")
     if args.new_streaming:
-        run_ingest_streaming(
-            args.dataset_size_gb, args.num_workers, args.use_gpu, args.early_stop
+        benchmark.run_fn(
+            "streaming-ingest",
+            run_ingest_streaming,
+            args.dataset_size_gb,
+            args.num_workers,
+            args.use_gpu,
+            args.early_stop,
         )
     elif args.streaming:
-        run_ingest_dataset_pipeline(args.dataset_size_gb, args.num_workers)
+        benchmark.run_fn(
+            "pipeline-ingest",
+            run_ingest_dataset_pipeline,
+            args.dataset_size_gb,
+            args.num_workers,
+        )
     else:
-        run_ingest_bulk(args.dataset_size_gb, args.num_workers)
+        benchmark.run_fn(
+            "bulk-ingest",
+            run_ingest_bulk,
+            args.dataset_size_gb,
+            args.num_workers,
+        )
 
-    delta = time.time() - start
-    print(f"success! total time {delta}")
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
-    with open(test_output_json, "w") as f:
-        f.write(json.dumps({"ingest_time": delta, "success": 1}))
+    benchmark.write_result()

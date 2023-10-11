@@ -45,7 +45,6 @@ from ray._private.thirdparty.tabulate.tabulate import (
     Line,
     DataRow,
 )
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune.callback import Callback
 from ray.tune.result import (
@@ -767,7 +766,7 @@ class ProgressReporter(Callback):
         iteration: int,
         trials: List[Trial],
         trial: Trial,
-        checkpoint: Union["_TrackedCheckpoint", "Checkpoint"],
+        checkpoint: Checkpoint,
         **info,
     ):
         if self._verbosity < self._intermediate_result_verbosity:
@@ -779,12 +778,7 @@ class ProgressReporter(Callback):
 
         self._start_block(f"trial_{trial}_result_{saved_iter}")
 
-        if isinstance(checkpoint, Checkpoint):
-            loc = f"({checkpoint.filesystem.type_name}){checkpoint.path}"
-        elif checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            loc = "(memory)"
-        else:
-            loc = checkpoint.dir_or_data
+        loc = f"({checkpoint.filesystem.type_name}){checkpoint.path}"
 
         print(
             f"{self._addressing_tmpl.format(trial)} "

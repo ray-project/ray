@@ -15,9 +15,8 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.common import ApplicationStatus
-from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 from ray.serve.schema import ServeInstanceDetails
-from ray.serve.tests.test_cancellation import send_signal_on_cancellation
+from ray.serve.tests.common.utils import send_signal_on_cancellation
 from ray.util.state import list_tasks
 
 
@@ -98,11 +97,7 @@ def test_request_hangs_in_execution(ray_instance, shutdown_serve):
     serve.run(HangsOnFirstRequest.bind())
 
     response = requests.get("http://localhost:8000")
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        assert response.status_code == 408
-    else:
-        assert response.status_code == 200
-        assert response.text == "Success!"
+    assert response.status_code == 408
 
     ray.get(signal_actor.send.remote())
 
@@ -155,11 +150,7 @@ def test_with_rest_api(ray_start_stop):
     print("Application has started running. Testing requests...")
 
     response = requests.get("http://localhost:8000")
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        assert response.status_code == 408
-    else:
-        assert response.status_code == 200
-        assert response.text == "Success!"
+    assert response.status_code == 408
 
     response = requests.get("http://localhost:8000")
     assert response.status_code == 200
@@ -196,19 +187,11 @@ def test_request_hangs_in_assignment(ray_instance, shutdown_serve):
     response_ref1 = do_request.remote()
     response_ref2 = do_request.remote()
 
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        # Streaming path does not retry on timeouts, so the requests should be failed.
-        assert ray.get(response_ref1).status_code == 408
-        assert ray.get(response_ref2).status_code == 408
-        ray.get(signal_actor.send.remote())
-        assert ray.get(do_request.remote()).status_code == 200
-    else:
-        # Legacy path retries on timeouts, so the requests should succeed.
-        ray.get(signal_actor.send.remote())
-        assert ray.get(response_ref1).status_code == 200
-        assert ray.get(response_ref1).text == "Success!"
-        assert ray.get(response_ref2).status_code == 200
-        assert ray.get(response_ref2).text == "Success!"
+    # Streaming path does not retry on timeouts, so the requests should be failed.
+    assert ray.get(response_ref1).status_code == 408
+    assert ray.get(response_ref2).status_code == 408
+    ray.get(signal_actor.send.remote())
+    assert ray.get(do_request.remote()).status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -238,20 +221,19 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
             gen = self.generate_numbers()
             return StreamingResponse(gen, status_code=200, media_type="text/plain")
 
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        serve.run(SleepForNSeconds.bind(0.11))  # 0.11s > 0.1s timeout
+    serve.run(SleepForNSeconds.bind(0.11))  # 0.11s > 0.1s timeout
 
-        r = requests.get("http://localhost:8000", stream=True)
-        iterator = r.iter_content(chunk_size=None, decode_unicode=True)
+    r = requests.get("http://localhost:8000", stream=True)
+    iterator = r.iter_content(chunk_size=None, decode_unicode=True)
 
-        # The first chunk should be received successfully.
-        assert iterator.__next__() == "generated 0"
-        assert r.status_code == 200
+    # The first chunk should be received successfully.
+    assert iterator.__next__() == "generated 0"
+    assert r.status_code == 200
 
-        # The second chunk should time out and raise error.
-        with pytest.raises(requests.exceptions.ChunkedEncodingError) as request_error:
-            iterator.__next__()
-        assert "Connection broken" in str(request_error.value)
+    # The second chunk should time out and raise error.
+    with pytest.raises(requests.exceptions.ChunkedEncodingError) as request_error:
+        iterator.__next__()
+    assert "Connection broken" in str(request_error.value)
 
 
 @pytest.mark.parametrize(
@@ -260,10 +242,6 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
         {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5"},
     ],
     indirect=True,
-)
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Only relevant on streaming codepath.",
 )
 def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
     """Verify that the ASGI-related tasks exit when a request is timed out.
@@ -300,10 +278,6 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
     wait_for_condition(lambda: get_num_running_tasks() == 0)
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Only implemented for streaming codepath.",
-)
 @pytest.mark.parametrize(
     "ray_instance",
     [
@@ -353,18 +327,11 @@ def test_cancel_on_http_timeout_during_execution(
     serve.run(Ingress.bind(inner.bind()))
 
     # Request should time out, causing the handler and handle call to be cancelled.
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        assert requests.get("http://localhost:8000").status_code == 408
-    else:
-        assert requests.get("http://localhost:8000").status_code == 500
+    assert requests.get("http://localhost:8000").status_code == 408
     ray.get(inner_signal_actor.wait.remote())
     ray.get(outer_signal_actor.wait.remote())
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Only implemented for streaming codepath.",
-)
 @pytest.mark.parametrize(
     "ray_instance",
     [

@@ -190,6 +190,7 @@ Constructor
 ~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~tune.Trainable
@@ -199,6 +200,7 @@ Trainable Methods to Implement
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~tune.Trainable.setup
@@ -219,6 +221,7 @@ Tune Data Ingestion Utilities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     tune.with_parameters
@@ -228,6 +231,7 @@ Tune Resource Assignment Utilities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     tune.with_resources
@@ -239,6 +243,7 @@ Tune Trainable Debugging Utilities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     tune.utils.diagnose_serialization

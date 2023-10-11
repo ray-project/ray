@@ -28,7 +28,10 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve.api import build as build_app
+from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import (
+    get_and_validate_ingress_deployment,
+)
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -48,9 +51,9 @@ RAY_INIT_ADDRESS_HELP_STR = (
     "using the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard agent (defaults to "
-    "http://localhost:52365). Can also be specified using the "
-    "RAY_AGENT_ADDRESS environment variable."
+    "Address to use to query the Ray dashboard head (defaults to "
+    "http://localhost:8265). Can also be specified using the "
+    "RAY_DASHBOARD_ADDRESS environment variable."
 )
 
 
@@ -123,6 +126,15 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
         args_dict[split[0]] = split[1]
 
     return args_dict
+
+
+def warn_if_agent_address_set():
+    if "RAY_AGENT_ADDRESS" in os.environ:
+        cli_logger.warning(
+            "The `RAY_AGENT_ADDRESS` env var has been deprecated in favor of "
+            "the `RAY_DASHBOARD_ADDRESS` env var. The `RAY_AGENT_ADDRESS` is "
+            "ignored."
+        )
 
 
 @click.group(
@@ -207,7 +219,6 @@ def start(
         namespace=SERVE_NAMESPACE,
     )
     serve.start(
-        detached=True,
         proxy_location=proxy_location,
         http_options=dict(
             host=http_host,
@@ -238,12 +249,14 @@ def start(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 def deploy(config_file_name: str, address: str):
+    warn_if_agent_address_set()
+
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
@@ -398,6 +411,11 @@ def run(
             "removed in a future version. To specify custom HTTP options, use the "
             "`serve start` command."
         )
+    if gradio:
+        cli_logger.warning(
+            "The gradio visualization tool is deprecated because the DAG API is "
+            "deprecated. Both will be removed in a future version."
+        )
 
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
@@ -424,8 +442,8 @@ def run(
                 config = ServeDeploySchema.parse_obj(config_dict)
                 if gradio:
                     raise click.ClickException(
-                        "The gradio visualization feature of `serve run` does not yet "
-                        "have support for multiple applications."
+                        "The gradio visualization feature of `serve run` does not "
+                        "support multiple applications."
                     )
 
                 # If host or port is specified as a CLI argument, they should take
@@ -503,7 +521,6 @@ def run(
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
     client = _private_api.serve_start(
-        detached=True,
         http_options=http_options,
         grpc_options=grpc_options,
     )
@@ -573,7 +590,7 @@ def run(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -589,6 +606,8 @@ def run(
     ),
 )
 def config(address: str, name: Optional[str]):
+    warn_if_agent_address_set()
+
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -646,7 +665,7 @@ def config(address: str, name: Optional[str]):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -663,6 +682,8 @@ def config(address: str, name: Optional[str]):
     ),
 )
 def status(address: str, name: Optional[str]):
+    warn_if_agent_address_set()
+
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -702,13 +723,15 @@ def status(address: str, name: Optional[str]):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
+    warn_if_agent_address_set()
+
     if not yes:
         click.confirm(
             f"This will shut down Serve on the cluster at address "
@@ -808,13 +831,12 @@ def build(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        app = build_app(app, name)
+        deployments = pipeline_build(app, name)
+        ingress = get_and_validate_ingress_deployment(deployments)
         schema = ServeApplicationSchema(
             import_path=import_path,
             runtime_env={},
-            deployments=[
-                deployment_to_schema(d, single_app) for d in app.deployments.values()
-            ],
+            deployments=[deployment_to_schema(d, single_app) for d in deployments],
         )
         # If building a multi-app config, auto-generate names for each application.
         # Also, each ServeApplicationSchema should not have host and port set, it should
@@ -824,7 +846,7 @@ def build(
             schema.port = 8000
         else:
             schema.name = name
-            schema.route_prefix = app.ingress.route_prefix
+            schema.route_prefix = ingress.route_prefix
 
         if _kubernetes_format:
             return schema.kubernetes_dict(exclude_unset=True)

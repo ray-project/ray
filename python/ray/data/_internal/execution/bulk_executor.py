@@ -70,10 +70,9 @@ class BulkExecutor(Executor):
             # Cache and return output.
             saved_outputs[op] = output
             op_stats = op.get_stats()
-            op_metrics = op.get_metrics()
             if op_stats:
                 self._stats = builder.build_multistage(op_stats)
-                self._stats.extra_metrics = op_metrics
+                self._stats.extra_metrics = op.metrics.as_dict()
             stats_summary = self._stats.to_summary()
             stats_summary_string = stats_summary.to_string(include_parent=False)
             context = DataContext.get_current()
