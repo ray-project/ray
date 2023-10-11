@@ -1,13 +1,13 @@
 from typing import Dict
 import click
 import time
-import json
 import os
 
 import numpy as np
 import torch
 from torchvision.models import resnet50, ResNet50_Weights
 
+from benchmark import Benchmark
 import ray
 from ray.data import ActorPoolStrategy
 
@@ -136,12 +136,12 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
         },
     }
 
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")
-    with open(test_output_json, "wt") as f:
-        json.dump(results, f)
-
-    print(results)
+    return results
 
 
 if __name__ == "__main__":
-    main()
+    benchmark = Benchmark("gpu-batch-inference")
+    benchmark.run_fn("batch-inference", main)
+
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")
+    benchmark.write_result(test_output_json)
