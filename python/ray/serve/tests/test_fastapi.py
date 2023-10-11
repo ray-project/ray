@@ -25,7 +25,7 @@ from starlette.routing import Route
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import BaseModel, Field
+from ray._private.pydantic_compat import IS_PYDANTIC_2, BaseModel, Field
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
@@ -675,6 +675,10 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
         assert requests.get("http://localhost:8000" + path).status_code == 404, path
 
 
+@pytest.mark.skipif(
+    IS_PYDANTIC_2,
+    reason="We don't currently install custom encoders for pydantic >= 2.",
+)
 def test_fastapi_custom_serializers(serve_instance):
     app = FastAPI()
 

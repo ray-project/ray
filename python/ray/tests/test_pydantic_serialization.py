@@ -4,8 +4,12 @@ from typing import Any, Dict, List, Optional
 import pytest
 from fastapi import FastAPI
 
+# Intentionally import directly from pydantic instead of pydantic_compat because
+# we want to test serializing both the v1 and v2 model implementations.
+from pydantic import BaseModel
+
 import ray
-from ray._private.pydantic_compat import BaseModel, IS_PYDANTIC_2
+from ray._private.pydantic_compat import IS_PYDANTIC_2
 
 
 @pytest.fixture(scope="session")
