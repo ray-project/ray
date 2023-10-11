@@ -231,13 +231,10 @@ class DatasetReader(InputReader):
             print(
                 f"DatasetReader {self._ioctx.worker_index} has {ds.count()}, samples."
             )
-            # TODO: @avnishn make this call seeded.
-            # calling random_shuffle_each_window shuffles the dataset after
-            # each time the whole dataset has been read.
 
             def iterator():
                 while True:
-                    ds = self._dataset.random_shuffle()
+                    ds = self._dataset.random_shuffle(seed=seed)
                     yield from ds.iter_rows()
 
             self._iter = iterator()
