@@ -176,6 +176,7 @@ class _ActorPoolBoilerPlate(_ActorPool):
             def exit(self) -> None:
                 ray.actor.exit_actor()
 
+        assert ray.is_initialized()
         actor = ExecutorActor.options().remote(  # type: ignore[attr-defined]
             self.initializer, self.initargs
         )
@@ -494,7 +495,7 @@ class RayExecutor(Executor):
             override the behaviour above.
         """
         self._shutdown_lock: bool = False
-        self._initialised_ray: bool = not ray.is_initialized()
+        self._initialised_ray: bool = (not ray.is_initialized()) and ("address" not in kwargs)
         self._context: "BaseContext" = ray.init(ignore_reinit_error=True, **kwargs)
         self.futures: list[Future[Any]] = []
         self.shutdown_ray = shutdown_ray
@@ -698,8 +699,11 @@ class RayExecutor(Executor):
             are completed or running will not be cancelled.
         """
 
+        print(0)
         if self.shutdown_ray is None:
+            print(1)
             if self._initialised_ray:
+                print(2)
                 self._shutdown_ray(wait, cancel_futures)
         else:
             if self.shutdown_ray:
