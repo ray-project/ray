@@ -2136,9 +2136,6 @@ class DeploymentStateManager:
         )
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()
-        self._deleted_deployment_metadata: Dict[
-            DeploymentID, DeploymentInfo
-        ] = OrderedDict()
 
         self._recover_from_checkpoint(
             all_current_actor_names, all_current_placement_group_names
@@ -2278,10 +2275,7 @@ class DeploymentStateManager:
         )
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            (
-                deployment_state_info,
-                self._deleted_deployment_metadata,
-            ) = cloudpickle.loads(checkpoint)
+            deployment_state_info = cloudpickle.loads(checkpoint)
 
             for deployment_id, checkpoint_data in deployment_state_info.items():
                 deployment_state = self._create_deployment_state(deployment_id)
@@ -2345,9 +2339,7 @@ class DeploymentStateManager:
 
         self._kv_store.put(
             CHECKPOINT_KEY,
-            cloudpickle.dumps(
-                (deployment_state_info, self._deleted_deployment_metadata)
-            ),
+            cloudpickle.dumps(deployment_state_info),
         )
 
     def get_running_replica_infos(
@@ -2358,26 +2350,18 @@ class DeploymentStateManager:
             for id, deployment_state in self._deployment_states.items()
         }
 
-    def get_deployment_infos(
-        self, include_deleted: Optional[bool] = False
-    ) -> Dict[DeploymentID, DeploymentInfo]:
+    def get_deployment_infos(self) -> Dict[DeploymentID, DeploymentInfo]:
         infos: Dict[DeploymentID, DeploymentInfo] = {}
-        if include_deleted:
-            for deployment_id, info in self._deleted_deployment_metadata.items():
-                infos[deployment_id] = info
-
         for deployment_id, deployment_state in self._deployment_states.items():
             infos[deployment_id] = deployment_state.target_info
 
         return infos
 
     def get_deployment(
-        self, deployment_id: DeploymentID, include_deleted: Optional[bool] = False
+        self, deployment_id: DeploymentID
     ) -> Optional[DeploymentInfo]:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].target_info
-        elif include_deleted and deployment_id in self._deleted_deployment_metadata:
-            return self._deleted_deployment_metadata[deployment_id]
         else:
             return None
 
@@ -2423,9 +2407,6 @@ class DeploymentStateManager:
         Returns:
             bool: Whether or not the deployment is being updated.
         """
-        if deployment_id in self._deleted_deployment_metadata:
-            del self._deleted_deployment_metadata[deployment_id]
-
         if deployment_id not in self._deployment_states:
             self._deployment_states[deployment_id] = self._create_deployment_state(
                 deployment_id
@@ -2494,14 +2475,6 @@ class DeploymentStateManager:
                 upscales[deployment_id] = deployment_state_update_result.upscale
             if deployment_state_update_result.downscale:
                 downscales[deployment_id] = deployment_state_update_result.downscale
-
-            if deployment_state_update_result.deleted:
-                deleted_ids.append(deployment_id)
-                deployment_info = deployment_state.target_info
-                deployment_info.end_time_ms = int(time.time() * 1000)
-                if len(self._deleted_deployment_metadata) > MAX_NUM_DELETED_DEPLOYMENTS:
-                    self._deleted_deployment_metadata.popitem(last=False)
-                self._deleted_deployment_metadata[deployment_id] = deployment_info
 
             any_recovering |= deployment_state_update_result.any_replicas_recovering
 
