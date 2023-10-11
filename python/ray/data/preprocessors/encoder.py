@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 import pandas.api.types
 
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.util.annotations import PublicAPI
 
 
@@ -415,6 +416,48 @@ class LabelEncoder(Preprocessor):
             return s.map(s_values)
 
         df[self.label_column] = df[self.label_column].transform(column_label_encoder)
+        return df
+
+    def inverse_transform(self, ds: "Dataset") -> "Dataset":
+        """Inverse transform the given dataset.
+
+        Args:
+            ds: Input Dataset that has been fitted and/or transformed.
+
+        Returns:
+            ray.data.Dataset: The inverse transformed Dataset.
+
+        Raises:
+            PreprocessorNotFittedException: if ``fit`` is not called yet.
+        """
+
+        fit_status = self.fit_status()
+
+        if fit_status in (
+            Preprocessor.FitStatus.PARTIALLY_FITTED,
+            Preprocessor.FitStatus.NOT_FITTED,
+        ):
+            raise PreprocessorNotFittedException(
+                "`fit` must be called before `inverse_transform`, "
+            )
+
+        kwargs = self._get_transform_config()
+
+        return ds.map_batches(
+            self._inverse_transform_pandas, batch_format=BatchFormat.PANDAS, **kwargs
+        )
+
+    def _inverse_transform_pandas(self, df: pd.DataFrame):
+        def column_label_decoder(s: pd.Series):
+            inverse_values = {
+                value: key
+                for key, value in self.stats_[
+                    f"unique_values({self.label_column})"
+                ].items()
+            }
+            return s.map(inverse_values)
+
+        df[self.label_column] = df[self.label_column].transform(column_label_decoder)
         return df
 
     def __repr__(self):

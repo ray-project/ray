@@ -1,13 +1,13 @@
-import pytest
 import numpy as np
+import pytest
 
 import ray
-from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
+from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 from ray.train.tests.lightning_test_utils import (
-    LinearModule,
     DoubleLinearModule,
     DummyDataModule,
+    LinearModule,
 )
 
 

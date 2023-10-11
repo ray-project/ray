@@ -114,7 +114,7 @@
 # 1 g4dn.4xlarge
 - name: torch_batch_inference_1_gpu_10gb_raw
   group: AIR tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: nightly_tests/dataset
 
   frequency: nightly
   team: data
@@ -125,7 +125,7 @@
 
   run:
     timeout: 500
-    script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw --data-format raw
+    script: python gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw --data-format raw
 
   alert: default
 
@@ -141,7 +141,7 @@
 # 1 g4dn.4xlarge
 - name: torch_batch_inference_1_gpu_10gb_parquet
   group: AIR tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: nightly_tests/dataset
 
   frequency: nightly
   team: data
@@ -152,7 +152,7 @@
 
   run:
     timeout: 500
-    script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw-parquet --data-format parquet
+    script: python gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw-parquet --data-format parquet
 
   alert: default
 
@@ -169,7 +169,7 @@
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_raw
   group: AIR tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: nightly_tests/dataset
 
   frequency: nightly
   team: data
@@ -181,7 +181,7 @@
 
   run:
     timeout: 1000
-    script: python workloads/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
+    script: python gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
 
     wait_for_nodes:
         num_nodes: 4
@@ -201,7 +201,7 @@
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_parquet
   group: AIR tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: nightly_tests/dataset
 
   frequency: nightly
   team: data
@@ -213,7 +213,7 @@
 
   run:
     timeout: 1000
-    script: python workloads/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+    script: python gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
     wait_for_nodes:
         num_nodes: 4
@@ -232,7 +232,7 @@
 # 10 g4dn.12xlarge, 10 m5.16xlarge
 - name: torch_batch_inference_hetero_10tb_parquet
   group: AIR tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: nightly_tests/dataset
 
   frequency: weekly
   team: data
@@ -244,7 +244,7 @@
 
   run:
     timeout: 2000
-    script: python workloads/gpu_batch_inference.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+    script: python gpu_batch_inference.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
 
     wait_for_nodes:
       num_nodes: 20

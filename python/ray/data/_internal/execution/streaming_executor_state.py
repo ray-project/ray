@@ -138,7 +138,7 @@ class OpState:
         enabled = verbose_progress or is_all_to_all
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
-            self.op.num_outputs_total() or 1,
+            self.op.num_outputs_total(),
             index,
             enabled=enabled,
         )
