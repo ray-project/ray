@@ -139,7 +139,6 @@ class ActorPoolMapOperator(MapOperator):
             ctx,
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
-            target_max_block_size=self.actual_target_max_block_size,
         )
         res_ref = actor.get_location.remote()
 
@@ -355,12 +354,10 @@ class _MapWorker:
         ctx: DataContext,
         src_fn_name: str,
         map_transformer: MapTransformer,
-        target_max_block_size: int,
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
-        self._target_max_block_size = target_max_block_size
         # Initialize state for this actor.
         self._map_transformer.init()
 
@@ -375,7 +372,6 @@ class _MapWorker:
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(
             self._map_transformer,
-            self._target_max_block_size,
             data_context,
             ctx,
             *blocks,

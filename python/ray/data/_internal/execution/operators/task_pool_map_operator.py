@@ -58,7 +58,6 @@ class TaskPoolMapOperator(MapOperator):
             **self._get_runtime_ray_remote_args(input_bundle=bundle), name=self.name
         ).remote(
             self._map_transformer_ref,
-            self.actual_target_max_block_size,
             DataContext.get_current(),
             ctx,
             *input_blocks,
