@@ -9,6 +9,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.back_pressure_policy import get_back_pressure_policies
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -32,8 +33,6 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
-
-from ray.data._internal.execution.back_pressure_policy import get_back_pressure_policies
 
 logger = DatasetLogger(__name__)
 
