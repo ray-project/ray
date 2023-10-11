@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 import functools
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 import warnings
 
 import ray
