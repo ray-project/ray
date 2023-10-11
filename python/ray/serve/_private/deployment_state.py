@@ -5,7 +5,7 @@ import os
 import random
 import time
 import traceback
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
@@ -34,7 +34,6 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-    MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -2357,9 +2356,7 @@ class DeploymentStateManager:
 
         return infos
 
-    def get_deployment(
-        self, deployment_id: DeploymentID
-    ) -> Optional[DeploymentInfo]:
+    def get_deployment(self, deployment_id: DeploymentID) -> Optional[DeploymentInfo]:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].target_info
         else:

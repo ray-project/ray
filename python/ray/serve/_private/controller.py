@@ -793,7 +793,9 @@ class ServeController:
         )
         return deployment_route.SerializeToString()
 
-    def list_deployments_internal(self) -> Dict[DeploymentID, Tuple[DeploymentInfo, str]]:
+    def list_deployments_internal(
+        self,
+    ) -> Dict[DeploymentID, Tuple[DeploymentInfo, str]]:
         """Gets the current information about all deployments.
 
         Returns:
