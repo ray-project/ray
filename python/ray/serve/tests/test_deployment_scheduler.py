@@ -9,7 +9,6 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentDownscaleRequest,
-    DriverDeploymentSchedulingPolicy,
     ReplicaSchedulingRequest,
     SpreadDeploymentSchedulingPolicy,
 )
@@ -322,113 +321,6 @@ def test_spread_deployment_scheduling_policy_downscale_head_node(ray_start_clust
     assert len(deployment_to_replicas_to_stop) == 1
     assert deployment_to_replicas_to_stop[dep_id] == {"replica1"}
     scheduler.on_replica_stopping(dep_id, "replica1")
-    scheduler.on_deployment_deleted(dep_id)
-
-
-def test_driver_deployment_scheduling_policy_upscale(ray_start_cluster):
-    """Test to make sure there is only one replica on each node
-    for the driver deployment.
-    """
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=3)
-    cluster.add_node(num_cpus=3)
-    cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
-
-    cluster_node_info_cache = create_cluster_node_info_cache(
-        GcsClient(address=ray.get_runtime_context().gcs_address)
-    )
-    cluster_node_info_cache.update()
-
-    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
-    dep_id = DeploymentID("deployment1", "my_app")
-    scheduler.on_deployment_created(dep_id, DriverDeploymentSchedulingPolicy())
-
-    replica_actor_handles = []
-
-    def on_scheduled(actor_handle, placement_group):
-        replica_actor_handles.append(actor_handle)
-
-    deployment_to_replicas_to_stop = scheduler.schedule(
-        upscales={
-            dep_id: [
-                ReplicaSchedulingRequest(
-                    deployment_id=dep_id,
-                    replica_name="replica1",
-                    actor_def=Replica,
-                    actor_resources={"CPU": 1},
-                    actor_options={},
-                    actor_init_args=(),
-                    on_scheduled=on_scheduled,
-                ),
-                ReplicaSchedulingRequest(
-                    deployment_id=dep_id,
-                    replica_name="replica2",
-                    actor_def=Replica,
-                    actor_resources={"CPU": 1},
-                    actor_options={},
-                    actor_init_args=(),
-                    on_scheduled=on_scheduled,
-                ),
-                ReplicaSchedulingRequest(
-                    deployment_id=dep_id,
-                    replica_name="replica3",
-                    actor_def=Replica,
-                    actor_resources={"CPU": 1},
-                    actor_options={},
-                    actor_init_args=(),
-                    on_scheduled=on_scheduled,
-                ),
-            ]
-        },
-        downscales={},
-    )
-    assert not deployment_to_replicas_to_stop
-    # 2 out of 3 replicas are scheduled since there are only two nodes in the cluster.
-    assert len(replica_actor_handles) == 2
-    assert len(scheduler._pending_replicas[dep_id]) == 1
-    assert len(scheduler._launching_replicas[dep_id]) == 2
-    assert (
-        len(
-            {
-                ray.get(replica_actor_handles[0].get_node_id.remote()),
-                ray.get(replica_actor_handles[1].get_node_id.remote()),
-            }
-        )
-        == 2
-    )
-
-    scheduler.on_replica_recovering(dep_id, "replica4")
-    cluster.add_node(num_cpus=3)
-    cluster.wait_for_nodes()
-    cluster_node_info_cache.update()
-
-    deployment_to_replicas_to_stop = scheduler.schedule(upscales={}, downscales={})
-    assert not deployment_to_replicas_to_stop
-    # No schduling while some replica is recovering
-    assert len(replica_actor_handles) == 2
-
-    scheduler.on_replica_stopping(dep_id, "replica4")
-    # The last replica is scheduled
-    deployment_to_replicas_to_stop = scheduler.schedule(upscales={}, downscales={})
-    assert not deployment_to_replicas_to_stop
-    assert not scheduler._pending_replicas[dep_id]
-    assert len(scheduler._launching_replicas[dep_id]) == 3
-    assert len(replica_actor_handles) == 3
-    assert (
-        len(
-            {
-                ray.get(replica_actor_handles[0].get_node_id.remote()),
-                ray.get(replica_actor_handles[1].get_node_id.remote()),
-                ray.get(replica_actor_handles[2].get_node_id.remote()),
-            }
-        )
-        == 3
-    )
-
-    scheduler.on_replica_stopping(dep_id, "replica1")
-    scheduler.on_replica_stopping(dep_id, "replica2")
-    scheduler.on_replica_stopping(dep_id, "replica3")
     scheduler.on_deployment_deleted(dep_id)
 
 

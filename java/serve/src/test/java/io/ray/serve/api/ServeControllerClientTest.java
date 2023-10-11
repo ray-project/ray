@@ -31,7 +31,7 @@ public class ServeControllerClientTest {
           Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config, null);
 
       // Mock endpoints.
       EndpointSet endpointSet =
@@ -45,8 +45,7 @@ public class ServeControllerClientTest {
           .get();
 
       // Client.
-      ServeControllerClient client =
-          new ServeControllerClient(controllerHandle, controllerName, true);
+      ServeControllerClient client = new ServeControllerClient(controllerHandle, controllerName);
 
       // Get handle.
       RayServeHandle rayServeHandle = client.getHandle(endpointName, false);

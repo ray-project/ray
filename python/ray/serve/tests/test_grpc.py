@@ -1,6 +1,5 @@
 import os
 import sys
-from unittest.mock import patch
 
 import grpc
 
@@ -9,26 +8,13 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import (
-    SignalActor,
-    run_string_as_driver,
-    setup_tls,
-    teardown_tls,
-    wait_for_condition,
-)
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_DEFAULT_APP_NAME,
-    SERVE_NAMESPACE,
-)
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.config import gRPCOptions
-from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
-from ray.serve.exceptions import RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.test_config_files.grpc_deployment import g, g2
-from ray.serve.tests.utils import (
+from ray.serve.tests.common.utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -37,196 +23,7 @@ from ray.serve.tests.utils import (
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
 )
-
-
-@pytest.fixture
-def serve_start_shutdown():
-    ray.init()
-    yield
-    serve.shutdown()
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_cluster():
-    cluster = Cluster()
-    yield Cluster()
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
-
-
-@pytest.fixture
-def use_tls(request):
-    if request.param:
-        key_filepath, cert_filepath, temp_dir = setup_tls()
-    yield request.param
-    if request.param:
-        teardown_tls(key_filepath, cert_filepath, temp_dir)
-
-
-def tls_enabled():
-    return os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true")
-
-
-@pytest.mark.skipif(
-    sys.platform == "darwin",
-    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
-)
-@pytest.mark.parametrize("use_tls", [True], indirect=True)
-def test_deploy_basic(use_tls):
-    if use_tls:
-        run_string_as_driver(
-            """
-# coding: utf-8
-import os
-from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
-import ray
-from ray import serve
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-import grpc
-from ray.serve.exceptions import RayServeException
-from ray._private.tls_utils import load_certs_from_env
-import logging
-import asyncio
-try:
-    ray.init()
-    @serve.deployment
-    class D1:
-        def __call__(self, input):
-            return input["a"]
-
-    serve.run(DefaultgRPCDriver.bind(D1.bind()))
-
-    async def send_request():
-        server_cert_chain, private_key, ca_cert = load_certs_from_env()
-        credentials = grpc.ssl_channel_credentials(
-            certificate_chain=server_cert_chain,
-            private_key=private_key,
-            root_certificates=ca_cert,
-        )
-
-        async with grpc.aio.secure_channel("localhost:9000", credentials) as channel:
-            stub = serve_pb2_grpc.PredictAPIsServiceStub(channel)
-            response = await stub.Predict(
-                serve_pb2.PredictRequest(input={"a": bytes("123", "utf-8")})
-            )
-        return response
-
-    resp = asyncio.run(send_request())
-    assert resp.prediction == b"123"
-finally:
-    serve.shutdown()
-    ray.shutdown()
-        """,
-            env=os.environ.copy(),
-        )
-    else:
-        run_string_as_driver(
-            """
-# coding: utf-8
-import os
-from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
-import ray
-from ray import serve
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-import grpc
-from ray.serve.exceptions import RayServeException
-from ray._private.tls_utils import load_certs_from_env
-import logging
-import asyncio
-try:
-    ray.init()
-    @serve.deployment
-    class D1:
-        def __call__(self, input):
-            return input["a"]
-
-    serve.run(DefaultgRPCDriver.bind(D1.bind()))
-
-    async def send_request():
-        async with grpc.aio.insecure_channel("localhost:9000") as channel:
-            stub = serve_pb2_grpc.PredictAPIsServiceStub(channel)
-            response = await stub.Predict(
-                serve_pb2.PredictRequest(input={"a": bytes("123", "utf-8")})
-            )
-        return response
-
-    resp = asyncio.run(send_request())
-    assert resp.prediction == b"123"
-finally:
-    serve.shutdown()
-    ray.shutdown()
-        """,
-            env=os.environ.copy(),
-        )
-
-
-@patch("ray.serve._private.api.FLAG_DISABLE_PROXY", True)
-def test_controller_without_http(serve_start_shutdown):
-    @serve.deployment
-    class D1:
-        def __call__(self, input):
-            return input["a"]
-
-    serve.run(DefaultgRPCDriver.bind(D1.bind()))
-    assert ray.get(serve.context._global_client._controller.get_proxies.remote()) == {}
-
-
-@patch("ray.serve._private.api.FLAG_DISABLE_PROXY", True)
-def test_deploy_grpc_driver_to_node(ray_cluster):
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.connect(namespace=SERVE_NAMESPACE)
-
-    @serve.deployment
-    class D1:
-        def __call__(self, input):
-            return input["a"]
-
-    serve.run(DefaultgRPCDriver.bind(D1.bind()))
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-    deployment_id = DeploymentID("DefaultgRPCDriver", SERVE_DEFAULT_APP_NAME)
-    assert len(replicas[deployment_id]) == 1
-
-    worker_node = cluster.add_node(num_cpus=2)
-
-    wait_for_condition(
-        lambda: len(
-            ray.get(
-                serve.context._global_client._controller._all_running_replicas.remote()
-            )[deployment_id]
-        )
-        == 2
-    )
-
-    # Kill the worker node.
-    cluster.remove_node(worker_node)
-
-    wait_for_condition(
-        lambda: len(
-            ray.get(
-                serve.context._global_client._controller._all_running_replicas.remote()
-            )[deployment_id]
-        )
-        == 1
-    )
-
-
-def test_schemas_attach_grpc_server():
-    # Failed with initiate solely
-    with pytest.raises(RayServeException):
-        _ = gRPCIngress()
-
-    class MyDriver(gRPCIngress):
-        def __init__(self):
-            super().__init__()
-
-    # Failed with no schema gRPC binding function
-    with pytest.raises(RayServeException):
-        _ = MyDriver()
+from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 
 
 def test_serving_request_through_grpc_proxy(ray_cluster):
@@ -613,10 +410,6 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     ],
     indirect=True,
 )
-@pytest.mark.skipif(
-    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
-    reason="Failing on Python 3.7.",
-)
 @pytest.mark.parametrize("streaming", [False, True])
 def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request timed out.
@@ -624,12 +417,6 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     When the request timed out, gRPC proxy should return timeout response for both
     unary and streaming request.
     """
-    if streaming and not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        print(
-            "Skipping streaming condition because streaming feature flag is disabled."
-        )
-        return
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -683,10 +470,6 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     ray.get(signal_actor.send.remote())
 
 
-@pytest.mark.skipif(
-    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
-    reason="Failing on Python 3.7.",
-)
 @pytest.mark.parametrize("streaming", [False, True])
 def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request error out.
@@ -694,12 +477,6 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
     When the request error out, gRPC proxy should return INTERNAL status and the error
     message in the response for both unary and streaming request.
     """
-    if streaming and not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        print(
-            "Skipping streaming condition because streaming feature flag is disabled."
-        )
-        return
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -741,8 +518,4 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", "-s", __file__]))

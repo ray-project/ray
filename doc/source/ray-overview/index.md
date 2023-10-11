@@ -35,7 +35,7 @@ These are some common ML workloads that individuals, organizations, and companie
 
 ## Ray framework
 
-|<img src="../images/map-of-ray.png" width="70%" loading="lazy">|
+|<img src="../images/map-of-ray.svg" width="70%" loading="lazy">|
 |:--:|
 |Stack of Ray libraries - unified toolkit for ML workloads.|
 

@@ -1,22 +1,14 @@
-from typing import Optional, Union, Dict, List
+import sys
+from typing import Dict, List, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
+from ray.data.preprocessor import Preprocessor
 
 # TODO(justinvyu): Fix the circular import error
 from ray.train.constants import TRAIN_DATASET_KEY  # noqa
-from ray.train._internal.dataset_spec import DataParallelIngestSpec
-from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.air.config import DatasetConfig
-from ray.data import (
-    Dataset,
-    DataIterator,
-    ExecutionOptions,
-    NodeIdStr,
-)
-from ray.data.preprocessor import Preprocessor
-
-import sys
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -130,38 +122,3 @@ class DataConfig:
         This will be removed in the future.
         """
         return datasets  # No-op for non-legacy configs.
-
-
-class _LegacyDataConfigWrapper(DataConfig):
-    """Backwards-compatibility wrapper for the legacy dict-based datasets config.
-
-    This will be removed in the future.
-    """
-
-    def __init__(
-        self,
-        cls_config: Dict[str, DatasetConfig],
-        user_config: Dict[str, DatasetConfig],
-        datasets: Dict[str, Dataset],
-    ):
-        self._dataset_config = DatasetConfig.validated(
-            DatasetConfig.merge(cls_config, user_config), datasets
-        )
-        self._ingest_spec = DataParallelIngestSpec(
-            dataset_config=self._dataset_config,
-        )
-
-    def configure(
-        self,
-        datasets: Dict[str, Dataset],
-        world_size: int,
-        worker_handles: Optional[List[ActorHandle]],
-        worker_node_ids: Optional[List[NodeIdStr]],
-        **kwargs,
-    ) -> Dict[int, Dict[str, DataIterator]]:
-        return self._ingest_spec.get_dataset_shards(worker_handles)
-
-    def _legacy_preprocessing(
-        self, datasets: Dict[str, Dataset], preprocessor: Optional[Preprocessor]
-    ) -> Dict[str, Dataset]:
-        return self._ingest_spec.preprocess_datasets(preprocessor, datasets)

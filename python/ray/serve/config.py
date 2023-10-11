@@ -28,6 +28,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
+    """Config for the Serve Autoscaler."""
+
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
 
@@ -104,7 +106,6 @@ class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
     EveryNode = "EveryNode"
-    FixedNumber = "FixedNumber"
 
 
 @PublicAPI(stability="stable")
@@ -173,8 +174,6 @@ class HTTPOptions(pydantic.BaseModel):
     num_cpus: int = 0
     root_url: str = ""
     root_path: str = ""
-    fixed_number_replicas: Optional[int] = None
-    fixed_number_selection_seed: int = 0
     request_timeout_s: Optional[float] = None
     keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S
 
@@ -182,12 +181,6 @@ class HTTPOptions(pydantic.BaseModel):
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
-
-        if v == DeploymentMode.FixedNumber:
-            warnings.warn(
-                "`DeploymentMode.FixedNumber` is deprecated and will be removed in a "
-                "future version."
-            )
 
         return v
 
@@ -208,15 +201,6 @@ class HTTPOptions(pydantic.BaseModel):
             warnings.warn(
                 "Passing `num_cpus` to HTTPOptions is deprecated and will be "
                 "removed in a future version."
-            )
-        return v
-
-    @validator("fixed_number_replicas", always=True)
-    def fixed_number_replicas_should_exist(cls, v, values):
-        if values.get("location") == DeploymentMode.FixedNumber and v is None:
-            raise ValueError(
-                "When location='FixedNumber', you must specify "
-                "the `fixed_number_replicas` parameter."
             )
         return v
 

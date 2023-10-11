@@ -1,17 +1,18 @@
+import tempfile
+
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import tempfile
+from torch.utils.data import DataLoader
 
 import ray
 from ray.air.constants import MODEL_KEY
-from torch.utils.data import DataLoader
-from ray.train.tests.lightning_test_utils import LinearModule, DummyDataModule
 from ray.train.lightning import (
     LightningCheckpoint,
     LightningConfigBuilder,
     LightningTrainer,
 )
+from ray.train.tests.lightning_test_utils import DummyDataModule, LinearModule
 
 
 class Net(pl.LightningModule):

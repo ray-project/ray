@@ -25,6 +25,7 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
     get_app_code_version,
+    get_deploy_args,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
@@ -469,26 +470,20 @@ class ApplicationState:
                     (f"Deploying app '{self._name}' failed with " f"exception:\n{err}"),
                 )
         except RuntimeEnvSetupError:
-            return (
-                None,
-                BuildAppStatus.FAILED,
-                (
-                    f"Runtime env setup for app '{self._name}' failed:\n"
-                    + traceback.format_exc()
-                ),
+            error_msg = (
+                f"Runtime env setup for app '{self._name}' failed:\n"
+                + traceback.format_exc()
             )
+            return None, BuildAppStatus.FAILED, error_msg
         except Exception:
-            return (
-                None,
-                BuildAppStatus.FAILED,
-                (
-                    f"Unexpected error occured while deploying application "
-                    f"'{self._name}': \n{traceback.format_exc()}"
-                ),
+            error_msg = (
+                f"Unexpected error occured while deploying application "
+                f"'{self._name}': \n{traceback.format_exc()}"
             )
+            return None, BuildAppStatus.FAILED, error_msg
 
-        # Convert serializable deployment args to deployment infos and
-        # apply option overrides from config
+        # Convert serialized deployment args (returned by build app task)
+        # to deployment infos and apply option overrides from config
         try:
             deployment_infos = {
                 params["deployment_name"]: deploy_args_to_deployment_info(
@@ -504,14 +499,11 @@ class ApplicationState:
         except (TypeError, ValueError, RayServeException):
             return None, BuildAppStatus.FAILED, traceback.format_exc()
         except Exception:
-            return (
-                None,
-                BuildAppStatus.FAILED,
-                (
-                    f"Unexpected error occured while applying config for application "
-                    f"'{self._name}': \n{traceback.format_exc()}"
-                ),
+            error_msg = (
+                f"Unexpected error occured while applying config for application "
+                f"'{self._name}': \n{traceback.format_exc()}"
             )
+            return None, BuildAppStatus.FAILED, error_msg
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
@@ -611,11 +603,6 @@ class ApplicationState:
 
     def get_checkpoint_data(self) -> ApplicationTargetState:
         return self._target_state
-
-    def get_deployment(self, name: str) -> DeploymentInfo:
-        """Get deployment info for deployment by name."""
-        deployment_id = DeploymentID(name, self._name)
-        return self._deployment_state_manager.get_deployment(deployment_id)
 
     def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
         """Return all deployment status information"""
@@ -795,11 +782,6 @@ class ApplicationStateManager:
             )
         return self._application_states[name].get_application_status_info()
 
-    def get_deployment_timestamp(self, name: str) -> float:
-        if name not in self._application_states:
-            return -1
-        return self._application_states[name].deployment_timestamp
-
     def get_docs_path(self, app_name: str) -> Optional[str]:
         return self._application_states[app_name].docs_path
 
@@ -901,29 +883,35 @@ def build_serve_application(
     """
     try:
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
-        from ray.serve.api import _build
-        from ray.serve.built_application import _get_deploy_args_from_built_app
+        from ray.serve._private.deployment_graph_build import build as pipeline_build
+        from ray.serve._private.deployment_graph_build import (
+            get_and_validate_ingress_deployment,
+        )
 
         # Import and build the application.
         app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
-        app = _build(app, name)
-
-        # Check that all deployments specified in config are valid
-        for deployment_name in config_deployments:
-            if deployment_name not in app.deployments:
-                raise KeyError(
-                    f'There is no deployment named "{deployment_name}" in the '
-                    f'application "{name}".'
-                )
+        deployments = pipeline_build(app._get_internal_dag_node(), name)
+        ingress = get_and_validate_ingress_deployment(deployments)
 
         # Set code version and runtime env for each deployment
-        for deployment_name in app.deployments:
-            app.deployments[deployment_name].set_options(
-                version=code_version,
-                _internal=True,
-            )
+        for deployment in deployments:
+            deployment.set_options(version=code_version, _internal=True)
 
-        return _get_deploy_args_from_built_app(app), None
+        deploy_args_list = []
+        for deployment in deployments:
+            is_ingress = deployment.name == ingress.name
+            deploy_args_list.append(
+                get_deploy_args(
+                    name=deployment._name,
+                    replica_config=deployment._replica_config,
+                    ingress=is_ingress,
+                    deployment_config=deployment._deployment_config,
+                    version=deployment.version,
+                    route_prefix=deployment.route_prefix,
+                    docs_path=deployment._docs_path,
+                )
+            )
+        return deploy_args_list, None
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
@@ -983,11 +971,6 @@ def override_deployment_info(
         deployment_route_prefix = options.pop("route_prefix", DEFAULT.VALUE)
         if deployment_route_prefix is not DEFAULT.VALUE:
             override_options["route_prefix"] = deployment_route_prefix
-
-        # Override is_driver_deployment if specified in deployment config
-        is_driver_deployment = options.pop("is_driver_deployment", None)
-        if is_driver_deployment is not None:
-            override_options["is_driver_deployment"] = is_driver_deployment
 
         # Merge app-level and deployment-level runtime_envs.
         replica_config = info.replica_config

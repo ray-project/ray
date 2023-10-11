@@ -219,7 +219,7 @@ def test_http_proxy_calllback_failures(ray_instance, capsys):
     """Test http proxy keeps restarting when callback function fails"""
 
     try:
-        serve.start(detached=True)
+        serve.start()
     except RayActorError:
         # serve.start will fail because the http proxy is not started successfully
         # and client use proxy handle to check the proxy readiness, so it will raise

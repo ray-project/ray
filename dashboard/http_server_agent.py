@@ -8,7 +8,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardAgentRouteTable
 
 
 class HttpServerAgent:
@@ -31,7 +31,7 @@ class HttpServerAgent:
         # Bind routes for every module so that each module
         # can use decorator-style routes.
         for c in modules:
-            dashboard_optional_utils.ClassMethodRouteTable.bind(c)
+            dashboard_optional_utils.DashboardAgentRouteTable.bind(c)
 
         app = aiohttp.web.Application()
         app.add_routes(routes=routes.bound_routes())

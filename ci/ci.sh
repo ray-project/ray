@@ -206,21 +206,55 @@ prepare_docker() {
     popd
 }
 
-# For running Python tests on Windows.
-test_python() {
+# For running Serve tests on Windows.
+test_serve() {
   local pathsep=":" args=()
   if [ "${OSTYPE}" = msys ]; then
     pathsep=";"
     args+=(
       python/ray/serve/...
+      -python/ray/serve/tests:test_cross_language # Ray java not built on Windows yet.
+      -python/ray/serve/tests:test_gcs_failure # Fork not supported in windows
+      -python/ray/serve/tests:test_standalone_2 # Multinode not supported on Windows
+      -python/ray/serve/tests:test_gradio
+      -python/ray/serve/tests:test_gradio_visualization
+      -python/ray/serve/tests:test_fastapi
+      -python/ray/serve/tests:test_get_deployment # address violation
+    )
+  fi
+  if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
+    install_ray
+
+    # Shard the args.
+    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
+    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
+    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+
+    # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
+    # It's unclear to me if this should be necessary, but this is to make tests run for now.
+    # Check why this issue doesn't arise on Linux/Mac.
+    # Ideally importing ray.cloudpickle should import pickle5 automatically.
+    # shellcheck disable=SC2046,SC2086
+    bazel test --config=ci \
+      --build_tests_only $(./ci/run/bazel_export_options) \
+      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      --test_env=CI="1" \
+      --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
+      --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_output=streamed \
+      -- \
+      ${test_shard_selection};
+  fi
+}
+
+# For running Python tests on Windows (excluding Serve).
+test_python() {
+  local pathsep=":" args=()
+  if [ "${OSTYPE}" = msys ]; then
+    pathsep=";"
+    args+=(
       python/ray/tests/...
-      -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
-      -python/ray/serve:test_gcs_failure # Fork not supported in windows
-      -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
-      -python/ray/serve:test_gradio
-      -python/ray/serve:test_gradio_visualization
-      -python/ray/serve:test_air_integrations_gpu
-      -python/ray/serve:test_fastapi
+      python/ray/train:test_windows
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -229,7 +263,6 @@ test_python() {
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_gcp_tpu_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_gcs_fault_tolerance # flaky
-      -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
@@ -245,7 +278,6 @@ test_python() {
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ml_py37_compat/... # Required ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
     )

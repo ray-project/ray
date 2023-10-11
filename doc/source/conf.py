@@ -283,6 +283,8 @@ html_theme_options = {
 # "<project> v<release> documentation".
 html_title = f"Ray {release}"
 
+autodoc_typehints_format = "short"
+
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None
 
@@ -398,6 +400,7 @@ def setup(app):
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")
     app.add_js_file("js/custom.js", defer="defer")
+    app.add_js_file("js/assistant.js", defer="defer")
 
     app.add_js_file("js/top-navigation.js", defer="defer")
 
@@ -439,6 +442,7 @@ autosummary_filename_map = {
 # Mock out external dependencies here.
 autodoc_mock_imports = [
     "aiohttp",
+    "composer",
     "dask",
     "datasets",
     "fastapi",
@@ -485,11 +489,24 @@ for mock_target in autodoc_mock_imports:
         "been loaded into sys.modules when the sphinx build starts."
     )
 
+from sphinx.ext import autodoc
+
+
+class MockedClassDocumenter(autodoc.ClassDocumenter):
+    def add_line(self, line: str, source: str, *lineno: int) -> None:
+        if line == "   Bases: :py:class:`object`":
+            return
+        super().add_line(line, source, *lineno)
+
+
+autodoc.ClassDocumenter = MockedClassDocumenter
+
 # Other sphinx docs can be linked to if the appropriate URL to the docs
 # is specified in the `intersphinx_mapping` - for example, types annotations
 # that are defined in dependencies can link to their respective documentation.
 intersphinx_mapping = {
     "aiohttp": ("https://docs.aiohttp.org/en/stable/", None),
+    "composer": ("https://docs.mosaicml.com/en/latest/", None),
     "dask": ("https://docs.dask.org/en/stable/", None),
     "datasets": ("https://huggingface.co/docs/datasets/main/en/", None),
     "distributed": ("https://distributed.dask.org/en/stable/", None),
