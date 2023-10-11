@@ -326,18 +326,16 @@ class StreamingExecutor(Executor, threading.Thread):
         stats = {metric: 0 for metric in DataMetric}
 
         for op in self._topology:
-            metrics = op.get_metrics()
+            metrics = op.metrics
             resource_usage = op.current_resource_usage()
 
-            stats[DataMetric.BYTES_SPILLED] += metrics.get("obj_store_mem_spilled", 0)
-            stats[DataMetric.BYTES_ALLOCATED] += metrics.get("obj_store_mem_alloc", 0)
-            stats[DataMetric.BYTES_FREED] += metrics.get("obj_store_mem_freed", 0)
+            stats[DataMetric.BYTES_SPILLED] += metrics.obj_store_mem_spilled
+            stats[DataMetric.BYTES_ALLOCATED] += metrics.obj_store_mem_alloc
+            stats[DataMetric.BYTES_FREED] += metrics.obj_store_mem_freed
+            stats[DataMetric.BYTES_CURRENT] += metrics.obj_store_mem_cur
+            stats[DataMetric.BYTES_OUTPUTTED] += metrics.bytes_outputs_generated
             stats[DataMetric.CPU_USAGE] += resource_usage.cpu or 0
             stats[DataMetric.GPU_USAGE] += resource_usage.gpu or 0
-
-            # TODO: get these stats from op metrics
-            stats[DataMetric.BYTES_OUTPUTTED] += 0
-            stats[DataMetric.BYTES_CURRENT] += 0
 
         _update_stats_actor_metrics(stats, {"dataset": self._dataset_uuid})
 
