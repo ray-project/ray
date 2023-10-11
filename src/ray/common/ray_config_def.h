@@ -491,21 +491,21 @@ RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 /// Setting the value to -1 allows for unlimited task events stored in GCS.
 RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
-/// Max number of task events by type (e.g. status updates, profile events) stored on
-/// workers. Any additional events will be dropped. This is set to a large value to avoid
-/// worker side data loss.
-RAY_CONFIG(int64_t, task_events_max_num_events_by_kind_in_worker, 100 * 1000)
+/// Max number of task status events stored on
+/// workers. Events will be evicted based on a FIFO order.
+RAY_CONFIG(uint64_t, task_events_max_num_status_events_buffer_on_worker, 100 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
 RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 
-/// Max number of profile events allowed for a single task when sent to GCS.
-/// NOTE: this limit only applies to the profile events per task in a single
-/// report gRPC call. A task could have more profile events in GCS from multiple
-/// report gRPC call.
-/// Setting the value to -1 allows unlimited profile events to be sent.
-RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 1000)
+/// Max number of profile events allowed to be tracked for a single task.
+/// Setting the value to -1 allows unlimited profile events to be tracked.
+RAY_CONFIG(int64_t, task_events_max_num_profile_events_per_task, 1000)
+
+/// The max number of profile events allowed to be stored in the buffer on the worker
+/// side. Events will be evicted based on a FIFO order.
+RAY_CONFIG(uint64_t, task_events_max_num_profile_events_buffer_on_worker, 10 * 1000)
 
 /// Max number of task attempts being dropped on the worker side to report to GCS.
 /// Setting the value to -1 allows unlimited dropped task attempts in a single
