@@ -154,7 +154,7 @@ class _StatsActor:
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
-        # a dataset's metrics to 0 after each finishing execution.
+        # a dataset's metrics to 0 after each finishes execution.
         tags_keys = ("dataset",)
         self.bytes_spilled = Gauge(
             DataMetric.BYTES_SPILLED.value,

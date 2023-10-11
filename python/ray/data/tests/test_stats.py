@@ -1152,6 +1152,7 @@ def test_stats_actor_metrics():
     total_bytes_spilled = last_stats[DataMetric.BYTES_SPILLED]
     total_bytes_allocated = last_stats[DataMetric.BYTES_ALLOCATED]
     total_bytes_freed = last_stats[DataMetric.BYTES_FREED]
+    total_bytes_outputted = last_stats[DataMetric.BYTES_OUTPUTTED]
     sum_cpu_usage = 0
     sum_gpu_usage = 0
     for call in update_fn.call_args_list:
@@ -1164,6 +1165,7 @@ def test_stats_actor_metrics():
         total_bytes_allocated == ds._plan.stats().extra_metrics["obj_store_mem_alloc"]
     )
     assert total_bytes_freed == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
+    assert total_bytes_outputted == 1000 * 80 * 80 * 4 * 8  # 8B per int
     # There should be nothing in object store at the end of execution.
     assert update_fn.call_args_list[-1].args[0][DataMetric.BYTES_CURRENT] == 0
 
