@@ -2513,7 +2513,7 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 
 void CoreWorker::RunTaskExecutionLoop() {
   PeriodicalRunner signal_checker(task_execution_service_);
-  if (options_.check_signal) {
+  if (options_.check_signals) {
     signal_checker.RunFnPeriodically(
         [this] {
           /// The overhead of this is only a single digit microsecond.
