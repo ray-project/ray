@@ -160,7 +160,7 @@ void OpenCensusProtoExporter::ExportViewData(
   // https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto
   rpc::ReportOCMetricsRequest request_proto;
   request_proto.set_worker_id(worker_id_.Binary());
-  auto data_batched = 0;
+  size_t data_batched = 0;
 
   for (const auto &datum : data) {
     UpdateMetricsData(datum, request_proto);
