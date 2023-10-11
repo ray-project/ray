@@ -134,6 +134,7 @@ TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
+  absl::MutexLock profile_lock(&profile_mutex_);
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
