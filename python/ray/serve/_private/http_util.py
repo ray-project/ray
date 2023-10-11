@@ -16,6 +16,7 @@ from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import serve_encoders
 from ray.serve.exceptions import RayServeException
+from ray._private.pydantic_compat import IS_PYDANTIC_2
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -319,10 +320,10 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
 
         # If there is a response model, FastAPI creates a copy of the fields.
         # But FastAPI creates the field incorrectly by missing the outer_type_.
-        import pydantic
-
         if (
-            pydantic.__version__.startswith("1.")
+            # TODO(edoakes): I don't think this check is complete because we need
+            # to support v1 models in v2 (from pydantic.v1 import *).
+            not IS_PYDANTIC_2
             and isinstance(route, APIRoute)
             and route.response_model
         ):
