@@ -6634,7 +6634,7 @@
 
   run:
     timeout: 2400
-    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
+    script: sudo python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
 
 
 - name: aws_cluster_launcher_nightly_image
