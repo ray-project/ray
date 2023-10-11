@@ -3505,6 +3505,7 @@ cdef class CoreWorker:
                     scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
+                    int streaming_generator_backpressure_size_bytes
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -3548,6 +3549,7 @@ cdef class CoreWorker:
             task_options = CTaskOptions(
                 name, num_returns, c_resources,
                 b"",
+                streaming_generator_backpressure_size_bytes,
                 serialized_runtime_env_info)
 
             # We are in the async context. We have to obtain
@@ -3732,7 +3734,8 @@ cdef class CoreWorker:
                           c_string name,
                           int num_returns,
                           double num_method_cpus,
-                          c_string concurrency_group_name):
+                          c_string concurrency_group_name,
+                          int streaming_generator_backpressure_size_bytes):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -3770,7 +3773,7 @@ cdef class CoreWorker:
                     ray_function,
                     args_vector,
                     CTaskOptions(
-                        name, num_returns, c_resources, concurrency_group_name),
+                        name, num_returns, c_resources, concurrency_group_name, streaming_generator_backpressure_size_bytes),
                     return_refs,
                     current_c_task_id)
             # These arguments were serialized and put into the local object

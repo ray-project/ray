@@ -1334,7 +1334,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &serialized_runtime_env_info,
       const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",
-      bool include_job_config = false);
+      bool include_job_config = false,
+      int64_t streaming_generator_backpressure_size_bytes = -1);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);

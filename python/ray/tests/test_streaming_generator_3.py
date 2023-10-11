@@ -13,7 +13,10 @@ from ray import serve
 from pydantic import BaseModel
 import ray
 from ray._raylet import StreamingObjectRefGenerator
-from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    wait_for_condition
+)
 from ray.util.state import list_actors
 
 
@@ -323,6 +326,68 @@ with ThreadPoolExecutor(max_workers=10) as executor:
         proc.terminate()
         for actor in list_actors():
             assert actor.state != "DEAD"
+
+
+# SANG-TODO
+# @pytest.mark.parametrize("store_in_plasma", [False, True])
+def test_streaming_generator_backpressure_basic(shutdown_only):
+    """Verify backpressure works with 
+    _streaming_generator_backpressure_size_bytes = 0
+    """
+    ray.init()
+
+    @ray.remote
+    class Reporter:
+        def __init__(self):
+            self.reported = set()
+        
+        def report(self, i):
+            self.reported.add(i)
+
+        def reported(self):
+            return self.reported
+        
+    TOTAL_RETURN = 3
+
+    @ray.remote(num_returns="streaming", _streaming_generator_backpressure_size_bytes=0)
+    def f(reporter):
+        for i in range(TOTAL_RETURN):
+            ray.get(reporter.report.remote(i))
+            yield i
+
+    reporter = Reporter.remote()
+
+    def check_reported(i):
+        return i in ray.get(reporter.reported.remote())
+
+    gen = f.remote(reporter)
+
+    for i in range(TOTAL_RETURN - 1):
+        print("First iteration.")
+        r, _ = ray.wait([gen])
+        assert len(r) == 1
+        assert check_reported(i)
+        assert not check_reported(i + 1)
+        # Wait a little bit and make sure the task is backpressured.
+        _, ur = ray.wait([gen], timeout=2)
+        assert len(ur) == 1
+        assert not check_reported(i + 1)
+        # Consume the ref -> task will progress.
+        assert ray.get(next(gen)) == i
+        assert check_reported(i + 1)
+    
+    """
+    Verify deleting a generator will stop backpressure
+    and proceed a task.
+    """
+    del gen
+    wait_for_condition(lambda: check_reported(TOTAL_RETURN - 1))
+
+
+# Test basic backpressure (size == 0).
+# Test backpressure + object store.
+# Test backpressure more than 1 object returned.
+# Test caller failed while backpressured.
 
 
 if __name__ == "__main__":
