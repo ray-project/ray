@@ -193,7 +193,7 @@ def test_transform_config():
 
     prep = DummyPreprocessor()
     ds = ray.data.from_pandas(pd.DataFrame({"value": list(range(4))}))
-    _apply_transform(prep, ds)
+    prep.transform(ds)
 
 
 @pytest.mark.parametrize("dataset_format", ["simple", "pandas", "arrow"])
@@ -218,31 +218,31 @@ def test_transform_all_formats(create_dummy_preprocessors, dataset_format):
         raise ValueError(f"Untested dataset_format configuration: {dataset_format}.")
 
     with pytest.raises(NotImplementedError):
-        _apply_transform(with_nothing, ds)
+        with_nothing.transform(ds)
 
     patcher = patch.object(ray.data.dataset.Dataset, "map_batches")
 
     with patcher as mock_map_batches:
-        _apply_transform(with_pandas, ds)
+        with_pandas.transform(ds)
         mock_map_batches.assert_called_once_with(
             with_pandas._transform_pandas, batch_format=BatchFormat.PANDAS
         )
 
     with patcher as mock_map_batches:
-        _apply_transform(with_numpy, ds)
+        with_numpy.transform(ds)
         mock_map_batches.assert_called_once_with(
             with_numpy._transform_numpy, batch_format=BatchFormat.NUMPY
         )
 
     # Pandas preferred by default.
     with patcher as mock_map_batches:
-        _apply_transform(with_pandas_and_numpy, ds)
+        with_pandas_and_numpy.transform(ds)
     mock_map_batches.assert_called_once_with(
         with_pandas_and_numpy._transform_pandas, batch_format=BatchFormat.PANDAS
     )
 
     with patcher as mock_map_batches:
-        _apply_transform(with_pandas_and_numpy_preferred, ds)
+        with_pandas_and_numpy_preferred.transform(ds)
     mock_map_batches.assert_called_once_with(
         with_pandas_and_numpy_preferred._transform_numpy, batch_format=BatchFormat.NUMPY
     )

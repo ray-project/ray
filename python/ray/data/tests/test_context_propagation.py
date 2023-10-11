@@ -6,7 +6,6 @@ from ray._private.test_utils import run_string_as_driver
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
-from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
