@@ -207,6 +207,8 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   }
 
   new_data.set_object_pulls_queued(data.object_pulls_queued());
+  new_data.set_idle_duration_ms(data.idle_duration_ms());
+  new_data.set_is_draining(data.is_draining());
 
   // Last update time
   iter->second.first = absl::Now();
@@ -228,11 +230,6 @@ GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
 
 void GcsAutoscalerStateManager::GetPendingResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
-  // TODO(rickyx): We could actually get the load of each node from the cluster resource
-  // manager. Need refactoring on the GcsResourceManager.
-  // We could then do cluster_resource_manager_GetResourceLoad(), and decouple it
-  // from gcs_resource_manager_.
-  // TODO(vitsai): other way :)
   auto aggregate_load = GetAggregatedResourceLoad();
   for (const auto &[shape, demand] : aggregate_load) {
     auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
@@ -257,6 +254,13 @@ void GcsAutoscalerStateManager::GetNodeStates(
     node_state_proto->set_node_ip_address(gcs_node_info.node_manager_address());
     node_state_proto->set_instance_type_name(gcs_node_info.instance_type_name());
 
+    // The only node state we use from GcsNodeInfo is dead.
+    // All others are populated with the locally kept ResourcesData,
+    // which may be more stale than GcsNodeInfo but is consistent between
+    // usage and load. GcsNodeInfo state contains only usage and is updated with
+    // Ray Syncer usage messages, which happen at a much higher cadence than
+    // autoscaler status polls, and so could be out of sync with load data,
+    // which is only sent in response to the poll.
     if (gcs_node_info.state() == rpc::GcsNodeInfo::DEAD) {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::DEAD);
       // We don't need populate other info for a dead node.

@@ -741,6 +741,7 @@ void GcsServer::InstallEventListeners() {
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
         pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
+        gcs_autoscaler_state_manager_->RemoveNode(node_id);
       });
 
   // Install worker event listener.

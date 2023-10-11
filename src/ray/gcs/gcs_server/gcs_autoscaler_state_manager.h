@@ -62,6 +62,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
 
+  void RemoveNode(const NodeID &node) { node_resource_info_.erase(node); }
+
  private:
   /// \brief Get the aggregated resource load from all nodes.
   std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
