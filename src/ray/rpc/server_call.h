@@ -236,6 +236,8 @@ class ServerCallImpl : public ServerCall {
     if (!io_service_.stopped()) {
       io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
                        call_name_ + ".HandleRequestImpl",
+                       // Implement the delay of the rpc server call as the
+                       // delay of HandleRequestImpl().
                        ray::asio::testing::get_delay_us(call_name_));
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
@@ -369,7 +371,7 @@ class ServerCallImpl : public ServerCall {
   /// Human-readable name for this RPC call.
   std::string call_name_;
 
-  /// The stats handle tracking this RPC.
+  /// The stats handle tracking this RPC call.
   std::shared_ptr<StatsHandle> stats_handle_;
 
   /// ID of the cluster to check incoming RPC calls against.
