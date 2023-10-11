@@ -108,8 +108,8 @@ placement_group = ray.util.placement_group(
 )
 ray.get(placement_group.ready())
 context.scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group)
-pipe = ray.data.range(100, parallelism=2).map(lambda x: {"id": x["id"] + 1})
-assert pipe.take_all() == [{"id": x} for x in range(1, 101)]
+ds = ray.data.range(100, parallelism=2).map(lambda x: {"id": x["id"] + 1})
+assert ds.take_all() == [{"id": x} for x in range(1, 101)]
 placement_group_assert_no_leak([placement_group])
 ray.shutdown()
     """
