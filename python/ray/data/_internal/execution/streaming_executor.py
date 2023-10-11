@@ -332,7 +332,10 @@ class StreamingExecutor(Executor, threading.Thread):
             stats[DataMetric.BYTES_SPILLED] += metrics.obj_store_mem_spilled
             stats[DataMetric.BYTES_ALLOCATED] += metrics.obj_store_mem_alloc
             stats[DataMetric.BYTES_FREED] += metrics.obj_store_mem_freed
-            stats[DataMetric.BYTES_CURRENT] += metrics.obj_store_mem_cur
+            # Input operators only produce outputs and do not take inputs, 
+            # so this metric is not properly calculated in these cases
+            if not isinstance(op, InputDataBuffer):
+                stats[DataMetric.BYTES_CURRENT] += metrics.obj_store_mem_cur
             stats[DataMetric.BYTES_OUTPUTTED] += metrics.bytes_outputs_generated
             stats[DataMetric.CPU_USAGE] += resource_usage.cpu or 0
             stats[DataMetric.GPU_USAGE] += resource_usage.gpu or 0
