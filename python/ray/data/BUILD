@@ -242,14 +242,6 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline",
-    size = "medium",
-    srcs = ["tests/test_pipeline.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
     name = "test_tensor",
     size = "small",
     srcs = ["tests/test_tensor.py"],
@@ -362,34 +354,9 @@ py_test(
 )
 
 py_test(
-    name = "test_optimize",
-    size = "medium",
-    srcs = ["tests/test_optimize.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-
-py_test(
     name = "test_partitioning",
     size = "medium",
     srcs = ["tests/test_partitioning.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_pipeline_incremental_take",
-    size = "small",
-    srcs = ["tests/test_pipeline_incremental_take.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_pipeline_nohang",
-    size = "medium",
-    srcs = ["tests/test_pipeline_nohang.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

@@ -96,6 +96,7 @@ class DatasetPipeline:
         ``Dataset.repeat()``, ``Dataset.window()``, or
         ``DatasetPipeline.from_iterable()`` methods to construct a pipeline.
         """
+        assert False
         self._base_iterable = base_iterable
         self._stages = stages or []
         self._optimized_stages = None
