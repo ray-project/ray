@@ -7,5 +7,4 @@
 
 set -xe
 
-echo "submitting round fine tuninig job"
 ray job submit --address http://localhost:8265 --runtime-env python/ray/tests/chaos/runtime_env.yaml --working-dir python/ray/tests/chaos -- python fine_tuning_like.py --num-actors=8 --iteration=5

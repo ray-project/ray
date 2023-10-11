@@ -12,6 +12,7 @@
       trap cleanup EXIT
     - echo "--- Preparing chaos testing environment"
     - ./python/ray/tests/chaos/prepare_env.sh
+    - chmod +x ./python/ray/tests/chaos/{{matrix.workload}}.sh"
     # First run: no faults
     - echo "--- Running the workload without faults"
     - "./python/ray/tests/chaos/{{matrix.workload}}.sh"
@@ -25,7 +26,7 @@
         - "chaos_network_delay"
         - "chaos_network_bandwidth"
       workload:
+        - "test_fine_tuning_llm"
         - "test_potato_passer"
         - "test_streaming_llm"
         - "test_many_job_submissions"
-        - "test_fine_tuning_llm"
