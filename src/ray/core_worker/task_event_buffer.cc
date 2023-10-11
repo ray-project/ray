@@ -378,25 +378,19 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   auto num_bytes_to_send = data->ByteSizeLong();
   ResetCountersForFlush();
 
-  auto on_failed_to_send_to_gcs =
-      [this, num_task_attempts_to_send, num_dropped_task_attempts_to_send](
-          const Status &status) {
-        RAY_LOG(WARNING) << "Failed to push task events of  " << num_task_attempts_to_send
-                         << " tasks attempts, and report "
-                         << num_dropped_task_attempts_to_send
-                         << " task attempts lost on worker to GCS."
-                         << "[status=" << status.ToString() << "]";
-
-        stats_counter_.Increment(TaskEventBufferCounter::kTotalNumFailedToReport);
-      };
-
   auto on_complete = [this,
                       &on_failed_to_send_to_gcs,
                       num_task_attempts_to_send,
                       num_dropped_task_attempts_to_send,
                       num_bytes_to_send](const Status &status) {
     if (!status.ok()) {
-      on_failed_to_send_to_gcs(status);
+      RAY_LOG(WARNING) << "Failed to push task events of  " << num_task_attempts_to_send
+                       << " tasks attempts, and report "
+                       << num_dropped_task_attempts_to_send
+                       << " task attempts lost on worker to GCS."
+                       << "[status=" << status.ToString() << "]";
+
+      stats_counter_.Increment(TaskEventBufferCounter::kTotalNumFailedToReport);
     } else {
       stats_counter_.Increment(kTotalNumTaskAttemptsReported, num_task_attempts_to_send);
       stats_counter_.Increment(kTotalNumLostTaskAttemptsReported,
@@ -407,10 +401,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   };
 
   auto status = task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
-  if (!status.ok()) {
-    on_failed_to_send_to_gcs(status);
-    grpc_in_progress_ = false;
-  }
+  RAY_CHECK(status.ok());
 }
 
 void TaskEventBufferImpl::ResetCountersForFlush() {
