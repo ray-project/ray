@@ -75,7 +75,6 @@ if not PYDANTIC_INSTALLED:
     ValidationError = None
     root_validator = None
     validator = None
-    ModelMetaclass = None
 elif packaging.version.parse(pydantic.__version__) < packaging.version.parse("2.0"):
     IS_PYDANTIC_2 = False
     from pydantic import (
@@ -90,7 +89,6 @@ elif packaging.version.parse(pydantic.__version__) < packaging.version.parse("2.
         root_validator,
         validator,
     )
-    from pydantic.main import ModelMetaclass
 else:
     IS_PYDANTIC_2 = True
     # TODO(edoakes): compare this against the version that has the fixes.
@@ -107,6 +105,3 @@ else:
         root_validator,
         validator,
     )
-
-    # TODO: we shouldn't depend on this path in pydantic>=2.0 as it's not public.
-    from pydantic._internal._model_construction import ModelMetaclass
