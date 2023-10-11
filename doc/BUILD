@@ -346,12 +346,13 @@ doctest(
 doctest(
     name="quarantine",
     files = [
-	"source/train/user-guides/data-loading-preprocessing.rst",
+	    "source/train/user-guides/data-loading-preprocessing.rst",
     ],
     tags = ["team:data"],
 )
 
 doctest(
+    name="doctest[train,gpu]"
     files = [
         "source/train/getting-started-pytorch.rst",
         "source/train/getting-started-pytorch-lightning.rst",
