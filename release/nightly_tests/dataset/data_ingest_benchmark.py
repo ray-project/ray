@@ -239,24 +239,24 @@ if __name__ == "__main__":
         benchmark.run_fn(
             "streaming-ingest",
             run_ingest_streaming,
-            fn_args=(
-                args.dataset_size_gb,
-                args.num_workers,
-                args.use_gpu,
-                args.early_stop,
-            ),
+            args.dataset_size_gb,
+            args.num_workers,
+            args.use_gpu,
+            args.early_stop,
         )
     elif args.streaming:
         benchmark.run_fn(
             "pipeline-ingest",
             run_ingest_dataset_pipeline,
-            fn_args=(args.dataset_size_gb, args.num_workers),
+            args.dataset_size_gb,
+            args.num_workers,
         )
     else:
         benchmark.run_fn(
             "bulk-ingest",
             run_ingest_bulk,
-            fn_args=(args.dataset_size_gb, args.num_workers),
+            args.dataset_size_gb,
+            args.num_workers,
         )
 
     benchmark.write_result()
