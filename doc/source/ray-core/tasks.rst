@@ -246,6 +246,7 @@ For tasks that return multiple objects, Ray also supports remote generators that
             :start-after: __generator_start__
             :end-before: __generator_end__
 
+.. _ray-task-cancel:
 
 Cancelling tasks
 ----------------

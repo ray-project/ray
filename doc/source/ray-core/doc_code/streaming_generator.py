@@ -1,12 +1,10 @@
-# __program_start__
-import ray
-# This API is subject to change.
-from ray._raylet import StreamingObjectRefGenerator
+# flake8: noqa
 
 # fmt: off
-# __streaming_generator_define_start__
-import time
 
+# __streaming_generator_define_start__
+import ray
+import time
 
 @ray.remote(num_returns="streaming")
 def task():
@@ -17,20 +15,23 @@ def task():
 # __streaming_generator_define_end__
 
 # __streaming_generator_execute_start__
-
 gen = task.remote()
 # Will block for 5 seconds.
 ref = next(gen)
 # return 0
 ray.get(ref)
-# Return 1~4 every 5 seconds.
+# Will block for 5 seconds.
+ref = next(gen)
+# return 1
+ray.get(ref)
+
+# Return 2~4 every 5 seconds.
 for ref in gen:
     print(ray.get(ref))
 
 # __streaming_generator_execute_end__
 
 # __streaming_generator_exception_start__
-
 @ray.remote(num_returns="streaming")
 def task():
     for i in range(5):
@@ -51,6 +52,39 @@ except ValueError as e:
 
 # __streaming_generator_exception_end__
 
+# __streaming_generator_actor_model_start__
+@ray.remote
+class Actor:
+    def f(self):
+        for i in range(5):
+            yield i
+
+@ray.remote
+class AsyncActor:
+    async def f(self):
+        for i in range(5):
+            yield i
+
+@ray.remote(num_concurrency=5)
+class ThreadedActor:
+    def f(self):
+        for i in range(5):
+            yield i
+
+actor = Actor.remote()
+for ref in actor.f.options(num_returns="streaming").remote():
+    print(ray.get(ref))
+
+actor = AsyncActor.remote()
+for ref in actor.f.options(num_returns="streaming").remote():
+    print(ray.get(ref))
+
+actor = ThreadedActor.remote()
+for ref in actor.f.options(num_returns="streaming").remote():
+    print(ray.get(ref))
+
+# __streaming_generator_actor_model_end__
+
 # __streaming_generator_asyncio_start__
 import asyncio
 
@@ -68,3 +102,108 @@ async def main():
 asyncio.run(main())
 
 # __streaming_generator_asyncio_end__
+
+# __streaming_generator_gc_start__
+@ray.remote(num_returns="streaming")
+def task():
+    for i in range(5):
+        time.sleep(1)
+        yield i
+
+gen = task.remote()
+ref1 = next(gen)
+del gen
+
+# __streaming_generator_gc_end__
+
+# __streaming_generator_concurrency_asyncio_start__
+import asyncio
+
+@ray.remote(num_returns="streaming")
+def task():
+    for i in range(5):
+        time.sleep(1)
+        yield i
+
+
+async def async_task():
+    async for ref in task.remote():
+        print(await ref)
+
+async def main():
+    t1 = async_task()
+    t2 = async_task()
+    await asyncio.gather(t1, t2)
+
+asyncio.run(main())
+# __streaming_generator_concurrency_asyncio_end__
+
+# __streaming_generator_wait_simple_start__
+@ray.remote(num_returns="streaming")
+def task():
+    for i in range(5):
+        time.sleep(5)
+        yield i
+
+gen = task.remote()
+
+# Since it takes 5 second to make the first yield,
+# with 0 timeout, generator is considered as unready.
+ready, unready = ray.wait([gen], timeout=0)
+print("timeout 0, nothing is ready.")
+print(ready)
+assert len(ready) == 0
+assert len(unready) == 1
+
+# Without timeout argument, ray.wait waits until the given argument
+# is ready. When a next item is ready, it will return.
+ready, unready = ray.wait([gen])
+print("Wait for 5 seconds. The next item is ready.")
+assert len(ready) == 1
+assert len(unready) == 0
+next(gen)
+
+# Since the second yield hasn't happened yet, 
+ready, unready = ray.wait([gen], timeout=0)
+print("Wait for 0 seconds. The next item is not ready.")
+print(ready, unready)
+assert len(ready) == 0
+assert len(unready) == 1
+
+# __streaming_generator_wait_simple_end__
+
+# __streaming_generator_wait_complex_start__
+from ray._raylet import StreamingObjectRefGenerator
+
+@ray.remote(num_returns="streaming")
+def generator_task():
+    for i in range(5):
+        time.sleep(5)
+        yield i
+
+@ray.remote
+def regular_task():
+    for i in range(5):
+        time.sleep(5)
+    return
+
+gen = [generator_task.remote()]
+ref = [regular_task.remote()]
+ready, unready = [], [*gen, *ref]
+result = []
+
+while unready:
+    ready, unready = ray.wait(unready)
+    for r in ready:
+        if isinstance(r, StreamingObjectRefGenerator):
+            try:
+                ref = next(r)
+                result.append(ray.get(ref))
+            except StopIteration:
+                pass
+            else:
+                unready.append(r)
+        else:
+            result.append(ray.get(r))
+
+# __streaming_generator_wait_complex_end__
