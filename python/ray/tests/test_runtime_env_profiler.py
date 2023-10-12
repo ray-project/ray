@@ -59,11 +59,15 @@ class TestNsightProfiler:
         # test nsight custom filename
         CUSTOM_REPORT = "custom_report"
 
-        @ray.remote(runtime_env={"nsight": {
-            "-t": "cuda,cublas,cudnn",
-            "--stop-on-exit": "true",
-            "-o": CUSTOM_REPORT,
-        }})
+        @ray.remote(
+            runtime_env={
+                "nsight": {
+                    "-t": "cuda,cublas,cudnn",
+                    "--stop-on-exit": "true",
+                    "-o": CUSTOM_REPORT,
+                }
+            }
+        )
         def test_generate_custom_report():
             return 0
 
@@ -91,7 +95,11 @@ class TestNsightProfiler:
         profilers_dir = Path(session_dir) / "logs" / "nsight"
 
         # test ray task
-        @ray.remote(runtime_env={"nsight": {"-o": "ray_task_%p"}})
+        @ray.remote(
+            runtime_env={
+                "nsight": {"-o": "ray_task_%p"},
+            }
+        )
         def test_generate_report():
             return 0
 
@@ -132,7 +140,7 @@ class TestNsightProfiler:
         session_dir = ray.worker._global_node.get_session_dir_path()
         profilers_dir = Path(session_dir) / "logs" / "nsight"
 
-        # test nsight default config
+        # test nsight invalid config
         @ray.remote(
             runtime_env={
                 "nsight": {
@@ -154,7 +162,7 @@ class TestNsightProfiler:
 
         """Test Nsight profile for unavailable string option"""
 
-        # test nsight default config
+        # test nsight not supported string config
         @ray.remote(runtime_env={"nsight": "not_default"})
         def test_wrong_config_nsight():
             return 0
@@ -194,7 +202,7 @@ class TestNsightProfiler:
         assert len(nsys_reports) == 0
 
     @pytest.mark.skipif(
-        sys.platform != "linux" or os.environ.get("RAY_MINIMAL") != "1" ,
+        sys.platform != "linux" or os.environ.get("RAY_MINIMAL") != "1",
         reason="Test only for compatible OS (linux) with minmial installation",
     )
     def test_nsight_not_installed(self):
@@ -208,12 +216,10 @@ class TestNsightProfiler:
         def test_nsight_not_supported():
             return 0
 
-        with pytest.raises(
-            RuntimeEnvSetupError, match="command not found: nsys"
-        ):
+        with pytest.raises(RuntimeEnvSetupError, match="command not found: nsys"):
             ray.get(test_nsight_not_supported.remote())
 
-        nsys_reports = glob.glob(os.path.join(f"{logs_dir}/*.nsys-rep"))
+        nsys_reports = glob.glob(os.path.join(f"{profilers_dir}/*.nsys-rep"))
         assert len(nsys_reports) == 0
 
     def test_parse_nsight_config(self):

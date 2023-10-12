@@ -516,8 +516,7 @@ install_thirdparty_packages() {
 install_nsight_profiler() {
   # install nsight cli
   if [[ "${OSTYPE}" = linux* ]]; then
-    wget https://nvidia-nsight.s3.us-west-2.amazonaws.com/NsightSystems-linux-cli-public-2022.4.1.21-0db2c85.deb
-    sudo apt install ./NsightSystems-linux-cli-public-2022.4.1.21-0db2c85.deb
+    pip install ."${WORKSPACE_DIR}"/python/ray/tests/nsight_mock
   fi
 }
 

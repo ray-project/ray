@@ -24,6 +24,7 @@ NSIGHT_DEFAULT_CONFIG = {
     "--stop-on-exit": "true",
 }
 
+
 def parse_nsight_config(nsight_config: Dict[str, str]) -> List[str]:
     """
     Function to convert dictionary of nsight options into
@@ -53,14 +54,16 @@ class NsightPlugin(RuntimeEnvPlugin):
         session_dir, runtime_dir = os.path.split(resources_dir)
         self._profilers_dir = Path(session_dir) / "logs" / "nsight"
         try_to_create_directory(self._profilers_dir)
-    
-    async def _check_nsight_script(self, nsight_config: Dict[str, str]) -> Tuple[bool, str]:
+
+    async def _check_nsight_script(
+        self, nsight_config: Dict[str, str]
+    ) -> Tuple[bool, str]:
         """
         Function to validate if nsight_config is a valid nsight profile options
         Args:
             nsight_config: dictionary mapping nsight option to it's value
         Returns:
-            a tuple consists of a boolean indicating if the nsight_config 
+            a tuple consists of a boolean indicating if the nsight_config
             is valid option and an error message if the nsight_config is invalid
         """
 
@@ -92,11 +95,7 @@ class NsightPlugin(RuntimeEnvPlugin):
                     stderr=subprocess.PIPE,
                 )
                 _, _ = await cleanup_process.communicate()
-                error_msg = (
-                    stderr.strip()
-                    if stderr.strip() != ""
-                    else stdout.strip()
-                )
+                error_msg = stderr.strip() if stderr.strip() != "" else stdout.strip()
                 return False, error_msg
         except FileNotFoundError:
             return False, ("nsight is not installed")
@@ -137,9 +136,10 @@ class NsightPlugin(RuntimeEnvPlugin):
                 f"error message:\n {error_msg}"
             )
         # add set output path to logs dir
-        nsight_config["-o"] = str(Path(self._profilers_dir) / nsight_config.get(
-            "-o", NSIGHT_DEFAULT_CONFIG["-o"]
-        ))
+        nsight_config["-o"] = str(
+            Path(self._profilers_dir)
+            / nsight_config.get("-o", NSIGHT_DEFAULT_CONFIG["-o"])
+        )
 
         self.nsight_cmd = parse_nsight_config(nsight_config)
         return 0
