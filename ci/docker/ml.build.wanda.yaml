@@ -1,5 +1,5 @@
-name: "mlbuild"
-froms: ["cr.ray.io/rayproject/oss-ci-base_ml"]
+name: "$BUILD_DEST"
+froms: ["cr.ray.io/rayproject/$BUILD_FROM"]
 dockerfile: ci/docker/ml.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
@@ -9,11 +9,15 @@ srcs:
   - python/requirements/test-requirements.txt
   - python/requirements/ml/core-requirements.txt
   - python/requirements/ml/dl-cpu-requirements.txt
+  - python/requirements/ml/dl-gpu-requirements.txt
   - python/requirements/ml/train-requirements.txt
   - python/requirements/ml/train-test-requirements.txt
   - python/requirements/ml/tune-requirements.txt
   - python/requirements/ml/tune-test-requirements.txt
   - python/requirements/ml/data-requirements.txt
   - python/requirements/ml/data-test-requirements.txt
+build_args:
+  - IS_GPU
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/$BUILD_FROM
 tags:
-  - cr.ray.io/rayproject/mlbuild
+  - cr.ray.io/rayproject/$BUILD_DEST
