@@ -877,7 +877,7 @@ class ActorClass:
         # If the actor methods require CPU resources, then set the required
         # placement resources. If actor_placement_resources is empty, then
         # the required placement resources will be the same as resources.
-        actor_placement_resources = resources.copy()
+        actor_placement_resources = {}
         assert actor_method_cpu in [0, 1]
         if actor_method_cpu == 1:
             actor_placement_resources["CPU"] += 1
