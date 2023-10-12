@@ -1833,31 +1833,40 @@ def read_databricks_tables(
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Read from a Databricks unity catalog table or Databricks SQL execution result that
-    queries from Databricks UC tables.
-    Before calling `read_databricks_tables`, set the 'DATABRICKS_TOKEN' environment
-    variable to databricks workspace access token.
-    If this API isn't called in Databricks runtime, set the 'DATABRICKS_HOST'
-    environment variable to databricks workspace URL
-    (e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").
+    """Read a Databricks unity catalog table or Databricks SQL execution result.
 
-    This reader is implemented based on
-    [Databricks statement execution API]
-    (https://docs.databricks.com/api/workspace/statementexecution).
+    Before calling this API, set the ``DATABRICKS_HOST`` environment
+    variable to your Databricks warehouse access token.
+
+    .. code-block:: console
+
+        export DATABRICKS_TOKEN=...
+
+    If you're running your program on the Databricks runtime, also set the
+    ``DATABRICKS_HOST`` environment variable.
+
+    .. code-block:: console
+
+        export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
+
+    .. note::
+
+        This function is built on the
+        `Databricks statement execution API <https://docs.databricks.com/api/workspace/statementexecution>`_.
 
     Examples:
-    .. testcode::
-        :skipif: True
 
-        import ray
+        .. testcode::
+            :skipif: True
 
-        ds = ray.data.read_databricks_tables(
-            warehouse_id='a885ad08b64951ad',
-            catalog='catalog_1',
-            schema='db_1',
-            query='select id from table_1 limit 750000',
-        )
+            import ray
+
+            ds = ray.data.read_databricks_tables(
+                warehouse_id='a885ad08b64951ad',
+                catalog='catalog_1',
+                schema='db_1',
+                query='select id from table_1 limit 750000',
+            )
 
     Args:
         warehouse_id: The ID of the Databricks warehouse. The query statement is
@@ -1879,7 +1888,7 @@ def read_databricks_tables(
 
     Returns:
         A :class:`Dataset` containing the queried data.
-    """
+    """  # noqa: E501
     from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
     from ray.util.spark.databricks_hook import get_dbutils
     from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
