@@ -2,9 +2,17 @@ package io.ray.serve.deployment;
 
 import com.google.common.base.Preconditions;
 import io.ray.serve.api.Serve;
+import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
-import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.config.ReplicaConfig;
+import io.ray.serve.dag.ClassNode;
+import io.ray.serve.dag.DAGNode;
+import io.ray.serve.handle.DeploymentHandle;
+import java.util.HashMap;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
@@ -14,35 +22,32 @@ import java.util.Map;
  */
 public class Deployment {
 
-  private final String deploymentDef;
+  private static final Logger LOGGER = LoggerFactory.getLogger(Deployment.class);
 
   private final String name;
 
-  private final DeploymentConfig config;
+  private final DeploymentConfig deploymentConfig;
+
+  private final ReplicaConfig replicaConfig;
 
   private final String version;
 
-  private final String prevVersion;
-
-  private final Object[] initArgs;
-
-  private final String routePrefix;
-
-  private final Map<String, Object> rayActorOptions;
+  private String routePrefix;
 
   private final String url;
 
-  public Deployment(
-      String deploymentDef,
-      String name,
-      DeploymentConfig config,
-      String version,
-      String prevVersion,
-      Object[] initArgs,
-      String routePrefix,
-      Map<String, Object> rayActorOptions) {
+  private boolean ingress;
 
-    if (routePrefix != null) {
+  // TODO support placement group.
+
+  public Deployment(
+      String name,
+      DeploymentConfig deploymentConfig,
+      ReplicaConfig replicaConfig,
+      String version,
+      String routePrefix) {
+
+    if (StringUtils.isNotBlank(routePrefix)) {
       Preconditions.checkArgument(routePrefix.startsWith("/"), "route_prefix must start with '/'.");
       Preconditions.checkArgument(
           routePrefix.equals("/") || !routePrefix.endsWith("/"),
@@ -53,52 +58,27 @@ public class Deployment {
     }
 
     Preconditions.checkArgument(
-        version != null || config.getAutoscalingConfig() == null,
+        version != null || deploymentConfig.getAutoscalingConfig() == null,
         "Currently autoscaling is only supported for versioned deployments. Try Serve.deployment.setVersion.");
 
-    this.deploymentDef = deploymentDef;
     this.name = name;
     this.version = version;
-    this.prevVersion = prevVersion;
-    this.config = config;
-    this.initArgs = initArgs != null ? initArgs : new Object[0];
+    this.deploymentConfig = deploymentConfig;
+    this.replicaConfig = replicaConfig;
     this.routePrefix = routePrefix;
-    this.rayActorOptions = rayActorOptions;
     this.url = routePrefix != null ? Serve.getGlobalClient().getRootUrl() + routePrefix : null;
-  }
-
-  /**
-   * Deploy or update this deployment.
-   *
-   * @param blocking
-   */
-  public void deploy(boolean blocking) {
-    Serve.getGlobalClient()
-        .deploy(
-            name,
-            deploymentDef,
-            initArgs,
-            rayActorOptions,
-            config,
-            version,
-            prevVersion,
-            routePrefix,
-            url,
-            blocking);
-  }
-
-  /** Delete this deployment. */
-  public void delete() {
-    Serve.getGlobalClient().deleteDeployment(name, true);
   }
 
   /**
    * Get a ServeHandle to this deployment to invoke it from Java.
    *
    * @return ServeHandle
+   * @deprecated {@value Constants#MIGRATION_MESSAGE}
    */
-  public RayServeHandle getHandle() {
-    return Serve.getGlobalClient().getHandle(name, true);
+  @Deprecated
+  public DeploymentHandle getHandle() {
+    LOGGER.warn(Constants.MIGRATION_MESSAGE);
+    return Serve.getGlobalClient().getDeploymentHandle(name, "", true);
   }
 
   /**
@@ -112,57 +92,78 @@ public class Deployment {
   public DeploymentCreator options() {
 
     return new DeploymentCreator()
-        .setDeploymentDef(this.deploymentDef)
+        .setDeploymentDef(this.replicaConfig.getDeploymentDef())
         .setName(this.name)
         .setVersion(this.version)
-        .setPrevVersion(this.prevVersion)
-        .setNumReplicas(this.config.getNumReplicas())
-        .setInitArgs(this.initArgs)
+        .setNumReplicas(this.deploymentConfig.getNumReplicas())
+        .setInitArgs(this.replicaConfig.getInitArgs())
         .setRoutePrefix(this.routePrefix)
-        .setRayActorOptions(this.rayActorOptions)
-        .setUserConfig(this.config.getUserConfig())
-        .setMaxConcurrentQueries(this.config.getMaxConcurrentQueries())
-        .setAutoscalingConfig(this.config.getAutoscalingConfig())
-        .setGracefulShutdownWaitLoopS(this.config.getGracefulShutdownWaitLoopS())
-        .setGracefulShutdownTimeoutS(this.config.getGracefulShutdownTimeoutS())
-        .setHealthCheckPeriodS(this.config.getHealthCheckPeriodS())
-        .setHealthCheckTimeoutS(this.config.getHealthCheckTimeoutS())
-        .setLanguage(this.config.getDeploymentLanguage());
+        .setRayActorOptions(this.replicaConfig.getRayActorOptions())
+        .setUserConfig(this.deploymentConfig.getUserConfig())
+        .setMaxConcurrentQueries(this.deploymentConfig.getMaxConcurrentQueries())
+        .setAutoscalingConfig(this.deploymentConfig.getAutoscalingConfig())
+        .setGracefulShutdownWaitLoopS(this.deploymentConfig.getGracefulShutdownWaitLoopS())
+        .setGracefulShutdownTimeoutS(this.deploymentConfig.getGracefulShutdownTimeoutS())
+        .setHealthCheckPeriodS(this.deploymentConfig.getHealthCheckPeriodS())
+        .setHealthCheckTimeoutS(this.deploymentConfig.getHealthCheckTimeoutS())
+        .setLanguage(this.deploymentConfig.getDeploymentLanguage());
   }
 
-  public String getDeploymentDef() {
-    return deploymentDef;
+  /**
+   * Bind the arguments to the deployment and return an Application.
+   *
+   * <p>The returned Application can be deployed using `serve.run` (or via config file) or bound to
+   * another deployment for composition.
+   *
+   * @param args
+   * @return
+   */
+  public Application bind(Object... args) {
+    Map<String, Object> otherArgsToResolve = new HashMap<>();
+    otherArgsToResolve.put("deployment_schema", this);
+    otherArgsToResolve.put("is_from_serve_deployment", true);
+    DAGNode dagNode =
+        new ClassNode(
+            replicaConfig.getDeploymentDef(),
+            args,
+            replicaConfig.getRayActorOptions(),
+            otherArgsToResolve);
+    return Application.fromInternalDagNode(dagNode);
   }
 
   public String getName() {
     return name;
   }
 
-  public DeploymentConfig getConfig() {
-    return config;
+  public DeploymentConfig getDeploymentConfig() {
+    return deploymentConfig;
+  }
+
+  public ReplicaConfig getReplicaConfig() {
+    return replicaConfig;
   }
 
   public String getVersion() {
     return version;
   }
 
-  public String getPrevVersion() {
-    return prevVersion;
-  }
-
-  public Object[] getInitArgs() {
-    return initArgs;
-  }
-
   public String getRoutePrefix() {
     return routePrefix;
   }
 
-  public Map<String, Object> getRayActorOptions() {
-    return rayActorOptions;
-  }
-
   public String getUrl() {
     return url;
+  }
+
+  public void setRoutePrefix(String routePrefix) {
+    this.routePrefix = routePrefix;
+  }
+
+  public boolean isIngress() {
+    return ingress;
+  }
+
+  public void setIngress(boolean ingress) {
+    this.ingress = ingress;
   }
 }
