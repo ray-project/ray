@@ -268,7 +268,9 @@ class GCPNodeProvider(NodeProvider):
                 if not accelerator_type:
                     continue
                 autodetected_resources[f"TPU-{accelerator_type}"] = 1
-                available_node_types[node_type]["resources"].update(autodetected_resources)
+                available_node_types[node_type]["resources"].update(
+                    autodetected_resources
+                )
         return cluster_config
 
     def get_command_runner(

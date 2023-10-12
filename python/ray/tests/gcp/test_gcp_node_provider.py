@@ -247,10 +247,12 @@ def test_tpu_node_fillout(test_case):
         },
     }
     cluster_config["available_node_types"]["ray_tpu"]["node_config"].update(
-        accelerator_config)
+        accelerator_config
+    )
 
     new_config = GCPNodeProvider.fillout_available_node_types_resources(
-        cluster_config=cluster_config)
+        cluster_config=cluster_config
+    )
     resource_config = new_config["available_node_types"]["ray_tpu"]["resources"]
     assert expected_resource_str in resource_config
     assert resource_config[expected_resource_str] == 1
@@ -407,7 +409,8 @@ def test_tpu_accelerator_config_to_type(test_case):
         "topology": topology,
     }
     accelerator_type = tpu_accelerator_config_to_type(
-        accelerator_config=accelerator_config)
+        accelerator_config=accelerator_config
+    )
     assert accelerator_type == expected
 
 
