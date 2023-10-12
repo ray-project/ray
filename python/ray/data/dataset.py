@@ -1016,7 +1016,7 @@ class Dataset:
         .. tip::
 
             This method can be slow. For better performance, try
-            `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+            `Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`_.
             Also, see :ref:`Optimizing shuffles <optimizing_shuffles>`.
 
         Examples:

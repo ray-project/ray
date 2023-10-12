@@ -328,7 +328,7 @@ To randomly shuffle all rows, call :meth:`~ray.data.Dataset.random_shuffle`.
 .. tip::
 
     :meth:`~ray.data.Dataset.random_shuffle` is slow. For better performance, try
-    `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+    `Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`_.
 
 Repartitioning data
 ===================
