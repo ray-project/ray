@@ -4421,6 +4421,7 @@ class Dataset:
     @Deprecated
     @ConsumptionAPI
     def repeat(self, times: Optional[int] = None):
+        """This API is deprecated."""
         raise DeprecationWarning("`DatasetPipeline` is deprecated.")
 
     @Deprecated
@@ -4430,6 +4431,7 @@ class Dataset:
         blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
     ):
+        """This API is deprecated."""
         raise DeprecationWarning("`DatasetPipeline` is deprecated.")
 
     @Deprecated(message="Use `Dataset.materialize()` instead.")
