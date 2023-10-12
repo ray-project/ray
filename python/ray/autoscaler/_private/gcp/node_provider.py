@@ -259,8 +259,8 @@ class GCPNodeProvider(NodeProvider):
             if get_node_type(node_config) == GCPNodeType.TPU:
                 autodetected_resources = {}
                 accelerator_type = ""
-                if "accelerator_type" in node_config:
-                    accelerator_type = node_config["accelerator_type"]
+                if "acceleratorType" in node_config:
+                    accelerator_type = node_config["acceleratorType"]
                 elif "acceleratorConfig" in node_config:
                     accelerator_type = tpu_accelerator_config_to_type(
                         node_config["acceleratorConfig"]
@@ -268,8 +268,7 @@ class GCPNodeProvider(NodeProvider):
                 if not accelerator_type:
                     continue
                 autodetected_resources[f"TPU-{accelerator_type}"] = 1
-                # test
-                node_config["resources"].update(autodetected_resources)
+                available_node_types[node_type]["resources"].update(autodetected_resources)
         return cluster_config
 
     def get_command_runner(

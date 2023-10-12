@@ -52,7 +52,7 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
     generation = accelerator_config["type"].lower()
     topology = accelerator_config["topology"]
-    # Reduce e.g. "2x2x2" to 8
+    # Reduce e.g. "2x2x1" to 8
     chip_dimensions = [int(chip_count) for chip_count in topology.split("x")]
     num_chips = reduce(lambda x, y: x * y, chip_dimensions)
     num_cores = num_chips * 2
