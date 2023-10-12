@@ -12,6 +12,9 @@ class Datasink:
 
         Use this method to perform setup for write tasks. For example, creating a
         staging bucket in S3.
+
+        Args:
+            _: Forward-compatibility placeholder.
         """
         pass
 
@@ -26,6 +29,7 @@ class Datasink:
         Args:
             blocks: List of data blocks.
             ctx: ``TaskContext`` for the write task.
+            _: Forward-compatibility placeholder.
 
         Returns:
             The output of the write task.
@@ -41,6 +45,7 @@ class Datasink:
 
         Args:
             write_results: The list of the write task results.
+            _: Forward-compatibility placeholder.
         """
         pass
 
@@ -51,6 +56,7 @@ class Datasink:
 
         Args:
             error: The first error encountered.
+            _: Forward-compatibility placeholder.
         """
         pass
 

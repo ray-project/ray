@@ -5,6 +5,7 @@ import itertools
 import logging
 import sys
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -3349,6 +3350,7 @@ class Dataset:
             collection=collection,
         )
 
+    @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasource(
         self,
@@ -3369,6 +3371,12 @@ class Dataset:
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
             write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
         """  # noqa: E501
+        warnings.warn(
+            "`write_datasource` is deprecated in Ray 2.8. Create a `Datasink` and use "
+            "`write_datasink` instead.",
+            DeprecationWarning,
+        )
+
         if ray_remote_args is None:
             ray_remote_args = {}
         path = write_args.get("path", None)
@@ -3470,7 +3478,7 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            datasource: The :class:`~ray.data.Datasink` to write to.
+            datasink: The :class:`~ray.data.Datasink` to write to.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
         """  # noqa: E501
         if ray_remote_args is None:
@@ -3510,6 +3518,7 @@ class Dataset:
             import pandas as pd
 
             datasink.on_write_start()
+
             self._write_ds = Dataset(
                 plan, self._epoch, self._lazy, logical_plan
             ).materialize()
@@ -3518,6 +3527,7 @@ class Dataset:
                 isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
             )
             write_results = [block["write_result"][0] for block in blocks]
+
             datasink.on_write_complete(write_results)
         except Exception as e:
             datasink.on_write_failed(e)
