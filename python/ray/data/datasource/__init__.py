@@ -52,6 +52,7 @@ __all__ = [
     "BlockWritePathProvider",
     "Connection",
     "CSVDatasource",
+    "Datasink",
     "Datasource",
     "SQLDatasource",
     "DefaultBlockWritePathProvider",
