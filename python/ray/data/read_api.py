@@ -143,7 +143,7 @@ def from_items(
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
-    detected_parallelism, _, _ = _autodetect_parallelism(
+    detected_parallelism, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DataContext.get_current(),
