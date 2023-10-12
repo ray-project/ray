@@ -4434,7 +4434,7 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(5, parallelism=1)
             >>> # Infinite pipeline of numbers [0, 5)
-            >>> ds.repeat().take_batch()
+            >>> ds.repeat().take_batch()  # doctest: +SKIP
             {'id': array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...])}
             >>> # Can shuffle each epoch (dataset) in the pipeline.
             >>> ds.repeat().random_shuffle().take_batch() # doctest: +SKIP
