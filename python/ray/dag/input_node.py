@@ -181,7 +181,7 @@ class InputNode(DAGNode):
             return self._bound_other_args_to_resolve["result_type_string"]
 
 
-@Deprecated
+@Deprecated(message="The DAG API is deprecated.")
 class InputAttributeNode(DAGNode):
     """Represents partial access of user input based on an index (int),
      object attribute or dict key (str).
@@ -292,7 +292,7 @@ class InputAttributeNode(DAGNode):
             return self._bound_other_args_to_resolve["result_type_string"]
 
 
-@Deprecated
+@Deprecated(message="The DAG API is deprecated.")
 class DAGInputData:
     """If user passed multiple args and kwargs directly to dag.execute(), we
     generate this wrapper for all user inputs as one object, accessible via
