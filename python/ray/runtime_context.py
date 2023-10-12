@@ -424,13 +424,15 @@ class RuntimeContext(object):
         worker = self.worker
         worker.check_connected()
         ids_dict: Dict[str, List[str]] = {}
-        for accelerator in ray._private.accelerators.ALL_ACCELERATORS.values():
+        for (
+            accelerator_resource_name
+        ) in ray._private.accelerators.get_all_accelerator_resource_names():
             accelerator_ids = worker.get_accelerator_ids_for_accelerator_resource(
-                accelerator.get_resource_name(),
-                f"^{accelerator.get_resource_name()}_group_[0-9A-Za-z]+$",
+                accelerator_resource_name,
+                f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
             )
             if accelerator_ids:
-                ids_dict[accelerator.get_resource_name()] = accelerator_ids
+                ids_dict[accelerator_resource_name()] = accelerator_ids
         return ids_dict
 
 

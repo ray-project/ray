@@ -280,11 +280,16 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     """Get the mapping from accelerator resource name
     to the visible ids."""
 
-    from ray._private.accelerators import ALL_ACCELERATORS
+    from ray._private.accelerators import (
+        get_all_accelerator_resource_names,
+        get_accelerator_for_resource,
+    )
 
     return {
-        accelerator.get_resource_name(): accelerator.detect_visible_accelerator_ids()
-        for accelerator in ALL_ACCELERATORS.values()
+        accelerator_resource_name: get_accelerator_for_resource(
+            accelerator_resource_name
+        ).get_visible_accelerator_ids()
+        for accelerator_resource_name in get_all_accelerator_resource_names()
     }
 
 
@@ -333,9 +338,9 @@ def set_visible_accelerator_ids() -> None:
     environment variables based on the accelerator runtime.
     """
     for resource_name, accelerator_ids in ray.get_runtime_context().get_resource_ids():
-        ray._private.acclerators.ALL_ACCELERATORS[
+        ray._private.acclerators.get_accelerator_for_resource(
             resource_name
-        ].set_visible_accelerator_ids(accelerator_ids)
+        ).set_visible_accelerator_ids(accelerator_ids)
 
 
 def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:

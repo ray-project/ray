@@ -53,14 +53,14 @@ class TPUAccelerator(Accelerator):
 
     @staticmethod
     def is_available() -> bool:
-        return TPUAccelerator.detect_num_accelerators() > 0
+        return TPUAccelerator.get_num_acclerators() > 0
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
         return TPU_VISIBLE_CHIPS_ENV_VAR
 
     @staticmethod
-    def detect_visible_accelerator_ids() -> Optional[List[str]]:
+    def get_visible_accelerator_ids() -> Optional[List[str]]:
         tpu_visible_chips = os.environ.get(TPU_VISIBLE_CHIPS_ENV_VAR, None)
 
         if tpu_visible_chips is None:
@@ -72,7 +72,7 @@ class TPUAccelerator(Accelerator):
         return list(tpu_visible_chips.split(","))
 
     @staticmethod
-    def detect_num_accelerators() -> int:
+    def get_num_acclerators() -> int:
         """Attempt to detect the number of TPUs on this machine.
 
         TPU chips are represented as devices within `/dev/`, either as
@@ -94,7 +94,7 @@ class TPUAccelerator(Accelerator):
             return 0
 
     @staticmethod
-    def detect_accelerator_type() -> Optional[str]:
+    def get_accelerator_type() -> Optional[str]:
         """Attempt to detect the TPU accelerator type.
 
         Individual TPU VMs within a TPU pod must know what type

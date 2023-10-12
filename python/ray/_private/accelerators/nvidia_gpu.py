@@ -32,14 +32,14 @@ class NvidiaGPUAccelerator(Accelerator):
 
     @staticmethod
     def is_available() -> bool:
-        return NvidiaGPUAccelerator.detect_num_accelerators() > 0
+        return NvidiaGPUAccelerator.get_num_acclerators() > 0
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
         return CUDA_VISIBLE_DEVICES_ENV_VAR
 
     @staticmethod
-    def detect_visible_accelerator_ids() -> Optional[List[str]]:
+    def get_visible_accelerator_ids() -> Optional[List[str]]:
         cuda_visible_devices = os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None)
 
         if cuda_visible_devices is None:
@@ -54,7 +54,7 @@ class NvidiaGPUAccelerator(Accelerator):
         return list(cuda_visible_devices.split(","))
 
     @staticmethod
-    def detect_num_accelerators() -> int:
+    def get_num_acclerators() -> int:
         num_gpus = 0
         if importlib.util.find_spec("GPUtil"):
             gpu_list = GPUtil.getGPUs()
@@ -71,7 +71,7 @@ class NvidiaGPUAccelerator(Accelerator):
         return num_gpus
 
     @staticmethod
-    def detect_accelerator_type() -> Optional[str]:
+    def get_accelerator_type() -> Optional[str]:
         try:
             if importlib.util.find_spec("GPUtil"):
                 gpu_list = GPUtil.getGPUs()

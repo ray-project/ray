@@ -23,17 +23,17 @@ class Accelerator(ABC):
 
     @staticmethod
     @abstractmethod
-    def detect_num_accelerators() -> int:
+    def get_num_acclerators() -> int:
         """Auto detect the number of accelerators on this machine."""
 
     @staticmethod
     @abstractmethod
-    def detect_visible_accelerator_ids() -> Optional[List[str]]:
+    def get_visible_accelerator_ids() -> Optional[List[str]]:
         """Auto detect the ids of accelerators visible to Ray."""
 
     @staticmethod
     @abstractmethod
-    def detect_accelerator_type() -> Optional[str]:
+    def get_accelerator_type() -> Optional[str]:
         """Auto detect the type of the accelerator on this machine."""
 
     @staticmethod
@@ -45,3 +45,13 @@ class Accelerator(ABC):
     @abstractmethod
     def set_visible_accelerator_ids(ids: List[str]) -> None:
         """Set the ids of accelerators visible to the Ray task or actor."""
+
+    @staticmethod
+    def get_ec2_num_accelerators(instance_type: str, instances: dict) -> Optional[int]:
+        """Get the number of accelerators of this aws ec2 instance type."""
+        return None
+
+    @staticmethod
+    def get_ec2_accelerator_type(instance_type: str, instances: dict) -> Optional[str]:
+        """Get the accelerator type of this aws ec2 instance type."""
+        return None

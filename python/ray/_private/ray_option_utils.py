@@ -78,10 +78,10 @@ def _validate_resource_quantity(name, quantity):
             " cannot go beyond 0.0001"
         )
     resource_name = "GPU" if name == "num_gpus" else name
-    if resource_name in ray._private.accelerators.ALL_ACCELERATORS:
-        return ray._private.accelerators.ALL_ACCELERATORS[
+    if resource_name in ray._private.accelerators.get_all_accelerator_resource_names():
+        return ray._private.accelerators.get_accelerator_for_resource(
             resource_name
-        ].validate_resource_request_quantity(quantity)
+        ).validate_resource_request_quantity(quantity)
     return None
 
 

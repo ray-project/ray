@@ -24,14 +24,14 @@ class NeuronAccelerator(Accelerator):
 
     @staticmethod
     def is_available() -> bool:
-        return NeuronAccelerator.detect_num_accelerators() > 0
+        return NeuronAccelerator.get_num_acclerators() > 0
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
         return NEURON_RT_VISIBLE_CORES_ENV_VAR
 
     @staticmethod
-    def detect_visible_accelerator_ids() -> Optional[List[str]]:
+    def get_visible_accelerator_ids() -> Optional[List[str]]:
         neuron_visible_cores = os.environ.get(NEURON_RT_VISIBLE_CORES_ENV_VAR, None)
 
         if neuron_visible_cores is None:
@@ -43,7 +43,7 @@ class NeuronAccelerator(Accelerator):
         return list(neuron_visible_cores.split(","))
 
     @staticmethod
-    def detect_num_accelerators() -> int:
+    def get_num_acclerators() -> int:
         """
         Attempt to detect the number of Neuron cores on this machine.
 
@@ -65,7 +65,7 @@ class NeuronAccelerator(Accelerator):
         return nc_count
 
     @staticmethod
-    def detect_accelerator_type() -> Optional[str]:
+    def get_accelerator_type() -> Optional[str]:
         import ray
 
         return ray.util.accelerators.accelerators.AWS_NEURON_CORE
