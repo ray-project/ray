@@ -110,6 +110,8 @@ parts:
                 title: "PyTorch Finetuning ResNet Example"
               - file: train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
                 title: "Fine-tune Vicuna-13B with DeepSpeed and PyTorch Lightning"
+              - file: ray-air/examples/training_ingest_object_classification
+                title: "Training Ingest Object Classification"
           - file: train/internals/index
             title: "Internals"
             sections:
