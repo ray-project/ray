@@ -2472,6 +2472,8 @@ class DeploymentStateManager:
                 upscales[deployment_id] = deployment_state_update_result.upscale
             if deployment_state_update_result.downscale:
                 downscales[deployment_id] = deployment_state_update_result.downscale
+            if deployment_state_update_result.deleted:
+                deleted_ids.append(deployment_id)
 
             any_recovering |= deployment_state_update_result.any_replicas_recovering
 
