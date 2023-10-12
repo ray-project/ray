@@ -58,9 +58,11 @@ swap:
   Googling: search with Google
   grayed-out: unavailable
   HTTPs: HTTPS
+  "[Hh]uggingface": HuggingFace
   in order to: to
   ingest: import|load
   k8s: Kubernetes
+  "[Kk]uberay": KubeRay
   long press: touch & hold
   network IP address: internal IP address
   omnibox: address bar

@@ -1,0 +1,12 @@
+group: ml tests
+steps:
+  - label: ":train: ml: train tests and examples"
+    tags: train
+    instance_type: large
+    parallelism: 2
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --except-tags gpu_only,gpu,minimal,tune,doctest,needs_credentials 
+    depends_on: mlbuild
+    job_env: forge

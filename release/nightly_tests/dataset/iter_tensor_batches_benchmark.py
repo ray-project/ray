@@ -73,7 +73,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
     ds = ds.map_batches(add_label, batch_format="pandas").materialize()
 
     # Test iter_torch_batches() with default args.
-    benchmark.run(
+    benchmark.run_materialize_ds(
         "iter-torch-batches-default",
         iter_torch_batches,
         ds=ds,
@@ -81,7 +81,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
     )
 
     # Test to_tf() with default args.
-    benchmark.run(
+    benchmark.run_materialize_ds(
         "to-tf-default",
         to_tf,
         ds=ds,
@@ -94,13 +94,13 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
 
     # Test with varying batch sizes for iter_torch_batches() and to_tf().
     for batch_size in batch_sizes:
-        benchmark.run(
+        benchmark.run_materialize_ds(
             f"iter-torch-batches-{batch_size}",
             iter_torch_batches,
             ds=ds,
             batch_size=batch_size,
         )
-        benchmark.run(
+        benchmark.run_materialize_ds(
             f"to-tf-{batch_size}",
             to_tf,
             ds=ds,
@@ -114,7 +114,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
     for prefetch_batch in prefetch_batches:
         for shuffle_buffer_size in [None, 64]:
             test_name = f"iter-torch-batches-bs-{32}-prefetch-{prefetch_batch}-shuffle{shuffle_buffer_size}"  # noqa: E501
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 iter_torch_batches,
                 ds=ds,
@@ -126,7 +126,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
     for batch_size in batch_sizes:
         for shuffle_buffer_size in [batch_size, 2 * batch_size]:
             test_name = f"iter-torch-batches-shuffle-{batch_size}-{shuffle_buffer_size}"
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 iter_torch_batches,
                 ds=ds,
@@ -134,7 +134,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
                 local_shuffle_buffer_size=shuffle_buffer_size,
             )
             test_name = f"to-tf-shuffle-{batch_size}-{shuffle_buffer_size}"
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 to_tf,
                 ds=ds,
