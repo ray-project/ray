@@ -3,6 +3,7 @@ import pathlib
 import posixpath
 import sys
 import urllib.parse
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -338,6 +339,13 @@ class FileBasedDatasource(Datasource):
 
         if open_stream_args is None:
             open_stream_args = {}
+
+        if block_path_provider is not None:
+            warnings.warn(
+                "`block_path_provider` has been deprecated in favor of "
+                "`filename_provider`.",
+                DeprecationWarning,
+            )
 
         if filename_provider is None and block_path_provider is None:
             filename_provider = DefaultFilenameProvider(

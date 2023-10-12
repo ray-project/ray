@@ -119,7 +119,6 @@ from ray.data.datasource import (
     Connection,
     CSVDatasource,
     Datasource,
-    DefaultBlockWritePathProvider,
     FilenameProvider,
     ImageDatasource,
     JSONDatasource,
@@ -2654,7 +2653,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
         **arrow_parquet_args,
@@ -2741,7 +2740,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
@@ -2899,7 +2898,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
         **arrow_csv_args,
@@ -2994,7 +2993,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the :class:`~ray.data.Dataset` to TFRecord files.
@@ -3079,7 +3078,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
     ) -> None:
@@ -3154,7 +3153,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
