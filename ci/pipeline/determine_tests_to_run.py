@@ -138,7 +138,6 @@ if __name__ == "__main__":
         # End of dry run.
 
         skip_prefix_list = [
-            ".buildkite/",
             "doc/",
             "examples/",
             "dev/",
@@ -295,6 +294,8 @@ if __name__ == "__main__":
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
+                RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
                 RAY_CI_CPP_AFFECTED = 1

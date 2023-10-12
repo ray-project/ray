@@ -1,13 +1,12 @@
-import json
 import os
 import resource
-import time
 from typing import List
 import traceback
 
 import numpy as np
 import psutil
 
+from benchmark import Benchmark
 import ray
 from ray._private.internal_api import memory_summary
 from ray.data._internal.util import _check_pyarrow_version
@@ -102,72 +101,50 @@ if __name__ == "__main__":
         f"{partition_size / 1e9}GB partition size, "
         f"{num_partitions * partition_size / 1e9}GB total"
     )
-    start_time = time.time()
-    source = RandomIntRowDatasource()
-    num_rows_per_partition = partition_size // 8
-    ds = ray.data.read_datasource(
-        source,
-        parallelism=num_partitions,
-        n=num_rows_per_partition * num_partitions,
-        num_columns=1,
-    )
-    exc = None
-    ds_stats = None
-    try:
+
+    def run_benchmark(args):
+        source = RandomIntRowDatasource()
+        num_rows_per_partition = partition_size // 8
+        ds = ray.data.read_datasource(
+            source,
+            parallelism=num_partitions,
+            n=num_rows_per_partition * num_partitions,
+            num_columns=1,
+        )
+
         if args.shuffle:
             ds = ds.random_shuffle()
         else:
             ds = ds.sort(key="c_0")
         ds.materialize()
         ds_stats = ds.stats()
-    except Exception as e:
-        exc = e
-        pass
 
-    end_time = time.time()
+        print("==== Driver memory summary ====")
+        maxrss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3)
+        print(f"max: {maxrss / 1e9}/GB")
+        process = psutil.Process(os.getpid())
+        rss = int(process.memory_info().rss)
+        print(f"rss: {rss / 1e9}/GB")
 
-    duration = end_time - start_time
-    print("Finished in", duration)
-    print("")
+        try:
+            print(memory_summary(stats_only=True))
+        except Exception:
+            print("Failed to retrieve memory summary")
+            print(traceback.format_exc())
+        print("")
 
-    print("==== Driver memory summary ====")
-    maxrss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3)
-    print(f"max: {maxrss / 1e9}/GB")
-    process = psutil.Process(os.getpid())
-    rss = int(process.memory_info().rss)
-    print(f"rss: {rss / 1e9}/GB")
+        if ds_stats is not None:
+            print(ds_stats)
 
-    try:
-        print(memory_summary(stats_only=True))
-    except Exception:
-        print("Failed to retrieve memory summary")
-        print(traceback.format_exc())
-    print("")
-
-    if ds_stats is not None:
-        print(ds_stats)
-
-    if "TEST_OUTPUT_JSON" in os.environ:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
         results = {
-            "time": duration,
-            "success": "1" if exc is None else "0",
             "num_partitions": num_partitions,
             "partition_size": partition_size,
-            "perf_metrics": [
-                {
-                    "perf_metric_name": "peak_driver_memory",
-                    "perf_metric_value": maxrss,
-                    "perf_metric_type": "MEMORY",
-                },
-                {
-                    "perf_metric_name": "runtime",
-                    "perf_metric_value": duration,
-                    "perf_metric_type": "LATENCY",
-                },
-            ],
+            "peak_driver_memory": maxrss,
         }
-        json.dump(results, out_file)
+        return results
 
-    if exc:
-        raise exc
+    benchmark = Benchmark("sort-shuffle")
+    benchmark.run_fn("main", run_benchmark, args)
+
+    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
+    benchmark.write_result(out_file)
