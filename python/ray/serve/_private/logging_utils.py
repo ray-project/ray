@@ -169,6 +169,8 @@ def configure_component_logger(
     log_level: int = logging.INFO,
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
+    json_logging = False,
+    logs_dir = None,
 ):
     """Returns a logger to be used by a Serve component.
 
@@ -203,7 +205,9 @@ def configure_component_logger(
     stream_handler.addFilter(log_to_stderr_filter)
     logger.addHandler(stream_handler)
 
-    logs_dir = get_serve_logs_dir()
+    if logs_dir is None:
+        logs_dir = get_serve_logs_dir()
+
     os.makedirs(logs_dir, exist_ok=True)
     if max_bytes is None:
         max_bytes = ray._private.worker._global_node.max_bytes
@@ -222,7 +226,7 @@ def configure_component_logger(
         maxBytes=max_bytes,
         backupCount=backup_count,
     )
-    if RAY_SERVE_ENABLE_JSON_LOGGING:
+    if json_logging or RAY_SERVE_ENABLE_JSON_LOGGING:
         file_handler.setFormatter(
             ServeJSONFormatter(component_name, component_id, component_type)
         )
