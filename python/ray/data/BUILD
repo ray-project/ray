@@ -122,6 +122,14 @@ py_test(
 )
 
 py_test(
+    name = "test_block_sizing",
+    size = "small",
+    srcs = ["tests/test_block_sizing.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_bulk_executor",
     size = "small",
     srcs = ["tests/test_bulk_executor.py"],
