@@ -6,7 +6,7 @@ import time
 import traceback
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple, Type
+from typing import Dict, List, Optional, Set, Tuple, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -68,17 +68,17 @@ class ProxyWrapper(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def is_ready(self) -> Any:
+    def is_ready(self) -> ProxyWrapperCallStatus:
         """Return the payload from proxy ready check when ready."""
         raise NotImplementedError
 
     @abstractmethod
-    def is_healthy(self) -> bool:
+    def is_healthy(self) -> ProxyWrapperCallStatus:
         """Return whether the proxy actor is healthy or not."""
         raise NotImplementedError
 
     @abstractmethod
-    def is_drained(self) -> bool:
+    def is_drained(self) -> ProxyWrapperCallStatus:
         """Return whether the proxy actor is drained or not."""
         raise NotImplementedError
 
@@ -410,7 +410,7 @@ class ProxyState:
                     # the status should be unchanged.
                     self.try_update_status(self._status)
                 elif healthy_call_status == ProxyWrapperCallStatus.FINISHED_FAILED:
-                    self.set_status(ProxyStatus.UNHEALTHY)
+                    self.try_update_status(ProxyStatus.UNHEALTHY)
                 elif (
                     time.time() - self._last_health_check_time
                     > PROXY_HEALTH_CHECK_TIMEOUT_S
@@ -678,22 +678,6 @@ class ProxyStateManager:
                 f"all nodes: {target_nodes}."
             )
             return nodes
-
-        if location == DeploymentMode.FixedNumber:
-            num_replicas = self._config.fixed_number_replicas
-            if num_replicas > len(target_nodes):
-                logger.warning(
-                    "You specified fixed_number_replicas="
-                    f"{num_replicas} but there are only "
-                    f"{len(target_nodes)} target nodes. Serve will start one "
-                    "proxy per node."
-                )
-                num_replicas = len(target_nodes)
-
-            # Seed the random state so sample is deterministic.
-            # i.e. it will always return the same set of nodes.
-            random.seed(self._config.fixed_number_selection_seed)
-            return random.sample(sorted(target_nodes), k=num_replicas)
 
         return target_nodes
 

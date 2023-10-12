@@ -2,18 +2,17 @@ import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray.data import Dataset
 from ray._private.ray_constants import env_integer
+from ray.data import Dataset
 from ray.exceptions import RayActorError
-from ray.train import DataConfig
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint, DataConfig
 from ray.train._internal.session import (
-    _TrainingResult,
     TrialInfo,
+    _TrainingResult,
     get_session,
     init_session,
     shutdown_session,
@@ -25,9 +24,9 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
-    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -163,6 +162,17 @@ class BackendExecutor:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
+
+            # Always propagate the driver's DataContext to each worker in the group.
+            from ray.data import DataContext
+
+            def _set_driver_dataset_context(ctx: DataContext):
+                DataContext._set_current(ctx)
+
+            self.worker_group.execute(
+                _set_driver_dataset_context,
+                DataContext.get_current(),
+            )
 
             share_cuda_visible_devices_enabled = bool(
                 env_integer(
