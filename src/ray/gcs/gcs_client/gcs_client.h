@@ -64,11 +64,15 @@ class GcsClientOptions {
       : cluster_id_(cluster_id),
         should_fetch_cluster_id_(ShouldFetchClusterId(
             cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {
-    std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
-    RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
-    RAY_CHECK(address.size() == 2);
-    gcs_address_ = address[0];
-    gcs_port_ = std::stoi(address[1]);
+    size_t pos = gcs_address.rfind(':');
+    RAY_CHECK(pos != std::string::npos);
+    gcs_address_ = gcs_address.substr(0, pos);
+    gcs_port_ = std::stoi(gcs_address.substr(pos + 1));
+    boost::asio::ip::address address =
+        boost::asio::ip::address().from_string(gcs_address_);
+    RAY_CHECK(address.is_v4() || address.is_v6());
+    RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address_
+                   << " and port " << gcs_port_;
   }
 
   GcsClientOptions() {}
