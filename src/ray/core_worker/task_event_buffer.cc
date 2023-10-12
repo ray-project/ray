@@ -428,11 +428,11 @@ void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
 }
 
 void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_event) {
+  absl::MutexLock lock(&mutex_);
   if (!enabled_) {
     return;
   }
 
-  absl::MutexLock lock(&mutex_);
   if (dropped_task_attempts_unreported_.count(status_event->GetTaskAttempt())) {
     // This task attempt has been dropped before, so we drop this event.
     stats_counter_.Increment(
@@ -464,6 +464,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
 }
 
 void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event) {
+  absl::MutexLock lock(&profile_mutex_);
   if (!enabled_) {
     return;
   }
