@@ -75,7 +75,12 @@ if not PYDANTIC_INSTALLED:
     ValidationError = None
     root_validator = None
     validator = None
-elif packaging.version.parse(pydantic.__version__) < packaging.version.parse("2.0"):
+# In pydantic <1.9.0, __version__ attribute is missing, issue ref:
+# https://github.com/pydantic/pydantic/issues/2572, so we need to check
+# the existence prior to comparison.
+elif hasattr(pydantic, "__version__") and packaging.version.parse(
+    pydantic.__version__
+) < packaging.version.parse("2.0"):
     IS_PYDANTIC_2 = False
     from pydantic import (
         BaseModel,
