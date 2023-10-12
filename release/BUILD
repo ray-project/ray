@@ -297,7 +297,7 @@ py_test(
         "--data-format=parquet",
         "--smoke-test",
     ],
-    main = "air_tests/air_benchmarks/workloads/gpu_batch_inference.py",
+    main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
         "team:data",
@@ -317,7 +317,7 @@ py_test(
         "--data-format=raw",
         "--smoke-test",
     ],
-    main = "air_tests/air_benchmarks/workloads/gpu_batch_inference.py",
+    main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
         "team:data",

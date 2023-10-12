@@ -14,7 +14,8 @@ def shutdown_only():
 
 def run_torch():
     from torch.utils.data import DataLoader, TensorDataset
-    from ray.train.torch import get_device, prepare_model, prepare_data_loader
+
+    from ray.train.torch import get_device, prepare_data_loader, prepare_model
 
     def train_func():
         # Create dummy model and data loader
@@ -35,12 +36,13 @@ def run_torch():
 
 def run_lightning():
     import pytorch_lightning as pl
+
     from ray.train.lightning import (
-        RayTrainReportCallback,
         RayDDPStrategy,
-        RayFSDPStrategy,
         RayDeepSpeedStrategy,
+        RayFSDPStrategy,
         RayLightningEnvironment,
+        RayTrainReportCallback,
         prepare_trainer,
     )
 
@@ -71,9 +73,10 @@ def run_lightning():
 def run_transformers():
     from datasets import Dataset
     from transformers import Trainer, TrainingArguments
+
     from ray.train.huggingface.transformers import (
-        prepare_trainer,
         RayTrainReportCallback,
+        prepare_trainer,
     )
 
     def train_func():
