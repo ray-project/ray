@@ -201,7 +201,8 @@ class StreamingExecutor(Executor, threading.Thread):
         finally:
             # Signal end of results.
             self._output_node.outqueue.append(None)
-            # Clears metrics for this dataset so that they do not persist in the grafana dashboard
+            # Clears metrics for this dataset so that they do
+            # not persist in the grafana dashboard after execution
             _clear_metrics({"dataset": self._dataset_uuid})
 
     def get_stats(self):

@@ -275,7 +275,8 @@ We store _cluster_id to check that the stored actor exists in the current cluste
 
 
 def _check_cluster_stats_actor():
-    # Checks if global _stats_actor belongs to current cluster, if not, creates a new one
+    # Checks if global _stats_actor belongs to current cluster,
+    # if not, creates a new one on the current cluster.
     global _stats_actor, _stats_actor_cluster_id
     current_cluster_id = ray._private.worker._global_node.cluster_id
     if _stats_actor is None or _stats_actor_cluster_id != current_cluster_id:
