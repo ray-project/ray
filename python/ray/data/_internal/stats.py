@@ -289,7 +289,7 @@ def _update_stats_actor_metrics(stats: Dict[DataMetric, Any], tags: Dict[str, st
     _stats_actor.update_metrics.remote(stats, tags)
 
 
-def _remove_metrics(tags: Dict[str, str]):
+def _clear_metrics(tags: Dict[str, str]):
     global _stats_actor
     _check_cluster_stats_actor()
     _stats_actor.remove_metrics.remote(tags)

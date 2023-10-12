@@ -33,7 +33,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import (
     DataMetric,
     DatasetStats,
-    _remove_metrics,
+    _clear_metrics,
     _update_stats_actor_metrics,
 )
 from ray.data.context import DataContext
@@ -201,8 +201,8 @@ class StreamingExecutor(Executor, threading.Thread):
         finally:
             # Signal end of results.
             self._output_node.outqueue.append(None)
-            # Reset dataset metrics so that they do not persist in the grafana dashboard
-            _remove_metrics({"dataset": self._dataset_uuid})
+            # Clears metrics for this dataset so that they do not persist in the grafana dashboard
+            _clear_metrics({"dataset": self._dataset_uuid})
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
