@@ -103,7 +103,7 @@ class MapOperator(OneToOneOperator, ABC):
         cls,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
-        target_max_block_size: Optional[int],
+        target_max_block_size: Optional[int] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
