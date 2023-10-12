@@ -127,3 +127,27 @@ class NvidiaGPUAccelerator(Accelerator):
         os.environ[CUDA_VISIBLE_DEVICES_ENV_VAR] = ",".join(
             [str(i) for i in visible_cuda_devices]
         )
+
+    @staticmethod
+    def get_ec2_num_accelerators(instance_type: str, instances: dict) -> Optional[int]:
+        if instance_type not in instances:
+            return None
+
+        gpus = instances[instance_type].get("GpuInfo", {}).get("Gpus")
+        if gpus is not None:
+            # TODO(ameer): currently we support one gpu type per node.
+            assert len(gpus) == 1
+            return gpus[0]["Count"]
+        return None
+
+    @staticmethod
+    def get_ec2_accelerator_type(instance_type: str, instances: dict) -> Optional[str]:
+        if instance_type not in instances:
+            return None
+
+        gpus = instances[instance_type].get("GpuInfo", {}).get("Gpus")
+        if gpus is not None:
+            # TODO(ameer): currently we support one gpu type per node.
+            assert len(gpus) == 1
+            return gpus[0]["Name"]
+        return None

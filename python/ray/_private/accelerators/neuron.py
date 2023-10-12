@@ -14,6 +14,19 @@ NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR = (
     "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES"
 )
 
+# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/inf2-arch.html#aws-inf2-arch
+# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trn1-arch.html#aws-trn1-arch
+# Subject to removal after the information is available via public API
+AWS_NEURON_INSTANCE_MAP = {
+    "trn1.2xlarge": 2,
+    "trn1.32xlarge": 32,
+    "trn1n.32xlarge": 32,
+    "inf2.xlarge": 2,
+    "inf2.8xlarge": 2,
+    "inf2.24xlarge": 12,
+    "inf2.48xlarge": 24,
+}
+
 
 class NeuronAccelerator(Accelerator):
     """AWS Inferentia and Trainium accelerators."""
@@ -95,3 +108,18 @@ class NeuronAccelerator(Accelerator):
         os.environ[NEURON_RT_VISIBLE_CORES_ENV_VAR] = ",".join(
             [str(i) for i in visible_neuron_core_ids]
         )
+
+    @staticmethod
+    def get_ec2_num_accelerators(instance_type: str, instances: dict) -> Optional[int]:
+        # TODO: AWS SDK (public API) doesn't yet expose the NeuronCore
+        # information. It will be available (work-in-progress)
+        # as xxAcceleratorInfo in InstanceTypeInfo.
+        # https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_InstanceTypeInfo.html
+        # See https://github.com/ray-project/ray/issues/38473
+        return AWS_NEURON_INSTANCE_MAP.get(instance_type.lower(), None)
+
+    @staticmethod
+    def get_ec2_accelerator_type(instance_type: str, instances: dict) -> Optional[str]:
+        import ray
+
+        return ray.util.accelerators.accelerators.AWS_NEURON_CORE
