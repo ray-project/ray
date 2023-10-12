@@ -21,16 +21,17 @@ def generate_write_fn(
     # be raised. The Datasource can handle execution outcomes with the
     # on_write_complete() and on_write_failed().
     def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
+        if isinstance(datasink_or_legacy_datasource, Datasink):
+            write_result = datasink_or_legacy_datasource.write(blocks, ctx)
+        else:
+            write_result = datasink_or_legacy_datasource.write(
+                blocks, ctx, **write_args
+            )
+
         # NOTE: `WriteResult` isn't a valid block type, so we need to wrap it up.
         import pandas as pd
 
-        block = pd.DataFrame(
-            {
-                "write_result": [
-                    datasink_or_legacy_datasource.write(blocks, ctx, **write_args)
-                ]
-            }
-        )
+        block = pd.DataFrame({"write_result": [write_result]})
         return [block]
 
     return fn

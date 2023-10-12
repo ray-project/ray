@@ -3464,34 +3464,25 @@ class Dataset:
         datasink: Datasink,
         *,
         ray_remote_args: Dict[str, Any] = None,
-        **write_args,
     ) -> None:
-        """Writes the dataset to a custom :class:`~ray.data.Datasource`.
-
-        For an example of how to use this method, see
-        :ref:`Implementing a Custom Datasource <custom_datasources>`.
+        """Writes the dataset to a custom :class:`~ray.data.Datasink`.
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            datasource: The :class:`~ray.data.Datasource` to write to.
+            datasource: The :class:`~ray.data.Datasink` to write to.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
-            write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
         """  # noqa: E501
         if ray_remote_args is None:
             ray_remote_args = {}
-        path = write_args.get("path", None)
-        if path and _is_local_scheme(path):
-            if ray.util.client.ray.is_connected():
-                raise ValueError(
-                    f"The local scheme paths {path} are not supported in Ray Client."
-                )
+
+        if not datasink.supports_distributed_writes:
             ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(),
                 soft=False,
             )
 
-        write_fn = generate_write_fn(datasink, **write_args)
+        write_fn = generate_write_fn(datasink)
 
         def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
             return write_fn(blocks, ctx)
@@ -3512,7 +3503,6 @@ class Dataset:
                 logical_plan.dag,
                 datasink,
                 ray_remote_args=ray_remote_args,
-                **write_args,
             )
             logical_plan = LogicalPlan(write_op)
 
