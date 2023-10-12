@@ -237,13 +237,14 @@ class RayTrainReportCallback(TrainerCallback):
     from `TrainerState.log_history` and reports it with the latest checkpoint
     to Ray Train.
 
-    After training finished, one can retrieve the original transformer's checkpoint
-    folder under `checkpoint_00000*/checkpoint`.
+    Checkpoints will be saved in the following structure:
 
-    If you want more customized reporting logics, please implement your own
-    callbacks following this user guide:
+    checkpoint_00000*/   # Ray Train Checkpoint
+    └─ checkpoint/       # Hugging Face Transformers Checkpoint
 
-    :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
+    For customized reporting and checkpointing logic, implement your own
+    `transformers.TrainerCallback` following this user
+    guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
 
     Note that users should ensure that the logging, evaluation, and saving frequencies
     are properly configured so that the monitoring metric is always up-to-date

@@ -209,19 +209,20 @@ def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
 class RayTrainReportCallback(Callback):
     """A simple callback that reports checkpoints to Ray on train epoch end.
 
-    This callback is a subclass of `pl.callbacks.Callback
+    This callback is a subclass of `lightning.pytorch.callbacks.Callback
     <https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.Callback.html#lightning.pytorch.callbacks.Callback>`_.
 
     It fetches the latest `trainer.callback_metrics` and reports together with
     the checkpoint on each training epoch end.
 
-    After training finished, one can retrieve the original lightning's checkpoint
-    at `checkpoint_00000*/checkpoint.ckpt`.
+    Checkpoints will be saved in the following structure:
 
-    If you want more customized reporting logics, please implement your own
-    callbacks following this user guide:
+    checkpoint_00000*/      # Ray Train Checkpoint
+    └─ checkpoint.ckpt      # PyTorch Lightning Checkpoint
 
-    :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
+    For customized reporting and checkpointing logic, implement your own
+    `lightning.pytorch.callbacks.Callback` following this user
+    guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
     """
 
     def __init__(self) -> None:
