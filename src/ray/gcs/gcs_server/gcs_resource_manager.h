@@ -38,11 +38,12 @@ using raylet::ClusterTaskManager;
 
 namespace gcs {
 class GcsNodeManager;
+class GcsServer;
 
 /// Ideally, the logic related to resource calculation should be moved from
-/// `gcs_resoruce_manager` to `cluster_resource_manager`, and all logic related to
+/// `gcs_resource_manager` to `cluster_resource_manager`, and all logic related to
 /// resource modification should directly depend on `cluster_resource_manager`, while
-/// `gcs_resoruce_manager` is still responsible for processing resource-related RPC
+/// `gcs_resource_manager` is still responsible for processing resource-related RPC
 /// request. We will split several small PR to achieve this goal, so as to prevent one PR
 /// from being too large to review.
 ///
@@ -65,6 +66,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       instrumented_io_context &io_context,
       ClusterResourceManager &cluster_resource_manager,
       GcsNodeManager &gcs_node_manager,
+      GcsServer &gcs_server,
       NodeID local_node_id,
       std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
@@ -79,12 +81,14 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get available resources of all nodes.
+  /// Autoscaler-specific RPC called from Python.
   void HandleGetAllAvailableResources(
       rpc::GetAllAvailableResourcesRequest request,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get ids of draining nodes.
+  /// Autoscaler-specific RPC called from Python.
   void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
                               rpc::GetDrainingNodesReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
@@ -95,6 +99,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get all resource usage rpc request.
+  /// Autoscaler-specific RPC called from Python.
   void HandleGetAllResourceUsage(rpc::GetAllResourceUsageRequest request,
                                  rpc::GetAllResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
@@ -199,6 +204,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
 
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
+  GcsServer &gcs_server_;
   NodeID local_node_id_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// Num of alive nodes in the cluster.

@@ -271,8 +271,14 @@ void GcsAutoscalerStateManager::GetNodeStates(
         gcs_node_info.state_snapshot().node_activity());
 
     // The node is alive. We need to check if the node is idle.
-    auto const &node_resource_item =
-        node_resource_info_.find(NodeID::FromBinary(node_state_proto->node_id()))->second;
+    auto const node_resource_iter =
+        node_resource_info_.find(NodeID::FromBinary(node_state_proto->node_id()));
+
+    // The node has been added to GcsInfo but we are missing reporting for it. Ignore.
+    if (node_resource_iter == node_resource_info_.end()) {
+      return;
+    }
+    auto const &node_resource_item = node_resource_iter->second;
     auto const &node_resource_data = node_resource_item.second;
     if (node_resource_data.is_draining()) {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::DRAINING);

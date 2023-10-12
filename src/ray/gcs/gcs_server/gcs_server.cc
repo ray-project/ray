@@ -340,6 +340,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       main_service_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
+      *this,
       kGCSNodeID,
       cluster_task_manager_);
 
@@ -370,7 +371,8 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
             RAY_LOG(ERROR) << "Failed to connect to node: " << alive_node.first
                            << ". Skip this round of pulling for resource load";
           } else {
-            raylet_client->GetResourceLoad([this](auto &status, auto &load) {
+            // GetResourceLoad will also get usage. Historically it didn't.
+            raylet_client->GetResourceLoad([this](auto &status, auto &load_and_usage) {
               if (status.ok()) {
                 // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
                 // after verifying that non-autoscaler paths are taken care of.
@@ -380,9 +382,9 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
                 //
                 // Once autoscaler is completely moved to the new mode of consistent
                 // per-node reporting, remove this if it is not needed anymore.
-                gcs_resource_manager_->UpdateResourceLoads(load.resources());
+                gcs_resource_manager_->UpdateResourceLoads(load_and_usage.resources());
                 gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(
-                    load.resources());
+                    load_and_usage.resources());
               } else {
                 RAY_LOG_EVERY_N(WARNING, 10)
                     << "Failed to get the resource load: " << status.ToString();
