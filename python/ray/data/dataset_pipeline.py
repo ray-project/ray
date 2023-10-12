@@ -1,15 +1,7 @@
 from typing import Callable, Iterable
 
-from ray.data.dataset import Dataset
+from ray.data.dataset import Dataset, _raise_dataset_pipeline_deprecation_warning
 from ray.util.annotations import Deprecated
-
-
-def _raise_dataset_pipeline_deprecation_warning():
-    raise DeprecationWarning(
-        "`DatasetPipeline` is deprecated from Ray 2.8. Use `Dataset` instead. "
-        "It supports lazy and streaming execution natively. To learn more, "
-        "see https://docs.ray.io/en/latest/data/data-internals.html#execution."
-    )
 
 
 @Deprecated

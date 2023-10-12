@@ -103,7 +103,6 @@ from ray.data.block import (
     _apply_strict_mode_batch_size,
 )
 from ray.data.context import DataContext
-from ray.data.dataset_pipeline import _raise_dataset_pipeline_deprecation_warning
 from ray.data.datasource import (
     BigQueryDatasource,
     BlockWritePathProvider,
@@ -5178,3 +5177,11 @@ def _do_write(
     write_args = _unwrap_arrow_serialization_workaround(write_args)
     DataContext._set_current(ctx)
     return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)
+
+
+def _raise_dataset_pipeline_deprecation_warning():
+    raise DeprecationWarning(
+        "`DatasetPipeline` is deprecated from Ray 2.8. Use `Dataset` instead. "
+        "It supports lazy and streaming execution natively. To learn more, "
+        "see https://docs.ray.io/en/latest/data/data-internals.html#execution."
+    )
