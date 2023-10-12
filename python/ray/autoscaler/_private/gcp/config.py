@@ -5,7 +5,6 @@ import os
 import re
 import time
 from functools import partial, reduce
-from typing import Tuple
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
@@ -48,6 +47,7 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 
 # NOTE: iam.serviceAccountUser allows the Head Node to create worker nodes
 # with ServiceAccounts.
+
 
 def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
     generation = accelerator_config["type"].lower()

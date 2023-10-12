@@ -1,10 +1,10 @@
+import copy
 import logging
 import time
 from functools import wraps
 from threading import RLock
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Tuple
-import copy
 
 import googleapiclient
 
@@ -247,7 +247,8 @@ class GCPNodeProvider(NodeProvider):
 
     @staticmethod
     def fillout_available_node_types_resources(
-        cluster_config: Dict[str, Any]) -> Dict[str, Any]:
+        cluster_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Fills out TPU resources to the cluster config."""
         if "available_node_types" not in cluster_config:
             return cluster_config
@@ -261,7 +262,9 @@ class GCPNodeProvider(NodeProvider):
                 if "accelerator_type" in node_config:
                     accelerator_type = node_config["accelerator_type"]
                 elif "acceleratorConfig" in node_config:
-                    accelerator_type = tpu_accelerator_config_to_type(node_config["acceleratorConfig"])
+                    accelerator_type = tpu_accelerator_config_to_type(
+                        node_config["acceleratorConfig"]
+                    )
                 if not accelerator_type:
                     continue
                 autodetected_resources[f"TPU-{accelerator_type}"] = 1

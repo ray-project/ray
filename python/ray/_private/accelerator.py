@@ -41,7 +41,7 @@ def update_resources_with_accelerator_type(resources: dict):
         autodetect_accelerators=_autodetect_num_tpus,
         visible_devices_env_variable=ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
     )
-    if ray_constants.TPU in resources:
+    if ray_constants.TPU in resources and resources[ray_constants.TPU] > 0:
         _detect_and_configure_tpu_pod(resources=resources)
 
 
@@ -153,6 +153,8 @@ def _detect_and_configure_tpu_pod(resources: dict):
 
         tpu_executable = executable.options(resources={"TPU": 4, tpu_name: 1})
         return [tpu_executable.remote() for _ in range(num_workers)]
+
+    ray.get(run_jax_fn.remote())
 
     """
     tpu_id = get_tpu_id()
@@ -336,7 +338,7 @@ def get_tpu_worker_id() -> Optional[int]:
         return None
 
 
-def num_workers_in_tpu_pod() -> Optional[int]:
+def num_workers_in_tpu_pod() -> int:
     """Return the total number of workers in a TPU pod."""
     accelerator_type = get_tpu_accelerator_type()
     if accelerator_type:
