@@ -24,7 +24,6 @@ from ray.train._internal.storage import (
     _download_from_fs_path,
 )
 from ray.train.base_trainer import TrainingFailedError
-from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune.trainable.trainable import _DICT_CHECKPOINT_FILE_NAME
 
@@ -64,14 +63,6 @@ def dummy_context_manager(*args, **kwargs):
     yield "dummy value"
 
 
-@pytest.fixture(scope="module")
-def enable_new_persistence_mode():
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "1")
-        yield
-        mp.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "0")
-
-
 @pytest.fixture(autouse=True)
 def disable_driver_artifact_sync():
     # NOTE: Hack to make sure that the driver doesn't sync the artifacts.
@@ -84,7 +75,7 @@ def disable_driver_artifact_sync():
 
 
 @pytest.fixture(autouse=True, scope="module")
-def ray_start_4_cpus(enable_new_persistence_mode):
+def ray_start_4_cpus():
     # Make sure to set the env var before calling ray.init()
     ray.init(num_cpus=4)
     yield
