@@ -29,20 +29,21 @@
       rllib/...
 
 
-- label: ":tv: :serverless: Serve Tests"
-  conditions:
-    [
-        "NO_WHEELS_REQUIRED",
-        "RAY_CI_SERVE_AFFECTED",
-        "RAY_CI_PYTHON_AFFECTED",
-        "RAY_CI_ML_AFFECTED",
-    ]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-dependencies.sh
-    - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_tag_filters=gpu 
-      python/ray/serve/...
+# Serve doesn't have gpu tests now (Oct 6 2023)
+#- label: ":tv: :serverless: Serve Tests"
+#  conditions:
+#    [
+#        "NO_WHEELS_REQUIRED",
+#        "RAY_CI_SERVE_AFFECTED",
+#        "RAY_CI_PYTHON_AFFECTED",
+#        "RAY_CI_ML_AFFECTED",
+#    ]
+#  commands:
+#    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+#    - ./ci/env/install-dependencies.sh
+#    - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
+#    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_tag_filters=gpu 
+#      python/ray/serve/...
 
 # Todo: enable once tests pass
 #- label: ":tv: :brain: RLlib: GPU Examples {C/D}"

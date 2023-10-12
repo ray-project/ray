@@ -1,15 +1,15 @@
 import os
-from unittest.mock import patch
 from tempfile import TemporaryDirectory
-import pytest
+from unittest.mock import patch
 
+import pytest
 import torch
 
 import ray
-from ray import train
-from ray.train import ScalingConfig, Checkpoint
-from ray.train.torch import TorchTrainer
 import ray.train.torch.train_loop_utils
+from ray import train
+from ray.train import Checkpoint, ScalingConfig
+from ray.train.torch import TorchTrainer
 
 
 @pytest.mark.parametrize(
