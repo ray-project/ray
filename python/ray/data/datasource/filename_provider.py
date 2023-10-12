@@ -1,8 +1,10 @@
 from typing import Any, Dict, Optional
 
 from ray.data.block import Block
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class FilenameProvider:
     """Generates filenames when you write a :class:`~ray.data.Dataset`.
 
@@ -60,7 +62,7 @@ class FilenameProvider:
         raise NotImplementedError
 
 
-class DefaultFilenameProvider(FilenameProvider):
+class _DefaultFilenameProvider(FilenameProvider):
     def __init__(self, dataset_uuid: str, file_format: Optional[str] = None):
         self._dataset_uuid = dataset_uuid
         self._file_format = file_format

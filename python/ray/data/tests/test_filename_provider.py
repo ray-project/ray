@@ -1,13 +1,12 @@
 import pandas as pd
 import pytest
 
-import ray
-from ray.data.datasource.filename_provider import DefaultFilenameProvider
+from ray.data.datasource.filename_provider import _DefaultFilenameProvider
 
 
 @pytest.fixture(params=["csv", None])
 def filename_provider(request):
-    yield DefaultFilenameProvider(dataset_uuid="", file_format=request.param)
+    yield _DefaultFilenameProvider(dataset_uuid="", file_format=request.param)
 
 
 def test_default_filename_for_row_is_idempotent(filename_provider):

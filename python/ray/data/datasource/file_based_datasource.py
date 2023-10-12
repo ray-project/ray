@@ -40,8 +40,8 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.filename_provider import (
-    DefaultFilenameProvider,
     FilenameProvider,
+    _DefaultFilenameProvider,
 )
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -348,7 +348,7 @@ class FileBasedDatasource(Datasource):
             )
 
         if filename_provider is None and block_path_provider is None:
-            filename_provider = DefaultFilenameProvider(
+            filename_provider = _DefaultFilenameProvider(
                 dataset_uuid=dataset_uuid, file_format=file_format
             )
 
