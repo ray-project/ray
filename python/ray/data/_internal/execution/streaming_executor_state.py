@@ -378,7 +378,7 @@ def select_operator_to_run(
     topology: Topology,
     cur_usage: TopologyResourceUsage,
     limits: ExecutionResources,
-    back_pressure_policies: list[BackPressurePolicy],
+    back_pressure_policies: List[BackPressurePolicy],
     ensure_at_least_one_running: bool,
     execution_id: str,
     autoscaling_state: AutoscalingState,

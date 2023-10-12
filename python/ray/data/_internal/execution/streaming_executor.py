@@ -2,7 +2,7 @@ import os
 import threading
 import time
 import uuid
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional
 
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -76,7 +76,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # generator `yield`s.
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
-        self._back_pressure_policies: Optional[BackPressurePolicy] = None
+        self._back_pressure_policies: Optional[List[BackPressurePolicy]] = None
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
