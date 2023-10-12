@@ -1,14 +1,18 @@
 import logging
 import os
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.execution.streaming_executor_state import Topology
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
+    from ray.data._internal.execution.streaming_executor_state import Topology
 
 logger = logging.getLogger(__name__)
 
 
-def get_back_pressure_policies(topology: Topology):
+def get_back_pressure_policies(topology: "Topology"):
     return [ConcurrencyCapBackPressurePolicy(topology)]
 
 
@@ -16,11 +20,11 @@ class BackPressurePolicy(ABC):
     """Interface for back pressure policies."""
 
     @abstractmethod
-    def __init__(self, topology: Topology):
+    def __init__(self, topology: "Topology"):
         ...
 
     @abstractmethod
-    def can_run(self, op: PhysicalOperator) -> bool:
+    def can_run(self, op: "PhysicalOperator") -> bool:
         """Called when StreamingExecutor is about to select an operator to run.
         Returns True if the operator can run, False otherwise.
         """
@@ -46,8 +50,8 @@ class ConcurrencyCapBackPressurePolicy(BackPressurePolicy):
     # The multiplier to multiply the concurrency cap by.
     CAP_MULTIPLIER = 2.0
 
-    def __init__(self, topology: Topology):
-        self._concurrency_caps: dict[PhysicalOperator, float] = {}
+    def __init__(self, topology: "Topology"):
+        self._concurrency_caps: dict["PhysicalOperator", float] = {}
 
         self._init_cap = self.INIT_CAP
         self._cap_multiplier = self.CAP_MULTIPLIER
@@ -71,7 +75,7 @@ class ConcurrencyCapBackPressurePolicy(BackPressurePolicy):
         for op, _ in topology.items():
             self._concurrency_caps[op] = self._init_cap
 
-    def can_run(self, op: PhysicalOperator) -> bool:
+    def can_run(self, op: "PhysicalOperator") -> bool:
         metrics = op.metrics
         if metrics.num_tasks_finished >= (
             self._concurrency_caps[op] * self._cap_multiply_threshold
