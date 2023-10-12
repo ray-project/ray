@@ -86,7 +86,6 @@ class ApplyDeploymentModel(BaseDeploymentModel):
                     "Manually setting num_replicas is not allowed "
                     "when autoscaling_config is provided."
                 )
-            values["num_replicas"] = None
 
         return values
 
