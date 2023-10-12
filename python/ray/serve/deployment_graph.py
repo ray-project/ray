@@ -4,10 +4,10 @@ from ray.dag import DAGNode  # noqa: F401
 from ray.dag.class_node import ClassNode  # noqa: F401
 from ray.dag.function_node import FunctionNode  # noqa: F401
 from ray.dag.input_node import InputNode  # noqa: F401
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated("The DAG API is deprecated.")
 class RayServeDAGHandle:
     """Resolved from a DeploymentNode at runtime.
 
