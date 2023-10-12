@@ -1910,7 +1910,7 @@ class Dataset:
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ds = self.groupby(column).count().select_columns([column])
+        ds = self.select_columns([column]).groupby(column).count()
         return [item[column] for item in ds.take_all()]
 
     @ConsumptionAPI
