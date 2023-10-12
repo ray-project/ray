@@ -13,12 +13,12 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers_utils import load_http_adapter
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="beta")
+@Deprecated(message="The DAG API is deprecated.")
 @serve.deployment
 class DAGDriver(ASGIAppReplicaWrapper):
     """A driver implementation that accepts HTTP requests."""
