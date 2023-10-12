@@ -114,6 +114,7 @@ from ray.data.context import (
     DataContext,
 )
 from ray.data.datasource import (
+    BigQueryDatasource,
     BlockWritePathProvider,
     Connection,
     CSVDatasource,
@@ -273,6 +274,7 @@ class Dataset:
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
+        self._write_ds = None
 
     @staticmethod
     def copy(
@@ -1909,7 +1911,7 @@ class Dataset:
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ds = self.groupby(column).count().select_columns([column])
+        ds = self.select_columns([column]).groupby(column).count()
         return [item[column] for item in ds.take_all()]
 
     @ConsumptionAPI
@@ -3279,6 +3281,7 @@ class Dataset:
             sql=sql,
         )
 
+    @PublicAPI(stability="alpha")
     @ConsumptionAPI
     def write_mongo(
         self,
@@ -3345,6 +3348,50 @@ class Dataset:
             uri=uri,
             database=database,
             collection=collection,
+        )
+
+    @ConsumptionAPI
+    def write_bigquery(
+        self,
+        project_id: str,
+        dataset: str,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Write the dataset to a BigQuery dataset table.
+
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Examples:
+             .. testcode::
+                :skipif: True
+
+                import ray
+                import pandas as pd
+
+                docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+                ds.write_bigquery(
+                    BigQueryDatasource(),
+                    project_id="my_project_id",
+                    dataset="my_dataset_table",
+                )
+
+        Args:
+            project_id: The name of the associated Google Cloud Project that hosts
+                the dataset to read. For more information, see details in
+                `Creating and managing projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+            dataset: The name of the dataset in the format of ``dataset_id.table_id``.
+                The dataset is created if it doesn't already exist. The table_id is
+                overwritten if it exists.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+        """
+
+        self.write_datasource(
+            BigQueryDatasource(),
+            ray_remote_args=ray_remote_args,
+            dataset=dataset,
+            project_id=project_id,
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -3850,9 +3897,7 @@ class Dataset:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the datasetContext.
+                the collate_fn. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of the stream is not divisible by the batch
@@ -3975,9 +4020,7 @@ class Dataset:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the :class:`~ray.data.DataContext`.
+                the collate_fn. Defaults to 1.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
@@ -4772,6 +4815,8 @@ class Dataset:
             * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
 
         """
+        if self._write_ds is not None and self._write_ds._plan.has_computed_output():
+            return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
@@ -5328,34 +5373,6 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
-
-
-def _sliding_window(iterable: Iterable, n: int):
-    """Creates an iterator consisting of n-width sliding windows over
-    iterable. The sliding windows are constructed lazily such that an
-    element on the base iterator (iterable) isn't consumed until the
-    first sliding window containing that element is reached.
-
-    If n > len(iterable), then a single len(iterable) window is
-    returned.
-
-    Args:
-        iterable: The iterable on which the sliding window is
-            created.
-        n: The width of the sliding window.
-
-    Returns:
-        An iterator of n-width windows over iterable.
-        If n > len(iterable), then a single len(iterable) window is
-        returned.
-    """
-    it = iter(iterable)
-    window = collections.deque(itertools.islice(it, n), maxlen=n)
-    if len(window) > 0:
-        yield tuple(window)
-    for elem in it:
-        window.append(elem)
-        yield tuple(window)
 
 
 def _do_write(

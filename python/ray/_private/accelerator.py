@@ -231,7 +231,7 @@ def _autodetect_num_tpus() -> int:
         numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
         return len(numeric_entries)
     except FileNotFoundError as e:
-        logging.info("Failed to detect number of TPUs: %s", e)
+        logging.debug("Failed to detect number of TPUs: %s", e)
         return 0
 
 
@@ -259,6 +259,40 @@ def _autodetect_tpu_version() -> Optional[str]:
     if accelerator_type:
         return "TPU-" + str(accelerator_type.split("-")[0]).upper()
     else:
+        # GCE-based VM check
+        try:
+            accelerator_type_request = requests.get(
+                ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
+                headers=ray_constants.RAY_GCE_TPU_HEADERS,
+            )
+            if (
+                accelerator_type_request.status_code == 200
+                and accelerator_type_request.text
+            ):
+                detected_tpu_version = accelerator_type_to_version(
+                    accelerator_type_request.text
+                )
+                if detected_tpu_version is None:
+                    logging.info(
+                        "While trying to autodetect a TPU type, the TPU GCE metadata "
+                        "returned a malformed accelerator type: "
+                        f"{accelerator_type_request.text}."
+                    )
+            else:
+                logging.info(
+                    "While trying to autodetect a TPU type, "
+                    "unable to poll TPU GCE metadata. Got "
+                    f"status code: {accelerator_type_request.status_code} and "
+                    f"content: {accelerator_type_request.text}"
+                )
+        except requests.RequestException as e:
+            logging.info(
+                "While trying to autodetect a TPU type, "
+                " unable to poll TPU GCE metadata: %s",
+                e,
+            )
+
+    if detected_tpu_version is None:
         logging.info("Failed to auto-detect TPU type.")
         return None
 

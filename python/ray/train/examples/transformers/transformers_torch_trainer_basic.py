@@ -1,16 +1,17 @@
+import evaluate
+import numpy as np
+
 # Minimal Example adapted from https://huggingface.co/docs/transformers/training
 from datasets import load_dataset
-from transformers import AutoTokenizer
-from transformers import AutoModelForSequenceClassification
-from transformers import TrainingArguments, Trainer
-import numpy as np
-import evaluate
-
-from ray.train.huggingface.transformers import (
-    prepare_trainer,
-    RayTrainReportCallback,
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    Trainer,
+    TrainingArguments,
 )
+
 from ray.train import ScalingConfig
+from ray.train.huggingface.transformers import RayTrainReportCallback, prepare_trainer
 from ray.train.torch import TorchTrainer
 
 
