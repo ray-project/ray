@@ -456,7 +456,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     )
 
     def check_stats():
-        stats = canonicalize(repr(ds._plan.stats().to_summary()))
+        stats = canonicalize(repr(ds._execution_manager.stats().to_summary()))
         assert stats == expected_stats
         return True
 
@@ -1398,7 +1398,7 @@ Dataset memory:
     )
 
     # Around 100MB should be spilled (200MB - 100MB)
-    assert ds._plan.stats().dataset_bytes_spilled > 100e6
+    assert ds._execution_manager.stats().dataset_bytes_spilled > 100e6
 
     ds = (
         ray.data.range(1000 * 80 * 80 * 4)
@@ -1408,7 +1408,7 @@ Dataset memory:
         .materialize()
     )
     # two map_batches operators, twice the spillage
-    assert ds._plan.stats().dataset_bytes_spilled > 200e6
+    assert ds._execution_manager.stats().dataset_bytes_spilled > 200e6
 
     # The size of dataset is around 50MB, there should be no spillage
     ds = (
@@ -1417,7 +1417,7 @@ Dataset memory:
         .materialize()
     )
 
-    assert ds._plan.stats().dataset_bytes_spilled == 0
+    assert ds._execution_manager.stats().dataset_bytes_spilled == 0
 
 
 if __name__ == "__main__":

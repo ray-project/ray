@@ -84,7 +84,7 @@ def _check_valid_plan_and_result(
     expected_physical_plan_stages=None,
 ):
     assert ds.take_all() == expected_result
-    assert str(ds._plan._logical_plan.dag) == expected_plan
+    assert str(ds._execution_manager._logical_plan.dag) == expected_plan
 
     expected_physical_plan_stages = expected_physical_plan_stages or []
     for stage in expected_physical_plan_stages:
@@ -128,7 +128,7 @@ def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
 
     # Check that metadata fetch is included in stats.
     assert "FromItems" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromItems"
+    assert ds._execution_manager._logical_plan.dag.name == "FromItems"
     _check_usage_record(["FromItems"])
 
 
@@ -358,7 +358,7 @@ def test_repartition_e2e(
 ):
     def _check_repartition_usage_and_stats(ds):
         _check_usage_record(["ReadRange", "Repartition"])
-        ds_stats: DatasetStats = ds._plan.stats()
+        ds_stats: DatasetStats = ds._execution_manager.stats()
         if shuffle:
             assert ds_stats.base_name == "ReadRange->Repartition"
             assert "ReadRange->RepartitionMap" in ds_stats.stages
@@ -1096,7 +1096,7 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
 
     # Underlying implementation uses `FromPandas` operator
     assert "FromPandas" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromPandas"
+    assert ds._execution_manager._logical_plan.dag.name == "FromPandas"
     _check_usage_record(["FromPandas"])
 
 
@@ -1119,7 +1119,7 @@ def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
     # Check that metadata fetch is included in stats. This is `FromPandas`
     # instead of `FromModin` because `from_modin` reduces to `from_pandas_refs`.
     assert "FromPandas" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromPandas"
+    assert ds._execution_manager._logical_plan.dag.name == "FromPandas"
     _check_usage_record(["FromPandas"])
 
 
@@ -1141,7 +1141,7 @@ def test_from_pandas_refs_e2e(
         assert values == rows
         # Check that metadata fetch is included in stats.
         assert "FromPandas" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromPandas"
+        assert ds._execution_manager._logical_plan.dag.name == "FromPandas"
 
         # Test chaining multiple operations
         ds2 = ds.map_batches(lambda x: x)
@@ -1158,7 +1158,7 @@ def test_from_pandas_refs_e2e(
         assert values == rows
         # Check that metadata fetch is included in stats.
         assert "FromPandas" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromPandas"
+        assert ds._execution_manager._logical_plan.dag.name == "FromPandas"
         _check_usage_record(["FromPandas"])
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
@@ -1175,7 +1175,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     # Check that conversion task is included in stats.
     assert "FromNumpy" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromNumpy"
+    assert ds._execution_manager._logical_plan.dag.name == "FromNumpy"
     _check_usage_record(["FromNumpy"])
 
     # Test chaining multiple operations
@@ -1193,7 +1193,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
     assert "FromNumpy" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromNumpy"
+    assert ds._execution_manager._logical_plan.dag.name == "FromNumpy"
     _check_usage_record(["FromNumpy"])
 
 
@@ -1211,7 +1211,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     assert values == rows
     # Check that metadata fetch is included in stats.
     assert "FromArrow" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromArrow"
+    assert ds._execution_manager._logical_plan.dag.name == "FromArrow"
     _check_usage_record(["FromArrow"])
 
     # test from single pyarrow table ref
@@ -1221,7 +1221,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     assert values == rows
     # Check that conversion task is included in stats.
     assert "FromArrow" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromArrow"
+    assert ds._execution_manager._logical_plan.dag.name == "FromArrow"
     _check_usage_record(["FromArrow"])
 
 
@@ -1244,7 +1244,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         # Check that metadata fetch is included in stats;
         # the underlying implementation uses the `FromArrow` operator.
         assert "FromArrow" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromArrow"
+        assert ds._execution_manager._logical_plan.dag.name == "FromArrow"
         assert ray.get(ray_datasets[ds_key].to_arrow_refs())[0].equals(
             data[ds_key].data.table
         )
@@ -1392,7 +1392,7 @@ def test_blocks_to_input_buffer_op_name(
     enable_streaming_executor,
 ):
     ds: ray.data.Dataset = ray.data.range(10)
-    blocks, _, _ = ds._plan._optimize()
+    blocks, _, _ = ds._execution_manager._optimize()
     assert hasattr(blocks, "_tasks"), blocks
     physical_op = _blocks_to_input_buffer(blocks, owns_blocks=False)
     assert physical_op.name == "ReadRange"
@@ -1405,14 +1405,14 @@ def test_execute_to_legacy_block_list(
 ):
     ds = ray.data.range(10)
     # Stats not initialized until `ds.iter_rows()` is called
-    assert ds._plan._snapshot_stats is None
+    assert ds._execution_manager._snapshot_stats is None
 
     for i, row in enumerate(ds.iter_rows()):
         assert row["id"] == i
 
-    assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.stages
-    assert ds._plan._snapshot_stats.time_total_s > 0
+    assert ds._execution_manager._snapshot_stats is not None
+    assert "ReadRange" in ds._execution_manager._snapshot_stats.stages
+    assert ds._execution_manager._snapshot_stats.time_total_s > 0
 
 
 def test_execute_to_legacy_block_iterator(
@@ -1421,13 +1421,13 @@ def test_execute_to_legacy_block_iterator(
     enable_streaming_executor,
 ):
     ds = ray.data.range(10)
-    assert ds._plan._snapshot_stats is None
+    assert ds._execution_manager._snapshot_stats is None
     for batch in ds.iter_batches():
         assert batch is not None
 
-    assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.stages
-    assert ds._plan._snapshot_stats.time_total_s > 0
+    assert ds._execution_manager._snapshot_stats is not None
+    assert "ReadRange" in ds._execution_manager._snapshot_stats.stages
+    assert ds._execution_manager._snapshot_stats.time_total_s > 0
 
 
 def test_streaming_executor(
@@ -1471,8 +1471,8 @@ def test_schema_partial_execution(
     assert iris_schema == ray.data.dataset.Schema(pa.schema(fields))
     # Verify that ds.schema() executes only the first block, and not the
     # entire Dataset.
-    assert ds._plan._in_blocks._num_blocks == 1
-    assert str(ds._plan._logical_plan.dag) == (
+    assert ds._execution_manager._in_blocks._num_blocks == 1
+    assert str(ds._execution_manager._logical_plan.dag) == (
         "Read[ReadParquet->SplitBlocks(2)] -> MapBatches[MapBatches(<lambda>)]"
     )
 

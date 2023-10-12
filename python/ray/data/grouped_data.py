@@ -179,27 +179,16 @@ class GroupedData:
                 ctx=task_ctx,
             )
 
-        plan = self._dataset._plan.with_stage(
-            AllToAllStage(
-                "Aggregate",
-                None,
-                do_agg,
-                sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
-            )
-        )
-
         logical_plan = self._dataset._logical_plan
-        if logical_plan is not None:
-            op = Aggregate(
-                logical_plan.dag,
-                key=self._key,
-                aggs=aggs,
-            )
-            logical_plan = LogicalPlan(op)
+        op = Aggregate(
+            logical_plan.dag,
+            key=self._key,
+            aggs=aggs,
+        )
+        logical_plan = LogicalPlan(op)
         return Dataset(
-            plan,
+            self._dataset._execution_manager.with_operator(op),
             self._dataset._epoch,
-            self._dataset._lazy,
             logical_plan,
         )
 

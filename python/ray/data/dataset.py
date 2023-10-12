@@ -248,29 +248,27 @@ class Dataset:
 
     def __init__(
         self,
-        plan: ExecutionManager,
+        execution_manager: ExecutionManager,
         epoch: int,
-        lazy: bool = True,
-        logical_plan: Optional[LogicalPlan] = None,
+        logical_plan: LogicalPlan,
     ):
         """Construct a Dataset (internal API).
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
         read methods to construct a dataset.
         """
-        assert isinstance(plan, ExecutionManager), type(plan)
+        assert isinstance(execution_manager, ExecutionManager), type(execution_manager)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
-        self._plan = plan
+        self._execution_manager = execution_manager
         self._uuid = uuid4().hex
         self._epoch = epoch
-        self._lazy = lazy
+        self._lazy = True
         self._logical_plan = logical_plan
-        if logical_plan is not None:
-            self._plan.link_logical_plan(logical_plan)
+        self._execution_manager.link_logical_plan(logical_plan)
 
-        if not lazy:
-            self._plan.execute(allow_clear_input_blocks=False)
+        if not self._lazy:
+            self._execution_manager.execute(allow_clear_input_blocks=False)
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
@@ -283,9 +281,9 @@ class Dataset:
         if not _as:
             _as = type(ds)
         if _deep_copy:
-            return _as(ds._plan.deep_copy(), ds._epoch, ds._lazy, ds._logical_plan)
+            return _as(ds._execution_manager.deep_copy(), ds._epoch, ds._logical_plan)
         else:
-            return _as(ds._plan.copy(), ds._epoch, ds._lazy, ds._logical_plan)
+            return _as(ds._execution_manager.copy(), ds._epoch, ds._logical_plan)
 
     def map(
         self,
@@ -373,28 +371,18 @@ class Dataset:
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "Map",
-                transform_fn,
-                compute,
-                ray_remote_args,
-                fn=fn,
-                fn_constructor_args=fn_constructor_args,
-            )
-        )
-
         logical_plan = self._logical_plan
-        if logical_plan is not None:
-            map_op = MapRows(
-                logical_plan.dag,
-                fn,
-                fn_constructor_args=fn_constructor_args,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(map_op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        map_op = MapRows(
+            logical_plan.dag,
+            fn,
+            fn_constructor_args=fn_constructor_args,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(map_op)
+        return Dataset(
+            self._execution_manager.with_operator(map_op), self._epoch, logical_plan
+        )
 
     def map_batches(
         self,
@@ -594,40 +582,44 @@ class Dataset:
         else:
             stage_name = f'MapBatches({getattr(fn, "__name__", type(fn))})'
 
-        stage = OneToOneStage(
-            stage_name,
-            transform_fn,
-            compute,
-            ray_remote_args,
-            # TODO(Clark): Add a strict cap here.
+        # stage = OneToOneStage(
+        #     stage_name,
+        #     transform_fn,
+        #     compute,
+        #     ray_remote_args,
+        #     # TODO(Clark): Add a strict cap here.
+        #     target_block_size=target_block_size,
+        #     fn=fn,
+        #     fn_args=fn_args,
+        #     fn_kwargs=fn_kwargs,
+        #     fn_constructor_args=fn_constructor_args,
+        #     fn_constructor_kwargs=fn_constructor_kwargs,
+        # )
+        # plan = self._execution_manager.with_stage(stage)
+
+        logical_plan = self._logical_plan
+        # if logical_plan is not None:
+        map_batches_op = MapBatches(
+            logical_plan.dag,
+            fn,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            zero_copy_batch=zero_copy_batch,
             target_block_size=target_block_size,
-            fn=fn,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
-        plan = self._plan.with_stage(stage)
+        logical_plan = LogicalPlan(map_batches_op)
 
-        logical_plan = self._logical_plan
-        if logical_plan is not None:
-            map_batches_op = MapBatches(
-                logical_plan.dag,
-                fn,
-                batch_size=batch_size,
-                batch_format=batch_format,
-                zero_copy_batch=zero_copy_batch,
-                target_block_size=target_block_size,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
-                fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(map_batches_op)
-
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(
+            self._execution_manager.with_operator(map_batches_op),
+            self._epoch,
+            logical_plan,
+        )
 
     def add_column(
         self,
@@ -872,28 +864,30 @@ class Dataset:
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        plan = self._plan.with_stage(
-            OneToOneStage(
-                "FlatMap",
-                transform_fn,
-                compute,
-                ray_remote_args,
-                fn=fn,
-                fn_constructor_args=fn_constructor_args,
-            )
-        )
+        # plan = self._execution_manager.with_stage(
+        #     OneToOneStage(
+        #         "FlatMap",
+        #         transform_fn,
+        #         compute,
+        #         ray_remote_args,
+        #         fn=fn,
+        #         fn_constructor_args=fn_constructor_args,
+        #     )
+        # )
 
         logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = FlatMap(
-                input_op=logical_plan.dag,
-                fn=fn,
-                fn_constructor_args=fn_constructor_args,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        # if logical_plan is not None:
+        op = FlatMap(
+            input_op=logical_plan.dag,
+            fn=fn,
+            fn_constructor_args=fn_constructor_args,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op)
+        return Dataset(
+            self._execution_manager.with_operator(op), self._epoch, logical_plan
+        )
 
     def filter(
         self,
@@ -933,21 +927,23 @@ class Dataset:
 
         transform_fn = generate_filter_fn()
 
-        plan = self._plan.with_stage(
-            OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
-        )
+        # plan = self._execution_manager.with_stage(
+        #     OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
+        # )
 
         logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Filter(
-                input_op=logical_plan.dag,
-                fn=fn,
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
+        # if logical_plan is not None:
+        op = Filter(
+            input_op=logical_plan.dag,
+            fn=fn,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op)
 
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(
+            self._execution_manager.with_operator(op), self._epoch, logical_plan
+        )
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
@@ -992,17 +988,19 @@ class Dataset:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
-        plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
+        # plan = self._execution_manager.with_stage(RepartitionStage(num_blocks, shuffle))
 
         logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Repartition(
-                logical_plan.dag,
-                num_outputs=num_blocks,
-                shuffle=shuffle,
-            )
-            logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        # if logical_plan is not None:
+        op = Repartition(
+            logical_plan.dag,
+            num_outputs=num_blocks,
+            shuffle=shuffle,
+        )
+        logical_plan = LogicalPlan(op)
+        return Dataset(
+            self._execution_manager.with_operator(op), self._epoch, logical_plan
+        )
 
     def random_shuffle(
         self,
@@ -1039,20 +1037,22 @@ class Dataset:
             The shuffled :class:`Dataset`.
         """  # noqa: E501
 
-        plan = self._plan.with_stage(
-            RandomShuffleStage(seed, num_blocks, ray_remote_args)
-        )
+        # plan = self._execution_manager.with_stage(
+        #     RandomShuffleStage(seed, num_blocks, ray_remote_args)
+        # )
 
         logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = RandomShuffle(
-                logical_plan.dag,
-                seed=seed,
-                num_outputs=num_blocks,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        # if logical_plan is not None:
+        op = RandomShuffle(
+            logical_plan.dag,
+            seed=seed,
+            num_outputs=num_blocks,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op)
+        return Dataset(
+            self._execution_manager.with_operator(op), self._epoch, logical_plan
+        )
 
     def randomize_block_order(
         self,
@@ -1081,16 +1081,18 @@ class Dataset:
             The block-shuffled :class:`Dataset`.
         """
 
-        plan = self._plan.with_stage(RandomizeBlocksStage(seed))
+        # plan = self._execution_manager.with_stage(RandomizeBlocksStage(seed))
 
         logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = RandomizeBlocks(
-                logical_plan.dag,
-                seed=seed,
-            )
-            logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        # if logical_plan is not None:
+        op = RandomizeBlocks(
+            logical_plan.dag,
+            seed=seed,
+        )
+        logical_plan = LogicalPlan(op)
+        return Dataset(
+            self._execution_manager.with_operator(op), self._epoch, logical_plan
+        )
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -1320,9 +1322,9 @@ class Dataset:
                     "locality_hints must not contain duplicate actor handles"
                 )
 
-        blocks = self._plan.execute()
+        blocks = self._execution_manager.execute()
         owned_by_consumer = blocks._owned_by_consumer
-        stats = self._plan.stats()
+        stats = self._execution_manager.stats()
         block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
 
         if locality_hints is None:
@@ -1334,7 +1336,7 @@ class Dataset:
                 block_list = BlockList(
                     b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
                 )
-                logical_plan = self._plan._logical_plan
+                logical_plan = self._execution_manager._logical_plan
                 if logical_plan is not None:
                     ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
                     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
@@ -1346,7 +1348,6 @@ class Dataset:
                             run_by_consumer=owned_by_consumer,
                         ),
                         self._epoch,
-                        self._lazy,
                         logical_plan,
                     )
                 )
@@ -1461,7 +1462,7 @@ class Dataset:
 
         split_datasets = []
         for block_split in per_split_block_lists:
-            logical_plan = self._plan._logical_plan
+            logical_plan = self._execution_manager._logical_plan
             if logical_plan is not None:
                 ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
@@ -1473,7 +1474,6 @@ class Dataset:
                         run_by_consumer=owned_by_consumer,
                     ),
                     self._epoch,
-                    self._lazy,
                     logical_plan,
                 )
             )
@@ -1527,14 +1527,14 @@ class Dataset:
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        block_list = self._plan.execute()
+        block_list = self._execution_manager.execute()
         blocks, metadata = _split_at_indices(
             block_list.get_blocks_with_metadata(),
             indices,
             block_list._owned_by_consumer,
         )
         split_duration = time.perf_counter() - start_time
-        parent_stats = self._plan.stats()
+        parent_stats = self._execution_manager.stats()
         splits = []
 
         for bs, ms in zip(blocks, metadata):
@@ -1544,7 +1544,7 @@ class Dataset:
             split_block_list = BlockList(
                 bs, ms, owned_by_consumer=block_list._owned_by_consumer
             )
-            logical_plan = self._plan._logical_plan
+            logical_plan = self._execution_manager._logical_plan
             if logical_plan is not None:
                 ref_bundles = _block_list_to_bundles(
                     split_block_list, block_list._owned_by_consumer
@@ -1559,7 +1559,6 @@ class Dataset:
                         run_by_consumer=block_list._owned_by_consumer,
                     ),
                     self._epoch,
-                    self._lazy,
                     logical_plan,
                 )
             )
@@ -1737,12 +1736,12 @@ class Dataset:
 
         start_time = time.perf_counter()
 
-        owned_by_consumer = self._plan.execute()._owned_by_consumer
+        owned_by_consumer = self._execution_manager.execute()._owned_by_consumer
         datasets = [self] + list(other)
         bls = []
         has_nonlazy = False
         for ds in datasets:
-            bl = ds._plan.execute()
+            bl = ds._execution_manager.execute()
             if not isinstance(bl, LazyBlockList):
                 has_nonlazy = True
             bls.append(bl)
@@ -1756,7 +1755,9 @@ class Dataset:
                 else:
                     assert isinstance(bl, BlockList), type(bl)
                     bs, ms = bl._blocks, bl._metadata
-                op_logical_plan = getattr(datasets[idx]._plan, "_logical_plan", None)
+                op_logical_plan = getattr(
+                    datasets[idx]._execution_manager, "_logical_plan", None
+                )
                 if isinstance(op_logical_plan, LogicalPlan):
                     ops_to_union.append(op_logical_plan.dag)
                 else:
@@ -1767,7 +1768,8 @@ class Dataset:
 
             logical_plan = None
             if all(ops_to_union):
-                logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
+                op = UnionLogicalOperator(*ops_to_union)
+                logical_plan = LogicalPlan(op)
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1776,10 +1778,13 @@ class Dataset:
             # Gather read task names from input blocks of unioned Datasets,
             # and concat them before passing to resulting LazyBlockList
             read_task_names = []
-            self_read_name = self._plan._in_blocks._read_stage_name or "Read"
+            self_read_name = (
+                self._execution_manager._in_blocks._read_stage_name or "Read"
+            )
             read_task_names.append(self_read_name)
             other_read_names = [
-                o._plan._in_blocks._read_stage_name or "Read" for o in other
+                o._execution_manager._in_blocks._read_stage_name or "Read"
+                for o in other
             ]
             read_task_names.extend(other_read_names)
 
@@ -1817,13 +1822,14 @@ class Dataset:
                 )
         stats = DatasetStats(
             stages={"Union": []},
-            parent=[d._plan.stats() for d in datasets],
+            parent=[d._execution_manager.stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionManager(blocklist, stats, run_by_consumer=owned_by_consumer),
+            ExecutionManager(
+                blocklist, stats, run_by_consumer=owned_by_consumer
+            ).with_operator(op),
             max_epoch,
-            self._lazy,
             logical_plan,
         )
 
@@ -2205,16 +2211,18 @@ class Dataset:
         """
 
         sort_key = SortKey(key, descending)
-        plan = self._plan.with_stage(SortStage(self, sort_key))
+        # plan = self._execution_manager.with_stage(SortStage(self, sort_key))
 
         logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Sort(
-                logical_plan.dag,
-                sort_key=sort_key,
-            )
-            logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        # if logical_plan is not None:
+        op = Sort(
+            logical_plan.dag,
+            sort_key=sort_key,
+        )
+        logical_plan = LogicalPlan(op)
+        return Dataset(
+            self._execution_manager.with_operator(op), self._epoch, logical_plan
+        )
 
     def zip(self, other: "Dataset") -> "Dataset":
         """Materialize and zip the columns of this dataset with the columns of another.
@@ -2249,14 +2257,16 @@ class Dataset:
             with duplicate column names disambiguated with suffixes like ``"_1"``.
         """
 
-        plan = self._plan.with_stage(ZipStage(other))
+        # plan = self._execution_manager.with_stage(ZipStage(other))
 
         logical_plan = self._logical_plan
         other_logical_plan = other._logical_plan
-        if logical_plan is not None and other_logical_plan is not None:
-            op = Zip(logical_plan.dag, other_logical_plan.dag)
-            logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        # if logical_plan is not None and other_logical_plan is not None:
+        op = Zip(logical_plan.dag, other_logical_plan.dag)
+        logical_plan = LogicalPlan(op)
+        return Dataset(
+            self._execution_manager.with_operator(op), self._epoch, logical_plan
+        )
 
     @ConsumptionAPI
     def limit(self, limit: int) -> "Dataset":
@@ -2280,12 +2290,14 @@ class Dataset:
         Returns:
             The truncated dataset.
         """
-        plan = self._plan.with_stage(LimitStage(limit))
+        # plan = self._execution_manager.with_stage(LimitStage(limit))
         logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = Limit(logical_plan.dag, limit=limit)
-            logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        # if logical_plan is not None:
+        op = Limit(logical_plan.dag, limit=limit)
+        logical_plan = LogicalPlan(op)
+        return Dataset(
+            self._execution_manager.with_operator(op), self._epoch, logical_plan
+        )
 
     @ConsumptionAPI
     def take_batch(
@@ -2343,7 +2355,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._execution_manager._snapshot_stats = limited_ds._execution_manager.stats()
         return res
 
     @ConsumptionAPI
@@ -2393,7 +2405,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._execution_manager._snapshot_stats = limited_ds._execution_manager.stats()
         return output
 
     @ConsumptionAPI
@@ -2531,7 +2543,7 @@ class Dataset:
         """
 
         # First check if the schema is already known from materialized blocks.
-        base_schema = self._plan.schema(fetch_if_missing=False)
+        base_schema = self._execution_manager.schema(fetch_if_missing=False)
         if base_schema is not None:
             return Schema(base_schema)
         if not fetch_if_missing:
@@ -2540,9 +2552,11 @@ class Dataset:
         # Lazily execute only the first block to minimize computation.
         # We achieve this by appending a Limit[1] operation to a copy
         # of this Dataset, which we then execute to get its schema.
-        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
+        base_schema = self.limit(1)._execution_manager.schema(
+            fetch_if_missing=fetch_if_missing
+        )
         if base_schema:
-            self._plan.cache_schema(base_schema)
+            self._execution_manager.cache_schema(base_schema)
             return Schema(base_schema)
         else:
             return None
@@ -2598,7 +2612,7 @@ class Dataset:
         Returns:
             The number of blocks of this dataset.
         """
-        return self._plan.initial_num_blocks()
+        return self._execution_manager.initial_num_blocks()
 
     @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def size_bytes(self) -> int:
@@ -2616,7 +2630,7 @@ class Dataset:
             The in-memory size of the dataset in bytes, or None if the
             in-memory size is not known.
         """
-        metadata = self._plan.execute().get_metadata()
+        metadata = self._execution_manager.execute().get_metadata()
         if not metadata or metadata[0].size_bytes is None:
             return None
         return sum(m.size_bytes for m in metadata)
@@ -2637,7 +2651,7 @@ class Dataset:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        metadata = self._plan.execute().get_metadata()
+        metadata = self._execution_manager.execute().get_metadata()
         files = set()
         for m in metadata:
             for f in m.input_files:
@@ -3433,38 +3447,42 @@ class Dataset:
             def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
                 return write_fn(blocks, ctx)
 
-            plan = self._plan.with_stage(
-                OneToOneStage(
-                    "Write",
-                    write_fn_wrapper,
-                    TaskPoolStrategy(),
-                    ray_remote_args,
-                    fn=lambda x: x,
-                )
-            )
+            # plan = self._execution_manager.with_stage(
+            #     OneToOneStage(
+            #         "Write",
+            #         write_fn_wrapper,
+            #         TaskPoolStrategy(),
+            #         ray_remote_args,
+            #         fn=lambda x: x,
+            #     )
+            # )
 
             logical_plan = self._logical_plan
-            if logical_plan is not None:
-                write_op = Write(
-                    logical_plan.dag,
-                    datasource,
-                    ray_remote_args=ray_remote_args,
-                    **write_args,
-                )
-                logical_plan = LogicalPlan(write_op)
+            # if logical_plan is not None:
+            write_op = Write(
+                logical_plan.dag,
+                datasource,
+                ray_remote_args=ray_remote_args,
+                **write_args,
+            )
+            logical_plan = LogicalPlan(write_op)
 
             try:
                 import pandas as pd
 
                 datasource.on_write_start(**write_args)
                 self._write_ds = Dataset(
-                    plan, self._epoch, self._lazy, logical_plan
+                    self._execution_manager.with_operator(write_op),
+                    self._epoch,
+                    logical_plan,
                 ).materialize()
-                blocks = ray.get(self._write_ds._plan.execute().get_blocks())
+                blocks = ray.get(
+                    self._write_ds._execution_manager.execute().get_blocks()
+                )
                 assert all(
                     isinstance(block, pd.DataFrame) and len(block) == 1
                     for block in blocks
-                )
+                ), [len(b) for b in blocks]
                 write_results = [block["write_result"][0] for block in blocks]
                 datasource.on_write_complete(write_results, **write_args)
             except Exception as e:
@@ -3478,7 +3496,9 @@ class Dataset:
             )
 
             ctx = DataContext.get_current()
-            blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
+            blocks, metadata = zip(
+                *self._execution_manager.execute().get_blocks_with_metadata()
+            )
             # Prepare write in a remote task so that in Ray client mode, we
             # don't do metadata resolution from the client machine.
             do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
@@ -4459,14 +4479,17 @@ class Dataset:
         from ray.data.dataset_pipeline import DatasetPipeline
 
         ctx = DataContext.get_current()
-        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
-            blocks, _, stages = self._plan._get_source_blocks_and_stages()
+        if (
+            self._execution_manager.is_read_stage_equivalent()
+            and ctx.optimize_fuse_read_stages
+        ):
+            blocks, _, stages = self._execution_manager._get_source_blocks()
             blocks.clear()
             blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
             read_stage = stages[0]
         else:
-            blocks = self._plan.execute()
-            outer_stats = self._plan.stats()
+            blocks = self._execution_manager.execute()
+            outer_stats = self._execution_manager.stats()
             read_stage = None
         uuid = self._get_uuid()
         outer_stats.dataset_uuid = uuid
@@ -4513,7 +4536,7 @@ class Dataset:
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage), ds._epoch, True
+                    ds._execution_manager.with_stage(read_stage), ds._epoch, True
                 )
             )
         return pipe
@@ -4585,14 +4608,17 @@ class Dataset:
             blocks_per_window = 10
 
         ctx = DataContext.get_current()
-        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
-            blocks, _, stages = self._plan._get_source_blocks_and_stages()
+        if (
+            self._execution_manager.is_read_stage_equivalent()
+            and ctx.optimize_fuse_read_stages
+        ):
+            blocks, _, stages = self._execution_manager._get_source_blocks()
             blocks.clear()
             blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
             read_stage = stages[0]
         else:
-            blocks = self._plan.execute()
-            outer_stats = self._plan.stats()
+            blocks = self._execution_manager.execute()
+            outer_stats = self._execution_manager.stats()
             read_stage = None
 
         class Iterator:
@@ -4709,7 +4735,7 @@ class Dataset:
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage), ds._epoch, True
+                    ds._execution_manager.with_stage(read_stage), ds._epoch, True
                 )
             )
         return pipe
@@ -4720,7 +4746,7 @@ class Dataset:
             "Deprecation warning: use Dataset.materialize() instead of "
             "fully_executed()."
         )
-        self._plan.execute(force_read=True)
+        self._execution_manager.execute(force_read=True)
         return self
 
     @Deprecated(message="Check `isinstance(Dataset, MaterializedDataset)` instead.")
@@ -4730,7 +4756,7 @@ class Dataset:
             "`isinstance(Dataset, MaterializedDataset)` "
             "instead of using is_fully_executed()."
         )
-        return self._plan.has_computed_output()
+        return self._execution_manager.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
     def materialize(self) -> "MaterializedDataset":
@@ -4753,9 +4779,10 @@ class Dataset:
             A MaterializedDataset holding the materialized data blocks.
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
-        copy._plan.execute(force_read=True)
+        copy._execution_manager._clear_snapshot()
+        copy._execution_manager.execute(force_read=True)
 
-        blocks = copy._plan._snapshot_blocks
+        blocks = copy._execution_manager._snapshot_blocks
         blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
         # TODO(hchen): Here we generate the same number of blocks as
         # the original Dataset. Because the old code path does this, and
@@ -4773,15 +4800,15 @@ class Dataset:
         output = MaterializedDataset(
             ExecutionManager(
                 blocks,
-                copy._plan.stats(),
+                copy._execution_manager.stats(),
                 run_by_consumer=False,
             ),
             copy._epoch,
-            copy._lazy,
             logical_plan,
         )
-        output._plan.execute()  # No-op that marks the plan as fully executed.
-        output._plan._in_stats.dataset_uuid = self._get_uuid()
+        output._execution_manager.execute()  # No-op that marks the plan as fully executed.
+        # output._execution_manager._clear_snapshot()
+        output._execution_manager._in_stats.dataset_uuid = self._get_uuid()
         return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
@@ -4815,12 +4842,15 @@ class Dataset:
             * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
 
         """
-        if self._write_ds is not None and self._write_ds._plan.has_computed_output():
+        if (
+            self._write_ds is not None
+            and self._write_ds._execution_manager.has_computed_output()
+        ):
             return self._write_ds.stats()
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
-        return self._plan.stats_summary()
+        return self._execution_manager.stats_summary()
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
@@ -4841,31 +4871,9 @@ class Dataset:
         Returns:
             A list of references to this dataset's blocks.
         """
-        blocks = self._plan.execute().get_blocks()
+        blocks = self._execution_manager.execute().get_blocks()
         self._synchronize_progress_bar()
         return blocks
-
-    @Deprecated(
-        message="Dataset is lazy by default, so this conversion call is no longer "
-        "needed and this API will be removed in a future release"
-    )
-    def lazy(self) -> "Dataset":
-        """Enable lazy evaluation.
-
-        Dataset is lazy by default, so this is only useful for datasets created
-        from :func:`ray.data.from_items() <ray.data.read_api.from_items>`, which is
-        eager.
-
-        The returned dataset is a lazy dataset, where all subsequent operations
-        on the stream won't be executed until the dataset is consumed
-        (e.g. ``.take()``, ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.)
-        or execution is manually triggered via ``.materialize()``.
-        """
-        ds = Dataset(
-            self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
-        )
-        ds._set_uuid(self._get_uuid())
-        return ds
 
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
@@ -4884,7 +4892,7 @@ class Dataset:
             >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
         """  # noqa: E501
-        return self._plan.has_lazy_input()
+        return self._execution_manager.has_lazy_input()
 
     @DeveloperAPI
     def serialize_lineage(self) -> bytes:
@@ -4950,10 +4958,10 @@ class Dataset:
             )
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
-        plan_copy = self._plan.deep_copy(preserve_uuid=True)
-        logical_plan_copy = copy.copy(self._plan._logical_plan)
-        ds = Dataset(plan_copy, self._get_epoch(), self._lazy, logical_plan_copy)
-        ds._plan.clear_block_refs()
+        execution_manager_copy = self._execution_manager.deep_copy(preserve_uuid=True)
+        logical_plan_copy = copy.copy(self._execution_manager._logical_plan)
+        ds = Dataset(execution_manager_copy, self._get_epoch(), logical_plan_copy)
+        ds._execution_manager.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
@@ -5023,24 +5031,28 @@ class Dataset:
     @DeveloperAPI
     def context(self) -> DataContext:
         """Return the DataContext used to create this Dataset."""
-        return self._plan._context
+        return self._execution_manager._context
 
     def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
-        block_list = self._plan.execute()
+        block_list = self._execution_manager.execute()
         left, right = block_list.divide(block_idx)
         l_ds = Dataset(
             ExecutionManager(
-                left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
+                left,
+                self._execution_manager.stats(),
+                run_by_consumer=block_list._owned_by_consumer,
             ),
             self._epoch,
-            self._lazy,
+            self._logical_plan,
         )
         r_ds = Dataset(
             ExecutionManager(
-                right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
+                right,
+                self._execution_manager.stats(),
+                run_by_consumer=block_list._owned_by_consumer,
             ),
             self._epoch,
-            self._lazy,
+            self._logical_plan,
         )
         return l_ds, r_ds
 
@@ -5136,7 +5148,7 @@ class Dataset:
         from ipywidgets import HTML, Tab
 
         metadata = {
-            "num_blocks": self._plan.initial_num_blocks(),
+            "num_blocks": self._execution_manager.initial_num_blocks(),
             "num_rows": self._meta_count(),
         }
         # Show metadata if available, but don't trigger execution.
@@ -5182,7 +5194,7 @@ class Dataset:
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        return self._plan.get_plan_as_string(self.__class__.__name__)
+        return self._execution_manager.get_plan_as_string(self.__class__.__name__)
 
     def __str__(self) -> str:
         return repr(self)
@@ -5216,7 +5228,7 @@ class Dataset:
         )
 
     def _meta_count(self) -> Optional[int]:
-        return self._plan.meta_count()
+        return self._execution_manager.meta_count()
 
     def _get_uuid(self) -> str:
         return self._uuid
@@ -5248,7 +5260,7 @@ class Dataset:
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.
         return {
-            "plan": self._plan,
+            "plan": self._execution_manager,
             "uuid": self._uuid,
             "epoch": self._epoch,
             "lazy": self._lazy,
@@ -5256,7 +5268,7 @@ class Dataset:
         }
 
     def __setstate__(self, state):
-        self._plan = state["plan"]
+        self._execution_manager = state["plan"]
         self._uuid = state["uuid"]
         self._epoch = state["epoch"]
         self._lazy = state["lazy"]

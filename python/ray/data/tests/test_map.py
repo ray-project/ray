@@ -970,7 +970,7 @@ def test_actor_pool_strategy_apply_interrupt(shutdown_only):
     cpus = ray.available_resources()["CPU"]
     ds = ray.data.range(5, parallelism=5)
     aps = ray.data.ActorPoolStrategy(max_size=5)
-    blocks = ds._plan.execute()
+    blocks = ds._execution_manager.execute()
 
     # Start some actors, the first one sends a SIGINT, emulating a KeyboardInterrupt
     def test_func(block):

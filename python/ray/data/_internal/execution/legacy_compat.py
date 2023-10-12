@@ -28,7 +28,12 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data._internal.plan import AllToAllStage, ExecutionManager, OneToOneStage, Stage
+from ray.data._internal.plan import (
+    AllToAllStage,
+    ExecutionManager,
+    OneToOneStage,
+    Stage,
+)
 from ray.data._internal.stage_impl import LimitStage, RandomizeBlocksStage
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data._internal.util import validate_compute
@@ -134,15 +139,8 @@ def _get_execution_dag(
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    if (
-        DataContext.get_current().optimizer_enabled
-        # TODO(scottjlee): remove this once we remove DatasetPipeline.
-        and not plan._generated_from_pipeline
-    ):
-        dag = get_execution_plan(plan._logical_plan).dag
-        stats = _get_initial_stats_from_plan(plan)
-    else:
-        dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
+    dag = get_execution_plan(plan._logical_plan).dag
+    stats = _get_initial_stats_from_plan(plan)
 
     # Enforce to preserve ordering if the plan has stages required to do so, such as
     # Zip and Sort.
@@ -168,27 +166,6 @@ def _get_initial_stats_from_plan(plan: ExecutionManager) -> DatasetStats:
         return DatasetStats(stages={}, parent=None)
     else:
         return plan._in_stats
-
-
-def _to_operator_dag(
-    plan: ExecutionManager, allow_clear_input_blocks: bool
-) -> Tuple[PhysicalOperator, DatasetStats]:
-    """Translate a plan into an operator DAG for the new execution backend."""
-
-    blocks, stats, stages = plan._optimize()
-    if allow_clear_input_blocks:
-        if isinstance(blocks, LazyBlockList):
-            # Always clear lazy input blocks since they can be recomputed.
-            owns_blocks = True
-        else:
-            # Otherwise, defer to the block's ownership status.
-            owns_blocks = blocks._owned_by_consumer
-    else:
-        owns_blocks = False
-    operator = _blocks_to_input_buffer(blocks, owns_blocks)
-    for stage in stages:
-        operator = _stage_to_operator(stage, operator)
-    return operator, stats
 
 
 def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOperator:

@@ -66,7 +66,7 @@ def test_from_mars_e2e(ray_start_regular, enable_optimizer):
     # Check that metadata fetch is included in stats.
     assert "FromPandas" in ds.stats()
     # Underlying Mars implementation uses `FromPandas` operator
-    assert ds._plan._logical_plan.dag.name == "FromPandas"
+    assert ds._execution_manager._logical_plan.dag.name == "FromPandas"
     _check_usage_record(["FromPandas"])
 
     ds2 = ds.filter(lambda row: row["a"] % 2 == 0)

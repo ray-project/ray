@@ -224,10 +224,12 @@ class DatasetPipeline:
         time_start = time.perf_counter()
         if self._first_dataset is not None:
             blocks_owned_by_consumer = (
-                self._first_dataset._plan.execute()._owned_by_consumer
+                self._first_dataset._execution_manager.execute()._owned_by_consumer
             )
         else:
-            blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
+            blocks_owned_by_consumer = (
+                self._peek()._execution_manager.execute()._owned_by_consumer
+            )
         yield from batch_block_refs(
             self._iter_blocks(),
             stats=self._stats,
@@ -246,7 +248,7 @@ class DatasetPipeline:
         ds_wait_start = time.perf_counter()
         for ds in self.iter_datasets():
             self._stats.iter_ds_wait_s.add(time.perf_counter() - ds_wait_start)
-            yield from ds._plan.execute().iter_blocks()
+            yield from ds._execution_manager.execute().iter_blocks()
             ds_wait_start = time.perf_counter()
 
     def split(
@@ -1362,20 +1364,20 @@ class DatasetPipeline:
             0,
             True,
         )
-        dummy_ds._plan._generated_from_pipeline = True
+        dummy_ds._execution_manager._generated_from_pipeline = True
         # Apply all pipeline operations to the dummy dataset.
         for stage in self._stages:
             dummy_ds = stage(dummy_ds)
         # Get the optimized stages.
-        _, _, stages = dummy_ds._plan._optimize()
+        _, _, stages = dummy_ds._execution_manager._optimize()
         # Apply these optimized stages to the datasets underlying the pipeline.
         # These optimized stages will be executed by the PipelineExecutor.
         optimized_stages = []
         for stage in stages:
 
             def add_stage(ds, stage):
-                ds._plan._run_by_consumer = True
-                return ds._plan.with_stage(stage)
+                ds._execution_manager._run_by_consumer = True
+                return ds._execution_manager.with_stage(stage)
 
             optimized_stages.append(
                 lambda ds, stage=stage: Dataset(add_stage(ds, stage), ds._epoch, True)

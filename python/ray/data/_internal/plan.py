@@ -31,7 +31,10 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
+from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
+from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import capitalize, unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
@@ -122,10 +125,8 @@ class ExecutionManager:
         self._snapshot_blocks = None
         self._snapshot_stats = None
         # Chains of stages.
-        self._stages_before_snapshot = []
-        self._stages_after_snapshot = []
-        # Cache of optimized stages.
-        self._last_optimized_stages = None
+        self._operators_added_before_snapshot = []
+        self._operators_added_after_snapshot = []
         # Cached schema.
         self._schema = None
 
@@ -150,8 +151,8 @@ class ExecutionManager:
             f"dataset_uuid={self._dataset_uuid}, "
             f"run_by_consumer={self._run_by_consumer}, "
             f"in_blocks={self._in_blocks}, "
-            f"stages_before_snapshot={self._stages_before_snapshot}, "
-            f"stages_after_snapshot={self._stages_after_snapshot}, "
+            f"_operators_added_before_snapshot={self._operators_added_before_snapshot}, "
+            f"_operators_added_after_snapshot={self._operators_added_after_snapshot}, "
             f"snapshot_blocks={self._snapshot_blocks})"
         )
 
@@ -170,18 +171,19 @@ class ExecutionManager:
         plan_str = ""
         num_stages = 0
         dataset_blocks = None
-        if self._stages_after_snapshot:
+        if self._operators_added_after_snapshot:
             # Get string representation of each stage in reverse order.
-            for stage in self._stages_after_snapshot[::-1]:
+            for op in self._operators_added_after_snapshot[::-1]:
                 # Get name of each stage in pascal case.
                 # The stage representation should be in "<stage-name>(...)" format,
                 # e.g. "MapBatches(my_udf)".
-                #
                 # TODO(chengsu): create a class to represent stage name to make it less
                 # fragile to parse.
-                stage_str = stage.name.split("(")
-                stage_str[0] = capitalize(stage_str[0])
-                stage_name = "(".join(stage_str)
+                # stage_str = op.name.split("(")
+                # stage_str[0] = capitalize(stage_str[0])
+                # stage_name = "(".join(stage_str)
+                stage_name = op.name
+
                 if num_stages == 0:
                     plan_str += f"{stage_name}\n"
                 else:
@@ -281,17 +283,19 @@ class ExecutionManager:
             plan_str += f"{trailing_space}+- {dataset_str}"
         return plan_str
 
-    def with_stage(self, stage: "Stage") -> "ExecutionManager":
-        """Return a copy of this plan with the given stage appended.
+    def with_operator(self, op: "Operator") -> "ExecutionManager":
+        """Return a copy of this plan with the given operator appended.
 
         Args:
-            stage: The stage to append.
+            op: The operator to append.
 
         Returns:
-            A new ExecutionPlan with this stage appended.
+            A new ExecutionManager with this operator appended.
         """
         copy = self.copy()
-        copy._stages_after_snapshot.append(stage)
+        copy._operators_added_after_snapshot.append(op)
+        # Remove any existing cached schema when adding a new operator.
+        copy._schema = None
         return copy
 
     def link_logical_plan(self, logical_plan):
@@ -311,17 +315,21 @@ class ExecutionManager:
         Returns:
             A shallow copy of this execution plan.
         """
-        plan_copy = ExecutionManager(
+        execution_manager_copy = ExecutionManager(
             self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
         )
-        plan_copy._generated_from_pipeline = self._generated_from_pipeline
+        execution_manager_copy._generated_from_pipeline = self._generated_from_pipeline
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
-            plan_copy._snapshot_blocks = self._snapshot_blocks
-            plan_copy._snapshot_stats = self._snapshot_stats
-        plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
-        plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
-        return plan_copy
+            execution_manager_copy._snapshot_blocks = self._snapshot_blocks
+            execution_manager_copy._snapshot_stats = self._snapshot_stats
+        execution_manager_copy._operators_added_before_snapshot = (
+            self._operators_added_before_snapshot.copy()
+        )
+        execution_manager_copy._operators_added_after_snapshot = (
+            self._operators_added_after_snapshot.copy()
+        )
+        return execution_manager_copy
 
     def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionManager":
         """Create a deep copy of this execution plan.
@@ -340,33 +348,31 @@ class ExecutionManager:
         in_blocks = self._in_blocks
         if isinstance(in_blocks, BlockList):
             in_blocks = in_blocks.copy()
-        plan_copy = ExecutionManager(
+        execution_manager_copy = ExecutionManager(
             in_blocks,
             copy.copy(self._in_stats),
             dataset_uuid=dataset_uuid,
             run_by_consumer=self._run_by_consumer,
         )
-        plan_copy._generated_from_pipeline = self._generated_from_pipeline
+        execution_manager_copy._generated_from_pipeline = self._generated_from_pipeline
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
-            plan_copy._snapshot_blocks = self._snapshot_blocks.copy()
-            plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
-        plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
-        plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
-        return plan_copy
+            execution_manager_copy._snapshot_blocks = self._snapshot_blocks.copy()
+            execution_manager_copy._snapshot_stats = copy.copy(self._snapshot_stats)
+        execution_manager_copy._operators_added_before_snapshot = (
+            self._operators_added_before_snapshot.copy()
+        )
+        execution_manager_copy._operators_added_after_snapshot = (
+            self._operators_added_after_snapshot.copy()
+        )
+        return execution_manager_copy
 
     def initial_num_blocks(self) -> int:
         """Get the estimated number of blocks after applying all plan stages."""
         if self.has_computed_output():
             return self._snapshot_blocks.initial_num_blocks()
-        for stage in self._stages_after_snapshot[::-1]:
-            if stage.num_blocks is not None:
-                return stage.num_blocks
         if self._snapshot_blocks is not None:
             return self._snapshot_blocks.initial_num_blocks()
-        for stage in self._stages_before_snapshot[::-1]:
-            if stage.num_blocks is not None:
-                return stage.num_blocks
         if self._in_blocks is not None:
             return self._in_blocks.initial_num_blocks()
         return None
@@ -387,25 +393,28 @@ class ExecutionManager:
         if self._schema is not None:
             return self._schema
 
-        if self._stages_after_snapshot:
+        if self._operators_added_after_snapshot:
             # TODO(swang): There are several other stage types that could
             # inherit the schema or we can compute the schema without having to
             # execute any of the dataset: limit, filter, map_batches for
             # add/drop columns, etc.
+            # last_op = next(self._logical_plan.dag.post_order_iter())
             if fetch_if_missing:
-                if isinstance(self._stages_after_snapshot[-1], RandomizeBlocksStage):
+                if isinstance(
+                    self._operators_added_after_snapshot[-1], ReorderRandomizeBlocksRule
+                ):
                     # TODO(ekl): this is a hack to optimize the case where we have a
                     # trailing randomize block stages. That stage has no effect and
                     # so we don't need to execute all blocks to get the schema.
-                    a = self._stages_after_snapshot.pop()
+                    a = self._operators_added_after_snapshot.pop()
                     try:
                         self.execute()
                     finally:
-                        self._stages_after_snapshot.append(a)
+                        self._operators_added_after_snapshot.append(a)
                 else:
                     self.execute()
-            elif len(self._stages_after_snapshot) == 1 and isinstance(
-                self._stages_after_snapshot[-1], RandomizeBlocksStage
+            elif len(self._operators_added_after_snapshot) == 1 and isinstance(
+                self._operators_added_after_snapshot[-1], RandomizeBlocksStage
             ):
                 # If RandomizeBlocksStage is last stage, we execute it (regardless of
                 # the fetch_if_missing), since RandomizeBlocksStage is just changing
@@ -468,7 +477,7 @@ class ExecutionManager:
         Returns:
             The number of records of the result Dataset, or None.
         """
-        if self._stages_after_snapshot:
+        if self._operators_added_after_snapshot:
             return None
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
@@ -574,7 +583,8 @@ class ExecutionManager:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            if self._run_with_new_execution_backend():
+            # if self._run_with_new_execution_backend():
+            if True:
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
@@ -658,12 +668,14 @@ class ExecutionManager:
 
             collect_stats(stats)
 
-            # Set the snapshot to the output of the final stage.
+            # Set the snapshot to the output of the final operator.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
-            self._stages_before_snapshot += self._stages_after_snapshot
-            self._stages_after_snapshot = []
+            self._operators_added_before_snapshot += (
+                self._operators_added_after_snapshot
+            )
+            self._operators_added_after_snapshot = []
         if _is_lazy(self._snapshot_blocks) and force_read:
             self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
         return self._snapshot_blocks
@@ -681,10 +693,10 @@ class ExecutionManager:
         self._snapshot_stats = None
         # We're erasing the snapshot, so put all stages into the "after snapshot"
         # bucket.
-        self._stages_after_snapshot = (
-            self._stages_before_snapshot + self._stages_after_snapshot
+        self._operators_added_after_snapshot = (
+            self._operators_added_before_snapshot + self._operators_added_after_snapshot
         )
-        self._stages_before_snapshot = []
+        self._operators_added_before_snapshot = []
 
     def stats(self) -> DatasetStats:
         """Return stats for this plan.
@@ -709,7 +721,7 @@ class ExecutionManager:
             blocks: The blocks that we may want to clear.
             stage_idx: The position of the stage in the optimized after-snapshot chain.
         """
-        if stage_idx != 0 or self._stages_before_snapshot:
+        if stage_idx != 0 or self._operators_added_before_snapshot:
             # Not the first stage, always clear stage input blocks.
             return True
         elif isinstance(blocks, LazyBlockList):
@@ -720,36 +732,33 @@ class ExecutionManager:
             # execution plan, so we don't clear these.
             return False
 
-    def _optimize(self) -> Tuple[BlockList, DatasetStats, List[Stage]]:
+    def _optimize(self) -> Tuple[BlockList, DatasetStats]:
         """Apply stage fusion optimizations, returning an updated source block list and
         associated stats, and a set of optimized stages.
         """
-        context = self._context
-        blocks, stats, stages = self._get_source_blocks_and_stages()
-        if context.optimize_reorder_stages:
-            stages = _reorder_stages(stages)
-        if context.optimize_fuse_stages:
-            if context.optimize_fuse_read_stages:
-                # If using a lazy datasource, rewrite read stage into one-to-one stage
-                # so it can be fused into downstream stages.
-                blocks, stats, stages = _rewrite_read_stages(
-                    blocks, stats, stages, self._dataset_uuid
-                )
-            stages = _fuse_one_to_one_stages(stages)
-            self._last_optimized_stages = stages
-        return blocks, stats, stages
+        pass
+        # context = self._context
+        # blocks, stats = self._get_source_blocks()
+        # if context.optimize_fuse_stages:
+        #     if context.optimize_fuse_read_stages:
+        #         # If using a lazy datasource, rewrite read stage into one-to-one stage
+        #         # so it can be fused into downstream stages.
+        #         blocks, stats, stages = _rewrite_read_stages(
+        #             blocks, stats, stages, self._dataset_uuid
+        #         )
+        #     stages = _fuse_one_to_one_stages(stages)
+        #     self._last_optimized_stages = stages
+        # return blocks, stats, stages
 
-    def _get_source_blocks_and_stages(
+    def _get_source_blocks(
         self,
-    ) -> Tuple[BlockList, DatasetStats, List[Stage]]:
-        """Get the source blocks, corresponding stats, and the stages for plan
-        execution.
+    ) -> Tuple[BlockList, DatasetStats]:
+        """Get the source blocks and corresponding stats for plan execution.
 
         If a computed snapshot exists and has not been cleared, return the snapshot
         blocks and stats; otherwise, return the input blocks and stats that the plan was
         created with.
         """
-        stages = self._stages_after_snapshot.copy()
         if self._snapshot_blocks is not None:
             if not self._snapshot_blocks.is_cleared():
                 # If snapshot exists, we only have to execute the plan from the
@@ -764,89 +773,33 @@ class ExecutionManager:
                 # source (input blocks).
                 blocks = self._in_blocks
                 stats = self._in_stats
-                stages = self._stages_before_snapshot + self._stages_after_snapshot
         else:
             # If no snapshot exists, we have to execute the full plan from the
             # beginning.
             blocks = self._in_blocks
             stats = self._in_stats
-        return blocks, stats, stages
+        return blocks, stats
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
         return _is_lazy(self._in_blocks)
-
-    def is_read_stage_equivalent(self) -> bool:
-        """Return whether this plan can be executed as only a read stage."""
-        from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-        context = self._context
-        remaining_stages = self._stages_after_snapshot
-        if (
-            context.optimize_fuse_stages
-            and remaining_stages
-            and isinstance(remaining_stages[0], RandomizeBlocksStage)
-        ):
-            remaining_stages = remaining_stages[1:]
-        return (
-            self.has_lazy_input()
-            and not self._stages_before_snapshot
-            and not remaining_stages
-            and (
-                not self._snapshot_blocks
-                or isinstance(self._snapshot_blocks, LazyBlockList)
-            )
-        )
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final stage, i.e. for the
         output of this plan.
         """
         return (
-            self._snapshot_blocks is not None
-            and not self._stages_after_snapshot
-            and not self._snapshot_blocks.is_cleared()
-        )
-
-    def _run_with_new_execution_backend(self) -> bool:
-        """Whether this plan should run with new backend."""
-        from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-        # The read-equivalent stage is handled in the following way:
-        # - Read only: handle with legacy backend
-        # - Read->randomize_block_order: handle with new backend
-        # Note that both are considered read equivalent, hence this extra check.
-        context = self._context
-        trailing_randomize_block_order_stage = (
-            self._stages_after_snapshot
-            and len(self._stages_after_snapshot) == 1
-            and isinstance(self._stages_after_snapshot[0], RandomizeBlocksStage)
-        )
-        return (
-            context.new_execution_backend
-            and (
-                not self.is_read_stage_equivalent()
-                or trailing_randomize_block_order_stage
-            )
-            and (
-                self._stages_after_snapshot
-                # If snapshot is cleared, we'll need to recompute from the source.
-                or (
-                    self._snapshot_blocks is not None
-                    and self._snapshot_blocks.is_cleared()
-                    and self._stages_before_snapshot
-                )
-            )
+            self._snapshot_blocks is not None and not self._snapshot_blocks.is_cleared()
         )
 
     def require_preserve_order(self) -> bool:
-        """Whether this plan requires to preserve order when running with new
-        backend.
-        """
-        from ray.data._internal.stage_impl import SortStage, ZipStage
+        """Whether this dataset's plan requires preserving order during execution."""
+        # TODO(scottjlee): we can move this logic as an attribute of the logical plan.
+        from ray.data._internal.logical.operators.all_to_all_operator import Sort
+        from ray.data._internal.logical.operators.n_ary_operator import Zip
 
-        for stage in self._stages_after_snapshot:
-            if isinstance(stage, ZipStage) or isinstance(stage, SortStage):
+        for op in self._logical_plan.dag.post_order_iter():
+            if isinstance(op, (Sort, Zip)):
                 return True
         return False
 

@@ -22,7 +22,7 @@ def pipeline_stage(fn: Callable[[], Dataset]) -> Dataset:
     ds = fn()
     # Flag used to skip the new plan optimizer, which does not
     # support DatasetPipeline (will fall back to legacy plan optimizer)
-    ds._plan._generated_from_pipeline = True
+    ds._execution_manager._generated_from_pipeline = True
     return ds.materialize()
 
 
@@ -155,7 +155,7 @@ class PipelineExecutor:
                     pass
 
         self._pipeline._stats.wait_time_s.append(time.perf_counter() - start)
-        self._pipeline._stats.add(output._plan.stats())
+        self._pipeline._stats.add(output._execution_manager.stats())
         return output
 
 

@@ -245,7 +245,7 @@ def assert_base_partitioned_ds():
         if sorted_values is None:
             sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
         # Test metadata ops.
-        assert ds._plan.execute()._num_computed() == 0
+        assert ds._execution_manager.execute()._num_computed() == 0
         assert ds.count() == count, f"{ds.count()} != {count}"
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
         assert ds.schema() is not None
@@ -275,15 +275,15 @@ def assert_base_partitioned_ds():
 
         if num_computed is not None:
             assert (
-                ds._plan.execute()._num_computed() == num_computed
-            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
+                ds._execution_manager.execute()._num_computed() == num_computed
+            ), f"{ds._execution_manager.execute()._num_computed()} != {num_computed}"
 
         # Force a data read.
         values = ds_take_transform_fn(ds.take_all())
         if num_computed is not None:
             assert (
-                ds._plan.execute()._num_computed() == num_computed
-            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
+                ds._execution_manager.execute()._num_computed() == num_computed
+            ), f"{ds._execution_manager.execute()._num_computed()} != {num_computed}"
         actual_sorted_values = sorted_values_transform_fn(sorted(values))
         assert (
             actual_sorted_values == sorted_values

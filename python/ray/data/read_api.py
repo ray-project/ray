@@ -188,7 +188,6 @@ def from_items(
             run_by_consumer=False,
         ),
         0,
-        True,
         logical_plan,
     )
 
@@ -457,11 +456,15 @@ def read_datasource(
         ray_remote_args,
     )
     logical_plan = LogicalPlan(read_op)
+    execution_manager = ExecutionManager(
+        block_list,
+        block_list.stats(),
+        run_by_consumer=False,
+    )
 
     return Dataset(
-        plan=ExecutionManager(block_list, block_list.stats(), run_by_consumer=False),
+        execution_manager=execution_manager,
         epoch=0,
-        lazy=True,
         logical_plan=logical_plan,
     )
 
@@ -2097,7 +2100,6 @@ def from_pandas_refs(
                 run_by_consumer=False,
             ),
             0,
-            True,
             logical_plan,
         )
 
@@ -2114,7 +2116,6 @@ def from_pandas_refs(
             run_by_consumer=False,
         ),
         0,
-        True,
         logical_plan,
     )
 
@@ -2203,7 +2204,6 @@ def from_numpy_refs(
             run_by_consumer=False,
         ),
         0,
-        True,
         logical_plan,
     )
 
@@ -2285,7 +2285,6 @@ def from_arrow_refs(
             run_by_consumer=False,
         ),
         0,
-        True,
         logical_plan,
     )
 
