@@ -516,7 +516,8 @@ install_thirdparty_packages() {
 install_nsight_profiler() {
   # install nsight cli
   if [[ "${OSTYPE}" = linux* ]]; then
-    pip install ."${WORKSPACE_DIR}"/python/ray/tests/nsight_mock
+    NSIGHT_MOCK_FILES="$(realpath ${WORKSPACE_DIR})"/python/ray/tests/nsight_mock
+    pip install "${NSIGHT_MOCK_FILE}"
   fi
 }
 
