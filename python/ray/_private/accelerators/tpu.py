@@ -53,7 +53,7 @@ class TPUAccelerator(Accelerator):
 
     @staticmethod
     def is_available() -> bool:
-        return TPUAccelerator.get_num_acclerators() > 0
+        return TPUAccelerator.get_num_accelerators() > 0
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
@@ -72,7 +72,7 @@ class TPUAccelerator(Accelerator):
         return list(tpu_visible_chips.split(","))
 
     @staticmethod
-    def get_num_acclerators() -> int:
+    def get_num_accelerators() -> int:
         """Attempt to detect the number of TPUs on this machine.
 
         TPU chips are represented as devices within `/dev/`, either as

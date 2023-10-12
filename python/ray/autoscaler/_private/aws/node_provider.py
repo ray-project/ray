@@ -11,7 +11,6 @@ from boto3.resources.base import ServiceResource
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.utils import get_neuron_core_constraint_name
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
     CLOUDWATCH_AGENT_INSTALLED_TAG,

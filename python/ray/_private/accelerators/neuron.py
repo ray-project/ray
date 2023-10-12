@@ -37,7 +37,7 @@ class NeuronAccelerator(Accelerator):
 
     @staticmethod
     def is_available() -> bool:
-        return NeuronAccelerator.get_num_acclerators() > 0
+        return NeuronAccelerator.get_num_accelerators() > 0
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
@@ -56,7 +56,7 @@ class NeuronAccelerator(Accelerator):
         return list(neuron_visible_cores.split(","))
 
     @staticmethod
-    def get_num_acclerators() -> int:
+    def get_num_accelerators() -> int:
         """
         Attempt to detect the number of Neuron cores on this machine.
 
@@ -79,9 +79,9 @@ class NeuronAccelerator(Accelerator):
 
     @staticmethod
     def get_accelerator_type() -> Optional[str]:
-        import ray
+        from ray.util.accelerators import AWS_NEURON_CORE
 
-        return ray.util.accelerators.accelerators.AWS_NEURON_CORE
+        return AWS_NEURON_CORE
 
     @staticmethod
     def validate_resource_request_quantity(quantity: float) -> Optional[str]:
@@ -120,6 +120,6 @@ class NeuronAccelerator(Accelerator):
 
     @staticmethod
     def get_ec2_accelerator_type(instance_type: str, instances: dict) -> Optional[str]:
-        import ray
+        from ray.util.accelerators import AWS_NEURON_CORE
 
-        return ray.util.accelerators.accelerators.AWS_NEURON_CORE
+        return AWS_NEURON_CORE

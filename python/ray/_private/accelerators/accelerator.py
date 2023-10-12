@@ -23,7 +23,7 @@ class Accelerator(ABC):
 
     @staticmethod
     @abstractmethod
-    def get_num_acclerators() -> int:
+    def get_num_accelerators() -> int:
         """Auto detect the number of accelerators on this machine."""
 
     @staticmethod

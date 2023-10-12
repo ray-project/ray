@@ -164,7 +164,7 @@ class ResourceSpec(
         if num_cpus is None:
             num_cpus = ray._private.utils.get_num_cpus()
 
-        num_gpus = None
+        num_gpus = 0
         for (
             accelerator_resource_name
         ) in ray._private.accelerators.get_all_accelerator_resource_names():
@@ -192,7 +192,7 @@ class ResourceSpec(
                 )
             if num_accelerators is None:
                 # Try to automatically detect the number of accelerators.
-                num_accelerators = accelerator.get_num_acclerators()
+                num_accelerators = accelerator.get_num_accelerators()
                 # Don't use more accelerators than allowed by visible accelerator ids.
                 if visible_accelerator_ids is not None:
                     num_accelerators = min(
