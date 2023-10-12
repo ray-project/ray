@@ -158,7 +158,7 @@ class Monitor:
         self._session_name = self.get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
-        head_node_ip = self.gcs_address.split(":")[0]
+        head_node_ip = self.gcs_address.rsplit(":", 1)[0]
 
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None

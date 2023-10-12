@@ -125,7 +125,7 @@ class RayClusterOnSpark:
             ray.init(address=self.address)
 
             if self.ray_dashboard_port is not None and _wait_service_up(
-                self.address.split(":")[0],
+                self.address.rsplit(":", 1)[0],
                 self.ray_dashboard_port,
                 _RAY_DASHBOARD_STARTUP_TIMEOUT,
             ):
