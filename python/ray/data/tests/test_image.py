@@ -168,54 +168,37 @@ class TestReadImages:
             "image-datasets/simple/image3.jpg",
         ]
 
-    def test_random_shuffle(self, ray_start_regular_shared):
+    def test_random_shuffle(self, ray_start_regular_shared, restore_data_context):
         # NOTE: set preserve_order to True to allow consistent output behavior.
         context = ray.data.DataContext.get_current()
-        preserve_order = context.execution_options.preserve_order
+        context.execution_options.preserve_order = True
 
-        try:
-            dir_path = "s3://anonymous@air-example-data/mnist"
-            file_paths = [
-                "00000.png",
-                "00001.png",
-                "00002.png",
-                "00003.png",
-                "00004.png",
-                "00005.png",
-                "00006.png",
-                "00007.png",
-                "00008.png",
-                "00009.png",
-            ]
-            input_uris = [f"{dir_path}/{file_path}" for file_path in file_paths]
+        dir_path = "s3://anonymous@air-example-data/mnist"
+        file_paths = [f"{i:05d}.png" for i in range(10)]
+        input_uris = [f"{dir_path}/{file_path}" for file_path in file_paths]
 
-            ds = ray.data.read_images(
-                paths=input_uris,
-                include_paths=True,
-                shuffle="files",
-            )
+        ds = ray.data.read_images(
+            paths=input_uris,
+            include_paths=True,
+            shuffle="files",
+        )
 
-            # Execute 10 times to get a set of output paths.
-            output_paths_list = []
-            for _ in range(10):
-                uris = [row["path"][-len(file_paths[0]) :] for row in ds.take_all()]
-                output_paths_list.append(uris)
-            all_paths_matched = [
-                file_paths == output_paths for output_paths in output_paths_list
-            ]
+        # Execute 10 times to get a set of output paths.
+        output_paths_list = []
+        for _ in range(10):
+            paths = [row["path"][-len(file_paths[0]) :] for row in ds.take_all()]
+            output_paths_list.append(paths)
+        all_paths_matched = [
+            file_paths == output_paths for output_paths in output_paths_list
+        ]
 
-            # Check when shuffle is enabled, output order has at least one different
-            # case.
-            assert not all(all_paths_matched)
-            # Check all files are output properly without missing one.
-            assert all(
-                [
-                    file_paths == sorted(output_paths)
-                    for output_paths in output_paths_list
-                ]
-            )
-        finally:
-            context.preserve_order = preserve_order
+        # Check when shuffle is enabled, output order has at least one different
+        # case.
+        assert not all(all_paths_matched)
+        # Check all files are output properly without missing one.
+        assert all(
+            [file_paths == sorted(output_paths) for output_paths in output_paths_list]
+        )
 
     def test_e2e_prediction(self, shutdown_only):
         import torch

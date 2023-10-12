@@ -1,4 +1,5 @@
 import logging
+import sys
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np
@@ -19,9 +20,13 @@ from ray.data.datasource.file_meta_provider import (
     ParquetMetadataProvider,
     _handle_read_os_error,
 )
-from ray.data.datasource.file_metadata_shuffler import FileMetadataShuffler
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.util.annotations import PublicAPI
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import pyarrow
@@ -183,6 +188,7 @@ class _ParquetDatasourceReader(Reader):
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
         _block_udf: Optional[Callable[[Block], Block]] = None,
+        shuffle: Union[Literal["files"], None] = None,
         **reader_args,
     ):
         _check_pyarrow_version()
@@ -276,9 +282,9 @@ class _ParquetDatasourceReader(Reader):
         self._columns = columns
         self._schema = schema
         self._encoding_ratio = self._estimate_files_encoding_ratio()
-        self._file_metadata_shuffler = FileMetadataShuffler(
-            reader_args.get("shuffle", None)
-        )
+        self._file_metadata_shuffler = None
+        if shuffle == "files":
+            self._file_metadata_shuffler = np.random.default_rng()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -296,11 +302,24 @@ class _ParquetDatasourceReader(Reader):
         pq_metadata = self._metadata
         if len(pq_metadata) < len(self._pq_fragments):
             # Pad `pq_metadata` to be same length of `self._pq_fragments`.
+            # This can happen when no file metadata being prefetched.
             pq_metadata += [None] * (len(self._pq_fragments) - len(pq_metadata))
-        files_metadata = self._file_metadata_shuffler.shuffle_files(
-            list(zip(self._pq_fragments, self._pq_paths, pq_metadata))
-        )
-        pq_fragments, pq_paths, pq_metadata = list(map(list, zip(*files_metadata)))
+
+        if self._file_metadata_shuffler is not None:
+            files_metadata = list(zip(self._pq_fragments, self._pq_paths, pq_metadata))
+            shuffled_files_metadata = [
+                files_metadata[i]
+                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
+            ]
+            pq_fragments, pq_paths, pq_metadata = list(
+                map(list, zip(*shuffled_files_metadata))
+            )
+        else:
+            pq_fragments, pq_paths, pq_metadata = (
+                self._pq_fragments,
+                self._pq_paths,
+                pq_metadata,
+            )
 
         read_tasks = []
         for fragments, paths, metadata in zip(
