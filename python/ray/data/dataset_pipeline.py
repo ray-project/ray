@@ -38,7 +38,7 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource
-from ray.data.datasource.file_based_datasource import (
+from ray.data.datasource.block_path_provider import (
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
 )
