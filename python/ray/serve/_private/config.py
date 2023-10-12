@@ -3,7 +3,7 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.json_format import MessageToDict
-from pydantic import Field, PrivateAttr, validator
+from pydantic import Field, validator
 
 from ray import cloudpickle
 from ray._private import ray_option_utils
@@ -37,11 +37,11 @@ class InternalDeploymentConfig(BaseDeploymentModel):
 
     # This flag is used to let replica know they are deployed from
     # a different language.
-    _is_cross_language: bool = PrivateAttr(default=False)
+    is_cross_language: bool = False
 
     # This flag is used to let controller know which language does
     # the deploymnent use.
-    _deployment_language: Any = PrivateAttr(default=DeploymentLanguage.PYTHON)
+    deployment_language: Any = DeploymentLanguage.PYTHON
 
     version: Optional[str] = Field(
         default=None,

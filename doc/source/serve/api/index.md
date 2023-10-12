@@ -488,7 +488,6 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
-   :template: autosummary/class_without_autosummary.rst
 
    schema.ServeInstanceDetails
    schema.ApplicationDetails
