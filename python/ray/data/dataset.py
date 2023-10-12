@@ -4421,7 +4421,29 @@ class Dataset:
     @Deprecated
     @ConsumptionAPI
     def repeat(self, times: Optional[int] = None):
-        """This API is deprecated."""
+        """Convert this into a DatasetPipeline by looping over this dataset.
+
+        Transformations prior to the call to ``repeat()`` are evaluated once.
+        Transformations done on the returned pipeline are evaluated on each
+        loop of the pipeline over the base dataset.
+
+        Note that every repeat of the dataset is considered an "epoch" for
+        the purposes of ``DatasetPipeline.iter_epochs()``.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(5, parallelism=1)
+            >>> # Infinite pipeline of numbers [0, 5)
+            >>> ds.repeat().take_batch()
+            {'id': array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...])}
+            >>> # Can shuffle each epoch (dataset) in the pipeline.
+            >>> ds.repeat().random_shuffle().take_batch() # doctest: +SKIP
+            {'id': array([2, 3, 0, 4, 1, 4, 0, 2, 1, 3, ...])}
+
+        Args:
+            times: The number of times to loop over this dataset, or None
+                to repeat indefinitely.
+        """
         raise DeprecationWarning("`DatasetPipeline` is deprecated.")
 
     @Deprecated
