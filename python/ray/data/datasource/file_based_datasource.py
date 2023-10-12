@@ -48,7 +48,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -74,6 +74,7 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 OPEN_FILE_MAX_ATTEMPTS = 10
 
 
+@Deprecated
 @DeveloperAPI
 class BlockWritePathProvider:
     """Abstract callable that provides concrete output paths when writing
@@ -139,6 +140,7 @@ class BlockWritePathProvider:
         )
 
 
+@Deprecated
 @DeveloperAPI
 class DefaultBlockWritePathProvider(BlockWritePathProvider):
     """Default block write path provider implementation that writes each
