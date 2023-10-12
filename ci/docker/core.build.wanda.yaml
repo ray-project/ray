@@ -6,7 +6,7 @@ srcs:
   - python/requirements_compiled.txt
   - python/requirements/test-requirements.txt
   - python/requirements/ml/dl-cpu-requirements.txt
-  - python/requirements/nsight_mock/nsys_mock.py
-  - python/requirements/nsight_mock/setup.py
+  - python/requirements/nsight_fake/nsys_fake.py
+  - python/requirements/nsight_fake/setup.py
 tags:
   - cr.ray.io/rayproject/corebuild

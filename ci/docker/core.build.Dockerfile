@@ -16,4 +16,4 @@ RUN pip install -U --ignore-installed  \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt \
   -r python/requirements/ml/dl-cpu-requirements.txt \
-  python/requirements/nsight_mock
+  python/requirements/nsight_fake

@@ -4,8 +4,6 @@ import subprocess
 
 
 def run():
-    random.seed(10)
-
     parser = argparse.ArgumentParser(description="Your Script Description")
     parser.add_argument("command", help="The command to profile")
     parser.add_argument("-t", default="", help="Cuda APIs to be profiled")
