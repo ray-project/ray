@@ -280,9 +280,11 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     """Get the mapping from accelerator resource name
     to the visible ids."""
 
+    from ray._private.accelerators import ALL_ACCELERATORS
+
     return {
-        accelerator.get_resource_name(): accelerator.detect_visiable_accelerator_ids()
-        for accelerator in ray._private.accelerators.ALL_ACCELERATORS.value()
+        accelerator.get_resource_name(): accelerator.detect_visible_accelerator_ids()
+        for accelerator in ALL_ACCELERATORS.values()
     }
 
 

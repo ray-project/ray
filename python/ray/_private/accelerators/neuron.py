@@ -5,7 +5,6 @@ import logging
 import subprocess
 from typing import Optional, List
 
-import ray
 from ray._private.accelerators.accelerator import Accelerator
 
 logger = logging.getLogger(__name__)
@@ -67,6 +66,8 @@ class NeuronAccelerator(Accelerator):
 
     @staticmethod
     def detect_accelerator_type() -> Optional[str]:
+        import ray
+
         return ray.util.accelerators.accelerators.AWS_NEURON_CORE
 
     @staticmethod
