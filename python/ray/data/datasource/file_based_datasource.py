@@ -1,7 +1,6 @@
 import itertools
 import os
 import pathlib
-import posixpath
 import sys
 import urllib.parse
 from typing import (
@@ -34,7 +33,10 @@ from ray.data._internal.util import (
 )
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.block_path_provider import DefaultBlockWritePathProvider
+from ray.data.datasource.block_path_provider import (
+    BlockWritePathProvider,
+    DefaultBlockWritePathProvider,
+)
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
