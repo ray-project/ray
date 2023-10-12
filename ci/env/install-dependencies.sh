@@ -513,18 +513,6 @@ install_thirdparty_packages() {
   CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
 }
 
-install_nsight_profiler() {
-  # install nsight cli
-  if [[ "${OSTYPE}" = linux* ]]; then
-    ls ${WORKSPACE_DIR}
-    ls ${WORKSPACE_DIR}/python
-    ls ${WORKSPACE_DIR}/python/ray/
-    ls ${WORKSPACE_DIR}/python/ray/tests
-    NSIGHT_MOCK_FILES="$(realpath ${WORKSPACE_DIR})"/python/ray/tests/nsight_mock
-    pip install "${NSIGHT_MOCK_FILES}"
-  fi
-}
-
 install_dependencies() {
   install_bazel
 
@@ -555,7 +543,6 @@ install_dependencies() {
 
   if [ "${MINIMAL_INSTALL-}" != "1" ]; then
     install_pip_packages
-    install_nsight_profiler
   fi
 
   install_thirdparty_packages
