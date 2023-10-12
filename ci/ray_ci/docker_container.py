@@ -1,13 +1,12 @@
 import os
 from typing import List
 
-from ci.ray_ci.container import Container, _DOCKER_ECR_REPO
-from ci.ray_ci.builder_container import PYTHON_VERSIONS
-from ci.ray_ci.utils import docker_pull, RAY_VERSION, POSTMERGE_PIPELINE
+from ci.ray_ci.container import Container
 
 
 PLATFORM = ["cu118"]
 GPU_PLATFORM = "cu118"
+DEFAULT_PYTHON_VERSION = "py38"
 
 
 class DockerContainer(Container):
@@ -30,55 +29,31 @@ class DockerContainer(Container):
             ],
         )
 
-    def run(self) -> None:
-        """
-        Build and publish ray docker images
-        """
-        assert "RAYCI_BUILD_ID" in os.environ, "RAYCI_BUILD_ID not set"
-        rayci_build_id = os.environ["RAYCI_BUILD_ID"]
+    def _get_image_version_tags(self) -> List[str]:
+        branch = os.environ.get("BUILDKITE_BRANCH")
+        sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
+        if branch == "master":
+            return [sha_tag, "nightly"]
 
-        base_image = (
-            f"{_DOCKER_ECR_REPO}:{rayci_build_id}"
-            f"-{self.image_type}{self.python_version}{self.platform}base"
-        )
-        docker_pull(base_image)
+        if branch and branch.startswith("releases/"):
+            release_name = branch[len("releases/") :]
+            return [f"{release_name}.{sha_tag}"]
 
-        bin_path = PYTHON_VERSIONS[self.python_version]["bin_path"]
-        wheel_name = f"ray-{RAY_VERSION}-{bin_path}-manylinux2014_x86_64.whl"
+        return [sha_tag]
 
-        constraints_file = "requirements_compiled.txt"
-        if self.python_version == "py37":
-            constraints_file = "requirements_compiled_py37.txt"
+    def _get_canonical_tag(self) -> str:
+        # The canonical tag is the first tag in the list of tags. The list of tag is
+        # never empty because the image is always tagged with at least the sha tag.
+        #
+        # The canonical tag is the most complete tag with no abbreviation,
+        # e.g. sha-pyversion-platform
+        return self._get_image_tags()[0]
 
-        ray_images = self._get_image_names()
-        ray_image = ray_images[0]
-        cmds = [
-            "./ci/build/build-ray-docker.sh "
-            f"{wheel_name} {base_image} {constraints_file} {ray_image}"
-        ]
-        if self._should_upload():
-            cmds += [
-                "pip install -q aws_requests_auth boto3",
-                "python .buildkite/copy_files.py --destination docker_login",
-            ]
-            for alias in self._get_image_names():
-                cmds += [
-                    f"docker tag {ray_image} {alias}",
-                    f"docker push {alias}",
-                ]
-        self.run_script(cmds)
-
-    def _should_upload(self) -> bool:
-        return os.environ.get("BUILDKITE_PIPELINE_ID") == POSTMERGE_PIPELINE
-
-    def _get_image_names(self) -> List[str]:
-        # Image name is composed by ray version tag, python version and platform.
+    def _get_image_tags(self) -> List[str]:
+        # An image tag is composed by ray version tag, python version and platform.
         # See https://docs.ray.io/en/latest/ray-overview/installation.html for
         # more information on the image tags.
-        versions = [f"{os.environ['BUILDKITE_COMMIT'][:6]}"]
-        if os.environ.get("BUILDKITE_BRANCH") == "master":
-            # TODO(can): add ray version if this is a release branch
-            versions.append("nightly")
+        versions = self._get_image_version_tags()
 
         platforms = [f"-{self.platform}"]
         if self.platform == "cpu" and self.image_type == "ray":
@@ -91,11 +66,14 @@ class DockerContainer(Container):
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 
-        alias_images = []
-        ray_repo = f"rayproject/{self.image_type}"
+        py_versions = [f"-{self.python_version}"]
+        if self.python_version == DEFAULT_PYTHON_VERSION:
+            py_versions.append("")
+
+        tags = []
         for version in versions:
             for platform in platforms:
-                alias = f"{ray_repo}:{version}-{self.python_version}{platform}"
-                alias_images.append(alias)
-
-        return alias_images
+                for py_version in py_versions:
+                    tag = f"{version}{py_version}{platform}"
+                    tags.append(tag)
+        return tags

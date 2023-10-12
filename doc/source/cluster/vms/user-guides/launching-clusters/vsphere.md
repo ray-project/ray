@@ -8,6 +8,7 @@ To start a vSphere Ray cluster, you will use the Ray cluster launcher with the V
 
 If you don't already have a vSphere deployment, you can learn more about it by reading the [vSphere documentation](https://docs.vmware.com/en/VMware-vSphere/index.html). The following prerequisites are needed in order to create Ray clusters.
 * [A vSphere cluster](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vcenter-esxi-management/GUID-F7818000-26E3-4E2A-93D2-FCDCE7114508.html) and [resource pools](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-resource-management/GUID-60077B40-66FF-4625-934A-641703ED7601.html) to host VMs composing Ray Clusters.
+
 * A network port group (either for a [standard switch](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-networking/GUID-E198C88A-F82C-4FF3-96C9-E3DF0056AD0C.html) or [distributed switch](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-networking/GUID-375B45C7-684C-4C51-BA3C-70E48DFABF04.html)) or an [NSX segment](https://docs.vmware.com/en/VMware-NSX/4.1/administration/GUID-316E5027-E588-455C-88AD-A7DA930A4F0B.html). VMs connected to this network should be able to obtain IP address via DHCP.
 * A datastore that can be accessed by all the hosts in the vSphere cluster.
 
@@ -15,9 +16,9 @@ Another way to prepare the vSphere environment is with VMware Cloud Foundation (
 
 ## Prepare the frozen VM
 
-The vSphere Ray cluster launcher requires the vSphere environment to have a VM in a frozen state prior to deploying a Ray cluster. This VM is later used to rapidly create head and worker nodes with VMware's [instant clone](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-853B1E2B-76CE-4240-A654-3806912820EB.html) technology. The internal details of the Ray cluster provisioning process using frozen VM can be found in this [Ray on vSphere architecture document](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/vsphere/ARCHITECTURE.md). 
+The vSphere Ray cluster launcher requires the vSphere environment to have a VM in a frozen state prior to deploying a Ray cluster. This VM has all the dependencies installed and is later used to rapidly create head and worker nodes by VMware's [instant clone](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-853B1E2B-76CE-4240-A654-3806912820EB.html) technology. The internal details of the Ray cluster provisioning process using frozen VM can be found in this [Ray on vSphere architecture document](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/vsphere/ARCHITECTURE.md). 
 
-You can follow [this document](https://via.vmw.com/frozen-vm-ovf) to create and set up the frozen VM. By default, Ray clusters' head and worker node VMs will be placed in the same resource pool as the frozen VM. When building and deploying the frozen VM, there are a couple of things to note:
+You can follow [this document](https://via.vmw.com/frozen-vm-ovf) to create and set up the frozen VM, or a set of frozen VMs in which each one will be hosted on a distinct ESXi host in the vSphere cluster. By default, Ray clusters' head and worker node VMs will be placed in the same resource pool as the frozen VM. When building and deploying the frozen VM, there are a couple of things to note:
 
 * The VM's network adapter should be connected to the port group or NSX segment configured in the above section. And the `Connect At Power On` check box should be selected.
 * After the frozen VM is built, a private key file (`ray-bootstrap-key.pem`) and a public key file (`ray_bootstrap_public_key.key`) will be generated under the HOME directory of the current user. If you want to deploy Ray clusters from another machine, these files should be copied to that machine's HOME directory to be picked up by the vSphere cluster launcher.
@@ -65,9 +66,13 @@ export VSPHERE_SERVER=vcenter-address.example.com
 export VSPHERE_USER=foo
 export VSPHERE_PASSWORD=bar
 
-# Edit the example-full.yaml to update the frozen VM name for both the head's and worker's node_config.
+# Edit the example-full.yaml to update the frozen VM related configs under vsphere_config. there are 3 options:
+# 1. If you have a single frozen VM, set the "name" under "frozen_vm".
+# 2. If you have a set of frozen VMs in a resource pool (one VM on each ESXi host), set the "resource_pool" under "frozen_vm".
+# 3. If you don't have any existing frozen VM in the vSphere cluster, but you have an OVF template of a frozen VM, set the "library_item" under "frozen_vm". After that, you need to either set the "name" of the to-be-deployed frozen VM, or set the "resource_pool" to point to an existing resource pool for the to-be-deployed frozen VMs for all the ESXi hosts in the vSphere cluster. Also, the "datastore" must be specified.
 # Optionally configure the head and worker node resource pool and datastore placement.
 # If not configured via environment variables, the vSphere credentials can alternatively be configured in this file.
+
 # vi example-full.yaml
 
 # Create or update the cluster. When the command finishes, it will print

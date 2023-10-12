@@ -75,7 +75,7 @@ class TorchRLModule(nn.Module, RLModule):
     Compiling these methods can bring speedups under certain conditions.
     """
 
-    framwork: str = "torch"
+    framework: str = "torch"
 
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
