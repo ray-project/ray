@@ -31,7 +31,11 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
+from ray.data._internal.planner.plan_read_op import (
+    apply_output_blocks_handling_to_read_task,
+)
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import capitalize, unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
@@ -574,7 +578,7 @@ class ExecutionPlan:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            if self._context.new_execution_backend:
+            if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
@@ -726,6 +730,17 @@ class ExecutionPlan:
         """
         context = self._context
         blocks, stats, stages = self._get_source_blocks_and_stages()
+        if isinstance(self._logical_plan.dag, Read) and isinstance(
+            blocks, LazyBlockList
+        ):
+            for read_task in blocks._tasks:
+                apply_output_blocks_handling_to_read_task(
+                    read_task, self._logical_plan.dag._legacy_additional_split_factor
+                )
+            blocks._estimated_num_blocks = (
+                self._logical_plan.dag._legacy_estimated_num_blocks
+            )
+
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)
         if context.optimize_fuse_stages:
@@ -806,6 +821,37 @@ class ExecutionPlan:
             self._snapshot_blocks is not None
             and not self._stages_after_snapshot
             and not self._snapshot_blocks.is_cleared()
+        )
+
+    def _run_with_new_execution_backend(self) -> bool:
+        """Whether this plan should run with new backend."""
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
+        # The read-equivalent stage is handled in the following way:
+        # - Read only: handle with legacy backend
+        # - Read->randomize_block_order: handle with new backend
+        # Note that both are considered read equivalent, hence this extra check.
+        context = self._context
+        trailing_randomize_block_order_stage = (
+            self._stages_after_snapshot
+            and len(self._stages_after_snapshot) == 1
+            and isinstance(self._stages_after_snapshot[0], RandomizeBlocksStage)
+        )
+        return (
+            context.new_execution_backend
+            and (
+                not self.is_read_stage_equivalent()
+                or trailing_randomize_block_order_stage
+            )
+            and (
+                self._stages_after_snapshot
+                # If snapshot is cleared, we'll need to recompute from the source.
+                or (
+                    self._snapshot_blocks is not None
+                    and self._snapshot_blocks.is_cleared()
+                    and self._stages_before_snapshot
+                )
+            )
         )
 
     def require_preserve_order(self) -> bool:

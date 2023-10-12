@@ -29,6 +29,9 @@ from ray.data._internal.logical.operators.from_operators import (
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.rules.split_read_output_blocks import (
+    compute_additional_split_factor,
+)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -408,6 +411,17 @@ def read_datasource(
         inmemory_size,
         ray_remote_args,
     )
+
+    # TODO(swang): These are only used for the legacy backend, which we
+    # currently use to execute Datasets that only contain a Read. Remove once
+    # legacy bend is deprecated.
+    (
+        read_op._legacy_estimated_num_blocks,
+        read_op._legacy_additional_split_factor,
+    ) = compute_additional_split_factor(
+        reader, parallelism, inmemory_size, ctx.target_max_block_size, None
+    )
+
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(

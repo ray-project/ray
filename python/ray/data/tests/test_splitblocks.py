@@ -59,6 +59,7 @@ def test_large_file_additional_split(ray_start_10_cpus_shared, tmp_path):
 
     ds = ray.data.read_parquet(tmp_path, parallelism=1)
     assert ds.num_blocks() == 1
+    print(ds.materialize().stats())
     assert 5 < ds.materialize().num_blocks() < 20  # Size-based block split
 
     ds = ray.data.read_parquet(tmp_path, parallelism=10)
