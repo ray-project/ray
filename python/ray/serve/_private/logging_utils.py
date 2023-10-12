@@ -169,8 +169,8 @@ def configure_component_logger(
     log_level: int = logging.INFO,
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
-    json_logging = False,
-    logs_dir = None,
+    json_logging=False,
+    logs_dir=None,
 ):
     """Returns a logger to be used by a Serve component.
 
@@ -200,10 +200,14 @@ def configure_component_logger(
 
     logging.setLogRecordFactory(record_factory)
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(ServeFormatter(component_name, component_id))
-    stream_handler.addFilter(log_to_stderr_filter)
-    logger.addHandler(stream_handler)
+    if len(logger.handlers) == 0:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
+        stream_handler.addFilter(log_to_stderr_filter)
+        logger.addHandler(stream_handler)
+
+    if len(logger.handlers) == 2:
+        logger.removeHandler(logger.handlers[1])
 
     if logs_dir is None:
         logs_dir = get_serve_logs_dir()

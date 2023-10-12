@@ -214,15 +214,18 @@ class ServeController:
 
     def reconfigure_logging(self, log_level, json_logging, logs_dir):
         configure_component_logger(
-            component_name="controller", component_id=str(os.getpid()),
-            log_level=log_level, json_logging=json_logging, logs_dir=logs_dir
+            component_name="controller",
+            component_id=str(os.getpid()),
+            log_level=log_level,
+            json_logging=json_logging,
+            logs_dir=logs_dir,
         )
-        #global logger
-        #logger = logging.getLogger(SERVE_LOGGER_NAME)
+        # global logger
+        # logger = logging.getLogger(SERVE_LOGGER_NAME)
         logger.info("[INFO] logging reconfigured")
         logger.warning("[WARNING]logging reconfigured")
         logger.warning(f"all handlers {str(logger.handlers)}")
-        
+
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
         return

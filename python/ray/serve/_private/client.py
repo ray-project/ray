@@ -582,7 +582,7 @@ class ServeControllerClient:
                 model ids.
         """
         self._controller.record_multiplexed_replica_info.remote(info)
-    
+
     @_ensure_connected
     def reconfigure(self, log_level, json_logging, logs_dir):
         self._controller.reconfigure_logging.remote(log_level, json_logging, logs_dir)
