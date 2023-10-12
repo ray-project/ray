@@ -48,6 +48,8 @@ class InputDataBuffer(PhysicalOperator):
             self._input_data = self._input_data_factory()
             self._is_input_initialized = True
             self._initialize_metadata()
+        for bundle in self._input_data:
+            self._metrics.on_input_received(bundle)
         super().start(options)
 
     def has_next(self) -> bool:

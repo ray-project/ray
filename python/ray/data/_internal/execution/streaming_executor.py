@@ -33,8 +33,8 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import (
     DataMetric,
     DatasetStats,
-    _clear_metrics,
-    _update_stats_actor_metrics,
+    clear_stats_actor_metrics,
+    update_stats_actor_metrics,
 )
 from ray.data.context import DataContext
 
@@ -203,7 +203,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._output_node.outqueue.append(None)
             # Clears metrics for this dataset so that they do
             # not persist in the grafana dashboard after execution
-            _clear_metrics({"dataset": self._dataset_uuid})
+            clear_stats_actor_metrics({"dataset": self._dataset_uuid})
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -334,15 +334,12 @@ class StreamingExecutor(Executor, threading.Thread):
             stats[DataMetric.BYTES_SPILLED] += metrics.obj_store_mem_spilled
             stats[DataMetric.BYTES_ALLOCATED] += metrics.obj_store_mem_alloc
             stats[DataMetric.BYTES_FREED] += metrics.obj_store_mem_freed
-            # Input operators only produce outputs and do not take inputs,
-            # so this metric is not properly calculated in these cases
-            if not isinstance(op, InputDataBuffer):
-                stats[DataMetric.BYTES_CURRENT] += metrics.obj_store_mem_cur
+            stats[DataMetric.BYTES_CURRENT] += metrics.obj_store_mem_cur
             stats[DataMetric.BYTES_OUTPUTTED] += metrics.bytes_outputs_generated
             stats[DataMetric.CPU_USAGE] += resource_usage.cpu or 0
             stats[DataMetric.GPU_USAGE] += resource_usage.gpu or 0
 
-        _update_stats_actor_metrics(stats, {"dataset": self._dataset_uuid})
+        update_stats_actor_metrics(stats, {"dataset": self._dataset_uuid})
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:

@@ -284,13 +284,13 @@ def _check_cluster_stats_actor():
         _stats_actor_cluster_id = current_cluster_id
 
 
-def _update_stats_actor_metrics(stats: Dict[DataMetric, Any], tags: Dict[str, str]):
+def update_stats_actor_metrics(stats: Dict[DataMetric, Any], tags: Dict[str, str]):
     global _stats_actor
     _check_cluster_stats_actor()
     _stats_actor.update_metrics.remote(stats, tags)
 
 
-def _clear_metrics(tags: Dict[str, str]):
+def clear_stats_actor_metrics(tags: Dict[str, str]):
     global _stats_actor
     _check_cluster_stats_actor()
     _stats_actor.remove_metrics.remote(tags)

@@ -1143,7 +1143,7 @@ Dataset memory:
 def test_stats_actor_metrics():
     ray.init(object_store_memory=100e6, num_gpus=1)
     with patch(
-        "ray.data._internal.execution.streaming_executor._update_stats_actor_metrics"
+        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
     ) as update_fn:
         ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
@@ -1175,7 +1175,7 @@ def test_stats_actor_metrics():
 
     # map_batches with GPU
     with patch(
-        "ray.data._internal.execution.streaming_executor._update_stats_actor_metrics"
+        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
     ) as update_fn:
         ds = (
             ray.data.range(1024)
