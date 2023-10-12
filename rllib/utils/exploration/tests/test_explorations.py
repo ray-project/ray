@@ -69,6 +69,7 @@ def do_test_explorations(config, dummy_obs, prev_a=None, expected_mean_action=No
             )
             # Check that the stddev is not 0.0 (values differ).
             check(np.std(actions), 0.0, false=True)
+            return np.std(actions)
 
 
 class TestExplorations(unittest.TestCase):
@@ -199,13 +200,57 @@ class TestExplorations(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             # Switch off random timesteps at beginning. We want to test actual
             # GaussianNoise right away.
-            .exploration(exploration_config={"random_timesteps": 0})
+            .exploration(
+                exploration_config={
+                    "random_timesteps": 0,
+                }
+            )
         )
         do_test_explorations(
             config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0,
         )
+
+    def test_td3_with_action_space_scaling(self):
+        config_normal = (
+            td3.TD3Config()
+            .environment("Pendulum-v1")
+            .rollouts(num_rollout_workers=0)
+            # Switch off random timesteps at beginning. We want to test actual
+            # GaussianNoise right away.
+            .exploration(
+                exploration_config={
+                    "random_timesteps": 0,
+                    "stddev": 0.05,
+                }
+            )
+        )
+        config_scaled = (
+            td3.TD3Config()
+            .environment("Pendulum-v1")
+            .rollouts(num_rollout_workers=0)
+            # Switch off random timesteps at beginning. We want to test actual
+            # GaussianNoise right away.
+            .exploration(
+                exploration_config={
+                    "random_timesteps": 0,
+                    "stddev": 0.05,
+                    "scale_using_action_space": True,
+                }
+            )
+        )
+        stddev1 = do_test_explorations(
+            config_normal,
+            np.array([0.0, 0.1, 0.0]),
+            expected_mean_action=0.0,
+        )
+        stddev2 = do_test_explorations(
+            config_scaled,
+            np.array([0.0, 0.1, 0.0]),
+            expected_mean_action=0.0,
+        )
+        check(stddev1 < stddev2, True)
 
 
 if __name__ == "__main__":
