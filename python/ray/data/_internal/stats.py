@@ -387,6 +387,7 @@ class DatasetStatsSummary:
                 if parent_sum:
                     out += parent_sum
                     out += "\n"
+        stage_stats_summary = None
         if len(self.stages_stats) == 1:
             stage_stats_summary = self.stages_stats[0]
             stage_name = stage_stats_summary.stage_name
@@ -416,7 +417,9 @@ class DatasetStatsSummary:
                     already_printed.add(stage_uuid)
                     out += str(stage_stats_summary)
         if self.extra_metrics:
-            indent = "\t" if stage_stats_summary.is_substage else ""
+            indent = (
+                "\t" if stage_stats_summary and stage_stats_summary.is_substage else ""
+            )
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)

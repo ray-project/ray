@@ -2,7 +2,6 @@ import copy
 import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
 
 import ray
@@ -29,7 +28,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
-from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
@@ -62,8 +60,6 @@ class MapOperator(OneToOneOperator, ABC):
 
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
-        # Object store allocation stats.
-        self._metrics = _ObjectStoreMetrics(alloc=0, freed=0, cur=0, peak=0, spilled=0)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
@@ -80,11 +76,6 @@ class MapOperator(OneToOneOperator, ABC):
         # When the streaming generator ref is GC'ed, the objects it generated
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
         self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
-        # Keep track of # of tasks finished, and the # of blocks they outputted.
-        # Used for estimating the # of output blocks.
-        self._num_tasks_finished = 0
-        self._num_output_blocks = 0
-        self._num_inputs_received = 0
         super().__init__(name, input_op)
 
     @classmethod
@@ -192,12 +183,8 @@ class MapOperator(OneToOneOperator, ABC):
         # in case it's large (i.e., closure captures large objects).
         self._map_transformer_ref = ray.put(self._map_transformer)
 
-    def add_input(self, refs: RefBundle, input_index: int):
+    def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
-        # Add ref bundle allocation to operator's object store metrics.
-        self._metrics.cur += refs.size_bytes()
-        if self._metrics.cur > self._metrics.peak:
-            self._metrics.peak = self._metrics.cur
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         if self._block_ref_bundler.has_bundle():
@@ -205,7 +192,6 @@ class MapOperator(OneToOneOperator, ABC):
             # queue.
             bundle = self._block_ref_bundler.get_next_bundle()
             self._add_bundled_input(bundle)
-        self._num_inputs_received += 1
 
     def _get_runtime_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -263,63 +249,42 @@ class MapOperator(OneToOneOperator, ABC):
         #    can also be capsulated in the base class.
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
+        self._metrics.on_task_submitted(task_index, inputs)
 
         def _output_ready_callback(task_index, output: RefBundle):
             # Since output is streamed, it should only contain one block.
-            assert len(output.blocks) == 1
-            for block_ref, _ in output.blocks:
-                trace_allocation(block_ref, "map_operator_output")
+            assert len(output) == 1
+            self._metrics.on_output_generated(task_index, output)
+
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
-            # Update object store metrics.
-            allocated = output.size_bytes()
-            self._metrics.alloc += allocated
-            self._metrics.cur += allocated
-            if self._metrics.cur > self._metrics.peak:
-                self._metrics.peak = self._metrics.cur
-            self._data_tasks[task_index].add_num_output_blocks(len(output.blocks))
 
-        def _task_done_callback(task_index, inputs):
-            # We should only destroy the input bundle when the whole task is done.
-            # Otherwise, if the task crashes in the middle, we can't rerun it.
-            blocks = [input[0] for input in inputs.blocks]
-            metadata = [input[1] for input in inputs.blocks]
-            ctx = ray.data.context.DataContext.get_current()
-            if ctx.enable_get_object_locations_for_metrics:
-                locations = ray.experimental.get_object_locations(blocks)
-            else:
-                locations = {ref: {"did_spill": False} for ref in blocks}
-            for block, meta in zip(blocks, metadata):
-                if locations[block]["did_spill"]:
-                    self._metrics.spilled += meta.size_bytes
+        def _task_done_callback(task_index):
+            self._metrics.on_task_finished(task_index)
 
-            inputs.destroy_if_owned()
-            freed = inputs.size_bytes()
-            self._metrics.freed += freed
-            self._metrics.cur -= freed
+            # Estimate number of tasks from inputs received and tasks submitted so far
+            estimated_num_tasks = (
+                self.input_dependencies[0].num_outputs_total()
+                / self._metrics.num_inputs_received
+                * self._next_data_task_idx
+            )
+            self._estimated_output_blocks = round(
+                estimated_num_tasks
+                * self._metrics.num_outputs_of_finished_tasks
+                / self._metrics.num_tasks_finished
+            )
+
             task = self._data_tasks.pop(task_index)
             self._finished_streaming_gens.append(task.get_waitable())
             # Notify output queue that this task is complete.
             self._output_queue.notify_task_completed(task_index)
-            # Update estimate for blocks outputted
-            self._num_tasks_finished += 1
-            self._num_output_blocks += task.get_num_output_blocks()
-            # Estimate number of tasks from inputs received and tasks submitted so far
-            estimated_num_tasks = (
-                self.input_dependencies[0].num_outputs_total()
-                / self._num_inputs_received
-                * self._next_data_task_idx
-            )
-            self._estimated_output_blocks = round(
-                estimated_num_tasks * self._num_output_blocks / self._num_tasks_finished
-            )
             if task_done_callback:
                 task_done_callback()
 
         self._data_tasks[task_index] = DataOpTask(
             gen,
             lambda output: _output_ready_callback(task_index, output),
-            lambda: _task_done_callback(task_index, inputs),
+            lambda: _task_done_callback(task_index),
         )
 
     def _submit_metadata_task(
@@ -353,10 +318,9 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         return self._output_queue.has_next()
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         assert self._started
         bundle = self._output_queue.get_next()
-        self._metrics.cur -= bundle.size_bytes()
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
         return bundle
@@ -365,12 +329,8 @@ class MapOperator(OneToOneOperator, ABC):
     def progress_str(self) -> str:
         raise NotImplementedError
 
-    def get_metrics(self) -> Dict[str, int]:
-        sorted_ray_args = dict(sorted(self._remote_args_for_metrics.items()))
-        return dict(
-            self._metrics.to_metrics_dict(),
-            ray_remote_args=sorted_ray_args,
-        )
+    def _extra_metrics(self) -> Dict[str, Any]:
+        return {"ray_remote_args": dict(sorted(self._remote_args_for_metrics.items()))}
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
@@ -394,25 +354,6 @@ class MapOperator(OneToOneOperator, ABC):
     @abstractmethod
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
-
-
-@dataclass
-class _ObjectStoreMetrics:
-    """Metrics for object store memory allocations."""
-
-    alloc: int
-    freed: int
-    cur: int
-    peak: int
-    spilled: int
-
-    def to_metrics_dict(self) -> Dict[str, int]:
-        return {
-            "obj_store_mem_alloc": self.alloc,
-            "obj_store_mem_freed": self.freed,
-            "obj_store_mem_peak": self.peak,
-            "obj_store_mem_spilled": self.spilled,
-        }
 
 
 def _map_task(
