@@ -14,7 +14,6 @@ from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    MIGRATION_MESSAGE,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_graph_build import build as pipeline_build
@@ -32,7 +31,6 @@ from ray.serve._private.utils import (
     ensure_serialization_context,
     extract_self_if_method_call,
     get_random_letters,
-    guarded_deprecation_warning,
     install_serve_encoders_to_fastapi,
 )
 from ray.serve.config import (
@@ -423,16 +421,20 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
-@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-@Deprecated(message=MIGRATION_MESSAGE)
+@Deprecated
 def get_deployment(name: str) -> Deployment:
-    raise ValueError("serve.get_deployment is fully deprecated.")
+    raise ValueError(
+        "serve.get_deployment is fully deprecated. Use serve.get_app_handle() to get a "
+        "handle to a running Serve application."
+    )
 
 
-@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-@Deprecated(message=MIGRATION_MESSAGE)
+@Deprecated
 def list_deployments() -> Dict[str, Deployment]:
-    raise ValueError("serve.list_deployments() is fully deprecated.")
+    raise ValueError(
+        "serve.list_deployments() is fully deprecated. Use serve.status() to get a "
+        "list of all active applications and deployments."
+    )
 
 
 @PublicAPI(stability="stable")
