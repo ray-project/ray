@@ -34,7 +34,6 @@ def generate_aggregate_fn(
 
     def fn(
         refs: List[RefBundle],
-        target_max_block_size: int,
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         blocks = []

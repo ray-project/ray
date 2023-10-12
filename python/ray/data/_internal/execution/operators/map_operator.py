@@ -205,7 +205,6 @@ class MapOperator(OneToOneOperator, ABC):
             self._ray_remote_args_factory = RoundRobinAssign(locs)
 
         map_transformer = self._map_transformer
-        map_transformer.set_target_max_block_size(self.actual_target_max_block_size)
         # Apply additional block split if needed.
         if self.get_additional_split_factor() > 1:
             split_transformer = MapTransformer(
@@ -408,6 +407,7 @@ def _map_task(
     """
     DataContext._set_current(data_context)
     stats = BlockExecStats.builder()
+    map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)

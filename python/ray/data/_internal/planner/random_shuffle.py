@@ -26,7 +26,6 @@ def generate_random_shuffle_fn(
 
     def fn(
         refs: List[RefBundle],
-        target_max_block_size,
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         num_input_blocks = sum(len(r.blocks) for r in refs)
@@ -38,7 +37,7 @@ def generate_random_shuffle_fn(
         upstream_map_fn = None
         nonlocal ray_remote_args
         if map_transformer:
-            map_transformer.set_target_max_block_size(target_max_block_size)
+            map_transformer.set_target_max_block_size(ctx.target_max_block_size)
 
             def upstream_map_fn(blocks):
                 return map_transformer.apply_transform(blocks, ctx)

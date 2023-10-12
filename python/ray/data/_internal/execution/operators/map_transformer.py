@@ -129,7 +129,7 @@ class MapTransformer:
         """Apply the transform functions to the input blocks."""
         assert (
             self._target_max_block_size is not None
-        ), "Optimizer must set target block size"
+        ), "target_max_block_size must be set before running"
         for transform_fn in self._transform_fns:
             transform_fn.set_target_max_block_size(self._target_max_block_size)
 
@@ -359,7 +359,7 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
         """
         assert (
             self._target_max_block_size is not None
-        ), "Optimizer must set target block size"
+        ), "target_max_block_size must be set before running"
         output_buffer = BlockOutputBuffer(self._target_max_block_size)
         if self._input_type == MapTransformFnDataType.Block:
             add_fn = output_buffer.add_block

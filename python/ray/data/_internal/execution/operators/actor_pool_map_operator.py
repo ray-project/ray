@@ -183,7 +183,10 @@ class ActorPoolMapOperator(MapOperator):
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
-            ctx = TaskContext(task_idx=self._next_data_task_idx)
+            ctx = TaskContext(
+                task_idx=self._next_data_task_idx,
+                target_max_block_size=self.actual_target_max_block_size,
+            )
             gen = actor.submit.options(num_returns="streaming", name=self.name).remote(
                 DataContext.get_current(), ctx, *input_blocks
             )
