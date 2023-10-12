@@ -366,7 +366,9 @@ def test_dataset_repr(ray_start_regular_shared):
         "schema={id: int64})"
     )
     ds3 = ds1.union(ds2)
-    assert repr(ds3) == "Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+    assert repr(ds3) == (
+        "Union\n" "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+    )
     ds = ds.zip(ds3)
     assert repr(ds) == (
         "Zip\n" "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"

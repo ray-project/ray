@@ -31,8 +31,8 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
+from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
 from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
@@ -151,7 +151,7 @@ class ExecutionManager:
             f"dataset_uuid={self._dataset_uuid}, "
             f"run_by_consumer={self._run_by_consumer}, "
             f"in_blocks={self._in_blocks}, "
-            f"_operators_added_before_snapshot={self._operators_added_before_snapshot}, "
+            f"_operators_added_before_snapshot={self._operators_added_before_snapshot}, "  # noqa: E501
             f"_operators_added_after_snapshot={self._operators_added_after_snapshot}, "
             f"snapshot_blocks={self._snapshot_blocks})"
         )
@@ -179,10 +179,9 @@ class ExecutionManager:
                 # e.g. "MapBatches(my_udf)".
                 # TODO(chengsu): create a class to represent stage name to make it less
                 # fragile to parse.
-                # stage_str = op.name.split("(")
-                # stage_str[0] = capitalize(stage_str[0])
-                # stage_name = "(".join(stage_str)
-                stage_name = op.name
+                stage_str = op.name.split("(")
+                stage_str[0] = capitalize(stage_str[0])
+                stage_name = "(".join(stage_str)
 
                 if num_stages == 0:
                     plan_str += f"{stage_name}\n"
@@ -371,6 +370,17 @@ class ExecutionManager:
         """Get the estimated number of blocks after applying all plan stages."""
         if self.has_computed_output():
             return self._snapshot_blocks.initial_num_blocks()
+
+        # If there are any AllToAll operators (e.g. Repartition, Shuffle, etc)
+        # which were added after the most recent snapshot, these can potentially
+        # modify the number of blocks.
+        # However, this will not be reflected in the ExecutionManager's snapshot
+        # until execution of this Operator, so we override the existing snapshot's
+        # number of blocks here.
+        for op in self._operators_added_after_snapshot:
+            if isinstance(op, AbstractAllToAll) and op._num_outputs is not None:
+                return op._num_outputs
+
         if self._snapshot_blocks is not None:
             return self._snapshot_blocks.initial_num_blocks()
         if self._in_blocks is not None:
@@ -789,7 +799,9 @@ class ExecutionManager:
         output of this plan.
         """
         return (
-            self._snapshot_blocks is not None and not self._snapshot_blocks.is_cleared()
+            self._snapshot_blocks is not None
+            and not self._operators_added_after_snapshot
+            and not self._snapshot_blocks.is_cleared()
         )
 
     def require_preserve_order(self) -> bool:

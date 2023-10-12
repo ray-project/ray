@@ -52,9 +52,8 @@ class PipelinedDataIterator(DataIterator):
         # because memories are not shared across different consumers. This will
         # improve the memory efficiency.
         if epoch_pipeline._first_dataset is not None:
-            blocks_owned_by_consumer = (
-                epoch_pipeline._first_dataset._execution_manager.execute()._owned_by_consumer
-            )
+            execution_manager = epoch_pipeline._first_dataset._execution_manager
+            blocks_owned_by_consumer = execution_manager.execute()._owned_by_consumer
         else:
             blocks_owned_by_consumer = (
                 epoch_pipeline._peek()._execution_manager.execute()._owned_by_consumer

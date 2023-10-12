@@ -32,12 +32,7 @@ from ray._private.usage import usage_lib
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import (
-    ActorPoolStrategy,
-    CallableClass,
-    ComputeStrategy,
-    TaskPoolStrategy,
-)
+from ray.data._internal.compute import ActorPoolStrategy, CallableClass, ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
@@ -66,26 +61,12 @@ from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
-from ray.data._internal.plan import ExecutionManager, OneToOneStage
-from ray.data._internal.planner.plan_udf_map_op import (
-    generate_filter_fn,
-    generate_flat_map_fn,
-    generate_map_batches_fn,
-    generate_map_rows_fn,
-)
+from ray.data._internal.plan import ExecutionManager
 from ray.data._internal.planner.plan_write_op import generate_write_fn
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
 from ray.data._internal.split import _get_num_rows, _split_at_indices
-from ray.data._internal.stage_impl import (
-    LimitStage,
-    RandomizeBlocksStage,
-    RandomShuffleStage,
-    RepartitionStage,
-    SortStage,
-    ZipStage,
-)
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import (
     ConsumptionAPI,
@@ -363,8 +344,6 @@ class Dataset:
         """  # noqa: E501
         validate_compute(fn, compute, fn_constructor_args)
 
-        transform_fn = generate_map_rows_fn()
-
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
 
@@ -380,9 +359,8 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_op)
-        return Dataset(
-            self._execution_manager.with_operator(map_op), self._epoch, logical_plan
-        )
+        execution_manager = self._execution_manager.with_operator(map_op)
+        return Dataset(execution_manager, self._epoch, logical_plan)
 
     def map_batches(
         self,
@@ -568,37 +546,7 @@ class Dataset:
                     f"CallableClass instance for fn, but got: {fn}"
                 )
 
-        transform_fn = generate_map_batches_fn(
-            batch_size=batch_size,
-            batch_format=batch_format,
-            zero_copy_batch=zero_copy_batch,
-        )
-
-        # TODO(chengsu): pass function name to MapBatches logical operator.
-        if hasattr(fn, "__self__") and isinstance(
-            fn.__self__, ray.data.preprocessor.Preprocessor
-        ):
-            stage_name = fn.__self__.__class__.__name__
-        else:
-            stage_name = f'MapBatches({getattr(fn, "__name__", type(fn))})'
-
-        # stage = OneToOneStage(
-        #     stage_name,
-        #     transform_fn,
-        #     compute,
-        #     ray_remote_args,
-        #     # TODO(Clark): Add a strict cap here.
-        #     target_block_size=target_block_size,
-        #     fn=fn,
-        #     fn_args=fn_args,
-        #     fn_kwargs=fn_kwargs,
-        #     fn_constructor_args=fn_constructor_args,
-        #     fn_constructor_kwargs=fn_constructor_kwargs,
-        # )
-        # plan = self._execution_manager.with_stage(stage)
-
         logical_plan = self._logical_plan
-        # if logical_plan is not None:
         map_batches_op = MapBatches(
             logical_plan.dag,
             fn,
@@ -614,9 +562,9 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op)
-
+        execution_manager = self._execution_manager.with_operator(map_batches_op)
         return Dataset(
-            self._execution_manager.with_operator(map_batches_op),
+            execution_manager,
             self._epoch,
             logical_plan,
         )
@@ -856,8 +804,6 @@ class Dataset:
         """
         validate_compute(fn, compute, fn_constructor_args)
 
-        transform_fn = generate_flat_map_fn()
-
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
 
@@ -925,14 +871,7 @@ class Dataset:
         """
         validate_compute(fn, compute)
 
-        transform_fn = generate_filter_fn()
-
-        # plan = self._execution_manager.with_stage(
-        #     OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
-        # )
-
         logical_plan = self._logical_plan
-        # if logical_plan is not None:
         op = Filter(
             input_op=logical_plan.dag,
             fn=fn,
@@ -940,10 +879,9 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op)
+        execution_manager = self._execution_manager.with_operator(op)
 
-        return Dataset(
-            self._execution_manager.with_operator(op), self._epoch, logical_plan
-        )
+        return Dataset(execution_manager, self._epoch, logical_plan)
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
@@ -988,19 +926,15 @@ class Dataset:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
-        # plan = self._execution_manager.with_stage(RepartitionStage(num_blocks, shuffle))
-
         logical_plan = self._logical_plan
-        # if logical_plan is not None:
         op = Repartition(
             logical_plan.dag,
             num_outputs=num_blocks,
             shuffle=shuffle,
         )
         logical_plan = LogicalPlan(op)
-        return Dataset(
-            self._execution_manager.with_operator(op), self._epoch, logical_plan
-        )
+        execution_manager = self._execution_manager.with_operator(op)
+        return Dataset(execution_manager, self._epoch, logical_plan)
 
     def random_shuffle(
         self,
@@ -1037,12 +971,7 @@ class Dataset:
             The shuffled :class:`Dataset`.
         """  # noqa: E501
 
-        # plan = self._execution_manager.with_stage(
-        #     RandomShuffleStage(seed, num_blocks, ray_remote_args)
-        # )
-
         logical_plan = self._logical_plan
-        # if logical_plan is not None:
         op = RandomShuffle(
             logical_plan.dag,
             seed=seed,
@@ -1050,9 +979,8 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op)
-        return Dataset(
-            self._execution_manager.with_operator(op), self._epoch, logical_plan
-        )
+        execution_manager = self._execution_manager.with_operator(op)
+        return Dataset(execution_manager, self._epoch, logical_plan)
 
     def randomize_block_order(
         self,
@@ -4806,8 +4734,8 @@ class Dataset:
             copy._epoch,
             logical_plan,
         )
-        output._execution_manager.execute()  # No-op that marks the plan as fully executed.
-        # output._execution_manager._clear_snapshot()
+        # No-op that marks the plan as fully executed.
+        output._execution_manager.execute()
         output._execution_manager._in_stats.dataset_uuid = self._get_uuid()
         return output
 
