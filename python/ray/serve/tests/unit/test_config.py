@@ -100,7 +100,7 @@ class TestDeploymentConfig:
             num_replicas=5, is_cross_language=True
         )
         assert dc.num_replicas == 5
-        assert dc._is_cross_language is True
+        assert dc.is_cross_language is True
 
         # Invalid parameters should raise TypeError
         with pytest.raises(TypeError):

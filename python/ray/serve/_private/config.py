@@ -68,7 +68,7 @@ class InternalDeploymentConfig(BaseDeploymentModel):
         return v
 
     def needs_pickle(self):
-        return _needs_pickle(self._deployment_language, self._is_cross_language)
+        return _needs_pickle(self.deployment_language, self.is_cross_language)
 
     def to_proto(self):
         data = self.dict()
