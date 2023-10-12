@@ -1,7 +1,7 @@
 import collections
 import itertools
 from contextlib import nullcontext
-from typing import Any, Callable, Iterator, Optional, TypeVar, Union
+from typing import Any, Callable, Iterator, Optional, TypeVar
 
 import ray
 from ray.data._internal.block_batching.interfaces import BlockPrefetcher

@@ -1,7 +1,7 @@
 import logging
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterator, List, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle

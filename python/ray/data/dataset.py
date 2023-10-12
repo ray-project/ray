@@ -87,12 +87,7 @@ from ray.data._internal.stage_impl import (
     ZipStage,
 )
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data._internal.util import (
-    ConsumptionAPI,
-    _estimate_available_parallelism,
-    _is_local_scheme,
-    validate_compute,
-)
+from ray.data._internal.util import ConsumptionAPI, _is_local_scheme, validate_compute
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -107,12 +102,7 @@ from ray.data.block import (
     _apply_strict_mode_batch_format,
     _apply_strict_mode_batch_size,
 )
-from ray.data.context import (
-    ESTIMATED_SAFE_MEMORY_FRACTION,
-    OK_PREFIX,
-    WARN_PREFIX,
-    DataContext,
-)
+from ray.data.context import DataContext
 from ray.data.datasource import (
     BigQueryDatasource,
     BlockWritePathProvider,
