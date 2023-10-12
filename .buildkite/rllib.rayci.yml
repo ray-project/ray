@@ -1,5 +1,17 @@
 group: rllib tests
 steps:
+  - label: ":brain: rllib: algorithm, model and others"
+    tags: rllib_directly
+    parallelism: 4
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --except-tags learning_tests,memory_leak_tests,examples,tests_dir,documentation,multi_gpu,no_cpu,torch_2.x_only_benchmark,manual
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+    depends_on: rllibbuild
+    job_env: forge
+
   - label: ":brain: rllib: learning tests tf2-static-graph"
     tags: rllib
     parallelism: 3
@@ -49,6 +61,19 @@ steps:
         --only-tags learning_tests_discrete,learning_tests_continuous,crashing_cartpole,stateless_cartpole
         --except-tags fake_gpus,torch_only,multi_gpu,no_tf_eager_tracing
         --test-arg --framework=tf2
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: tests dir"
+    tags: rllib_directly
+    parallelism: 2
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --only-tags tests_dir
+        --except-tags multi_gpu,manual
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
     depends_on: rllibbuild
     job_env: forge
 
