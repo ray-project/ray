@@ -240,17 +240,17 @@ class TestExplorations(unittest.TestCase):
                 }
             )
         )
-        stddev1 = do_test_explorations(
+        stddev_normal = do_test_explorations(
             config_normal,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0,
         )
-        stddev2 = do_test_explorations(
+        stddev_scaled = do_test_explorations(
             config_scaled,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0,
         )
-        check(stddev1 < stddev2, True)
+        check(stddev_normal < stddev_scaled, True)
 
 
 if __name__ == "__main__":
