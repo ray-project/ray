@@ -231,7 +231,7 @@ class Preprocessor(abc.ABC):
                 "for Preprocessor transforms."
             )
 
-    def _transform(self, ds: Union["Dataset"]) -> Union["Dataset"]:
+    def _transform(self, ds: "Dataset") -> "Dataset":
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
         transform_type = self._determine_transform_to_use()

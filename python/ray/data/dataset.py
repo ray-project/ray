@@ -103,6 +103,7 @@ from ray.data.block import (
     _apply_strict_mode_batch_size,
 )
 from ray.data.context import DataContext
+from ray.data.dataset_pipeline import _raise_dataset_pipeline_deprecation_warning
 from ray.data.datasource import (
     BigQueryDatasource,
     BlockWritePathProvider,
@@ -4444,7 +4445,7 @@ class Dataset:
             times: The number of times to loop over this dataset, or None
                 to repeat indefinitely.
         """
-        raise DeprecationWarning("`DatasetPipeline` is deprecated.")
+        _raise_dataset_pipeline_deprecation_warning()
 
     @Deprecated
     def window(
@@ -4503,7 +4504,7 @@ class Dataset:
                 window will still include at least one block. This is mutually
                 exclusive with ``blocks_per_window``.
         """
-        raise DeprecationWarning("`DatasetPipeline` is deprecated.")
+        _raise_dataset_pipeline_deprecation_warning()
 
     @Deprecated(message="Use `Dataset.materialize()` instead.")
     def fully_executed(self) -> "MaterializedDataset":

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset
@@ -79,7 +79,7 @@ class Chain(Preprocessor):
             ds = preprocessor.fit_transform(ds)
         return ds
 
-    def _transform(self, ds: Union[Dataset]) -> Union[Dataset]:
+    def _transform(self, ds: Dataset) -> Dataset:
         for preprocessor in self.preprocessors:
             ds = preprocessor.transform(ds)
         return ds
