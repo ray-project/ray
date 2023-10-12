@@ -218,6 +218,7 @@ class GenericProxy(ABC):
                 "route",
                 "error_code",
                 "method",
+                "application",
             ),
         )
 
@@ -532,6 +533,7 @@ class GenericProxy(ABC):
                         "route": proxy_request.route_path,
                         "error_code": str(status.code),
                         "method": proxy_request.method,
+                        "application": response_handler_info.application_name,
                     }
                 )
                 self.deployment_request_error_counter.inc(
