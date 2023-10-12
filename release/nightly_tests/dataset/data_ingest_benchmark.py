@@ -187,55 +187,17 @@ def run_ingest_bulk(dataset_size_gb, num_workers):
     # success! total time 13.813468217849731
 
 
-def run_ingest_dataset_pipeline(dataset_size_gb, num_workers):
-    ds = make_ds(dataset_size_gb)
-    consumers = [
-        ConsumingActor.options(scheduling_strategy="SPREAD", num_cpus=0.5).remote(i)
-        for i in range(num_workers)
-    ]
-    p = (
-        ds.window(bytes_per_window=40 * GiB)
-        .repeat()
-        .map_batches(lambda df: df * 2, batch_format="pandas")
-    )
-    splits = p.split(num_workers, equal=True, locality_hints=consumers)
-    future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
-    ray.get(future)
-
-    # Example ballpark numbers:
-    # == Pipeline Window 10 ==
-    # Stage 1 read->map_batches: 40/40 blocks executed in 1.98s
-    # * Remote wall time: 1.38s min, 1.66s max, 1.46s mean, 58.26s total
-    # * Remote cpu time: 1.38s min, 1.7s max, 1.46s mean, 58.33s total
-    # * Peak heap memory usage (MiB): 6533908000.0 min, 10731508000.0 max, 9710443300 mean  # noqa: E501
-    # * Output num rows: 104857 min, 104857 max, 104857 mean, 4194280 total
-    # * Output size bytes: 1074155212 min, 1074155212 max, 1074155212 mean, 42966208480 total  # noqa: E501
-    # * Tasks per node: 2 min, 2 max, 2 mean; 20 nodes used
-
-    # Example actor (consumer):
-    # Time to read all data 25.58030511100003 seconds
-    # P50/P95/Max batch delay (s) 0.010486626999977489 0.012674414999997904 2.0688196870000866  # noqa: E501
-    # Num epochs read 2
-    # Num batches read 512
-    # Num bytes read 20480.0 MiB
-    # Mean throughput 800.62 MiB/s
-
-    # Example total time:
-    # success! total time 27.822711944580078
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--dataset-size-gb", type=int, default=200)
     parser.add_argument("--streaming", action="store_true", default=False)
-    parser.add_argument("--new_streaming", action="store_true", default=False)
     parser.add_argument("--use-gpu", action="store_true", default=False)
     parser.add_argument("--early-stop", action="store_true", default=False)
     args = parser.parse_args()
 
     benchmark = Benchmark("streaming-data-ingest")
-    if args.new_streaming:
+    if args.streaming:
         benchmark.run_fn(
             "streaming-ingest",
             run_ingest_streaming,
@@ -243,13 +205,6 @@ if __name__ == "__main__":
             args.num_workers,
             args.use_gpu,
             args.early_stop,
-        )
-    elif args.streaming:
-        benchmark.run_fn(
-            "pipeline-ingest",
-            run_ingest_dataset_pipeline,
-            args.dataset_size_gb,
-            args.num_workers,
         )
     else:
         benchmark.run_fn(
