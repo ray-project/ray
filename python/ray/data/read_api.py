@@ -1,6 +1,7 @@
 import collections
 import logging
 import math
+import os
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -48,6 +49,7 @@ from ray.data.context import WARN_PREFIX, DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
+    BigQueryDatasource,
     BinaryDatasource,
     Connection,
     CSVDatasource,
@@ -64,6 +66,7 @@ from ray.data.datasource import (
     SQLDatasource,
     TextDatasource,
     TFRecordDatasource,
+    TorchDatasource,
     WebDatasetDatasource,
 )
 from ray.data.datasource._default_metadata_providers import (
@@ -551,6 +554,70 @@ def read_mongo(
         schema=schema,
         ray_remote_args=ray_remote_args,
         **mongo_args,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_bigquery(
+    project_id: str,
+    dataset: Optional[str] = None,
+    query: Optional[str] = None,
+    *,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+) -> Dataset:
+    """Create a dataset from BigQuery.
+
+    The data to read from is specified via the ``project_id``, ``dataset``
+    and/or ``query``parameters. The dataset is created from the results of
+    executing``query`` if a query is provided. Otherwise, the entire
+    ``dataset`` is read.
+
+    For more information about BigQuery, see the following concepts:
+    - Project id: `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>` # noqa: E501
+    - Dataset: `Datasets Intro <https://cloud.google.com/bigquery/docs/datasets-intro>` # noqa: E501
+    - Query: `Query Syntax <https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax>` # noqa: E501
+
+    This method uses the BigQuery Storage Read API which reads in parallel,
+    with a Ray read task to handle each stream. The number of streams is
+    determined by ``parallelism`` which can be requested from this interface
+    or automatically chosen if unspecified (see the ``parallelism`` arg below).
+
+    .. warning::
+        The maximum query response size is 10GB. For more information, see `BigQuery response too large to return <https://cloud.google.com/knowledge/kb/bigquery-response-too-large-to-return-consider-setting-allowlargeresults-to-true-in-your-job-configuration-000004266>` # noqa: E501
+
+    Examples:
+        .. testcode::
+            :skipif: True
+
+            import ray
+            # Users will need to authenticate beforehand (https://cloud.google.com/sdk/gcloud/reference/auth/login)
+            ds = ray.data.read_bigquery(
+                project_id="my_project",
+                query="SELECT * FROM `bigquery-public-data.samples.gsod` LIMIT 1000",
+            )
+
+    Args:
+        project_id: The name of the associated Google Cloud Project that hosts the dataset to read.
+            For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
+        dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
+            Both the dataset_id and table_id must exist otherwise an exception will be raised.
+        parallelism: The requested parallelism of the read. If -1, it will be
+            automatically chosen based on the available cluster resources and estimated
+            in-memory data size.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+
+    Returns:
+        Dataset producing rows from the results of executing the query (or reading the entire dataset)
+        on the specified BigQuery dataset.
+    """
+    return read_datasource(
+        BigQueryDatasource(),
+        parallelism=parallelism,
+        project_id=project_id,
+        dataset=dataset,
+        query=query,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -1755,6 +1822,128 @@ def read_sql(
     )
 
 
+@PublicAPI(stability="alpha")
+def read_databricks_tables(
+    *,
+    warehouse_id: str,
+    table: Optional[str] = None,
+    query: Optional[str] = None,
+    catalog: Optional[str] = None,
+    schema: Optional[str] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+) -> Dataset:
+    """Read a Databricks unity catalog table or Databricks SQL execution result.
+
+    Before calling this API, set the ``DATABRICKS_HOST`` environment
+    variable to your Databricks warehouse access token.
+
+    .. code-block:: console
+
+        export DATABRICKS_TOKEN=...
+
+    If you're running your program on the Databricks runtime, also set the
+    ``DATABRICKS_HOST`` environment variable.
+
+    .. code-block:: console
+
+        export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
+
+    .. note::
+
+        This function is built on the
+        `Databricks statement execution API <https://docs.databricks.com/api/workspace/statementexecution>`_.
+
+    Examples:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            ds = ray.data.read_databricks_tables(
+                warehouse_id='a885ad08b64951ad',
+                catalog='catalog_1',
+                schema='db_1',
+                query='select id from table_1 limit 750000',
+            )
+
+    Args:
+        warehouse_id: The ID of the Databricks warehouse. The query statement is
+            executed on this warehouse.
+        table: The name of UC table you want to read. If this argument is set,
+            you can't set ``query`` argument, and the reader generates query
+            of ``select * from {table_name}`` under the hood.
+        query: The query you want to execute. If this argument is set,
+            you can't set ``table_name`` argument.
+        catalog: (Optional) The default catalog name used by the query.
+        schema: (Optional) The default schema used by the query.
+        parallelism: The requested parallelism of the read. Defaults to -1,
+            which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see :ref:`Tuning read parallelism
+            <read_parallelism>`.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
+    Returns:
+        A :class:`Dataset` containing the queried data.
+    """  # noqa: E501
+    from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
+    from ray.util.spark.databricks_hook import get_dbutils
+    from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
+
+    token = os.environ.get("DATABRICKS_TOKEN")
+
+    if not token:
+        raise ValueError(
+            "Please set environment variable 'DATABRICKS_TOKEN' to "
+            "databricks workspace access token."
+        )
+
+    host = os.environ.get("DATABRICKS_HOST")
+    if not host:
+        if is_in_databricks_runtime():
+            ctx = (
+                get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
+            )
+            host = ctx.tags().get("browserHostName").get()
+        else:
+            raise ValueError(
+                "You are not in databricks runtime, please set environment variable "
+                "'DATABRICKS_HOST' to databricks workspace URL"
+                '(e.g. "adb-<workspace-id>.<random-number>.azuredatabricks.net").'
+            )
+
+    spark = get_spark_session()
+    if not catalog:
+        catalog = spark.sql("SELECT CURRENT_CATALOG()").collect()[0][0]
+
+    if not schema:
+        schema = spark.sql("SELECT CURRENT_DATABASE()").collect()[0][0]
+
+    if query is not None and table is not None:
+        raise ValueError("Only one of 'query' and 'table' arguments can be set.")
+
+    if table:
+        query = f"select * from {table}"
+
+    if query is None:
+        raise ValueError("One of 'query' and 'table_name' arguments should be set.")
+
+    return read_datasource(
+        datasource=DatabricksUCDatasource(),
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        host=host,
+        token=token,
+        warehouse_id=warehouse_id,
+        catalog=catalog,
+        schema=schema,
+        query=query,
+    )
+
+
 @PublicAPI
 def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
@@ -2283,20 +2472,13 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
-) -> MaterializedDataset:
+) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
 
-    This function is inefficient. Use it to read small datasets or prototype.
-
-    .. warning::
-        If your dataset is large, this function may execute slowly or raise an
-        out-of-memory error. To avoid issues, read the underyling data with a function
-        like :meth:`~ray.data.read_images`.
-
     .. note::
-        This function isn't parallelized. It loads the entire dataset into the head
-        node's memory before moving the data to the distributed object store.
+        The input dataset can either be map-style or iterable-style, and can have arbitrarily large amount of data.
+        The data will be sequentially streamed with one single read task.
 
     Examples:
         >>> import ray
@@ -2312,9 +2494,23 @@ def from_torch(
         dataset: A `Torch Dataset`_.
 
     Returns:
-        A :class:`MaterializedDataset` containing the Torch dataset samples.
+        A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
-    return from_items(list(dataset))
+
+    # Files may not be accessible from all nodes, run the read task on current node.
+    ray_remote_args = {
+        "scheduling_strategy": NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+    }
+    return read_datasource(
+        TorchDatasource(),
+        dataset=dataset,
+        # Only non-parallel, streaming read is currently supported
+        parallelism=1,
+        ray_remote_args=ray_remote_args,
+    )
 
 
 def _get_reader(

@@ -54,10 +54,22 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Run flaky tests."),
 )
 @click.option(
+    "--skip-ray-installation",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Skip ray installation."),
+)
+@click.option(
     "--test-env",
     multiple=True,
     type=str,
     help="Environment variables to set for the test.",
+)
+@click.option(
+    "--test-arg",
+    type=str,
+    help=("Arguments to pass to the test."),
 )
 @click.option(
     "--build-name",
@@ -73,7 +85,9 @@ def main(
     except_tags: str,
     only_tags: str,
     run_flaky_tests: bool,
+    skip_ray_installation: bool,
     test_env: List[str],
+    test_arg: Optional[str],
     build_name: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
@@ -82,19 +96,22 @@ def main(
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     container = _get_container(
-        team, workers, worker_id, parallelism_per_worker, build_name
+        team,
+        workers,
+        worker_id,
+        parallelism_per_worker,
+        build_name,
+        skip_ray_installation,
     )
-    if run_flaky_tests:
-        test_targets = _get_flaky_test_targets(team)
-    else:
-        test_targets = _get_test_targets(
-            container,
-            targets,
-            team,
-            except_tags,
-            only_tags,
-        )
-    success = container.run_tests(test_targets, test_env)
+    test_targets = _get_test_targets(
+        container,
+        targets,
+        team,
+        except_tags=except_tags,
+        only_tags=only_tags,
+        get_flaky_tests=run_flaky_tests,
+    )
+    success = container.run_tests(test_targets, test_env, test_arg)
     sys.exit(0 if success else 1)
 
 
@@ -104,6 +121,7 @@ def _get_container(
     worker_id: int,
     parallelism_per_worker: int,
     build_name: Optional[str] = None,
+    skip_ray_installation: bool = False,
 ) -> TesterContainer:
     shard_count = workers * parallelism_per_worker
     shard_start = worker_id * parallelism_per_worker
@@ -113,6 +131,7 @@ def _get_container(
         build_name or f"{team}build",
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
+        skip_ray_installation=skip_ray_installation,
     )
 
 
@@ -129,17 +148,17 @@ def _get_all_test_query(
     test_query = " union ".join([f"tests({target})" for target in targets])
     query = f"attr(tags, 'team:{team}\\\\b', {test_query})"
 
-    if except_tags:
-        except_query = " union ".join(
-            [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
-        )
-        query = f"{query} except ({except_query})"
-
     if only_tags:
         only_query = " union ".join(
             [f"attr(tags, {t}, {test_query})" for t in only_tags.split(",")]
         )
         query = f"{query} intersect ({only_query})"
+
+    if except_tags:
+        except_query = " union ".join(
+            [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
+        )
+        query = f"{query} except ({except_query})"
 
     return query
 
@@ -151,24 +170,27 @@ def _get_test_targets(
     except_tags: Optional[str] = "",
     only_tags: Optional[str] = "",
     yaml_dir: Optional[str] = None,
+    get_flaky_tests: bool = False,
 ) -> List[str]:
     """
-    Get all test targets that are not flaky
+    Get test targets that are owned by a particular team
     """
-
     query = _get_all_test_query(targets, team, except_tags, only_tags)
-    test_targets = (
+    test_targets = set(
         container.run_script_with_output(
             [
                 f'bazel query "{query}"',
             ]
         )
         .decode("utf-8")
+        .strip()
         .split("\n")
     )
-    flaky_tests = _get_flaky_test_targets(team, yaml_dir)
+    flaky_tests = set(_get_flaky_test_targets(team, yaml_dir))
 
-    return [test for test in test_targets if test and test not in flaky_tests]
+    if get_flaky_tests:
+        return list(flaky_tests.intersection(test_targets))
+    return list(test_targets.difference(flaky_tests))
 
 
 def _get_flaky_test_targets(team: str, yaml_dir: Optional[str] = None) -> List[str]:

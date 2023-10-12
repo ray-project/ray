@@ -74,6 +74,14 @@ py_test(
 )
 
 py_test(
+    name = "test_bigquery",
+    size = "large",
+    srcs = ["tests/test_bigquery.py"],
+    tags = ["team:data", "exclusive", "data_integration"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_actor_pool_map_operator",
     size = "small",
     srcs = ["tests/test_actor_pool_map_operator.py"],
@@ -460,7 +468,7 @@ py_test(
 
 py_test(
     name = "test_streaming_executor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
