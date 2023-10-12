@@ -1,5 +1,4 @@
 import itertools
-import os
 import pathlib
 import posixpath
 import sys
@@ -38,6 +37,10 @@ from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteRe
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
+)
+from ray.data.datasource.filename_provider import (
+    DefaultFilenameProvider,
+    FilenameProvider,
 )
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -312,7 +315,8 @@ class FileBasedDatasource(Datasource):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,  # Deprecated
+        filename_provider: Optional[FilenameProvider] = None,
         write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         file_format: Optional[str] = None,
         _block_udf: Optional[Callable[[Block], Block]] = None,
@@ -335,8 +339,10 @@ class FileBasedDatasource(Datasource):
         if open_stream_args is None:
             open_stream_args = {}
 
-        if not block_path_provider:
-            block_path_provider = DefaultBlockWritePathProvider()
+        if filename_provider is None and block_path_provider is None:
+            filename_provider = DefaultFilenameProvider(
+                dataset_uuid=dataset_uuid, file_format=file_format
+            )
 
         num_rows_written = 0
         block_idx = 0
@@ -354,12 +360,20 @@ class FileBasedDatasource(Datasource):
                 for row_index, row in enumerate(
                     block.iter_rows(public_row_format=False)
                 ):
-                    # TODO: Refactor `BlockWritePathProvider` to support rows.
-                    filename = (
-                        f"{dataset_uuid}_{ctx.task_idx:06}_{block_idx:06}_"
-                        f"{row_index:06}.{file_format}"
-                    )
-                    write_path = os.path.join(path, filename)
+                    if filename_provider is not None:
+                        file_index = _generate_unique_file_index(
+                            ctx.task_index, block_idx, row_index
+                        )
+                        filename = filename_provider.get_filename_for_row(
+                            row, file_index
+                        )
+                    else:  # Legacy code path
+                        filename = (
+                            f"{dataset_uuid}_{ctx.task_idx:06}_{block_idx:06}_"
+                            f"{row_index:06}.{file_format}"
+                        )
+                    write_path = posixpath.join(path, filename)
+
                     logger.get_logger().debug(f"Writing {write_path} file.")
                     with _open_file_with_retry(
                         write_path,
@@ -373,14 +387,22 @@ class FileBasedDatasource(Datasource):
                             **write_args,
                         )
             else:
-                write_path = block_path_provider(
-                    path,
-                    filesystem=filesystem,
-                    dataset_uuid=dataset_uuid,
-                    task_index=ctx.task_idx,
-                    block_index=block_idx,
-                    file_format=file_format,
-                )
+                if filename_provider is not None:
+                    file_index = _generate_unique_file_index(ctx.task_inx, block_idx)
+                    filename = filename_provider.get_filename_for_block(
+                        block, file_index
+                    )
+                    write_path = posixpath.join(path, filename)
+                else:  # Legacy code path
+                    write_path = block_path_provider(
+                        path,
+                        filesystem=filesystem,
+                        dataset_uuid=dataset_uuid,
+                        task_index=ctx.task_idx,
+                        block_index=block_idx,
+                        file_format=file_format,
+                    )
+
                 logger.get_logger().debug(f"Writing {write_path} file.")
                 with _open_file_with_retry(
                     write_path,
@@ -457,6 +479,20 @@ class FileBasedDatasource(Datasource):
         if cls._FILE_EXTENSION is None:
             return None
         return FileExtensionFilter(cls._FILE_EXTENSION)
+
+
+def _generate_unique_file_index(*numbers) -> int:
+    assert all(isinstance(number, int) for number in numbers)
+    assert len(numbers) >= 2
+
+    if len(numbers) == 2:
+        return _cantor_pair(numbers[0], numbers[1])
+
+    return _cantor_pair(_cantor_pair(numbers[0], numbers[1]), *numbers[2:])
+
+
+def _cantor_pair(a: int, b: int) -> int:
+    return (a + b) * (a + b + 1) / 2 + a
 
 
 class _FileBasedDatasourceReader(Reader):
