@@ -561,7 +561,7 @@ class SingleAgentEnvRunner(EnvRunner):
             action_logp = convert_to_numpy(action_dist.logp(actions))
             actions = convert_to_numpy(actions)
             # Squeeze for the last dimension if necessary.
-            # TODO (simon): This is not optimal here. But there seems
+            # TODO (sven, simon): This is not optimal here. But there seems
             # to be some differences between MultiDiscrete action spaces
             # and Box action spaces for `gym.VectorEnv`.
             # For the former we have to squeeze away the last action
