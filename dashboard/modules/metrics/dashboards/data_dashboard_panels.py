@@ -14,7 +14,7 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_spilled_bytes{{{global_filters}}}) by (dataset)",
+                expr='sum(ray_data_spilled_bytes{{dataset=~"$DatasetID", {global_filters}}}) by (dataset)',
                 legend="Bytes Spilled: {{dataset}}",
             )
         ],
@@ -26,7 +26,7 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_allocated_bytes{{{global_filters}}}) by (dataset)",
+                expr='sum(ray_data_allocated_bytes{{dataset=~"$DatasetID", {global_filters}}}) by (dataset)',
                 legend="Bytes Allocated: {{dataset}}",
             )
         ],
@@ -38,7 +38,7 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_freed_bytes{{{global_filters}}}) by (dataset)",
+                expr='sum(ray_data_freed_bytes{{dataset=~"$DatasetID", {global_filters}}}) by (dataset)',
                 legend="Bytes Freed: {{dataset}}",
             )
         ],
@@ -50,7 +50,7 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_current_bytes{{{global_filters}}}) by (dataset)",
+                expr='sum(ray_data_current_bytes{{dataset=~"$DatasetID", {global_filters}}}) by (dataset)',
                 legend="Current Usage: {{dataset}}",
             )
         ],
@@ -62,7 +62,7 @@ DATA_GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr="sum(ray_data_cpu_usage_cores{{{global_filters}}}) by (dataset)",
+                expr='sum(ray_data_cpu_usage_cores{{dataset=~"$DatasetID", {global_filters}}}) by (dataset)',
                 legend="CPU Usage: {{dataset}}",
             )
         ],
@@ -74,7 +74,7 @@ DATA_GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr="sum(ray_data_gpu_usage_cores{{{global_filters}}}) by (dataset)",
+                expr='sum(ray_data_gpu_usage_cores{{dataset=~"$DatasetID", {global_filters}}}) by (dataset)',
                 legend="GPU Usage: {{dataset}}",
             )
         ],
@@ -86,7 +86,7 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_output_bytes{{{global_filters}}}) by (dataset)",
+                expr='sum(ray_data_output_bytes{{dataset=~"$DatasetID", {global_filters}}}) by (dataset)',
                 legend="Bytes Outputted: {{dataset}}",
             )
         ],
