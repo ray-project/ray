@@ -362,13 +362,6 @@ class PPOConfig(PGConfig):
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
-    @property
-    def share_module_between_env_runner_and_learner(self) -> bool:
-        # If we only have one local Learner (num_learner_workers=0) and only
-        # one local EnvRunner (num_rollout_workers=0), share the RLModule
-        # between these two to avoid having to sync weights, ever.
-        return self.num_learner_workers == 0 and self.num_rollout_workers == 0
-
 
 class UpdateKL:
     """Callback to update the KL based on optimization info.

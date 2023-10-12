@@ -751,7 +751,8 @@ class AlgorithmConfig(_Config):
 
         # Validate rollout settings.
         if (
-            self.env_runner_cls.__name__ != "RolloutWorker"
+            self.evaluation_interval
+            and self.env_runner_cls.__name__ != "RolloutWorker"
             and not self.enable_async_evaluation
         ):
             raise ValueError(

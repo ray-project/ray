@@ -529,6 +529,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Close our env object via gymnasium's API.
         self.env.close()
 
+    # TODO (sven): Replace by default "to-env" connector.
     def _sample_actions_if_necessary(
         self, fwd_out: TensorStructType, explore: bool = True
     ) -> Tuple[np.array, np.array]:
@@ -566,10 +567,10 @@ class SingleAgentEnvRunner(EnvRunner):
             # For the former we have to squeeze away the last action
             # dimension delivered from the action_dist and for the latter
             # we should not. This might be connected to the way how the
-            # `action_space`` is defined for the `RLModule` in the
+            # `action_space` is defined for the `RLModule` in the
             # `__init__()` of this class here.
-            if actions.ndim > len(self.env.action_space.shape):
-                actions = actions.squeeze(axis=-1)
+            #if actions.ndim > len(self.env.action_space.shape):
+            #    actions = actions.squeeze(axis=-1)
 
         return actions, action_logp
 
