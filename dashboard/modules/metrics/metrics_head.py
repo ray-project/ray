@@ -43,6 +43,7 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
 PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
+PROMETHEUS_QUERY_RANGE_PATH = "api/v1/query_range"
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
@@ -175,6 +176,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 return dashboard_optional_utils.rest_response(
                     success=True,
                     message="prometheus running",
+                    session_name=self._session_name,
                 )
         except Exception as e:
             logger.debug(
@@ -182,6 +184,43 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             )
             return dashboard_optional_utils.rest_response(
                 success=False, message="prometheus healthcheck failed.", reason=str(e)
+            )
+
+    @routes.get("/api/prometheus_query_range")
+    async def prometheus_query_range(self, req):
+        try:
+            path = f"{self.prometheus_host}/{PROMETHEUS_QUERY_RANGE_PATH}"
+            params = {
+                "query": req.query["query"],
+                "start": req.query["start"],
+                "end": req.query["end"],
+                "step": req.query["step"],
+                **({
+                "timeout": req.query["timeout"],
+                } if req.query.get("timeout") else {}),
+            }
+
+            async with self._session.get(path, params=params) as resp:
+                if resp.status != 200:
+                    return dashboard_optional_utils.rest_response(
+                        success=False,
+                        message="prometheus query failed.",
+                        status=resp.status,
+                    )
+
+                json = await resp.json()
+
+                return dashboard_optional_utils.rest_response(
+                    success=True,
+                    message="prometheus query successful.",
+                    prometheus_resp=json,
+                )
+        except Exception as e:
+            logger.debug(
+                "Error fetching prometheus endpoint. Is prometheus running?", exc_info=e
+            )
+            return dashboard_optional_utils.rest_response(
+                success=False, message="prometheus query failed.", reason=str(e)
             )
 
     @staticmethod
