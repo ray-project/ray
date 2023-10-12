@@ -267,28 +267,31 @@ def _get_or_create_stats_actor():
     ).remote()
 
 
-_stats_actor = None
-_stats_actor_cluster_id = None
+_stats_actor: Optional[_StatsActor] = None
+_stats_actor_cluster_id: Optional[str] = None
 """This global _stats_actor may be from a previous cluster that was shutdown.
 We store _cluster_id to check that the stored actor exists in the current cluster.
 """
 
 
-def _update_stats_actor_metrics(stats: Dict[DataMetric, Any], tags: Dict[str, str]):
+def _check_cluster_stats_actor():
+    # Checks if global _stats_actor belongs to current cluster, if not, creates a new one
     global _stats_actor, _stats_actor_cluster_id
     current_cluster_id = ray._private.worker._global_node.cluster_id
     if _stats_actor is None or _stats_actor_cluster_id != current_cluster_id:
         _stats_actor = _get_or_create_stats_actor()
         _stats_actor_cluster_id = current_cluster_id
+
+
+def _update_stats_actor_metrics(stats: Dict[DataMetric, Any], tags: Dict[str, str]):
+    global _stats_actor
+    _check_cluster_stats_actor()
     _stats_actor.update_metrics.remote(stats, tags)
 
 
 def _remove_metrics(tags: Dict[str, str]):
-    global _stats_actor, _stats_actor_cluster_id
-    current_cluster_id = ray._private.worker._global_node.cluster_id
-    if _stats_actor is None or _stats_actor_cluster_id != current_cluster_id:
-        _stats_actor = _get_or_create_stats_actor()
-        _stats_actor_cluster_id = current_cluster_id
+    global _stats_actor
+    _check_cluster_stats_actor()
     _stats_actor.remove_metrics.remote(tags)
 
 
