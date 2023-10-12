@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import sys
 from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
@@ -241,6 +240,7 @@ class RuntimeEnv(dict):
             The value has to be a callable when passed to the Job, Task, or Actor.
             The callable is then exported and this value is converted to
             the setup hook's function name for observability.
+        nsight: Dictionary mapping nsight profile options to it's value.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
@@ -265,7 +265,7 @@ class RuntimeEnv(dict):
         # with the test.
         "docker",
         "worker_process_setup_hook",
-        "nsight",
+        "_nsight",
     }
 
     extensions_fields: Set[str] = {
@@ -301,7 +301,7 @@ class RuntimeEnv(dict):
         if conda is not None:
             runtime_env["conda"] = conda
         if nsight is not None:
-            runtime_env["nsight"] = nsight
+            runtime_env["_nsight"] = nsight
         if container is not None:
             runtime_env["container"] = container
         if env_vars is not None:
@@ -334,13 +334,6 @@ class RuntimeEnv(dict):
                 "https://conda.io/projects/conda/en/latest/"
                 "user-guide/tasks/manage-environments.html"
                 "#create-env-file-manually"
-            )
-
-        if self.get("nsight") and sys.platform != "linux":
-            raise RuntimeError(
-                "Nsight CLI is only available in Linux.\n"
-                "More information can be found in "
-                "https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html"
             )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
@@ -452,7 +445,7 @@ class RuntimeEnv(dict):
         return []
 
     def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
-        return self.get("nsight", None)
+        return self.get("_nsight", None)
 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})

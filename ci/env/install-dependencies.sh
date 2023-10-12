@@ -551,11 +551,10 @@ install_dependencies() {
 
   if [ "${MINIMAL_INSTALL-}" != "1" ]; then
     install_pip_packages
+    install_nsight_profiler
   fi
 
   install_thirdparty_packages
-
-  install_nsight_profiler
 }
 
 install_dependencies
