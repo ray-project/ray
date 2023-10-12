@@ -467,7 +467,7 @@ Content-Type: application/json
    schema.gRPCOptionsSchema
    schema.HTTPOptionsSchema
    schema.ServeApplicationSchema
-   schema.ApplyServeDeploymentModel
+   schema.ApplyDeploymentModel
    config.RayActorOptionsConfig
 ```
 
@@ -493,7 +493,7 @@ Content-Type: application/json
    schema.ServeInstanceDetails
    schema.ApplicationDetails
    schema.DeploymentDetails
-   schema.ReadServeDeploymentModel
+   schema.ReadDeploymentModel
    schema.ReplicaDetails
 ```
 
