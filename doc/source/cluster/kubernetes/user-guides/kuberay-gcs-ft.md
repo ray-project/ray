@@ -205,7 +205,7 @@ On the other hand, if the head Pod hosts the detached actor, the `increment_coun
 
 ### Step 9: Remove the key stored in Redis when deleting RayCluster
 
-```sh
+```shell
 # Step 9.1: Delete the RayCluster custom resource.
 kubectl delete raycluster raycluster-external-redis
 
