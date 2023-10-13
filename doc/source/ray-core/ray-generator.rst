@@ -4,7 +4,7 @@ Ray Generators
 ==============
 
 `Python generators <https://docs.python.org/3/howto/functional.html#generators>`_ are functions
-that behave like an iterator, yielding one value per iteration. Ray also supports the generators API.
+that behave like iterators, yielding one value per iteration. Ray also supports the generators API.
 
 .. code-block:: diff
 
