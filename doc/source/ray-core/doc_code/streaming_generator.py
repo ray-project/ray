@@ -16,16 +16,16 @@ def task():
 
 # __streaming_generator_execute_start__
 gen = task.remote()
-# Will block for 5 seconds.
+# Blocks for 5 seconds.
 ref = next(gen)
 # return 0
 ray.get(ref)
-# Will block for 5 seconds.
+# Blocks for 5 seconds.
 ref = next(gen)
-# return 1
+# Return 1
 ray.get(ref)
 
-# Return 2~4 every 5 seconds.
+# Returns 2~4 every 5 seconds.
 for ref in gen:
     print(ray.get(ref))
 
@@ -41,10 +41,10 @@ def task():
         yield i
 
 gen = task.remote()
-# it is okay.
+# it's okay.
 ray.get(next(gen))
 
-# it raises an exception
+# Raises an exception
 try:
     ray.get(next(gen))
 except ValueError as e:
@@ -147,23 +147,23 @@ def task():
 
 gen = task.remote()
 
-# Since it takes 5 second to make the first yield,
-# with 0 timeout, generator is considered as unready.
+# Because it takes 5 second to make the first yield,
+# with 0 timeout, the generator is unready.
 ready, unready = ray.wait([gen], timeout=0)
 print("timeout 0, nothing is ready.")
 print(ready)
 assert len(ready) == 0
 assert len(unready) == 1
 
-# Without timeout argument, ray.wait waits until the given argument
-# is ready. When a next item is ready, it will return.
+# Without a timeout argument, ray.wait waits until the given argument
+# is ready. When a next item is ready, it returns.
 ready, unready = ray.wait([gen])
 print("Wait for 5 seconds. The next item is ready.")
 assert len(ready) == 1
 assert len(unready) == 0
 next(gen)
 
-# Since the second yield hasn't happened yet, 
+# Because the second yield hasn't happened yet, 
 ready, unready = ray.wait([gen], timeout=0)
 print("Wait for 0 seconds. The next item is not ready.")
 print(ready, unready)

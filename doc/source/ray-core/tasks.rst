@@ -219,6 +219,10 @@ works as follows.
 
         ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);
 
+Generators
+----------
+Ray is compatible to Python generator syntax. See :ref:`Ray Generators <generators>` for more details.
+
 .. _ray-task-returns:
 
 Multiple returns
