@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -8,8 +8,6 @@ from ray.data.preprocessor import Preprocessor
 # TODO(justinvyu): Fix the circular import error
 from ray.train.constants import TRAIN_DATASET_KEY  # noqa
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-from typing import Literal
 
 
 @PublicAPI(stability="stable")

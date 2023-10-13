@@ -8,7 +8,9 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Literal,
     Optional,
+    Protocol,
     Tuple,
     TypeVar,
     Union,
@@ -28,8 +30,6 @@ try:
     import resource
 except ImportError:
     resource = None
-
-from typing import Literal, Protocol
 
 if TYPE_CHECKING:
     import pandas

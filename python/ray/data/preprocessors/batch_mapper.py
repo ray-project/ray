@@ -1,13 +1,11 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Union
 
 import numpy as np
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import Deprecated
-
-from typing import Literal
 
 if TYPE_CHECKING:
     import pandas

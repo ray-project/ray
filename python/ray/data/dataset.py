@@ -13,6 +13,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Mapping,
     Optional,
     Tuple,
@@ -129,8 +130,6 @@ from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-from typing import Literal
 
 if TYPE_CHECKING:
     import dask

@@ -12,6 +12,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -44,8 +45,6 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-from typing import Literal
 
 if TYPE_CHECKING:
     import pandas as pd
