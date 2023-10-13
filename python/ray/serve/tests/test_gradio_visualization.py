@@ -7,6 +7,7 @@ import pytest
 
 from ray import serve
 from ray.dag import InputNode
+from ray.dag.dag_node import DAGNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve.drivers import DAGDriver
 from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
@@ -135,6 +136,23 @@ def graph6():
         yield user_input, dag
 
 
+@pytest.fixture
+def graph7():
+    @serve.deployment
+    def f(*args) -> int:
+        return 0
+
+    with InputNode() as user_input:
+        input_node = user_input[0]
+        f_node = f.bind(input_node)
+
+        a, b = input_node, f_node
+        for _ in range(10):
+            a, b = f.bind(a, b), f.bind(a, b)
+
+        yield input_node, f_node, a, b
+
+
 @pytest.mark.asyncio
 async def test_execute_cached_object_ref(graph1):
     """Tests DAGNode.get_object_ref_from_last_execute() correctly returns object refs
@@ -201,6 +219,38 @@ class TestGraphDFS:
         )
         assert depths[m1_output.get_stable_uuid()] == 3
         assert depths[dag.get_stable_uuid()] == 4
+
+    def test_graph_dfs_for_depths7(self, graph7):
+        """Tests that GraphVisualizer._fetch_depths, when passed into
+        DAGNode.apply_recursive, correctly retrieves the depths of each node,
+        and that caching is working properly.
+        """
+        (input_node, f_node, dag_a, dag_b) = graph7
+
+        visualizer = GraphVisualizer()
+
+        counter = 0
+        original_apply_recursive = DAGNode.apply_recursive
+
+        def _apply_recursive(self, fn):
+            nonlocal counter
+            counter += 1
+            return original_apply_recursive(self, fn)
+
+        DAGNode.apply_recursive = _apply_recursive
+
+        depths = defaultdict(lambda: 0)
+        dag_a.apply_recursive(lambda node: visualizer._fetch_depths(node, depths))
+
+        assert counter == 1
+        assert (
+            depths[input_node.get_stable_uuid()] == 1
+            and depths[input_node.get_stable_uuid()] == 1
+            and depths[f_node.get_stable_uuid()] == 2
+            and depths[dag_a.get_stable_uuid()] == 12
+            and depths[dag_b.get_stable_uuid()] == 0
+        )
+        DAGNode.apply_recursive = original_apply_recursive
 
 
 @pytest.mark.asyncio
