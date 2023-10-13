@@ -228,7 +228,7 @@ To ensure Redis cleanup, the KubeRay operator adds a Kubernetes finalizer to the
 KubeRay only removes this finalizer after the Kubernetes Job successfully cleans up Redis.
 
 * In other words, if the Kubernetes Job fails, the RayCluster won't be deleted. In that case, you should remove the finalizer and cleanup Redis manually.
-  ```sh
+  ```shell
   kubectl patch rayclusters.ray.io raycluster-external-redis --type json --patch='[ { "op": "remove", "path": "/metadata/finalizers" } ]'
   ```
 
