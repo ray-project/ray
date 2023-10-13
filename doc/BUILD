@@ -352,10 +352,26 @@ doctest(
 )
 
 doctest(
-    name = "doctest[train,gpu]",
+    name = "doctest[train,pytorch]",
     files=[
         "source/train/getting-started-pytorch.rst",
+    ],
+    tags = ["team:ml"],
+    gpu = True
+)
+
+doctest(
+    name = "doctest[train,lightning]",
+    files=[
         "source/train/getting-started-pytorch-lightning.rst",
+    ],
+    tags = ["team:ml"],
+    gpu = True
+)
+
+doctest(
+    name = "doctest[train,transformers]",
+    files=[
         "source/train/getting-started-transformers.rst",
     ],
     tags = ["team:ml"],
