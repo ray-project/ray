@@ -9,7 +9,7 @@ class Accelerator(ABC):
     @staticmethod
     @abstractmethod
     def is_available() -> bool:
-        """Detect if the acclerator is available on this node."""
+        """Detect if the accelerator is available on this node."""
 
     @staticmethod
     @abstractmethod

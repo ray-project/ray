@@ -55,7 +55,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
 )
 @patch("requests.get")
 @patch("os.getenv")
-def test_autodetect_tpu_acclerator_type(
+def test_autodetect_tpu_accelerator_type(
     mock_os, mock_request, accelerator_type_version_tuple
 ):
     gce_or_gke, accelerator_type, expected_version = accelerator_type_version_tuple

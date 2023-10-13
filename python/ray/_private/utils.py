@@ -337,8 +337,10 @@ def set_visible_accelerator_ids() -> None:
     """Set (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS ,...)
     environment variables based on the accelerator runtime.
     """
-    for resource_name, accelerator_ids in ray.get_runtime_context().get_resource_ids():
-        ray._private.acclerators.get_accelerator_for_resource(
+    for resource_name, accelerator_ids in (
+        ray.get_runtime_context().get_resource_ids().items()
+    ):
+        ray._private.accelerators.get_accelerator_for_resource(
             resource_name
         ).set_visible_accelerator_ids(accelerator_ids)
 
