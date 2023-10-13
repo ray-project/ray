@@ -704,6 +704,12 @@ class ServeController:
                     "If you are using the REST API, you can submit a single-app config "
                     "to the single-app API endpoint `/api/serve/deployments/`."
                 )
+            logger.warning(
+                "The single-application config format is DEPRECATED and will be "
+                "removed in a future version. Please switch to using the multi-"
+                "application config (see "
+                "https://docs.ray.io/en/latest/serve/multi-app.html)."
+            )
             self.deploy_mode = ServeDeployMode.SINGLE_APP
         else:
             applications = config.applications

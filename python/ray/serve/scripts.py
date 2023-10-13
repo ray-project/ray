@@ -266,6 +266,12 @@ def deploy(config_file_name: str, address: str):
     except ValidationError as v2_err:
         try:
             ServeApplicationSchema.parse_obj(config)
+            cli_logger.warning(
+                "The single-application config format is deprecated and will be "
+                "removed in a future version. Please switch to using the multi-"
+                "application config (see "
+                "https://docs.ray.io/en/latest/serve/multi-app.html)."
+            )
             ServeSubmissionClient(address).deploy_application(config)
         except ValidationError as v1_err:
             # If we find the field "applications" in the config, most likely
@@ -465,6 +471,12 @@ def run(
             except ValidationError as v2_err:
                 try:
                     config = ServeApplicationSchema.parse_obj(config_dict)
+                    cli_logger.warning(
+                        "The single-application config format is deprecated and will "
+                        "be removed in a future version. Please switch to using the "
+                        "multi-application config (see "
+                        "https://docs.ray.io/en/latest/serve/multi-app.html)."
+                    )
                     # If host or port is specified as a CLI argument, they should take
                     # priority over config values.
                     if host is None:
@@ -791,7 +803,7 @@ def shutdown(address: str, yes: bool):
 @click.option(
     "--single-app",
     is_flag=True,
-    help="Generate a single-application config from one target.",
+    help="[DEPRECATED] Generate a single-application config from one target.",
 )
 @click.option(
     "--grpc-servicer-functions",
@@ -859,6 +871,11 @@ def build(
     )
 
     if single_app:
+        cli_logger.warning(
+            "The single-application config format is deprecated and will be removed in "
+            "a future version. Please switch to using the multi-application config "
+            "(see https://docs.ray.io/en/latest/serve/multi-app.html)."
+        )
         if len(import_paths) > 1:
             raise click.ClickException(
                 "Got more than one argument. Only one import path is accepted when "
