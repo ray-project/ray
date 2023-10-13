@@ -91,6 +91,9 @@ steps:
     wanda: ci/docker/base.ml.wanda.yaml
     depends_on: oss-ci-base_test
 
+  - name: oss-ci-base_gpu
+    wanda: ci/docker/base.gpu.wanda.yaml
+
   - name: docbuild
     wanda: ci/docker/doc.build.wanda.yaml
     depends_on: oss-ci-base_build
@@ -126,3 +129,15 @@ steps:
   - name: mlbuild
     wanda: ci/docker/ml.build.wanda.yaml
     depends_on: oss-ci-base_ml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
+      IMAGE_TO: mlbuild
+      IS_GPU_BUILD: "false"
+
+  - name: mlgpubuild
+    wanda: ci/docker/ml.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
+      IMAGE_TO: mlgpubuild
+      IS_GPU_BUILD: "true"
