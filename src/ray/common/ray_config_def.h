@@ -35,7 +35,7 @@ RAY_CONFIG(bool, event_stats_metrics, false)
 RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
 /// Whether to enable cluster authentication.
-RAY_CONFIG(bool, enable_cluster_auth, false)
+RAY_CONFIG(bool, enable_cluster_auth, true)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available to
@@ -479,7 +479,8 @@ RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 5)
 RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
 
 /// The batch size for metrics export.
-RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
+/// Normally each metrics is about < 1KB. 1000 means it is around 1MB.
+RAY_CONFIG(int64_t, metrics_report_batch_size, 1000)
 
 /// The interval duration for which task state events will be reported to GCS.
 /// The reported data should only be used for observability.
@@ -491,20 +492,26 @@ RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 /// Setting the value to -1 allows for unlimited task events stored in GCS.
 RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
-/// Max number of task events stored in the buffer on workers. Any additional events
-/// will be dropped. This is set to a large value to avoid worker side data loss.
-RAY_CONFIG(uint64_t, task_events_max_buffer_size, 100 * 1000)
+/// Max number of task status events stored on
+/// workers. Events will be evicted based on a FIFO order.
+RAY_CONFIG(uint64_t, task_events_max_num_status_events_buffer_on_worker, 100 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
 RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 
-/// Max number of profile events allowed for a single task when sent to GCS.
-/// NOTE: this limit only applies to the profile events per task in a single
-/// report gRPC call. A task could have more profile events in GCS from multiple
-/// report gRPC call.
-/// Setting the value to -1 allows unlimited profile events to be sent.
-RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 1000)
+/// Max number of profile events allowed to be tracked for a single task.
+/// Setting the value to -1 allows unlimited profile events to be tracked.
+RAY_CONFIG(int64_t, task_events_max_num_profile_events_per_task, 1000)
+
+/// The max number of profile events allowed to be stored in the buffer on the worker
+/// side. Events will be evicted based on a FIFO order.
+RAY_CONFIG(uint64_t, task_events_max_num_profile_events_buffer_on_worker, 10 * 1000)
+
+/// Max number of task attempts being dropped on the worker side to report to GCS.
+/// Setting the value to -1 allows unlimited dropped task attempts in a single
+/// report to GCS.
+RAY_CONFIG(int64_t, task_events_dropped_task_attempt_batch_size, 10 * 1000)
 
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by

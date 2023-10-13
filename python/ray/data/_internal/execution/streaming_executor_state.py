@@ -138,7 +138,7 @@ class OpState:
         enabled = verbose_progress or is_all_to_all
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
-            self.op.num_outputs_total() or 1,
+            self.op.num_outputs_total(),
             index,
             enabled=enabled,
         )
@@ -170,7 +170,7 @@ class OpState:
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
-            self.progress_bar.update(1)
+            self.progress_bar.update(1, self.op._estimated_output_blocks)
 
     def refresh_progress_bar(self) -> None:
         """Update the console with the latest operator progress."""

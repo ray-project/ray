@@ -3,6 +3,7 @@
 import logging
 import os
 import sys
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +198,8 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
-LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
+LOGGER_FORMAT_ESCAPE = json.dumps(LOGGER_FORMAT.replace("%", "%%"))
+LOGGER_FORMAT_HELP = f"The logging format. default={LOGGER_FORMAT_ESCAPE}"
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = (
@@ -369,6 +371,11 @@ CALL_STACK_LINE_DELIMITER = " | "
 # The default gRPC max message size is 4 MiB, we use a larger number of 250 MiB
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
 GRPC_CPP_MAX_MESSAGE_SIZE = 250 * 1024 * 1024
+# The gRPC send & receive max length for "dashboard agent" server.
+AGENT_GRPC_MAX_MESSAGE_LENGTH = env_integer(
+    "AGENT_GRPC_MAX_MESSAGE_LENGTH", 20 * 1024 * 1024  # 20MB
+)
+
 
 # GRPC options
 GRPC_ENABLE_HTTP_PROXY = (

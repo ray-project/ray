@@ -74,7 +74,7 @@ class JobInfo:
     #: A message describing the status in more detail.
     message: Optional[str] = None
     # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
-    # Internal error, user script error
+    #: Internal error, user script error
     error_type: Optional[str] = None
     #: The time when the job was started.  A Unix timestamp in ms.
     start_time: Optional[int] = None
@@ -88,6 +88,8 @@ class JobInfo:
     entrypoint_num_cpus: Optional[Union[int, float]] = None
     #: The number of GPUs to reserve for the entrypoint command.
     entrypoint_num_gpus: Optional[Union[int, float]] = None
+    #: The amount of memory for workers requesting memory for the entrypoint command.
+    entrypoint_memory: Optional[int] = None
     #: The quantity of various custom resources to reserve for the entrypoint command.
     entrypoint_resources: Optional[Dict[str, float]] = None
     #: Driver agent http address
@@ -95,6 +97,9 @@ class JobInfo:
     #: The node id that driver running on. It will be None only when the job status
     # is PENDING, and this field will not be deleted or modified even if the driver dies
     driver_node_id: Optional[str] = None
+    #: The driver process exit code after the driver executed. Return None if driver
+    #: doesn't finish executing
+    driver_exit_code: Optional[int] = None
 
     def __post_init__(self):
         if isinstance(self.status, str):
@@ -108,12 +113,14 @@ class JobInfo:
                         and self.entrypoint_num_cpus > 0,
                         self.entrypoint_num_gpus is not None
                         and self.entrypoint_num_gpus > 0,
+                        self.entrypoint_memory is not None
+                        and self.entrypoint_memory > 0,
                         self.entrypoint_resources not in [None, {}],
                     ]
                 ):
                     self.message += (
                         " It may be waiting for resources "
-                        "(CPUs, GPUs, custom resources) to become available."
+                        "(CPUs, GPUs, memory, custom resources) to become available."
                     )
                 if self.runtime_env not in [None, {}]:
                     self.message += (
@@ -235,6 +242,7 @@ class JobInfoStorageClient:
         job_id: str,
         status: JobStatus,
         message: Optional[str] = None,
+        driver_exit_code: Optional[int] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
@@ -243,7 +251,9 @@ class JobInfoStorageClient:
 
         if jobinfo_replace_kwargs is None:
             jobinfo_replace_kwargs = dict()
-        jobinfo_replace_kwargs.update(status=status, message=message)
+        jobinfo_replace_kwargs.update(
+            status=status, message=message, driver_exit_code=driver_exit_code
+        )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
                 assert False, "Attempted to change job status from a terminal state."
@@ -333,6 +343,10 @@ class JobSubmitRequest:
     # of the entrypoint command, separately from any Ray tasks or actors
     # that are created by it.
     entrypoint_num_gpus: Optional[Union[int, float]] = None
+    # The amount of total available memory for workers requesting memory
+    # for the execution of the entrypoint command, separately from any Ray
+    # tasks or actors that are created by it.
+    entrypoint_memory: Optional[int] = None
     # The quantity of various custom resources
     # to reserve for the entrypoint command, separately from any Ray tasks
     # or actors that are created by it.
@@ -392,6 +406,14 @@ class JobSubmitRequest:
             raise TypeError(
                 "entrypoint_num_gpus must be a number, "
                 f"got {type(self.entrypoint_num_gpus)}"
+            )
+
+        if self.entrypoint_memory is not None and not isinstance(
+            self.entrypoint_memory, int
+        ):
+            raise TypeError(
+                "entrypoint_memory must be an integer, "
+                f"got {type(self.entrypoint_memory)}"
             )
 
         if self.entrypoint_resources is not None:

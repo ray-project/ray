@@ -139,11 +139,6 @@ class ExecutionPlan:
         # determined by the config at the time it was created.
         self._context = copy.deepcopy(DataContext.get_current())
 
-        # Whether the corresponding dataset is generated from a pipeline.
-        # Currently, when this is True, this skips the new execution plan optimizer.
-        # TODO(scottjlee): remove this once we remove DatasetPipeline.
-        self._generated_from_pipeline = False
-
     def __repr__(self) -> str:
         return (
             f"ExecutionPlan("
@@ -314,7 +309,6 @@ class ExecutionPlan:
         plan_copy = ExecutionPlan(
             self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
         )
-        plan_copy._generated_from_pipeline = self._generated_from_pipeline
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks
@@ -346,7 +340,6 @@ class ExecutionPlan:
             dataset_uuid=dataset_uuid,
             run_by_consumer=self._run_by_consumer,
         )
-        plan_copy._generated_from_pipeline = self._generated_from_pipeline
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks.copy()
@@ -646,6 +639,17 @@ class ExecutionPlan:
                 stats.global_bytes_restored = int(
                     reply.store_stats.restored_bytes_total
                 )
+
+            stats.dataset_bytes_spilled = 0
+
+            def collect_stats(cur_stats):
+                stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
+                    "obj_store_mem_spilled", 0
+                )
+                for parent in cur_stats.parents:
+                    collect_stats(parent)
+
+            collect_stats(stats)
 
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
