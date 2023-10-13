@@ -62,6 +62,11 @@ void ClientMmapTableEntry::MaybeMadviseDontdump() {
 }
 
 ClientMmapTableEntry::~ClientMmapTableEntry() {
+  if (!SafeToUnmap()) {
+    RAY_LOG(WARNING) << "Unmapping ClientMmapTableEntry while ref count is not zero. You "
+                        "may see segfault on read/write access to the memory. addr: "
+                     << pointer_ << ", size: " << length_;
+  }
   // At this point it is safe to unmap the memory, as the PlasmaBuffer
   // keeps the PlasmaClient (and therefore the ClientMmapTableEntry)
   // alive until it is destroyed.
@@ -75,6 +80,8 @@ ClientMmapTableEntry::~ClientMmapTableEntry() {
 #endif
   if (r != 0) {
     RAY_LOG(ERROR) << "munmap returned " << r << ", errno = " << errno;
+  } else {
+    RAY_LOG(DEBUG) << "munmap successfully for " << pointer_ << ", " << length_;
   }
 }
 

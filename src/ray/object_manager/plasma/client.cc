@@ -178,7 +178,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   ///
   /// \param store_fd File descriptor to fetch from the store.
   /// \return The pointer corresponding to store_fd.
-  uint8_t *GetStoreFdAndMmap(MEMFD_TYPE store_fd, int64_t map_size);
+  uint8_t *GetOrIncrementStoreFdAndMmap(MEMFD_TYPE store_fd, int64_t map_size);
 
   /// This is a helper method for marking an object as unused by this client.
   ///
@@ -232,13 +232,13 @@ PlasmaClient::Impl::Impl() : store_capacity_(0) {}
 
 PlasmaClient::Impl::~Impl() {}
 
-// If the file descriptor fd has been mmapped in this client process before,
-// return the pointer that was returned by mmap, otherwise mmap it and store the
-// pointer in a hash table.
-uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
-                                               int64_t map_size) {
+// Mmap the fd if it's not already mmap'd. Always increment the refcnt by 1.
+// Return the pointer from mmap.
+uint8_t *PlasmaClient::Impl::GetOrIncrementStoreFdAndMmap(MEMFD_TYPE store_fd_val,
+                                                          int64_t map_size) {
   auto entry = mmap_table_.find(store_fd_val);
   if (entry != mmap_table_.end()) {
+    entry->second->IncrementRefCount();
     return entry->second->pointer();
   } else {
     MEMFD_TYPE fd;
@@ -251,6 +251,7 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
     }
     dedup_fd_table_[store_fd_val.first] = store_fd_val;
     mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
+    mmap_table_[store_fd_val]->IncrementRefCount();
     return mmap_table_[store_fd_val]->pointer();
   }
 }
@@ -332,7 +333,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     RAY_CHECK(object.metadata_offset == object.data_offset + object.data_size);
     *data = std::make_shared<PlasmaMutableBuffer>(
         shared_from_this(),
-        GetStoreFdAndMmap(store_fd, mmap_size) + object.data_offset,
+        GetOrIncrementStoreFdAndMmap(store_fd, mmap_size) + object.data_offset,
         object.data_size);
     // If plasma_create is being called from a transfer, then we will not copy the
     // metadata here. The metadata will be written along with the data streamed
@@ -503,7 +504,7 @@ Status PlasmaClient::Impl::GetBuffers(
   // in the subsequent loop based on just the store file descriptor and without
   // having to know the relevant file descriptor received from recv_fd.
   for (size_t i = 0; i < store_fds.size(); i++) {
-    GetStoreFdAndMmap(store_fds[i], mmap_sizes[i]);
+    GetOrIncrementStoreFdAndMmap(store_fds[i], mmap_sizes[i]);
   }
 
   for (int64_t i = 0; i < num_objects; ++i) {
@@ -569,14 +570,13 @@ Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
   RAY_CHECK(object_entry != objects_in_use_.end());
   RAY_CHECK(object_entry->second->count == 0);
 
-  // TODO:  hypothesis: each object has its own unique map section, so I just need to
-  // unmap here.
-  // If the hypothesis does not hold, we need to instead do ref counts on the mmap:
-  // - on mmap creation (and mmap Lookup???), increment the refcnt
-  // - here, decrement the refcnt, and release if refcnt == 0.
+  // If an mmap entry is no longer referneced by any object, unmap it.
   auto mmap_entry = mmap_table_.find(object_entry->second->object.store_fd);
   RAY_CHECK(mmap_entry != mmap_table_.end());
-  mmap_table_.erase(mmap_entry);
+  mmap_entry->second->DecrementRefCount();
+  if (mmap_entry->second->SafeToUnmap()) {
+    mmap_table_.erase(mmap_entry);
+  }
 
   // Remove the entry from the hash table of objects currently in use.
   objects_in_use_.erase(object_id);

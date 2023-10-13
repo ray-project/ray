@@ -19,6 +19,13 @@ class ClientMmapTableEntry {
 
   MEMFD_TYPE fd() { return fd_; }
 
+  void IncrementRefCount() { ref_count_++; }
+  void DecrementRefCount() {
+    RAY_CHECK(ref_count_ > 0);
+    ref_count_--;
+  }
+  bool SafeToUnmap() { return ref_count_ == 0; }
+
  private:
   /// The associated file descriptor on the client.
   MEMFD_TYPE fd_;
@@ -26,6 +33,8 @@ class ClientMmapTableEntry {
   uint8_t *pointer_;
   /// The length of the memory-mapped file.
   size_t length_;
+  /// Reference count to this mmap section. If it's zero, it can be safely unmapped.
+  size_t ref_count_ = 0;
 
   void MaybeMadviseDontdump();
 
