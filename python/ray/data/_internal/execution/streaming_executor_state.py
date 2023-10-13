@@ -316,10 +316,12 @@ def process_completed_tasks(topology: Topology) -> None:
 
     # Update active tasks.
     active_tasks: Dict[Waitable, OpTask] = {}
+    waitables_to_ops: Dict[Waitable, PhysicalOperator] = {}
 
     for op in topology.keys():
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = task
+            waitables_to_ops[task.get_waitable()] = op
 
     # Process completed Ray tasks and notify operators.
     if active_tasks:
@@ -330,7 +332,8 @@ def process_completed_tasks(topology: Topology) -> None:
             timeout=0.1,
         )
         for ref in ready:
-            active_tasks[ref].on_waitable_ready()
+            inqueue_size = topology[waitables_to_ops[ref]].inqueue_memory_usage()
+            active_tasks[ref].on_waitable_ready(inqueue_size)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():

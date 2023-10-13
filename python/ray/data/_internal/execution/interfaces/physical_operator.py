@@ -28,7 +28,7 @@ class OpTask(ABC):
         pass
 
     @abstractmethod
-    def on_waitable_ready(self):
+    def on_waitable_ready(self, inqueue_size: int):
         """Called when the waitable is ready.
 
         This method may get called multiple times if the waitable is a
@@ -64,10 +64,13 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> StreamingObjectRefGenerator:
         return self._streaming_gen
 
-    def on_waitable_ready(self):
+    def on_waitable_ready(self, inqueue_size: int):
         # Handle all the available outputs of the streaming generator.
+        print(f"on_waitable_ready {inqueue_size / 1024 / 1024:.2f} MB")
         while True:
             try:
+                if inqueue_size > 500 * 1024 * 1024:
+                    print(f"Backpressured {inqueue_size / 1024 / 1024:.2f} MB")
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
@@ -92,6 +95,7 @@ class DataOpTask(OpTask):
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
+            inqueue_size += meta.size_bytes
 
 
 class MetadataOpTask(OpTask):
@@ -111,7 +115,7 @@ class MetadataOpTask(OpTask):
     def get_waitable(self) -> ray.ObjectRef:
         return self._object_ref
 
-    def on_waitable_ready(self):
+    def on_waitable_ready(self, inqueue_size: int):
         self._task_done_callback()
 
 
