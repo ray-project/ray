@@ -1,4 +1,3 @@
-import sys
 from typing import Dict, List, Optional, Union
 
 import ray

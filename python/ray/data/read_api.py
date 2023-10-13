@@ -2,7 +2,6 @@ import collections
 import logging
 import math
 import os
-import sys
 from typing import (
     TYPE_CHECKING,
     Any,

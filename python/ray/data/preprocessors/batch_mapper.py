@@ -1,4 +1,3 @@
-import sys
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 

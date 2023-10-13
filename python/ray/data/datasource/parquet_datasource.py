@@ -1,5 +1,4 @@
 import logging
-import sys
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np

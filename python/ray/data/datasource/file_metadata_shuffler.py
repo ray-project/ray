@@ -1,4 +1,3 @@
-import sys
 from typing import Any, List, Union
 
 import numpy as np

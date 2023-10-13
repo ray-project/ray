@@ -1,5 +1,3 @@
-import sys
-
 from ray.core.generated.common_pb2 import (
     TaskStatus,
     TaskType,

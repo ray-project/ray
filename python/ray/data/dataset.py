@@ -3,7 +3,6 @@ import copy
 import html
 import itertools
 import logging
-import sys
 import time
 from typing import (
     TYPE_CHECKING,
