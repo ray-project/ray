@@ -129,6 +129,18 @@ steps:
   - name: rllibbuild
     wanda: ci/docker/rllib.build.wanda.yaml
     depends_on: oss-ci-base_ml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
+      IMAGE_TO: rllibbuild
+      IS_GPU_BUILD: "false"
+
+  - name: rllibgpubuild
+    wanda: ci/docker/rllib.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
+      IMAGE_TO: rllibgpubuild
+      IS_GPU_BUILD: "true"
 
   - name: mlbuild
     wanda: ci/docker/ml.build.wanda.yaml

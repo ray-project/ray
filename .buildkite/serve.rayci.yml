@@ -17,7 +17,6 @@ steps:
     parallelism: 2
     tags: 
       - serve
-      - ml
       - python
     instance_type: large
     soft_fail: true
