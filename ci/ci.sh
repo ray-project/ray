@@ -230,14 +230,9 @@ test_serve() {
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
     test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
 
-    # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
-    # It's unclear to me if this should be necessary, but this is to make tests run for now.
-    # Check why this issue doesn't arise on Linux/Mac.
-    # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046,SC2086
     bazel test --config=ci \
       --build_tests_only $(./ci/run/bazel_export_options) \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
@@ -290,14 +285,9 @@ test_python() {
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
     test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
 
-    # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
-    # It's unclear to me if this should be necessary, but this is to make tests run for now.
-    # Check why this issue doesn't arise on Linux/Mac.
-    # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046,SC2086
     bazel test --config=ci \
       --build_tests_only $(./ci/run/bazel_export_options) \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
