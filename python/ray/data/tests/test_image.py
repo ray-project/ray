@@ -305,6 +305,7 @@ class TestReadImages:
             "mode": "foo",
             "include_paths": True,
             "ignore_missing_paths": True,
+            "shuffle": None,
         }
         with patch("ray.data.read_api.read_datasource") as mock:
             ray.data.read_images(**kwargs)
