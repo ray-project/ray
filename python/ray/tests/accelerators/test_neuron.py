@@ -8,7 +8,7 @@ import ray
 from ray._private.accelerators import NeuronAccelerator
 
 
-def test_user_configured_more_than_visible(monkeypatch, shutdown_only):
+def test_user_configured_more_than_visible(monkeypatch, call_ray_stop_only):
     # Test more neuron_cores are configured than visible.
     monkeypatch.setenv("NEURON_RT_VISIBLE_CORES", "0,1,2")
     with pytest.raises(ValueError):
