@@ -1018,6 +1018,7 @@ def read_parquet_bulk(
 def read_json(
     paths: Union[str, List[str]],
     *,
+    include_paths: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
