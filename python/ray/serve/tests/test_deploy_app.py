@@ -1323,5 +1323,47 @@ def test_deploy_lightweight_multiple_route_prefix(
         time.sleep(0.1)
 
 
+def test_redeploy_old_config_after_failed_deployment(client: ServeControllerClient):
+    """
+    1. Deploy application which succeeds.
+    2. Redeploy application with an import path that fails.
+    3. Redeploy the exact same config from step 1.
+
+    Verify that step 3 succeeds and the application returns to running state.
+    """
+
+    app_config = {
+        "name": "default",
+        "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+    }
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+
+    def check_application_running():
+        status = serve.status().applications["default"]
+        assert status.status == "RUNNING"
+        assert requests.post("http://localhost:8000/").text == "wonderful world"
+        return True
+
+    wait_for_condition(check_application_running)
+
+    # Change to import path that will error
+    app_config["import_path"] = "ray.serve.tests.test_config_files.import_error.app"
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+
+    def check_deploy_failed():
+        status = serve.status().applications["default"]
+        assert status.status == "DEPLOY_FAILED"
+        assert "ZeroDivisionError" in status.message
+        return True
+
+    wait_for_condition(check_deploy_failed)
+
+    # Redeploy old import path
+    app_config["import_path"] = "ray.serve.tests.test_config_files.world.DagNode"
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+
+    wait_for_condition(check_application_running)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
