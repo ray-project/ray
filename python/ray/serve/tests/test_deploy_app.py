@@ -2,6 +2,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from copy import copy
 from functools import partial
 from typing import Dict, List
 
@@ -1323,7 +1324,10 @@ def test_deploy_lightweight_multiple_route_prefix(
         time.sleep(0.1)
 
 
-def test_redeploy_old_config_after_failed_deployment(client: ServeControllerClient):
+@pytest.mark.parametrize("rebuild", [True, False])
+def test_redeploy_old_config_after_failed_deployment(
+    client: ServeControllerClient, rebuild
+):
     """
     1. Deploy application which succeeds.
     2. Redeploy application with an import path that fails.
@@ -1346,20 +1350,29 @@ def test_redeploy_old_config_after_failed_deployment(client: ServeControllerClie
 
     wait_for_condition(check_application_running)
 
-    # Change to import path that will error
-    app_config["import_path"] = "ray.serve.tests.test_config_files.import_error.app"
-    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    # Change config so that redeploy will error
+    new_app_config = copy(app_config)
+    if rebuild:
+        # New import path will cause an error upon importing app
+        new_app_config[
+            "import_path"
+        ] = "ray.serve.tests.test_config_files.import_error.app"
+        err_msg = "ZeroDivisionError"
+    else:
+        # Trying to add a route prefix for non-ingress deployment will fail
+        new_app_config["deployments"] = [{"name": "f", "route_prefix": "/"}]
+        err_msg = "Found multiple route prefixes"
+    client.deploy_apps(ServeDeploySchema(**{"applications": [new_app_config]}))
 
-    def check_deploy_failed():
+    def check_deploy_failed(message):
         status = serve.status().applications["default"]
         assert status.status == "DEPLOY_FAILED"
-        assert "ZeroDivisionError" in status.message
+        assert message in status.message
         return True
 
-    wait_for_condition(check_deploy_failed)
+    wait_for_condition(check_deploy_failed, message=err_msg)
 
-    # Redeploy old import path
-    app_config["import_path"] = "ray.serve.tests.test_config_files.world.DagNode"
+    # Redeploy old config
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
     wait_for_condition(check_application_running)
