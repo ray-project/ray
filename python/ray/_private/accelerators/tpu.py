@@ -117,7 +117,7 @@ class TPUAccelerator(Accelerator):
         def tpu_accelerator_type_to_ray_accelerator_type(
             tpu_accelerator_type: str,
         ) -> Optional[str]:
-            if TPUAccelerator._is_valid_tpu_accelerator_type(tpu_accelerator_type):
+            if TPUAccelerator.is_valid_tpu_accelerator_type(tpu_accelerator_type):
                 return "TPU-" + str(tpu_accelerator_type.split("-")[0]).upper()
             else:
                 return None
@@ -176,7 +176,7 @@ class TPUAccelerator(Accelerator):
         return ray_accelerator_type
 
     @staticmethod
-    def _is_valid_tpu_accelerator_type(tpu_accelerator_type: str) -> bool:
+    def is_valid_tpu_accelerator_type(tpu_accelerator_type: str) -> bool:
         """Check whether the tpu accelerator_type is formatted correctly.
 
         The accelerator_type field follows a form of v{generation}-{cores/chips}.
