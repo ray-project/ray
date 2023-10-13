@@ -58,6 +58,7 @@ from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
+    DeploymentArgs,
     DeploymentRoute,
     DeploymentRouteList,
 )
@@ -619,18 +620,39 @@ class ServeController:
 
         return updating
 
-    def deploy_application(self, name: str, deployment_args_list: List[Dict]) -> None:
+    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwrriten.
 
         Args:
             name: Application name.
-            deployment_args_list: List of deployment infomation, each item in the list
-                contains all the information for the single deployment.
+            deployment_args_list: List of serialized deployment infomation,
+                where each item in the list is bytes representing the serialized
+                protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
+                information for the single deployment.
         """
-
-        self.application_state_manager.apply_deployment_args(name, deployment_args_list)
+        deployment_args_deserialized = []
+        for deployment_args_bytes in deployment_args_list:
+            deployment_args = DeploymentArgs.FromString(deployment_args_bytes)
+            deployment_args_deserialized.append(
+                {
+                    "deployment_name": deployment_args.deployment_name,
+                    "deployment_config_proto_bytes": deployment_args.deployment_config,
+                    "replica_config_proto_bytes": deployment_args.replica_config,
+                    "deployer_job_id": deployment_args.deployer_job_id,
+                    "route_prefix": deployment_args.route_prefix
+                    if deployment_args.HasField("route_prefix")
+                    else None,
+                    "ingress": deployment_args.ingress,
+                    "docs_path": deployment_args.docs_path
+                    if deployment_args.HasField("docs_path")
+                    else None,
+                }
+            )
+        self.application_state_manager.apply_deployment_args(
+            name, deployment_args_deserialized
+        )
 
     def deploy_config(
         self,
@@ -772,30 +794,20 @@ class ServeController:
         return deployment_route.SerializeToString()
 
     def list_deployments_internal(
-        self, include_deleted: Optional[bool] = False
+        self,
     ) -> Dict[DeploymentID, Tuple[DeploymentInfo, str]]:
         """Gets the current information about all deployments.
-
-        Args:
-            include_deleted: Whether to include information about
-                deployments that have been deleted.
 
         Returns:
             Dict(deployment_id, (DeploymentInfo, route))
         """
         return {
             id: (info, self.endpoint_state.get_endpoint_route(id))
-            for id, info in self.deployment_state_manager.get_deployment_infos(
-                include_deleted=include_deleted
-            ).items()
+            for id, info in self.deployment_state_manager.get_deployment_infos().items()
         }
 
-    def list_deployments_v1(self, include_deleted: Optional[bool] = False) -> bytes:
+    def list_deployments_v1(self) -> bytes:
         """Gets the current information about all 1.x deployments.
-
-        Args:
-            include_deleted: Whether to include information about
-                deployments that have been deleted.
 
         Returns:
             DeploymentRouteList's protobuf serialized bytes
@@ -804,7 +816,7 @@ class ServeController:
         for deployment_id, (
             deployment_info,
             route_prefix,
-        ) in self.list_deployments_internal(include_deleted=include_deleted).items():
+        ) in self.list_deployments_internal().items():
             # Only list 1.x deployments, which should have app=""
             if deployment_id.app:
                 continue

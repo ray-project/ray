@@ -9,7 +9,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 
 import ray
 from ray.air._internal.session import _get_session
@@ -21,7 +21,7 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
     TIMESTAMP,
 )
-from ray.data import Dataset, DatasetPipeline
+from ray.data import Dataset
 from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import StorageContext
@@ -118,7 +118,7 @@ class _TrainSession:
         local_world_size: int,
         world_size: int,
         trial_info: Optional[TrialInfo] = None,
-        dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
+        dataset_shard: Optional[Dataset] = None,
         metadata: Dict[str, Any] = None,
         checkpoint: Optional[Checkpoint] = None,
         detailed_autofilled_metrics: bool = False,

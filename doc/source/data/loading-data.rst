@@ -771,99 +771,80 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
     .. tab-item:: Databricks
 
-        To read from Databricks, call ``ray.data.read_databricks_tables`` API (recommended) or ``ray.data.ray.data.read_sql`` API.
+        To read from Databricks, set the ``DATABRICKS_HOST`` environment variable to
+        your Databricks warehouse access token.
 
-        For using ``ray.data.read_databricks_tables`` API, set 'DATABRICKS_HOST' environment variable to databricks warehouse access token, then read from the Databricks SQL warehouse.
+        .. code-block:: console
+
+            export DATABRICKS_TOKEN=...
+
+        If you're running your program on the Databricks runtime, also set the 
+        ``DATABRICKS_HOST`` environment variable.
+
+        .. code-block:: console
+
+            export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
+
+        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks 
+        SQL warehouse.
 
         .. testcode::
             :skipif: True
 
             import ray
-            # Get movies after the year 1980
+
             dataset = ray.data.read_databricks_tables(
-                warehouse_id='...',  # Databricks SQL warehouse ID
-                catalog='...',  # Unity catalog name
-                schema='...',  # Schema name
+                warehouse_id='a885ad08b64951ad',  # Databricks SQL warehouse ID
+                catalog='catalog_1',  # Unity catalog name
+                schema='db_1',  # Schema name
                 query="SELECT title, score FROM movie WHERE year >= 1980",
             )
 
-        For using ``ray.data.ray.data.read_sql`` API,
-        install the
-        `Databricks SQL Connector for Python <https://docs.databricks.com/dev-tools/python-sql-connector.html>`_.
+.. _reading_bigquery:
 
-        .. code-block:: console
+Reading BigQuery
+~~~~~~~~~~~~~~~~
 
-            pip install databricks-sql-connector
+To read from BigQuery, install the
+`Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_ and the `Python Client for Google BigQueryStorage <https://cloud.google.com/python/docs/reference/bigquerystorage/latest>`_.
 
+.. code-block:: console
 
-        Then, define your connection logic and read from the Databricks SQL warehouse.
+    pip install google-cloud-bigquery
+    pip install google-cloud-bigquery-storage
 
-        .. testcode::
-            :skipif: True
+To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the project id, dataset, and query (if applicable).
 
-            from databricks import sql
+.. testcode::
+    :skipif: True
 
-            import ray
+    import ray
 
-            def create_connection():
-                return sql.connect(
-                    server_hostname="dbc-1016e3a4-d292.cloud.databricks.com",
-                    http_path="/sql/1.0/warehouses/a918da1fc0b7fed0",
-                    access_token=...,
+    # Read the entire dataset (do not specify query)
+    ds = ray.data.read_bigquery(
+        project_id="my_gcloud_project_id",
+        dataset="bigquery-public-data.ml_datasets.iris",
+    )
 
+    # Read from a SQL query of the dataset (do not specify dataset)
+    ds = ray.data.read_bigquery(
+        project_id="my_gcloud_project_id",
+        query = "SELECT * FROM `bigquery-public-data.ml_datasets.iris` LIMIT 50",
+    )
 
-            # Get all movies
-            dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
-            # Get movies after the year 1980
-            dataset = ray.data.read_sql(
-                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-            )
-            # Get the number of movies per year
-            dataset = ray.data.read_sql(
-                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-            )
+    # Write back to BigQuery
+    ds.write_bigquery(
+        project_id="my_gcloud_project_id",
+        dataset="destination_dataset.destination_table",
+    )
 
-    .. tab-item:: BigQuery
-
-        To read from BigQuery, install the
-        `Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_.
-        This package includes a DB API2-compliant database connector.
-
-        .. code-block:: console
-
-            pip install google-cloud-bigquery
-
-        Then, define your connection logic and query the dataset.
-
-        .. testcode::
-            :skipif: True
-
-            from google.cloud import bigquery
-            from google.cloud.bigquery import dbapi
-
-            import ray
-
-            def create_connection():
-                client = bigquery.Client(...)
-                return dbapi.Connection(client)
-
-            # Get all movies
-            dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
-            # Get movies after the year 1980
-            dataset = ray.data.read_sql(
-                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-            )
-            # Get the number of movies per year
-            dataset = ray.data.read_sql(
-                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-            )
 
 .. _reading_mongodb:
 
 Reading MongoDB
 ~~~~~~~~~~~~~~~
 
-To read data from MongoDB, call :func:`~ray.data.read_mongo` and specify the
+To read data from MongoDB, call :func:`~ray.data.read_mongo` and specify
 the source URI, database, and collection. You also need to specify a pipeline to
 run against the collection.
 
@@ -973,5 +954,6 @@ hence the more opportunity for parallel execution.
    :width: 650px
    :align: center
 
-This default parallelism can be overridden via the ``parallelism`` argument; see the
-:ref:`performance guide <data_performance_tips>`  for more information on how to tune this read parallelism.
+You can override the default parallelism by setting the ``parallelism`` argument. For 
+more information on how to tune the read parallelism, see 
+:ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
