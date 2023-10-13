@@ -460,6 +460,7 @@ Content-Type: application/json
 
 ```{eval-rst}
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    schema.ServeDeploySchema
@@ -476,6 +477,7 @@ Content-Type: application/json
 ### V1 REST API
 ```{eval-rst}
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    schema.ServeStatusSchema
@@ -484,6 +486,7 @@ Content-Type: application/json
 ### V2 REST API
 ```{eval-rst}
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    schema.ServeInstanceDetails
@@ -495,6 +498,7 @@ Content-Type: application/json
 ## Metrics API
 ```{eval-rst}
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    metrics.Counter

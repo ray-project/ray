@@ -2,7 +2,7 @@ import collections
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 import numpy as np
 
@@ -242,7 +242,6 @@ class DatasetStats:
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
 
-        self._legacy_iter_batches = False
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
         self.iter_get_s: Timer = Timer()
@@ -315,7 +314,6 @@ class DatasetStats:
             )
 
         iter_stats = IterStatsSummary(
-            self._legacy_iter_batches,
             self.iter_wait_s,
             self.iter_get_s,
             self.iter_next_batch_s,
@@ -389,6 +387,7 @@ class DatasetStatsSummary:
                 if parent_sum:
                     out += parent_sum
                     out += "\n"
+        stage_stats_summary = None
         if len(self.stages_stats) == 1:
             stage_stats_summary = self.stages_stats[0]
             stage_name = stage_stats_summary.stage_name
@@ -418,7 +417,9 @@ class DatasetStatsSummary:
                     already_printed.add(stage_uuid)
                     out += str(stage_stats_summary)
         if self.extra_metrics:
-            indent = "\t" if stage_stats_summary.is_substage else ""
+            indent = (
+                "\t" if stage_stats_summary and stage_stats_summary.is_substage else ""
+            )
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)
@@ -753,8 +754,6 @@ class StageStatsSummary:
 
 @dataclass
 class IterStatsSummary:
-    # Whether the legacy `iter_batches` is being used.
-    legacy_iter_batches: bool
     # Time spent in actor based prefetching, in seconds.
     wait_time: Timer
     # Time spent in `ray.get()`, in seconds
@@ -781,10 +780,7 @@ class IterStatsSummary:
     iter_unknown_location: int
 
     def __str__(self) -> str:
-        if self.legacy_iter_batches:
-            return self.to_string_legacy()
-        else:
-            return self.to_string()
+        return self.to_string()
 
     def to_string(self) -> str:
         out = ""
@@ -863,31 +859,6 @@ class IterStatsSummary:
 
         return out
 
-    def to_string_legacy(self) -> str:
-        """Iteration stats summary for legacy `iter_batches`."""
-
-        out = ""
-        if (
-            self.total_time.get()
-            or self.wait_time.get()
-            or self.next_time.get()
-            or self.format_time.get()
-            or self.get_time.get()
-        ):
-            out += "\nDataset iterator time breakdown:\n"
-            out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
-            out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
-            out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
-            out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
-            out += "* Num blocks unknown location: {}\n".format(
-                self.iter_unknown_location
-            )
-            out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
-            out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
-            out += "* In user code: {}\n".format(fmt(self.user_time.get()))
-            out += "* Total time: {}\n".format(fmt(self.total_time.get()))
-        return out
-
     def __repr__(self, level=0) -> str:
         indent = leveled_indent(level)
         return (
@@ -903,110 +874,3 @@ class IterStatsSummary:
             f"{indent}   total_time={fmt(self.total_time.get()) or None},\n"
             f"{indent})"
         )
-
-
-class DatasetPipelineStats:
-    """Holds the execution times for a pipeline of Datasets."""
-
-    def __init__(self, *, max_history: int = 3):
-        """Create a dataset pipeline stats object.
-
-        Args:
-            max_history: The max number of dataset window stats to track.
-        """
-        self.max_history: int = max_history
-        self.history_buffer: List[Tuple[int, DatasetStats]] = []
-        self.count = 0
-        self.wait_time_s = []
-
-        # Iteration stats, filled out if the user iterates over the pipeline.
-        self._iter_stats = {
-            "iter_ds_wait_s": Timer(),
-            "iter_wait_s": Timer(),
-            "iter_get_s": Timer(),
-            "iter_next_batch_s": Timer(),
-            "iter_format_batch_s": Timer(),
-            "iter_collate_batch_s": Timer(),
-            "iter_finalize_batch_s": Timer(),
-            "iter_user_s": Timer(),
-            "iter_total_s": Timer(),
-        }
-
-    # Make iteration stats also accessible via attributes.
-    def __getattr__(self, name):
-        if name == "_iter_stats":
-            raise AttributeError
-        if name in self._iter_stats:
-            return self._iter_stats[name]
-        raise AttributeError
-
-    def add(self, stats: DatasetStats) -> None:
-        """Called to add stats for a newly computed window."""
-        self.history_buffer.append((self.count, stats))
-        if len(self.history_buffer) > self.max_history:
-            self.history_buffer.pop(0)
-        self.count += 1
-
-    def add_pipeline_stats(self, other_stats: "DatasetPipelineStats"):
-        """Add the provided pipeline stats to the current stats.
-
-        `other_stats` should cover a disjoint set of windows than
-        the current stats.
-        """
-        for _, dataset_stats in other_stats.history_buffer:
-            self.add(dataset_stats)
-
-        self.wait_time_s.extend(other_stats.wait_time_s)
-
-        for stat_name, timer in self._iter_stats.items():
-            timer.add(other_stats._iter_stats[stat_name].get())
-
-    def _summarize_iter(self) -> str:
-        out = ""
-        if (
-            self.iter_total_s.get()
-            or self.iter_wait_s.get()
-            or self.iter_next_batch_s.get()
-            or self.iter_format_batch_s.get()
-            or self.iter_get_s.get()
-        ):
-            out += "\nDatasetPipeline iterator time breakdown:\n"
-            out += "* Waiting for next dataset: {}\n".format(
-                fmt(self.iter_ds_wait_s.get())
-            )
-            out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
-            out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))
-            out += "* In next_batch(): {}\n".format(fmt(self.iter_next_batch_s.get()))
-            out += "* In format_batch(): {}\n".format(
-                fmt(self.iter_format_batch_s.get())
-            )
-            out += "* In user code: {}\n".format(fmt(self.iter_user_s.get()))
-            out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
-
-        return out
-
-    def summary_string(self, exclude_first_window: bool = True) -> str:
-        """Return a human-readable summary of this pipeline's stats."""
-        already_printed = set()
-        out = ""
-        if not self.history_buffer:
-            return "No stats available: This pipeline hasn't been run yet."
-        for i, stats in self.history_buffer:
-            out += "== Pipeline Window {} ==\n".format(i)
-            out += stats.to_summary().to_string(already_printed)
-            out += "\n"
-        out += "##### Overall Pipeline Time Breakdown #####\n"
-        # Drop the first sample since there's no pipelining there.
-        wait_time_s = self.wait_time_s[1 if exclude_first_window else 0 :]
-        if wait_time_s:
-            out += (
-                "* Time stalled waiting for next dataset: "
-                "{} min, {} max, {} mean, {} total\n".format(
-                    fmt(min(wait_time_s)),
-                    fmt(max(wait_time_s)),
-                    fmt(np.mean(wait_time_s)),
-                    fmt(sum(wait_time_s)),
-                )
-            )
-        out += self._summarize_iter()
-        return out

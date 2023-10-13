@@ -113,9 +113,6 @@ DEFAULT_OPTIMIZER_ENABLED = bool(
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
-# Set this to True to use the legacy iter_batches codepath prior to 2.4.
-DEFAULT_USE_LEGACY_ITER_BATCHES = False
-
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
 
@@ -173,7 +170,6 @@ class DataContext:
         optimizer_enabled: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
-        use_legacy_iter_batches: bool,
         enable_progress_bars: bool,
         file_metadata_shuffler: str,
         enable_get_object_locations_for_metrics: bool,
@@ -208,7 +204,6 @@ class DataContext:
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
-        self.use_legacy_iter_batches = use_legacy_iter_batches
         self.enable_progress_bars = enable_progress_bars
         self.file_metadata_shuffler = file_metadata_shuffler
         self.enable_get_object_locations_for_metrics = (
@@ -261,7 +256,6 @@ class DataContext:
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
                     execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
-                    use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                     file_metadata_shuffler=DEFAULT_FILE_METADATA_SHUFFLER,
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501

@@ -1,7 +1,9 @@
 flaky_tests:
+  - //python/ray/tests:test_actor_advanced
   - //python/ray/tests:test_actor_cancel
   - //python/ray/tests:test_gcs_fault_tolerance
   - //python/ray/tests:test_object_manager
+  - //python/ray/tests:test_placement_group
   - //python/ray/tests:test_placement_group_3
   - //python/ray/tests:test_placement_group_5
   - //python/ray/tests:test_plasma_unlimited
@@ -10,5 +12,4 @@ flaky_tests:
   - //python/ray/tests:test_scheduling_performance
   - //python/ray/tests:test_threaded_actor
   - //python/ray/tests:test_unhandled_error
-  - //python/ray/tests:test_actor_bounded_threads
   - //python/ray/tests:test_state_api_log

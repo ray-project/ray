@@ -4,7 +4,6 @@ import marshal
 import os
 import pickle
 import time
-from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
@@ -59,6 +58,7 @@ from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
+    DeploymentArgs,
     DeploymentRoute,
     DeploymentRouteList,
 )
@@ -115,8 +115,6 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        detached: bool = False,
-        _disable_proxy: bool = False,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -149,23 +147,16 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
-        # Dictionary of deployment_name -> proxy_name -> queue length.
-        self.deployment_stats = defaultdict(lambda: defaultdict(dict))
-
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
 
-        if _disable_proxy:
-            self.proxy_state_manager = None
-        else:
-            self.proxy_state_manager = ProxyStateManager(
-                controller_name,
-                detached,
-                http_config,
-                self._controller_node_id,
-                self.cluster_node_info_cache,
-                grpc_options,
-            )
+        self.proxy_state_manager = ProxyStateManager(
+            controller_name,
+            http_config,
+            self._controller_node_id,
+            self.cluster_node_info_cache,
+            grpc_options,
+        )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
@@ -180,7 +171,6 @@ class ServeController:
 
         self.deployment_state_manager = DeploymentStateManager(
             controller_name,
-            detached,
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
@@ -592,7 +582,6 @@ class ServeController:
         route_prefix: Optional[str],
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
-        is_driver_deployment: Optional[bool] = False,
         # TODO(edoakes): this is a hack because the deployment_language doesn't seem
         # to get set properly from Java.
         is_deployed_from_python: bool = False,
@@ -610,7 +599,6 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             route_prefix=route_prefix,
             docs_path=docs_path,
-            is_driver_deployment=is_driver_deployment,
             app_name="",
         )
 
@@ -632,18 +620,39 @@ class ServeController:
 
         return updating
 
-    def deploy_application(self, name: str, deployment_args_list: List[Dict]) -> None:
+    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwrriten.
 
         Args:
             name: Application name.
-            deployment_args_list: List of deployment infomation, each item in the list
-                contains all the information for the single deployment.
+            deployment_args_list: List of serialized deployment infomation,
+                where each item in the list is bytes representing the serialized
+                protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
+                information for the single deployment.
         """
-
-        self.application_state_manager.apply_deployment_args(name, deployment_args_list)
+        deployment_args_deserialized = []
+        for deployment_args_bytes in deployment_args_list:
+            deployment_args = DeploymentArgs.FromString(deployment_args_bytes)
+            deployment_args_deserialized.append(
+                {
+                    "deployment_name": deployment_args.deployment_name,
+                    "deployment_config_proto_bytes": deployment_args.deployment_config,
+                    "replica_config_proto_bytes": deployment_args.replica_config,
+                    "deployer_job_id": deployment_args.deployer_job_id,
+                    "route_prefix": deployment_args.route_prefix
+                    if deployment_args.HasField("route_prefix")
+                    else None,
+                    "ingress": deployment_args.ingress,
+                    "docs_path": deployment_args.docs_path
+                    if deployment_args.HasField("docs_path")
+                    else None,
+                }
+            )
+        self.application_state_manager.apply_deployment_args(
+            name, deployment_args_deserialized
+        )
 
     def deploy_config(
         self,
@@ -785,30 +794,20 @@ class ServeController:
         return deployment_route.SerializeToString()
 
     def list_deployments_internal(
-        self, include_deleted: Optional[bool] = False
+        self,
     ) -> Dict[DeploymentID, Tuple[DeploymentInfo, str]]:
         """Gets the current information about all deployments.
-
-        Args:
-            include_deleted: Whether to include information about
-                deployments that have been deleted.
 
         Returns:
             Dict(deployment_id, (DeploymentInfo, route))
         """
         return {
             id: (info, self.endpoint_state.get_endpoint_route(id))
-            for id, info in self.deployment_state_manager.get_deployment_infos(
-                include_deleted=include_deleted
-            ).items()
+            for id, info in self.deployment_state_manager.get_deployment_infos().items()
         }
 
-    def list_deployments_v1(self, include_deleted: Optional[bool] = False) -> bytes:
+    def list_deployments_v1(self) -> bytes:
         """Gets the current information about all 1.x deployments.
-
-        Args:
-            include_deleted: Whether to include information about
-                deployments that have been deleted.
 
         Returns:
             DeploymentRouteList's protobuf serialized bytes
@@ -817,7 +816,7 @@ class ServeController:
         for deployment_id, (
             deployment_info,
             route_prefix,
-        ) in self.list_deployments_internal(include_deleted=include_deleted).items():
+        ) in self.list_deployments_internal().items():
             # Only list 1.x deployments, which should have app=""
             if deployment_id.app:
                 continue
@@ -1046,8 +1045,6 @@ class ServeControllerAvatar:
     def __init__(
         self,
         controller_name: str,
-        detached: bool = False,
-        dedicated_cpu: bool = False,
         http_proxy_port: int = 8000,
     ):
         try:
@@ -1058,9 +1055,9 @@ class ServeControllerAvatar:
             http_config = HTTPOptions()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
-                num_cpus=1 if dedicated_cpu else 0,
+                num_cpus=0,
                 name=controller_name,
-                lifetime="detached" if detached else None,
+                lifetime="detached",
                 max_restarts=-1,
                 max_task_retries=-1,
                 resources={HEAD_NODE_RESOURCE_NAME: 0.001},
@@ -1069,7 +1066,6 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
-                detached=detached,
             )
 
     def check_alive(self) -> None:

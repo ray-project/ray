@@ -1,4 +1,3 @@
-import atexit
 import logging
 import random
 import time
@@ -28,7 +27,11 @@ from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
+from ray.serve.generated.serve_pb2 import (
+    DeploymentArgs,
+    DeploymentRoute,
+    DeploymentRouteList,
+)
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
@@ -54,11 +57,9 @@ class ServeControllerClient:
         self,
         controller: ActorHandle,
         controller_name: str,
-        detached: bool = False,
     ):
         self._controller: ServeController = controller
         self._controller_name = controller_name
-        self._detached = detached
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())
@@ -67,16 +68,6 @@ class ServeControllerClient:
         self.handle_cache = dict()
         self._evicted_handle_keys = set()
 
-        # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
-        # when the interpreter is exiting so we can't rely on __del__ (it
-        # throws a nasty stacktrace).
-        if not self._detached:
-
-            def shutdown_serve_client():
-                self.shutdown()
-
-            atexit.register(shutdown_serve_client)
-
     @property
     def root_url(self):
         return self._root_url
@@ -84,15 +75,6 @@ class ServeControllerClient:
     @property
     def http_config(self):
         return self._http_config
-
-    def __del__(self):
-        if not self._detached:
-            logger.debug(
-                "Shutting down Ray Serve because client went out of "
-                "scope. To prevent this, either keep a reference to "
-                "the client or use serve.start(detached=True)."
-            )
-            self.shutdown()
 
     def __reduce__(self):
         raise RayServeException(("Ray Serve client cannot be serialized."))
@@ -309,18 +291,32 @@ class ServeControllerClient:
     ):
         deployment_args_list = []
         for deployment in deployments:
-            deployment_args_list.append(
-                get_deploy_args(
-                    deployment["name"],
-                    replica_config=deployment["replica_config"],
-                    ingress=deployment["ingress"],
-                    deployment_config=deployment["deployment_config"],
-                    version=deployment["version"],
-                    route_prefix=deployment["route_prefix"],
-                    is_driver_deployment=deployment["is_driver_deployment"],
-                    docs_path=deployment["docs_path"],
-                )
+            deployment_args = get_deploy_args(
+                deployment["name"],
+                replica_config=deployment["replica_config"],
+                ingress=deployment["ingress"],
+                deployment_config=deployment["deployment_config"],
+                version=deployment["version"],
+                route_prefix=deployment["route_prefix"],
+                docs_path=deployment["docs_path"],
             )
+
+            deployment_args_proto = DeploymentArgs()
+            deployment_args_proto.deployment_name = deployment_args["deployment_name"]
+            deployment_args_proto.deployment_config = deployment_args[
+                "deployment_config_proto_bytes"
+            ]
+            deployment_args_proto.replica_config = deployment_args[
+                "replica_config_proto_bytes"
+            ]
+            deployment_args_proto.deployer_job_id = deployment_args["deployer_job_id"]
+            if deployment_args["route_prefix"]:
+                deployment_args_proto.route_prefix = deployment_args["route_prefix"]
+            deployment_args_proto.ingress = deployment_args["ingress"]
+            if deployment_args["docs_path"]:
+                deployment_args_proto.docs_path = deployment_args["docs_path"]
+
+            deployment_args_list.append(deployment_args_proto.SerializeToString())
 
         ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
         if _blocking:

@@ -1,11 +1,10 @@
 import warnings
-from ray.util.annotations import Deprecated
 
+from ._deprecation_msg import deprecation_msg
 from ray.train.huggingface.transformers.transformers_predictor import (
     TransformersPredictor,
 )
-
-from ._deprecation_msg import deprecation_msg
+from ray.util.annotations import Deprecated
 
 
 @Deprecated(message=deprecation_msg)

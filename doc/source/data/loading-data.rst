@@ -771,82 +771,80 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
     .. tab-item:: Databricks
 
-        To read from Databricks, install the
-        `Databricks SQL Connector for Python <https://docs.databricks.com/dev-tools/python-sql-connector.html>`_.
+        To read from Databricks, set the ``DATABRICKS_HOST`` environment variable to
+        your Databricks warehouse access token.
 
         .. code-block:: console
 
-            pip install databricks-sql-connector
+            export DATABRICKS_TOKEN=...
 
+        If you're running your program on the Databricks runtime, also set the 
+        ``DATABRICKS_HOST`` environment variable.
 
-        Then, define your connection logic and read from the Databricks SQL warehouse.
+        .. code-block:: console
+
+            export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
+
+        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks 
+        SQL warehouse.
 
         .. testcode::
             :skipif: True
 
-            from databricks import sql
-
             import ray
 
-            def create_connection():
-                return sql.connect(
-                    server_hostname="dbc-1016e3a4-d292.cloud.databricks.com",
-                    http_path="/sql/1.0/warehouses/a918da1fc0b7fed0",
-                    access_token=...,
-
-
-            # Get all movies
-            dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
-            # Get movies after the year 1980
-            dataset = ray.data.read_sql(
-                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-            )
-            # Get the number of movies per year
-            dataset = ray.data.read_sql(
-                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+            dataset = ray.data.read_databricks_tables(
+                warehouse_id='a885ad08b64951ad',  # Databricks SQL warehouse ID
+                catalog='catalog_1',  # Unity catalog name
+                schema='db_1',  # Schema name
+                query="SELECT title, score FROM movie WHERE year >= 1980",
             )
 
-    .. tab-item:: BigQuery
+.. _reading_bigquery:
 
-        To read from BigQuery, install the
-        `Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_.
-        This package includes a DB API2-compliant database connector.
+Reading BigQuery
+~~~~~~~~~~~~~~~~
 
-        .. code-block:: console
+To read from BigQuery, install the
+`Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_ and the `Python Client for Google BigQueryStorage <https://cloud.google.com/python/docs/reference/bigquerystorage/latest>`_.
 
-            pip install google-cloud-bigquery
+.. code-block:: console
 
-        Then, define your connection logic and query the dataset.
+    pip install google-cloud-bigquery
+    pip install google-cloud-bigquery-storage
 
-        .. testcode::
-            :skipif: True
+To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the project id, dataset, and query (if applicable).
 
-            from google.cloud import bigquery
-            from google.cloud.bigquery import dbapi
+.. testcode::
+    :skipif: True
 
-            import ray
+    import ray
 
-            def create_connection():
-                client = bigquery.Client(...)
-                return dbapi.Connection(client)
+    # Read the entire dataset (do not specify query)
+    ds = ray.data.read_bigquery(
+        project_id="my_gcloud_project_id",
+        dataset="bigquery-public-data.ml_datasets.iris",
+    )
 
-            # Get all movies
-            dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
-            # Get movies after the year 1980
-            dataset = ray.data.read_sql(
-                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-            )
-            # Get the number of movies per year
-            dataset = ray.data.read_sql(
-                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-            )
+    # Read from a SQL query of the dataset (do not specify dataset)
+    ds = ray.data.read_bigquery(
+        project_id="my_gcloud_project_id",
+        query = "SELECT * FROM `bigquery-public-data.ml_datasets.iris` LIMIT 50",
+    )
+
+    # Write back to BigQuery
+    ds.write_bigquery(
+        project_id="my_gcloud_project_id",
+        dataset="destination_dataset.destination_table",
+    )
+
 
 .. _reading_mongodb:
 
 Reading MongoDB
 ~~~~~~~~~~~~~~~
 
-To read data from MongoDB, call :func:`~ray.data.read_mongo` and specify the
+To read data from MongoDB, call :func:`~ray.data.read_mongo` and specify
 the source URI, database, and collection. You also need to specify a pipeline to
 run against the collection.
 
@@ -956,5 +954,6 @@ hence the more opportunity for parallel execution.
    :width: 650px
    :align: center
 
-This default parallelism can be overridden via the ``parallelism`` argument; see the
-:ref:`performance guide <data_performance_tips>`  for more information on how to tune this read parallelism.
+You can override the default parallelism by setting the ``parallelism`` argument. For 
+more information on how to tune the read parallelism, see 
+:ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.

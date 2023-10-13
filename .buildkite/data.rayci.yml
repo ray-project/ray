@@ -1,8 +1,11 @@
 group: data tests
 steps:
   - label: ":database: data: arrow 6 tests"
+    tags: 
+      - python
+      - data
     instance_type: medium
-    parallelism: 3
+    parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
@@ -14,8 +17,11 @@ steps:
     job_env: forge
 
   - label: ":database: data: arrow 12 tests"
+    tags: 
+      - python
+      - data
     instance_type: medium
-    parallelism: 3
+    parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
@@ -27,8 +33,11 @@ steps:
     job_env: forge
 
   - label: ":database: data: arrow nightly tests"
+    tags: 
+      - python
+      - data
     instance_type: medium
-    parallelism: 3
+    parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
@@ -40,6 +49,9 @@ steps:
     job_env: forge
 
   - label: ":database: data: flaky tests"
+    tags: 
+      - python
+      - data
     instance_type: medium
     soft_fail: true
     commands:

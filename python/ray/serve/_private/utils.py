@@ -10,11 +10,11 @@ import string
 import threading
 import time
 import traceback
+from abc import ABC, abstractmethod
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import __main__
 import fastapi.encoders
 import numpy as np
 import pydantic
@@ -38,7 +38,6 @@ try:
 except ImportError:
     pd = None
 
-ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 MESSAGE_PACK_OFFSET = 9
 
 
@@ -206,50 +205,6 @@ def merge_dict(dict1, dict2):
     for key in dict1.keys() | dict2.keys():
         result[key] = sum([e.get(key, 0) for e in (dict1, dict2)])
     return result
-
-
-def get_deployment_import_path(
-    deployment, replace_main=False, enforce_importable=False
-):
-    """
-    Gets the import path for deployment's func_or_class.
-
-    deployment: A deployment object whose import path should be returned
-    replace_main: If this is True, the function will try to replace __main__
-        with __main__'s file name if the deployment's module is __main__
-    """
-
-    body = deployment.func_or_class
-
-    if isinstance(body, str):
-        # deployment's func_or_class is already an import path
-        return body
-    elif hasattr(body, "__ray_actor_class__"):
-        # If ActorClass, get the class or function inside
-        body = body.__ray_actor_class__
-
-    import_path = f"{body.__module__}.{body.__qualname__}"
-
-    if enforce_importable and "<locals>" in body.__qualname__:
-        raise RuntimeError(
-            "Deployment definitions must be importable to build the Serve app, "
-            f"but deployment '{deployment.name}' is inline defined or returned "
-            "from another function. Please restructure your code so that "
-            f"'{import_path}' can be imported (i.e., put it in a module)."
-        )
-
-    if replace_main:
-        # Replaces __main__ with its file name. E.g. suppose the import path
-        # is __main__.classname and classname is defined in filename.py.
-        # Its import path becomes filename.classname.
-
-        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
-            file_name = os.path.basename(__main__.__file__)
-            extensionless_file_name = file_name.split(".")[0]
-            attribute_name = import_path.split(".")[-1]
-            import_path = f"{extensionless_file_name}.{attribute_name}"
-
-    return import_path
 
 
 def parse_import_path(import_path: str):
@@ -649,14 +604,29 @@ def get_all_live_placement_group_names() -> List[str]:
     return live_pg_names
 
 
-def in_ray_driver_process() -> bool:
-    """Returns True if called in the Ray driver, False otherwise.
+def get_current_actor_id() -> str:
+    """Gets the ID of the calling actor.
+
+    If this is called in a driver, returns "DRIVER."
+
+    If otherwise called outside of an actor, returns an empty string.
 
     This function hangs when GCS is down due to the `ray.get_runtime_context()`
     call.
     """
 
-    return ray.get_runtime_context().worker.mode in [SCRIPT_MODE, LOCAL_MODE]
+    worker_mode = ray.get_runtime_context().worker.mode
+    if worker_mode in {SCRIPT_MODE, LOCAL_MODE}:
+        return "DRIVER"
+    else:
+        try:
+            actor_id = ray.get_runtime_context().get_actor_id()
+            if actor_id is None:
+                return ""
+            else:
+                return actor_id
+        except Exception:
+            return ""
 
 
 def is_running_in_asyncio_loop() -> bool:
@@ -665,3 +635,15 @@ def is_running_in_asyncio_loop() -> bool:
         return True
     except RuntimeError:
         return False
+
+
+class TimerBase(ABC):
+    @abstractmethod
+    def time(self) -> float:
+        """Return the current time."""
+        raise NotImplementedError
+
+
+class Timer(TimerBase):
+    def time(self) -> float:
+        return time.time()

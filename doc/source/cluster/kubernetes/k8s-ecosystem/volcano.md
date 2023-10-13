@@ -45,7 +45,7 @@ The RayCluster custom resource must include the `ray.io/scheduler-name: volcano`
 ```shell
 # Path: kuberay/ray-operator/config/samples
 # Includes label `ray.io/scheduler-name: volcano` in the metadata.labels
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0-rc.0/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
 kubectl apply -f ray-cluster.volcano-scheduler.yaml
 
 # Check the RayCluster
@@ -113,7 +113,7 @@ Next, create a RayCluster with a head node (1 CPU + 2Gi of RAM) and two workers 
 ```shell
 # Path: kuberay/ray-operator/config/samples
 # Includes  the `ray.io/scheduler-name: volcano` and `volcano.sh/queue-name: kuberay-test-queue` labels in the metadata.labels
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0-rc.0/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
 kubectl apply -f ray-cluster.volcano-scheduler-queue.yaml
 ```
 

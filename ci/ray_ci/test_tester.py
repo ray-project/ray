@@ -37,7 +37,6 @@ def test_get_test_targets() -> None:
             "//python/ray/tests:good_test_02",
             "//python/ray/tests:good_test_03",
             "//python/ray/tests:flaky_test_01",
-            "",
         ]
         with mock.patch(
             "subprocess.check_output",
@@ -46,24 +45,44 @@ def test_get_test_targets() -> None:
             "ci.ray_ci.tester_container.TesterContainer.install_ray",
             return_value=None,
         ):
+            assert set(
+                _get_test_targets(
+                    TesterContainer("core"),
+                    "targets",
+                    "core",
+                    yaml_dir=tmp,
+                )
+            ) == {
+                "//python/ray/tests:good_test_01",
+                "//python/ray/tests:good_test_02",
+                "//python/ray/tests:good_test_03",
+            }
+
             assert _get_test_targets(
                 TesterContainer("core"),
                 "targets",
                 "core",
                 yaml_dir=tmp,
+                get_flaky_tests=True,
             ) == [
-                "//python/ray/tests:good_test_01",
-                "//python/ray/tests:good_test_02",
-                "//python/ray/tests:good_test_03",
+                "//python/ray/tests:flaky_test_01",
             ]
 
 
 def test_get_all_test_query() -> None:
-    assert _get_all_test_query(["a", "b"], "core", "") == (
+    assert _get_all_test_query(["a", "b"], "core") == (
         "attr(tags, 'team:core\\\\b', tests(a) union tests(b))"
     )
-    assert _get_all_test_query(["a"], "core", "tag") == (
+    assert _get_all_test_query(["a"], "core", except_tags="tag") == (
         "attr(tags, 'team:core\\\\b', tests(a)) except (attr(tags, tag, tests(a)))"
+    )
+    assert _get_all_test_query(["a"], "core", only_tags="tag") == (
+        "attr(tags, 'team:core\\\\b', tests(a)) intersect (attr(tags, tag, tests(a)))"
+    )
+    assert _get_all_test_query(["a"], "core", except_tags="tag1", only_tags="tag2") == (
+        "attr(tags, 'team:core\\\\b', tests(a)) "
+        "intersect (attr(tags, tag2, tests(a))) "
+        "except (attr(tags, tag1, tests(a)))"
     )
 
 
