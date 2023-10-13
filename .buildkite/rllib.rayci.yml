@@ -77,6 +77,17 @@ steps:
     depends_on: rllibbuild
     job_env: forge
 
+  - label: ":brain: rllib: multi-gpu tests"
+    tags: rllib
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --parallelism-per-worker 2
+        --build-name rllibgpubuild
+        --only-tags multi_gpu
+    depends_on: rllibgpubuild
+    job_env: forge
+
   - label: ":brain: rllib: rlmodule tests"
     tags: rllib_directly
     instance_type: large
