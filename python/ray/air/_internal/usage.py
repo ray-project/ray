@@ -22,7 +22,6 @@ AIR_TRAINERS = {
     "HorovodTrainer",
     "TransformersTrainer",
     "LightGBMTrainer",
-    "LightningTrainer",
     "MosaicTrainer",
     "SklearnTrainer",
     "TensorflowTrainer",
