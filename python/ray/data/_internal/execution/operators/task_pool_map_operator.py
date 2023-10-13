@@ -46,7 +46,7 @@ class TaskPoolMapOperator(MapOperator):
         input_blocks = [block for block, _ in bundle.blocks]
         ctx = TaskContext(task_idx=self._next_data_task_idx)
         gen = map_task.options(
-            **self._get_runtime_ray_remote_args(input_bundle=bundle), name=self.name
+            **self._get_runtime_ray_remote_args(input_bundle=bundle), _streaming_generator_backpressure_size_bytes=100*1024*1024, name=self.name
         ).remote(
             self._map_transformer_ref,
             DataContext.get_current(),

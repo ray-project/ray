@@ -332,8 +332,9 @@ def process_completed_tasks(topology: Topology) -> None:
             timeout=0.1,
         )
         for ref in ready:
-            inqueue_size = topology[waitables_to_ops[ref]].inqueue_memory_usage()
-            active_tasks[ref].on_waitable_ready(inqueue_size)
+            outqueue_size = topology[waitables_to_ops[ref]].outqueue_memory_usage()
+            print(f"{waitables_to_ops[ref]} waitable_ready {outqueue_size / 1024 / 1024:.2f} MB")
+            active_tasks[ref].on_waitable_ready(outqueue_size)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
