@@ -147,9 +147,9 @@ def linear_train_func(accelerator: Accelerator, config):
 
 
 @pytest.mark.parametrize("use_gpu", [True, False])
-def test_accelerate_base(ray_2_node_2_gpu, tmpdir, use_gpu):
+def test_accelerate_base(ray_2_node_2_gpu, use_gpu):
     def train_func(config):
-        accelerator = Accelerator()
+        accelerator = Accelerator(cpu=not use_gpu)
         assert accelerator.device == train.torch.get_device()
         assert accelerator.process_index == train.get_context().get_world_rank()
         if accelerator.device.type != "cpu":
@@ -172,7 +172,7 @@ def test_accelerate_base(ray_2_node_2_gpu, tmpdir, use_gpu):
     trainer.fit()
 
 
-def test_accelerate_deepspeed(ray_2_node_2_gpu, tmpdir):
+def test_accelerate_deepspeed(ray_2_node_2_gpu):
     from accelerate import DeepSpeedPlugin
 
     def train_func(config):
@@ -202,7 +202,7 @@ def test_accelerate_deepspeed(ray_2_node_2_gpu, tmpdir):
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_accelerate_e2e(ray_start_4_cpus, num_workers):
     def train_func():
-        accelerator = Accelerator()
+        accelerator = Accelerator(cpu=True)
         assert accelerator.device == train.torch.get_device()
         assert accelerator.process_index == train.get_context().get_world_rank()
         model = torch.nn.Linear(3, 1)
