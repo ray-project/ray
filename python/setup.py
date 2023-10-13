@@ -1,6 +1,5 @@
 import argparse
 import errno
-import glob
 import io
 import logging
 import os
@@ -10,13 +9,10 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
-import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 import warnings
-import zipfile
 from enum import Enum
 from itertools import chain
 

@@ -22,7 +22,6 @@ ServerUnpickler loads stubs from the server into their client counterparts.
 """
 
 import io
-import sys
 
 from typing import NamedTuple
 from typing import Any

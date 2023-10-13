@@ -1,5 +1,4 @@
 import io
-import sys
 from typing import Any, Dict, Generic, List, Tuple, Type, TypeVar, Union
 
 import pickle  # noqa: F401
