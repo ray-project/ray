@@ -907,9 +907,12 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return worker.get_accelerator_ids_for_accelerator_resource(
-        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-    )
+    return [
+        int(i)
+        for i in worker.get_accelerator_ids_for_accelerator_resource(
+            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+        )
+    ]
 
 
 @Deprecated(
