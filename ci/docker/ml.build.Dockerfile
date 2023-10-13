@@ -1,5 +1,7 @@
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml
-FROM $DOCKER_IMAGE_BASE_BUILD
+ARG BASE_BUILD
+FROM cr.ray.io/rayproject/$BASE_BUILD
+
+ARG BASE_BUILD
 
 ARG RAYCI_IS_GPU_BUILD
 
