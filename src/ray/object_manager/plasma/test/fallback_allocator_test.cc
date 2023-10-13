@@ -27,6 +27,49 @@ std::string CreateTestDir() {
   create_directories(directory);
   return directory.string();
 }
+
+std::string executeCommand(const std::string &cmd) {
+  std::string result;
+  char buffer[128];
+  FILE *pipe = popen(cmd.data(), "r");
+  if (pipe == nullptr) {
+    return "Error";
+  }
+
+  while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+    result += buffer;
+  }
+
+  pclose(pipe);
+  return result;
+}
+
+int getNumberOfMappedFiles() {
+#ifdef __linux__
+  int pid = getpid();
+  std::ifstream proc_maps("/proc/" + std::to_string(pid) + "/maps");
+  if (!proc_maps.is_open()) {
+    std::cerr << "Failed to open /proc/" << pid << "/maps" << std::endl;
+    return -1;
+  }
+
+  int count = 0;
+  std::string line;
+  while (std::getline(proc_maps, line)) {
+    count++;
+  }
+  return count;
+#elif defined(__APPLE__)
+  std::string command = "vmmap --summary " + std::to_string(getpid()) +
+                        " | grep \"mapped file\" | awk '{print $NF}'";
+  std::string result = executeCommand(command);
+  return std::atoi(result.data());
+#else
+  std::cerr << "Platform not supported" << std::endl;
+  return -1;
+#endif
+}
+
 };  // namespace
 
 TEST(FallbackPlasmaAllocatorTest, FallbackPassThroughTest) {
@@ -120,9 +163,72 @@ TEST(FallbackPlasmaAllocatorTest, FallbackPassThroughTest) {
     // now we can allocate from primary.
     auto new_allocation = allocator.Allocate(kMB);
     EXPECT_TRUE(new_allocation.has_value());
+    allocations.push_back(std::move(new_allocation.value()));
     EXPECT_EQ(3 * kMB, allocator.Allocated());
     EXPECT_EQ(1 * kMB, allocator.FallbackAllocated());
   }
+  // clean up
+  RAY_LOG(INFO) << "cleaning up. stats: allocated " << allocator.Allocated()
+                << ", fallback allocated " << allocator.FallbackAllocated()
+                << ", allocations.size() == " << allocations.size()
+                << ", fallback_allocations.size() == " << fallback_allocations.size();
+  for (auto &allocation : allocations) {
+    allocator.Free(std::move(allocation));
+  }
+  allocations.clear();
+  for (auto &allocation : fallback_allocations) {
+    allocator.Free(std::move(allocation));
+  }
+  fallback_allocations.clear();
+
+  EXPECT_EQ(0, allocator.Allocated());
+  EXPECT_EQ(0, allocator.FallbackAllocated());
+}
+
+TEST(FallbackPlasmaAllocatorTest, FallbackFilesAreClosedAfterFree) {
+  auto plasma_directory = CreateTestDir();
+  auto fallback_directory = CreateTestDir();
+  int64_t kLimit = 256 * sizeof(size_t) + 2 * kMB;
+  PlasmaAllocator allocator(plasma_directory,
+                            fallback_directory,
+                            /* hugepage_enabled */ false,
+                            kLimit);
+
+  EXPECT_EQ(kLimit, allocator.GetFootprintLimit());
+
+  std::vector<Allocation> allocations;
+  std::vector<Allocation> fallback_allocations;
+
+  // First fill up the allocator up to kLimit.
+  for (int i = 0; i < 2; i++) {
+    auto allocation = allocator.Allocate(kMB);
+    EXPECT_TRUE(allocation.has_value());
+    EXPECT_FALSE(allocation->fallback_allocated);
+    allocations.push_back(std::move(allocation.value()));
+  }
+
+  EXPECT_EQ(1, getNumberOfMappedFiles()) << "expect 1 mmaped file = 1 major one";
+
+  // Fallback-allocates 2 blocks
+  for (int i = 0; i < 2; i++) {
+    auto allocation = allocator.FallbackAllocate(kMB);
+    EXPECT_TRUE(allocation.has_value());
+    EXPECT_TRUE(allocation->fallback_allocated);
+    fallback_allocations.push_back(std::move(allocation.value()));
+  }
+  EXPECT_EQ(3, getNumberOfMappedFiles())
+      << "expect 3 mmaped file = 1 major one and 2 fallback allocations";
+
+  // clean up
+  for (auto &allocation : allocations) {
+    allocator.Free(std::move(allocation));
+  }
+  allocations.clear();
+  for (auto &allocation : fallback_allocations) {
+    allocator.Free(std::move(allocation));
+  }
+  fallback_allocations.clear();
+  EXPECT_EQ(1, getNumberOfMappedFiles()) << "expect 1 mmaped file = 1 major one";
 }
 
 }  // namespace plasma
