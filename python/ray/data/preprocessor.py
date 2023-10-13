@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
     from ray.air.data_batch_type import DataBatchType
-    from ray.data import Dataset, DatasetPipeline
+    from ray.data import Dataset
 
 
 @PublicAPI(stability="beta")
@@ -197,31 +197,6 @@ class Preprocessor(abc.ABC):
             )
         return self._transform_batch(data)
 
-    def _transform_pipeline(self, pipeline: "DatasetPipeline") -> "DatasetPipeline":
-        """Transform the given DatasetPipeline.
-
-        Args:
-            pipeline: The pipeline to transform.
-
-        Returns:
-            A DatasetPipeline with this preprocessor's transformation added as an
-                operation to the pipeline.
-        """
-
-        fit_status = self.fit_status()
-        if fit_status not in (
-            Preprocessor.FitStatus.NOT_FITTABLE,
-            Preprocessor.FitStatus.FITTED,
-        ):
-            raise RuntimeError(
-                "Streaming/pipelined ingest only works with "
-                "Preprocessors that do not need to be fit on the entire dataset. "
-                "It is not possible to fit on Datasets "
-                "in a streaming fashion."
-            )
-
-        return self._transform(pipeline)
-
     @DeveloperAPI
     def _fit(self, ds: "Dataset") -> "Preprocessor":
         """Sub-classes should override this instead of fit()."""
@@ -256,9 +231,7 @@ class Preprocessor(abc.ABC):
                 "for Preprocessor transforms."
             )
 
-    def _transform(
-        self, ds: Union["Dataset", "DatasetPipeline"]
-    ) -> Union["Dataset", "DatasetPipeline"]:
+    def _transform(self, ds: "Dataset") -> "Dataset":
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
         transform_type = self._determine_transform_to_use()

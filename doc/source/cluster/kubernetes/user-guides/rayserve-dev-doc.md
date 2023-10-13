@@ -6,7 +6,7 @@ In this tutorial, you will learn how to effectively debug your Ray Serve scripts
 Many RayService issues are related to the Ray Serve Python scripts, so it is important to ensure the correctness of the scripts before deploying them to a RayService.
 This tutorial will show you how to develop a Ray Serve Python script for a MobileNet image classifier on a RayCluster.
 You can deploy and serve the classifier on your local Kind cluster without requiring a GPU.
-Refer to [ray-service.mobilenet.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml) and [mobilenet-rayservice.md](kuberay-mobilenet-rayservice-example) for more details.
+Refer to [ray-service.mobilenet.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0-rc.0/ray-operator/config/samples/ray-service.mobilenet.yaml) and [mobilenet-rayservice.md](kuberay-mobilenet-rayservice-example) for more details.
 
 
 # Step 1: Install a KubeRay cluster
@@ -128,4 +128,4 @@ python3 mobilenet_req.py
 
 In the previous steps, we found that the Ray Serve application can be successfully launched using the Ray image `rayproject/ray-ml:${RAY_VERSION}` and the {ref}`runtime environments <runtime-environments>` `python-multipart==0.0.6`.
 Therefore, we can create a RayService YAML file with the same Ray image and runtime environment.
-For more details, please refer to [ray-service.mobilenet.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml) and [mobilenet-rayservice.md](kuberay-mobilenet-rayservice-example).
+For more details, please refer to [ray-service.mobilenet.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0-rc.0/ray-operator/config/samples/ray-service.mobilenet.yaml) and [mobilenet-rayservice.md](kuberay-mobilenet-rayservice-example).
