@@ -368,7 +368,11 @@ class ApplicationState:
                 ray.cancel(self._build_app_task_info.obj_ref)
 
             # Halt reconciliation of target deployments
-            self._set_target_state_deployment_infos(None)
+            self._set_target_state(
+                deployment_infos=None,
+                code_version=None,
+                target_config=self._target_state.config,
+            )
 
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")
