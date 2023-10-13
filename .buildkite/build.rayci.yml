@@ -1,6 +1,7 @@
 group: build
 steps:
   - label: ":tapioca: build: wheel {{matrix}}"
+    tags: linux_wheels
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}}
@@ -15,6 +16,7 @@ steps:
     job_env: forge
 
   - label: ":tapioca: build: jar"
+    tags: java
     instance_type: medium
     commands:
       - ./ci/build/build-manylinux-ray.sh
