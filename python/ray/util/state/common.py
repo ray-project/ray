@@ -527,9 +527,10 @@ class NodeState(StateSchema):
     )
 
 
-# NOTE:
-# Declaring this as dataclass would make __init__ not being called properly.
-class JobState(StateSchema, JobDetails):
+# NOTE: Declaring this as dataclass would make __init__ not being called properly.
+# NOTE: `JobDetails` will be `None` in the minimal install because Pydantic is not
+#       installed. Inheriting from `None` raises an exception.
+class JobState(StateSchema, JobDetails if JobDetails is not None else object):
     """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
     def __init__(self, **kwargs):
