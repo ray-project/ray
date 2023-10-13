@@ -10,10 +10,7 @@ from ray.data.preprocessor import Preprocessor
 from ray.train.constants import TRAIN_DATASET_KEY  # noqa
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 
 @PublicAPI(stability="stable")

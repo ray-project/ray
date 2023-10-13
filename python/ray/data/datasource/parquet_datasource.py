@@ -23,10 +23,7 @@ from ray.data.datasource.file_meta_provider import (
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.util.annotations import PublicAPI
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 if TYPE_CHECKING:
     import pyarrow

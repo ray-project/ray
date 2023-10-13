@@ -8,10 +8,7 @@ from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import Deprecated
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 if TYPE_CHECKING:
     import pandas

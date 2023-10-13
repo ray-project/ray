@@ -45,10 +45,7 @@ from ray.data.datasource.partitioning import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 if TYPE_CHECKING:
     import pandas as pd

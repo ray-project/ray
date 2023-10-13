@@ -8,10 +8,7 @@ from ray.data.dataset import Dataset, MaterializedDataset
 
 from benchmark import Benchmark
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 
 def map_batches(
