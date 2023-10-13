@@ -238,7 +238,7 @@ class _StatsActor:
         self.cpu_usage.set(stats[DataMetric.CPU_USAGE], tags)
         self.gpu_usage.set(stats[DataMetric.GPU_USAGE], tags)
 
-    def remove_metrics(self, tags: Dict[str, str]):
+    def clear_metrics(self, tags: Dict[str, str]):
         self.bytes_spilled.set(0, tags)
         self.bytes_allocated.set(0, tags)
         self.bytes_freed.set(0, tags)
@@ -293,7 +293,7 @@ def update_stats_actor_metrics(stats: Dict[DataMetric, Any], tags: Dict[str, str
 def clear_stats_actor_metrics(tags: Dict[str, str]):
     global _stats_actor
     _check_cluster_stats_actor()
-    _stats_actor.remove_metrics.remote(tags)
+    _stats_actor.clear_metrics.remote(tags)
 
 
 class DatasetStats:
