@@ -3,7 +3,6 @@ import uuid
 from dataclasses import dataclass
 
 import ray
-from ray._private.ray_constants import NEURON_CORES
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend
@@ -17,24 +16,13 @@ class TorchXLAConfig(TorchConfig):
     """
     Configuration for torch XLA setup.
     See https://pytorch.org/xla/release/1.13/index.html for more info.
-
-    Args:
-        runtime: Runtime to use for training. Supported values are "xrt", "pjrt".
-            Currently, only "xrt" is supported.
-        accelerator_type: The accelerator type used to differentiate the XLA backend.
-            Currently, only "neuron_cores" is supported.
-
+    Currently, only "neuron_cores" accelerator (AwsNeuronXLABackend)
+    is supported with xrt runtime.
     """
-
-    runtime: str = "xrt"
-    accelerator_type: str = NEURON_CORES
 
     @property
     def backend_cls(self):
-        if self.accelerator_type == NEURON_CORES:
-            return _TorchAwsNeuronXLABackend
-        else:
-            raise NotImplementedError
+        return _TorchAwsNeuronXLABackend
 
 
 def _kill_xrt_server():
@@ -71,9 +59,9 @@ def _set_xla_env_vars():
 
 def _setup_xla_torch_process_group():
     try:
+        import torch.distributed as dist
         import torch_xla.core.xla_model as xm  # noqa F401
         import torch_xla.distributed.xla_backend  # noqa F401
-        import torch.distributed as dist
 
         dist.init_process_group("xla")
     except ImportError:
@@ -85,12 +73,6 @@ class _TorchAwsNeuronXLABackend(Backend):
 
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchXLAConfig):
         """Logic ran right before training is started."""
-
-        if backend_config.runtime != "xrt":
-            # pjrt is not yet supported in torch-neuronx.
-            raise ValueError(
-                f"Expected runtime to be 'xrt', but got '{backend_config.runtime}'."
-            )
 
         # On previous worker failure, we don't run graceful shutdown on workers.
         # This would leak any running xrt server.
@@ -114,6 +96,8 @@ class _TorchAwsNeuronXLABackend(Backend):
         """
         Configure the environment variables for the worker group.
         And initialize the xla distributed process group.
+        TODO: Current setup only supports homogenous cluster with
+         neuron_cores accelerator and xrt runtime.
         """
         worker_group.execute(_set_xla_env_vars)
         worker_group.execute(_setup_xla_torch_process_group)
