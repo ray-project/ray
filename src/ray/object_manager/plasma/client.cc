@@ -569,6 +569,15 @@ Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
   RAY_CHECK(object_entry != objects_in_use_.end());
   RAY_CHECK(object_entry->second->count == 0);
 
+  // TODO:  hypothesis: each object has its own unique map section, so I just need to
+  // unmap here.
+  // If the hypothesis does not hold, we need to instead do ref counts on the mmap:
+  // - on mmap creation (and mmap Lookup???), increment the refcnt
+  // - here, decrement the refcnt, and release if refcnt == 0.
+  auto mmap_entry = mmap_table_.find(object_entry->second->object.store_fd);
+  RAY_CHECK(mmap_entry != mmap_table_.end());
+  mmap_table_.erase(mmap_entry);
+
   // Remove the entry from the hash table of objects currently in use.
   objects_in_use_.erase(object_id);
   return Status::OK();
