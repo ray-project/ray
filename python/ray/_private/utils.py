@@ -501,9 +501,10 @@ def set_tpu_visible_ids_and_bounds(tpu_chips: List[str]) -> None:
 
 
 def _set_visible_ids(visible_ids: List[str], env_var: str):
-    """Set the environment variable (e.g., CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES,
-     TPU_VISIBLE_CHIPS) passed based on accelerator runtime and will raise an error if
-     the function uses different environment variable.
+    """
+    Set the environment variable (e.g., CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES,
+    TPU_VISIBLE_CHIPS) passed based on accelerator runtime and will raise an error if
+    the function uses different environment variable.
 
     Args:
         visible_ids (List[str]): List of strings representing GPU IDs or NeuronCore IDs.
@@ -1486,8 +1487,12 @@ def build_grpc_address(address: str):
     IPv4 format : <address>:<port>
     IPv6 format : "ipv6":[<address>]:<port>
     """
-    ip, _, port = address.rpartition(':')
-    return "{}:{}".format(ip, port) if type(ip_address(ip)) is IPv4Address else "{}:[{}]:{}".format("ipv6", ip, port)
+    ip, _, port = address.rpartition(":")
+    return (
+        "{}:{}".format(ip, port)
+        if type(ip_address(ip)) is IPv4Address
+        else "{}:[{}]:{}".format("ipv6", ip, port)
+    )
 
 
 def init_grpc_channel(
@@ -1523,7 +1528,9 @@ def init_grpc_channel(
             private_key=private_key,
             root_certificates=ca_cert,
         )
-        channel = grpc_module.secure_channel(gcs_grpc_address, credentials, options=options)
+        channel = grpc_module.secure_channel(
+            gcs_grpc_address, credentials, options=options
+        )
     else:
         channel = grpc_module.insecure_channel(gcs_grpc_address, options=options)
 
