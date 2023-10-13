@@ -62,7 +62,6 @@ void StoreClientInternalKV::Get(
       table_name_,
       MakeKey(ns, key),
       [callback = std::move(callback)](auto status, auto result) {
-        RAY_CHECK(status.ok()) << "Failed to get from Redis with status: " << status;
         callback(result.has_value() ? std::optional<std::string>(result.value())
                                     : std::optional<std::string>());
       }));

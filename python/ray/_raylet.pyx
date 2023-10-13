@@ -4624,4 +4624,5 @@ def get_session_key_from_storage(host, port, password, use_ssl, config, key):
     if result:
         return data
     else:
-        logger.error("Could not retrieve session key from storage.")
+        logger.warning("Could not retrieve session key from storage.")
+        return None

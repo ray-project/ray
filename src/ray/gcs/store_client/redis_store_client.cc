@@ -164,7 +164,9 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
     if (!reply->IsNil()) {
       result = reply->ReadAsString();
     }
-    callback(reply->ReadAsStatus(), std::move(result));
+    RAY_CHECK(!reply->IsError())
+        << "Failed to get from Redis with status: " << reply->ReadAsStatus();
+    callback(Status::OK(), std::move(result));
   };
 
   std::string redis_key = GenRedisKey(external_storage_namespace_, table_name, key);
