@@ -412,7 +412,8 @@ message ReportGeneratorItemReturnsRequest {
   uint64 attempt_number = 6;
 }
 
-message ReportGeneratorItemReturnsReply {}
+message ReportGeneratorItemReturnsReply {
+}
 
 service CoreWorkerService {
   // Notify core worker GCS has restarted.

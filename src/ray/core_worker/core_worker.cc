@@ -107,6 +107,53 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
 }
 }  // namespace
 
+GeneratorBackpressureWaiter::GeneratorBackpressureWaiter(
+    int64_t streaming_generator_backpressure_size_bytes)
+    : backpressure_threshold_(streaming_generator_backpressure_size_bytes),
+      total_objects_generated_(0),
+      total_objects_consumed_(0) {}
+
+void GeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
+  absl::MutexLock lock(&mutex_);
+  if (backpressure_threshold_ < 0) {
+    RAY_CHECK(backpressure_threshold_ == -1);
+    // Backpressure disabled if backpressure_threshold_ == -1.
+    return;
+  }
+
+  auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
+  if (total_object_unconsumed > backpressure_threshold_) {
+    cond_var_.Wait(&mutex_);
+  }
+}
+
+void GeneratorBackpressureWaiter::UpdateObjectConsumed(int64_t objects_consumed) {
+  absl::MutexLock lock(&mutex_);
+  RAY_LOG(DEBUG) << "SANG-TODO update consumption, " << objects_consumed;
+  total_objects_consumed_ += objects_consumed;
+  RAY_LOG(DEBUG) << "SANG-TODO update consumption, total " << total_objects_consumed_;
+  auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
+  if (total_object_unconsumed <= backpressure_threshold_) {
+    RAY_LOG(DEBUG) << "SANG-TODO signal";
+    cond_var_.SignalAll();
+  }
+}
+
+void GeneratorBackpressureWaiter::UpdateObjectGenerated(int64_t objects_generated) {
+  absl::MutexLock lock(&mutex_);
+  total_objects_generated_ += objects_generated;
+}
+
+int64_t GeneratorBackpressureWaiter::TotalObjectConsumed() {
+  absl::MutexLock lock(&mutex_);
+  return total_objects_consumed_;
+}
+
+int64_t GeneratorBackpressureWaiter::TotalObjectGenerated() {
+  absl::MutexLock lock(&mutex_);
+  return total_objects_generated_;
+}
+
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
     : options_(options),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
@@ -1925,7 +1972,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,
-                      /*streaming_generator_backpressure_size_bytes*/task_options.streaming_generator_backpressure_size_bytes);
+                      /*streaming_generator_backpressure_size_bytes*/
+                      task_options.streaming_generator_backpressure_size_bytes);
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
@@ -2010,7 +2058,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,
-                      /*streaming_generator_backpressure_size_bytes*/-1);
+                      /*streaming_generator_backpressure_size_bytes*/ -1);
 
   // If the namespace is not specified, get it from the job.
   const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -2249,7 +2297,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       task_options.concurrency_group_name,
                       /*include_job_config*/ false,
-                      /*streaming_generator_backpressure_size_bytes*/task_options.streaming_generator_backpressure_size_bytes);
+                      /*streaming_generator_backpressure_size_bytes*/
+                      task_options.streaming_generator_backpressure_size_bytes);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2712,7 +2761,9 @@ Status CoreWorker::ExecuteTask(
       name_of_concurrency_group_to_execute,
       /*is_reattempt=*/task_spec.AttemptNumber() > 0,
       /*is_streaming_generator*/ task_spec.IsStreamingGenerator(),
-      /*retry_exception*/ task_spec.ShouldRetryExceptions());
+      /*retry_exception*/ task_spec.ShouldRetryExceptions(),
+      /*streaming_generator_backpressure_size_bytes*/
+      task_spec.StreamingGeneratorBackpressureSizeBytes());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2895,18 +2946,20 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const ObjectID &generator_id,
     const rpc::Address &caller_address,
     int64_t item_index,
-    uint64_t attempt_number) {
-  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
-                 << ", id: " << dynamic_return_object.first;
+    uint64_t attempt_number,
+    std::shared_ptr<GeneratorBackpressureWaiter> waiter) {
   rpc::ReportGeneratorItemReturnsRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_item_index(item_index);
   request.set_generator_id(generator_id.Binary());
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
+  auto object_size = 0;
 
   if (!dynamic_return_object.first.IsNil()) {
     auto return_object_proto = request.add_dynamic_return_objects();
+    object_size = dynamic_return_object.second->GetSize();
+    RAY_CHECK(object_size > 0);
     SerializeReturnObject(
         dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
     std::vector<ObjectID> deleted;
@@ -2919,15 +2972,28 @@ Status CoreWorker::ReportGeneratorItemReturns(
         {dynamic_return_object.first}, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
   }
+  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
+                 << ", id: " << dynamic_return_object.first
+                 << ". Object size: " << object_size;
 
+  waiter->UpdateObjectGenerated(object_size);
   client->ReportGeneratorItemReturns(
       request,
-      [](const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
+      [waiter, object_size](const Status &status,
+                            const rpc::ReportGeneratorItemReturnsReply &reply) {
+        waiter->UpdateObjectConsumed(object_size);
+        RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. object_size: "
+                       << object_size
+                       << ". Total object consumed: " << waiter->TotalObjectConsumed()
+                       << ". Total object generated: " << waiter->TotalObjectGenerated();
         if (!status.ok()) {
           // TODO(sang): Handle network error more gracefully.
           RAY_LOG(ERROR) << "Failed to send the object ref.";
         }
       });
+  // Backpressure the execution if the consumer didn't consume objects.
+  // See task_manager.h and search "backpressure" for protocol details.
+  waiter->WaitUntilObjectConsumed();
   return Status::OK();
 }
 
@@ -2935,8 +3001,20 @@ void CoreWorker::HandleReportGeneratorItemReturns(
     rpc::ReportGeneratorItemReturnsRequest request,
     rpc::ReportGeneratorItemReturnsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  task_manager_->HandleReportGeneratorItemReturns(request);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  task_manager_->HandleReportGeneratorItemReturns(
+      request,
+      /*execution_signal_callback*/
+      [this, send_reply_callback = std::move(send_reply_callback)]() {
+        //
+        io_service_.post(
+            [send_reply_callback = std::move(send_reply_callback)]() {
+              RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
+                                "executor to resume tasks.";
+              /// Signal the execution side to stop backpressure and resume execution.
+              send_reply_callback(Status::OK(), nullptr, nullptr);
+            },
+            "CoreWorker.HandleReportGeneratorItemReturns");
+      });
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(

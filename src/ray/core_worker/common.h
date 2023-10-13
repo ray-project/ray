@@ -72,7 +72,8 @@ struct TaskOptions {
         resources(resources),
         concurrency_group_name(concurrency_group_name),
         serialized_runtime_env_info(serialized_runtime_env_info),
-        streaming_generator_backpressure_size_bytes(streaming_generator_backpressure_size_bytes) {}
+        streaming_generator_backpressure_size_bytes(
+            streaming_generator_backpressure_size_bytes) {}
 
   /// The name of this task.
   std::string name;
@@ -87,7 +88,7 @@ struct TaskOptions {
   /// Propagated to child actors and tasks.
   std::string serialized_runtime_env_info;
   /// Only applicable when streaming generator is used.
-  /// -1 means it is not used. 
+  /// -1 means it is not used.
   int64_t streaming_generator_backpressure_size_bytes;
 };
 

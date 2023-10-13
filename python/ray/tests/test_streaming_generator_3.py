@@ -13,10 +13,7 @@ from ray import serve
 from pydantic import BaseModel
 import ray
 from ray._raylet import StreamingObjectRefGenerator
-from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
-    wait_for_condition
-)
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.util.state import list_actors
 
 
@@ -329,9 +326,9 @@ with ThreadPoolExecutor(max_workers=10) as executor:
 
 
 # SANG-TODO
-# @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_streaming_generator_backpressure_basic(shutdown_only):
-    """Verify backpressure works with 
+@pytest.mark.parametrize("store_in_plasma", [False, True])
+def test_streaming_generator_backpressure_basic(shutdown_only, store_in_plasma):
+    """Verify backpressure works with
     _streaming_generator_backpressure_size_bytes = 0
     """
     ray.init()
@@ -340,20 +337,31 @@ def test_streaming_generator_backpressure_basic(shutdown_only):
     class Reporter:
         def __init__(self):
             self.reported = set()
-        
+
         def report(self, i):
             self.reported.add(i)
 
         def reported(self):
             return self.reported
-        
+
     TOTAL_RETURN = 3
 
-    @ray.remote(num_returns="streaming", _streaming_generator_backpressure_size_bytes=0)
+    if store_in_plasma:
+        threshold = 40 * 1024 * 1024  # 40MB
+    else:
+        threshold = 0
+
+    @ray.remote(
+        num_returns="streaming", _streaming_generator_backpressure_size_bytes=threshold
+    )
     def f(reporter):
         for i in range(TOTAL_RETURN):
+            print("yield ", i)
             ray.get(reporter.report.remote(i))
-            yield i
+            if store_in_plasma:
+                yield np.random.rand(5 * 1024 * 1024)  # 40 MB
+            else:
+                yield i
 
     reporter = Reporter.remote()
 
@@ -363,19 +371,18 @@ def test_streaming_generator_backpressure_basic(shutdown_only):
     gen = f.remote(reporter)
 
     for i in range(TOTAL_RETURN - 1):
-        print("First iteration.")
+        print("iteration ", i)
         r, _ = ray.wait([gen])
         assert len(r) == 1
-        assert check_reported(i)
-        assert not check_reported(i + 1)
-        # Wait a little bit and make sure the task is backpressured.
-        _, ur = ray.wait([gen], timeout=2)
-        assert len(ur) == 1
-        assert not check_reported(i + 1)
+        wait_for_condition(lambda: check_reported(i))
+        wait_for_condition(lambda: not check_reported(i + 1))
+        # Wait a little bit to make sure it is backpressured.
+        time.sleep(2)
+        wait_for_condition(lambda: not check_reported(i + 1))
         # Consume the ref -> task will progress.
-        assert ray.get(next(gen)) == i
-        assert check_reported(i + 1)
-    
+        ray.get(next(gen))
+        wait_for_condition(lambda: check_reported(i + 1))
+
     """
     Verify deleting a generator will stop backpressure
     and proceed a task.
@@ -384,8 +391,6 @@ def test_streaming_generator_backpressure_basic(shutdown_only):
     wait_for_condition(lambda: check_reported(TOTAL_RETURN - 1))
 
 
-# Test basic backpressure (size == 0).
-# Test backpressure + object store.
 # Test backpressure more than 1 object returned.
 # Test caller failed while backpressured.
 

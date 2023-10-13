@@ -152,6 +152,7 @@ from ray.includes.libcoreworker cimport (
     ResourceMappingType,
     CFiberEvent,
     CActorHandle,
+    CGeneratorBackpressureWaiter,
 )
 
 from ray.includes.ray_config cimport RayConfig
@@ -961,6 +962,7 @@ cdef class StreamingGeneratorExecutionContext:
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
             application error.
+        streaming_generator_backpressure_size_bytes: SANG-TODO
     """
 
     cdef:
@@ -991,6 +993,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns
         c_bool *is_retryable_error
         c_string *application_error
+        shared_ptr[CGeneratorBackpressureWaiter] waiter
 
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
         # We couldn't make this a part of `make` method because
@@ -1022,6 +1025,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error,
+        int64_t streaming_generator_backpressure_size_bytes,
     ):
         cdef StreamingGeneratorExecutionContext self = (
             StreamingGeneratorExecutionContext())
@@ -1043,7 +1047,9 @@ cdef class StreamingGeneratorExecutionContext:
         self.streaming_generator_returns = streaming_generator_returns
         self.is_retryable_error = is_retryable_error
         self.application_error = application_error
-        self.should_retry_exceptions, = should_retry_exceptions,
+        self.should_retry_exceptions = should_retry_exceptions
+        self.waiter = make_shared[CGeneratorBackpressureWaiter](
+            streaming_generator_backpressure_size_bytes)
         return self
 
 
@@ -1105,7 +1111,8 @@ cdef report_streaming_generator_output(
             context.generator_id,
             context.caller_address,
             context.generator_index,
-            context.attempt_number)
+            context.attempt_number,
+            context.waiter)
         context.generator_index += 1
         return True
     else:
@@ -1137,7 +1144,8 @@ cdef report_streaming_generator_output(
             context.generator_id,
             context.caller_address,
             context.generator_index,
-            context.attempt_number)
+            context.attempt_number,
+            context.waiter)
         context.generator_index += 1
         return False
 
@@ -1201,6 +1209,11 @@ async def execute_streaming_generator_async(
     # Generator task should only have 1 return object ref,
     # which contains None or exceptions (if system error occurs).
     assert context.return_size == 1
+    if context.streaming_generator_backpressure_size_bytes != -1:
+        raise ValueError(
+            "_streaming_generator_backpressure_size_bytes is "
+            "not supported for an async actor."
+        )
 
     gen = context.generator
     while True:
@@ -1478,7 +1491,8 @@ cdef void execute_task(
         title,
         task_name,
         c_bool is_streaming_generator,
-        c_bool should_retry_exceptions) except *:
+        c_bool should_retry_exceptions,
+        int64_t streaming_generator_backpressure_size_bytes) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -1659,7 +1673,8 @@ cdef void execute_task(
                                 should_retry_exceptions,
                                 streaming_generator_returns,
                                 is_retryable_error,
-                                application_error)
+                                application_error,
+                                streaming_generator_backpressure_size_bytes)
                         # We cannot pass generator to cdef in Cython for some reasons.
                         # It is a workaround.
                         context.initialize(outputs)
@@ -1833,7 +1848,8 @@ cdef execute_task_with_cancellation_handler(
         const c_string c_name_of_concurrency_group_to_execute,
         c_bool is_reattempt,
         c_bool is_streaming_generator,
-        c_bool should_retry_exceptions):
+        c_bool should_retry_exceptions,
+        int64_t streaming_generator_backpressure_size_bytes):
 
     is_retryable_error[0] = False
 
@@ -1922,7 +1938,8 @@ cdef execute_task_with_cancellation_handler(
                      c_name_of_concurrency_group_to_execute,
                      is_reattempt, execution_info, title, task_name,
                      is_streaming_generator,
-                     should_retry_exceptions)
+                     should_retry_exceptions,
+                     streaming_generator_backpressure_size_bytes)
 
         # Check for cancellation.
         PyErr_CheckSignals()
@@ -1998,7 +2015,8 @@ cdef CRayStatus task_execution_handler(
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt,
         c_bool is_streaming_generator,
-        c_bool should_retry_exceptions) nogil:
+        c_bool should_retry_exceptions,
+        int64_t streaming_generator_backpressure_size_bytes) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -2025,7 +2043,8 @@ cdef CRayStatus task_execution_handler(
                         name_of_concurrency_group_to_execute,
                         is_reattempt,
                         is_streaming_generator,
-                        should_retry_exceptions)
+                        should_retry_exceptions,
+                        streaming_generator_backpressure_size_bytes)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \

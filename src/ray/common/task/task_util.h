@@ -152,7 +152,8 @@ class TaskSpecBuilder {
     message_->set_num_returns(num_returns);
     message_->set_returns_dynamic(returns_dynamic);
     message_->set_streaming_generator(is_streaming_generator);
-    message_->set_streaming_generator_backpressure_size_bytes(streaming_generator_backpressure_size_bytes);
+    message_->set_streaming_generator_backpressure_size_bytes(
+        streaming_generator_backpressure_size_bytes);
     message_->mutable_required_resources()->insert(required_resources.begin(),
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(

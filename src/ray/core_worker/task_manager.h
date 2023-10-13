@@ -92,11 +92,15 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
 /// back to the task manager.
 /// This class manages the references of intermediately
 /// streamed object references.
+///
 /// The API is not thread-safe.
 class ObjectRefStream {
  public:
   ObjectRefStream(const ObjectID &generator_id)
-      : generator_id_(generator_id), generator_task_id_(generator_id.TaskId()) {}
+      : generator_id_(generator_id),
+        generator_task_id_(generator_id.TaskId()),
+        total_object_size_written_(0),
+        total_object_size_consumed_(0) {}
 
   /// Asynchronously read object reference of the next index.
   ///
@@ -115,10 +119,11 @@ class ObjectRefStream {
   ///
   /// \param[in] object_id The object id that will be read at index item_index.
   /// \param[in] item_index The index where the object id will be written.
+  /// \param[in] object_size The size of the object to insert to stream.
   /// If -1 is given, it means an index is not known yet. In this case,
   /// the ref will be temporarily written until it is written with an index.
   /// \return True if the ref is written to a stream. False otherwise.
-  bool InsertToStream(const ObjectID &object_id, int64_t item_index);
+  bool InsertToStream(const ObjectID &object_id, int64_t item_index, int64_t object_size);
 
   /// Sometimes, index of the object ID is not known.
   ///
@@ -145,6 +150,10 @@ class ObjectRefStream {
   /// \return A list of object IDs that are not read yet.
   absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
 
+  /// Total object size that's written to the stream
+  int64_t TotalObjectSizeWritten() const { return total_object_size_written_; }
+  int64_t TotalObjectSizeConsumed() const { return total_object_size_consumed_; }
+
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
 
@@ -154,8 +163,8 @@ class ObjectRefStream {
   /// Refs that are temporarily owned. It means a ref is
   /// written to a stream, but index is not known yet.
   absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
-  // A set of refs that's already written to a stream.
-  absl::flat_hash_set<ObjectID> refs_written_to_stream_;
+  // A set of refs that's already written to a stream -> size of the object.
+  absl::flat_hash_map<ObjectID, int64_t> refs_written_to_stream_;
   /// The last index of the stream.
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
@@ -168,6 +177,10 @@ class ObjectRefStream {
   /// ends with fewer returns. Then, we mark one past this index as the end of
   /// the stream.
   int64_t max_index_seen_ = -1;
+  /// The total size of the objects that are written to stream.
+  int64_t total_object_size_written_;
+  /// The total size of the objects that are consumed from stream.
+  int64_t total_object_size_consumed_;
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -253,6 +266,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /**
    * The below APIs support streaming generator.
    *
+   * API NOTES
+   * ---------
    * - The stream must be created when a task is submitted first time. The stream
    * must be deleted by the language frontend when the stream
    * is not used anymore. The DelObjectRefStream APIs guarantee to clean
@@ -270,6 +285,29 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    * - The generator's first return value contains an exception
    * if the task fails by a system error. Otherwise, it contains nothing.
    *
+   * Backpressure Protocol
+   * ---------------------
+   * Streaming generator optionally supports backpressure when
+   * `streaming_generator_backpressure_size_bytes` is included in a task spec.
+   * The backpressure works with a cooperative protocol between an executor
+   * and a consumer (caller).
+   *
+   * Executor Side:
+   * - Through a gRPC reply, the total object consumed from a consumer
+   *   is communicated to an executor. The consumer doesn't
+   *   reply the gRPC request if it didn't consume enough objects.
+   * - If a object_generated - object_consumed_reported > threshold,
+   *   it blocks a thread and pauses execution.
+   * - If a RPC fails, it considers a caller is dead.
+   *
+   * Client Side:
+   * - If total_object_reported - object_consumed < threshold, it doesn't
+   *   reply a gRPC request until objects are consumed. RPCs are replied
+   *   once objects are consumed.
+   * - Since the executor side pauses execution based on object_consumed,
+   *   which is reported via this gRPC, the task execution is backpressured
+   *   until enough objects are consumed.
+   *
    * Reference implementation of streaming generator using the following APIs
    * is available from `_raylet.StreamingObjectRefGenerator`.
    */
@@ -281,9 +319,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// It is the opposite of regular tasks which can only batch
   /// report the task returns after the task finishes.
   ///
+  /// \param[in] request SANG-TODO
+  /// \param[in] execution_signal_callback SANG-TODO Not guaranteed to run in the same
+  /// thread.
+  ///
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
-      const rpc::ReportGeneratorItemReturnsRequest &request) ABSL_LOCKS_EXCLUDED(mu_);
+      const rpc::ReportGeneratorItemReturnsRequest &request,
+      std::function<void()> execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
   ///
@@ -732,6 +775,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Mapping from a streaming generator task id -> object ref stream.
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
       ABSL_GUARDED_BY(objet_ref_stream_ops_mu_);
+
+  /// The consumer side of object ref stream should signal the executor
+  /// to resume execution via signal callbacks (i.e., RPC reply).
+  /// This data structure maintains the mapping of ObjectRefStreamID -> signal_callbacks
+  absl::flat_hash_map<ObjectID, std::vector<std::function<void()>>>
+      ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(objet_ref_stream_ops_mu_);
 
   /// Callback to store objects in plasma. This is used for objects that were
   /// originally stored in plasma. During reconstruction, we ensure that these

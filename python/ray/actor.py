@@ -68,7 +68,11 @@ def method(*args, **kwargs):
         num_returns: The number of object refs that should be returned by
             invocations of this actor method.
     """
-    valid_kwargs = ["num_returns", "concurrency_group", "_streaming_generator_backpressure_size_bytes"]
+    valid_kwargs = [
+        "num_returns",
+        "concurrency_group",
+        "_streaming_generator_backpressure_size_bytes",
+    ]
     error_string = (
         "The @ray.method decorator must be applied using at least one of "
         f"the arguments in the list {valid_kwargs}, for example "
@@ -89,7 +93,8 @@ def method(*args, **kwargs):
             method.__ray_concurrency_group__ = kwargs["concurrency_group"]
         if "_streaming_generator_backpressure_size_bytes":
             method.__ray_streaming_generator_backpressure_size_bytes__ = kwargs[
-                "_streaming_generator_backpressure_size_bytes"]
+                "_streaming_generator_backpressure_size_bytes"
+            ]
         return method
 
     return annotate_method
@@ -169,7 +174,13 @@ class ActorMethod:
     @wrap_auto_init
     @_tracing_actor_method_invocation
     def _remote(
-        self, args=None, kwargs=None, name="", num_returns=None, concurrency_group=None, streaming_generator_backpressure_size_bytes=None,
+        self,
+        args=None,
+        kwargs=None,
+        name="",
+        num_returns=None,
+        concurrency_group=None,
+        streaming_generator_backpressure_size_bytes=None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -296,8 +307,9 @@ class _ActorClassMethodMetadata(object):
 
             if hasattr(method, "__ray_streaming_generator_backpressure_size_bytes__"):
                 self._streaming_generator_backpressure_size_bytes = (
-                    method.__ray_streaming_generator_backpressure_size_bytes__)
-            
+                    method.__ray_streaming_generator_backpressure_size_bytes__
+                )
+
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
         return self

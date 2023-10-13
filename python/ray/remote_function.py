@@ -335,7 +335,8 @@ class RemoteFunction:
             # Remove it when we migrate to the streaming generator.
             num_returns = ray._raylet.STREAMING_GENERATOR_RETURN
         streaming_generator_backpressure_size_bytes = task_options[
-            "_streaming_generator_backpressure_size_bytes"]
+            "_streaming_generator_backpressure_size_bytes"
+        ]
         if streaming_generator_backpressure_size_bytes is None:
             streaming_generator_backpressure_size_bytes = -1
 

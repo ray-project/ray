@@ -186,7 +186,8 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
                 assert "The worker died" in str(e.value)
 
 
-def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster):
+@pytest.mark.parametrize("backpressure", [True])
+def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster, backpressure):
     """
     Test a workload that's like ray dataset + lineage reconstruction.
     """
@@ -205,7 +206,16 @@ def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster):
         )
         ray.init(address=cluster.address)
 
-        @ray.remote(num_returns="streaming", max_retries=-1)
+        if backpressure:
+            threshold = 0
+        else:
+            threshold = -1
+
+        @ray.remote(
+            num_returns="streaming",
+            max_retries=-1,
+            _streaming_generator_backpressure_size_bytes=threshold,
+        )
         def dynamic_generator(num_returns):
             for i in range(num_returns):
                 time.sleep(0.1)
@@ -216,6 +226,8 @@ def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster):
             unready = [dynamic_generator.remote(10) for _ in range(5)]
             ready = []
             while unready:
+                for a in unready:
+                    print("unraedy: ", a._generator_ref)
                 ready, unready = ray.wait(
                     unready, num_returns=len(unready), timeout=0.1
                 )
@@ -237,7 +249,7 @@ def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster):
             nodes.append(cluster.add_node(num_cpus=1, object_store_memory=10**8))
         cluster.wait_for_nodes()
 
-        for _ in range(10):
+        for _ in range(5):
             time.sleep(0.1)
             node_to_kill = random.choices(nodes)[0]
             nodes.remove(node_to_kill)

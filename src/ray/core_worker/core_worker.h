@@ -16,6 +16,7 @@
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
@@ -263,6 +264,24 @@ struct TaskToRetry {
 
   /// The details of the task.
   TaskSpecification task_spec;
+};
+
+class GeneratorBackpressureWaiter {
+ public:
+  GeneratorBackpressureWaiter(int64_t streaming_generator_backpressure_size_bytes);
+  /// Block a thread and wait until objects are consumed from a consumer.
+  void WaitUntilObjectConsumed();
+  void UpdateObjectConsumed(int64_t objects_consumed);
+  void UpdateObjectGenerated(int64_t objects_generated);
+  int64_t TotalObjectConsumed();
+  int64_t TotalObjectGenerated();
+
+ private:
+  absl::Mutex mutex_;
+  absl::CondVar cond_var_;
+  int64_t backpressure_threshold_;
+  int64_t total_objects_generated_;
+  int64_t total_objects_consumed_;
 };
 
 /// Sorts TaskToRetry in descending order of the execution time.
@@ -774,12 +793,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// report from the caller side.
   /// \param[in] attempt_number The number of time the current task is retried.
   /// 0 means it is the first attempt.
+  /// \param[in] waiter SANG-TODO
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,
-      uint64_t attempt_number);
+      uint64_t attempt_number,
+      std::shared_ptr<GeneratorBackpressureWaiter> waiter);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
