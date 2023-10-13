@@ -371,6 +371,11 @@ CALL_STACK_LINE_DELIMITER = " | "
 # The default gRPC max message size is 4 MiB, we use a larger number of 250 MiB
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
 GRPC_CPP_MAX_MESSAGE_SIZE = 250 * 1024 * 1024
+# The gRPC send & receive max length for "dashboard agent" server.
+AGENT_GRPC_MAX_MESSAGE_LENGTH = env_integer(
+    "AGENT_GRPC_MAX_MESSAGE_LENGTH", 20 * 1024 * 1024  # 20MB
+)
+
 
 # GRPC options
 GRPC_ENABLE_HTTP_PROXY = (

@@ -1927,9 +1927,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
-                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+                return colorama.Fore.YELLOW
             else:
-                return colorama.Style.BRIGHT + colorama.Fore.CYAN
+                return colorama.Fore.CYAN
         elif os.getenv("RAY_COLOR_PREFIX") == "1":
             colors = [
                 # colorama.Fore.BLUE, # Too dark
@@ -1969,8 +1969,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,
@@ -1986,8 +1985,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}, ip={}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}, ip={}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,
