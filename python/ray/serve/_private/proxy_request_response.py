@@ -1,7 +1,8 @@
 import logging
 import pickle
 from abc import ABC, abstractmethod
-from typing import Any, List, Tuple
+from dataclasses import dataclass
+from typing import Any, AsyncIterator, List, Tuple, Union
 
 import grpc
 from starlette.types import Receive, Scope, Send
@@ -165,3 +166,24 @@ class gRPCProxyRequest(ProxyRequest):
             grpc_user_request=self.user_request,
             grpc_proxy_handle=proxy_handle,
         )
+
+
+@dataclass
+class ResponseStatus:
+    code: Any  # Must be convertible to a string.
+    is_error: bool = False
+    message: str = ""
+
+
+# Yields protocol-specific messages followed by a final `ResponseStatus`.
+ResponseGenerator = AsyncIterator[Union[Any, ResponseStatus]]
+
+
+@dataclass
+class ResponseHandlerInfo:
+    response_generator: ResponseGenerator
+    application_name: str
+    deployment_name: str
+    should_record_access_log: bool
+    should_record_request_metrics: bool
+    should_increment_ongoing_requests: bool

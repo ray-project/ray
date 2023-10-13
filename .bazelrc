@@ -212,3 +212,6 @@ try-import %workspace%/.llvm-local.bazelrc
 build:macos --sandbox_block_path=/usr/local/
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off
+
+build --action_env=CPPFLAGS="-Wno-strict-prototypes -Wno-implicit-function-declaration -DMAC_OS_X_VERSION_10_6"
+build --copt=-Wno-error=deprecated-builtins --copt=-Wno-error=deprecated-declarations

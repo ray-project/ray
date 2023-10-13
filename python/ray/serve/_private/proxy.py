@@ -7,7 +7,6 @@ import socket
 import time
 import uuid
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import (
     Any,
     AsyncIterator,
@@ -22,7 +21,6 @@ from typing import (
 )
 
 import grpc
-import starlette.responses
 import starlette.routing
 import uvicorn
 from starlette.datastructures import MutableHeaders
@@ -63,6 +61,9 @@ from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     ProxyRequest,
     gRPCProxyRequest,
+    ResponseStatus,
+    ResponseGenerator,
+    ResponseHandlerInfo,
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import (
@@ -123,27 +124,6 @@ DRAINED_MESSAGE = "This node is being drained."
 HEALTH_CHECK_SUCCESS_MESSAGE = "success"
 
 
-@dataclass
-class ResponseStatus:
-    code: Any  # Must be convertible to a string.
-    is_error: bool = False
-    message: str = ""
-
-
-# Yields protocol-specific messages followed by a final `ResponseStatus`.
-ResponseGenerator = AsyncIterator[Union[Any, ResponseStatus]]
-
-
-@dataclass
-class ResponseHandlerInfo:
-    response_generator: ResponseGenerator
-    application_name: str
-    deployment_name: str
-    should_record_access_log: bool
-    should_record_request_metrics: bool
-    should_increment_ongoing_requests: bool
-
-
 def generate_request_id() -> str:
     return str(uuid.uuid4())
 
@@ -156,6 +136,7 @@ class GenericProxy(ABC):
       - `protocol()`
       - `not_found()`
       - `draining_response()`
+      - `timeout_response()`
       - `routes_response()`
       - `health_response()`
       - `setup_request_context_and_handle()`
@@ -339,6 +320,12 @@ class GenericProxy(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def timeout_response(
+        self, proxy_request: ProxyRequest, request_id: str
+    ) -> ResponseGenerator:
+        raise NotImplementedError
+
+    @abstractmethod
     async def routes_response(self, proxy_request: ProxyRequest) -> ResponseGenerator:
         raise NotImplementedError
 
@@ -422,7 +409,7 @@ class GenericProxy(ABC):
             if matched_route is None:
                 response_generator = self.not_found(proxy_request)
                 response_handler_info = ResponseHandlerInfo(
-                    response_generator=self.not_found(proxy_request),
+                    response_generator=response_generator,
                     application_name="",
                     deployment_name="",
                     should_record_access_log=True,
@@ -618,6 +605,18 @@ class gRPCProxy(GenericProxy):
         yield ResponseStatus(
             code=grpc.StatusCode.UNAVAILABLE,
             message=DRAINED_MESSAGE,
+            is_error=True,
+        )
+
+    async def timeout_response(
+        self, proxy_request: ProxyRequest, request_id: str
+    ) -> ResponseGenerator:
+        timeout_message = (
+            f"Request {request_id} timed out after {self.request_timeout_s}s."
+        )
+        yield ResponseStatus(
+            code=grpc.StatusCode.CANCELLED,
+            message=timeout_message,
             is_error=True,
         )
 
