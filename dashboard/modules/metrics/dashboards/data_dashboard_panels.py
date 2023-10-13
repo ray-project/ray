@@ -104,6 +104,6 @@ data_dashboard_config = DashboardConfig(
     name="DATA",
     default_uid="rayDataDashboard",
     panels=DATA_GRAFANA_PANELS,
-    standard_global_filters=['dataset=~"$DatasetID"'],
+    standard_global_filters=['dataset=~"$DatasetID"', 'SessionName=~"$SessionName"'],
     base_json_file_name="data_grafana_dashboard_base.json",
 )
