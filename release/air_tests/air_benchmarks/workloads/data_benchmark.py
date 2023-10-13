@@ -29,7 +29,6 @@ def run_ingest_bulk(dataset, num_workers, num_cpus_per_worker):
             num_workers=num_workers,
             trainer_resources={"CPU": 0},
             resources_per_worker={"CPU": num_cpus_per_worker},
-            _max_cpu_fraction_per_node=0.1,
         ),
         datasets={"train": dataset},
         num_epochs=1,

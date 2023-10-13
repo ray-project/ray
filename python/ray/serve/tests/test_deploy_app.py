@@ -2,37 +2,29 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from typing import Dict, List
 from functools import partial
+from typing import Dict, List
 
 import pytest
 import requests
 
 import ray
-import ray.actor
 import ray._private.state
-from ray.tests.conftest import call_ray_stop_only  # noqa: F401
-from ray.util.state import list_actors, list_tasks
-from ray._private.test_utils import (
-    wait_for_condition,
-    SignalActor,
-)
-
+import ray.actor
 from ray import serve
-from ray.serve.context import get_global_client
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.client import ServeControllerClient
+from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
 )
-from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import (
-    DeploymentID,
-    ApplicationStatus,
-    DeploymentStatus,
-)
-from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
+from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.util.state import list_actors, list_tasks
 
 
 @pytest.fixture
@@ -81,7 +73,7 @@ def client(start_and_shutdown_ray_cli_module, shutdown_ray_and_serve):
     )
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
     serve.start()
-    yield get_global_client()
+    yield _get_global_client()
 
 
 def check_running(_client: ServeControllerClient):
@@ -757,7 +749,7 @@ def test_controller_recover_and_deploy(client: ServeControllerClient):
 
     serve.shutdown()
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     # Ensure config checkpoint has been deleted
     assert SERVE_DEFAULT_APP_NAME not in serve.status().applications
@@ -1247,7 +1239,7 @@ def test_deploy_with_no_applications(client: ServeControllerClient):
             ]
         )
         actor_names = [actor["class_name"] for actor in actors]
-        return "ServeController" in actor_names and "HTTPProxyActor" in actor_names
+        return "ServeController" in actor_names and "ProxyActor" in actor_names
 
     wait_for_condition(serve_running)
 

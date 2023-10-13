@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Union
 
 import ray
 from .ref_bundle import RefBundle
@@ -8,6 +8,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.stats import StatsDict
 
@@ -154,6 +155,8 @@ class PhysicalOperator(Operator):
         self._inputs_complete = not input_dependencies
         self._dependents_complete = False
         self._started = False
+        self._metrics = OpRuntimeMetrics(self)
+        self._estimated_output_blocks = None
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -175,12 +178,15 @@ class PhysicalOperator(Operator):
         """Return recorded execution stats for use with DatasetStats."""
         raise NotImplementedError
 
-    def get_metrics(self) -> Dict[str, int]:
-        """Returns dict of metrics reported from this operator.
+    @property
+    def metrics(self) -> OpRuntimeMetrics:
+        """Returns the runtime metrics of this operator."""
+        self._metrics._extra_metrics = self._extra_metrics()
+        return self._metrics
 
-        These should be instant values that can be queried at any time, e.g.,
-        obj_store_mem_allocated, obj_store_mem_freed.
-        """
+    def _extra_metrics(self) -> Dict[str, Any]:
+        """Subclasses should override this method to report extra metrics
+        that are specific to them."""
         return {}
 
     def progress_str(self) -> str:
@@ -190,14 +196,17 @@ class PhysicalOperator(Operator):
         """
         return ""
 
-    def num_outputs_total(self) -> Optional[int]:
-        """Returns the total number of output bundles of this operator, if known.
+    def num_outputs_total(self) -> int:
+        """Returns the total number of output bundles of this operator.
 
+        The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
         """
+        if self._estimated_output_blocks is not None:
+            return self._estimated_output_blocks
         if len(self.input_dependencies) == 1:
             return self.input_dependencies[0].num_outputs_total()
-        return None
+        raise AttributeError
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
@@ -228,12 +237,19 @@ class PhysicalOperator(Operator):
         Inputs may be added in any order, and calls to `add_input` may be interleaved
         with calls to `get_next` / `has_next` to implement streaming execution.
 
+        Subclasses should override `_add_input_inner` instead of this method.
+
         Args:
             refs: The ref bundle that should be added as input.
             input_index: The index identifying the input dependency producing the
                 input. For most operators, this is always `0` since there is only
                 one upstream input operator.
         """
+        self._metrics.on_input_received(refs)
+        self._add_input_inner(refs, input_index)
+
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
+        """Subclasses should override this method to implement `add_input`."""
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
@@ -270,7 +286,15 @@ class PhysicalOperator(Operator):
         """Get the next downstream output.
 
         It is only allowed to call this if `has_next()` has returned True.
+
+        Subclasses should override `_get_next_inner` instead of this method.
         """
+        output = self._get_next_inner()
+        self._metrics.on_output_taken(output)
+        return output
+
+    def _get_next_inner(self) -> RefBundle:
+        """Subclasses should override this method to implement `get_next`."""
         raise NotImplementedError
 
     def get_active_tasks(self) -> List[OpTask]:

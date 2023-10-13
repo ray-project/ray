@@ -254,23 +254,8 @@ class ActorPoolMapOperator(MapOperator):
         # Warn if the user specified a batch or block size that prevents full
         # parallelization across the actor pool. We only know this information after
         # execution has completed.
-        total_rows = sum([m.num_rows for m in self._output_metadata])
         min_workers = self._autoscaling_policy.min_workers
-        max_desired_batch_size = total_rows // min_workers
-        if (
-            self._min_rows_per_bundle is not None
-            and self._min_rows_per_bundle > max_desired_batch_size
-        ):
-            # The user specified a batch size, but it was probably too large.
-            logger.get_logger().warning(
-                f"Your batch size is too large. Currently, your batch size is "
-                f"{self._min_rows_per_bundle}. Your dataset contains {total_rows}, and "
-                f"Ray Data tried to parallelize it across {min_workers} actors. To "
-                f"parallelize this fully across all {min_workers} actors, set batch "
-                f"size to not exceed `{total_rows} / {min_workers} = "
-                f"{max_desired_batch_size}`."
-            )
-        elif len(self._output_metadata) < min_workers:
+        if len(self._output_metadata) < min_workers:
             # The user created a stream that has too few blocks to begin with.
             logger.get_logger().warning(
                 "To ensure full parallelization across an actor pool of size "
@@ -305,7 +290,7 @@ class ActorPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=self._metrics.cur,
+            object_store_memory=self.metrics.obj_store_mem_cur,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
@@ -326,12 +311,12 @@ class ActorPoolMapOperator(MapOperator):
             num_gpus = 0
         return ExecutionResources(cpu=num_cpus, gpu=num_gpus)
 
-    def get_metrics(self) -> Dict[str, int]:
-        parent = super().get_metrics()
+    def _extra_metrics(self) -> Dict[str, Any]:
+        res = {}
         if self._actor_locality_enabled:
-            parent["locality_hits"] = self._actor_pool._locality_hits
-            parent["locality_misses"] = self._actor_pool._locality_misses
-        return parent
+            res["locality_hits"] = self._actor_pool._locality_hits
+            res["locality_misses"] = self._actor_pool._locality_misses
+        return res
 
     @staticmethod
     def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:

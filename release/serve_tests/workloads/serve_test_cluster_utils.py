@@ -8,7 +8,7 @@ from ray.cluster_utils import Cluster
 
 from ray import serve
 from ray.serve.config import DeploymentMode
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 
 logger = logging.getLogger(__file__)
 
@@ -38,7 +38,7 @@ def setup_local_single_node_cluster(
     ray.init(address=cluster.address, dashboard_host="0.0.0.0", namespace=namespace)
     serve.start(detached=True, proxy_location=DeploymentMode.EveryNode)
 
-    return get_global_client(), cluster
+    return _get_global_client(), cluster
 
 
 def setup_anyscale_cluster():
@@ -62,7 +62,7 @@ def setup_anyscale_cluster():
     # Print memory usage on the head node to help diagnose/debug memory leaks.
     monitor_memory_usage()
 
-    return get_global_client()
+    return _get_global_client()
 
 
 @ray.remote

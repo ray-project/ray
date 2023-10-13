@@ -29,7 +29,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _resolve_custom_scheme,
-    get_attribute_from_class_name,
+    make_async_gen,
 )
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
@@ -44,6 +44,11 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -226,6 +231,9 @@ class FileBasedDatasource(Datasource):
     # each block to a file.
     _WRITE_FILE_PER_ROW = False
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
+    # Number of threads for concurrent reading within each read task.
+    # If zero or negative, reading will be performed in the main thread.
+    _NUM_THREADS_PER_TASK = 0
 
     def _open_input_source(
         self,
@@ -467,6 +475,7 @@ class _FileBasedDatasourceReader(Reader):
         partition_filter: PathPartitionFilter = None,
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
+        shuffle: Union[Literal["files"], None] = None,
         **reader_args,
     ):
         _check_pyarrow_version()
@@ -507,10 +516,9 @@ class _FileBasedDatasourceReader(Reader):
                     "No input files found to read. Please double check that "
                     "'partition_filter' field is set properly."
                 )
-
-        ctx = DataContext.get_current()
-        shuffler_class = get_attribute_from_class_name(ctx.file_metadata_shuffler)
-        self._file_metadata_shuffler = shuffler_class(self._reader_args)
+        self._file_metadata_shuffler = None
+        if shuffle == "files":
+            self._file_metadata_shuffler = np.random.default_rng()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -527,10 +535,15 @@ class _FileBasedDatasourceReader(Reader):
         reader_args = self._reader_args
         partitioning = self._partitioning
 
-        paths_and_sizes = self._file_metadata_shuffler.shuffle_files(
-            list(zip(self._paths, self._file_sizes))
-        )
-        paths, file_sizes = list(map(list, zip(*paths_and_sizes)))
+        if self._file_metadata_shuffler is not None:
+            files_metadata = list(zip(self._paths, self._file_sizes))
+            shuffled_files_metadata = [
+                files_metadata[i]
+                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
+            ]
+            paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
+        else:
+            paths, file_sizes = self._paths, self._file_sizes
 
         read_stream = self._delegate._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
@@ -541,11 +554,11 @@ class _FileBasedDatasourceReader(Reader):
         open_input_source = self._delegate._open_input_source
 
         def read_files(
-            read_paths: List[str],
-            fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
+            read_paths: Iterable[str],
         ) -> Iterable[Block]:
+            nonlocal filesystem, open_stream_args, reader_args, partitioning
+
             DataContext._set_current(ctx)
-            logger.get_logger().debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
             for read_path in read_paths:
                 compression = open_stream_args.pop("compression", None)
@@ -591,6 +604,29 @@ class _FileBasedDatasourceReader(Reader):
                             data = _add_partitions(data, partitions)
                         yield data
 
+        def create_read_task_fn(read_paths, num_threads):
+            def read_task_fn():
+                nonlocal num_threads, read_paths
+
+                if num_threads > 0:
+                    if len(read_paths) < num_threads:
+                        num_threads = len(read_paths)
+
+                    logger.get_logger().debug(
+                        f"Reading {len(read_paths)} files with {num_threads} threads."
+                    )
+
+                    yield from make_async_gen(
+                        iter(read_paths),
+                        read_files,
+                        num_workers=num_threads,
+                    )
+                else:
+                    logger.get_logger().debug(f"Reading {len(read_paths)} files.")
+                    yield from read_files(read_paths)
+
+            return read_task_fn
+
         # fix https://github.com/ray-project/ray/issues/24296
         parallelism = min(parallelism, len(paths))
 
@@ -607,9 +643,13 @@ class _FileBasedDatasourceReader(Reader):
                 rows_per_file=self._delegate._rows_per_file(),
                 file_sizes=file_sizes,
             )
-            read_task = ReadTask(
-                lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
+
+            read_task_fn = create_read_task_fn(
+                read_paths, self._delegate._NUM_THREADS_PER_TASK
             )
+
+            read_task = ReadTask(read_task_fn, meta)
+
             read_tasks.append(read_task)
 
         return read_tasks
@@ -894,7 +934,6 @@ def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
 def _resolve_kwargs(
     kwargs_fn: Callable[[], Dict[str, Any]], **kwargs
 ) -> Dict[str, Any]:
-
     if kwargs_fn:
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)

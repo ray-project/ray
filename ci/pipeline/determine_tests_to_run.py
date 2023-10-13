@@ -72,7 +72,9 @@ def get_commit_range():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=str, help="json or envvars", default="envvars")
+    parser.add_argument(
+        "--output", type=str, help="json, rayci_tags or envvars", default="envvars"
+    )
     args = parser.parse_args()
 
     RAY_CI_BRANCH_BUILD = int(
@@ -136,7 +138,6 @@ if __name__ == "__main__":
         # End of dry run.
 
         skip_prefix_list = [
-            ".buildkite/",
             "doc/",
             "examples/",
             "dev/",
@@ -293,6 +294,8 @@ if __name__ == "__main__":
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
+                RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
                 RAY_CI_CPP_AFFECTED = 1
@@ -366,9 +369,19 @@ if __name__ == "__main__":
     print(output_string, file=sys.stderr)
 
     # Used by buildkite log format
+    pairs = [item.split("=") for item in output_string.split(" ")]
+    affected_vars = [key for key, affected in pairs if affected == "1"]
     if args.output.lower() == "json":
-        pairs = [item.split("=") for item in output_string.split(" ")]
-        affected_vars = [key for key, affected in pairs if affected == "1"]
         print(json.dumps(affected_vars))
+    elif args.output.lower() == "rayci_tags":
+
+        def f(s):
+            if s.startswith("RAY_CI_"):
+                s = s[7:]
+            if s.endswith("_AFFECTED"):
+                s = s[:-9]
+            return s.lower()
+
+        print(" ".join(list(map(f, affected_vars))))
     else:
         print(output_string)

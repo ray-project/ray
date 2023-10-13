@@ -342,10 +342,6 @@ For example, to split only the training dataset, do the following:
     )
     my_trainer.fit()
 
-.. testoutput::
-    :hide:
-
-    ...
 
 Full customization (advanced)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -408,10 +404,6 @@ For use cases not covered by the default config class, you can also fully custom
     )
     my_trainer.fit()
 
-.. testoutput::
-    :hide:
-
-    ... 
 
 The subclass must be serializable, since Ray Train copies it from the driver script to the driving actor of the Trainer. Ray Train calls its :meth:`configure <ray.train.DataConfig.configure>` method on the main actor of the Trainer group to create the data iterators for each worker.
 
@@ -459,11 +451,6 @@ First, randomize each :ref:`block <dataset_concept>` of your dataset via :meth:`
         datasets={"train": ds},
     )
     my_trainer.fit()
-
-.. testoutput::
-    :hide:
-
-    ...
 
 
 If your model is sensitive to shuffle quality, call :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` to perform a global shuffle.
@@ -521,7 +508,7 @@ Preprocessing structured data
     This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use
     Ray Data operations such as `map_batches`. See the :ref:`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
 
-For tabular data, we recommend using Ray Data :ref:`preprocessors <air-preprocessors>`, which implement common data preprocessing operations.
+For tabular data, we recommend using Ray Data :ref:`preprocessors <data-preprocessors>`, which implement common data preprocessing operations.
 You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
 
 .. testcode::
@@ -576,11 +563,6 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
     print(StandardScaler.deserialize(metadata["preprocessor_pkl"]))
 
 
-.. testoutput::
-    :hide:
-
-    ...
-
 In this example, we persist the fitted preprocessor using the ``Trainer(metadata={...})`` constructor argument. This arg specifies a dict that will available from ``TrainContext.get_metadata()`` and ``checkpoint.get_metadata()`` for checkpoints saved from the Trainer. This enables recreation of the fitted preprocessor for use for inference.
 
 Performance tips
@@ -620,10 +602,6 @@ For example, the following code prefetches 10 batches at a time for each trainin
     )
     my_trainer.fit()
 
-.. testoutput::
-    :hide:
-
-    ...
 
 .. _dataset_cache_performance:
 
@@ -669,10 +647,6 @@ Transformations that you want run per-epoch, such as randomization, should go af
 
     # Pass train_ds to the Trainer
 
-.. testoutput::
-    :hide:
-
-    ...
 
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

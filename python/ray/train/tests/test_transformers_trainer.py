@@ -1,23 +1,14 @@
 import pandas as pd
 import pytest
 from datasets import Dataset
-from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
-    Trainer,
-    TrainingArguments,
-)
+from transformers import AutoConfig, AutoModelForCausalLM, Trainer, TrainingArguments
 
 import ray.data
-from ray.train.huggingface import (
-    TransformersPredictor,
-    TransformersTrainer,
-    LegacyTransformersCheckpoint,
-)
-from ray.train.trainer import TrainingFailedError
-from ray.train import ScalingConfig
-from ray.train.tests._huggingface_data import train_data, validation_data
 from ray import tune
+from ray.train import ScalingConfig
+from ray.train.huggingface import TransformersTrainer
+from ray.train.tests._huggingface_data import train_data, validation_data
+from ray.train.trainer import TrainingFailedError
 from ray.tune import Tuner
 from ray.tune.schedulers.async_hyperband import ASHAScheduler
 from ray.tune.schedulers.resource_changing_scheduler import (
@@ -88,33 +79,6 @@ def train_function_local_dataset(train_dataset, eval_dataset=None, **config):
     train_dataset = Dataset.from_pandas(train_df)
     eval_dataset = Dataset.from_pandas(validation_df)
     return train_function(train_dataset, eval_dataset, **config)
-
-
-def test_deprecations(ray_start_4_cpus):
-    """Tests that soft deprecations warn but still can be used"""
-    from ray.train.huggingface import (
-        HuggingFaceCheckpoint,
-        HuggingFacePredictor,
-        HuggingFaceTrainer,
-    )
-
-    ray_train = ray.data.from_pandas(train_df)
-    ray_validation = ray.data.from_pandas(validation_df)
-
-    with pytest.warns(DeprecationWarning):
-        obj = HuggingFaceCheckpoint.from_dict({"foo": "bar"})
-    assert isinstance(obj, LegacyTransformersCheckpoint)
-
-    with pytest.warns(DeprecationWarning):
-        obj = HuggingFacePredictor()
-    assert isinstance(obj, TransformersPredictor)
-
-    with pytest.warns(DeprecationWarning):
-        obj = HuggingFaceTrainer(
-            train_function,
-            datasets={"train": ray_train, "evaluation": ray_validation},
-        )
-    assert isinstance(obj, TransformersTrainer)
 
 
 @pytest.mark.parametrize("save_strategy", ["no", "epoch"])

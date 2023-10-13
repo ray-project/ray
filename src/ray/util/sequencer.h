@@ -74,7 +74,7 @@ class Sequencer {
   absl::flat_hash_map<
       KEY,
       std::deque<std::function<void(SequencerDoneCallback done_callback)>>>
-      pending_operations_ GUARDED_BY(mutex_);
+      pending_operations_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace ray
