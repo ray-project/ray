@@ -39,12 +39,12 @@ It should be scheduled on the CPU pod.
 
 ## Step 2: Submit the RayJob
 
-Create the RayJob custom resource. The RayJob spec is defined in [ray-job.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.batch-inference.yaml).
+Create the RayJob custom resource. The RayJob spec is defined in [ray-job.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0-rc.0/ray-operator/config/samples/ray-job.batch-inference.yaml).
 
 Download the file with `curl`:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.batch-inference.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0-rc.0/ray-operator/config/samples/ray-job.batch-inference.yaml
 ```
 
 Note that the `RayJob` spec contains a spec for the `RayCluster` that is to be created for the job. For this tutorial, we use a single-node cluster with 4 GPUs.  For production use cases, we recommend using a multi-node cluster where the head node does not have GPUs, so that Ray can automatically schedule GPU workloads on worker nodes and they won't interfere with critical Ray processes on the head node.

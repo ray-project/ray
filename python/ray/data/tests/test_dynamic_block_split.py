@@ -175,35 +175,6 @@ def test_dataset(
         assert len(batch["one"]) == 10
 
 
-def test_dataset_pipeline(ray_start_regular_shared, target_max_block_size):
-    # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
-    # row has 1024 bytes.
-    num_blocks_per_task = 10
-    block_size = 1024
-    num_tasks = 10
-
-    ds = ray.data.read_datasource(
-        RandomBytesDatasource(),
-        parallelism=num_tasks,
-        num_blocks_per_task=num_blocks_per_task,
-        block_size=block_size,
-    )
-    dsp = ds.window(blocks_per_window=2)
-    assert dsp._length == num_tasks / 2
-
-    dsp = dsp.map_batches(lambda x: x)
-    result_batches = list(ds.iter_batches(batch_size=5))
-    for batch in result_batches:
-        assert len(batch["one"]) == 5
-    assert len(result_batches) == num_blocks_per_task * num_tasks / 5
-
-    dsp = ds.window(blocks_per_window=2)
-    assert dsp._length == num_tasks / 2
-
-    dsp = ds.repeat().map_batches(lambda x: x)
-    assert len(dsp.take(5)) == 5
-
-
 def test_filter(ray_start_regular_shared, target_max_block_size):
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
