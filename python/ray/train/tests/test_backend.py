@@ -236,6 +236,8 @@ def test_train_single_worker_failure(ray_start_2_cpus):
     assert isinstance(exc.value.__cause__, ValueError)
 
 
+# TODO(@justinvyu: fix test and/or deprecate relevant code path)
+@pytest.mark.skip("Mocked execute_async doesn't work as intended")
 def test_worker_failure(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
