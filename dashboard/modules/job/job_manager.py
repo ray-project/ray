@@ -547,19 +547,6 @@ class JobManager:
         except Exception:
             self.event_logger = None
 
-        run_background_task(self._recover_running_jobs())
-
-    async def _recover_running_jobs(self):
-        """Recovers all running jobs from the status client.
-
-        For each job, we will spawn a coroutine to monitor it.
-        Each will be added to self._running_jobs and reconciled.
-        """
-        all_jobs = await self._job_info_client.get_all_jobs()
-        for job_id, job_info in all_jobs.items():
-            if not job_info.status.is_terminal():
-                run_background_task(self._monitor_job(job_id))
-
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
             return ray.get_actor(
