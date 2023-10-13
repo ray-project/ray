@@ -7,7 +7,6 @@ import socket
 import time
 import uuid
 from abc import ABC, abstractmethod
-from asyncio.tasks import FIRST_COMPLETED
 from dataclasses import dataclass
 from typing import (
     Any,
@@ -19,6 +18,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    Union,
 )
 
 import grpc
