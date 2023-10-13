@@ -431,8 +431,7 @@ class RuntimeContext(object):
                 accelerator_resource_name,
                 f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
             )
-            if accelerator_ids:
-                ids_dict[accelerator_resource_name] = accelerator_ids
+            ids_dict[accelerator_resource_name] = accelerator_ids
         return ids_dict
 
 
