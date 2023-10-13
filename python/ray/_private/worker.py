@@ -870,7 +870,7 @@ class Worker:
         for resource, assignment in resource_ids.items():
             if resource == resource_name or re.match(resource_regex, resource):
                 for resource_id, _ in assignment:
-                    assigned_ids.add(str(resource_id))
+                    assigned_ids.add(resource_id)
 
         # If the user had already set the environment variables
         # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
@@ -889,7 +889,7 @@ class Worker:
                     )
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
-        return list(assigned_ids)
+        return [str(assigned_id) for assigned_id in assigned_ids]
 
 
 @PublicAPI
