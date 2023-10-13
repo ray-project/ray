@@ -48,11 +48,13 @@ class GcsClientOptions {
   GcsClientOptions(const std::string &gcs_address) {
     size_t pos = gcs_address.rfind(':');
     RAY_CHECK(pos != std::string::npos);
-    gcs_address_ = gcs_address.substr(0,pos);
+    gcs_address_ = gcs_address.substr(0, pos);
     gcs_port_ = std::stoi(gcs_address.substr(pos + 1));
-    boost::asio::ip::address address = boost::asio::ip::address().from_string(gcs_address_);
-    RAY_CHECK (address.is_v4() || address.is_v6());
-    RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address_ << " and port " << gcs_port_;
+    boost::asio::ip::address address =
+        boost::asio::ip::address().from_string(gcs_address_);
+    RAY_CHECK(address.is_v4() || address.is_v6());
+    RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address_
+                   << " and port " << gcs_port_;
   }
 
   GcsClientOptions() {}

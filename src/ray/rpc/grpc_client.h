@@ -61,9 +61,9 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
                     ::RayConfig::instance().grpc_stream_buffer_size());
   std::shared_ptr<grpc::Channel> channel;
   std::string grpc_address;
- // Determine the type of IP address and build channel destination accordingly
+  // Determine the type of IP address and build channel destination accordingly
   boost::asio::ip::address addr = boost::asio::ip::address().from_string(address);
-  RAY_CHECK (addr.is_v4() || addr.is_v6());
+  RAY_CHECK(addr.is_v4() || addr.is_v6());
   if (addr.is_v6()) {
     grpc_address = "ipv6:[" + address + "]";
   } else {
