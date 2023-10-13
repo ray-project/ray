@@ -22,6 +22,9 @@ prelude_commands: &prelude_commands |-
   ./ci/env/env_info.sh
 
 epilogue_commands: &epilogue_commands |-
+  # Persist ray logs
+  mkdir -p /tmp/artifacts/.ray/
+  tar -cvzf /tmp/artifacts/.ray/logs.tgz /tmp/ray
   # Cleanup runtime environment to save storage
   rm -rf /tmp/ray || true
   # Cleanup local caches - this should not clean up global disk cache
