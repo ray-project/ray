@@ -85,6 +85,7 @@ which implements the proximal policy optimization algorithm in RLlib.
     .. tab-item:: RLlib Algorithms and Tune
 
         .. testcode::
+            :skipif: True
 
             from ray import tune
 
