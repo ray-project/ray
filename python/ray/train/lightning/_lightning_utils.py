@@ -31,14 +31,15 @@ _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
 _TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_available()
 
-# Dynamically load lightning modules
-exec(f"from {pl.__name__}.plugins.environments import LightningEnvironment")
+try:
+    from lightning.pytorch.plugins.environments import LightningEnvironment
+except ModuleNotFoundError:
+    from pytorch_lightning.plugins.environments import LightningEnvironment
+
 if _LIGHTNING_GREATER_EQUAL_2_0:
-    exec(f"from {pl.__name__}.strategies import FSDPStrategy")
+    FSDPStrategy = pl.strategies.FSDPStrategy
 else:
-    exec(
-        f"from {pl.__name__}.strategies import DDPFullyShardedStrategy as FSDPStrategy"
-    )
+    FSDPStrategy = pl.strategies.DDPFullyShardedStrategy
 
 if _TORCH_FSDP_AVAILABLE:
     from torch.distributed.fsdp import (
