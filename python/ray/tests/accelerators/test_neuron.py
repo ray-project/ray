@@ -52,7 +52,7 @@ def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
 )
 @patch("os.path.isdir", return_value=True)
 @patch("sys.platform", "linux")
-def test_get_neuron_core_count_single_device(mock_subprocess, mock_isdir):
+def test_get_neuron_core_count_single_device(mock_isdir, mock_subprocess):
     assert NeuronAccelerator.get_num_accelerators() == 2
 
 
@@ -72,7 +72,7 @@ def test_get_neuron_core_count_single_device(mock_subprocess, mock_isdir):
 )
 @patch("os.path.isdir", return_value=True)
 @patch("sys.platform", "linux")
-def test_get_neuron_core_count_multiple_devices(mock_subprocess, mock_isdir):
+def test_get_neuron_core_count_multiple_devices(mock_isdir, mock_subprocess):
     assert NeuronAccelerator.get_num_accelerators() == 4
 
 
@@ -84,7 +84,7 @@ def test_get_neuron_core_count_multiple_devices(mock_subprocess, mock_isdir):
 )
 @patch("os.path.isdir", return_value=True)
 @patch("sys.platform", "linux")
-def test_get_neuron_core_count_failure_with_error(mock_subprocess, mock_isdir):
+def test_get_neuron_core_count_failure_with_error(mock_isdir, mock_subprocess):
     assert NeuronAccelerator.get_num_accelerators() == 0
 
 
@@ -94,7 +94,7 @@ def test_get_neuron_core_count_failure_with_error(mock_subprocess, mock_isdir):
 )
 @patch("os.path.isdir", return_value=True)
 @patch("sys.platform", "linux")
-def test_get_neuron_core_count_failure_with_empty_results(mock_subprocess, mock_isdir):
+def test_get_neuron_core_count_failure_with_empty_results(mock_isdir, mock_subprocess):
     assert NeuronAccelerator.get_num_accelerators() == 0
 
 
