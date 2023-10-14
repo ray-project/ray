@@ -6,12 +6,79 @@ steps:
   - name: manylinux
     wanda: ci/docker/manylinux.wanda.yaml
 
-  - name: raypy38cu118base
-    wanda: ci/docker/ray.py38.cu118.base.wanda.yaml
+  - name: raycudabase
+    label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+    tags:
+      - python_dependencies
+      - docker
+      - core_cpp
+    wanda: ci/docker/ray.cuda.base.wanda.yaml
+    matrix:
+      setup:
+        python:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        cuda:
+          - "11.5.2"
+          - "11.6.2"
+          - "11.7.1"
+          - "11.8.0"
+          - "12.1.1"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
 
-  - name: ray-mlpy38cu118base
-    wanda: ci/docker/ray-ml.py38.cu118.base.wanda.yaml
-    depends_on: raypy38cu118base
+  - name: raycpubase
+    label: "wanda: ray.py{{matrix}}.cpu.base"
+    tags:
+      - python_dependencies
+      - docker
+      - core_cpp
+    wanda: ci/docker/ray.cpu.base.wanda.yaml
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+
+  - name: ray-mlcudabase
+    label: "wanda: ray-ml.py{{matrix.python}}.cu{{matrix.cuda}}.base"
+    tags:
+      - python_dependencies
+      - docker
+      - core_cpp
+    wanda: ci/docker/ray-ml.cuda.base.wanda.yaml
+    depends_on: raycudabase
+    matrix:
+      setup:
+        python:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+        cuda:
+          - "11.8.0"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+
+  - name: ray-mlcpubase
+    label: "wanda: ray-ml.py{{matrix}}.cpu.base"
+    tags:
+      - python_dependencies
+      - docker
+      - core_cpp
+    wanda: ci/docker/ray-ml.cpu.base.wanda.yaml
+    depends_on: raycpubase
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
   
   - name: oss-ci-base_test
     wanda: ci/docker/base.test.wanda.yaml
@@ -51,3 +118,11 @@ steps:
   - name: serverlessbuild
     wanda: ci/docker/serverless.build.wanda.yaml
     depends_on: oss-ci-base_build
+
+  - name: rllibbuild
+    wanda: ci/docker/rllib.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  - name: mlbuild
+    wanda: ci/docker/ml.build.wanda.yaml
+    depends_on: oss-ci-base_ml

@@ -2930,7 +2930,10 @@ def check_health(address: str, timeout=2, skip_version_check=False):
         Raises an exception otherwise.
     """
 
-    gcs_address, gcs_port = address.split(":")
+    tokens = address.rsplit(":", 1)
+    if len(tokens) != 2:
+        raise ValueError("Invalid address: {}. Expect 'ip:port'".format(address))
+    gcs_address, gcs_port = tokens
 
     cdef:
         c_string c_gcs_address = gcs_address
@@ -4277,22 +4280,24 @@ cdef class CoreWorker:
             function_descriptor, specified_cgname)
 
         async def async_func():
-            if task_id:
-                async_task_id.set(task_id)
+            try:
+                if task_id:
+                    async_task_id.set(task_id)
 
-            if inspect.isawaitable(func_or_coro):
-                coroutine = func_or_coro
-            else:
-                coroutine = func_or_coro(*args, **kwargs)
+                if inspect.isawaitable(func_or_coro):
+                    coroutine = func_or_coro
+                else:
+                    coroutine = func_or_coro(*args, **kwargs)
 
-            return await coroutine
+                return await coroutine
+            finally:
+                event.Notify()
 
         future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
         if task_id:
             with self._task_id_to_future_lock:
                 self._task_id_to_future[task_id] = future
 
-        future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))

@@ -5,7 +5,7 @@ import os
 import random
 import time
 import traceback
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
@@ -34,7 +34,6 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-    MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -171,14 +170,12 @@ class ActorReplicaWrapper:
     def __init__(
         self,
         actor_name: str,
-        detached: bool,
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_id: DeploymentID,
         version: DeploymentVersion,
     ):
         self._actor_name = actor_name
-        self._detached = detached
         self._controller_name = controller_name
 
         self._replica_tag = replica_tag
@@ -376,7 +373,6 @@ class ActorReplicaWrapper:
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
                 self._controller_name,
-                self._detached,
                 self.app_name,
             )
         # TODO(simon): unify the constructor arguments across language
@@ -416,7 +412,7 @@ class ActorReplicaWrapper:
         actor_options = {
             "name": self._actor_name,
             "namespace": SERVE_NAMESPACE,
-            "lifetime": "detached" if self._detached else None,
+            "lifetime": "detached",
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
@@ -818,14 +814,12 @@ class DeploymentReplica(VersionedReplica):
     def __init__(
         self,
         controller_name: str,
-        detached: bool,
         replica_tag: ReplicaTag,
         deployment_id: DeploymentID,
         version: DeploymentVersion,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
-            detached,
             controller_name,
             replica_tag,
             deployment_id,
@@ -1158,7 +1152,6 @@ class DeploymentState:
         self,
         id: DeploymentID,
         controller_name: str,
-        detached: bool,
         long_poll_host: LongPollHost,
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
@@ -1166,7 +1159,6 @@ class DeploymentState:
     ):
         self._id = id
         self._controller_name: str = controller_name
-        self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
@@ -1250,7 +1242,6 @@ class DeploymentState:
             replica_name: ReplicaName = ReplicaName.from_str(replica_actor_name)
             new_deployment_replica = DeploymentReplica(
                 self._controller_name,
-                self._detached,
                 replica_name.replica_tag,
                 replica_name.deployment_id,
                 self._target_state.version,
@@ -1684,7 +1675,6 @@ class DeploymentState:
                     )
                     new_deployment_replica = DeploymentReplica(
                         self._controller_name,
-                        self._detached,
                         replica_name.replica_tag,
                         self._id,
                         self._target_state.version,
@@ -2130,7 +2120,6 @@ class DeploymentStateManager:
     def __init__(
         self,
         controller_name: str,
-        detached: bool,
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
@@ -2138,7 +2127,6 @@ class DeploymentStateManager:
         cluster_node_info_cache: ClusterNodeInfoCache,
     ):
         self._controller_name = controller_name
-        self._detached = detached
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
@@ -2147,9 +2135,6 @@ class DeploymentStateManager:
         )
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()
-        self._deleted_deployment_metadata: Dict[
-            DeploymentID, DeploymentInfo
-        ] = OrderedDict()
 
         self._recover_from_checkpoint(
             all_current_actor_names, all_current_placement_group_names
@@ -2166,7 +2151,6 @@ class DeploymentStateManager:
         return DeploymentState(
             deployment_id,
             self._controller_name,
-            self._detached,
             self._long_poll_host,
             self._deployment_scheduler,
             self._cluster_node_info_cache,
@@ -2290,10 +2274,7 @@ class DeploymentStateManager:
         )
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            (
-                deployment_state_info,
-                self._deleted_deployment_metadata,
-            ) = cloudpickle.loads(checkpoint)
+            deployment_state_info = cloudpickle.loads(checkpoint)
 
             for deployment_id, checkpoint_data in deployment_state_info.items():
                 deployment_state = self._create_deployment_state(deployment_id)
@@ -2357,9 +2338,7 @@ class DeploymentStateManager:
 
         self._kv_store.put(
             CHECKPOINT_KEY,
-            cloudpickle.dumps(
-                (deployment_state_info, self._deleted_deployment_metadata)
-            ),
+            cloudpickle.dumps(deployment_state_info),
         )
 
     def get_running_replica_infos(
@@ -2370,26 +2349,16 @@ class DeploymentStateManager:
             for id, deployment_state in self._deployment_states.items()
         }
 
-    def get_deployment_infos(
-        self, include_deleted: Optional[bool] = False
-    ) -> Dict[DeploymentID, DeploymentInfo]:
+    def get_deployment_infos(self) -> Dict[DeploymentID, DeploymentInfo]:
         infos: Dict[DeploymentID, DeploymentInfo] = {}
-        if include_deleted:
-            for deployment_id, info in self._deleted_deployment_metadata.items():
-                infos[deployment_id] = info
-
         for deployment_id, deployment_state in self._deployment_states.items():
             infos[deployment_id] = deployment_state.target_info
 
         return infos
 
-    def get_deployment(
-        self, deployment_id: DeploymentID, include_deleted: Optional[bool] = False
-    ) -> Optional[DeploymentInfo]:
+    def get_deployment(self, deployment_id: DeploymentID) -> Optional[DeploymentInfo]:
         if deployment_id in self._deployment_states:
             return self._deployment_states[deployment_id].target_info
-        elif include_deleted and deployment_id in self._deleted_deployment_metadata:
-            return self._deleted_deployment_metadata[deployment_id]
         else:
             return None
 
@@ -2435,9 +2404,6 @@ class DeploymentStateManager:
         Returns:
             bool: Whether or not the deployment is being updated.
         """
-        if deployment_id in self._deleted_deployment_metadata:
-            del self._deleted_deployment_metadata[deployment_id]
-
         if deployment_id not in self._deployment_states:
             self._deployment_states[deployment_id] = self._create_deployment_state(
                 deployment_id
@@ -2506,14 +2472,8 @@ class DeploymentStateManager:
                 upscales[deployment_id] = deployment_state_update_result.upscale
             if deployment_state_update_result.downscale:
                 downscales[deployment_id] = deployment_state_update_result.downscale
-
             if deployment_state_update_result.deleted:
                 deleted_ids.append(deployment_id)
-                deployment_info = deployment_state.target_info
-                deployment_info.end_time_ms = int(time.time() * 1000)
-                if len(self._deleted_deployment_metadata) > MAX_NUM_DELETED_DEPLOYMENTS:
-                    self._deleted_deployment_metadata.popitem(last=False)
-                self._deleted_deployment_metadata[deployment_id] = deployment_info
 
             any_recovering |= deployment_state_update_result.any_replicas_recovering
 

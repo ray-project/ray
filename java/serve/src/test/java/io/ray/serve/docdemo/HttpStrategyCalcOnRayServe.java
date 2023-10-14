@@ -2,7 +2,7 @@ package io.ray.serve.docdemo;
 
 import com.google.gson.Gson;
 import io.ray.serve.api.Serve;
-import io.ray.serve.deployment.Deployment;
+import io.ray.serve.deployment.Application;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,15 +19,15 @@ import org.apache.hc.client5.http.fluent.Request;
 public class HttpStrategyCalcOnRayServe {
 
   public void deploy() {
-    Serve.start(true, false, null);
+    Serve.start(null);
 
-    Deployment deployment =
+    Application deployment =
         Serve.deployment()
             .setName("http-strategy")
             .setDeploymentDef(HttpStrategyOnRayServe.class.getName())
             .setNumReplicas(4)
-            .create();
-    deployment.deploy(true);
+            .bind();
+    Serve.run(deployment);
   }
 
   // docs-http-start

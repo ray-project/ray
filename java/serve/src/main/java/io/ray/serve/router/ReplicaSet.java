@@ -11,12 +11,9 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.metric.TagKey;
-import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
-import io.ray.serve.deployment.Deployment;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
-import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.util.CollectionUtil;
@@ -45,8 +42,6 @@ public class ReplicaSet {
   // Map the actor name to the handle of the actor.
   private final Map<String, BaseActorHandle> allActorHandles;
 
-  private DeploymentLanguage language;
-
   private AtomicInteger numQueuedQueries = new AtomicInteger();
 
   private Gauge numQueuedQueriesGauge;
@@ -56,15 +51,6 @@ public class ReplicaSet {
   public ReplicaSet(String deploymentName) {
     this.inFlightQueries = new ConcurrentHashMap<>();
     this.allActorHandles = new ConcurrentHashMap<>();
-    try {
-      Deployment deployment = Serve.getDeployment(deploymentName);
-      this.language = deployment.getConfig().getDeploymentLanguage();
-    } catch (Exception e) {
-      LOGGER.warn(
-          "Failed to get language from controller. Set it to Java as default value. The exception is ",
-          e);
-      this.language = DeploymentLanguage.JAVA;
-    }
     RayServeMetrics.execute(
         () ->
             this.numQueuedQueriesGauge =
@@ -76,7 +62,6 @@ public class ReplicaSet {
                     .register());
   }
 
-  @SuppressWarnings("unchecked")
   public synchronized void updateWorkerReplicas(Object actorSet) {
     if (null != actorSet) {
       Set<String> actorNameSet = new HashSet<>(((ActorNameList) actorSet).getNamesList());
@@ -135,6 +120,7 @@ public class ReplicaSet {
    * @param query query the incoming query.
    * @return ray.ObjectRef
    */
+  @SuppressWarnings("unchecked")
   private ObjectRef<Object> tryAssignReplica(Query query) {
     int loopCount = 0;
     while (!hasPullReplica && loopCount < 50) {
@@ -153,7 +139,7 @@ public class ReplicaSet {
     BaseActorHandle replica =
         handles.get(randomIndex); // TODO controll concurrency using maxConcurrentQueries
     LOGGER.debug("Assigned query {} to replica {}.", query.getMetadata().getRequestId(), replica);
-    if (language == DeploymentLanguage.PYTHON) {
+    if (replica instanceof PyActorHandle) {
       return ((PyActorHandle) replica)
           .task(
               PyActorMethod.of("handle_request_from_java"),
