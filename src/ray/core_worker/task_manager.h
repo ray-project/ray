@@ -320,9 +320,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// It is the opposite of regular tasks which can only batch
   /// report the task returns after the task finishes.
   ///
-  /// \param[in] request SANG-TODO
-  /// \param[in] execution_signal_callback SANG-TODO Not guaranteed to run in the same
-  /// thread. Signal callbacks receives arguments "status" and
+  /// \param[in] request The request that contains reported objects.
+  /// \param[in] execution_signal_callback Note: this callback is NOT GUARANTEED
+  /// to run in the same thread as the caller.
+  /// The callback that receives arguments "status" and
   /// "total_object_consumed_bytes". status: OK if the object will be consumed/already
   /// consumed. NotFound if the stream is already deleted or the object is from the
   /// previous attempt. total_object_consumed_bytes: total objects consumed from the

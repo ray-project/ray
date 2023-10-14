@@ -123,7 +123,7 @@ void GeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
 
   auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
   if (total_object_unconsumed > backpressure_threshold_) {
-    RAY_LOG(DEBUG) << "SANG-TODO backpressued, consumed: " << total_objects_consumed_
+    RAY_LOG(DEBUG) << "Generator backpressured, consumed: " << total_objects_consumed_
                    << ". generated: " << total_objects_generated_
                    << ". threshold: " << backpressure_threshold_;
     cond_var_.Wait(&mutex_);
@@ -134,10 +134,8 @@ void GeneratorBackpressureWaiter::UpdateTotalObjectConsumed(
     int64_t total_objects_consumed) {
   absl::MutexLock lock(&mutex_);
   total_objects_consumed_ = total_objects_consumed;
-  RAY_LOG(DEBUG) << "SANG-TODO update consumption, total " << total_objects_consumed_;
   auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
   if (total_object_unconsumed <= backpressure_threshold_) {
-    RAY_LOG(DEBUG) << "SANG-TODO signal";
     cond_var_.SignalAll();
   }
 }

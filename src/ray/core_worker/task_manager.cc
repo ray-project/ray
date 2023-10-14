@@ -457,7 +457,6 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   // Otherwise the executor will pause forever.
   RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
   for (const auto &execution_signal : signal_it->second) {
-    RAY_LOG(DEBUG) << "SANG-TODO callling a callback.";
     execution_signal(Status::NotFound("Stream is deleted."), -1);
   }
   ref_stream_execution_signal_callbacks_.erase(signal_it);
@@ -623,7 +622,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                    << ". Object size: " << object_size;
     auto index_not_used_yet =
         stream_it->second.InsertToStream(object_id, item_index, object_size);
-    RAY_LOG(DEBUG) << "SANG-TODO The index is used? " << index_not_used_yet;
 
     // If the ref was written to a stream, we should also
     // own the dynamically generated task return.
@@ -640,31 +638,29 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                      /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
   }
 
-  if (num_objects_written > 0) {
-    auto total_generated = stream_it->second.TotalObjectSizeWritten();
-    auto total_consumed = stream_it->second.TotalObjectSizeConsumed();
-    auto total_unconsumed = total_generated - total_consumed;
-    RAY_LOG(DEBUG) << "SANG-TODO Should we backpressure? " << generator_id
-                   << ". total_generated: " << total_generated
-                   << ". total_consumed: " << total_consumed
-                   << ". threshold: " << backpressure_threshold;
-    if (backpressure_threshold != -1 && total_unconsumed > backpressure_threshold) {
-      RAY_LOG(DEBUG) << "Stream " << generator_id
-                     << " is backpressured. total_generated: " << total_generated
-                     << ". total_consumed: " << total_consumed
-                     << ". threshold: " << backpressure_threshold;
-      auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-      RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
-      signal_it->second.push_back(execution_signal_callback);
-    } else {
-      // No need to backpressure.
-      execution_signal_callback(Status::OK(), total_consumed);
-    }
-    return true;
-  } else {
-    execution_signal_callback(Status::NotFound("The object is already used."), -1);
+  // Handle backpressure if needed.
+  auto total_generated = stream_it->second.TotalObjectSizeWritten();
+  auto total_consumed = stream_it->second.TotalObjectSizeConsumed();
+
+  if (num_objects_written == 0) {
+    execution_signal_callback(Status::OK(), total_consumed);
     return false;
   }
+
+  auto total_unconsumed = total_generated - total_consumed;
+  if (backpressure_threshold != -1 && total_unconsumed > backpressure_threshold) {
+    RAY_LOG(DEBUG) << "Stream " << generator_id
+                   << " is backpressured. total_generated: " << total_generated
+                   << ". total_consumed: " << total_consumed
+                   << ". threshold: " << backpressure_threshold;
+    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
+    RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
+    signal_it->second.push_back(execution_signal_callback);
+  } else {
+    // No need to backpressure.
+    execution_signal_callback(Status::OK(), total_consumed);
+  }
+  return true;
 }
 
 bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,

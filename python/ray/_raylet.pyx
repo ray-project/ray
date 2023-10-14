@@ -962,7 +962,9 @@ cdef class StreamingGeneratorExecutionContext:
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
             application error.
-        streaming_generator_backpressure_size_bytes: SANG-TODO
+        streaming_generator_backpressure_size_bytes: The backpressure threshold
+            for streaming generator. The stremaing generator pauses if
+            unconsumed objects exceed this threshold.
     """
 
     cdef:

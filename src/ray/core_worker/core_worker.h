@@ -793,7 +793,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// report from the caller side.
   /// \param[in] attempt_number The number of time the current task is retried.
   /// 0 means it is the first attempt.
-  /// \param[in] waiter SANG-TODO
+  /// \param[in] waiter The class to pause the thread if generator backpressure limit
+  /// is reached.
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
