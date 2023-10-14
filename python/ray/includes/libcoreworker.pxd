@@ -95,8 +95,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
         int MaxPendingCalls() const
 
-    cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter":
-        CGeneratorBackpressureWaiter(int64_t streaming_generator_backpressure_size_bytes)
+    cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
+        CGeneratorBackpressureWaiter(int64_t streaming_generator_backpressure_size_bytes) # noqa
         void WaitUntilObjectConsumed()
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
@@ -343,7 +343,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool is_reattempt,
             c_bool is_streaming_generator,
             c_bool should_retry_exceptions,
-            int64_t streaming_generator_backpressure_size_bytes) nogil) task_execution_callback
+            int64_t streaming_generator_backpressure_size_bytes
+        ) nogil) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect

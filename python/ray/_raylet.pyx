@@ -1209,11 +1209,6 @@ async def execute_streaming_generator_async(
     # Generator task should only have 1 return object ref,
     # which contains None or exceptions (if system error occurs).
     assert context.return_size == 1
-    if context.streaming_generator_backpressure_size_bytes != -1:
-        raise ValueError(
-            "_streaming_generator_backpressure_size_bytes is "
-            "not supported for an async actor."
-        )
 
     gen = context.generator
     while True:
@@ -1680,6 +1675,11 @@ cdef void execute_task(
                         context.initialize(outputs)
 
                         if is_async_gen:
+                            if streaming_generator_backpressure_size_bytes != -1:
+                                raise ValueError(
+                                    "_streaming_generator_backpressure_size_bytes is "
+                                    "not supported for an async actor."
+                                )
                             # Note that the report RPCs are called inside an
                             # event loop thread.
                             core_worker.run_async_func_or_coro_in_event_loop(
@@ -3792,7 +3792,11 @@ cdef class CoreWorker:
                     ray_function,
                     args_vector,
                     CTaskOptions(
-                        name, num_returns, c_resources, concurrency_group_name, streaming_generator_backpressure_size_bytes),
+                        name,
+                        num_returns,
+                        c_resources,
+                        concurrency_group_name,
+                        streaming_generator_backpressure_size_bytes),
                     return_refs,
                     current_c_task_id)
             # These arguments were serialized and put into the local object

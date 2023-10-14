@@ -121,7 +121,12 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id,
   if (temporarily_owned_refs_.find(object_id) != temporarily_owned_refs_.end()) {
     temporarily_owned_refs_.erase(object_id);
   }
-  refs_written_to_stream_.emplace(object_id, object_size);
+
+  auto [_, inserted] = refs_written_to_stream_.emplace(object_id, object_size);
+  if (!inserted) {
+    return false;
+  }
+
   max_index_seen_ = std::max(max_index_seen_, item_index);
   total_object_size_written_ += object_size;
   return true;
@@ -225,8 +230,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     absl::MutexLock lock(&objet_ref_stream_ops_mu_);
     auto inserted =
         object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
-    ref_stream_execution_signal_callbacks_.emplace(generator_id,
-                                                   std::vector<std::function<void()>>());
+    ref_stream_execution_signal_callbacks_.emplace(
+        generator_id, std::vector<ExecutionSignalCallback>());
     RAY_CHECK(inserted.second);
   }
 
@@ -453,7 +458,7 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
   for (const auto &execution_signal : signal_it->second) {
     RAY_LOG(DEBUG) << "SANG-TODO callling a callback.";
-    execution_signal();
+    execution_signal(Status::NotFound("Stream is deleted."), -1);
   }
   ref_stream_execution_signal_callbacks_.erase(signal_it);
 
@@ -509,7 +514,7 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                          << " should resume. total_generated: " << total_generated
                          << ". total_consumed: " << total_consumed
                          << ". threshold: " << backpressure_threshold;
-          execution_signal();
+          execution_signal(Status::OK(), total_consumed);
         }
         it->second.clear();
       }
@@ -567,7 +572,7 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
 
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request,
-    std::function<void()> execution_signal_callback) {
+    ExecutionSignalCallback execution_signal_callback) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
@@ -587,7 +592,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
         // fails, we may receive a report from the first executor after the
         // second attempt has started. In this case, we should ignore the first
         // attempt.
-        execution_signal_callback();
+        execution_signal_callback(
+            Status::NotFound("Stale object reports from the previous attempt."), -1);
         return false;
       }
     }
@@ -601,7 +607,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
-    execution_signal_callback();
+    execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
     return false;
   }
 
@@ -615,12 +621,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id
                    << ". Object size: " << object_size;
-    bool index_not_used_yet = false;
+    auto index_not_used_yet =
+        stream_it->second.InsertToStream(object_id, item_index, object_size);
+    RAY_LOG(DEBUG) << "SANG-TODO The index is used? " << index_not_used_yet;
 
-    if (stream_it != object_ref_streams_.end()) {
-      index_not_used_yet =
-          stream_it->second.InsertToStream(object_id, item_index, object_size);
-    }
     // If the ref was written to a stream, we should also
     // own the dynamically generated task return.
     // NOTE: If we call this method while holding a lock, it can deadlock.
@@ -636,26 +640,31 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                      /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
   }
 
-  auto total_generated = stream_it->second.TotalObjectSizeWritten();
-  auto total_consumed = stream_it->second.TotalObjectSizeConsumed();
-  auto total_unconsumed = total_generated - total_consumed;
-  RAY_LOG(DEBUG) << "SANG-TODO Should we backpressure? " << generator_id
-                 << ". total_generated: " << total_generated
-                 << ". total_consumed: " << total_consumed
-                 << ". threshold: " << backpressure_threshold;
-  if (backpressure_threshold != -1 && total_unconsumed > backpressure_threshold) {
-    RAY_LOG(DEBUG) << "Stream " << generator_id
-                   << " is backpressured. total_generated: " << total_generated
+  if (num_objects_written > 0) {
+    auto total_generated = stream_it->second.TotalObjectSizeWritten();
+    auto total_consumed = stream_it->second.TotalObjectSizeConsumed();
+    auto total_unconsumed = total_generated - total_consumed;
+    RAY_LOG(DEBUG) << "SANG-TODO Should we backpressure? " << generator_id
+                   << ". total_generated: " << total_generated
                    << ". total_consumed: " << total_consumed
                    << ". threshold: " << backpressure_threshold;
-    auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-    RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
-    signal_it->second.push_back(execution_signal_callback);
+    if (backpressure_threshold != -1 && total_unconsumed > backpressure_threshold) {
+      RAY_LOG(DEBUG) << "Stream " << generator_id
+                     << " is backpressured. total_generated: " << total_generated
+                     << ". total_consumed: " << total_consumed
+                     << ". threshold: " << backpressure_threshold;
+      auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
+      RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
+      signal_it->second.push_back(execution_signal_callback);
+    } else {
+      // No need to backpressure.
+      execution_signal_callback(Status::OK(), total_consumed);
+    }
+    return true;
   } else {
-    // No need to backpressure.
-    execution_signal_callback();
+    execution_signal_callback(Status::NotFound("The object is already used."), -1);
+    return false;
   }
-  return num_objects_written != 0;
 }
 
 bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,

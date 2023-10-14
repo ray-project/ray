@@ -86,6 +86,7 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
                                                const std::string &error_message,
                                                double timestamp)>;
+using ExecutionSignalCallback = std::function<void(Status, int64_t)>;
 
 /// When the streaming generator tasks are submitted,
 /// the intermediate return objects are streamed
@@ -321,12 +322,17 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] request SANG-TODO
   /// \param[in] execution_signal_callback SANG-TODO Not guaranteed to run in the same
-  /// thread.
+  /// thread. Signal callbacks receives arguments "status" and
+  /// "total_object_consumed_bytes". status: OK if the object will be consumed/already
+  /// consumed. NotFound if the stream is already deleted or the object is from the
+  /// previous attempt. total_object_consumed_bytes: total objects consumed from the
+  /// generator. The executor can receive the value to decide to resume execution or keep
+  /// being backpressured. If status is not OK, this must be -1.
   ///
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
       const rpc::ReportGeneratorItemReturnsRequest &request,
-      std::function<void()> execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
+      ExecutionSignalCallback execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
   ///
@@ -779,7 +785,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// The consumer side of object ref stream should signal the executor
   /// to resume execution via signal callbacks (i.e., RPC reply).
   /// This data structure maintains the mapping of ObjectRefStreamID -> signal_callbacks
-  absl::flat_hash_map<ObjectID, std::vector<std::function<void()>>>
+  absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>
       ref_stream_execution_signal_callbacks_ ABSL_GUARDED_BY(objet_ref_stream_ops_mu_);
 
   /// Callback to store objects in plasma. This is used for objects that were

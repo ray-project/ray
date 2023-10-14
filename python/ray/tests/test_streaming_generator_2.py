@@ -186,7 +186,7 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
                 assert "The worker died" in str(e.value)
 
 
-@pytest.mark.parametrize("backpressure", [True])
+@pytest.mark.parametrize("backpressure", [False, True])
 def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster, backpressure):
     """
     Test a workload that's like ray dataset + lineage reconstruction.
@@ -249,7 +249,7 @@ def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster, backpr
             nodes.append(cluster.add_node(num_cpus=1, object_store_memory=10**8))
         cluster.wait_for_nodes()
 
-        for _ in range(5):
+        for _ in range(10):
             time.sleep(0.1)
             node_to_kill = random.choices(nodes)[0]
             nodes.remove(node_to_kill)

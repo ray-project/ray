@@ -413,6 +413,8 @@ message ReportGeneratorItemReturnsRequest {
 }
 
 message ReportGeneratorItemReturnsReply {
+  // The total amount of object consumed in bytes from the generator.
+  int64 total_object_consumed_bytes = 1;
 }
 
 service CoreWorkerService {

@@ -271,7 +271,7 @@ class GeneratorBackpressureWaiter {
   GeneratorBackpressureWaiter(int64_t streaming_generator_backpressure_size_bytes);
   /// Block a thread and wait until objects are consumed from a consumer.
   void WaitUntilObjectConsumed();
-  void UpdateObjectConsumed(int64_t objects_consumed);
+  void UpdateTotalObjectConsumed(int64_t total_objects_consumed);
   void UpdateObjectGenerated(int64_t objects_generated);
   int64_t TotalObjectConsumed();
   int64_t TotalObjectGenerated();

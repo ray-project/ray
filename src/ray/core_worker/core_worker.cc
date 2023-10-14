@@ -123,14 +123,17 @@ void GeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
 
   auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
   if (total_object_unconsumed > backpressure_threshold_) {
+    RAY_LOG(DEBUG) << "SANG-TODO backpressued, consumed: " << total_objects_consumed_
+                   << ". generated: " << total_objects_generated_
+                   << ". threshold: " << backpressure_threshold_;
     cond_var_.Wait(&mutex_);
   }
 }
 
-void GeneratorBackpressureWaiter::UpdateObjectConsumed(int64_t objects_consumed) {
+void GeneratorBackpressureWaiter::UpdateTotalObjectConsumed(
+    int64_t total_objects_consumed) {
   absl::MutexLock lock(&mutex_);
-  RAY_LOG(DEBUG) << "SANG-TODO update consumption, " << objects_consumed;
-  total_objects_consumed_ += objects_consumed;
+  total_objects_consumed_ = total_objects_consumed;
   RAY_LOG(DEBUG) << "SANG-TODO update consumption, total " << total_objects_consumed_;
   auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
   if (total_object_unconsumed <= backpressure_threshold_) {
@@ -2981,18 +2984,26 @@ Status CoreWorker::ReportGeneratorItemReturns(
       request,
       [waiter, object_size](const Status &status,
                             const rpc::ReportGeneratorItemReturnsReply &reply) {
-        waiter->UpdateObjectConsumed(object_size);
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. object_size: "
                        << object_size
                        << ". Total object consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated();
-        if (!status.ok()) {
+        if (status.ok()) {
+          /// Since unary gRPC requests are not ordered, it is possible the stale
+          /// total value can be replied. Since total object consumed only can
+          /// increment, we always choose the larger value here.
+          waiter->UpdateTotalObjectConsumed(std::max(
+              waiter->TotalObjectConsumed(), reply.total_object_consumed_bytes()));
+        } else {
           // TODO(sang): Handle network error more gracefully.
-          RAY_LOG(ERROR) << "Failed to send the object ref.";
+          // If the request fails, we should just resume until task finishes without
+          // backpressure.
+          waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
+          RAY_LOG(WARNING) << "Failed to send the object ref.";
         }
       });
-  // Backpressure the execution if the consumer didn't consume objects.
-  // See task_manager.h and search "backpressure" for protocol details.
+  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
+  // details.
   waiter->WaitUntilObjectConsumed();
   return Status::OK();
 }
@@ -3004,16 +3015,16 @@ void CoreWorker::HandleReportGeneratorItemReturns(
   task_manager_->HandleReportGeneratorItemReturns(
       request,
       /*execution_signal_callback*/
-      [this, send_reply_callback = std::move(send_reply_callback)]() {
-        //
-        io_service_.post(
-            [send_reply_callback = std::move(send_reply_callback)]() {
-              RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
-                                "executor to resume tasks.";
-              /// Signal the execution side to stop backpressure and resume execution.
-              send_reply_callback(Status::OK(), nullptr, nullptr);
-            },
-            "CoreWorker.HandleReportGeneratorItemReturns");
+      [reply, send_reply_callback = std::move(send_reply_callback)](
+          Status status, int64_t total_object_consumed_bytes) {
+        RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
+                          "executor to resume tasks.";
+        if (!status.ok()) {
+          RAY_CHECK_EQ(total_object_consumed_bytes, -1);
+        }
+
+        reply->set_total_object_consumed_bytes(total_object_consumed_bytes);
+        send_reply_callback(status, nullptr, nullptr);
       });
 }
 

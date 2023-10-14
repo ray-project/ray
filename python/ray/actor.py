@@ -180,7 +180,7 @@ class ActorMethod:
         name="",
         num_returns=None,
         concurrency_group=None,
-        streaming_generator_backpressure_size_bytes=None,
+        _streaming_generator_backpressure_size_bytes=None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -196,7 +196,9 @@ class ActorMethod:
                 name=name,
                 num_returns=num_returns,
                 concurrency_group_name=concurrency_group,
-                streaming_generator_backpressure_size_bytes=streaming_generator_backpressure_size_bytes,
+                streaming_generator_backpressure_size_bytes=(
+                    _streaming_generator_backpressure_size_bytes
+                ),
             )
 
         # Apply the decorator if there is one.
