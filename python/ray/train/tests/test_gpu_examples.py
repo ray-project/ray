@@ -1,26 +1,24 @@
 import os
-import pytest
-import torch
 from tempfile import TemporaryDirectory
 
+import pytest
+import torch
+
 from ray import train
-from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import TRAINING_ITERATION
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
-)
-from ray.train.examples.tf.tensorflow_mnist_example import (
-    train_func as tensorflow_mnist_train_func,
 )
 from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func_per_worker as fashion_mnist_train_func,
 )
-from ray.train.horovod.horovod_trainer import HorovodTrainer
-from ray.train.tests.test_tune import (
-    torch_fashion_mnist,
-    tune_tensorflow_mnist,
+from ray.train.examples.tf.tensorflow_mnist_example import (
+    train_func as tensorflow_mnist_train_func,
 )
+from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+from ray.train.tests.test_tune import torch_fashion_mnist, tune_tensorflow_mnist
 from ray.train.torch.torch_trainer import TorchTrainer
 
 

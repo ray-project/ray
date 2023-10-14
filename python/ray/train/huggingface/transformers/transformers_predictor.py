@@ -43,10 +43,11 @@ except ImportError as e:
 
 
 if TYPE_CHECKING:
+    from transformers.modeling_tf_utils import TFPreTrainedModel
+    from transformers.modeling_utils import PreTrainedModel
+
     from ray.data.preprocessor import Preprocessor
     from ray.train.huggingface import TransformersCheckpoint
-    from transformers.modeling_utils import PreTrainedModel
-    from transformers.modeling_tf_utils import TFPreTrainedModel
 
 logger = logging.getLogger(__name__)
 

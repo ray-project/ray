@@ -1,28 +1,22 @@
+import warnings
 from pathlib import Path
 from typing import Dict, List
+
 import pytest
-import warnings
 
 import ray
 from ray import train
-from ray.train import (
-    CheckpointConfig,
-    RunConfig,
-    ScalingConfig,
-)
 from ray.air._internal.uri_utils import URI
+from ray.train import CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.base_trainer import BaseTrainer
-from ray.train.trainer import TrainingFailedError
-from ray.train.data_parallel_trainer import (
-    DataParallelTrainer,
-)
-from ray.train.torch import TorchTrainer
-from ray.train.xgboost import XGBoostTrainer
-from ray.train.lightgbm import LightGBMTrainer
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.huggingface import TransformersTrainer
-from ray.tune import Callback
-
+from ray.train.lightgbm import LightGBMTrainer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.train.torch import TorchTrainer
+from ray.train.trainer import TrainingFailedError
+from ray.train.xgboost import XGBoostTrainer
+from ray.tune import Callback
 from ray.tune.experiment import Trial
 
 
@@ -205,10 +199,8 @@ def test_trainer_with_init_fn_restore(
     exp_name = f"{trainer_cls.__name__}_restore_test"
 
     if trainer_cls == TransformersTrainer:
-        from ray.train.tests.test_transformers_trainer import (
-            train_function as hf_init,
-            train_df,
-        )
+        from ray.train.tests.test_transformers_trainer import train_df
+        from ray.train.tests.test_transformers_trainer import train_function as hf_init
 
         trainer_init_fn = hf_init
         trainer_init_config = {"epochs": 5, "save_strategy": "epoch"}
