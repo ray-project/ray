@@ -4,7 +4,6 @@ steps:
     parallelism: 2
     tags: 
       - serve
-      - ml
       - python
     instance_type: large
     commands:
@@ -17,7 +16,6 @@ steps:
   - label: ":ray-serve: serve: flaky tests"
     tags: 
       - serve
-      - ml
       - python
     instance_type: medium
     soft_fail: true
