@@ -8,7 +8,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 
 DATA_GRAFANA_PANELS = [
     Panel(
-        id=45,
+        id=1,
         title="Bytes Spilled",
         description="Amount spilled by dataset operators.",
         unit="bytes",
@@ -20,7 +20,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=46,
+        id=2,
         title="Bytes Allocated",
         description="Amount allocated by dataset operators.",
         unit="bytes",
@@ -32,7 +32,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=47,
+        id=3,
         title="Bytes Freed",
         description="Amount freed by dataset operators.",
         unit="bytes",
@@ -44,7 +44,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=48,
+        id=4,
         title="Memory Store Usage",
         description="Amount of memory store used by dataset operators.",
         unit="bytes",
@@ -56,7 +56,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=49,
+        id=5,
         title="CPU Usage",
         description="Logical CPU usage of dataset operators.",
         unit="cores",
@@ -68,7 +68,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=50,
+        id=6,
         title="GPU Usage",
         description="Logical GPU usage of dataset operators.",
         unit="cores",
@@ -80,7 +80,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=51,
+        id=7,
         title="Bytes Outputted",
         description="Total bytes outputted by dataset operators.",
         unit="bytes",
