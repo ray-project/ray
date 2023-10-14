@@ -53,16 +53,16 @@ class InputDataBuffer(PhysicalOperator):
     def has_next(self) -> bool:
         return len(self._input_data) > 0
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         return self._input_data.pop(0)
 
-    def num_outputs_total(self) -> Optional[int]:
+    def num_outputs_total(self) -> int:
         return self._num_output_blocks or self._num_output_bundles
 
     def get_stats(self) -> StatsDict:
         return {}
 
-    def add_input(self, refs, input_index) -> None:
+    def _add_input_inner(self, refs, input_index) -> None:
         raise ValueError("Inputs are not allowed for this operator.")
 
     def _initialize_metadata(self):

@@ -852,10 +852,6 @@ class Trial:
             return None
         return get_trainable_cls(self.trainable_name)
 
-    # TODO(justinvyu): [code_removal]
-    def get_trial_checkpoints(self):
-        raise DeprecationWarning
-
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]
 

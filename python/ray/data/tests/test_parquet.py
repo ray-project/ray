@@ -261,6 +261,56 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
         ),
     ],
 )
+def test_parquet_read_random_shuffle(
+    ray_start_regular_shared, restore_data_context, fs, data_path
+):
+    # NOTE: set preserve_order to True to allow consistent output behavior.
+    context = ray.data.DataContext.get_current()
+    context.execution_options.preserve_order = True
+
+    input_list = list(range(10))
+    df1 = pd.DataFrame({"one": input_list[: len(input_list) // 2]})
+    table = pa.Table.from_pandas(df1)
+    setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": input_list[len(input_list) // 2 :]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle="files")
+
+    # Execute 10 times to get a set of output results.
+    output_results_list = []
+    for _ in range(10):
+        result = [row["one"] for row in ds.take_all()]
+        output_results_list.append(result)
+    all_rows_matched = [
+        input_list == output_list for output_list in output_results_list
+    ]
+
+    # Check when shuffle is enabled, output order has at least one different
+    # case.
+    assert not all(all_rows_matched)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),
+            lazy_fixture("s3_path_with_space"),
+        ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
+    ],
+)
 def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
