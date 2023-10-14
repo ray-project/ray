@@ -17,33 +17,16 @@ Available Algorithms - Overview
 ============================== ========== ============================= ================== =========== ============================================================= ===============
 Algorithm                      Frameworks Discrete Actions              Continuous Actions Multi-Agent Model Support                                                 Multi-GPU
 ============================== ========== ============================= ================== =========== ============================================================= ===============
-`A2C`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
-`A3C`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   No
-`AlphaZero`_                   torch      **Yes** `+parametric`_        No                 No                                                                        No
 `APPO`_                        tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`ARS`_                         tf + torch **Yes**                       **Yes**            No                                                                        No
-`Bandits`_ (`TS`_ & `LinUCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
 `BC`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `CQL`_                         tf + torch No                            **Yes**            No                                                                        tf + torch
 `CRR`_                         torch      **Yes** `+parametric`_        **Yes**            **Yes**                                                                   torch
-`DDPG`_                        tf + torch No                            **Yes**            **Yes**                                                                   torch
-`APEX-DDPG`_                   tf + torch No                            **Yes**            **Yes**                                                                   torch
 `DreamerV3`_                   tf         **Yes**                       **Yes**            No          `+RNN`_ (GRU-based by default)                                tf
-`Dreamer`_                     torch      No                            **Yes**            No          `+RNN`_                                                       torch
 `DQN`_, `Rainbow`_             tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   tf + torch
-`APEX-DQN`_                    tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   torch
-`ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
 `IMPALA`_                      tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`LeelaChessZero`_              torch      **Yes** `+parametric`_        No                 **Yes**                                                                   torch
-`MAML`_                        tf + torch No                            **Yes**            No                                                                        torch
 `MARWIL`_                      tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
-`MBMPO`_                       torch      No                            **Yes**            No                                                                        torch
-`PG`_                          tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
 `PPO`_                         tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`R2D2`_                        tf + torch **Yes** `+parametric`_        No                 **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
 `SAC`_                         tf + torch **Yes**                       **Yes**            **Yes**                                                                   torch
-`SlateQ`_                      tf + torch **Yes** (multi-discr. slates) No                 No                                                                        torch
-`TD3`_                         tf + torch No                            **Yes**            **Yes**                                                                   torch
 ============================== ========== ============================= ================== =========== ============================================================= ===============
 
 Multi-Agent only Methods
