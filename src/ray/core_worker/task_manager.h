@@ -286,28 +286,28 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    * - The generator's first return value contains an exception
    * if the task fails by a system error. Otherwise, it contains nothing.
    *
-   * Backpressure Protocol
-   * ---------------------
+   * Backpressure Impl
+   * -----------------
    * Streaming generator optionally supports backpressure when
    * `streaming_generator_backpressure_size_bytes` is included in a task spec.
-   * The backpressure works with a cooperative protocol between an executor
-   * and a consumer (caller).
    *
    * Executor Side:
-   * - Through a gRPC reply, the total object consumed from a consumer
-   *   is communicated to an executor. The consumer doesn't
-   *   reply the gRPC request if it didn't consume enough objects.
-   * - If a object_generated - object_consumed_reported > threshold,
-   *   it blocks a thread and pauses execution.
-   * - If a RPC fails, it considers a caller is dead.
+   * - When a new object is yielded, executor sends a gRPC request that
+   *   contains an object size and records total_object_generated.
+   * - If a total_object_generated - total_object_consumed > threshold,
+   *   it blocks a thread and pauses execution. The consumer communicates
+   *   `object_consumed` (via gRPC reply) when objects are consumed from it,
+   *   and the execution resumes.
+   * - If a gRPC request fails, the executor assumes all the objects are
+   *   consumed and resume execution. (alternatively, we can fail execution).
    *
    * Client Side:
-   * - If total_object_reported - object_consumed < threshold, it doesn't
-   *   reply a gRPC request until objects are consumed. RPCs are replied
-   *   once objects are consumed.
-   * - Since the executor side pauses execution based on object_consumed,
-   *   which is reported via this gRPC, the task execution is backpressured
-   *   until enough objects are consumed.
+   * - If object_generated - object_consumed < threshold, it sends a reply that
+   *   contains `object_consumed` to an executor immediately.
+   * - If object_generated - object_consumed > threshold, it doesn't reply
+   *   until objects are consumed via TryReadObjectRefStream.
+   * - If objects are not going to be consumed (e.g., generator is deleted
+   *   or objects are already consumed), it replies immediately.
    *
    * Reference implementation of streaming generator using the following APIs
    * is available from `_raylet.StreamingObjectRefGenerator`.
