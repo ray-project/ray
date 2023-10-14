@@ -452,6 +452,9 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         self.rl_module_spec = None
         self._enable_rl_module_api = False
+        # Helper to keep track of the original exploration config when dis-/enabling
+        # rl modules.
+        self.__prior_exploration_config = None
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -856,22 +859,6 @@ class AlgorithmConfig(_Config):
                 "Please enable connectors via "
                 "`config.rollouts(enable_connectors=True)`."
             )
-
-        # TODO (sven): We should really refrain from setting properties automatically,
-        #  however, we will get rid of `exploration_config` anyways (to be fully moved
-        #  into RLModule API).
-        if self._enable_rl_module_api and self.exploration_config:
-            logger.warning(
-                "Setting `exploration_config={}` because you set "
-                "`_enable_rl_module_api=True`. When RLModule API are "
-                "enabled, exploration_config can not be "
-                "set. If you want to implement custom exploration behaviour, "
-                "please modify the `forward_exploration` method of the "
-                "RLModule at hand. On configs that have a default exploration "
-                "config, this must be done with "
-                "`config.exploration_config={}`."
-            )
-            self.exploration_config = {}
 
         # Learner API requires RLModule API.
         if self._enable_learner_api is not self._enable_rl_module_api:
@@ -2575,6 +2562,18 @@ class AlgorithmConfig(_Config):
 
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
+            if _enable_rl_module_api is True and self.exploration_config:
+                self.__prior_exploration_config = self.exploration_config
+                self.exploration_config = {}
+            elif _enable_rl_module_api is False and not self.exploration_config:
+                if self.__prior_exploration_config is not None:
+                    self.exploration_config = self.__prior_exploration_config
+                    self.__prior_exploration_config = None
+                else:
+                    logger.warning(
+                        "config._enable_rl_module_api was set to False, but no prior "
+                        "exploration config was found to be restored."
+                    )
         else:
             # Throw a warning if the user has used this API but not enabled it.
             logger.warning(
