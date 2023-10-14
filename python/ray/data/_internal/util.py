@@ -104,7 +104,7 @@ def _autodetect_parallelism(
     reader: Optional["Reader"] = None,
     mem_size: Optional[int] = None,
     avail_cpus: Optional[int] = None,
-) -> (int, int, Optional[int]):
+) -> (int, str, int, Optional[int]):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
     This detects parallelism using the following heuristics, applied in order:
@@ -130,9 +130,10 @@ def _autodetect_parallelism(
         avail_cpus: Override avail cpus detection (for testing only).
 
     Returns:
-        Tuple of detected parallelism (only if -1 was specified), the min safe
-        parallelism (which can be used to generate warnings about large blocks),
-        and the estimated inmemory size of the dataset.
+        Tuple of detected parallelism (only if -1 was specified), the reason
+        for the detected parallelism (only if -1 was specified), the min safe
+        parallelism (which can be used to generate warnings about large
+        blocks), and the estimated inmemory size of the dataset.
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
@@ -142,6 +143,7 @@ def _autodetect_parallelism(
         min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
         max_reasonable_parallelism = max(1, int(mem_size / ctx.target_min_block_size))
 
+    reason = ""
     if parallelism < 0:
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
@@ -153,13 +155,34 @@ def _autodetect_parallelism(
             min_safe_parallelism,
             avail_cpus * 2,
         )
+
+        if parallelism == ctx.min_parallelism:
+            reason = f"DataContext.get_current().min_parallelism={ctx.min_parallelism}"
+        elif parallelism == max_reasonable_parallelism:
+            reason = (
+                "output blocks of size at least "
+                "DataContext.get_current().target_min_block_size="
+                f"{ctx.target_min_block_size / (1024 * 1024)}MiB"
+            )
+        elif parallelism == min_safe_parallelism:
+            reason = (
+                "output blocks of size at most "
+                "DataContext.get_current().target_max_block_size="
+                f"{ctx.target_max_block_size / (1024 * 1024)}MiB"
+            )
+        else:
+            reason = (
+                "parallelism at least twice the available number "
+                f"of CPUs ({avail_cpus})"
+            )
+
         logger.debug(
             f"Autodetected parallelism={parallelism} based on "
             f"estimated_available_cpus={avail_cpus} and "
             f"estimated_data_size={mem_size}."
         )
 
-    return parallelism, min_safe_parallelism, mem_size
+    return parallelism, reason, min_safe_parallelism, mem_size
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:

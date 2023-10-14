@@ -29,9 +29,6 @@ from ray.data._internal.logical.operators.from_operators import (
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
-from ray.data._internal.logical.rules.split_read_output_blocks import (
-    compute_additional_split_factor,
-)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -143,7 +140,7 @@ def from_items(
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
-    detected_parallelism, _, _ = _autodetect_parallelism(
+    detected_parallelism, _, _, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DataContext.get_current(),
@@ -410,16 +407,6 @@ def read_datasource(
         parallelism,
         inmemory_size,
         ray_remote_args,
-    )
-
-    # TODO(swang): These are only used for the legacy backend, which we
-    # currently use to execute Datasets that only contain a Read. Remove once
-    # legacy bend is deprecated.
-    (
-        read_op._legacy_estimated_num_blocks,
-        read_op._legacy_additional_split_factor,
-    ) = compute_additional_split_factor(
-        reader, parallelism, inmemory_size, ctx.target_max_block_size, None
     )
 
     logical_plan = LogicalPlan(read_op)
@@ -2508,7 +2495,7 @@ def _get_reader(
         kwargs["local_uri"] = local_uri
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
-    requested_parallelism, min_safe_parallelism, mem_size = _autodetect_parallelism(
+    requested_parallelism, _, min_safe_parallelism, mem_size = _autodetect_parallelism(
         parallelism, target_max_block_size, DataContext.get_current(), reader
     )
     return (

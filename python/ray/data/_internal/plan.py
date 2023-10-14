@@ -33,6 +33,9 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
+from ray.data._internal.logical.rules.split_read_output_blocks import (
+    compute_additional_split_factor,
+)
 from ray.data._internal.planner.plan_read_op import (
     apply_output_blocks_handling_to_read_task,
 )
@@ -723,16 +726,41 @@ class ExecutionPlan:
         """
         context = self._context
         blocks, stats, stages = self._get_source_blocks_and_stages()
-        if isinstance(self._logical_plan.dag, Read) and isinstance(
-            blocks, LazyBlockList
-        ):
-            for read_task in blocks._tasks:
-                apply_output_blocks_handling_to_read_task(
-                    read_task, self._logical_plan.dag._legacy_additional_split_factor
-                )
-            blocks._estimated_num_blocks = (
-                self._logical_plan.dag._legacy_estimated_num_blocks
+        logical_op = self._logical_plan.dag
+        if isinstance(logical_op, Read) and isinstance(blocks, LazyBlockList):
+            # TODO(swang): Currently the legacy backend is used to execute
+            # Datasets that only contain a Read. Handle read task parallelism
+            # and output block splitting here. This duplicates logic in
+            # SplitReadOutputBlocksRule and can be removed once legacy backend
+            # is deprecated.
+            ctx = DataContext.get_current()
+            (
+                detected_parallelism,
+                reason,
+                estimated_num_blocks,
+                k,
+            ) = compute_additional_split_factor(
+                logical_op._reader,
+                logical_op._parallelism,
+                logical_op._mem_size,
+                ctx.target_max_block_size,
+                cur_additional_split_factor=None,
             )
+            if logical_op._parallelism == -1:
+                assert reason != ""
+                logger.get_logger().info(
+                    f"Using autodetected parallelism={detected_parallelism} "
+                    f"for stage {logical_op.name} to satisfy {reason}."
+                )
+            if k is not None:
+                logger.get_logger().info(
+                    f"To satisfy the requested parallelism of {detected_parallelism}, "
+                    f"each read task output is split into {k} smaller blocks."
+                )
+
+            for read_task in blocks._tasks:
+                apply_output_blocks_handling_to_read_task(read_task, k)
+            blocks._estimated_num_blocks = estimated_num_blocks
 
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)

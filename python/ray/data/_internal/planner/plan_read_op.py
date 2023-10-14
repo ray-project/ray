@@ -48,7 +48,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     """
 
     def get_input_data(target_max_block_size) -> List[RefBundle]:
-        parallelism, min_safe_parallelism, _ = _autodetect_parallelism(
+        parallelism, _, min_safe_parallelism, _ = _autodetect_parallelism(
             op._parallelism,
             target_max_block_size,
             DataContext.get_current(),
