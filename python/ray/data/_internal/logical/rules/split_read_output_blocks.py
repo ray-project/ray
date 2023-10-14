@@ -1,13 +1,14 @@
 import math
 from typing import Optional, Tuple
 
+from ray import available_resources as ray_available_resources
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.util import _autodetect_parallelism
-from ray.data.context import DataContext
+from ray.data.context import WARN_PREFIX, DataContext
 from ray.data.datasource.datasource import Reader
 
 logger = DatasetLogger(__name__)
@@ -40,12 +41,29 @@ def compute_additional_split_factor(
     estimated_num_blocks = num_read_tasks * size_based_splits
     logger.get_logger().debug(f"Blocks after size splits {estimated_num_blocks}")
 
+    available_cpu_slots = ray_available_resources().get("CPU", 1)
+    if (
+        parallelism
+        and num_read_tasks >= available_cpu_slots * 4
+        and num_read_tasks >= 5000
+    ):
+        logger.get_logger().warn(
+            f"{WARN_PREFIX} The requested parallelism of {parallelism} "
+            "is more than 4x the number of available CPU slots in the cluster of "
+            f"{available_cpu_slots}. This can "
+            "lead to slowdowns during the data reading phase due to excessive "
+            "task creation. Reduce the parallelism to match with the available "
+            "CPU slots in the cluster, or set parallelism to -1 for Ray Data "
+            "to automatically determine the parallelism. "
+            "You can ignore this message if the cluster is expected to autoscale."
+        )
+
     # Add more output splitting for each read task if needed.
     # TODO(swang): For parallelism=-1 (user did not explicitly set
     # parallelism), and if the following stage produces much larger blocks,
     # we should scale down the target max block size here instead of using
     # splitting, which can have higher memory usage.
-    if estimated_num_blocks < parallelism:
+    if estimated_num_blocks < parallelism and estimated_num_blocks > 0:
         k = math.ceil(parallelism / estimated_num_blocks)
         estimated_num_blocks = estimated_num_blocks * k
         return parallelism, reason, estimated_num_blocks, k

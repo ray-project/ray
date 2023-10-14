@@ -95,6 +95,8 @@ if TYPE_CHECKING:
     import torch
     from tensorflow_metadata.proto.v0 import schema_pb2
 
+    from ray.util.placement_group import PlacementGroup
+
 
 T = TypeVar("T")
 
@@ -373,6 +375,7 @@ def read_datasource(
             _get_reader, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
+        cur_pg = ray.util.get_current_placement_group()
         (requested_parallelism, min_safe_parallelism, inmemory_size, reader,) = ray.get(
             get_reader.remote(
                 datasource,
@@ -381,6 +384,7 @@ def read_datasource(
                 ctx.target_max_block_size,
                 local_uri,
                 _wrap_arrow_serialization_workaround(read_args),
+                placement_group=cur_pg,
             )
         )
 
@@ -2473,6 +2477,7 @@ def _get_reader(
     target_max_block_size: int,
     local_uri: bool,
     kwargs: dict,
+    placement_group: Optional["PlacementGroup"] = None,
 ) -> Tuple[int, int, Optional[int], Reader]:
     """Generates reader.
 
@@ -2480,6 +2485,9 @@ def _get_reader(
         ds: Datasource to read from.
         ctx: Dataset config to use.
         parallelism: The user-requested parallelism, or -1 for autodetection.
+        target_max_block_size: Target max output block size.
+        placement_group: The placement group that this Dataset
+            will execute inside, if any.
         kwargs: Additional kwargs to pass to the reader.
 
     Returns:
@@ -2496,7 +2504,11 @@ def _get_reader(
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
     requested_parallelism, _, min_safe_parallelism, mem_size = _autodetect_parallelism(
-        parallelism, target_max_block_size, DataContext.get_current(), reader
+        parallelism,
+        target_max_block_size,
+        DataContext.get_current(),
+        reader,
+        placement_group=placement_group,
     )
     return (
         requested_parallelism,

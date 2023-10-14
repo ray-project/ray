@@ -103,6 +103,7 @@ def _autodetect_parallelism(
     ctx: DataContext,
     reader: Optional["Reader"] = None,
     mem_size: Optional[int] = None,
+    placement_group: Optional["PlacementGroup"] = None,
     avail_cpus: Optional[int] = None,
 ) -> (int, str, int, Optional[int]):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
@@ -127,6 +128,8 @@ def _autodetect_parallelism(
         reader: The datasource reader, to be used for data size estimation.
         mem_size: If passed, then used to compute the parallelism according to
             target_max_block_size.
+        placement_group: The placement group that this Dataset
+            will execute inside, if any.
         avail_cpus: Override avail cpus detection (for testing only).
 
     Returns:
@@ -148,8 +151,9 @@ def _autodetect_parallelism(
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
         # Start with 2x the number of cores as a baseline, with a min floor.
-        cur_pg = ray.util.get_current_placement_group()
-        avail_cpus = avail_cpus or _estimate_avail_cpus(cur_pg)
+        if placement_group is None:
+            placement_group = ray.util.get_current_placement_group()
+        avail_cpus = avail_cpus or _estimate_avail_cpus(placement_group)
         parallelism = max(
             min(ctx.min_parallelism, max_reasonable_parallelism),
             min_safe_parallelism,
@@ -181,6 +185,8 @@ def _autodetect_parallelism(
             f"estimated_available_cpus={avail_cpus} and "
             f"estimated_data_size={mem_size}."
         )
+
+        print(placement_group, avail_cpus, reason)
 
     return parallelism, reason, min_safe_parallelism, mem_size
 
