@@ -259,6 +259,9 @@ class DAGNode(DAGNodeBase):
         )
 
     def _apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
+        if self._stable_uuid in fn.cache:
+            return fn.cache[self._stable_uuid]
+
         return fn(
             self._apply_and_replace_all_child_nodes(
                 lambda node: node._apply_recursive(fn)
