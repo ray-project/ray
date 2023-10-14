@@ -4,6 +4,7 @@ import gymnasium as gym
 from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
 from gymnasium.spaces import Dict as GymDict
 from gymnasium.spaces import Tuple as GymTuple
+import inspect
 import logging
 import numpy as np
 import os
@@ -1292,10 +1293,12 @@ def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.nda
 
 
 def test_ckpt_restore(
+    *,
     config: "AlgorithmConfig",
     env_name: str,
     tf2=False,
     replay_buffer=False,
+    eval_workerset=False,
     run_restored_algorithm=True,
 ):
     """Test that after an algorithm is trained, its checkpoint can be restored.
@@ -1365,6 +1368,24 @@ def test_ckpt_restore(
                 "default_policy"
             ]._storage[42 : 42 + 42]
             check(data, new_data)
+
+        # Check, whether the eval worker sets have the same policies and
+        # `policy_mapping_fn`.
+        if eval_workerset:
+            eval_mapping_src = inspect.getsource(
+                alg1.evaluation_workers.local_worker().policy_mapping_fn
+            )
+            check(
+                eval_mapping_src,
+                inspect.getsource(
+                    alg2.evaluation_workers.local_worker().policy_mapping_fn
+                ),
+            )
+            check(
+                eval_mapping_src,
+                inspect.getsource(alg2.workers.local_worker().policy_mapping_fn),
+                false=True,
+            )
 
         for _ in range(1):
             obs = env.observation_space.sample()
