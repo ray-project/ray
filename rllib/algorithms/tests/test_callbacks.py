@@ -1,3 +1,4 @@
+import tempfile
 from collections import Counter
 import unittest
 
@@ -8,6 +9,14 @@ from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
+
+
+class InitAndCheckpointRestoredCallbacks(DefaultCallbacks):
+    def on_algorithm_init(self, *, algorithm, **kwargs):
+        self._on_init_was_called = True
+
+    def on_checkpoint_loaded(self, *, algorithm, **kwargs):
+        self._on_checkpoint_loaded_was_called = True
 
 
 class EpisodeAndSampleCallbacks(DefaultCallbacks):
@@ -73,6 +82,25 @@ class TestCallbacks(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
+
+    def test_on_init_and_checkpoint_loaded(self):
+        config = (
+            PGConfig()
+            .environment("CartPole-v1")
+            .callbacks(InitAndCheckpointRestoredCallbacks)
+        )
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+            pg = config.build()
+            self.assertTrue(pg.callbacks._on_init_was_called)
+            self.assertTrue(not hasattr(pg.callbacks, "_on_checkpoint_loaded_was_called"))
+            pg.train()
+            # Save algo and restore.
+            with tempfile.TemporaryDirectory() as tmpdir:
+                pg.save(checkpoint_dir=tmpdir)
+                self.assertTrue(not hasattr(pg.callbacks, "_on_checkpoint_loaded_was_called"))
+                pg.load_checkpoint(checkpoint_dir=tmpdir)
+                self.assertTrue(pg.callbacks._on_checkpoint_loaded_was_called)
+            pg.stop()
 
     def test_episode_and_sample_callbacks(self):
         config = (
