@@ -61,6 +61,13 @@ void ClientMmapTableEntry::MaybeMadviseDontdump() {
 #endif
 }
 
+void ClientMmapTableEntry::IncrementRefCount() { ref_count_++; }
+void ClientMmapTableEntry::DecrementRefCount() {
+  RAY_CHECK(ref_count_ > 0);
+  ref_count_--;
+}
+bool ClientMmapTableEntry::SafeToUnmap() { return ref_count_ == 0; }
+
 ClientMmapTableEntry::~ClientMmapTableEntry() {
   if (!SafeToUnmap()) {
     RAY_LOG(WARNING) << "Unmapping ClientMmapTableEntry while ref count is not zero. You "

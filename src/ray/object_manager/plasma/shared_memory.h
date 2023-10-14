@@ -19,12 +19,9 @@ class ClientMmapTableEntry {
 
   MEMFD_TYPE fd() { return fd_; }
 
-  void IncrementRefCount() { ref_count_++; }
-  void DecrementRefCount() {
-    RAY_CHECK(ref_count_ > 0);
-    ref_count_--;
-  }
-  bool SafeToUnmap() { return ref_count_ == 0; }
+  void IncrementRefCount();
+  void DecrementRefCount();
+  bool SafeToUnmap();
 
  private:
   /// The associated file descriptor on the client.
