@@ -231,7 +231,7 @@ class DAGNode(DAGNodeBase):
         """
 
         class _CachingFn:
-            def __init__(self, fn: "Callable[[DAGNode], T]"):
+            def __init__(self, fn):
                 self.cache = {}
                 self.fn = fn
                 self.fn.cache = self.cache
@@ -251,20 +251,13 @@ class DAGNode(DAGNodeBase):
 
         if not type(fn).__name__ == "_CachingFn":
             fn = _CachingFn(fn)
+        else:
+            if self._stable_uuid in fn.cache:
+                return fn.cache[self._stable_uuid]
 
         return fn(
             self._apply_and_replace_all_child_nodes(
-                lambda node: node._apply_recursive(fn)
-            )
-        )
-
-    def _apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
-        if self._stable_uuid in fn.cache:
-            return fn.cache[self._stable_uuid]
-
-        return fn(
-            self._apply_and_replace_all_child_nodes(
-                lambda node: node._apply_recursive(fn)
+                lambda node: node.apply_recursive(fn)
             )
         )
 

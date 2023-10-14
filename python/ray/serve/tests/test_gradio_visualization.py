@@ -230,20 +230,20 @@ class TestGraphDFS:
         visualizer = GraphVisualizer()
 
         counter = 0
-        original_apply_recursive = DAGNode._apply_recursive
+        original_apply_recursive = DAGNode.apply_recursive
 
         def _apply_recursive_with_counter(self, fn):
             nonlocal counter
             counter += 1
             return original_apply_recursive(self, fn)
 
-        DAGNode._apply_recursive = _apply_recursive_with_counter
+        DAGNode.apply_recursive = _apply_recursive_with_counter
 
         depths = defaultdict(lambda: 0)
         dag_a.apply_recursive(lambda node: visualizer._fetch_depths(node, depths))
 
-        # Prior to #40337; count was 3582
-        assert counter == 40
+        # Prior to #40337; count was 3583
+        assert counter == 41
         assert (
             depths[input_node.get_stable_uuid()] == 1
             and depths[input_node.get_stable_uuid()] == 1
@@ -251,7 +251,7 @@ class TestGraphDFS:
             and depths[dag_a.get_stable_uuid()] == 12
             and depths[dag_b.get_stable_uuid()] == 0
         )
-        DAGNode._apply_recursive = original_apply_recursive
+        DAGNode.apply_recursive = original_apply_recursive
 
 
 @pytest.mark.asyncio
