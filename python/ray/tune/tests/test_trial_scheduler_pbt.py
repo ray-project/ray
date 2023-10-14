@@ -551,8 +551,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         )
 
     def testBurnInPeriod(self):
-        tempdir = tempfile.mkdtemp()
-        runner, *_ = create_execution_test_objects(tempdir)
+        runner, *_ = create_execution_test_objects()
         storage_context = runner._storage
 
         scheduler = PopulationBasedTraining(
