@@ -13,6 +13,7 @@ from ray.data._internal.block_batching.interfaces import (
 )
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.datasource.datasource import ReadTask
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -115,7 +116,12 @@ def blocks_to_batches(
     global_counter = 0
 
     for block in block_iter:
-        batcher.add(block)
+        if isinstance(block, ReadTask):
+            read_task = block
+            for b in read_task():
+                batcher.add(b)
+        else:
+            batcher.add(block)
         while batcher.has_batch():
             with get_iter_next_batch_s_timer():
                 batch = batcher.next_batch()

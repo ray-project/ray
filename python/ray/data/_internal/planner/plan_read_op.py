@@ -116,6 +116,9 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     inputs = InputDataBuffer(
         input_data_factory=get_input_data, num_output_blocks=op._estimated_num_blocks
     )
+    # Do not convert to MapOperator for read-only datasets.
+    if not op.input_dependencies and not op.output_dependencies:
+        return inputs
 
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         for read_task in blocks:

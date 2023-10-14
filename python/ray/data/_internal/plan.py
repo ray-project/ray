@@ -802,6 +802,7 @@ class ExecutionPlan:
         )
 
     def _run_with_new_execution_backend(self) -> bool:
+        return True
         """Whether this plan should run with new backend."""
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 

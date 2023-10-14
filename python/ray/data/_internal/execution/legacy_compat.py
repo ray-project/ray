@@ -356,6 +356,11 @@ def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
         for block, meta in ref_bundle.blocks:
             blocks.append(block)
             metadata.append(meta)
+    if len(blocks) > 0 and isinstance(ray.get(blocks[0]), ReadTask):
+        return LazyBlockList(
+            tasks=[ray.get(read_task_ref) for read_task_ref in blocks],
+            owned_by_consumer=owns_blocks,
+        )
     return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
 
 
