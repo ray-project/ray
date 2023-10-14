@@ -246,7 +246,6 @@ class TestGraphDFS:
         assert counter == 41
         assert (
             depths[input_node.get_stable_uuid()] == 1
-            and depths[input_node.get_stable_uuid()] == 1
             and depths[f_node.get_stable_uuid()] == 2
             and depths[dag_a.get_stable_uuid()] == 12
             and depths[dag_b.get_stable_uuid()] == 0
