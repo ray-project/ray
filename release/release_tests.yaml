@@ -888,9 +888,9 @@
     byod:
       type: gpu
       pip:
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
-        - jupytext==1.13.6
+        - myst-parser==0.18.1
+        - myst-nb==0.17.2
+        - jupytext==1.15.2
     cluster_compute: gptj_deepspeed_compute_aws.yaml
 
   run:
@@ -920,9 +920,9 @@
         - "evaluate"
         - "scikit-learn"
         - "boto3"
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
-        - jupytext==1.13.6
+        - myst-parser==0.18.1
+        - myst-nb==0.17.2
+        - jupytext==1.15.2
       post_build_script: byod_dolly_test.sh
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
@@ -944,8 +944,8 @@
     byod:
       type: gpu
       pip:
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
+        - myst-parser==0.18.1
+        - myst-nb==0.17.2
       post_build_script: byod_vicuna_test.sh
     cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
 

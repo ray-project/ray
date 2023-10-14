@@ -1081,7 +1081,7 @@ jupyter-core==5.3.1 \
     --hash=sha256:5ba5c7938a7f97a6b0481463f7ff0dbac7c15ba48cf46fa4035ca6e838aa1aba \
     --hash=sha256:ae9036db959a71ec1cac33081eeb040a79e681f08ab68b0883e9a676c7a90dce
     # via nbformat
-jupytext==1.14.7 \
+jupytext==1.15.2 \
     --hash=sha256:53cbfe90857369cf30ac055acf7820d6d9d1c53683eecd58edef5072de34b455 \
     --hash=sha256:ab2fd066dce8112ac95a7c4f9218c1a40d6cefa76b09352c8d08acf21dad5349
     # via -r release/ray_release/byod/requirements_ml_byod_3.8.in
@@ -1164,7 +1164,7 @@ lightning-utilities==0.9.0 \
 lit==16.0.6 \
     --hash=sha256:84623c9c23b6b14763d637f4e63e6b721b3446ada40bf7001d8fee70b8e77a9a
     # via triton
-markdown-it-py==3.0.0 \
+markdown-it-py==2.2.0 \
     --hash=sha256:355216845c60bd96232cd8d8c40e8f9765cc86f46880e43a8fd22dc1a1a8cab1 \
     --hash=sha256:e3f60a94fa066dc52ec76661e37c851cb232d92f9886b15cb560aaada2df8feb
     # via

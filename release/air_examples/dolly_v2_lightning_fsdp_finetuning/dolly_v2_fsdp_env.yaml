@@ -9,9 +9,9 @@ python:
     - "evaluate"
     - "scikit-learn"
     - "boto3"
-    - myst-parser==0.15.2
-    - myst-nb==0.13.1
-    - jupytext==1.13.6
+    - myst-parser==0.18.1
+    - myst-nb==0.17.2
+    - jupytext==1.15.2
   conda_packages: []
 
 post_build_cmds:

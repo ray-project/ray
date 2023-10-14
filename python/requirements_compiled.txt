@@ -120,7 +120,7 @@ async-timeout==4.0.3
     #   redis
 asyncmock==0.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-attrs==21.4.0
+attrs==22.2.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aiohttp
@@ -967,7 +967,7 @@ jupyterlab-server==2.24.0
     # via jupyterlab
 jupyterlab-widgets==1.1.7
     # via ipywidgets
-jupytext==1.13.6
+jupytext==1.15.2
     # via
     #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1022,7 +1022,7 @@ markdown==3.4.4
     # via
     #   mlflow
     #   tensorboard
-markdown-it-py==1.1.0
+markdown-it-py==2.2.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gradio
@@ -1050,7 +1050,7 @@ matplotlib-inline==0.1.6
     #   ipython
 mccabe==0.6.1
     # via flake8
-mdit-py-plugins==0.2.8
+mdit-py-plugins==0.4.0
     # via
     #   jupytext
     #   markdown-it-py
@@ -1137,11 +1137,11 @@ mypy-extensions==1.0.0
     # via
     #   black
     #   mypy
-myst-nb==0.13.1
+myst-nb==0.17.2
     # via
     #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
-myst-parser==0.15.2
+myst-parser==0.18.1
     # via
     #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -2111,7 +2111,7 @@ soundfile==0.12.1
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 soupsieve==2.5
     # via beautifulsoup4
-sphinx==4.3.2
+sphinx==5.3.0
     # via
     #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
