@@ -1558,6 +1558,7 @@ def test_schema_partial_execution(
     ds = ray.data.read_parquet(
         "example://iris.parquet",
         schema=pa.schema(fields),
+        parallelism=2,
     ).map_batches(lambda x: x)
 
     iris_schema = ds.schema()
@@ -1566,7 +1567,7 @@ def test_schema_partial_execution(
     # entire Dataset.
     assert ds._plan._in_blocks._num_blocks == 1
     assert str(ds._plan._logical_plan.dag) == (
-        "Read[ReadParquet->SplitBlocks(2)] -> MapBatches[MapBatches(<lambda>)]"
+        "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
     )
 
 

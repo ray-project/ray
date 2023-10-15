@@ -123,7 +123,12 @@ def test_num_outputs_total():
     def dummy_all_transform(bundles: List[RefBundle]):
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
-    op2 = AllToAllOperator(dummy_all_transform, input_op=op1, name="TestAll")
+    op2 = AllToAllOperator(
+        dummy_all_transform,
+        input_op=op1,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
+        name="TestAll",
+    )
     assert op2.num_outputs_total() == 100
 
 
