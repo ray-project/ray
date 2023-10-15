@@ -178,12 +178,12 @@ class _StatsActor:
         )
         self.cpu_usage = Gauge(
             DataMetric.CPU_USAGE.value,
-            description="CPU cores used by dataset operators",
+            description="CPUs allocated to dataset operators",
             tag_keys=tags_keys,
         )
         self.gpu_usage = Gauge(
             DataMetric.GPU_USAGE.value,
-            description="GPU cores used by dataset operators",
+            description="GPUs allocated to dataset operators",
             tag_keys=tags_keys,
         )
         self.bytes_outputted = Gauge(
