@@ -8,6 +8,7 @@ import numpy as np
 
 import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
@@ -122,16 +123,6 @@ class _DatasetStatsBuilder:
         return stats
 
 
-class DataMetric(Enum):
-    BYTES_SPILLED = "data_spilled_bytes"
-    BYTES_ALLOCATED = "data_allocated_bytes"
-    BYTES_FREED = "data_freed_bytes"
-    BYTES_CURRENT = "data_current_bytes"
-    CPU_USAGE = "data_cpu_usage_cores"
-    GPU_USAGE = "data_gpu_usage_cores"
-    BYTES_OUTPUTTED = "data_output_bytes"
-
-
 @ray.remote(num_cpus=0)
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
@@ -157,37 +148,37 @@ class _StatsActor:
         # a dataset's metrics to 0 after each finishes execution.
         tags_keys = ("dataset",)
         self.bytes_spilled = Gauge(
-            DataMetric.BYTES_SPILLED.value,
+            "data_spilled_bytes",
             description="Bytes spilled by dataset operators",
             tag_keys=tags_keys,
         )
         self.bytes_allocated = Gauge(
-            DataMetric.BYTES_ALLOCATED.value,
+            "data_allocated_bytes",
             description="Bytes allocated by dataset operators",
             tag_keys=tags_keys,
         )
         self.bytes_freed = Gauge(
-            DataMetric.BYTES_FREED.value,
+            "data_freed_bytes",
             description="Bytes freed by dataset operators",
             tag_keys=tags_keys,
         )
         self.bytes_current = Gauge(
-            DataMetric.BYTES_CURRENT.value,
+            "data_current_bytes",
             description="Bytes currently in memory store used by dataset operators",
             tag_keys=tags_keys,
         )
         self.cpu_usage = Gauge(
-            DataMetric.CPU_USAGE.value,
-            description="CPUs allocated to dataset operators",
+            "data_cpu_usage_cores",
+            description="CPUs used by dataset operators",
             tag_keys=tags_keys,
         )
         self.gpu_usage = Gauge(
-            DataMetric.GPU_USAGE.value,
-            description="GPUs allocated to dataset operators",
+            "data_gpu_usage_cores",
+            description="GPUs used by dataset operators",
             tag_keys=tags_keys,
         )
         self.bytes_outputted = Gauge(
-            DataMetric.BYTES_OUTPUTTED.value,
+            "data_output_bytes",
             description="Bytes outputted by dataset operators",
             tag_keys=tags_keys,
         )
@@ -227,16 +218,14 @@ class _StatsActor:
     def _get_stats_dict_size(self):
         return len(self.start_time), len(self.last_time), len(self.metadata)
 
-    def update_metrics(
-        self, stats: Dict[DataMetric, Union[int, float]], tags: Dict[str, str]
-    ):
-        self.bytes_spilled.set(stats[DataMetric.BYTES_SPILLED], tags)
-        self.bytes_allocated.set(stats[DataMetric.BYTES_ALLOCATED], tags)
-        self.bytes_freed.set(stats[DataMetric.BYTES_FREED], tags)
-        self.bytes_current.set(stats[DataMetric.BYTES_CURRENT], tags)
-        self.bytes_outputted.set(stats[DataMetric.BYTES_OUTPUTTED], tags)
-        self.cpu_usage.set(stats[DataMetric.CPU_USAGE], tags)
-        self.gpu_usage.set(stats[DataMetric.GPU_USAGE], tags)
+    def update_metrics(self, stats: Dict[str, Union[int, float]], tags: Dict[str, str]):
+        self.bytes_spilled.set(stats["obj_store_mem_spilled"], tags)
+        self.bytes_allocated.set(stats["obj_store_mem_alloc"], tags)
+        self.bytes_freed.set(stats["obj_store_mem_freed"], tags)
+        self.bytes_current.set(stats["obj_store_mem_cur"], tags)
+        self.bytes_outputted.set(stats["bytes_outputs_generated"], tags)
+        self.cpu_usage.set(stats["cpu_usage"], tags)
+        self.gpu_usage.set(stats["gpu_usage"], tags)
 
     def clear_metrics(self, tags: Dict[str, str]):
         self.bytes_spilled.set(0, tags)
@@ -284,9 +273,18 @@ def _check_cluster_stats_actor():
         _stats_actor_cluster_id = current_cluster_id
 
 
-def update_stats_actor_metrics(stats: Dict[DataMetric, Any], tags: Dict[str, str]):
+def update_stats_actor_metrics(
+    op_metrics: List[OpRuntimeMetrics], tags: Dict[str, str]
+):
     global _stats_actor
     _check_cluster_stats_actor()
+
+    metric_keys = OpRuntimeMetrics.get_metric_keys()
+    stats = {key: 0 for key in metric_keys}
+    for op_metric in op_metrics:
+        metric_dict = op_metric.as_dict()
+        stats = {key: stats[key] + metric_dict.get(key, 0) for key in metric_keys}
+
     _stats_actor.update_metrics.remote(stats, tags)
 
 

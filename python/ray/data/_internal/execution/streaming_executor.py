@@ -31,7 +31,6 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import (
-    DataMetric,
     DatasetStats,
     clear_stats_actor_metrics,
     update_stats_actor_metrics,
@@ -282,7 +281,9 @@ class StreamingExecutor(Executor, threading.Thread):
         for op_state in topology.values():
             op_state.refresh_progress_bar()
 
-        self._update_dataset_metrics()
+        update_stats_actor_metrics(
+            [op.metrics for op in self._topology], {"dataset": self._dataset_uuid}
+        )
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
@@ -323,23 +324,6 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         if self._global_info:
             self._global_info.set_description(resources_status)
-
-    def _update_dataset_metrics(self):
-        stats = {metric: 0 for metric in DataMetric}
-
-        for op in self._topology:
-            metrics = op.metrics
-            resource_usage = op.current_resource_usage()
-
-            stats[DataMetric.BYTES_SPILLED] += metrics.obj_store_mem_spilled
-            stats[DataMetric.BYTES_ALLOCATED] += metrics.obj_store_mem_alloc
-            stats[DataMetric.BYTES_FREED] += metrics.obj_store_mem_freed
-            stats[DataMetric.BYTES_CURRENT] += metrics.obj_store_mem_cur
-            stats[DataMetric.BYTES_OUTPUTTED] += metrics.bytes_outputs_generated
-            stats[DataMetric.CPU_USAGE] += resource_usage.cpu or 0
-            stats[DataMetric.GPU_USAGE] += resource_usage.gpu or 0
-
-        update_stats_actor_metrics(stats, {"dataset": self._dataset_uuid})
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
