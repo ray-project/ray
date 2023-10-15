@@ -345,7 +345,7 @@ def set_visible_accelerator_ids() -> None:
         ray.get_runtime_context().get_resource_ids().items()
     ):
         if last_set_visible_accelerator_ids.get(resource_name, None) == accelerator_ids:
-            return  # optimization: already set
+            continue  # optimization: already set
         ray._private.accelerators.get_accelerator_for_resource(
             resource_name
         ).set_visible_accelerator_ids(accelerator_ids)
