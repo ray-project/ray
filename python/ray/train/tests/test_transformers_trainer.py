@@ -1,19 +1,14 @@
 import pandas as pd
 import pytest
 from datasets import Dataset
-from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
-    Trainer,
-    TrainingArguments,
-)
+from transformers import AutoConfig, AutoModelForCausalLM, Trainer, TrainingArguments
 
 import ray.data
-from ray.train.huggingface import TransformersTrainer
-from ray.train.trainer import TrainingFailedError
-from ray.train import ScalingConfig
-from ray.train.tests._huggingface_data import train_data, validation_data
 from ray import tune
+from ray.train import ScalingConfig
+from ray.train.huggingface import TransformersTrainer
+from ray.train.tests._huggingface_data import train_data, validation_data
+from ray.train.trainer import TrainingFailedError
 from ray.tune import Tuner
 from ray.tune.schedulers.async_hyperband import ASHAScheduler
 from ray.tune.schedulers.resource_changing_scheduler import (

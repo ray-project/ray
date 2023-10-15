@@ -3,6 +3,7 @@ import operator
 from abc import abstractmethod
 from typing import Dict, List
 
+import ray
 from ray.autoscaler.v2.schema import ClusterStatus, ResourceUsage
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.core.generated import autoscaler_pb2
@@ -83,10 +84,9 @@ class NodeCountCheck(Check):
         self.count = count
 
     def check(self, status: ClusterStatus):
-        if len(status.healthy_nodes) != self.count:
-            raise CheckFailure(
-                f"Expected {self.count} nodes, got {len(status.healthy_nodes)}"
-            )
+        healthy_nodes = len(status.active_nodes) + len(status.idle_nodes)
+        if healthy_nodes != self.count:
+            raise CheckFailure(f"Expected {self.count} nodes, got {healthy_nodes}")
 
     def __str__(self) -> str:
         return f"NodeCountCheck: {self.count}"
@@ -123,7 +123,8 @@ class TotalResourceCheck(Check):
 def check_cluster(
     targets: List[Check],
 ) -> bool:
-    cluster_status = get_cluster_status()
+    gcs_address = ray.get_runtime_context().gcs_address
+    cluster_status = get_cluster_status(gcs_address)
 
     for target in targets:
         target.check(cluster_status)

@@ -10,10 +10,13 @@ import ray
 from ray import train
 from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data import Dataset, DataIterator, Preprocessor
-from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train import DataConfig
 from ray.util.annotations import Deprecated, DeveloperAPI
+
+MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG = """
+make_local_dataset_iterator is deprecated. Call ``iterator()`` directly on your dataset instead to create a local DataIterator.
+"""  # noqa: E501
 
 
 @DeveloperAPI
@@ -130,7 +133,7 @@ class DummyTrainer(DataParallelTrainer):
         return train_loop_per_worker
 
 
-@Deprecated("Both Preprocessor and DatasetConfig are no longer used by Ray Train.")
+@Deprecated(MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG)
 def make_local_dataset_iterator(
     dataset: Dataset,
     preprocessor: Preprocessor,
@@ -148,21 +151,7 @@ def make_local_dataset_iterator(
         preprocessor: The preprocessor that will be applied to the input dataset.
         dataset_config: The dataset config normally passed to the trainer.
     """
-    runtime_context = ray.runtime_context.get_runtime_context()
-    if runtime_context.worker.mode == ray._private.worker.WORKER_MODE:
-        raise RuntimeError(
-            "make_local_dataset_iterator should only be used by the driver "
-            "for development and debugging. To consume a dataset from a "
-            "worker or Ray Train Trainer, see "
-            "https://docs.ray.io/en/latest/ray-air/check-ingest.html."
-        )
-
-    dataset_config = dataset_config.fill_defaults()
-    spec = DataParallelIngestSpec({"train": dataset_config})
-    spec.preprocess_datasets(preprocessor, {"train": dataset})
-    training_worker_handles = [None]
-    it = spec.get_dataset_shards(training_worker_handles)[0]["train"]
-    return it
+    raise DeprecationWarning(MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG)
 
 
 if __name__ == "__main__":

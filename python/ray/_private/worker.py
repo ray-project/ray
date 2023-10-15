@@ -559,6 +559,9 @@ class Worker:
             # https://github.com/ray-project/ray/issues/35598
             return
 
+        if not hasattr(self, "core_worker"):
+            return
+
         self.core_worker.record_task_log_start(
             self.get_out_file_path(),
             self.get_err_file_path(),
@@ -574,6 +577,9 @@ class Worker:
             # Recording actor task log is expensive and should be enabled only
             # when needed.
             # https://github.com/ray-project/ray/issues/35598
+            return
+
+        if not hasattr(self, "core_worker"):
             return
 
         self.core_worker.record_task_log_end(
@@ -1159,6 +1165,7 @@ def init(
     This method handles two cases; either a Ray cluster already exists and we
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
+    Note: This method overwrite sigterm handler of the driver process.
 
     In most cases, it is enough to just call this method with no arguments.
     This will autodetect an existing Ray cluster or start a new Ray instance if
@@ -1327,16 +1334,27 @@ def init(
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
 
+    # terminate any signal before connecting driver
+    def sigterm_handler(signum, frame):
+        sys.exit(signum)
+
+    if threading.current_thread() is threading.main_thread():
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
+    else:
+        logger.warning(
+            "SIGTERM handler is not set because current thread "
+            "is not the main thread."
+        )
+
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
     address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if address_env_var:
-        if address is None or address == "auto":
-            address = address_env_var
-            logger.info(
-                f"Using address {address_env_var} set in the environment "
-                f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
-            )
+    if address_env_var and (address is None or address == "auto"):
+        address = address_env_var
+        logger.info(
+            f"Using address {address_env_var} set in the environment "
+            f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
+        )
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
@@ -1751,20 +1769,6 @@ def shutdown(_exiting_interpreter: bool = False):
 
 atexit.register(shutdown, True)
 
-
-# TODO(edoakes): this should only be set in the driver.
-def sigterm_handler(signum, frame):
-    sys.exit(signum)
-
-
-try:
-    ray._private.utils.set_sigterm_handler(sigterm_handler)
-except ValueError:
-    logger.warning(
-        "Failed to set SIGTERM handler, processes might"
-        "not be cleaned up properly on exit."
-    )
-
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
 normal_excepthook = sys.excepthook
@@ -1928,9 +1932,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
-                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+                return colorama.Fore.YELLOW
             else:
-                return colorama.Style.BRIGHT + colorama.Fore.CYAN
+                return colorama.Fore.CYAN
         elif os.getenv("RAY_COLOR_PREFIX") == "1":
             colors = [
                 # colorama.Fore.BLUE, # Too dark
@@ -1970,8 +1974,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,
@@ -1987,8 +1990,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}, ip={}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}, ip={}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,

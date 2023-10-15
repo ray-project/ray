@@ -1,8 +1,9 @@
 package io.ray.serve.docdemo;
 
-import io.ray.api.ObjectRef;
 import io.ray.serve.api.Serve;
+import io.ray.serve.deployment.Application;
 import io.ray.serve.deployment.Deployment;
+import io.ray.serve.handle.DeploymentResponse;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -14,15 +15,15 @@ public class StrategyCalcOnRayServe {
 
   // docs-deploy-start
   public void deploy() {
-    Serve.start(true, false, null);
+    Serve.start(null);
 
-    Deployment deployment =
+    Application deployment =
         Serve.deployment()
             .setName("strategy")
             .setDeploymentDef(StrategyOnRayServe.class.getName())
             .setNumReplicas(4)
-            .create();
-    deployment.deploy(true);
+            .bind();
+    Serve.run(deployment);
   }
   // docs-deploy-end
 
@@ -41,7 +42,7 @@ public class StrategyCalcOnRayServe {
                       .getHandle()
                       .method("calcIndicator")
                       .remote(time, bank, indicator)
-                      .get());
+                      .result());
         }
       }
     }
@@ -54,17 +55,18 @@ public class StrategyCalcOnRayServe {
     Deployment deployment = Serve.getDeployment("strategy");
 
     List<String> results = new ArrayList<>();
-    List<ObjectRef<Object>> refs = new ArrayList<>();
+    List<DeploymentResponse> responses = new ArrayList<>();
     for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
       String bank = e.getKey();
       for (List<String> indicators : e.getValue()) {
         for (String indicator : indicators) {
-          refs.add(deployment.getHandle().method("calcIndicator").remote(time, bank, indicator));
+          responses.add(
+              deployment.getHandle().method("calcIndicator").remote(time, bank, indicator));
         }
       }
     }
-    for (ObjectRef<Object> ref : refs) {
-      results.add((String) ref.get());
+    for (DeploymentResponse response : responses) {
+      results.add((String) response.result());
     }
     return results;
   }

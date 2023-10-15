@@ -15,7 +15,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1csrc/ray/protobuf/serve.proto\x12\tray.serve\"\xb6\x03\n\x11\x41utoscalingConfig\x12\x14\n\x0cmin_replicas\x18\x01 \x01(\r\x12\x14\n\x0cmax_replicas\x18\x02 \x01(\r\x12/\n\'target_num_ongoing_requests_per_replica\x18\x03 \x01(\x01\x12\x1a\n\x12metrics_interval_s\x18\x04 \x01(\x01\x12\x1a\n\x12look_back_period_s\x18\x05 \x01(\x01\x12\x18\n\x10smoothing_factor\x18\x06 \x01(\x01\x12\x19\n\x11\x64ownscale_delay_s\x18\x07 \x01(\x01\x12\x17\n\x0fupscale_delay_s\x18\x08 \x01(\x01\x12\x1d\n\x10initial_replicas\x18\t \x01(\rH\x00\x88\x01\x01\x12%\n\x18upscale_smoothing_factor\x18\n \x01(\x01H\x01\x88\x01\x01\x12\'\n\x1a\x64ownscale_smoothing_factor\x18\x0b \x01(\x01H\x02\x88\x01\x01\x42\x13\n\x11_initial_replicasB\x1b\n\x19_upscale_smoothing_factorB\x1d\n\x1b_downscale_smoothing_factor\"\xb0\x03\n\x10\x44\x65ploymentConfig\x12\x14\n\x0cnum_replicas\x18\x01 \x01(\x05\x12\x1e\n\x16max_concurrent_queries\x18\x02 \x01(\x05\x12\x13\n\x0buser_config\x18\x03 \x01(\x0c\x12%\n\x1dgraceful_shutdown_wait_loop_s\x18\x04 \x01(\x01\x12#\n\x1bgraceful_shutdown_timeout_s\x18\x05 \x01(\x01\x12\x1d\n\x15health_check_period_s\x18\x06 \x01(\x01\x12\x1e\n\x16health_check_timeout_s\x18\x07 \x01(\x01\x12\x19\n\x11is_cross_language\x18\x08 \x01(\x08\x12:\n\x13\x64\x65ployment_language\x18\t \x01(\x0e\x32\x1d.ray.serve.DeploymentLanguage\x12\x38\n\x12\x61utoscaling_config\x18\n \x01(\x0b\x32\x1c.ray.serve.AutoscalingConfig\x12\x0f\n\x07version\x18\x0b \x01(\t\x12$\n\x1cuser_configured_option_names\x18\x0c \x03(\t\"\xb6\x01\n\x0fRequestMetadata\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x10\n\x08\x65ndpoint\x18\x02 \x01(\t\x12\x13\n\x0b\x63\x61ll_method\x18\x03 \x01(\t\x12\x38\n\x07\x63ontext\x18\x04 \x03(\x0b\x32\'.ray.serve.RequestMetadata.ContextEntry\x1a.\n\x0c\x43ontextEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x1e\n\x0eRequestWrapper\x12\x0c\n\x04\x62ody\x18\x01 \x01(\x0c\"=\n\rUpdatedObject\x12\x17\n\x0fobject_snapshot\x18\x01 \x01(\x0c\x12\x13\n\x0bsnapshot_id\x18\x02 \x01(\x05\"\x9c\x01\n\x0fLongPollRequest\x12O\n\x14keys_to_snapshot_ids\x18\x01 \x03(\x0b\x32\x31.ray.serve.LongPollRequest.KeysToSnapshotIdsEntry\x1a\x38\n\x16KeysToSnapshotIdsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x05:\x02\x38\x01\"\xa9\x01\n\x0eLongPollResult\x12\x46\n\x0fupdated_objects\x18\x01 \x03(\x0b\x32-.ray.serve.LongPollResult.UpdatedObjectsEntry\x1aO\n\x13UpdatedObjectsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\'\n\x05value\x18\x02 \x01(\x0b\x32\x18.ray.serve.UpdatedObject:\x02\x38\x01\"\x98\x01\n\x0c\x45ndpointInfo\x12\x15\n\rendpoint_name\x18\x01 \x01(\t\x12\r\n\x05route\x18\x02 \x01(\t\x12\x33\n\x06\x63onfig\x18\x03 \x03(\x0b\x32#.ray.serve.EndpointInfo.ConfigEntry\x1a-\n\x0b\x43onfigEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x92\x01\n\x0b\x45ndpointSet\x12\x38\n\tendpoints\x18\x01 \x03(\x0b\x32%.ray.serve.EndpointSet.EndpointsEntry\x1aI\n\x0e\x45ndpointsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12&\n\x05value\x18\x02 \x01(\x0b\x32\x17.ray.serve.EndpointInfo:\x02\x38\x01\"\x1e\n\rActorNameList\x12\r\n\x05names\x18\x01 \x03(\t\"\xde\x01\n\x11\x44\x65ploymentVersion\x12\x14\n\x0c\x63ode_version\x18\x01 \x01(\t\x12\x36\n\x11\x64\x65ployment_config\x18\x02 \x01(\x0b\x32\x1b.ray.serve.DeploymentConfig\x12\x19\n\x11ray_actor_options\x18\x03 \x01(\t\x12\x1f\n\x17placement_group_bundles\x18\x04 \x01(\t\x12 \n\x18placement_group_strategy\x18\x05 \x01(\t\x12\x1d\n\x15max_replicas_per_node\x18\x06 \x01(\x05\"\xe9\x01\n\rReplicaConfig\x12\x1b\n\x13\x64\x65ployment_def_name\x18\x01 \x01(\t\x12\x16\n\x0e\x64\x65ployment_def\x18\x02 \x01(\x0c\x12\x11\n\tinit_args\x18\x03 \x01(\x0c\x12\x13\n\x0binit_kwargs\x18\x04 \x01(\x0c\x12\x19\n\x11ray_actor_options\x18\x05 \x01(\t\x12\x1f\n\x17placement_group_bundles\x18\x06 \x01(\t\x12 \n\x18placement_group_strategy\x18\x07 \x01(\t\x12\x1d\n\x15max_replicas_per_node\x18\x08 \x01(\x05\"\xd9\x01\n\x0e\x44\x65ploymentInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x36\n\x11\x64\x65ployment_config\x18\x02 \x01(\x0b\x32\x1b.ray.serve.DeploymentConfig\x12\x30\n\x0ereplica_config\x18\x03 \x01(\x0b\x32\x18.ray.serve.ReplicaConfig\x12\x15\n\rstart_time_ms\x18\x04 \x01(\x03\x12\x12\n\nactor_name\x18\x05 \x01(\t\x12\x0f\n\x07version\x18\x06 \x01(\t\x12\x13\n\x0b\x65nd_time_ms\x18\x07 \x01(\x03\"T\n\x0f\x44\x65ploymentRoute\x12\x32\n\x0f\x64\x65ployment_info\x18\x01 \x01(\x0b\x32\x19.ray.serve.DeploymentInfo\x12\r\n\x05route\x18\x02 \x01(\t\"L\n\x13\x44\x65ploymentRouteList\x12\x35\n\x11\x64\x65ployment_routes\x18\x01 \x03(\x0b\x32\x1a.ray.serve.DeploymentRoute\"b\n\x14\x44\x65ploymentStatusInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12+\n\x06status\x18\x02 \x01(\x0e\x32\x1b.ray.serve.DeploymentStatus\x12\x0f\n\x07message\x18\x03 \x01(\t\"\\\n\x18\x44\x65ploymentStatusInfoList\x12@\n\x17\x64\x65ployment_status_infos\x18\x01 \x03(\x0b\x32\x1f.ray.serve.DeploymentStatusInfo\"t\n\x15\x41pplicationStatusInfo\x12,\n\x06status\x18\x01 \x01(\x0e\x32\x1c.ray.serve.ApplicationStatus\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x1c\n\x14\x64\x65ployment_timestamp\x18\x03 \x01(\x01\"\x96\x01\n\x0eStatusOverview\x12\x34\n\napp_status\x18\x01 \x01(\x0b\x32 .ray.serve.ApplicationStatusInfo\x12@\n\x13\x64\x65ployment_statuses\x18\x02 \x01(\x0b\x32#.ray.serve.DeploymentStatusInfoList\x12\x0c\n\x04name\x18\x03 \x01(\t\"s\n\x0ePredictRequest\x12\x33\n\x05input\x18\x02 \x03(\x0b\x32$.ray.serve.PredictRequest.InputEntry\x1a,\n\nInputEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x0c:\x02\x38\x01\"%\n\x0fPredictResponse\x12\x12\n\nprediction\x18\x01 \x01(\x0c\"\x19\n\x17ListApplicationsRequest\"5\n\x18ListApplicationsResponse\x12\x19\n\x11\x61pplication_names\x18\x01 \x03(\t\"\x10\n\x0eHealthzRequest\"\"\n\x0fHealthzResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"<\n\x12UserDefinedMessage\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0b\n\x03\x66oo\x18\x02 \x01(\t\x12\x0b\n\x03num\x18\x03 \x01(\x03\"7\n\x13UserDefinedResponse\x12\x10\n\x08greeting\x18\x01 \x01(\t\x12\x0e\n\x06num_x2\x18\x02 \x01(\x03\"\x15\n\x13UserDefinedMessage2\"(\n\x14UserDefinedResponse2\x12\x10\n\x08greeting\x18\x01 \x01(\t\"=\n\x0c\x46ruitAmounts\x12\x0e\n\x06orange\x18\x01 \x01(\x03\x12\r\n\x05\x61pple\x18\x02 \x01(\x03\x12\x0e\n\x06\x62\x61nana\x18\x03 \x01(\x03\"\x1b\n\nFruitCosts\x12\r\n\x05\x63osts\x18\x01 \x01(\x02\"\x17\n\x07RawData\x12\x0c\n\x04nums\x18\x01 \x03(\x02\"\x1d\n\x0bModelOutput\x12\x0e\n\x06output\x18\x01 \x01(\x02**\n\x12\x44\x65ploymentLanguage\x12\n\n\x06PYTHON\x10\x00\x12\x08\n\x04JAVA\x10\x01*r\n\x10\x44\x65ploymentStatus\x12\x1e\n\x1a\x44\x45PLOYMENT_STATUS_UPDATING\x10\x00\x12\x1d\n\x19\x44\x45PLOYMENT_STATUS_HEALTHY\x10\x01\x12\x1f\n\x1b\x44\x45PLOYMENT_STATUS_UNHEALTHY\x10\x02*\xe2\x01\n\x11\x41pplicationStatus\x12 \n\x1c\x41PPLICATION_STATUS_DEPLOYING\x10\x00\x12\x1e\n\x1a\x41PPLICATION_STATUS_RUNNING\x10\x01\x12$\n APPLICATION_STATUS_DEPLOY_FAILED\x10\x02\x12\x1f\n\x1b\x41PPLICATION_STATUS_DELETING\x10\x03\x12\"\n\x1e\x41PPLICATION_STATUS_NOT_STARTED\x10\x05\x12 \n\x1c\x41PPLICATION_STATUS_UNHEALTHY\x10\x06\x32V\n\x12PredictAPIsService\x12@\n\x07Predict\x12\x19.ray.serve.PredictRequest\x1a\x1a.ray.serve.PredictResponse2\xb3\x01\n\x12RayServeAPIService\x12[\n\x10ListApplications\x12\".ray.serve.ListApplicationsRequest\x1a#.ray.serve.ListApplicationsResponse\x12@\n\x07Healthz\x12\x19.ray.serve.HealthzRequest\x1a\x1a.ray.serve.HealthzResponse2\xc3\x02\n\x12UserDefinedService\x12I\n\x08__call__\x12\x1d.ray.serve.UserDefinedMessage\x1a\x1e.ray.serve.UserDefinedResponse\x12H\n\x07Method1\x12\x1d.ray.serve.UserDefinedMessage\x1a\x1e.ray.serve.UserDefinedResponse\x12J\n\x07Method2\x12\x1e.ray.serve.UserDefinedMessage2\x1a\x1f.ray.serve.UserDefinedResponse2\x12L\n\tStreaming\x12\x1d.ray.serve.UserDefinedMessage\x1a\x1e.ray.serve.UserDefinedResponse0\x01\x32L\n\x0c\x46ruitService\x12<\n\nFruitStand\x12\x17.ray.serve.FruitAmounts\x1a\x15.ray.serve.FruitCosts2S\n\x18RayServeBenchmarkService\x12\x37\n\tgrpc_call\x12\x12.ray.serve.RawData\x1a\x16.ray.serve.ModelOutputB*\n\x16io.ray.serve.generatedB\x0bServeProtosP\x01\xf8\x01\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1csrc/ray/protobuf/serve.proto\x12\tray.serve\"\xb6\x03\n\x11\x41utoscalingConfig\x12\x14\n\x0cmin_replicas\x18\x01 \x01(\r\x12\x14\n\x0cmax_replicas\x18\x02 \x01(\r\x12/\n\'target_num_ongoing_requests_per_replica\x18\x03 \x01(\x01\x12\x1a\n\x12metrics_interval_s\x18\x04 \x01(\x01\x12\x1a\n\x12look_back_period_s\x18\x05 \x01(\x01\x12\x18\n\x10smoothing_factor\x18\x06 \x01(\x01\x12\x19\n\x11\x64ownscale_delay_s\x18\x07 \x01(\x01\x12\x17\n\x0fupscale_delay_s\x18\x08 \x01(\x01\x12\x1d\n\x10initial_replicas\x18\t \x01(\rH\x00\x88\x01\x01\x12%\n\x18upscale_smoothing_factor\x18\n \x01(\x01H\x01\x88\x01\x01\x12\'\n\x1a\x64ownscale_smoothing_factor\x18\x0b \x01(\x01H\x02\x88\x01\x01\x42\x13\n\x11_initial_replicasB\x1b\n\x19_upscale_smoothing_factorB\x1d\n\x1b_downscale_smoothing_factor\"\xb0\x03\n\x10\x44\x65ploymentConfig\x12\x14\n\x0cnum_replicas\x18\x01 \x01(\x05\x12\x1e\n\x16max_concurrent_queries\x18\x02 \x01(\x05\x12\x13\n\x0buser_config\x18\x03 \x01(\x0c\x12%\n\x1dgraceful_shutdown_wait_loop_s\x18\x04 \x01(\x01\x12#\n\x1bgraceful_shutdown_timeout_s\x18\x05 \x01(\x01\x12\x1d\n\x15health_check_period_s\x18\x06 \x01(\x01\x12\x1e\n\x16health_check_timeout_s\x18\x07 \x01(\x01\x12\x19\n\x11is_cross_language\x18\x08 \x01(\x08\x12:\n\x13\x64\x65ployment_language\x18\t \x01(\x0e\x32\x1d.ray.serve.DeploymentLanguage\x12\x38\n\x12\x61utoscaling_config\x18\n \x01(\x0b\x32\x1c.ray.serve.AutoscalingConfig\x12\x0f\n\x07version\x18\x0b \x01(\t\x12$\n\x1cuser_configured_option_names\x18\x0c \x03(\t\"\xb6\x01\n\x0fRequestMetadata\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x10\n\x08\x65ndpoint\x18\x02 \x01(\t\x12\x13\n\x0b\x63\x61ll_method\x18\x03 \x01(\t\x12\x38\n\x07\x63ontext\x18\x04 \x03(\x0b\x32\'.ray.serve.RequestMetadata.ContextEntry\x1a.\n\x0c\x43ontextEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x1e\n\x0eRequestWrapper\x12\x0c\n\x04\x62ody\x18\x01 \x01(\x0c\"=\n\rUpdatedObject\x12\x17\n\x0fobject_snapshot\x18\x01 \x01(\x0c\x12\x13\n\x0bsnapshot_id\x18\x02 \x01(\x05\"\x9c\x01\n\x0fLongPollRequest\x12O\n\x14keys_to_snapshot_ids\x18\x01 \x03(\x0b\x32\x31.ray.serve.LongPollRequest.KeysToSnapshotIdsEntry\x1a\x38\n\x16KeysToSnapshotIdsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x05:\x02\x38\x01\"\xa9\x01\n\x0eLongPollResult\x12\x46\n\x0fupdated_objects\x18\x01 \x03(\x0b\x32-.ray.serve.LongPollResult.UpdatedObjectsEntry\x1aO\n\x13UpdatedObjectsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\'\n\x05value\x18\x02 \x01(\x0b\x32\x18.ray.serve.UpdatedObject:\x02\x38\x01\"\x98\x01\n\x0c\x45ndpointInfo\x12\x15\n\rendpoint_name\x18\x01 \x01(\t\x12\r\n\x05route\x18\x02 \x01(\t\x12\x33\n\x06\x63onfig\x18\x03 \x03(\x0b\x32#.ray.serve.EndpointInfo.ConfigEntry\x1a-\n\x0b\x43onfigEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x92\x01\n\x0b\x45ndpointSet\x12\x38\n\tendpoints\x18\x01 \x03(\x0b\x32%.ray.serve.EndpointSet.EndpointsEntry\x1aI\n\x0e\x45ndpointsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12&\n\x05value\x18\x02 \x01(\x0b\x32\x17.ray.serve.EndpointInfo:\x02\x38\x01\"\x1e\n\rActorNameList\x12\r\n\x05names\x18\x01 \x03(\t\"\xde\x01\n\x11\x44\x65ploymentVersion\x12\x14\n\x0c\x63ode_version\x18\x01 \x01(\t\x12\x36\n\x11\x64\x65ployment_config\x18\x02 \x01(\x0b\x32\x1b.ray.serve.DeploymentConfig\x12\x19\n\x11ray_actor_options\x18\x03 \x01(\t\x12\x1f\n\x17placement_group_bundles\x18\x04 \x01(\t\x12 \n\x18placement_group_strategy\x18\x05 \x01(\t\x12\x1d\n\x15max_replicas_per_node\x18\x06 \x01(\x05\"\xe9\x01\n\rReplicaConfig\x12\x1b\n\x13\x64\x65ployment_def_name\x18\x01 \x01(\t\x12\x16\n\x0e\x64\x65ployment_def\x18\x02 \x01(\x0c\x12\x11\n\tinit_args\x18\x03 \x01(\x0c\x12\x13\n\x0binit_kwargs\x18\x04 \x01(\x0c\x12\x19\n\x11ray_actor_options\x18\x05 \x01(\t\x12\x1f\n\x17placement_group_bundles\x18\x06 \x01(\t\x12 \n\x18placement_group_strategy\x18\x07 \x01(\t\x12\x1d\n\x15max_replicas_per_node\x18\x08 \x01(\x05\"\xd9\x01\n\x0e\x44\x65ploymentInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x36\n\x11\x64\x65ployment_config\x18\x02 \x01(\x0b\x32\x1b.ray.serve.DeploymentConfig\x12\x30\n\x0ereplica_config\x18\x03 \x01(\x0b\x32\x18.ray.serve.ReplicaConfig\x12\x15\n\rstart_time_ms\x18\x04 \x01(\x03\x12\x12\n\nactor_name\x18\x05 \x01(\t\x12\x0f\n\x07version\x18\x06 \x01(\t\x12\x13\n\x0b\x65nd_time_ms\x18\x07 \x01(\x03\"T\n\x0f\x44\x65ploymentRoute\x12\x32\n\x0f\x64\x65ployment_info\x18\x01 \x01(\x0b\x32\x19.ray.serve.DeploymentInfo\x12\r\n\x05route\x18\x02 \x01(\t\"L\n\x13\x44\x65ploymentRouteList\x12\x35\n\x11\x64\x65ployment_routes\x18\x01 \x03(\x0b\x32\x1a.ray.serve.DeploymentRoute\"b\n\x14\x44\x65ploymentStatusInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12+\n\x06status\x18\x02 \x01(\x0e\x32\x1b.ray.serve.DeploymentStatus\x12\x0f\n\x07message\x18\x03 \x01(\t\"\\\n\x18\x44\x65ploymentStatusInfoList\x12@\n\x17\x64\x65ployment_status_infos\x18\x01 \x03(\x0b\x32\x1f.ray.serve.DeploymentStatusInfo\"t\n\x15\x41pplicationStatusInfo\x12,\n\x06status\x18\x01 \x01(\x0e\x32\x1c.ray.serve.ApplicationStatus\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x1c\n\x14\x64\x65ployment_timestamp\x18\x03 \x01(\x01\"\x96\x01\n\x0eStatusOverview\x12\x34\n\napp_status\x18\x01 \x01(\x0b\x32 .ray.serve.ApplicationStatusInfo\x12@\n\x13\x64\x65ployment_statuses\x18\x02 \x01(\x0b\x32#.ray.serve.DeploymentStatusInfoList\x12\x0c\n\x04name\x18\x03 \x01(\t\"\x19\n\x17ListApplicationsRequest\"5\n\x18ListApplicationsResponse\x12\x19\n\x11\x61pplication_names\x18\x01 \x03(\t\"\x10\n\x0eHealthzRequest\"\"\n\x0fHealthzResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"<\n\x12UserDefinedMessage\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0b\n\x03\x66oo\x18\x02 \x01(\t\x12\x0b\n\x03num\x18\x03 \x01(\x03\"7\n\x13UserDefinedResponse\x12\x10\n\x08greeting\x18\x01 \x01(\t\x12\x0e\n\x06num_x2\x18\x02 \x01(\x03\"\x15\n\x13UserDefinedMessage2\"(\n\x14UserDefinedResponse2\x12\x10\n\x08greeting\x18\x01 \x01(\t\"=\n\x0c\x46ruitAmounts\x12\x0e\n\x06orange\x18\x01 \x01(\x03\x12\r\n\x05\x61pple\x18\x02 \x01(\x03\x12\x0e\n\x06\x62\x61nana\x18\x03 \x01(\x03\"\x1b\n\nFruitCosts\x12\r\n\x05\x63osts\x18\x01 \x01(\x02\"\x17\n\x07RawData\x12\x0c\n\x04nums\x18\x01 \x03(\x02\"\x1d\n\x0bModelOutput\x12\x0e\n\x06output\x18\x01 \x01(\x02\"\xd8\x01\n\x0e\x44\x65ploymentArgs\x12\x17\n\x0f\x64\x65ployment_name\x18\x01 \x01(\t\x12\x19\n\x11\x64\x65ployment_config\x18\x02 \x01(\x0c\x12\x16\n\x0ereplica_config\x18\x03 \x01(\x0c\x12\x17\n\x0f\x64\x65ployer_job_id\x18\x04 \x01(\t\x12\x19\n\x0croute_prefix\x18\x05 \x01(\tH\x00\x88\x01\x01\x12\x0f\n\x07ingress\x18\x06 \x01(\x08\x12\x16\n\tdocs_path\x18\x07 \x01(\tH\x01\x88\x01\x01\x42\x0f\n\r_route_prefixB\x0c\n\n_docs_path**\n\x12\x44\x65ploymentLanguage\x12\n\n\x06PYTHON\x10\x00\x12\x08\n\x04JAVA\x10\x01*r\n\x10\x44\x65ploymentStatus\x12\x1e\n\x1a\x44\x45PLOYMENT_STATUS_UPDATING\x10\x00\x12\x1d\n\x19\x44\x45PLOYMENT_STATUS_HEALTHY\x10\x01\x12\x1f\n\x1b\x44\x45PLOYMENT_STATUS_UNHEALTHY\x10\x02*\xe2\x01\n\x11\x41pplicationStatus\x12 \n\x1c\x41PPLICATION_STATUS_DEPLOYING\x10\x00\x12\x1e\n\x1a\x41PPLICATION_STATUS_RUNNING\x10\x01\x12$\n APPLICATION_STATUS_DEPLOY_FAILED\x10\x02\x12\x1f\n\x1b\x41PPLICATION_STATUS_DELETING\x10\x03\x12\"\n\x1e\x41PPLICATION_STATUS_NOT_STARTED\x10\x05\x12 \n\x1c\x41PPLICATION_STATUS_UNHEALTHY\x10\x06\x32\xb3\x01\n\x12RayServeAPIService\x12[\n\x10ListApplications\x12\".ray.serve.ListApplicationsRequest\x1a#.ray.serve.ListApplicationsResponse\x12@\n\x07Healthz\x12\x19.ray.serve.HealthzRequest\x1a\x1a.ray.serve.HealthzResponse2\xc3\x02\n\x12UserDefinedService\x12I\n\x08__call__\x12\x1d.ray.serve.UserDefinedMessage\x1a\x1e.ray.serve.UserDefinedResponse\x12H\n\x07Method1\x12\x1d.ray.serve.UserDefinedMessage\x1a\x1e.ray.serve.UserDefinedResponse\x12J\n\x07Method2\x12\x1e.ray.serve.UserDefinedMessage2\x1a\x1f.ray.serve.UserDefinedResponse2\x12L\n\tStreaming\x12\x1d.ray.serve.UserDefinedMessage\x1a\x1e.ray.serve.UserDefinedResponse0\x01\x32L\n\x0c\x46ruitService\x12<\n\nFruitStand\x12\x17.ray.serve.FruitAmounts\x1a\x15.ray.serve.FruitCosts2S\n\x18RayServeBenchmarkService\x12\x37\n\tgrpc_call\x12\x12.ray.serve.RawData\x1a\x16.ray.serve.ModelOutputB*\n\x16io.ray.serve.generatedB\x0bServeProtosP\x01\xf8\x01\x01\x62\x06proto3')
 
 _DEPLOYMENTLANGUAGE = DESCRIPTOR.enum_types_by_name['DeploymentLanguage']
 DeploymentLanguage = enum_type_wrapper.EnumTypeWrapper(_DEPLOYMENTLANGUAGE)
@@ -60,9 +60,6 @@ _DEPLOYMENTSTATUSINFO = DESCRIPTOR.message_types_by_name['DeploymentStatusInfo']
 _DEPLOYMENTSTATUSINFOLIST = DESCRIPTOR.message_types_by_name['DeploymentStatusInfoList']
 _APPLICATIONSTATUSINFO = DESCRIPTOR.message_types_by_name['ApplicationStatusInfo']
 _STATUSOVERVIEW = DESCRIPTOR.message_types_by_name['StatusOverview']
-_PREDICTREQUEST = DESCRIPTOR.message_types_by_name['PredictRequest']
-_PREDICTREQUEST_INPUTENTRY = _PREDICTREQUEST.nested_types_by_name['InputEntry']
-_PREDICTRESPONSE = DESCRIPTOR.message_types_by_name['PredictResponse']
 _LISTAPPLICATIONSREQUEST = DESCRIPTOR.message_types_by_name['ListApplicationsRequest']
 _LISTAPPLICATIONSRESPONSE = DESCRIPTOR.message_types_by_name['ListApplicationsResponse']
 _HEALTHZREQUEST = DESCRIPTOR.message_types_by_name['HealthzRequest']
@@ -75,6 +72,7 @@ _FRUITAMOUNTS = DESCRIPTOR.message_types_by_name['FruitAmounts']
 _FRUITCOSTS = DESCRIPTOR.message_types_by_name['FruitCosts']
 _RAWDATA = DESCRIPTOR.message_types_by_name['RawData']
 _MODELOUTPUT = DESCRIPTOR.message_types_by_name['ModelOutput']
+_DEPLOYMENTARGS = DESCRIPTOR.message_types_by_name['DeploymentArgs']
 AutoscalingConfig = _reflection.GeneratedProtocolMessageType('AutoscalingConfig', (_message.Message,), {
   'DESCRIPTOR' : _AUTOSCALINGCONFIG,
   '__module__' : 'ray.serve.generated.serve_pb2'
@@ -248,28 +246,6 @@ StatusOverview = _reflection.GeneratedProtocolMessageType('StatusOverview', (_me
   })
 _sym_db.RegisterMessage(StatusOverview)
 
-PredictRequest = _reflection.GeneratedProtocolMessageType('PredictRequest', (_message.Message,), {
-
-  'InputEntry' : _reflection.GeneratedProtocolMessageType('InputEntry', (_message.Message,), {
-    'DESCRIPTOR' : _PREDICTREQUEST_INPUTENTRY,
-    '__module__' : 'ray.serve.generated.serve_pb2'
-    # @@protoc_insertion_point(class_scope:ray.serve.PredictRequest.InputEntry)
-    })
-  ,
-  'DESCRIPTOR' : _PREDICTREQUEST,
-  '__module__' : 'ray.serve.generated.serve_pb2'
-  # @@protoc_insertion_point(class_scope:ray.serve.PredictRequest)
-  })
-_sym_db.RegisterMessage(PredictRequest)
-_sym_db.RegisterMessage(PredictRequest.InputEntry)
-
-PredictResponse = _reflection.GeneratedProtocolMessageType('PredictResponse', (_message.Message,), {
-  'DESCRIPTOR' : _PREDICTRESPONSE,
-  '__module__' : 'ray.serve.generated.serve_pb2'
-  # @@protoc_insertion_point(class_scope:ray.serve.PredictResponse)
-  })
-_sym_db.RegisterMessage(PredictResponse)
-
 ListApplicationsRequest = _reflection.GeneratedProtocolMessageType('ListApplicationsRequest', (_message.Message,), {
   'DESCRIPTOR' : _LISTAPPLICATIONSREQUEST,
   '__module__' : 'ray.serve.generated.serve_pb2'
@@ -354,7 +330,13 @@ ModelOutput = _reflection.GeneratedProtocolMessageType('ModelOutput', (_message.
   })
 _sym_db.RegisterMessage(ModelOutput)
 
-_PREDICTAPISSERVICE = DESCRIPTOR.services_by_name['PredictAPIsService']
+DeploymentArgs = _reflection.GeneratedProtocolMessageType('DeploymentArgs', (_message.Message,), {
+  'DESCRIPTOR' : _DEPLOYMENTARGS,
+  '__module__' : 'ray.serve.generated.serve_pb2'
+  # @@protoc_insertion_point(class_scope:ray.serve.DeploymentArgs)
+  })
+_sym_db.RegisterMessage(DeploymentArgs)
+
 _RAYSERVEAPISERVICE = DESCRIPTOR.services_by_name['RayServeAPIService']
 _USERDEFINEDSERVICE = DESCRIPTOR.services_by_name['UserDefinedService']
 _FRUITSERVICE = DESCRIPTOR.services_by_name['FruitService']
@@ -373,14 +355,12 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _ENDPOINTINFO_CONFIGENTRY._serialized_options = b'8\001'
   _ENDPOINTSET_ENDPOINTSENTRY._options = None
   _ENDPOINTSET_ENDPOINTSENTRY._serialized_options = b'8\001'
-  _PREDICTREQUEST_INPUTENTRY._options = None
-  _PREDICTREQUEST_INPUTENTRY._serialized_options = b'8\001'
-  _DEPLOYMENTLANGUAGE._serialized_start=3800
-  _DEPLOYMENTLANGUAGE._serialized_end=3842
-  _DEPLOYMENTSTATUS._serialized_start=3844
-  _DEPLOYMENTSTATUS._serialized_end=3958
-  _APPLICATIONSTATUS._serialized_start=3961
-  _APPLICATIONSTATUS._serialized_end=4187
+  _DEPLOYMENTLANGUAGE._serialized_start=3863
+  _DEPLOYMENTLANGUAGE._serialized_end=3905
+  _DEPLOYMENTSTATUS._serialized_start=3907
+  _DEPLOYMENTSTATUS._serialized_end=4021
+  _APPLICATIONSTATUS._serialized_start=4024
+  _APPLICATIONSTATUS._serialized_end=4250
   _AUTOSCALINGCONFIG._serialized_start=44
   _AUTOSCALINGCONFIG._serialized_end=482
   _DEPLOYMENTCONFIG._serialized_start=485
@@ -429,44 +409,38 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _APPLICATIONSTATUSINFO._serialized_end=3021
   _STATUSOVERVIEW._serialized_start=3024
   _STATUSOVERVIEW._serialized_end=3174
-  _PREDICTREQUEST._serialized_start=3176
-  _PREDICTREQUEST._serialized_end=3291
-  _PREDICTREQUEST_INPUTENTRY._serialized_start=3247
-  _PREDICTREQUEST_INPUTENTRY._serialized_end=3291
-  _PREDICTRESPONSE._serialized_start=3293
-  _PREDICTRESPONSE._serialized_end=3330
-  _LISTAPPLICATIONSREQUEST._serialized_start=3332
-  _LISTAPPLICATIONSREQUEST._serialized_end=3357
-  _LISTAPPLICATIONSRESPONSE._serialized_start=3359
-  _LISTAPPLICATIONSRESPONSE._serialized_end=3412
-  _HEALTHZREQUEST._serialized_start=3414
-  _HEALTHZREQUEST._serialized_end=3430
-  _HEALTHZRESPONSE._serialized_start=3432
-  _HEALTHZRESPONSE._serialized_end=3466
-  _USERDEFINEDMESSAGE._serialized_start=3468
-  _USERDEFINEDMESSAGE._serialized_end=3528
-  _USERDEFINEDRESPONSE._serialized_start=3530
-  _USERDEFINEDRESPONSE._serialized_end=3585
-  _USERDEFINEDMESSAGE2._serialized_start=3587
-  _USERDEFINEDMESSAGE2._serialized_end=3608
-  _USERDEFINEDRESPONSE2._serialized_start=3610
-  _USERDEFINEDRESPONSE2._serialized_end=3650
-  _FRUITAMOUNTS._serialized_start=3652
-  _FRUITAMOUNTS._serialized_end=3713
-  _FRUITCOSTS._serialized_start=3715
-  _FRUITCOSTS._serialized_end=3742
-  _RAWDATA._serialized_start=3744
-  _RAWDATA._serialized_end=3767
-  _MODELOUTPUT._serialized_start=3769
-  _MODELOUTPUT._serialized_end=3798
-  _PREDICTAPISSERVICE._serialized_start=4189
-  _PREDICTAPISSERVICE._serialized_end=4275
-  _RAYSERVEAPISERVICE._serialized_start=4278
-  _RAYSERVEAPISERVICE._serialized_end=4457
-  _USERDEFINEDSERVICE._serialized_start=4460
-  _USERDEFINEDSERVICE._serialized_end=4783
-  _FRUITSERVICE._serialized_start=4785
-  _FRUITSERVICE._serialized_end=4861
-  _RAYSERVEBENCHMARKSERVICE._serialized_start=4863
-  _RAYSERVEBENCHMARKSERVICE._serialized_end=4946
+  _LISTAPPLICATIONSREQUEST._serialized_start=3176
+  _LISTAPPLICATIONSREQUEST._serialized_end=3201
+  _LISTAPPLICATIONSRESPONSE._serialized_start=3203
+  _LISTAPPLICATIONSRESPONSE._serialized_end=3256
+  _HEALTHZREQUEST._serialized_start=3258
+  _HEALTHZREQUEST._serialized_end=3274
+  _HEALTHZRESPONSE._serialized_start=3276
+  _HEALTHZRESPONSE._serialized_end=3310
+  _USERDEFINEDMESSAGE._serialized_start=3312
+  _USERDEFINEDMESSAGE._serialized_end=3372
+  _USERDEFINEDRESPONSE._serialized_start=3374
+  _USERDEFINEDRESPONSE._serialized_end=3429
+  _USERDEFINEDMESSAGE2._serialized_start=3431
+  _USERDEFINEDMESSAGE2._serialized_end=3452
+  _USERDEFINEDRESPONSE2._serialized_start=3454
+  _USERDEFINEDRESPONSE2._serialized_end=3494
+  _FRUITAMOUNTS._serialized_start=3496
+  _FRUITAMOUNTS._serialized_end=3557
+  _FRUITCOSTS._serialized_start=3559
+  _FRUITCOSTS._serialized_end=3586
+  _RAWDATA._serialized_start=3588
+  _RAWDATA._serialized_end=3611
+  _MODELOUTPUT._serialized_start=3613
+  _MODELOUTPUT._serialized_end=3642
+  _DEPLOYMENTARGS._serialized_start=3645
+  _DEPLOYMENTARGS._serialized_end=3861
+  _RAYSERVEAPISERVICE._serialized_start=4253
+  _RAYSERVEAPISERVICE._serialized_end=4432
+  _USERDEFINEDSERVICE._serialized_start=4435
+  _USERDEFINEDSERVICE._serialized_end=4758
+  _FRUITSERVICE._serialized_start=4760
+  _FRUITSERVICE._serialized_end=4836
+  _RAYSERVEBENCHMARKSERVICE._serialized_start=4838
+  _RAYSERVEBENCHMARKSERVICE._serialized_end=4921
 # @@protoc_insertion_point(module_scope)

@@ -104,7 +104,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
-            self._global_info = ProgressBar("Running", dag.num_outputs_total() or 1)
+            self._global_info = ProgressBar("Running", dag.num_outputs_total())
 
         self._output_node: OpState = self._topology[dag]
         self.start()
@@ -130,7 +130,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     else:
                         # Otherwise return a concrete RefBundle.
                         if self._outer._global_info:
-                            self._outer._global_info.update(1)
+                            self._outer._global_info.update(
+                                1, dag._estimated_output_blocks
+                            )
                         return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
@@ -211,7 +213,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 continue
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multistage(op.get_stats())
-            stats.extra_metrics = op.get_metrics()
+            stats.extra_metrics = op.metrics.as_dict()
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
