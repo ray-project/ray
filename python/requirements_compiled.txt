@@ -120,7 +120,7 @@ async-timeout==4.0.3
     #   redis
 asyncmock==0.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-attrs==22.2.0
+attrs==23.1.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aiohttp
@@ -2132,7 +2132,7 @@ sphinx==5.3.0
     #   sphinx-version-warning
     #   sphinxcontrib-redoc
     #   sphinxemoji
-sphinx-book-theme==0.3.3
+sphinx-book-theme==1.0.0
     # via -r /ray/ci/../doc/requirements-doc.txt
 sphinx-click==3.0.2
     # via -r /ray/ci/../doc/requirements-doc.txt
@@ -2140,7 +2140,7 @@ sphinx-copybutton==0.4.0
     # via -r /ray/ci/../doc/requirements-doc.txt
 sphinx-design==0.4.1
     # via -r /ray/ci/../doc/requirements-doc.txt
-sphinx-external-toc==0.2.4
+sphinx-external-toc==0.3.1
     # via -r /ray/ci/../doc/requirements-doc.txt
 sphinx-jsonschema==1.17.2
     # via -r /ray/ci/../doc/requirements-doc.txt

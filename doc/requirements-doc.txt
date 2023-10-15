@@ -13,8 +13,8 @@ sphinx-copybutton==0.4.0
 sphinxemoji==0.2.0
 sphinx-jsonschema==1.17.2
 sphinx-version-warning==1.1.2
-sphinx-book-theme==0.3.3
-sphinx-external-toc==0.2.4
+sphinx-book-theme==1.0.0
+sphinx-external-toc==0.3.1
 sphinx-sitemap==2.2.0
 sphinxcontrib-redoc==1.6.0
 sphinx-tabs==3.4.0

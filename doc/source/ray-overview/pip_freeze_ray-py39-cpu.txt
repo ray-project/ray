@@ -7,7 +7,7 @@ anyio==3.7.1
 applicationinsights==0.11.10
 argcomplete==1.12.3
 async-timeout==4.0.3
-attrs==22.2.0
+attrs==23.1.0
 azure-cli-core==2.40.0
 azure-cli-telemetry==1.0.8
 azure-common==1.1.28

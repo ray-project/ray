@@ -28,7 +28,7 @@ arrow==1.2.3
 asttokens==2.4.0
 astunparse==1.6.3
 async-timeout==4.0.3
-attrs==22.2.0
+attrs==23.1.0
 autograd==1.6.2
 AutoROM==0.6.1
 AutoROM.accept-rom-license==0.6.1
