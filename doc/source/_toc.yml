@@ -301,6 +301,7 @@ parts:
                   - file: cluster/kubernetes/user-guides/rayserve-dev-doc.md
                   - file: cluster/kubernetes/user-guides/pod-command.md
                   - file: cluster/kubernetes/user-guides/pod-security.md
+                  - file: cluster/kubernetes/user-guides/helm-chart-rbac.md
                   - file: cluster/kubernetes/user-guides/tls.md
                   - file: cluster/kubernetes/user-guides/k8s-autoscaler.md
                   - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
