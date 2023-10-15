@@ -94,9 +94,14 @@ class MapOperator(OneToOneOperator, ABC):
         return self._additional_split_factor
 
     def set_additional_split_factor(self, k: int):
-        assert self._additional_split_factor is None, "Split factor already set"
         self._additional_split_factor = k
-        self._name += f"->SplitBlocks({k})"
+
+    @property
+    def name(self) -> str:
+        name = super().name
+        if self._additional_split_factor is not None:
+            name += f"->SplitBlocks({self._additional_split_factor})"
+        return name
 
     @classmethod
     def create(

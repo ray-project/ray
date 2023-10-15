@@ -186,8 +186,6 @@ def _autodetect_parallelism(
             f"estimated_data_size={mem_size}."
         )
 
-        print(placement_group, avail_cpus, reason)
-
     return parallelism, reason, min_safe_parallelism, mem_size
 
 

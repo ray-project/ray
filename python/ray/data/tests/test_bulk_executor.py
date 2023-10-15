@@ -72,7 +72,9 @@ def test_multi_stage_execution(ray_start_10_cpus_shared, preserve_order):
         reversed_list = inputs[::-1]
         return reversed_list, {}
 
-    o4 = AllToAllOperator(reverse_sort, o3)
+    o4 = AllToAllOperator(
+        reverse_sort, o3, DataContext.get_current().target_max_block_size
+    )
     it = executor.execute(o4)
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)][::-1]
