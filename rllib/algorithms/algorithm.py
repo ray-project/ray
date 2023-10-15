@@ -644,6 +644,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 num_workers=self.config.num_rollout_workers,
                 local_worker=True,
                 logdir=self.logdir,
+                on_worker_created_callback=functools.partial(
+                    self.callbacks.on_worker_created, algorithm=self, is_evaluation=False
+                ),
             )
 
             # TODO (avnishn): Remove the execution plan API by q1 2023
@@ -684,6 +687,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.evaluation_config,
                 num_workers=self.config.evaluation_num_workers,
                 logdir=self.logdir,
+                on_worker_created_callback=functools.partial(
+                    self.callbacks.on_worker_created, algorithm=self, is_evaluation=True
+                ),
             )
 
             if self.config.enable_async_evaluation:
@@ -1355,11 +1361,13 @@ class Algorithm(Trainable, AlgorithmBase):
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
-    def restore_workers(self, workers: WorkerSet):
-        """Try to restore failed workers if necessary.
+    def restore_workers(self, workers: WorkerSet) -> None:
+        """Try syncing previously failed and restarted workers with local, if necessary.
 
         Algorithms that use custom RolloutWorkers may override this method to
-        disable default, and create custom restoration logics.
+        disable default, and create custom restoration logics. Note that "restoring"
+        does not include the actual restarting process, but merely what should happen
+        after such a restart of a (previously failed) worker.
 
         Args:
             workers: The WorkerSet to restore. This may be Rollout or Evaluation

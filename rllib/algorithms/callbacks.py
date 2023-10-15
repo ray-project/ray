@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
 
+import ray
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.episode import Episode
@@ -32,6 +33,7 @@ import psutil
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
+    from ray.rllib.env.env_runner import EnvRunner
     from ray.rllib.evaluation import RolloutWorker
 
 
@@ -72,6 +74,63 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         Args:
             algorithm: Reference to the Algorithm instance.
             kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_worker_created(
+        self,
+        algorithm: Algorithm,
+        worker_ref: Union["EnvRunner", ray.ObjectRef],
+        worker_index: int,
+        is_evaluation: bool,
+        recreated_worker: bool,
+        **kwargs,
+    ) -> None:
+        """Callback run after an EnvRunner object (local or remote) has been created.
+
+        Note that any "worker" inside the algorithm's `self.worker` and
+        `self.evaluation_workers` WorkerSets are instances of a subclass of EnvRunner.
+
+        You can access (and change) the worker in question via the following code snippet
+        inside your custom override of this method:
+
+        .. code-block:: python
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks
+
+            class MyCallbacks(DefaultCallbacks):
+                def on_worker_created(
+                    self,
+                    algorithm,
+                    worker_ref,
+                    worker_index,
+                    is_evaluation,
+                    recreated_worker,
+                    **kwargs,
+                ):
+                    def func(w):
+                        w._custom_property = 1
+
+                    # A remote worker.
+                    if worker_index > 0:
+                        worker_ref.apply.remote(func)
+                    # Local worker.
+                    else:
+                        func(worker_ref)
+
+        Args:
+            algorithm: Reference to the Algorithm instance.
+            worker_ref: The ray remote object reference (or the worker object directly,
+                if local) of the worker in question.
+            worker_index: The index of the worker in the WorkerSet (0=local worker,
+                1=first remote worker, etc..).
+            is_evaluation: Whether this is an evaluation worker (inside
+                Algorithm.evaluation_workers) or not.
+            recreated: Whether the EnvRunner is a recreated one. EnvRunners are
+                recreated by an Algorithm (via WorkerSet) in case
+                `recreate_failed_workers=True` and one of the original EnvRunners (or an
+                already recreated one) has failed. They don't differ from original
+                workers other than the value of this flag (`self.recreated_worker`).
         """
         pass
 
@@ -476,6 +535,11 @@ def make_multi_callbacks(
         def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
             for callback in self._callback_list:
                 callback.on_algorithm_init(algorithm=algorithm, **kwargs)
+
+        @override(DefaultCallbacks)
+        def on_worker_created(self, **kwargs) -> None:
+            for callback in self._callback_list:
+                callback.on_worker_created(**kwargs)
 
         @override(DefaultCallbacks)
         def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
