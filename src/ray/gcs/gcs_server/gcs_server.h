@@ -247,6 +247,8 @@ class GcsServer {
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
   /// Actor info service.
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
+  /// Legacy autoscaler interface.
+  std::unique_ptr<rpc::LegacyAutoscalerGrpcService> legacy_autoscaler_service_;
   /// Node info handler and service.
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
   /// Function table manager.

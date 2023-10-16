@@ -34,6 +34,48 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
       last_cluster_resource_state_version_(0),
       last_seen_autoscaler_state_version_(0) {}
 
+void GcsAutoscalerStateManager::HandleGetAllResourceUsageLegacy(
+    rpc::GetAllResourceUsageRequest request,
+    rpc::GetAllResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (!node_resource_info_.empty()) {
+    rpc::ResourceUsageBatchData batch;
+    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+        aggregate_load;
+
+    for (const auto &usage : node_resource_info_) {
+      // Aggregate the load reported by each raylet.
+      FillAggregateLoad(usage.second.second, &aggregate_load);
+      batch.add_batch()->CopyFrom(usage.second.second);
+    }
+
+    for (const auto &demand : aggregate_load) {
+      auto demand_proto = batch.mutable_resource_load_by_shape()->add_resource_demands();
+      demand_proto->CopyFrom(demand.second);
+      for (const auto &resource_pair : demand.first) {
+        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+      }
+    }
+    // Update placement group load to heartbeat batch.
+    // This is updated only one per second.
+    auto placement_group_load = gcs_placement_group_manager_.GetPlacementGroupLoad();
+    auto placement_group_load_proto = batch.mutable_placement_group_load();
+    placement_group_load_proto->CopyFrom(*placement_group_load.get());
+
+    reply->mutable_resource_usage_data()->CopyFrom(batch);
+  }
+
+  if (const auto num_alive_nodes = gcs_node_manager_.GetAllAliveNodes().size();
+      static_cast<size_t>(reply->resource_usage_data().batch().size()) !=
+      num_alive_nodes) {
+    RAY_LOG(DEBUG) << "Number of alive nodes " << num_alive_nodes
+                   << " is not equal to number of usage reports "
+                   << reply->resource_usage_data().batch().size()
+                   << " in the autoscaler report.";
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
     rpc::autoscaler::GetClusterResourceStateReply *reply,

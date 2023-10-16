@@ -340,9 +340,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       main_service_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
-      *this,
-      kGCSNodeID,
-      cluster_task_manager_);
+      kGCSNodeID);
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -681,6 +679,9 @@ void GcsServer::InitGcsAutoscalerStateManager() {
                                                   *gcs_node_manager_,
                                                   *gcs_placement_group_manager_,
                                                   raylet_client_pool_);
+  legacy_autoscaler_service_.reset(new rpc::LegacyAutoscalerGrpcService(
+      main_service_, *gcs_autoscaler_state_manager_));
+  rpc_server_.RegisterService(*legacy_autoscaler_service_);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
       main_service_, *gcs_autoscaler_state_manager_));
