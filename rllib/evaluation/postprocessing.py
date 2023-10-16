@@ -349,6 +349,7 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
         discount_cumsum(x, gamma)
 
     .. testoutput::
+
         array([0.0 + 0.9*1.0 + 0.9^2*2.0 + 0.9^3*3.0,
                1.0 + 0.9*2.0 + 0.9^2*3.0,
                2.0 + 0.9*3.0,

@@ -33,6 +33,7 @@ class SpecDict(NestedDict[Spec], Spec):
 
         Basic validation:
         -----------------
+
         .. testcode::
             :skipif: True
 
@@ -63,6 +64,7 @@ class SpecDict(NestedDict[Spec], Spec):
 
         Filtering input data:
         ---------------------
+
         .. testcode::
             :skipif: True
 
@@ -79,6 +81,7 @@ class SpecDict(NestedDict[Spec], Spec):
             input_data.filter(spec_dict) # returns a dict with only the keys in the spec
 
         .. testoutput::
+
             {
                 "obs": {
                     "arm":      input_data["obs"]["arm"],

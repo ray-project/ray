@@ -233,6 +233,7 @@ class MeanStdFilter(Filter):
             print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
 
         .. testoutput::
+
             [2, 1.5, 2]
 
         .. testcode::
@@ -244,6 +245,7 @@ class MeanStdFilter(Filter):
             print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
 
         .. testoutput::
+
             [3, 4.333333333333333, 2]
 
         .. testcode::
@@ -253,6 +255,7 @@ class MeanStdFilter(Filter):
             print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
 
         .. testoutput::
+
             [4, 5.75, 1]
         """
         tree.map_structure(
@@ -282,6 +285,7 @@ class MeanStdFilter(Filter):
             print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
 
         .. testoutput::
+
             [2, array(1.5), 2]
 
         .. testcode::
@@ -291,7 +295,8 @@ class MeanStdFilter(Filter):
             b(10)
             print([b.running_stats.n, b.running_stats.mean, b.buffer.n])
 
-        ..  testoutput::
+        .. testoutput::
+
             [1, array(10.0), 1]
 
         .. testcode::
@@ -301,6 +306,7 @@ class MeanStdFilter(Filter):
             print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
 
         .. testoutput::
+
             [1, array(10.0), 1]
         """
         self.demean = other.demean

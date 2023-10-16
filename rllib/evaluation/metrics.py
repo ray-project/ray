@@ -59,6 +59,7 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
         print(get_stats(grad_info))
 
     .. testoutput::
+
         {"vf_loss": ..., "policy_loss": ...}
     """
     if LEARNER_STATS_KEY in grad_info:

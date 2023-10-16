@@ -52,6 +52,7 @@ class DQNConfig(SimpleQConfig):
     r"""Defines a configuration class from which a DQN Algorithm can be built.
 
     .. testcode::
+
         from ray.rllib.algorithms.dqn.dqn import DQNConfig
         config = DQNConfig()
 
@@ -72,6 +73,7 @@ class DQNConfig(SimpleQConfig):
         del algo
 
     .. testcode::
+
         from ray.rllib.algorithms.dqn.dqn import DQNConfig
         from ray import air
         from ray import tune

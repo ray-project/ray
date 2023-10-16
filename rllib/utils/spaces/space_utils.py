@@ -78,6 +78,7 @@ def get_base_struct_from_space(space):
         }))
 
     .. testoutput::
+
         dict(a=Box(), b=tuple(Discrete(2), Discrete(3)))
     """
 
@@ -190,6 +191,7 @@ def flatten_to_single_ndarray(input_):
         ])
 
     .. testoutput::
+
         np.array([
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0
         ])

@@ -137,6 +137,7 @@ def generalized_discount_cumsum(
         generalized_discount_cumsum(x, deltas, gamma)
 
     .. testoutput::
+
         array([0.0 + 0.9^1.0*1.0 + 0.9^4.0*2.0 + 0.9^15.0*3.0,
                1.0 + 0.9^4.0*2.0 + 0.9^15.0*3.0,
                2.0 + 0.9^15.0*3.0,

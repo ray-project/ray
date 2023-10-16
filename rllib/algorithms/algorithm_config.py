@@ -119,6 +119,7 @@ class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
     .. testcode::
+
         from ray.rllib.algorithms.ppo import PPOConfig
         from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         # Construct a generic config object, specifying values within different
@@ -133,6 +134,7 @@ class AlgorithmConfig(_Config):
         rllib_algo = config.build()
 
     .. testcode::
+
         from ray.rllib.algorithms.ppo import PPOConfig
         from ray import tune
         # In combination with a tune.grid_search:
@@ -154,6 +156,7 @@ class AlgorithmConfig(_Config):
         """Creates an AlgorithmConfig from a legacy python config dict.
 
         .. testcode::
+
             from ray.rllib.algorithms.ppo.ppo import PPOConfig
             # pass a RLlib config dict
             ppo_config = PPOConfig.from_dict({})
@@ -189,6 +192,7 @@ class AlgorithmConfig(_Config):
         setups and evaluation configs.
 
         .. testcode::
+
             from ray.rllib.algorithms.ppo import PPOConfig
             from ray.rllib.policy.policy import PolicySpec
             config = (
@@ -199,6 +203,9 @@ class AlgorithmConfig(_Config):
                     },
                 )
             )
+
+
+        .. testcode::
 
             from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
             from ray.rllib.algorithms.pg import PGConfig
@@ -3479,11 +3486,13 @@ class AlgorithmConfig(_Config):
 
         Examples:
             .. testcode::
+
                 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
                 config = AlgorithmConfig()
                 print(config["lr"])
 
             .. testoutput::
+
                 0.001
         """
         # TODO: Uncomment this once all algorithms use AlgorithmConfigs under the

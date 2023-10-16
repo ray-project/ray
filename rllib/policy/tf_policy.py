@@ -71,6 +71,7 @@ class TFPolicy(Policy):
         print(policy.postprocess_trajectory(SampleBatch({...})))
 
     .. testoutput::
+
         (array([0, 1, 1]), [], {})
         SampleBatch({"action": ..., "advantages": ..., ...})
 

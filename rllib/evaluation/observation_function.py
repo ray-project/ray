@@ -67,6 +67,7 @@ class ObservationFunction:
             example_obs_fn1({"a": 1, "b": 2, "global_state": 101}, ...)
 
         .. testoutput::
+
             {"a": [1, 101], "b": [2, 101]}
 
         .. testcode::
@@ -77,6 +78,7 @@ class ObservationFunction:
             example_obs_fn2({"a": 1, "b": 2}, ...)
 
         .. testoutput::
+
             {"a": {"self": 1, "other": 2}, "b": {"self": 2, "other": 1}}
         """
 

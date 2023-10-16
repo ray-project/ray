@@ -68,7 +68,8 @@ logger = logging.getLogger(__name__)
 class ImpalaConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
-    .. testcode:
+    .. testcode::
+
         from ray.rllib.algorithms.impala import ImpalaConfig
         config = ImpalaConfig()
         config = config.training(lr=0.0003, train_batch_size=512)
@@ -80,6 +81,7 @@ class ImpalaConfig(AlgorithmConfig):
         del algo
 
     .. testcode::
+
         from ray.rllib.algorithms.impala import ImpalaConfig
         from ray import air
         from ray import tune

@@ -273,6 +273,7 @@ class _NotProvided:
         print(config.lr)
 
     .. testoutput::
+
         0.001
 
     .. testcode::
@@ -282,6 +283,7 @@ class _NotProvided:
         print(config.preprocessor_pref)
 
     .. testoutput::
+
         "deepmind"
 
     .. testcode::
@@ -293,6 +295,7 @@ class _NotProvided:
         config.preprocessor_pref is None
 
     .. testoutput::
+
         True
 
     .. testcode::
@@ -302,6 +305,7 @@ class _NotProvided:
         print(config.lr)
 
     .. testoutput::
+
         0.001
     """
 

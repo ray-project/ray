@@ -35,6 +35,7 @@ class MultiAgentChess(MultiAgentEnv):
         # only returns the observation for the agent which should be stepping
 
     .. testoutput::
+
         {
             'prisoner_0': array([[[0, 0, 0],
                 [0, 0, 0],
@@ -56,6 +57,7 @@ class MultiAgentChess(MultiAgentEnv):
         print(obs)
 
     .. testoutput::
+
         {
             'prisoner_1': array([[[0, 0, 0],
                 [0, 0, 0],
@@ -72,6 +74,7 @@ class MultiAgentChess(MultiAgentEnv):
         print(rewards)
 
     .. testoutput::
+
         {
             'prisoner_1': 0
         }
@@ -82,6 +85,7 @@ class MultiAgentChess(MultiAgentEnv):
         print(dones)
 
     .. testoutput::
+
         {
             'prisoner_1': False, '__all__': False
         }
@@ -92,6 +96,7 @@ class MultiAgentChess(MultiAgentEnv):
         print(infos)
 
     .. testoutput::
+
         {
             'prisoner_1': {'map_tuple': (1, 0)}
         }

@@ -152,6 +152,7 @@ def flatten_inputs_to_1d_tensor(
         print(out)
 
     .. testoutput::
+
         [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
         [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
         [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
@@ -539,6 +540,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         one_hot(x, s)
 
     .. testoutput::
+
         <tf.Tensor 'one_hot:0' shape=(2, 4) dtype=float32>
 
     .. testcode::
@@ -551,6 +553,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         one_hot(x, s)
 
     .. testoutput::
+
         <tf.Tensor 'concat:0' shape=(1, 20) dtype=float32>
     """
     if isinstance(space, Discrete):

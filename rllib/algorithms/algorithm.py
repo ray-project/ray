@@ -2001,6 +2001,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 If None, the output format will be DL framework specific.
 
         .. testcode::
+
             from ray.rllib.algorithms.ppo import PPO, PPOConfig
             config = PPOConfig().environment("CartPole-v1")
             algo = PPO(config=config)
@@ -2029,6 +2030,7 @@ class Algorithm(Trainable, AlgorithmBase):
             KeyError if `policy_id` cannot be found in this Algorithm.
 
         .. testcode::
+
             from ray.rllib.algorithms.ppo import PPO, PPOConfig
             config = PPOConfig().environment("CartPole-v1")
             algo = PPO(config=config)

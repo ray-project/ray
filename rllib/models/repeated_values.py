@@ -73,6 +73,7 @@ class RepeatedValues:
             print(max(len(x) for x in items) <= N)
 
         .. testoutput::
+
             True
 
         .. testcode::
@@ -81,6 +82,7 @@ class RepeatedValues:
             print(items)
 
         .. testoutput::
+
             [[<Tensor_1 shape=(K)>, ..., <Tensor_N, shape=(K)>],
              ...
              [<Tensor_1 shape=(K)>, <Tensor_2 shape=(K)>],
@@ -128,6 +130,7 @@ class RepeatedValues:
             len(items) == batch.max_len
 
         .. testoutput::
+
             True
 
         .. testcode::
@@ -136,6 +139,7 @@ class RepeatedValues:
             print(items)
 
         .. testoutput::
+
             [<Tensor_1 shape=(B, K)>, ..., <Tensor_N shape=(B, K)>]
         """
         return _unbatch_helper(self.values, self.max_len)

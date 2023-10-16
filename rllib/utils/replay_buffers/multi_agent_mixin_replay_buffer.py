@@ -52,6 +52,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         buffer.sample(1)
 
     .. testoutput::
+
         ..[<A>, <B>, <B>]
 
     .. testcode::
@@ -61,6 +62,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         buffer.sample(1)
 
     .. testoutput::
+
         [<C>, <A>, <B>]
         or: [<C>, <A>, <A>], [<C>, <B>, <A>] or [<C>, <B>, <B>],
         but always <C> as it is the newest sample
@@ -72,6 +74,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         buffer.sample(1)
 
     .. testoutput::
+
         [<D>, <A>, <C>]
         or [<D>, <A>, <A>], [<D>, <B>, <A>] or [<D>, <B>, <C>], etc..
         but always <D> as it is the newest sample
@@ -85,6 +88,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         buffer.sample()
 
     .. testoutput::
+
         [<A>]
 
     .. testcode::
@@ -94,6 +98,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         buffer.sample()
 
     .. testoutput::
+
         [<B>]
     """
 

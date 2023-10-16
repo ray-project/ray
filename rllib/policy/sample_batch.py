@@ -358,6 +358,7 @@ class SampleBatch(dict):
             print(b1.concat(b2))
 
         .. testoutput::
+
             {"a": np.array([1, 2, 3, 4, 5])}
         """
         return concat_samples([self, other])
@@ -414,6 +415,7 @@ class SampleBatch(dict):
                 print(row)
 
         .. testoutput::
+
             {"a": 1, "b": 4, "seq_lens": 1}
             {"a": 2, "b": 5, "seq_lens": 1}
             {"a": 3, "b": 6, "seq_lens": 1}
@@ -448,6 +450,7 @@ class SampleBatch(dict):
             print(batch.columns(["a", "b"]))
 
         .. testoutput::
+
             [[1], [2]]
         """
 
@@ -475,6 +478,7 @@ class SampleBatch(dict):
             print(batch.shuffle())
 
         .. testoutput::
+
             {"a": [4, 1, 3, 2]}
         """
 
@@ -538,6 +542,7 @@ class SampleBatch(dict):
 
 
         .. testoutput::
+
             [{"a": [1, 2], "eps_id": [0, 0]}, {"a": [3], "eps_id": [1]}]
             [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "dones": [0, 1]}]
             [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "dones": [0, 0]}]
@@ -828,6 +833,7 @@ class SampleBatch(dict):
             print(batch.right_zero_pad(max_seq_len=5))
 
         .. testoutput::
+
             {"a": [1, 0, 0, 0, 2, 3, 0, 0], "seq_lens": [1, 2]}
             {"a": [1, 0, 0, 0, 0, 2, 3, 0, 0, 0],
              "state_in_0": [1.0, 3.0],  # <- all state-ins remain as-is
@@ -1605,6 +1611,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
         print(concat_samples([b1, b2]))
 
     .. testoutput::
+
         {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
         MultiAgentBatch = {'default_policy': {"a": np.array([1, 2, 3]),
                                               "b": np.array([10, 11, 12])}}
@@ -1736,6 +1743,7 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
         print(concat_samples([b1, b2]))
 
     .. testoutput::
+
         {'default_policy': {"a": np.array([1, 2, 3]),
                             "b": np.array([10, 11, 12])}}
 

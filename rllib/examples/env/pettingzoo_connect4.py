@@ -32,6 +32,7 @@ class MultiAgentConnect4(MultiAgentEnv):
         print(obs)
 
     .. testoutput::
+
         # only returns the observation for the agent which should be stepping
         {
             'prisoner_0': array([[[0, 0, 0],
@@ -54,6 +55,7 @@ class MultiAgentConnect4(MultiAgentEnv):
         print(obs)
 
     .. testoutput::
+
         {
             'prisoner_1': array([[[0, 0, 0],
                 [0, 0, 0],
@@ -70,6 +72,7 @@ class MultiAgentConnect4(MultiAgentEnv):
         print(rewards)
 
     .. testoutput::
+
         {
             'prisoner_1': 0
         }
@@ -80,6 +83,7 @@ class MultiAgentConnect4(MultiAgentEnv):
         print(dones)
 
     .. testoutput::
+
         {
             'prisoner_1': False, '__all__': False
         }
@@ -90,6 +94,7 @@ class MultiAgentConnect4(MultiAgentEnv):
         print(infos)
 
     .. testoutput::
+
         {
             'prisoner_1': {'map_tuple': (1, 0)}
         }

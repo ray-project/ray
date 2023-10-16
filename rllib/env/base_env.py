@@ -54,6 +54,7 @@ class BaseEnv:
         print(terminateds)
 
     .. testoutput::
+
         {
             "env_0": {
                 "car_0": [2.4, 1.6],

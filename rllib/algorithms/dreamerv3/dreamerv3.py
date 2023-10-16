@@ -64,6 +64,7 @@ class DreamerV3Config(AlgorithmConfig):
     """Defines a configuration class from which a DreamerV3 can be built.
 
     .. testcode::
+
         from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
         config = (
             DreamerV3Config()

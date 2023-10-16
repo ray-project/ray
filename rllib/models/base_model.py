@@ -116,6 +116,7 @@ class RecurrentModel(abc.ABC):
             model.initial_state()
 
         .. testoutput::
+
             TensorDict(...)
         """
         initial_state = self._initial_state()

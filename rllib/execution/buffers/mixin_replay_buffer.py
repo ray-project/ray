@@ -25,6 +25,7 @@ class MixInMultiAgentReplayBuffer:
     according to the "replay ratio").
 
     .. testcode::
+
         from ray.rllib.execution.buffers.mixin_replay_buffer import (
             MixInMultiAgentReplayBuffer)
         from ray.rllib.policy.sample_batch import SampleBatch

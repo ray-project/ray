@@ -23,6 +23,7 @@ class SACConfig(AlgorithmConfig):
     """Defines a configuration class from which an SAC Algorithm can be built.
 
     .. testcode::
+
         config = SACConfig().training(gamma=0.9, lr=0.01, train_batch_size=32)
         config = config.resources(num_gpus=0)
         config = config.rollouts(num_rollout_workers=1)

@@ -177,6 +177,7 @@ class OneHotPreprocessor(Preprocessor):
         self.transform(Discrete(3).sample())
 
     .. testoutput::
+
         np.array([0.0, 1.0, 0.0])
 
     .. testcode::
@@ -185,6 +186,7 @@ class OneHotPreprocessor(Preprocessor):
         self.transform(MultiDiscrete([2, 3]).sample())
 
     .. testoutput::
+
         np.array([0.0, 1.0, 0.0, 0.0, 1.0])
     """
 

@@ -27,6 +27,7 @@ class AsyncRequestsManager:
             AsyncRequestsManager.get_ready_results().
 
     .. testcode::
+
         import time
         import ray
         from ray.rllib.execution.parallel_requests import AsyncRequestsManager
@@ -53,6 +54,7 @@ class AsyncRequestsManager:
         ray.shutdown()
 
     .. testoutput::
+
         [[3], [3]]
     """
 

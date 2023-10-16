@@ -41,6 +41,7 @@ class APPOConfig(ImpalaConfig):
     """Defines a configuration class from which an APPO Algorithm can be built.
 
     .. testcode::
+
         from ray.rllib.algorithms.appo import APPOConfig
         config = APPOConfig().training(lr=0.01, grad_clip=30.0, train_batch_size=50)
         config = config.resources(num_gpus=0)
@@ -53,6 +54,7 @@ class APPOConfig(ImpalaConfig):
         del algo
 
     .. testcode::
+
         from ray.rllib.algorithms.appo import APPOConfig
         from ray import air
         from ray import tune

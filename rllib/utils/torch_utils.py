@@ -347,6 +347,7 @@ def flatten_inputs_to_1d_tensor(
         the shape is (B, n) or (B, T, n).
 
     .. testcode::
+
         from gymnasium.spaces import Discrete, Box
         from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor
         import torch
@@ -376,7 +377,9 @@ def flatten_inputs_to_1d_tensor(
             }
         )
         print(flatten_inputs_to_1d_tensor(struct_torch, spaces_struct=spaces))
+
     .. testoutput::
+
         tensor([[0., 1., 0., 0., 1., 2., 8., 7., 1.],
                 [0., 0., 0., 1., 4., 5., 5., 4., 2.]])
 
@@ -566,6 +569,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         ValueError: If the given space is not a discrete one.
 
     .. testcode::
+
         import torch
         import gymnasium as gym
         from ray.rllib.utils.torch_utils import one_hot
@@ -580,6 +584,7 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         print(one_hot(x, s))
 
     .. testoutput::
+
         tensor([[1, 0, 0, 0],
                 [0, 0, 0, 1]])
         tensor([[1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0]])

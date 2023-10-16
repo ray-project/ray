@@ -38,6 +38,7 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
         print(train_one_step(algo, train_batch)))
 
     .. testoutput::
+
         {"default_policy": ...}
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
@@ -105,6 +106,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
         print(multi_gpu_train_one_step(algo, train_batch)))
 
     .. testoutput::
+
         {"default_policy": ...}
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as

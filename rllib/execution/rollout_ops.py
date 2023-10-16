@@ -51,6 +51,7 @@ def synchronous_parallel_sample(
         rollout worker in the given `worker_set`).
 
     .. testcode::
+
         # Define an RLlib Algorithm.
         from ray.rllib.algorithms.ppo import PPO, PPOConfig
         config = PPOConfig().environment("CartPole-v1")
@@ -61,6 +62,7 @@ def synchronous_parallel_sample(
         print(len(batches))
 
     .. testoutput::
+
         2
     """
     # Only allow one of `max_agent_steps` or `max_env_steps` to be defined.

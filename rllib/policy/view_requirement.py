@@ -34,6 +34,7 @@ class ViewRequirement:
         print(req)
 
     .. testoutput::
+
         {"obs": ViewRequirement(shift=0)}
 
     Args:

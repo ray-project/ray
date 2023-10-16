@@ -206,6 +206,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         print(worker.sample())
 
     .. testoutput::
+
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
             "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]}
@@ -688,6 +689,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             print(worker.sample())
 
         .. testoutput::
+
             SampleBatch({"obs": [...], "action": [...], ...})
         """
         if self.config.fake_sampler and self.last_batch is not None:
@@ -772,6 +774,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             print(worker.sample_with_count())
 
         .. testoutput::
+
             (SampleBatch({"obs": [...], "action": [...], ...}), 3)
         """
         batch = self.sample()
@@ -1505,6 +1508,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             print(weights)
 
         .. testoutput::
+
             {"default_policy": {"layer1": array(...), "layer2": ...}}
         """
         if policies is None:
@@ -1584,6 +1588,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             print(global_vars)
 
         .. testoutput::
+
             {"timestep": 424242}
         """
         return self.global_vars

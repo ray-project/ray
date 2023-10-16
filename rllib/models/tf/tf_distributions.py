@@ -83,6 +83,7 @@ class TfCategorical(TfDistribution):
         m.sample(sample_shape=(2,))  # equal probability of 0, 1, 2, 3
 
     .. testoutput::
+
         tf.Tensor([2 3], shape=(2,), dtype=int32)
 
     Args:
@@ -167,6 +168,7 @@ class TfDiagGaussian(TfDistribution):
         m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
 
     .. testoutput::
+
         tensor([[ 0.1046, -0.6120], [ 0.234, 0.556]])
 
     .. testcode::
@@ -177,6 +179,7 @@ class TfDiagGaussian(TfDistribution):
         m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
 
     .. testoutput::
+
         tensor([0.1046, 0.6120])
 
 
@@ -250,6 +253,7 @@ class TfDeterministic(Distribution):
         m.sample(sample_shape=(2,))
 
     .. testoutput::
+
         Tensor([[ 0.0, 0.0], [ 0.0, 0.0]])
 
     Args:

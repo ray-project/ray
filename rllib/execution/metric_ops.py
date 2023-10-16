@@ -30,6 +30,7 @@ class CollectMetrics:
         print(next(output_op))
 
     .. testoutput::
+
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 

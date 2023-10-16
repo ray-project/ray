@@ -16,6 +16,7 @@ class WindowStat:
         print(win_stats.mean())
 
     .. testoutput::
+
         8.0
     """
 

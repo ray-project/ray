@@ -81,6 +81,7 @@ class MultiAgentEnv(gym.Env):
             print(obs)
 
         .. testoutput::
+
             {
                 "car_0": [2.4, 1.6],
                 "car_1": [3.4, -3.2],
@@ -124,6 +125,7 @@ class MultiAgentEnv(gym.Env):
             print(infos)
 
         .. testoutput::
+
             {
                 "car_0": 3,
                 "car_1": -1,
@@ -488,6 +490,7 @@ def make_multi_agent(
         print(obs)
 
     .. testoutput::
+
         {0: [...], 1: [...]}
         {0: [...], 1: [...], 2: [...]}
     """

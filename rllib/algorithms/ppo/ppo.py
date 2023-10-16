@@ -61,6 +61,7 @@ class PPOConfig(PGConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
     .. testcode::
+
         from ray.rllib.algorithms.ppo import PPOConfig
         config = PPOConfig()
         config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3,
@@ -73,6 +74,7 @@ class PPOConfig(PGConfig):
         algo.train()
 
     .. testcode::
+
         from ray.rllib.algorithms.ppo import PPOConfig
         from ray import air
         from ray import tune

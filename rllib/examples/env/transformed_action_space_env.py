@@ -41,6 +41,7 @@ def transform_action_space(env_name_or_creator) -> Type[gym.Env]:
         pendulum_300_to_500.action_space
 
     .. testoutput::
+
         gym.spaces.Box(-15.0, 1.0, (1, ), "float32")
     """
 
