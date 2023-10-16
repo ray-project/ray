@@ -674,7 +674,7 @@ def read_parquet(
             directories are not supported.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
-            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            `PyArrow docs <https://arrow.apache.org/docs/python/api/\
             filesystems.html#filesystem-implementations>`_. Specify this parameter if
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
@@ -705,9 +705,9 @@ def read_parquet(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
-            set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
-                python/generated/pyarrow.dataset.Scanner.html\
-                    #pyarrow.dataset.Scanner.from_fragment>`_
+            set of arguments, see the `PyArrow docs <https://arrow.apache.org/docs/\
+            python/generated/pyarrow.dataset.Scanner.html\
+            #pyarrow.dataset.Scanner.from_fragment>`_.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
