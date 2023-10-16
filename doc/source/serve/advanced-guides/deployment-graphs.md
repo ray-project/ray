@@ -3,7 +3,7 @@
 # Deployment Graphs (Deprecated)
 
 :::{note}
-This API is **deprecated** and will be removed in an upcoming release.
+This API is **deprecated** and will be removed in an upcoming release. Please use the recommended [model composition pattern](https://docs.ray.io/en/latest/serve/model_composition.html) instead.
 :::
 
 For more advanced composition patterns, it can be useful to surface the relationships between deployments, instead of hiding them inside individual deployment definitions.
