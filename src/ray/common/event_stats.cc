@@ -62,15 +62,16 @@ std::string to_human_readable(int64_t duration) {
 std::shared_ptr<StatsHandle> EventTracker::RecordStart(
     const std::string &name, int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
+  int64_t cum_count = 0;
   int64_t curr_count = 0;
   {
     absl::MutexLock lock(&(stats->mutex));
-    stats->stats.cum_count++;
+    cum_count = ++stats->stats.cum_count;
     curr_count = ++stats->stats.curr_count;
   }
 
   if (RayConfig::instance().event_stats_metrics()) {
-    ray::stats::STATS_operation_count.Record(curr_count, name);
+    ray::stats::STATS_operation_count.Record(cum_count, name);
     ray::stats::STATS_operation_active_count.Record(curr_count, name);
   }
 

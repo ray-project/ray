@@ -418,14 +418,70 @@ def test_operation_stats(monkeypatch, shutdown_only):
         m.setenv("RAY_event_stats_metrics", "1")
         addr = ray.init()
 
-        @ray.remote
-        def f():
-            pass
+        signal = SignalActor.remote()
 
-        ray.get(f.remote())
+        @ray.remote
+        def f(signal):
+            ray.get(signal.wait.remote())
+
+        obj_ref = f.remote(signal)
 
         def verify():
             metrics = raw_metrics(addr)
+            samples = metrics["ray_operation_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.value == 1
+                ):
+                    found = True
+            if not found:
+                return False
+
+            samples = metrics["ray_operation_active_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.value == 1
+                ):
+                    found = True
+            if not found:
+                return False
+
+            return True
+
+        wait_for_condition(verify, timeout=60)
+
+        ray.get(signal.send.remote())
+        ray.get(obj_ref)
+
+        def verify():
+            metrics = raw_metrics(addr)
+
+            samples = metrics["ray_operation_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.value == 2
+                ):
+                    found = True
+            if not found:
+                return False
+
+            samples = metrics["ray_operation_active_count"]
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                ):
+                    assert sample.value == 0
+
             metric_names = set(metrics.keys())
             for op_metric in operation_metrics:
                 assert op_metric in metric_names
