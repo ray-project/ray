@@ -646,9 +646,8 @@ class WorkerSet:
         self,
         func: Callable[[RolloutWorker], T],
         *,
-        local_worker=True,
-        # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only=False,
+        local_worker: bool = True,
+        healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
         return_obj_refs: bool = False,
@@ -658,10 +657,9 @@ class WorkerSet:
 
         Args:
             func: The function to call for each worker (as only arg).
-            local_worker: Whether apply func on local worker too. Default is True.
-            healthy_only: Apply func on known active workers only. By default
-                this will apply func on all workers regardless of their states.
-            remote_worker_ids: Apply func on a selected set of remote workers.
+            local_worker: Whether apply `func` on local worker too. Default is True.
+            healthy_only: Apply `func` on known-to-be healthy workers only.
+            remote_worker_ids: Apply `func` on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
@@ -700,9 +698,8 @@ class WorkerSet:
         self,
         func: Callable[[int, RolloutWorker], T],
         *,
-        local_worker=True,
-        # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only=False,
+        local_worker: bool = True,
+        healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
     ) -> List[T]:
@@ -710,10 +707,9 @@ class WorkerSet:
 
         Args:
             func: The function to call for each worker (as only arg).
-            local_worker: Whether apply func on local worker too. Default is True.
-            healthy_only: Apply func on known active workers only. By default
-                this will apply func on all workers regardless of their states.
-            remote_worker_ids: Apply func on a selected set of remote workers.
+            local_worker: Whether apply `func` on local worker too. Default is True.
+            healthy_only: Apply `func` on known-to-be healthy workers only.
+            remote_worker_ids: Apply `func` on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
 
         Returns:
@@ -746,8 +742,7 @@ class WorkerSet:
         self,
         func: Callable[[RolloutWorker], T],
         *,
-        # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only=False,
+        healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
     ) -> int:
         """Calls the given function asynchronously with each worker as the argument.
@@ -758,9 +753,8 @@ class WorkerSet:
 
         Args:
             func: The function to call for each worker (as only arg).
-            healthy_only: Apply func on known active workers only. By default
-                this will apply func on all workers regardless of their states.
-            remote_worker_ids: Apply func on a selected set of remote workers.
+            healthy_only: Apply `func` on known-to-be healthy workers only.
+            remote_worker_ids: Apply `func` on a selected set of remote workers.
 
         Returns:
              The number of async requests that are currently in-flight.
@@ -784,6 +778,7 @@ class WorkerSet:
         Args:
             timeout_seconds: Time to wait for results. Default is 0, meaning
                 those requests that are already ready.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
             mark_healthy: Whether to mark the worker as healthy based on call results.
 
         Returns:

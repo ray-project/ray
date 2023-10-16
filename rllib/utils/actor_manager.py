@@ -738,7 +738,7 @@ class FaultTolerantActorManager:
             timeout_seconds: Ray.get() timeout. Default is 0 (only those that are
                 already ready).
             tags: A tag or a list of tags to identify the results from this async call.
-            return_obj_refs: whether to return ObjectRef instead of actual results.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
             mark_healthy: whether to mark certain actors healthy based on the results
                 of these remote calls. Useful, for example, to make sure actors
                 do not come back without proper state restoration.
