@@ -98,7 +98,9 @@ Dataset memory:
 """
 
 
-def canonicalize(stats: str, filter_global_stats: bool = True, ignore_zeros: bool = False) -> str:
+def canonicalize(
+    stats: str, filter_global_stats: bool = True, ignore_zeros: bool = False
+) -> str:
     # Dataset UUID expression.
     s0 = re.sub("([a-f\d]{32})", "U", stats)
     # Time expressions.
