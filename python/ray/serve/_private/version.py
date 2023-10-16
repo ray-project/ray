@@ -174,7 +174,8 @@ class DeploymentVersion:
                 reconfigure_dict[option_name] = getattr(
                     self.deployment_config, option_name
                 )
-
+                if option_name == "logging_config":
+                    reconfigure_dict[option_name] = reconfigure_dict[option_name].dict()
         if (
             isinstance(self.deployment_config.user_config, bytes)
             and "user_config" in reconfigure_dict

@@ -54,7 +54,7 @@ from ray.serve._private.utils import (
     get_all_live_placement_group_names,
     get_head_node_id,
 )
-from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.config import EncodingType, HTTPOptions, LoggingConfig, gRPCOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
@@ -82,6 +82,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
+SYSTEM_LOGGING_CONFIG_CHECKPOINT_KEY = "serve-system-logging-config-checkpoint"
 
 
 @ray.remote(num_cpus=0)
@@ -116,15 +117,22 @@ class ServeController:
         *,
         http_config: HTTPOptions,
         grpc_options: Optional[gRPCOptions] = None,
+        logging_config: Optional[LoggingConfig] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
 
-        configure_component_logger(
-            component_name="controller", component_id=str(os.getpid())
-        )
+        # Used to read/write checkpoints.
+        self.ray_worker_namespace = ray.get_runtime_context().namespace
+        self.controller_name = controller_name
+        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
+        self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
+        self.cluster_node_info_cache.update()
+
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
@@ -138,25 +146,30 @@ class ServeController:
             )
             call_function_from_import_path(RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH)
 
-        # Used to read/write checkpoints.
-        self.ray_worker_namespace = ray.get_runtime_context().namespace
-        self.controller_name = controller_name
-        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
-        self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
-        self.cluster_node_info_cache.update()
-
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
+
+        if logging_config is None:
+            logging_config = self.kv_store.get(SYSTEM_LOGGING_CONFIG_CHECKPOINT_KEY)
+            if logging_config is None:
+                logging_config = LoggingConfig(
+                    encoding=EncodingType.TEXT,
+                    log_level=logging.INFO,
+                    logs_dir=None,
+                    enable_access_log=True,
+                )
 
         self.proxy_state_manager = ProxyStateManager(
             controller_name,
             http_config,
             self._controller_node_id,
             self.cluster_node_info_cache,
+            logging_config,
             grpc_options,
         )
+
+        self._logging_config = None
+        self.apply_system_logging_config(logging_config)
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
@@ -212,19 +225,26 @@ class ServeController:
             description="The number of times that controller has started.",
         ).inc()
 
-    def reconfigure_logging(self, log_level, json_logging, logs_dir):
+    def apply_system_logging_config(self, logging_config: LoggingConfig):
+
+        if (
+            self._logging_config is not None
+            and self._logging_config.version == logging_config.version
+        ):
+            return
+
         configure_component_logger(
             component_name="controller",
             component_id=str(os.getpid()),
-            log_level=log_level,
-            json_logging=json_logging,
-            logs_dir=logs_dir,
+            logging_config=logging_config,
         )
-        # global logger
-        # logger = logging.getLogger(SERVE_LOGGER_NAME)
-        logger.info("[INFO] logging reconfigured")
-        logger.warning("[WARNING]logging reconfigured")
-        logger.warning(f"all handlers {str(logger.handlers)}")
+
+        self._logging_config = logging_config
+        self.proxy_state_manager.apply_logging_config(logging_config)
+
+        self.kv_store.put(
+            SYSTEM_LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(logging_config.dict())
+        )
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""

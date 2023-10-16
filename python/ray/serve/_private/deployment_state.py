@@ -375,6 +375,7 @@ class ActorReplicaWrapper:
                 self._version,
                 self._controller_name,
                 self.app_name,
+                deployment_info.deployment_config.logging_config,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -1437,6 +1438,10 @@ class DeploymentState:
                     autoscaled_num_replicas = autoscaling_config.min_replicas
             deployment_info.set_autoscaled_num_replicas(autoscaled_num_replicas)
 
+        print(
+            "deployment_info logging config: ",
+            deployment_info.deployment_config.logging_config,
+        )
         self._set_target_state(deployment_info)
         return True
 

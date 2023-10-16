@@ -10,7 +10,7 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import DeploymentConfig, LoggingConfig, ReplicaConfig
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -67,6 +67,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -121,7 +122,7 @@ def start(
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
-        **kwargs,
+        logging_config=logging_config**kwargs,
     )
 
 
@@ -272,6 +273,7 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -381,7 +383,9 @@ def deployment(
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
+        logging_config=logging_config,
     )
+
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
     def decorator(_func_or_class):
@@ -545,6 +549,7 @@ def run(
             "docs_path": deployment._docs_path,
             "ingress": deployment._name == ingress._name,
         }
+        print("_deployment_config: ", deployment._deployment_config.logging_config)
         parameter_group.append(deployment_parameters)
     client.deploy_application(
         name,

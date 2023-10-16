@@ -25,10 +25,12 @@ from ray.serve._private.constants import (
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, LoggingConfig
 from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
+from ray.serve.generated.serve_pb2 import LoggingEncoding as LoggingEncodingProto
 from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
 from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
 
@@ -105,6 +107,11 @@ class DeploymentConfig(BaseModel):
         default=None, update_type=DeploymentOptionUpdateType.LightWeight
     )
 
+    logging_config: Optional[LoggingConfig] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
+
     # This flag is used to let replica know they are deployed from
     # a different language.
     is_cross_language: bool = False
@@ -159,6 +166,8 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
+        if data.get("logging_config"):
+            data["logging_config"] = LoggingConfigProto(**data["logging_config"])
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
         )
@@ -206,6 +215,12 @@ class DeploymentConfig(BaseModel):
             data["user_configured_option_names"] = set(
                 data["user_configured_option_names"]
             )
+        if "logging_config" in data:
+            if "encoding" in data["logging_config"]:
+                data["logging_config"]["encoding"] = LoggingEncodingProto.Name(
+                    data["logging_config"]["encoding"]
+                )
+            data["logging_config"] = LoggingConfig(**data["logging_config"])
         return cls(**data)
 
     @classmethod

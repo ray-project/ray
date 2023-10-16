@@ -326,13 +326,16 @@ def create_serve_rest_api(
             location = ProxyLocation._to_deployment_mode(config.proxy_location)
             full_http_options = dict({"location": location}, **config_http_options)
             grpc_options = config.grpc_options.dict()
+            logging_config = config.logging_config.dict()
 
             async with self._controller_start_lock:
                 client = await serve_start_async(
                     http_options=full_http_options,
                     grpc_options=grpc_options,
+                    logging_config=logging_config,
                 )
 
+            client.apply_system_logging_config(logging_config)
             # Serve ignores HTTP options if it was already running when
             # serve_start_async() is called. Therefore we validate that no
             # existing HTTP options are updated and print warning in case they are

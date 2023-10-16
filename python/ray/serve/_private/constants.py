@@ -1,8 +1,5 @@
 import os
 
-#: Used for debugging to turn on DEBUG-level logs
-DEBUG_LOG_ENV_VAR = "SERVE_DEBUG_LOG"
-
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
 

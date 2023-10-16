@@ -1,4 +1,5 @@
 import json
+import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Union
@@ -23,7 +24,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
-from ray.serve.config import ProxyLocation
+from ray.serve.config import EncodingType, ProxyLocation
 from ray.util.annotations import PublicAPI
 
 
@@ -260,6 +261,10 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
     )
 
+    logging_config: Optional[Dict] = Field(
+        default=DEFAULT.VALUE,
+    )
+
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
         if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(
@@ -312,6 +317,9 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         schema.autoscaling_config = info.deployment_config.autoscaling_config
     else:
         schema.num_replicas = info.deployment_config.num_replicas
+
+    if info.deployment_config.logging_config is not None:
+        schema.logging_config = info.deployment_config.logging_config
 
     return schema
 
@@ -573,6 +581,14 @@ class HTTPOptionsSchema(BaseModel):
     )
 
 
+@PublicAPI(stability="alpha")
+class LoggingConfigSchema(BaseModel):
+    encoding: Optional[Union[EncodingType, Dict]] = EncodingType.TEXT
+    log_level: Optional[int] = logging.INFO
+    logs_dir: Optional[str] = None
+    enable_access_log: Optional[bool] = True
+
+
 @PublicAPI(stability="stable")
 class ServeDeploySchema(BaseModel):
     """
@@ -599,6 +615,7 @@ class ServeDeploySchema(BaseModel):
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
     )
+    logging_config: LoggingConfigSchema = Field(default=LoggingConfigSchema())
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
     )

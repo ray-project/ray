@@ -56,6 +56,7 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
+    get_logger_version,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.proxy_request_response import (
@@ -72,7 +73,7 @@ from ray.serve._private.proxy_router import (
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import call_function_from_import_path
-from ray.serve.config import gRPCOptions
+from ray.serve.config import EncodingType, LoggingConfig, gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 from ray.serve.handle import DeploymentHandle
@@ -1066,9 +1067,21 @@ class ProxyActor:
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
         keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
         grpc_options: Optional[gRPCOptions] = None,
+        logging_config: Optional[LoggingConfig] = None,
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
-        configure_component_logger(component_name="proxy", component_id=node_ip_address)
+        logging_config = logging_config or LoggingConfig(
+            encoding=EncodingType.TEXT,
+            log_level=logging.INFO,
+            logs_dir=None,
+            enable_access_log=True,
+        )
+        self._node_ip_address = node_ip_address
+        configure_component_logger(
+            component_name="proxy",
+            component_id=node_ip_address,
+            logging_config=logging_config,
+        )
         logger.info(
             f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
             f"starting on node {node_id}."
@@ -1323,6 +1336,7 @@ class ProxyActor:
         """
 
         logger.info("Received health check.", extra={"log_to_stderr": False})
+        return get_logger_version()
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
         """Get ASGI messages for the provided `request_id`.
@@ -1361,6 +1375,14 @@ class ProxyActor:
         """
         if self._uvicorn_server:
             return self._uvicorn_server.config.timeout_keep_alive
+
+    async def apply_logging_config(self, logging_config: LoggingConfig):
+        logger.info("Updating the proxy logging config")
+        configure_component_logger(
+            component_name="proxy",
+            component_id=self._node_ip_address,
+            logging_config=logging_config,
+        )
 
 
 def _determine_target_loop():

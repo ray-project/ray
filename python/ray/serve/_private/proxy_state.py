@@ -26,7 +26,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.utils import format_actor_name
-from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
+from ray.serve.config import DeploymentMode, HTTPOptions, LoggingConfig, gRPCOptions
 from ray.serve.schema import ProxyDetails
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -101,7 +101,6 @@ class ProxyWrapper(ABC):
 class ActorProxyWrapper(ProxyWrapper):
     def __init__(
         self,
-        actor_handle: Optional[ActorHandle] = None,
         config: Optional[HTTPOptions] = None,
         grpc_options: Optional[gRPCOptions] = None,
         controller_name: Optional[str] = None,
@@ -110,9 +109,10 @@ class ActorProxyWrapper(ProxyWrapper):
         node_ip_address: Optional[str] = None,
         port: Optional[int] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
+        logging_config: Optional[LoggingConfig] = None,
     ):
         # initialize with provided proxy actor handle or get or create a new one.
-        self._actor_handle = actor_handle or self._get_or_create_proxy_actor(
+        self._actor_handle = self._get_or_create_proxy_actor(
             config=config,
             grpc_options=grpc_options,
             controller_name=controller_name,
@@ -121,6 +121,7 @@ class ActorProxyWrapper(ProxyWrapper):
             node_ip_address=node_ip_address,
             port=port,
             proxy_actor_class=proxy_actor_class,
+            logging_config=logging_config,
         )
         self._ready_obj_ref = None
         self._health_check_obj_ref = None
@@ -128,6 +129,8 @@ class ActorProxyWrapper(ProxyWrapper):
         self._update_draining_obj_ref = None
         self.worker_id = None
         self.log_file_path = None
+        self._proxy_logger_version = None
+        self._update_logging_config_ref = None
 
     @staticmethod
     def _get_or_create_proxy_actor(
@@ -139,15 +142,17 @@ class ActorProxyWrapper(ProxyWrapper):
         node_ip_address: str,
         port: int,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
+        logging_config: Optional[LoggingConfig] = None,
     ) -> ProxyWrapper:
         """Helper to start or reuse existing proxy.
 
         Takes the name of the proxy, the node id, and the node ip address, and look up
         or creates a new ProxyActor actor handle for the proxy.
         """
-        proxy = None
+
         try:
             proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
+            return proxy
         except ValueError:
             logger.info(
                 f"Starting proxy with name '{name}' on node '{node_id}' "
@@ -155,7 +160,7 @@ class ActorProxyWrapper(ProxyWrapper):
                 extra={"log_to_stderr": False},
             )
 
-        proxy = proxy or proxy_actor_class.options(
+        proxy = proxy_actor_class.options(
             num_cpus=config.num_cpus,
             name=name,
             namespace=SERVE_NAMESPACE,
@@ -174,6 +179,7 @@ class ActorProxyWrapper(ProxyWrapper):
             request_timeout_s=config.request_timeout_s,
             keep_alive_timeout_s=config.keep_alive_timeout_s,
             grpc_options=grpc_options,
+            logging_config=logging_config,
         )
         return proxy
 
@@ -263,7 +269,7 @@ class ActorProxyWrapper(ProxyWrapper):
             finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
             if finished:
                 self._health_check_obj_ref = None
-                ray.get(finished[0])
+                self._proxy_logger_version = ray.get(finished[0])
                 return ProxyWrapperCallStatus.FINISHED_SUCCEED
             else:
                 return ProxyWrapperCallStatus.PENDING
@@ -309,6 +315,28 @@ class ActorProxyWrapper(ProxyWrapper):
     def kill(self):
         """Kill the proxy actor."""
         ray.kill(self._actor_handle, no_restart=True)
+
+    def update_logging_config(self, logging_config: LoggingConfig):
+        if self._update_logging_config_ref:
+            try:
+                finished, _ = ray.wait([self._update_logging_config_ref], timeout=0)
+                if finished:
+                    self._update_logging_config_ref = None
+                    self._proxy_logger_version = logging_config.version
+                    return
+            except RayActorError:
+                logger.info(
+                    "Failed to update the logging config of "
+                    f"the proxy {self.actor_name}."
+                )
+
+        elif (
+            self._update_logging_config_ref is None
+            and logging_config.version != self._proxy_logger_version
+        ):
+            self._update_logging_config_ref = (
+                self.actor_handle.apply_logging_config.remote(logging_config)
+            )
 
 
 class ProxyState:
@@ -451,7 +479,7 @@ class ProxyState:
             self._last_drain_check_time = time.time()
             self._actor_proxy_wrapper.start_new_drained_check()
 
-    def update(self, draining: bool = False):
+    def update(self, logging_config: LoggingConfig, draining: bool = False):
         """Update the status of the current proxy.
 
         The state machine is:
@@ -485,6 +513,8 @@ class ProxyState:
             or self._status == ProxyStatus.UNHEALTHY
         ):
             return
+
+        self._actor_proxy_wrapper.update_logging_config(logging_config)
 
         ready_check_timeout = PROXY_READY_CHECK_TIMEOUT_S
         if self._status == ProxyStatus.STARTING:
@@ -574,6 +604,7 @@ class ProxyStateManager:
         config: HTTPOptions,
         head_node_id: str,
         cluster_node_info_cache: ClusterNodeInfoCache,
+        logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
@@ -588,10 +619,13 @@ class ProxyStateManager:
         self._head_node_id: str = head_node_id
         self._proxy_actor_class = proxy_actor_class
         self._actor_proxy_wrapper_class = actor_proxy_wrapper_class
-
         self._cluster_node_info_cache = cluster_node_info_cache
+        self._logging_config = logging_config
 
         assert isinstance(head_node_id, str)
+
+    def apply_logging_config(self, logging_config: LoggingConfig):
+        self._logging_config = logging_config
 
     def shutdown(self) -> None:
         for proxy_state in self._proxy_states.values():
@@ -648,7 +682,7 @@ class ProxyStateManager:
 
         for node_id, proxy_state in self._proxy_states.items():
             draining = node_id not in target_node_ids
-            proxy_state.update(draining)
+            proxy_state.update(self._logging_config, draining)
 
         self._stop_proxies_if_needed()
         self._start_proxies_if_needed(target_nodes)
@@ -729,6 +763,7 @@ class ProxyStateManager:
             node_ip_address=node_ip_address,
             port=port,
             proxy_actor_class=self._proxy_actor_class,
+            logging_config=self._logging_config,
         )
 
     def _start_proxies_if_needed(self, target_nodes) -> None:

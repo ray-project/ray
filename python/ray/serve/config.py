@@ -1,7 +1,9 @@
+import enum
 import logging
 import warnings
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
+from zlib import crc32
 
 import pydantic
 from pydantic import (
@@ -256,3 +258,29 @@ class gRPCOptions(BaseModel):
                 raise ModuleNotFoundError(message) from e
 
         return callables
+
+
+class EncodingType(str, enum.Enum):
+    TEXT = "TEXT"
+    JSON = "JSON"
+
+
+@PublicAPI(stability="alpha")
+class LoggingConfig(BaseModel):
+    encoding: Optional[EncodingType] = EncodingType.TEXT
+    log_level: Optional[int] = logging.INFO
+    logs_dir: Optional[str] = None
+    enable_access_log: Optional[bool] = True
+
+    @property
+    def version(self):
+        if not self.logs_dir:
+            logs_dir = ""
+        return crc32(
+            (
+                str(self.encoding)
+                + str(self.log_level)
+                + logs_dir
+                + str(self.enable_access_log)
+            ).encode("utf-8")
+        )

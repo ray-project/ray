@@ -11,7 +11,7 @@ from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import MIGRATION_MESSAGE, SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, LoggingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.schema import DeploymentSchema, RayActorOptionsSchema
@@ -378,6 +378,7 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+        logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
@@ -487,6 +488,9 @@ class Deployment:
 
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
+
+        if logging_config is not DEFAULT.VALUE:
+            new_deployment_config.logging_config = logging_config
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
@@ -633,6 +637,7 @@ def deployment_to_schema(
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
+        "logging_config": d._deployment_config.logging_config,
     }
 
     if include_route_prefix:
@@ -694,6 +699,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
+        logging_config=s.logging_config,
     )
     deployment_config.user_configured_option_names = (
         s.get_user_configured_option_names()

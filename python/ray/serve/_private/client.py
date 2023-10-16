@@ -15,7 +15,7 @@ from ray.serve._private.common import (
     MultiplexedReplicaInfo,
     StatusOverview,
 )
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import DeploymentConfig, LoggingConfig, ReplicaConfig
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
@@ -584,5 +584,7 @@ class ServeControllerClient:
         self._controller.record_multiplexed_replica_info.remote(info)
 
     @_ensure_connected
-    def reconfigure(self, log_level, json_logging, logs_dir):
-        self._controller.reconfigure_logging.remote(log_level, json_logging, logs_dir)
+    def apply_system_logging_config(self, logging_config: Union[Dict, LoggingConfig]):
+        if isinstance(logging_config, dict):
+            logging_config = LoggingConfig.parse_obj(logging_config)
+        self._controller.apply_system_logging_config.remote(logging_config)

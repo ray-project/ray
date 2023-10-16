@@ -52,6 +52,7 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
+    get_logger_version,
 )
 from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import (
@@ -61,6 +62,7 @@ from ray.serve._private.utils import (
     wrap_to_ray_error,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve.config import EncodingType, LoggingConfig
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 
@@ -87,12 +89,22 @@ def create_replica_wrapper(actor_class_name: str):
             version: DeploymentVersion,
             controller_name: str,
             app_name: str = None,
+            logging_config: Optional[LoggingConfig] = None,
         ):
             self._replica_tag = replica_tag
+            self._deployment_name = deployment_name
+            print("replica logging config: ", logging_config)
+            logging_config = logging_config or LoggingConfig(
+                encoding=EncodingType.TEXT,
+                log_level=logging.INFO,
+                logs_dir=None,
+                enable_access_log=True,
+            )
             configure_component_logger(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
+                logging_config=logging_config,
             )
             configure_component_memory_profiler(
                 component_type=ServeComponentType.DEPLOYMENT,
@@ -423,6 +435,16 @@ def create_replica_wrapper(actor_class_name: str):
             deployment_config: DeploymentConfig,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             try:
+                if (
+                    deployment_config.logging_config
+                    and get_logger_version() != deployment_config.logging_config.version
+                ):
+                    configure_component_logger(
+                        component_type=ServeComponentType.DEPLOYMENT,
+                        component_name=self._deployment_name,
+                        component_id=self._replica_tag,
+                        logging_config=deployment_config.logging_config,
+                    )
                 await self.replica.reconfigure(deployment_config)
                 return await self._get_metadata()
             except Exception:

@@ -7,9 +7,7 @@ from typing import Optional, Tuple
 import ray
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
-    DEBUG_LOG_ENV_VAR,
     RAY_SERVE_ENABLE_CPU_PROFILING,
-    RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
@@ -24,6 +22,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_TIME,
     SERVE_LOGGER_NAME,
 )
+from ray.serve.config import EncodingType, LoggingConfig
 
 try:
     import cProfile
@@ -162,17 +161,12 @@ def get_component_logger_file_path() -> Optional[str]:
 
 
 def configure_component_logger(
-    *,
     component_name: str,
     component_id: str,
+    logging_config: LoggingConfig,
     component_type: Optional[ServeComponentType] = None,
-    log_level: int = logging.INFO,
-    max_bytes: Optional[int] = None,
-    backup_count: Optional[int] = None,
-    json_logging=False,
-    logs_dir=None,
 ):
-    """Returns a logger to be used by a Serve component.
+    """Setup a logger to be used by a Serve component.
 
     The logger will log using a standard format to make components identifiable
     using the provided name and unique ID for this instance (e.g., replica ID).
@@ -181,9 +175,7 @@ def configure_component_logger(
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
-    logger.setLevel(log_level)
-    if os.environ.get(DEBUG_LOG_ENV_VAR, "0") != "0":
-        logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging_config.log_level)
 
     factory = logging.getLogRecordFactory()
 
@@ -200,23 +192,18 @@ def configure_component_logger(
 
     logging.setLogRecordFactory(record_factory)
 
-    if len(logger.handlers) == 0:
-        stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
-        stream_handler.addFilter(log_to_stderr_filter)
-        logger.addHandler(stream_handler)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(ServeFormatter(component_name, component_id))
+    stream_handler.addFilter(log_to_stderr_filter)
+    logger.addHandler(stream_handler)
 
-    if len(logger.handlers) == 2:
-        logger.removeHandler(logger.handlers[1])
-
-    if logs_dir is None:
+    if not logging_config.logs_dir:
         logs_dir = get_serve_logs_dir()
 
     os.makedirs(logs_dir, exist_ok=True)
-    if max_bytes is None:
-        max_bytes = ray._private.worker._global_node.max_bytes
-    if backup_count is None:
-        backup_count = ray._private.worker._global_node.backup_count
+
+    max_bytes = ray._private.worker._global_node.max_bytes
+    backup_count = ray._private.worker._global_node.backup_count
 
     log_file_name = get_component_log_file_name(
         component_name=component_name,
@@ -230,13 +217,34 @@ def configure_component_logger(
         maxBytes=max_bytes,
         backupCount=backup_count,
     )
-    if json_logging or RAY_SERVE_ENABLE_JSON_LOGGING:
+    if logging_config.encoding == EncodingType.JSON:
         file_handler.setFormatter(
             ServeJSONFormatter(component_name, component_id, component_type)
         )
     else:
         file_handler.setFormatter(ServeFormatter(component_name, component_id))
+
+    # logger.handlers.clear()
+    # logger.addHandler(stream_handler)
     logger.addHandler(file_handler)
+
+
+def get_logger_version():
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    log_config = LoggingConfig()
+    # check encoding & logs_dir
+    for handler in logger.handlers:
+        if isinstance(handler, logging.handlers.RotatingFileHandler) and isinstance(
+            handler.formatter, ServeJSONFormatter
+        ):
+            log_config.encoding = EncodingType.JSON
+            log_config.logs_dir = handler.baseFilename
+    # check log level
+    log_config.log_level = logger.level
+    # check enable access log
+    if logger.disabled:
+        log_config.enable_access_log = False
+    return log_config.version
 
 
 def configure_component_memory_profiler(
