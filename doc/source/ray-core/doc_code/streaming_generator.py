@@ -147,7 +147,7 @@ def task():
 
 gen = task.remote()
 
-# Because it takes 5 second to make the first yield,
+# Because it takes 5 seconds to make the first yield,
 # with 0 timeout, the generator is unready.
 ready, unready = ray.wait([gen], timeout=0)
 print("timeout 0, nothing is ready.")

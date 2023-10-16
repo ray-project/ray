@@ -221,7 +221,7 @@ works as follows.
 
 Generators
 ----------
-Ray is compatible to Python generator syntax. See :ref:`Ray Generators <generators>` for more details.
+Ray is compatible with Python generator syntax. See :ref:`Ray Generators <generators>` for more details.
 
 .. _ray-task-returns:
 

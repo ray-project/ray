@@ -113,7 +113,7 @@ regular actors, :ref:`async actors <async-actors>`, and :ref:`threaded actors <t
     :end-before: __streaming_generator_actor_model_end__
 
 Using the Ray generator with asyncio
---------------------------------
+------------------------------------
 The returned ``StreamingObjectRefGenerator`` is also compatible with asyncio. You can
 use ``__anext__`` or ``async for`` loops.
 

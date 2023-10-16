@@ -383,7 +383,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 
 Generators
 ----------
-Ray is compatible to Python generator syntax. See :ref:`Ray Generators <generators>` for more details.
+Ray is compatible with Python generator syntax. See :ref:`Ray Generators <generators>` for more details.
 
 Cancelling Actor Tasks
 ----------------------
