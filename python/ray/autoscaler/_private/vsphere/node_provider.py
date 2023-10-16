@@ -186,11 +186,12 @@ class VsphereNodeProvider(NodeProvider):
             return dict(d1)
 
     def external_ip(self, node_id):
+        # Return the external IP of the VM
         # Fetch vSphere VM object
         vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_moid(
             [vim.VirtualMachine], node_id
         )
-        # Get the ipaddress of this VM
+        # Get the external IP address of this VM
         for ipaddr in vm.guest.net[0].ipAddress:
             if is_ipv4(ipaddr):
                 logger.debug("Fetch IP {} for VM {}".format(ipaddr, vm))
