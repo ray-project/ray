@@ -26,3 +26,7 @@ env:
   RAYCI_SKIP_UPLOAD: "true"
 hook_env_keys:
   - RAYCI_CHECKOUT_DIR
+skip_tags:
+  - disabled
+  - java
+  - arm64
