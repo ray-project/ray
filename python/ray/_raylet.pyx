@@ -4505,14 +4505,6 @@ cdef class CoreWorker:
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
 
-    def is_task_running(self):
-        cdef:
-            c_bool is_task_running
-        with nogil:
-            is_task_running = CCoreWorkerProcess.GetCoreWorker().IsTaskRunning()
-
-        return is_task_running
-
     def get_task_submission_stats(self):
         cdef:
             int64_t num_tasks_submitted

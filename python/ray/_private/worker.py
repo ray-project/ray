@@ -1773,7 +1773,6 @@ def shutdown(_exiting_interpreter: bool = False):
     global_worker.set_mode(None)
 
 
-# atexit.register(shutdown, True)
 atexit.register(shutdown, True)
 
 # Define a custom excepthook so that if the driver exits with an exception, we

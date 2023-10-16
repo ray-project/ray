@@ -286,8 +286,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         unordered_map[c_string, c_vector[int64_t]] GetActorCallStats() const
 
-        c_bool IsTaskRunning() const
-
         void RecordTaskLogStart(
             const c_string& stdout_path,
             const c_string& stderr_path,
