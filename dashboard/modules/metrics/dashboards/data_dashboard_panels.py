@@ -10,7 +10,7 @@ DATA_GRAFANA_PANELS = [
     Panel(
         id=1,
         title="Bytes Spilled",
-        description="Amount spilled by dataset operators.",
+        description="Amount spilled by dataset operators. DataContext.enable_get_object_locations_for_metrics must be set to True to report this metric",
         unit="bytes",
         targets=[
             Target(
@@ -58,7 +58,7 @@ DATA_GRAFANA_PANELS = [
     Panel(
         id=5,
         title="CPU Usage",
-        description="Logical CPU usage of dataset operators.",
+        description="Logical CPUs allocated to dataset operators.",
         unit="cores",
         targets=[
             Target(
@@ -70,7 +70,7 @@ DATA_GRAFANA_PANELS = [
     Panel(
         id=6,
         title="GPU Usage",
-        description="Logical GPU usage of dataset operators.",
+        description="Logical GPUs allocated to dataset operators.",
         unit="cores",
         targets=[
             Target(
