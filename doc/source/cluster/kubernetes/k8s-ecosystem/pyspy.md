@@ -33,7 +33,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 ```bash
 # Download `ray-cluster.py-spy.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.py-spy.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0-rc.0/ray-operator/config/samples/ray-cluster.py-spy.yaml
 
 # Create a RayCluster
 kubectl apply -f ray-cluster.py-spy.yaml

@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import random
-import time
 import traceback
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -25,7 +24,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.proxy import ProxyActor
-from ray.serve._private.utils import format_actor_name
+from ray.serve._private.utils import Timer, TimerBase, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
 from ray.serve.schema import ProxyDetails
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -318,15 +317,19 @@ class ProxyState:
         actor_name: str,
         node_id: str,
         node_ip: str,
+        proxy_restart_count: int = 0,
+        timer: TimerBase = Timer(),
     ):
         self._actor_proxy_wrapper = actor_proxy_wrapper
         self._actor_proxy_wrapper.start_new_ready_check()
         self._actor_name = actor_name
         self._node_id = node_id
         self._status = ProxyStatus.STARTING
-        self._last_health_check_time: float = time.time()
+        self._timer = timer
+        self._last_health_check_time: float = self._timer.time()
         self._shutting_down = False
         self._consecutive_health_check_failures: int = 0
+        self._proxy_restart_count = proxy_restart_count
         self._last_drain_check_time: float = None
 
         self._actor_details = ProxyDetails(
@@ -352,6 +355,10 @@ class ProxyState:
     @property
     def actor_details(self) -> ProxyDetails:
         return self._actor_details
+
+    @property
+    def proxy_restart_count(self) -> int:
+        return self._proxy_restart_count
 
     def set_status(self, status: ProxyStatus) -> None:
         """Sets _status and updates _actor_details with the new status."""
@@ -412,7 +419,7 @@ class ProxyState:
                 elif healthy_call_status == ProxyWrapperCallStatus.FINISHED_FAILED:
                     self.try_update_status(ProxyStatus.UNHEALTHY)
                 elif (
-                    time.time() - self._last_health_check_time
+                    self._timer.time() - self._last_health_check_time
                     > PROXY_HEALTH_CHECK_TIMEOUT_S
                 ):
                     # Health check hasn't returned and the timeout is up, consider it
@@ -432,8 +439,8 @@ class ProxyState:
         if self._actor_proxy_wrapper.health_check_ongoing:
             return
         randomized_period_s = PROXY_HEALTH_CHECK_PERIOD_S * random.uniform(0.9, 1.1)
-        if time.time() - self._last_health_check_time > randomized_period_s:
-            self._last_health_check_time = time.time()
+        if self._timer.time() - self._last_health_check_time > randomized_period_s:
+            self._last_health_check_time = self._timer.time()
             self._actor_proxy_wrapper.start_new_health_check()
 
     def _drain_check(self):
@@ -447,8 +454,11 @@ class ProxyState:
                     self.set_status(ProxyStatus.DRAINED)
             except Exception as e:
                 logger.warning(f"Drain check for proxy {self._actor_name} failed: {e}.")
-        elif time.time() - self._last_drain_check_time > PROXY_DRAIN_CHECK_PERIOD_S:
-            self._last_drain_check_time = time.time()
+        elif (
+            self._timer.time() - self._last_drain_check_time
+            > PROXY_DRAIN_CHECK_PERIOD_S
+        ):
+            self._last_drain_check_time = self._timer.time()
             self._actor_proxy_wrapper.start_new_drained_check()
 
     def update(self, draining: bool = False):
@@ -486,7 +496,10 @@ class ProxyState:
         ):
             return
 
-        ready_check_timeout = PROXY_READY_CHECK_TIMEOUT_S
+        # Doing a linear backoff for the ready check timeout.
+        ready_check_timeout = (
+            self.proxy_restart_count + 1
+        ) * PROXY_READY_CHECK_TIMEOUT_S
         if self._status == ProxyStatus.STARTING:
             try:
                 ready_call_status = self._actor_proxy_wrapper.is_ready()
@@ -503,7 +516,10 @@ class ProxyState:
                         "Unexpected actor death when checking readiness of "
                         f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
                     )
-                elif time.time() - self._last_health_check_time > ready_check_timeout:
+                elif (
+                    self._timer.time() - self._last_health_check_time
+                    > ready_check_timeout
+                ):
                     # Ready check hasn't returned and the timeout is up, consider it
                     # failed.
                     self.set_status(ProxyStatus.UNHEALTHY)
@@ -533,7 +549,7 @@ class ProxyState:
             self._actor_proxy_wrapper.update_draining(draining=True)
             assert self._actor_proxy_wrapper.is_draining is False
             assert self._last_drain_check_time is None
-            self._last_drain_check_time = time.time()
+            self._last_drain_check_time = self._timer.time()
 
         if (self._status == ProxyStatus.DRAINING) and not draining:
             logger.info(f"Stop draining the proxy actor on node {self._node_id}")
@@ -577,6 +593,7 @@ class ProxyStateManager:
         grpc_options: Optional[gRPCOptions] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
+        timer: TimerBase = Timer(),
     ):
         self._controller_name = controller_name
         if config is not None:
@@ -585,9 +602,11 @@ class ProxyStateManager:
             self._config = HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
         self._proxy_states: Dict[NodeId, ProxyState] = dict()
+        self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
         self._proxy_actor_class = proxy_actor_class
         self._actor_proxy_wrapper_class = actor_proxy_wrapper_class
+        self._timer = timer
 
         self._cluster_node_info_cache = cluster_node_info_cache
 
@@ -750,6 +769,8 @@ class ProxyStateManager:
                 actor_name=name,
                 node_id=node_id,
                 node_ip=node_ip_address,
+                proxy_restart_count=self._proxy_restart_counts.get(node_id, 0),
+                timer=self._timer,
             )
 
     def _stop_proxies_if_needed(self) -> bool:
@@ -775,4 +796,5 @@ class ProxyStateManager:
 
         for node_id in to_stop:
             proxy_state = self._proxy_states.pop(node_id)
+            self._proxy_restart_counts[node_id] = proxy_state.proxy_restart_count + 1
             proxy_state.shutdown()

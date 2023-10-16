@@ -29,22 +29,6 @@
       --test_tag_filters=team:ml
       release/...
 
-
-- label: ":steam_locomotive: Train tests and examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
-  instance_size: large
-  parallelism: 4
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    # Todo (krfricke): Move mosaicml to train-test-requirements.txt
-    - pip install "mosaicml==0.12.1"
-    - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh
-      --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-needs_credentials
-      python/ray/train/...
-
 - label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   instance_size: medium
@@ -91,103 +75,6 @@
       --build_tests_only
       --test_tag_filters=memory_leak_tests,-flaky
       --test_arg=--framework=torch
-      rllib/...
-
-- label: ":brain: RLlib: Learning tests Pytorch (With Ray Data)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
-  instance_size: large
-  commands:
-    # skip on master because we are running these test under all RLlib suites anyw/ay
-    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-tf_only,-tf2_only
-      --test_arg=--framework=torch
-      rllib/...
-
-
-- label: ":brain: RLlib: Learning tests TF2 (With Ray Data)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
-  instance_size: large
-  commands:
-    # skip on master because we are running these test under all RLlib suites anyw/ay
-    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-torch_only
-      --test_arg=--framework=tf2
-      rllib/...
-
-- label: ":brain: RLlib: Unit-tests (With Ray Data)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
-  instance_size: large
-  commands:
-    # skip on master because we are running these test under all RLlib suites anyw/ay
-    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=ray_data,-learning_tests_with_ray_data,-multi_gpu,-gpu
-      rllib/...
-
-- label: ":brain: RLlib: Algorithm, Model and other tests"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  parallelism: 4
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-no_cpu,-torch_2.x_only_benchmark
-      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
-      rllib/...
-
-- label: ":brain: RLlib: RLModule tests"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  parallelism: 4
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=rlm
-      --test_env=RLLIB_ENABLE_RL_MODULE=1
-      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-
-- label: ":brain: RLlib: Examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
-  parallelism: 5
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples,-multi_gpu,-gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-
-- label: ":brain: RLlib: tests/ dir"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  parallelism: 2
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
 - label: ":brain: RLlib: Documentation code/examples"
@@ -292,7 +179,6 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       --test_tag_filters=client
       python/ray/tune/...
 
@@ -573,10 +459,10 @@
     - conda activate rllib_contrib
     - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
     - mkdir -p /root/.mujoco
-    - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
-    - mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
-    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
-    - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin
+    - wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
+    - mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
+    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
+    - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco-2.1.1/bin
 
     - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
@@ -590,10 +476,10 @@
     # Install mujoco necessary for the testing environments
     - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
     - mkdir -p /root/.mujoco
-    - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
-    - mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
-    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
-    - echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin' >> /root/.bashrc
+    - wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
+    - mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
+    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
+    - echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco-2.1.1/bin' >> /root/.bashrc
     - source /root/.bashrc
 
     - (cd rllib_contrib/mbmpo && pip install -r requirements.txt && pip install -e ".[development]")

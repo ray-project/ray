@@ -1,34 +1,33 @@
-from typing import Any, Dict, List, Tuple
+import sys
+from typing import Any, List, Union
+
+import numpy as np
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 
 class FileMetadataShuffler:
-    """Abstract class for file metadata shuffler.
-
-    Shufflers live on the driver side of the Dataset only.
+    """Random shuffle file metadata when the `shuffle` parameter enables it.
+    Otherwise returns file metadata in its original order.
     """
 
-    def __init__(self, reader_args: Dict[str, Any]):
-        self._reader_args = reader_args
+    def __init__(self, shuffle: Union[Literal["files"], None]):
+        self._is_shuffle_enabled = False
+        if shuffle == "files":
+            self._is_shuffle_enabled = True
+            self._generator = np.random.default_rng()
 
     def shuffle_files(
         self,
-        paths_and_sizes: List[Tuple[str, int]],
-    ) -> List[Tuple[str, int]]:
-        """Shuffle files in the given paths and sizes.
-
-        Args:
-            paths_and_sizes: The file paths and file sizes to shuffle.
-
-        Returns:
-            The file paths and their sizes after shuffling.
-        """
-        raise NotImplementedError
-
-
-class SequentialFileMetadataShuffler(FileMetadataShuffler):
-    def shuffle_files(
-        self,
-        paths_and_sizes: List[Tuple[str, int]],
-    ) -> List[Tuple[str, int]]:
-        """Return files in the given paths and sizes sequentially."""
-        return paths_and_sizes
+        files_metadata: List[Any],
+    ) -> List[Any]:
+        if self._is_shuffle_enabled:
+            return [
+                files_metadata[i]
+                for i in self._generator.permutation(len(files_metadata))
+            ]
+        else:
+            return files_metadata
