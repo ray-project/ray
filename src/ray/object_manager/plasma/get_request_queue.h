@@ -23,7 +23,7 @@ namespace plasma {
 struct GetRequest;
 using ObjectReadyCallback =
     std::function<void(const ObjectID &object_id,
-                       MEMFD_TYPE fd,
+                       std::optional<MEMFD_TYPE> fallback_allocated_fd,
                        const std::shared_ptr<GetRequest> &get_request)>;
 using AllObjectReadyCallback =
     std::function<void(const std::shared_ptr<GetRequest> &get_request)>;

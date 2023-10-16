@@ -23,7 +23,8 @@ class ClientInterface {
 
   virtual ray::Status SendFd(MEMFD_TYPE fd) = 0;
   virtual const std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;
-  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id, MEMFD_TYPE fd) = 0;
+  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id,
+                                std::optional<MEMFD_TYPE> fallback_allocated_fd) = 0;
   virtual bool MarkObjectAsUnused(const ray::ObjectID &object_id) = 0;
 };
 
@@ -37,29 +38,46 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
   const std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids; }
 
+  // Holds the object ID. If the object ID has a fallback-allocated fd, adds the ref count
+  // to that fd. Note: used_fds_ is not updated. rather, it's updated in SendFd().
+  //
   // Idempotency: only increments ref count if the object ID was not held.
-  // TODO(ryw): if this method is called with same object_id but different fd, the latter fd is
-  // ignored. Is this possible? Is it OK?
-  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id, MEMFD_TYPE fd) override {
+  // TODO(ryw): if this method is called with same object_id but different fd, the latter
+  // fd is ignored. Is this possible? Is it OK?
+  virtual void MarkObjectAsUsed(
+      const ray::ObjectID &object_id,
+      std::optional<MEMFD_TYPE> fallback_allocated_fd) override {
     const auto [_, inserted] = object_ids.insert(object_id);
-    if (inserted) {
+    if (fallback_allocated_fd.has_value() && inserted) {
+      MEMFD_TYPE fd = fallback_allocated_fd.value();
       object_ids_to_fds_[object_id] = fd;
       fds_ref_count_[fd] += 1;
     }
   }
 
+  // Removes object ID's ref to the fd, if any. If the fd's refcnt goes to 0, also remove
+  // the fd from used_fds_ and return true, directing the client to unmap it.
+  //
   // Returns: bool, client should unmap.
   // Idempotency: only decrements ref count if the object ID was held.
   virtual bool MarkObjectAsUnused(const ray::ObjectID &object_id) override {
     size_t erased = object_ids.erase(object_id);
-    if (erased > 0) {
-      auto fd = object_ids_to_fds_[object_id];
-      fds_ref_count_[fd] -= 1;
-      if (fds_ref_count_[fd] == 0) {
-        fds_ref_count_.erase(fd);
-        used_fds_.erase(fd);  // Next SendFd call will send this fd again.
-        return true;
-      }
+    if (erased == 0) {
+      return false;
+    }
+    auto iter = object_ids_to_fds_.find(object_id);
+    if (iter == object_ids_to_fds_.end()) {
+      return false;
+    }
+    MEMFD_TYPE fd = iter->second;
+    object_ids_to_fds_.erase(iter);
+
+    size_t &ref_count = fds_ref_count_[iter->second];
+    ref_count -= 1;
+    if (ref_count == 0) {
+      fds_ref_count_.erase(fd);
+      used_fds_.erase(fd);  // Next SendFd call will send this fd again.
+      return true;
     }
     return false;
   }
@@ -77,9 +95,9 @@ class Client : public ray::ClientConnection, public ClientInterface {
   std::unordered_set<ray::ObjectID> object_ids;
 
   // Records each fd sent to the client and which object IDs are in this fd.
-  // Incremented by `Get`, Decremented by `Release`.
-  // If an FD is emptied out, the fd can be unmapped on the client side.
-  // TODO: DO NOT SUBMIT: only do this for fallback-allocations, and not the main mem??
+  // Only tracks fallback-allocated fds. This means the main memory is not tracked, and we
+  // won't tell client to unmap the main memory. Incremented by `Get`, Decremented by
+  // `Release`. If an FD is emptied out, the fd can be unmapped on the client side.
   absl::flat_hash_map<MEMFD_TYPE, size_t> fds_ref_count_;
   absl::flat_hash_map<ray::ObjectID, MEMFD_TYPE> object_ids_to_fds_;
 };

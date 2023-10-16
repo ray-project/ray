@@ -105,11 +105,12 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
           io_context_,
           object_lifecycle_mgr_,
           // absl failed to check thread safety for lambda
-          [this](const ObjectID &object_id, MEMFD_TYPE fd, const auto &request)
-              ABSL_NO_THREAD_SAFETY_ANALYSIS {
-                mutex_.AssertHeld();
-                this->AddToClientObjectIds(object_id, fd, request->client);
-              },
+          [this](const ObjectID &object_id,
+                 std::optional<MEMFD_TYPE> fallback_allocated_fd,
+                 const auto &request) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+            mutex_.AssertHeld();
+            this->AddToClientObjectIds(object_id, fallback_allocated_fd, request->client);
+          },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
   if (RayConfig::instance().event_stats_print_interval_ms() > 0 &&
       RayConfig::instance().event_stats()) {
@@ -134,7 +135,7 @@ void PlasmaStore::Stop() { acceptor_.close(); }
 // If this client is not already using the object, add the client to the
 // object's list of clients, otherwise do nothing.
 void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
-                                       MEMFD_TYPE fd,
+                                       std::optional<MEMFD_TYPE> fallback_allocated_fd,
                                        const std::shared_ptr<ClientInterface> &client) {
   // Check if this client is already using the object.
   auto &object_ids = client->GetObjectIDs();
@@ -143,7 +144,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
   }
   RAY_CHECK(object_lifecycle_mgr_.AddReference(object_id));
   // Add object id to the list of object ids that this client is using.
-  client->MarkObjectAsUsed(object_id, fd);
+  client->MarkObjectAsUsed(object_id, fallback_allocated_fd);
 }
 
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
@@ -184,7 +185,11 @@ PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
   }
   entry->ToPlasmaObject(result, /* check sealed */ false);
   // Record that this client is using this object.
-  AddToClientObjectIds(object_info.object_id, result->store_fd, client);
+  std::optional<MEMFD_TYPE> fallback_allocated_fd = std::nullopt;
+  if (entry->GetAllocation().fallback_allocated) {
+    fallback_allocated_fd = entry->GetAllocation().fd;
+  }
+  AddToClientObjectIds(object_info.object_id, fallback_allocated_fd, client);
   return PlasmaError::OK;
 }
 

@@ -209,7 +209,7 @@ class PlasmaStore {
                            uint64_t req_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void AddToClientObjectIds(const ObjectID &object_id,
-                            MEMFD_TYPE fd,
+                            std::optional<MEMFD_TYPE> fallback_allocated_fd,
                             const std::shared_ptr<ClientInterface> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
