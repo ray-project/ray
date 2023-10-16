@@ -122,14 +122,6 @@ py_test(
 )
 
 py_test(
-    name = "test_bulk_executor",
-    size = "small",
-    srcs = ["tests/test_bulk_executor.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
     name = "test_context_propagation",
     size = "small",
     srcs = ["tests/test_context_propagation.py"],
