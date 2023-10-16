@@ -3557,7 +3557,7 @@ class Dataset:
                 current block during the scan.
 
         Returns:
-            An iterator over the rows in this dataset.
+            An iterable over the rows in this dataset.
         """
         return self.iterator().iter_rows(prefetch_blocks=prefetch_blocks)
 
@@ -3620,7 +3620,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over batches of data.
+            An iterable over batches of data.
         """
         batch_format = _apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
@@ -3653,7 +3653,7 @@ class Dataset:
     ) -> Iterable[TorchBatchType]:
         """Return an iterable over batches of data represented as Torch tensors.
 
-        This iterator yields batches of type ``Dict[str, torch.Tensor]``.
+        This iterable yields batches of type ``Dict[str, torch.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to Torch tensors.
 
@@ -3727,7 +3727,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over Torch Tensor batches.
+            An iterable over Torch Tensor batches.
 
         .. seealso::
             :meth:`Dataset.iter_batches`
@@ -3760,7 +3760,7 @@ class Dataset:
     ) -> Iterable[TensorFlowTensorBatchType]:
         """Return an iterable over batches of data represented as TensorFlow tensors.
 
-        This iterator yields batches of type ``Dict[str, tf.Tensor]``.
+        This iterable yields batches of type ``Dict[str, tf.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to TensorFlow tensors.
 
@@ -3814,7 +3814,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over TensorFlow Tensor batches.
+            An iterable over TensorFlow Tensor batches.
 
         .. seealso::
             :meth:`Dataset.iter_batches`
