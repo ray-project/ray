@@ -690,6 +690,7 @@ class JobManager:
                         "`Job` page or the state API `ray list jobs`."
                     )
 
+                job_error_message = ""
                 if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
@@ -708,10 +709,11 @@ class JobManager:
                         f"Failed to schedule job {job_id} because the supervisor actor "
                         f"could not be scheduled: {e}"
                     )
+                    job_error_message = f"Job supervisor actor could not be scheduled: {e}"
                     await self._job_info_client.put_status(
                         job_id,
                         JobStatus.FAILED,
-                        message=(f"Job supervisor actor could not be scheduled: {e}"),
+                        message=job_error_message,
                     )
                 else:
                     logger.warning(
@@ -724,6 +726,13 @@ class JobManager:
                         job_status,
                         message=job_error_message,
                     )
+
+                # Log error message to the job driver file for easy access.
+                if job_error_message:
+                    log_path = self._log_client.get_log_file_path(job_id)
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, "a") as log_file:
+                        log_file.write(job_error_message)
 
                 # Log events
                 if self.event_logger:
