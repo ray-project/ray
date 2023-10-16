@@ -73,9 +73,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
 
-        # The number of ops run in the last iteration of the scheduling loop.
-        self._num_ops_run_last_iteration = 0
-
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
@@ -238,8 +235,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
         #
-        enable_streaming_output_backpressure = self._num_ops_run_last_iteration > 0
-        process_completed_tasks(topology, enable_streaming_output_backpressure)
+        process_completed_tasks(topology)
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
@@ -270,7 +266,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 execution_id=self._execution_id,
                 autoscaling_state=self._autoscaling_state,
             )
-        self._num_ops_run_last_iteration = i
 
         update_operator_states(topology)
 

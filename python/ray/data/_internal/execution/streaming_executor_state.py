@@ -315,7 +315,7 @@ def build_streaming_topology(
     return (topology, i)
 
 
-def process_completed_tasks(topology: Topology, enable_streaming_output_backpressure=False) -> None:
+def process_completed_tasks(topology: Topology) -> None:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards."""
 
@@ -325,13 +325,11 @@ def process_completed_tasks(topology: Topology, enable_streaming_output_backpres
 
     context = ray.data.DataContext.get_current()
     backpressure_config = context.streaming_output_backpressure_config
-    if not backpressure_config.enabled:
-        enable_streaming_output_backpressure = False
 
     for op, state in topology.items():
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
-            if enable_streaming_output_backpressure:
+            if backpressure_config.enabled:
                 output_bufer_sizes[state] = state.outqueue_memory_usage()
 
 
@@ -347,13 +345,13 @@ def process_completed_tasks(topology: Topology, enable_streaming_output_backpres
             state, task = active_tasks.pop(ref)
             if isinstance(task, DataOpTask):
                 max_bytes_to_read = None
-                if enable_streaming_output_backpressure:
+                if backpressure_config.enabled:
                     max_bytes_to_read = (
                         backpressure_config.op_output_buffer_size_bytes - output_bufer_sizes[state]
                     )
                 print(state.op, "max_bytes_to_read", max_bytes_to_read)
                 read_bytes = task.on_data_ready(max_bytes_to_read)
-                if enable_streaming_output_backpressure:
+                if backpressure_config.enabled:
                     output_bufer_sizes[state] += read_bytes
             else:
                 assert isinstance(task, MetadataOpTask)
