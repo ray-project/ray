@@ -252,7 +252,8 @@ bool PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
   auto it = object_ids.find(object_id);
   if (it != object_ids.end()) {
     bool should_unmap = client->MarkObjectAsUnused(*it);
-    RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client";
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << " no longer in use by client, should_unmap = " << should_unmap;
     // Decrease reference count.
     object_lifecycle_mgr_.RemoveReference(object_id);
     // Return 1 to indicate that the client was removed.

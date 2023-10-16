@@ -586,13 +586,15 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   if (!store_conn_) {
     return Status::OK();
   }
-  auto object_entry = objects_in_use_.find(object_id);
+  const auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
 
   object_entry->second->count -= 1;
   RAY_CHECK(object_entry->second->count >= 0);
   // Check if the client is no longer using this object.
   if (object_entry->second->count == 0) {
+    // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
+    MEMFD_TYPE fd = object_entry->second->object.store_fd;
     // Tell the store that the client no longer needs the object.
     RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
     RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id));
@@ -604,7 +606,7 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
     RAY_RETURN_NOT_OK(ReadReleaseReply(
         buffer.data(), buffer.size(), &released_object_id, &should_unmap));
     if (should_unmap) {
-      auto mmap_entry = mmap_table_.find(object_entry->second->object.store_fd);
+      auto mmap_entry = mmap_table_.find(fd);
       // Release call is idempotent: if we already released, it's ok.
       if (mmap_entry != mmap_table_.end()) {
         mmap_table_.erase(mmap_entry);
