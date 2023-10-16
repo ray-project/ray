@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
-from ray.data._default_config import DEFAULT_FILE_METADATA_SHUFFLER
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -171,7 +170,6 @@ class DataContext:
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
         enable_progress_bars: bool,
-        file_metadata_shuffler: str,
         enable_get_object_locations_for_metrics: bool,
     ):
         """Private constructor (use get_current() instead)."""
@@ -205,7 +203,6 @@ class DataContext:
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
         self.enable_progress_bars = enable_progress_bars
-        self.file_metadata_shuffler = file_metadata_shuffler
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
@@ -257,7 +254,6 @@ class DataContext:
                     execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
-                    file_metadata_shuffler=DEFAULT_FILE_METADATA_SHUFFLER,
                     enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
                 )
 
