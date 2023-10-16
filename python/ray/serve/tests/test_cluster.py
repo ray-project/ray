@@ -68,7 +68,7 @@ def test_scale_up(ray_cluster):
     client = serve.context._connect()
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
-    client._wait_for_application_running("default", timeout_s=3)
+    client._wait_for_application_running("default")
     pids1 = get_pids(1, deployment_name="pid", app_name="default")
 
     app_config["deployments"][0]["num_replicas"] = 3
@@ -78,13 +78,13 @@ def test_scale_up(ray_cluster):
     # doesn't guarantee that a new replica won't ever be started, but
     # 1.0 seconds is a reasonable upper bound on replica startup time.
     with pytest.raises(TimeoutError):
-        client._wait_for_application_running("default", timeout_s=3)
+        client._wait_for_application_running("default", timeout_s=1)
     assert get_pids(1, deployment_name="pid", app_name="default") == pids1
 
     # Add a node with another CPU, another replica should get placed.
     cluster.add_node(num_cpus=1)
     with pytest.raises(TimeoutError):
-        client._wait_for_application_running("default", timeout_s=3)
+        client._wait_for_application_running("default", timeout_s=1)
     pids2 = get_pids(2, deployment_name="pid", app_name="default")
     assert pids1.issubset(pids2)
 
