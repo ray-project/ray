@@ -575,7 +575,6 @@ class ExecutionPlan:
                 )
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
-                from ray.data._internal.execution.bulk_executor import BulkExecutor
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )
@@ -583,12 +582,7 @@ class ExecutionPlan:
                     StreamingExecutor,
                 )
 
-                if context.use_streaming_executor:
-                    executor = StreamingExecutor(
-                        copy.deepcopy(context.execution_options)
-                    )
-                else:
-                    executor = BulkExecutor(copy.deepcopy(context.execution_options))
+                executor = StreamingExecutor(copy.deepcopy(context.execution_options))
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
@@ -635,7 +629,6 @@ class ExecutionPlan:
                     logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                         stats_summary_string,
                     )
-
             # Retrieve memory-related stats from ray.
             reply = get_memory_info_reply(
                 get_state_from_address(ray.get_runtime_context().gcs_address)
