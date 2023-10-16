@@ -709,7 +709,9 @@ class JobManager:
                         f"Failed to schedule job {job_id} because the supervisor actor "
                         f"could not be scheduled: {e}"
                     )
-                    job_error_message = f"Job supervisor actor could not be scheduled: {e}"
+                    job_error_message = (
+                        f"Job supervisor actor could not be scheduled: {e}"
+                    )
                     await self._job_info_client.put_status(
                         job_id,
                         JobStatus.FAILED,
