@@ -59,10 +59,10 @@ def test_scale_up(ray_cluster):
     serve.start()
     client = serve.context._connect()
 
-    D.deploy()
+    D._deploy()
     pids1 = get_pids(1, app_name="")
 
-    D.options(num_replicas=3).deploy(_blocking=False)
+    D.options(num_replicas=3)._deploy(_blocking=False)
 
     # Check that a new replica has not started in 1.0 seconds.  This
     # doesn't guarantee that a new replica won't ever be started, but
@@ -146,7 +146,7 @@ def test_replica_startup_status_transitions(ray_cluster):
         async def __init__(self):
             await signal.wait.remote()
 
-    E.deploy(_blocking=False)
+    E._deploy(_blocking=False)
 
     def get_replicas(replica_state):
         controller = client._controller
@@ -206,10 +206,10 @@ def test_intelligent_scale_down(ray_cluster):
 
         return set(map(len, node_to_actors.values()))
 
-    f.options(num_replicas=3).deploy()
+    f.options(num_replicas=3)._deploy()
     assert get_actor_distributions() == {2, 1}
 
-    f.options(num_replicas=2).deploy()
+    f.options(num_replicas=2)._deploy()
     assert get_actor_distributions() == {2}
 
 
