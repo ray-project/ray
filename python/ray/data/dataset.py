@@ -3539,8 +3539,8 @@ class Dataset:
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
-        """Return an iterator over the rows in this dataset.
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
+        """Return an iterable over the rows in this dataset.
 
         Examples:
             >>> import ray
@@ -3574,8 +3574,8 @@ class Dataset:
         _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator[DataBatch]:
-        """Return an iterator over batches of data.
+    ) -> Iterable[DataBatch]:
+        """Return an iterable over batches of data.
 
         This method is useful for model training.
 
@@ -3650,8 +3650,8 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator[TorchBatchType]:
-        """Return an iterator over batches of data represented as Torch tensors.
+    ) -> Iterable[TorchBatchType]:
+        """Return an iterable over batches of data represented as Torch tensors.
 
         This iterator yields batches of type ``Dict[str, torch.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
@@ -3757,8 +3757,8 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator[TensorFlowTensorBatchType]:
-        """Return an iterator over batches of data represented as TensorFlow tensors.
+    ) -> Iterable[TensorFlowTensorBatchType]:
+        """Return an iterable over batches of data represented as TensorFlow tensors.
 
         This iterator yields batches of type ``Dict[str, tf.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
