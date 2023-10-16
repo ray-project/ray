@@ -163,6 +163,17 @@ class BackendExecutor:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
 
+            # Always propagate the driver's DataContext to each worker in the group.
+            from ray.data import DataContext
+
+            def _set_driver_dataset_context(ctx: DataContext):
+                DataContext._set_current(ctx)
+
+            self.worker_group.execute(
+                _set_driver_dataset_context,
+                DataContext.get_current(),
+            )
+
             share_cuda_visible_devices_enabled = bool(
                 env_integer(
                     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
