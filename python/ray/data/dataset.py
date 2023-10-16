@@ -281,7 +281,10 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -332,8 +335,15 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
                 You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
@@ -369,7 +379,10 @@ class Dataset:
                 compute,
                 ray_remote_args,
                 fn=fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
             )
         )
 
@@ -378,7 +391,10 @@ class Dataset:
             map_op = MapRows(
                 logical_plan.dag,
                 fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
@@ -788,7 +804,10 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -833,8 +852,15 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
                 You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
@@ -868,7 +894,10 @@ class Dataset:
                 compute,
                 ray_remote_args,
                 fn=fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
             )
         )
 
@@ -877,7 +906,10 @@ class Dataset:
             op = FlatMap(
                 input_op=logical_plan.dag,
                 fn=fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
@@ -1005,7 +1037,7 @@ class Dataset:
         .. tip::
 
             This method can be slow. For better performance, try
-            `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+            :ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
             Also, see :ref:`Optimizing shuffles <optimizing_shuffles>`.
 
         Examples:
@@ -3507,8 +3539,8 @@ class Dataset:
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
-        """Return an iterator over the rows in this dataset.
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
+        """Return an iterable over the rows in this dataset.
 
         Examples:
             >>> import ray
@@ -3525,7 +3557,7 @@ class Dataset:
                 current block during the scan.
 
         Returns:
-            An iterator over the rows in this dataset.
+            An iterable over the rows in this dataset.
         """
         return self.iterator().iter_rows(prefetch_blocks=prefetch_blocks)
 
@@ -3542,8 +3574,8 @@ class Dataset:
         _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator[DataBatch]:
-        """Return an iterator over batches of data.
+    ) -> Iterable[DataBatch]:
+        """Return an iterable over batches of data.
 
         This method is useful for model training.
 
@@ -3588,7 +3620,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over batches of data.
+            An iterable over batches of data.
         """
         batch_format = _apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
@@ -3618,10 +3650,10 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator[TorchBatchType]:
-        """Return an iterator over batches of data represented as Torch tensors.
+    ) -> Iterable[TorchBatchType]:
+        """Return an iterable over batches of data represented as Torch tensors.
 
-        This iterator yields batches of type ``Dict[str, torch.Tensor]``.
+        This iterable yields batches of type ``Dict[str, torch.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to Torch tensors.
 
@@ -3695,7 +3727,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over Torch Tensor batches.
+            An iterable over Torch Tensor batches.
 
         .. seealso::
             :meth:`Dataset.iter_batches`
@@ -3725,10 +3757,10 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator[TensorFlowTensorBatchType]:
-        """Return an iterator over batches of data represented as TensorFlow tensors.
+    ) -> Iterable[TensorFlowTensorBatchType]:
+        """Return an iterable over batches of data represented as TensorFlow tensors.
 
-        This iterator yields batches of type ``Dict[str, tf.Tensor]``.
+        This iterable yields batches of type ``Dict[str, tf.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to TensorFlow tensors.
 
@@ -3782,7 +3814,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over TensorFlow Tensor batches.
+            An iterable over TensorFlow Tensor batches.
 
         .. seealso::
             :meth:`Dataset.iter_batches`
