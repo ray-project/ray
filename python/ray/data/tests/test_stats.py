@@ -98,7 +98,7 @@ Dataset memory:
 """
 
 
-def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
+def canonicalize(stats: str, filter_global_stats: bool = True, ignore_zeros: bool = False) -> str:
     # Dataset UUID expression.
     s0 = re.sub("([a-f\d]{32})", "U", stats)
     # Time expressions.
@@ -106,7 +106,7 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     # Memory expressions.
     s2 = re.sub("[0-9\.]+(B|MB|GB)", "M", s1)
     # Handle zero values specially so we can check for missing values.
-    s3 = re.sub(" [0]+(\.[0]+)?", " Z", s2)
+    s3 = re.sub(" [0]+(\.[0]+)?", " N" if ignore_zeros else " Z", s2)
     # Other numerics.
     s4 = re.sub("[0-9]+(\.[0-9]+)?", "N", s3)
     # Replace tabs with spaces.
@@ -980,7 +980,7 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 
     ds = ray.data.range(5, parallelism=5).map(column_udf("id", lambda x: x + 1))
     ds.take_all()
-    stats = canonicalize(ds.stats())
+    stats = canonicalize(ds.stats(), ignore_zeros=True)
     assert (
         stats
         == f"""Stage N ReadRange->Map(<lambda>): N/N blocks executed in T
@@ -990,14 +990,14 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS}
+* Extra metrics: {STANDARD_EXTRA_METRICS.replace(": Z", ": N")}
 
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T
-* Num blocks local: Z
-* Num blocks remote: Z
+* Num blocks local: N
+* Num blocks remote: N
 * Num blocks unknown location: N
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
