@@ -6,7 +6,6 @@ from typing import Dict, List
 import pytest
 import requests
 
-import ray
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.common import (
@@ -757,7 +756,7 @@ def test_deployment_to_schema_to_deployment():
         pass
 
     deployment = schema_to_deployment(deployment_to_schema(f))
-    deployment.set_options(func_or_class=ray.serve.tests.test_schema.global_f)
+    deployment.set_options(func_or_class=global_f)
 
     assert deployment.num_replicas == 3
     assert deployment.route_prefix == "/hello"
