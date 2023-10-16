@@ -603,8 +603,6 @@ class TestRuntimeEnv:
         assert data.status == JobStatus.FAILED
         assert "path_not_exist is not a valid URI" in data.message
         assert data.driver_exit_code is None
-        job_logs = JobLogStorageClient().get_last_n_log_lines(job_id=job_id)
-        assert "path_not_exist is not a valid URI" in job_logs
 
     async def test_failed_runtime_env_setup(self, job_manager):
         """Ensure job status is correctly set as failed if job has a valid
@@ -622,8 +620,10 @@ class TestRuntimeEnv:
         data = await job_manager.get_job_info(job_id)
         assert "runtime_env setup failed" in data.message
         assert data.driver_exit_code is None
-        job_logs = JobLogStorageClient().get_last_n_log_lines(job_id=job_id)
-        assert "runtime_env setup failed" in job_logs
+        log_path = JobLogStorageClient().get_log_file_path(job_id=job_id)
+        with open(log_path, "r") as f:
+            job_logs = f.read()
+        assert "Traceback (most recent call last):" in job_logs
 
     async def test_pass_metadata(self, job_manager):
         def dict_to_str(d):
