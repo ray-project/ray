@@ -98,26 +98,21 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   OpenCensusProtoExporter(const int port,
                           instrumented_io_context &io_service,
                           const std::string address,
-                          const WorkerID &worker_id,
-                          size_t report_batch_size);
+                          const WorkerID &worker_id);
 
   ~OpenCensusProtoExporter() = default;
 
   static void Register(const int port,
                        instrumented_io_context &io_service,
                        const std::string address,
-                       const WorkerID &worker_id,
-                       size_t report_batch_size) {
+                       const WorkerID &worker_id) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address, worker_id, report_batch_size));
+        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address, worker_id));
   }
 
   void ExportViewData(
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                   opencensus::stats::ViewData>> &data) override;
-  void SendData(rpc::ReportOCMetricsRequest &request);
-  void UpdateMetricsData(const std::pair<opencensus::stats::ViewDescriptor,
-                                opencensus::stats::ViewData> &datum, rpc::ReportOCMetricsRequest &request_proto);
 
  private:
   /// Call Manager for gRPC client.
@@ -128,8 +123,6 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   std::unique_ptr<rpc::MetricsAgentClient> client_ ABSL_GUARDED_BY(&mu_);
   /// The worker ID of the current component.
   WorkerID worker_id_;
-  /// The maximum batch size to be included in a single gRPC metrics report request.
-  size_t report_batch_size_;
 };
 
 }  // namespace stats
