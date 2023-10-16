@@ -491,9 +491,9 @@ py_test(
 )
 
 py_test(
-    name = "test_back_pressure_policies",
+    name = "test_backpressure_policies",
     size = "small",
-    srcs = ["tests/test_back_pressure_policies.py"],
+    srcs = ["tests/test_backpressure_policies.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

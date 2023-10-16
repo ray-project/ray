@@ -4,16 +4,16 @@ from unittest.mock import MagicMock, patch
 
 from pyarrow.hdfs import os
 
-from ray.data._internal.execution.back_pressure_policy import ConcurrencyCapBackPressurePolicy
+from ray.data._internal.execution.backpressure_policy import ConcurrencyCapBackpressurePolicy
 
 from ray.data._internal.execution.streaming_executor_state import Topology
 
 
-class TestConcurrentcyCapBackPressurePolicy(unittest.TestCase):
+class TestConcurrentcyCapBackpressurePolicy(unittest.TestCase):
 
     @contextmanager
     def _patch_env_var(self, value):
-        with patch.dict(os.environ, {ConcurrencyCapBackPressurePolicy.CONFIG_ENV_VAR: value}):
+        with patch.dict(os.environ, {ConcurrencyCapBackpressurePolicy.CONFIG_ENV_VAR: value}):
             yield
 
     def test_basic(self):
@@ -30,7 +30,7 @@ class TestConcurrentcyCapBackPressurePolicy(unittest.TestCase):
         cap_multiplier = 2.0
 
         with self._patch_env_var(f"{init_cap},{cap_multiply_threshold},{cap_multiplier}"):
-            policy = ConcurrencyCapBackPressurePolicy(topology)
+            policy = ConcurrencyCapBackpressurePolicy(topology)
 
         self.assertEqual(policy._concurrency_caps[op], 4)
         # Gradually increase num_tasks_running to the cap.
@@ -50,7 +50,7 @@ class TestConcurrentcyCapBackPressurePolicy(unittest.TestCase):
         topology = MagicMock(Topology)
         # Test good config.
         with self._patch_env_var("10,0.3,1.5"):
-            policy = ConcurrencyCapBackPressurePolicy(topology)
+            policy = ConcurrencyCapBackpressurePolicy(topology)
             self.assertEqual(policy._init_cap, 10)
             self.assertEqual(policy._cap_multiply_threshold, 0.3)
             self.assertEqual(policy._cap_multiplier, 1.5)
@@ -58,16 +58,16 @@ class TestConcurrentcyCapBackPressurePolicy(unittest.TestCase):
         # Test bad configs.
         with self._patch_env_var("10,0.3"):
             with self.assertRaises(ValueError):
-                policy = ConcurrencyCapBackPressurePolicy(topology)
+                policy = ConcurrencyCapBackpressurePolicy(topology)
         with self._patch_env_var("-1,0.3,1.5"):
             with self.assertRaises(ValueError):
-                policy = ConcurrencyCapBackPressurePolicy(topology)
+                policy = ConcurrencyCapBackpressurePolicy(topology)
         with self._patch_env_var("10,1.1,1.5"):
             with self.assertRaises(ValueError):
-                policy = ConcurrencyCapBackPressurePolicy(topology)
+                policy = ConcurrencyCapBackpressurePolicy(topology)
         with self._patch_env_var("10,0.3,0.5"):
             with self.assertRaises(ValueError):
-                policy = ConcurrencyCapBackPressurePolicy(topology)
+                policy = ConcurrencyCapBackpressurePolicy(topology)
 
 
 if __name__ == "__main__":

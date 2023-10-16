@@ -13,7 +13,7 @@ import ray
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
-from ray.data._internal.execution.back_pressure_policy import BackPressurePolicy
+from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -378,7 +378,7 @@ def select_operator_to_run(
     topology: Topology,
     cur_usage: TopologyResourceUsage,
     limits: ExecutionResources,
-    back_pressure_policies: List[BackPressurePolicy],
+    back_pressure_policies: List[BackpressurePolicy],
     ensure_at_least_one_running: bool,
     execution_id: str,
     autoscaling_state: AutoscalingState,

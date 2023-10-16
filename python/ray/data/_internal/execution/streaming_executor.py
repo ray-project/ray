@@ -9,9 +9,9 @@ from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
-from ray.data._internal.execution.back_pressure_policy import (
-    BackPressurePolicy,
-    get_back_pressure_policies,
+from ray.data._internal.execution.backpressure_policy import (
+    BackpressurePolicy,
+    get_backpressure_policies,
 )
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -76,7 +76,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # generator `yield`s.
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
-        self._back_pressure_policies: Optional[List[BackPressurePolicy]] = None
+        self._backpressure_policies: Optional[List[BackpressurePolicy]] = None
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -106,7 +106,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
-        self._back_pressure_policies = get_back_pressure_policies(self._topology)
+        self._backpressure_policies = get_backpressure_policies(self._topology)
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
@@ -250,7 +250,7 @@ class StreamingExecutor(Executor, threading.Thread):
             topology,
             cur_usage,
             limits,
-            self._back_pressure_policies,
+            self._backpressure_policies,
             ensure_at_least_one_running=self._consumer_idling(),
             execution_id=self._execution_id,
             autoscaling_state=self._autoscaling_state,
@@ -268,7 +268,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 topology,
                 cur_usage,
                 limits,
-                self._back_pressure_policies,
+                self._backpressure_policies,
                 ensure_at_least_one_running=self._consumer_idling(),
                 execution_id=self._execution_id,
                 autoscaling_state=self._autoscaling_state,

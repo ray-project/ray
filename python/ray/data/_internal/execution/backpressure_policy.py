@@ -12,15 +12,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# TODO(hchen): Enable ConcurrencyCapBackPressurePolicy by default.
-DEFAULT_BACK_PRESSURE_PLOCIES = []
+# TODO(hchen): Enable ConcurrencyCapBackpressurePolicy by default.
+DEFAULT_BACKPRESSURE_PLOCIES = []
 
 
-def get_back_pressure_policies(topology: "Topology"):
-    return [policy(topology) for policy in DEFAULT_BACK_PRESSURE_PLOCIES]
+def get_backpressure_policies(topology: "Topology"):
+    return [policy(topology) for policy in DEFAULT_BACKPRESSURE_PLOCIES]
 
 
-class BackPressurePolicy(ABC):
+class BackpressurePolicy(ABC):
     """Interface for back pressure policies."""
 
     @abstractmethod
@@ -35,8 +35,8 @@ class BackPressurePolicy(ABC):
         ...
 
 
-class ConcurrencyCapBackPressurePolicy(BackPressurePolicy):
-    """A back pressure policy that caps the concurrency of each operator.
+class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
+    """A backpressure policy that caps the concurrency of each operator.
 
     The concurrency cap limits the number of concurrently running tasks.
     It will be set to an intial value, and will ramp up exponentially.
