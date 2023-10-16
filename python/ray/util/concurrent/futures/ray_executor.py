@@ -273,6 +273,7 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
             A future representing the result of the task
 
         """
+
         pool_actor = self.next()
         self._replace_actor_if_max_tasks(pool_actor)
         fut = pool_actor["actor"].actor_function.remote(fn).future()
