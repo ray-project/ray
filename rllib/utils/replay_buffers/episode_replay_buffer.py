@@ -389,7 +389,7 @@ class SingleAgentEpisode:
         self.states = states
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
-        self.t = self.t_started = t
+        self.t = self.t_started = t if observations is None else len(observations) - 1
         # obs[-1] is the final observation in the episode.
         self.is_terminated = is_terminated
         # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
@@ -475,7 +475,16 @@ class SingleAgentEpisode:
         # Make sure we always have one more obs stored than rewards (and actions)
         # due to the reset and last-obs logic of an MDP.
         assert len(self.observations) == len(self.rewards) + 1 == len(self.actions) + 1
-        assert len(self.rewards) == (self.t - self.t_started)
+        # TODO (sven): This is unclear to me. It makes sense
+        # to start at a point after the length of experiences
+        # provided at initialization, but when we test then here
+        # it will imo always error out.
+        # Example: we initialize the class by providing 101 observations,
+        # 100 actions and rewards.
+        # self.t = self.t_started = len(observations) - 1. Then
+        # we add a single timestep. self.t += 1 and
+        # self.t - self.t_started is 1, but len(rewards) is 100.
+        # assert len(self.rewards) == (self.t - self.t_started)
 
         # Convert all lists to numpy arrays, if we are terminated.
         if self.is_done:

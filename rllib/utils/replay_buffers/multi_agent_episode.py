@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import SingleAgentEpisode
 
@@ -31,7 +31,7 @@ class MultiAgentEpisode:
         is_terminated: bool = False,
         is_truncated: bool = False,
         render_images=None,
-        agent_list=None
+        agent_ids=None
         # TODO (simon): Also allow to receive `extra_model_outputs`.
     ):
         self.id_ = id_ or uuid.uuid4().hex
@@ -39,7 +39,17 @@ class MultiAgentEpisode:
         # Agent ids must be provided if data is provided. The Episode cannot
         # know how many agents are in the environment. Also the number of agents
         # can grwo or shrink.
-        self.agent_ids: list = [] if agent_list is None else agent_list
+        self.agent_ids: list = [] if agent_ids is None else agent_ids
+
+        # The global last timestep of the episode and the timesteps when this chunk
+        # started.
+        self.t = self.t_started = t if observations is None else len(observations) - 1
+        # Keeps track of agent steps in relation to environment steps.
+        # This is a mapping from agents to `IndexMapping`. The latter keeps
+        # track for each agent the global timesteps at which the agent stepped.
+        self.global_t_to_local_t: Dict[str, List[int]] = self._generate_ts_mapping(
+            observations
+        )
 
         # Note that all attributes will be recorded along the global timestep
         # in an multi-agent environment. `SingleAgentEpisodes`
@@ -49,15 +59,7 @@ class MultiAgentEpisode:
             )
             for agent_id in self.agent_ids
         }
-        # The global last timestep of the episode and the timesteps when this chunk
-        # started.
-        self.t = self.t_started = t
-        # Keeps track of agent steps in relation to environment steps.
-        # This is a mapping from agents to `IndexMapping`. The latter keeps
-        # track for each agent the global timesteps at which the agent stepped.
-        self.global_t_local_t: Dict[str, List[int]] = self._generate_ts_mapping(
-            observations
-        )
+
         # obs[-1] is the final observation in the episode.
         self.is_terminated = is_terminated
         # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
@@ -83,12 +85,12 @@ class MultiAgentEpisode:
                 agent_id: list(
                     map(
                         agent_eps.observations.__getitem__,
-                        self.global_t_local_t[agent_id].find_indices(indices),
+                        self.global_t_to_local_t[agent_id].find_indices(indices),
                     )
                 )
                 for agent_id, agent_eps in self.agent_episodes.items()
                 # Only include agent data for agents that stepped.
-                if self.global_t_local_t[agent_id].find_indices(indices) > 0
+                if len(self.global_t_to_local_t[agent_id].find_indices(indices)) > 0
             }
         # Otherwise just look for the timesteps in the `SingleAgentEpisode`s
         # directly.
@@ -125,12 +127,12 @@ class MultiAgentEpisode:
                 agent_id: list(
                     map(
                         agent_eps.actions.__getitem__,
-                        self.global_t_local_t[agent_id].find_indices(indices),
+                        self.global_t_to_local_t[agent_id].find_indices(indices),
                     )
                 )
                 for agent_id, agent_eps in self.agent_episodes.items()
                 # Only include agent data for agents that stepped.
-                if self.global_t_local_t[agent_id].find_indices(indices) > 0
+                if self.global_t_to_local_t[agent_id].find_indices(indices) > 0
             }
         # Otherwise just look for the timesteps in the `SingleAgentEpisode`s
         # directly.
@@ -167,12 +169,12 @@ class MultiAgentEpisode:
                 agent_id: list(
                     map(
                         agent_eps.rewards.__getitem__,
-                        self.global_t_local_t[agent_id].find_indices(indices),
+                        self.global_t_to_local_t[agent_id].find_indices(indices),
                     )
                 )
                 for agent_id, agent_eps in self.agent_episodes.items()
                 # Only include agent data for agents that stepped.
-                if self.global_t_local_t[agent_id].find_indices(indices) > 0
+                if self.global_t_to_local_t[agent_id].find_indices(indices) > 0
             }
         # Otherwise just look for the timesteps in the `SingleAgentEpisode`s
         # directly.
@@ -204,13 +206,13 @@ class MultiAgentEpisode:
 
         # TODO (simon): After clearing with sven for initialization of timestepo
         # this might be removed.
-        if len(self.global_t_local_t) == 0:
-            self.global_t_local_t = {agent_id: [] for agent_id in self.agent_ids}
+        if len(self.global_t_to_local_t) == 0:
+            self.global_t_to_local_t = {agent_id: [] for agent_id in self.agent_ids}
 
         # Note, all agents will have an initial observation.
         for agent_id in initial_observation.keys():
             # Add initial timestep for each agent to the timestep mapping.
-            self.global_t_local_t[agent_id].append(self.t)
+            self.global_t_to_local_t[agent_id].append(self.t)
 
             # Add initial observations to the agent's episode.
             self.agent_episodes[agent_id].add_initial_observation(
@@ -248,10 +250,10 @@ class MultiAgentEpisode:
         )
         self.is_truncated = False if is_truncated is None else is_truncated["__all__"]
 
-        # Add data to all agent episodes.
+        # Add data to agent episodes.
         for agent_id in observation.keys():
             # If the agent stepped we need to keep track in the timestep mapping.
-            self.global_t_local_t[agent_id].append(self.t)
+            self.global_t_to_local_t[agent_id].append(self.t)
             self.agent_episodes[agent_id].add_timestep(
                 observation[agent_id],
                 action[agent_id],
@@ -287,22 +289,24 @@ class MultiAgentEpisode:
         """
         # Only if agent ids have been provided we can build the timestep mapping.
         if len(self.agent_ids) > 0:
-            self.global_t_local_t = {agent: IndexMapping() for agent in self.agent_ids}
+            global_t_to_local_t = {agent: IndexMapping() for agent in self.agent_ids}
 
             # We need the observations to create the timestep mapping.
             if len(observations) > 0:
-                for t, agent_map in enumerate(self.observations):
+                for t, agent_map in enumerate(observations):
                     for agent_id in agent_map:
                         # If agent stepped add the timestep to the timestep mapping.
-                        self.global_t_local_t[agent_id].append(t)
+                        global_t_to_local_t[agent_id].append(t)
             # Otherwise, set to an empoty dict (when creating an empty episode).
             else:
-                self.global_t_local_t = {}
+                global_t_to_local_t = {}
         # Otherwise, set to an empoty dict (when creating an empty episode).
         else:
             # TODO (sven, simon): Shall we return an empty dict or an agent dict with
             # empty lists?
-            self.global_t_local_t = {}
+            global_t_to_local_t = {}
+        # Return the index mapping.
+        return global_t_to_local_t
 
     def _generate_single_agent_episode(
         self,
@@ -315,27 +319,36 @@ class MultiAgentEpisode:
         """Generates a `SingleAgentEpisode` from multi-agent-data."""
 
         # We need the timestep mapping to create single agent's episode.
-        if len(self.global_t_local_t) > 0:
+        if len(self.global_t_to_local_t) > 0:
             # Set to None if not provided.
             agent_observations = (
                 None
                 if observations is None
                 else self._get_single_agent_data(agent_id, observations)
             )
+
+            # Note, the timestep mapping is deduced from observations and starts one
+            # timestep earlier. Therefore all other data is missing the last index.
             agent_actions = (
                 None
                 if actions is None
-                else self._get_single_agent_data(agent_id, actions)
+                else self._get_single_agent_data(
+                    agent_id, actions, start_index=1, shift=-1
+                )
             )
             agent_rewards = (
                 None
                 if rewards is None
-                else self._get_single_agent_data(agent_id, rewards)
+                else self._get_single_agent_data(
+                    agent_id, rewards, start_index=1, shift=-1
+                )
             )
             agent_states = (
                 None
                 if states is None
-                else self._get_single_agent_data(agent_id, states)
+                else self._get_single_agent_data(
+                    agent_id, states, start_index=1, shift=-1
+                )
             )
             # TODO (simon): Render images.
             return SingleAgentEpisode(
@@ -348,12 +361,28 @@ class MultiAgentEpisode:
         else:
             return None
 
-    def _get_single_agent_data(self, agent_id, ma_data):
+    def _get_single_agent_data(
+        self,
+        agent_id: str,
+        ma_data: List[Dict],
+        start_index: int = 0,
+        end_index: int = None,
+        shift: int = 0,
+    ) -> List[Any]:
         """Returns single agent data from multi-agent data."""
         # Return all single agent data along the global timestep.
         return [
             singleton[agent_id]
             for singleton in list(
-                map(ma_data.__getitem__, self.global_t_local_t[agent_id])
+                map(
+                    ma_data.__getitem__,
+                    [
+                        i + shift
+                        for i in self.global_t_to_local_t[agent_id][
+                            start_index:end_index
+                        ]
+                    ],
+                )
             )
+            if agent_id in singleton.keys()
         ]
