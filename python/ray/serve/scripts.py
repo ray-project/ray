@@ -11,10 +11,10 @@ from typing import Dict, List, Optional, Tuple
 import click
 import watchfiles
 import yaml
-from pydantic import ValidationError
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import ValidationError
 from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args

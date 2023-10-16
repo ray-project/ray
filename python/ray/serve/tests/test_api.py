@@ -7,10 +7,10 @@ import pytest
 import requests
 import starlette.responses
 from fastapi import FastAPI
-from pydantic import BaseModel, ValidationError
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import BaseModel, ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private import api as _private_api
 from ray.serve._private.api import call_app_builder_with_args_if_necessary

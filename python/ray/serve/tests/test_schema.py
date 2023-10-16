@@ -5,10 +5,10 @@ from typing import Dict, List
 
 import pytest
 import requests
-from pydantic import ValidationError
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.common import (
     ApplicationStatusInfo,
     DeploymentStatusInfo,

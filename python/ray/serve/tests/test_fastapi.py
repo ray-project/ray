@@ -20,12 +20,12 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.routing import Route
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import IS_PYDANTIC_2, BaseModel, Field
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
@@ -53,7 +53,8 @@ def test_fastapi_function(serve_instance):
 
     resp = requests.get("http://localhost:8000/f/not-number")
     assert resp.status_code == 422  # Unprocessable Entity
-    assert resp.json()["detail"][0]["type"] == "type_error.integer"
+    # Pydantic 1.X returns `type_error.integer`, 2.X returns `int_parsing`.
+    assert resp.json()["detail"][0]["type"] in {"type_error.integer", "int_parsing"}
 
 
 def test_ingress_prefix(serve_instance):
@@ -675,6 +676,10 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
         assert requests.get("http://localhost:8000" + path).status_code == 404, path
 
 
+@pytest.mark.skipif(
+    IS_PYDANTIC_2,
+    reason="We don't currently install custom encoders for pydantic >= 2.",
+)
 def test_fastapi_custom_serializers(serve_instance):
     app = FastAPI()
 

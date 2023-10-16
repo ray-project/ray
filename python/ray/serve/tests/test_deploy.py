@@ -5,10 +5,10 @@ from collections import defaultdict
 
 import pytest
 import requests
-from pydantic.error_wrappers import ValidationError
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor
 from ray.serve._private.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
