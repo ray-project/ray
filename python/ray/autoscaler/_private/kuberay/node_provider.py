@@ -33,7 +33,7 @@ KUBERAY_LABEL_KEY_TYPE = "ray.io/group"
 KUBERAY_KIND_HEAD = "head"
 # Group name (node type) to use for the head.
 KUBERAY_TYPE_HEAD = "head-group"
-# KubeRay CRD version: KubeRay bumps the CRD version from v1alpha1 to v1 in the KubeRay v1.0.0-rc.1 release.
+# KubeRay CRD version
 KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
