@@ -23,8 +23,8 @@ class ClientInterface {
 
   virtual ray::Status SendFd(MEMFD_TYPE fd) = 0;
   virtual const std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;
-  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id) = 0;
-  virtual void MarkObjectAsUnused(const ray::ObjectID &object_id) = 0;
+  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id, MEMFD_TYPE fd) = 0;
+  virtual bool MarkObjectAsUnused(const ray::ObjectID &object_id) = 0;
 };
 
 /// Contains all information that is associated with a Plasma store client.
@@ -37,12 +37,23 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
   const std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids; }
 
-  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id) override {
+  virtual void MarkObjectAsUsed(const ray::ObjectID &object_id, MEMFD_TYPE fd) override {
     object_ids.insert(object_id);
+    object_ids_to_fds_[object_id] = fd;
+    fds_ref_count_[fd] += 1;
   }
 
-  virtual void MarkObjectAsUnused(const ray::ObjectID &object_id) override {
+  // Returns: bool, client should unmap.
+  virtual bool MarkObjectAsUnused(const ray::ObjectID &object_id) override {
     object_ids.erase(object_id);
+    auto fd = object_ids_to_fds_[object_id];
+    fds_ref_count_[fd] -= 1;
+    if (fds_ref_count_[fd] == 0) {
+      fds_ref_count_.erase(fd);
+      used_fds_.erase(fd);  // Next SendFd call will send this fd again.
+      return true;
+    }
+    return false;
   }
 
   std::string name = "anonymous_client";
@@ -55,6 +66,13 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
   /// Object ids that are used by this client.
   std::unordered_set<ray::ObjectID> object_ids;
+
+  // Records each fd sent to the client and which object IDs are in this fd.
+  // Incremented by `Get`, Decremented by `Release`.
+  // If an FD is emptied out, the fd can be unmapped on the client side.
+  // TODO: DO NOT SUBMIT: only do this for fallback-allocations, and not the main mem??
+  absl::flat_hash_map<MEMFD_TYPE, size_t> fds_ref_count_;
+  absl::flat_hash_map<ray::ObjectID, MEMFD_TYPE> object_ids_to_fds_;
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);

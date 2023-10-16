@@ -330,6 +330,8 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   if (object.device_num == 0) {
     // The metadata should come right after the data.
     RAY_CHECK(object.metadata_offset == object.data_offset + object.data_size);
+    RAY_LOG(DEBUG) << "GetStoreFdAndMmap " << store_fd.first << ", " << store_fd.second
+                   << ", size " << mmap_size << " for object id " << id;
     *data = std::make_shared<PlasmaMutableBuffer>(
         shared_from_this(),
         GetStoreFdAndMmap(store_fd, mmap_size) + object.data_offset,
@@ -503,6 +505,9 @@ Status PlasmaClient::Impl::GetBuffers(
   // in the subsequent loop based on just the store file descriptor and without
   // having to know the relevant file descriptor received from recv_fd.
   for (size_t i = 0; i < store_fds.size(); i++) {
+    RAY_LOG(DEBUG) << "GetStoreFdAndMmap " << store_fds[i].first << ", "
+                   << store_fds[i].second << ", size " << mmap_sizes[i]
+                   << " for object id " << received_object_ids[i];
     GetStoreFdAndMmap(store_fds[i], mmap_sizes[i]);
   }
 
@@ -591,6 +596,21 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
     // Tell the store that the client no longer needs the object.
     RAY_RETURN_NOT_OK(MarkObjectUnused(object_id));
     RAY_RETURN_NOT_OK(SendReleaseRequest(store_conn_, object_id));
+    std::vector<uint8_t> buffer;
+    RAY_RETURN_NOT_OK(
+        PlasmaReceive(store_conn_, MessageType::PlasmaReleaseReply, &buffer));
+    ObjectID released_object_id;
+    bool should_unmap;
+    RAY_RETURN_NOT_OK(ReadReleaseReply(
+        buffer.data(), buffer.size(), &released_object_id, &should_unmap));
+    if (should_unmap) {
+      auto mmap_entry = mmap_table_.find(object_entry->second->object.store_fd);
+      // Release call is idempotent: if we already released, it's ok.
+      if (mmap_entry != mmap_table_.end()) {
+        mmap_table_.erase(mmap_entry);
+      }
+    }
+
     auto iter = deletion_cache_.find(object_id);
     if (iter != deletion_cache_.end()) {
       deletion_cache_.erase(object_id);
