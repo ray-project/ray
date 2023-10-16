@@ -5,9 +5,35 @@ import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
+
+
+class OnWorkerCreatedCallbacks(DefaultCallbacks):
+
+    def on_worker_created(
+        self,
+        algorithm,
+        worker_ref,
+        worker_index,
+        is_evaluation,
+        recreated_worker,
+        **kwargs,
+    ):
+        # Store in the algorithm object's counters the number of times, this worker
+        # (ID'd by index and whether eval or not) has been created/restarted.
+        key = f"num_{'eval_' if is_evaluation else ''}worker_{worker_index}_created"
+        # Just making sure the `recreated_worker` flag is populated correctly.
+        if not recreated_worker:
+            assert algorithm._counters[key] == 0
+        else:
+            assert algorithm._counters[key] > 0
+
+        # Increase the counter.
+        algorithm._counters[key] += 1
 
 
 class EpisodeAndSampleCallbacks(DefaultCallbacks):
@@ -73,6 +99,24 @@ class TestCallbacks(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
+
+    def test_on_worker_created_callback(self):
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .callbacks(OnWorkerCreatedCallbacks)
+        )
+
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            pg = config.build()
+            pg.train()
+            pg.train()
+            callback_obj = pg.workers.local_worker().callbacks
+            self.assertGreater(callback_obj.counts["sample"], 0)
+            self.assertGreater(callback_obj.counts["start"], 0)
+            self.assertGreater(callback_obj.counts["end"], 0)
+            self.assertGreater(callback_obj.counts["step"], 0)
+            pg.stop()
 
     def test_episode_and_sample_callbacks(self):
         config = (
