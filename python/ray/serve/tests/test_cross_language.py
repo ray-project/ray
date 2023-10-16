@@ -3,6 +3,7 @@ import pytest
 import ray
 from ray import serve
 from ray.job_config import JobConfig
+from ray.serve._private import api as _private_api
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata
@@ -58,7 +59,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     )
     assert ray.get(out) == "my_prefix hello"
 
-    handle = serve.get_deployment("my_java").get_handle()
+    handle = _private_api.get_deployment("my_java")._get_handle()
     handle_out = handle.remote("hello handle")
     assert ray.get(handle_out) == "my_prefix hello handle"
 
