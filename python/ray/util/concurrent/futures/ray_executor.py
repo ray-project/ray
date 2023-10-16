@@ -11,7 +11,6 @@ from typing import (
     ParamSpec,
     TYPE_CHECKING,
     TypeVar,
-    Dict,
     TypedDict,
 )
 from enum import Enum
@@ -313,7 +312,6 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
         return pool_actor
 
 
-
 class _RoundRobinActorPool(_ActorPoolBoilerPlate):
 
     """This class manages a pool of Ray actors by distributing tasks amongst
@@ -358,7 +356,6 @@ class _RoundRobinActorPool(_ActorPoolBoilerPlate):
         if self.index >= len(self.pool):
             self.index = 0
         return obj
-
 
 
 @PublicAPI(stability="alpha")  # type: ignore
@@ -442,7 +439,9 @@ class RayExecutor(Executor):
             override the behaviour above.
         """
         self._shutdown_lock: bool = False
-        self._initialised_ray: bool = (not ray.is_initialized()) and ("address" not in kwargs)
+        self._initialised_ray: bool = (not ray.is_initialized()) and (
+            "address" not in kwargs
+        )
         self._context: "BaseContext" = ray.init(ignore_reinit_error=True, **kwargs)
         self.futures: list[Future[Any]] = []
         self.shutdown_ray = shutdown_ray

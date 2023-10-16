@@ -1,6 +1,6 @@
 import os
 
-from abc import ABC, abstractmethod
+from abc import ABC
 import sys
 import pytest
 from ray.util.concurrent.futures.ray_executor import (
@@ -27,6 +27,7 @@ from ray.exceptions import RayTaskError, RayActorError
 
 from ray._private.worker import RayContext
 import logging
+
 
 # ProcessPoolExecutor uses pickle which can only serialize top-level functions
 def f_process1(x):
@@ -104,6 +105,7 @@ class Helpers:
         else:
             return True
 
+
 class TestIsolated:
 
     # This class is for tests that must be run with dedicated/isolated ray
@@ -118,6 +120,7 @@ class TestIsolated:
             time.sleep(1)
         assert not ray.is_initialized()
 
+
 class TestShared:
 
     # This class if for tests that can share an existing ray instance. This
@@ -126,7 +129,9 @@ class TestShared:
 
     def setup_class(self):
         logging.warning(f"Initialising Ray instance for {self.__name__}")
-        self.address = ray.init(num_cpus=2, ignore_reinit_error=True).address_info["address"]
+        self.address = ray.init(num_cpus=2, ignore_reinit_error=True).address_info[
+            "address"
+        ]
         assert ray.is_initialized()
 
     def teardown_class(self):
@@ -265,7 +270,6 @@ class ActorPoolTests(ABC):
 
 
 class TestBalancedActorPool(ActorPoolTests, TestShared):
-
     @property
     def apc(self) -> type[_ActorPoolBoilerPlate]:
         return _BalancedActorPool
@@ -307,7 +311,6 @@ class TestBalancedActorPool(ActorPoolTests, TestShared):
 
 
 class TestRoundRobinActorPool(ActorPoolTests, TestShared):
-
     @property
     def apc(self) -> type[_ActorPoolBoilerPlate]:
         return _RoundRobinActorPool
@@ -315,7 +318,6 @@ class TestRoundRobinActorPool(ActorPoolTests, TestShared):
     @property
     def apt(self) -> ActorPoolType:
         return ActorPoolType.ROUND_ROBIN
-
 
     def test_actor_pool_cycles_through_actors(self):
         pool = self.apc(num_actors=2)
@@ -329,9 +331,7 @@ class TestRoundRobinActorPool(ActorPoolTests, TestShared):
         assert pool.index == 0
 
 
-
 class TestExistingInstanceSetup(TestShared):
-
     def test_remote_function_runs_on_specified_instance(self):
         with RayExecutor(address=self.address) as ex:
             result = ex.submit(lambda x: x * x, 100).result()
@@ -359,11 +359,10 @@ class TestExistingInstanceSetup(TestShared):
             assert not ex0._initialised_ray
 
 
-
 class TestSetupShutdown(TestIsolated):
-
     def test_context_manager_invokes_shutdown(self):
         with RayExecutor() as ex:
+            assert not ex._shutdown_lock
             pass
         assert ex._shutdown_lock
 
@@ -417,12 +416,11 @@ class TestSetupShutdown(TestIsolated):
             assert ex._mp_context == "fork"
 
     def test_results_are_not_accessible_after_shutdown(self):
-        # note: this will hang indefinitely if no timeout is specified on map()
         def f(x, y):
             return x * y
 
         with RayExecutor() as ex:
-            r1 = ex.map(f, [100, 100, 100], [1, 2, 3], timeout=2)
+            r1 = ex.map(f, [100, 100, 100], [1, 2, 3])
         assert ex._shutdown_lock
         with pytest.raises(ConTimeoutError):
             _ = list(r1)
@@ -482,9 +480,7 @@ class TestSetupShutdown(TestIsolated):
         assert f1.cancelled()
 
 
-
 class TestRunningTasks(TestIsolated):
-
     def test_remote_function_runs_on_local_instance(self):
         with RayExecutor() as ex:
             result = ex.submit(lambda x: x * x, 100).result()
@@ -572,7 +568,6 @@ class TestRunningTasks(TestIsolated):
 
 
 class TestProcessPool(TestIsolated):
-
     def test_conformity_with_processpool(self):
         def f_process0(x):
             return len([i for i in range(x) if i % 2 == 0])
@@ -643,7 +638,6 @@ class TestProcessPool(TestIsolated):
 
 
 class TestThreadPool(TestIsolated):
-
     def test_conformity_with_threadpool(self):
         def f_process0(x):
             return len([i for i in range(x) if i % 2 == 0])
