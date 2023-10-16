@@ -36,10 +36,10 @@ def test_path_validation(serve_instance):
     class D4:
         pass
 
-    D4.deploy()
+    D4._deploy()
 
     # Allow duplicate route.
-    D4.options(name="test2").deploy()
+    D4.options(name="test2")._deploy()
 
 
 def test_routes_healthz(serve_instance):
@@ -57,8 +57,8 @@ def test_routes_endpoint_legacy(serve_instance):
     class D2:
         pass
 
-    D1.deploy()
-    D2.deploy()
+    D1._deploy()
+    D2._deploy()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
 
@@ -68,14 +68,14 @@ def test_routes_endpoint_legacy(serve_instance):
     assert "/hello/world" in routes, routes
     assert routes["/hello/world"] == "D2", routes
 
-    D1.delete()
+    D1._delete()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1, routes
     assert "/hello/world" in routes, routes
     assert routes["/hello/world"] == "D2", routes
 
-    D2.delete()
+    D2._delete()
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 0, routes
 
@@ -86,7 +86,7 @@ def test_routes_endpoint_legacy(serve_instance):
     class D3:
         pass
 
-    D3.deploy()
+    D3._deploy()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1, routes
@@ -125,7 +125,7 @@ def test_deployment_without_route(serve_instance):
         def __call__(self, *args):
             return "1"
 
-    D.deploy()
+    D._deploy()
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 0
 
@@ -139,14 +139,14 @@ def test_deployment_options_default_route(serve_instance):
     class D1:
         pass
 
-    D1.deploy()
+    D1._deploy()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1
     assert "/1" in routes, routes
     assert routes["/1"] == "1"
 
-    D1.options(name="2").deploy()
+    D1.options(name="2")._deploy()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 2
@@ -171,7 +171,7 @@ def test_path_prefixing(serve_instance):
         def __call__(self, *args):
             return "1"
 
-    D1.deploy()
+    D1._deploy()
     check_req("/", status=404)
     check_req("/hello", text="1")
     check_req("/hello/", text="1")
@@ -182,7 +182,7 @@ def test_path_prefixing(serve_instance):
         def __call__(self, *args):
             return "2"
 
-    D2.deploy()
+    D2._deploy()
     check_req("/hello/", text="1")
     check_req("/hello/a", text="1")
     check_req("/", text="2")
@@ -193,7 +193,7 @@ def test_path_prefixing(serve_instance):
         def __call__(self, *args):
             return "3"
 
-    D3.deploy()
+    D3._deploy()
     check_req("/hello/", text="1")
     check_req("/", text="2")
     check_req("/hello/world/", text="3")
@@ -211,7 +211,7 @@ def test_path_prefixing(serve_instance):
         def subpath(self, p: str):
             return p
 
-    D4.deploy()
+    D4._deploy()
     check_req("/hello/") == "1"
     check_req("/") == "2"
     check_req("/hello/world/") == "3"
@@ -267,7 +267,7 @@ def test_redirect(serve_instance, base_path):
                 root_path = root_path[:-1]
             return RedirectResponse(url=root_path + app.url_path_for("redirect_root"))
 
-    D.deploy()
+    D._deploy()
 
     if route_prefix != "/":
         route_prefix += "/"
