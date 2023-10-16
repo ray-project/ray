@@ -79,23 +79,19 @@ class NsightPlugin(RuntimeEnvPlugin):
                 stderr=subprocess.PIPE,
             )
             stdout, stderr = await process.communicate()
+            error_msg = stderr.strip() if stderr.strip() != "" else stdout.strip()
+
+            # cleanup test.nsys-rep file
             clean_up_cmd = ["rm", f"{nsight_config_copy['-o']}.nsys-rep"]
+            cleanup_process = await asyncio.create_subprocess_exec(
+                *clean_up_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            _, _ = await cleanup_process.communicate()
             if process.returncode == 0:
-                cleanup_process = await asyncio.create_subprocess_exec(
-                    *clean_up_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-                _, _ = await cleanup_process.communicate()
                 return True, None
             else:
-                cleanup_process = await asyncio.create_subprocess_exec(
-                    *clean_up_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-                _, _ = await cleanup_process.communicate()
-                error_msg = stderr.strip() if stderr.strip() != "" else stdout.strip()
                 return False, error_msg
         except FileNotFoundError:
             return False, ("nsight is not installed")

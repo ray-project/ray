@@ -3,6 +3,7 @@ import glob
 import sys
 from pathlib import Path
 import pytest
+import subprocess
 
 import ray
 from ray._private.runtime_env.nsight import parse_nsight_config
@@ -15,11 +16,30 @@ def wait_for_report(profilers_dir, num_reports):
     return True
 
 
+NSIGHT_FAKE_DIR = str(Path(os.path.realpath(__file__)).parent / "nsight_fake")
+
+
+@pytest.fixture(scope="class")
+def nsight_fake_dependency():
+    subprocess.check_call(
+        ["pip", "install", NSIGHT_FAKE_DIR],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    yield
+    subprocess.check_call(
+        ["pip", "uninstall", "nsys", "--y"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 class TestNsightProfiler:
     @pytest.mark.skipif(
         os.environ.get("CI") and sys.platform != "linux",
         reason="Requires PR wheels built in CI, so only run on linux CI machines.",
     )
+    @pytest.mark.usefixtures("nsight_fake_dependency")
     def test_nsight_basic(
         self,
         shutdown_only,
@@ -47,6 +67,7 @@ class TestNsightProfiler:
         os.environ.get("CI") and sys.platform != "linux",
         reason="Requires PR wheels built in CI, so only run on linux CI machines.",
     )
+    @pytest.mark.usefixtures("nsight_fake_dependency")
     def test_nsight_custom_option(
         self,
         shutdown_only,
@@ -84,6 +105,7 @@ class TestNsightProfiler:
         os.environ.get("CI") and sys.platform != "linux",
         reason="Requires PR wheels built in CI, so only run on linux CI machines.",
     )
+    @pytest.mark.usefixtures("nsight_fake_dependency")
     def test_nsight_multiple_tasks(
         self,
         shutdown_only,
@@ -130,6 +152,7 @@ class TestNsightProfiler:
         os.environ.get("CI") and sys.platform != "linux",
         reason="Requires PR wheels built in CI, so only run on linux CI machines.",
     )
+    @pytest.mark.usefixtures("nsight_fake_dependency")
     def test_nsight_invalid_option(
         self,
         shutdown_only,
@@ -200,27 +223,6 @@ class TestNsightProfiler:
         nsys_reports = glob.glob(os.path.join(f"{profilers_dir}/*.nsys-rep"))
         assert len(nsys_reports) == 0
 
-    @pytest.mark.skipif(
-        sys.platform != "linux" or os.environ.get("RAY_MINIMAL") != "1",
-        reason="Test only for compatible OS (linux) with minmial installation",
-    )
-    def test_nsight_not_installed(self):
-        """Test Nsight profile not installed"""
-        ray.init()
-        session_dir = ray.worker._global_node.get_session_dir_path()
-        profilers_dir = Path(session_dir) / "logs" / "nsight"
-
-        # test nsight default config
-        @ray.remote(runtime_env={"nsight": "default"})
-        def test_nsight_not_supported():
-            return 0
-
-        with pytest.raises(RuntimeEnvSetupError, match="command not found: nsys"):
-            ray.get(test_nsight_not_supported.remote())
-
-        nsys_reports = glob.glob(os.path.join(f"{profilers_dir}/*.nsys-rep"))
-        assert len(nsys_reports) == 0
-
     def test_parse_nsight_config(self):
         """Test parse nsight config into nsight command prefix"""
         nsight_config = {
@@ -230,6 +232,28 @@ class TestNsightProfiler:
         }
         nsight_cmd = parse_nsight_config(nsight_config)
         assert nsight_cmd == ["nsys", "profile", "-one-dash", "no=", "--two-dash=with="]
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="Test only for compatible OS (linux) with minmial installation",
+)
+def test_nsight_not_installed():
+    """Test Nsight profile not installed"""
+    ray.init()
+    session_dir = ray.worker._global_node.get_session_dir_path()
+    profilers_dir = Path(session_dir) / "logs" / "nsight"
+
+    # test nsight default config
+    @ray.remote(runtime_env={"nsight": "default"})
+    def test_nsight_not_supported():
+        return 0
+
+    with pytest.raises(RuntimeEnvSetupError, match="nsight is not installed"):
+        ray.get(test_nsight_not_supported.remote())
+
+    nsys_reports = glob.glob(os.path.join(f"{profilers_dir}/*.nsys-rep"))
+    assert len(nsys_reports) == 0
 
 
 if __name__ == "__main__":
