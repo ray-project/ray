@@ -40,6 +40,12 @@ class ConcurrencyCapBackPressurePolicy(BackPressurePolicy):
 
     The concurrency cap limits the number of concurrently running tasks.
     It will be set to an intial value, and will ramp up exponentially.
+
+    The concrete stategy is as follows:
+    - Each op is assigned an initial concurrency cap.
+    - An op can run new tasks if the number of running tasks is less than the cap.
+    - When the number of finished tasks reaches a threshold, the concurrency cap will
+      increase.
     """
 
     # Environment variable to configure this policy.
@@ -64,12 +70,15 @@ class ConcurrencyCapBackPressurePolicy(BackPressurePolicy):
         env_config = os.environ.get(self.CONFIG_ENV_VAR, "")
         if env_config:
             try:
-                env_config = env_config.split(",")
-                self._init_cap = int(env_config[0])
-                self._cap_multiply_threshold = float(env_config[2])
-                self._cap_multiplier = float(env_config[1])
-            except Exception:
-                raise ValueError("Invalid concurrency cap config", env_config)
+                configs = env_config.split(",")
+                self._init_cap = int(configs[0])
+                self._cap_multiply_threshold = float(configs[1])
+                self._cap_multiplier = float(configs[2])
+                assert self._init_cap > 0
+                assert 0 < self._cap_multiply_threshold <= 1
+                assert self._cap_multiplier > 1
+            except Exception as e:
+                raise ValueError("Invalid concurrency cap config", env_config) from e
 
         logger.debug(
             "Concurrency cap config: "
