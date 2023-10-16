@@ -4714,7 +4714,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=1,
+                   num_blocks=16,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
