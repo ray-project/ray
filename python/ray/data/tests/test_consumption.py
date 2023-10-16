@@ -190,12 +190,10 @@ def test_cache_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.map(inc)
-    assert not ds.is_fully_executed()
     assert not isinstance(ds, MaterializedDataset)
     ds2 = ds.materialize()
-    assert ds2.is_fully_executed()
     assert isinstance(ds2, MaterializedDataset)
-    assert not ds.is_fully_executed()
+    assert not isinstance(ds, MaterializedDataset)
 
     # Tests standard iteration uses the materialized blocks.
     for _ in range(10):

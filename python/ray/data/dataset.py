@@ -17,7 +17,6 @@ from typing import (
     Mapping,
     Optional,
     Tuple,
-    Type,
     TypeVar,
     Union,
 )
@@ -29,7 +28,6 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.util.data_batch_conversion import BlockFormat
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
@@ -4516,24 +4514,6 @@ class Dataset:
         """
         _raise_dataset_pipeline_deprecation_warning()
 
-    @Deprecated(message="Use `Dataset.materialize()` instead.")
-    def fully_executed(self) -> "MaterializedDataset":
-        logger.warning(
-            "Deprecation warning: use Dataset.materialize() instead of "
-            "fully_executed()."
-        )
-        self._plan.execute(force_read=True)
-        return self
-
-    @Deprecated(message="Check `isinstance(Dataset, MaterializedDataset)` instead.")
-    def is_fully_executed(self) -> bool:
-        logger.warning(
-            "Deprecation warning: Check "
-            "`isinstance(Dataset, MaterializedDataset)` "
-            "instead of using is_fully_executed()."
-        )
-        return self._plan.has_computed_output()
-
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this dataset into object store memory.
@@ -4817,14 +4797,6 @@ class Dataset:
             ),
         )
         return l_ds, r_ds
-
-    @Deprecated(message="The batch format is no longer exposed as a public API.")
-    def default_batch_format(self) -> Type:
-        raise ValueError("default_batch_format() is not allowed in Ray 2.5")
-
-    @Deprecated(message="The dataset format is no longer exposed as a public API.")
-    def dataset_format(self) -> BlockFormat:
-        raise ValueError("dataset_format() is not allowed in Ray 2.5")
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs

@@ -80,7 +80,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if sys.version_info >= (3, 8):
@@ -237,11 +237,6 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
         block_format="arrow",
         column_name="id",
     )
-
-
-@Deprecated
-def range_table(n: int, *, parallelism: int = -1) -> Dataset:
-    raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
 
 
 @PublicAPI
