@@ -238,7 +238,6 @@ class Dataset:
     def __init__(
         self,
         plan: ExecutionPlan,
-        epoch: int,
         logical_plan: Optional[LogicalPlan] = None,
     ):
         """Construct a Dataset (internal API).
@@ -251,7 +250,6 @@ class Dataset:
 
         self._plan = plan
         self._uuid = uuid4().hex
-        self._epoch = epoch
         self._logical_plan = logical_plan
         if logical_plan is not None:
             self._plan.link_logical_plan(logical_plan)
@@ -267,9 +265,9 @@ class Dataset:
         if not _as:
             _as = type(ds)
         if _deep_copy:
-            return _as(ds._plan.deep_copy(), ds._epoch, ds._logical_plan)
+            return _as(ds._plan.deep_copy(), ds._logical_plan)
         else:
-            return _as(ds._plan.copy(), ds._epoch, ds._logical_plan)
+            return _as(ds._plan.copy(), ds._logical_plan)
 
     def map(
         self,
@@ -396,7 +394,7 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(map_op)
-        return Dataset(plan, self._epoch, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def map_batches(
         self,
@@ -631,7 +629,7 @@ class Dataset:
             )
             logical_plan = LogicalPlan(map_batches_op)
 
-        return Dataset(plan, self._epoch, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def add_column(
         self,
@@ -915,7 +913,7 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def filter(
         self,
@@ -971,7 +969,7 @@ class Dataset:
             )
             logical_plan = LogicalPlan(op)
 
-        return Dataset(plan, self._epoch, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
@@ -1026,7 +1024,7 @@ class Dataset:
                 shuffle=shuffle,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def random_shuffle(
         self,
@@ -1076,7 +1074,7 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def randomize_block_order(
         self,
@@ -1114,7 +1112,7 @@ class Dataset:
                 seed=seed,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -1369,7 +1367,6 @@ class Dataset:
                             stats,
                             run_by_consumer=owned_by_consumer,
                         ),
-                        self._epoch,
                         logical_plan,
                     )
                 )
@@ -1495,7 +1492,6 @@ class Dataset:
                         stats,
                         run_by_consumer=owned_by_consumer,
                     ),
-                    self._epoch,
                     logical_plan,
                 )
             )
@@ -1580,7 +1576,6 @@ class Dataset:
                         stats,
                         run_by_consumer=block_list._owned_by_consumer,
                     ),
-                    self._epoch,
                     logical_plan,
                 )
             )
@@ -1825,16 +1820,6 @@ class Dataset:
                 )
                 logical_plan = LogicalPlan(op)
 
-        epochs = [ds._get_epoch() for ds in datasets]
-        max_epoch = max(*epochs)
-        if len(set(epochs)) > 1:
-            if ray.util.log_once("dataset_epoch_warned"):
-                logger.warning(
-                    "Dataset contains data from multiple epochs: {}, "
-                    "likely due to a `rewindow()` call. The higher epoch "
-                    "number {} will be used. This warning will not "
-                    "be shown again.".format(set(epochs), max_epoch)
-                )
         stats = DatasetStats(
             stages={"Union": []},
             parent=[d._plan.stats() for d in datasets],
@@ -1842,7 +1827,6 @@ class Dataset:
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),
-            max_epoch,
             logical_plan,
         )
 
@@ -2233,7 +2217,7 @@ class Dataset:
                 sort_key=sort_key,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def zip(self, other: "Dataset") -> "Dataset":
         """Materialize and zip the columns of this dataset with the columns of another.
@@ -2275,7 +2259,7 @@ class Dataset:
         if logical_plan is not None and other_logical_plan is not None:
             op = Zip(logical_plan.dag, other_logical_plan.dag)
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
@@ -2303,7 +2287,7 @@ class Dataset:
         if logical_plan is not None:
             op = Limit(logical_plan.dag, limit=limit)
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, logical_plan)
+        return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
     def take_batch(
@@ -3475,7 +3459,7 @@ class Dataset:
                 import pandas as pd
 
                 datasource.on_write_start(**write_args)
-                self._write_ds = Dataset(plan, self._epoch, logical_plan).materialize()
+                self._write_ds = Dataset(plan, logical_plan).materialize()
                 blocks = ray.get(self._write_ds._plan.execute().get_blocks())
                 assert all(
                     isinstance(block, pd.DataFrame) and len(block) == 1
@@ -4594,7 +4578,6 @@ class Dataset:
                 copy._plan.stats(),
                 run_by_consumer=False,
             ),
-            copy._epoch,
             logical_plan,
         )
         output._plan.execute()  # No-op that marks the plan as fully executed.
@@ -4747,7 +4730,7 @@ class Dataset:
         # Dataset's lineage is serialized.
         plan_copy = self._plan.deep_copy(preserve_uuid=True)
         logical_plan_copy = copy.copy(self._plan._logical_plan)
-        ds = Dataset(plan_copy, self._get_epoch(), logical_plan_copy)
+        ds = Dataset(plan_copy, logical_plan_copy)
         ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
@@ -4827,13 +4810,11 @@ class Dataset:
             ExecutionPlan(
                 left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
             ),
-            self._epoch,
         )
         r_ds = Dataset(
             ExecutionPlan(
                 right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
             ),
-            self._epoch,
         )
         return l_ds, r_ds
 
@@ -5017,12 +4998,6 @@ class Dataset:
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
 
-    def _get_epoch(self) -> int:
-        return self._epoch
-
-    def _set_epoch(self, epoch: int) -> None:
-        self._epoch = epoch
-
     def _synchronize_progress_bar(self):
         """Flush progress bar output by shutting down the current executor.
 
@@ -5043,14 +5018,12 @@ class Dataset:
         return {
             "plan": self._plan,
             "uuid": self._uuid,
-            "epoch": self._epoch,
             "logical_plan": self._logical_plan,
         }
 
     def __setstate__(self, state):
         self._plan = state["plan"]
         self._uuid = state["uuid"]
-        self._epoch = state["epoch"]
         self._logical_plan = state["logical_plan"]
         self._current_executor = None
 

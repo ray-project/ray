@@ -191,7 +191,6 @@ def from_items(
             DatasetStats(stages={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
         logical_plan,
     )
 
@@ -422,7 +421,6 @@ def read_datasource(
 
     return Dataset(
         plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
-        epoch=0,
         logical_plan=logical_plan,
     )
 
@@ -2106,7 +2104,6 @@ def from_pandas_refs(
                 DatasetStats(stages={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
-            0,
             logical_plan,
         )
 
@@ -2122,7 +2119,6 @@ def from_pandas_refs(
             DatasetStats(stages={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
         logical_plan,
     )
 
@@ -2210,7 +2206,6 @@ def from_numpy_refs(
             DatasetStats(stages={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
         logical_plan,
     )
 
@@ -2291,7 +2286,6 @@ def from_arrow_refs(
             DatasetStats(stages={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
         logical_plan,
     )
 

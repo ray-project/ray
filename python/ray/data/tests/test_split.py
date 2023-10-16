@@ -103,7 +103,6 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     ds = Dataset(
         ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
         0,
-        False,
         logical_plan,
     )
 

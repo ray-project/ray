@@ -54,7 +54,6 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
-    epoch = ds._get_epoch()
     uuid = ds._get_uuid()
     plan_uuid = ds._plan._dataset_uuid
 
@@ -71,7 +70,6 @@ def test_dataset_lineage_serialization(shutdown_only):
 
     ds = Dataset.deserialize_lineage(serialized_ds)
     # Check Dataset state.
-    assert ds._get_epoch() == epoch
     assert ds._get_uuid() == uuid
     assert ds._plan._dataset_uuid == plan_uuid
     # Check Dataset content.
