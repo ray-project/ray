@@ -1,4 +1,5 @@
 import uuid
+
 from typing import Any, Dict, List, Optional, Union
 
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import SingleAgentEpisode
@@ -66,6 +67,48 @@ class MultiAgentEpisode:
         # observations in following chunks for this episode).
         self.is_truncated = is_truncated
 
+    def concat_episode(self, episode_chunk: "MultiAgentEpisode") -> None:
+        """Adds the given `episode_chunk` to the right side of self.
+
+        This is used for concatenating ongoing episodes in the buffer with
+        ongoing episodes in the sampler.
+        """
+        assert episode_chunk.id_ == self.id_
+        assert not self.is_done
+        # Make sure the timesteps match.
+        assert self.t == episode_chunk.t_started
+
+        # TODO (simon): Write `validate()` method.
+
+        # Make sure, end matches `episode_chunk`'s beginning for all agents.
+        observations = self.get_observations()
+        for agent_id, agent_obs in episode_chunk.get_observations(indices=0):
+            # Make sure that the same agents stepped at both timesteps.
+            assert agent_id in observations
+            assert observations[agent_id] == agent_obs
+        # Pop out the end for the agents that stepped.
+        for agent_id in observations:
+            self.agent_episodes[agent_id].observations.pop()
+
+        # Call the `SingleAgentEpisode`'s `concat_episode()` method for all agents.
+        for agent_id, agent_eps in self.agent_episodes:
+            agent_eps[agent_id].concat_episode(episode_chunk.agent_episodes[agent_id])
+            # Update our timestep mapping.
+            # TODO (simon): Check, if we have to cut off here as well.
+            self.global_t_to_local_t[agent_id][
+                :-1
+            ] += episode_chunk.global_t_to_local_t[agent_id]
+
+        self.t = episode_chunk.t
+        if episode_chunk.is_terminated:
+            self.is_terminated = True
+        if episode_chunk.is_truncated:
+            self.is_truncated = True
+
+        # Validate
+        # TODO (simon): Write validate function.
+        # self.validate()
+
     def get_observations(self, indices: Union[int, List[int]] = -1, global_ts=True):
         """Gets observations for all agents that stepped in the last timesteps.
 
@@ -77,9 +120,9 @@ class MultiAgentEpisode:
         if global_ts:
             # Check, if the indices are iterable.
             if isinstance(indices, list):
-                indices = [self.t + idx for idx in indices]
+                indices = [self.t + idx if idx < 0 else idx for idx in indices]
             else:
-                indices = [self.t + indices]
+                indices = [self.t + indices] if indices < 0 else [indices]
 
             return {
                 agent_id: list(
@@ -278,6 +321,51 @@ class MultiAgentEpisode:
         correspond to single agents having terminated or being truncated.
         """
         return self.is_terminated or self.is_truncated
+
+    def create_successor(self) -> "MultiAgentEpisode":
+        assert not self.is_done
+
+        # Get the last multi-agent observation.
+        observations = self.get_observations()
+        return MultiAgentEpisode(
+            id=self.id_,
+            observations=observations,
+            t=self.t,
+        )
+
+    def get_state(self):
+        return list(
+            {
+                "id_": self.id_,
+                "agent_ids": self.agent_ids,
+                "global_t_to_local_t": self.global_t_to_local_t,
+                "agent_episodes": list(
+                    {
+                        agent_id: agent_eps.get_state()
+                        for agent_id, agent_eps in self.agent_episodes.items()
+                    }.items()
+                ),
+                "t_started": self.t_started,
+                "t": self.t,
+                "is_terminated": self.is_terminated,
+                "is_truncated": self.is_truncated,
+            }.items()
+        )
+
+    @staticmethod
+    def from_state(state):
+        eps = MultiAgentEpisode(id=state[0][1])
+        eps.agent_ids = state[1][1]
+        eps.global_t_to_local_t = state[2][1]
+        eps.agent_episodes = {
+            agent_id: SingleAgentEpisode.from_state(agent_state)
+            for agent_id, agent_state in state[3][1]
+        }
+        eps.t_started = state[3][1]
+        eps.t = state[4][1]
+        eps.is_terminated = state[5][1]
+        eps.is_trcunated = state[6][1]
+        return eps
 
     def _generate_ts_mapping(self, observations):
         """Generates a timestep mapping to local agent timesteps.

@@ -411,8 +411,6 @@ class SingleAgentEpisode:
 
         # Make sure, end matches other episode chunk's beginning.
         assert np.all(episode_chunk.observations[0] == self.observations[-1])
-        # Make sure the timesteps match (our last t should be the same as their first).
-        assert self.t == episode_chunk.t_started
         # Pop out our end.
         self.observations.pop()
 
@@ -444,6 +442,8 @@ class SingleAgentEpisode:
         self.states = initial_state
         if initial_render_image is not None:
             self.render_images.append(initial_render_image)
+        # TODO (sven): Do we have to call validate here? It is our own function
+        # that manipulates the object.
         self.validate()
 
     def add_timestep(
@@ -484,7 +484,7 @@ class SingleAgentEpisode:
         # self.t = self.t_started = len(observations) - 1. Then
         # we add a single timestep. self.t += 1 and
         # self.t - self.t_started is 1, but len(rewards) is 100.
-        # assert len(self.rewards) == (self.t - self.t_started)
+        assert len(self.rewards) == (self.t - self.t_started)
 
         # Convert all lists to numpy arrays, if we are terminated.
         if self.is_done:
