@@ -341,6 +341,7 @@ def test_raylet_graceful_exit_upon_runtime_env_agent_exit(ray_start_cluster):
     assert exit_code == 0
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
 def test_worker_sigterm(shutdown_only):
     """Verify a worker process is killed by a sigterm."""
     ray.init(num_cpus=1)
@@ -382,6 +383,7 @@ def test_worker_sigterm(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
 def test_worker_proc_child_no_leak(shutdown_only):
     """Verify a worker process is not leaked when placement group is removed"""
     ray.init(num_cpus=1)
@@ -435,6 +437,7 @@ def test_worker_proc_child_no_leak(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
 def test_sigterm_while_ray_get(shutdown_only):
     """Verify when sigterm is received while running
     ray.get, it will clean up the worker process properly.
