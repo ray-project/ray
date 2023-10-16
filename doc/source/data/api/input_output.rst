@@ -140,6 +140,15 @@ MongoDB
    read_mongo
    Dataset.write_mongo
 
+BigQuery
+--------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_bigquery
+   Dataset.write_bigquery
+
 SQL Databases
 -------------
 
@@ -148,6 +157,15 @@ SQL Databases
    :toctree: doc/
 
    read_sql
+
+Databricks
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_databricks_tables
 
 Dask
 ----
