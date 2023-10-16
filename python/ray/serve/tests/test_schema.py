@@ -770,8 +770,8 @@ def test_deployment_to_schema_to_deployment():
     ]
 
     serve.start()
-    deployment.deploy()
-    assert ray.get(deployment.get_handle().remote()) == "Hello world!"
+    deployment._deploy()
+    assert ray.get(deployment._get_handle().remote()) == "Hello world!"
     assert requests.get("http://localhost:8000/hello").text == "Hello world!"
     serve.shutdown()
 

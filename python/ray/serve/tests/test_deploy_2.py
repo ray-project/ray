@@ -13,6 +13,7 @@ from pydantic import ValidationError
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private import api as _private_api
 from ray.serve._private.common import ApplicationStatus
 from ray.serve.drivers import DAGDriver
 
@@ -21,9 +22,9 @@ class TestGetDeployment:
     # Test V1 API get_deployment()
     def get_deployment(self, name, use_list_api):
         if use_list_api:
-            return serve.list_deployments()[name]
+            return _private_api.list_deployments()[name]
         else:
-            return serve.get_deployment(name)
+            return _private_api.get_deployment(name)
 
     @pytest.mark.parametrize("use_list_api", [True, False])
     def test_basic_get(self, serve_instance, use_list_api):
@@ -36,14 +37,14 @@ class TestGetDeployment:
         with pytest.raises(KeyError):
             self.get_deployment(name, use_list_api)
 
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
+        d._deploy()
+        val1, pid1 = ray.get(d._get_handle().remote())
         assert val1 == "1"
 
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        val2, pid2 = ray.get(d2.get_handle().remote())
+        val2, pid2 = ray.get(d2._get_handle().remote())
         assert val2 == "1"
         assert pid2 == pid1
 
@@ -55,11 +56,11 @@ class TestGetDeployment:
         def d(*args):
             return "1", os.getpid()
 
-        d.deploy()
+        d._deploy()
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        d2.delete()
+        d2._delete()
         del d2
 
         with pytest.raises(KeyError):
@@ -73,15 +74,15 @@ class TestGetDeployment:
         def d(*args):
             return "1", os.getpid()
 
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
+        d._deploy()
+        val1, pid1 = ray.get(d._get_handle().remote())
         assert val1 == "1"
 
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        d2.options(version="2").deploy()
-        val2, pid2 = ray.get(d2.get_handle().remote())
+        d2.options(version="2")._deploy()
+        val2, pid2 = ray.get(d2._get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
@@ -93,15 +94,15 @@ class TestGetDeployment:
         def d(*args):
             return "1", os.getpid()
 
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
+        d._deploy()
+        val1, pid1 = ray.get(d._get_handle().remote())
         assert val1 == "1"
 
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        d2.deploy()
-        val2, pid2 = ray.get(d2.get_handle().remote())
+        d2._deploy()
+        val2, pid2 = ray.get(d2._get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
@@ -117,21 +118,21 @@ class TestGetDeployment:
             def __call__(self, *arg):
                 return self._val, os.getpid()
 
-        D.deploy("1")
-        val1, pid1 = ray.get(D.get_handle().remote())
+        D._deploy("1")
+        val1, pid1 = ray.get(D._get_handle().remote())
         assert val1 == "1"
 
         del D
 
         D2 = self.get_deployment(name, use_list_api)
-        D2.deploy()
-        val2, pid2 = ray.get(D2.get_handle().remote())
+        D2._deploy()
+        val2, pid2 = ray.get(D2._get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
         D2 = self.get_deployment(name, use_list_api)
-        D2.deploy("2")
-        val3, pid3 = ray.get(D2.get_handle().remote())
+        D2._deploy("2")
+        val3, pid3 = ray.get(D2._get_handle().remote())
         assert val3 == "2"
         assert pid3 != pid2
 
@@ -144,28 +145,28 @@ class TestGetDeployment:
             return os.getpid()
 
         def check_num_replicas(num):
-            handle = self.get_deployment(name, use_list_api).get_handle()
+            handle = self.get_deployment(name, use_list_api)._get_handle()
             assert len(set(ray.get([handle.remote() for _ in range(50)]))) == num
 
-        d.deploy()
+        d._deploy()
         check_num_replicas(1)
         del d
 
         d2 = self.get_deployment(name, use_list_api)
-        d2.options(num_replicas=2).deploy()
+        d2.options(num_replicas=2)._deploy()
         check_num_replicas(2)
 
 
 def test_list_deployments(serve_instance):
-    assert serve.list_deployments() == {}
+    assert _private_api.list_deployments() == {}
 
     @serve.deployment(name="hi", num_replicas=2)
     def d1(*args):
         pass
 
-    d1.deploy()
+    d1._deploy()
 
-    assert serve.list_deployments() == {"hi": d1}
+    assert _private_api.list_deployments() == {"hi": d1}
 
 
 def test_deploy_change_route_prefix(serve_instance):
@@ -179,7 +180,7 @@ def test_deploy_change_route_prefix(serve_instance):
         ret = requests.get(f"http://localhost:8000/{route}").text
         return ret.split("|")[0], ret.split("|")[1]
 
-    d.deploy()
+    d._deploy()
     val1, pid1 = call("old")
     assert val1 == "1"
 
@@ -202,7 +203,7 @@ def test_deploy_change_route_prefix(serve_instance):
         assert pid2 == pid1
         return True
 
-    d.options(route_prefix="/new").deploy()
+    d.options(route_prefix="/new")._deploy()
     wait_for_condition(check_switched)
 
 
@@ -280,9 +281,9 @@ def test_json_serialization_user_config(serve_instance):
             "value": "Success!",
             "nested": {"value": "Success!"},
         }
-    ).deploy()
+    )._deploy()
 
-    handle = SimpleDeployment.get_handle()
+    handle = SimpleDeployment._get_handle()
     assert ray.get(handle.get_value.remote()) == "Success!"
     assert ray.get(handle.get_nested_value.remote()) == "Success!"
 
@@ -292,9 +293,9 @@ def test_json_serialization_user_config(serve_instance):
             "another-value": "Failure!",
             "nested": {"value": "Success!"},
         }
-    ).deploy()
+    )._deploy()
 
-    handle = SimpleDeployment.get_handle()
+    handle = SimpleDeployment._get_handle()
     assert ray.get(handle.get_value.remote()) == "Failure!"
     assert ray.get(handle.get_nested_value.remote()) == "Success!"
 

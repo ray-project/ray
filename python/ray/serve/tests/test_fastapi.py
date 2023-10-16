@@ -46,7 +46,7 @@ def test_fastapi_function(serve_instance):
     class FastAPIApp:
         pass
 
-    FastAPIApp.deploy()
+    FastAPIApp._deploy()
 
     resp = requests.get("http://localhost:8000/f/100")
     assert resp.json() == {"result": 100}
@@ -68,7 +68,7 @@ def test_ingress_prefix(serve_instance):
     class App:
         pass
 
-    App.deploy()
+    App._deploy()
 
     resp = requests.get("http://localhost:8000/api/100")
     assert resp.json() == {"result": 100}
@@ -98,7 +98,7 @@ def test_class_based_view(serve_instance):
         def other(self, msg: str):
             return msg
 
-    A.deploy()
+    A._deploy()
 
     # Test HTTP calls.
     resp = requests.get("http://localhost:8000/f/calc/41")
@@ -109,7 +109,7 @@ def test_class_based_view(serve_instance):
     assert resp.json() == "hello"
 
     # Test handle calls.
-    handle = A.get_handle()
+    handle = A._get_handle()
     assert ray.get(handle.b.remote(41)) == 42
     assert ray.get(handle.c.remote(41)) == 40
     assert ray.get(handle.other.remote("world")) == "world"
@@ -251,7 +251,7 @@ def test_fastapi_features(serve_instance):
     class Worker:
         pass
 
-    Worker.deploy()
+    Worker._deploy()
 
     url = "http://localhost:8000/fastapi"
     resp = requests.get(f"{url}/")
@@ -340,7 +340,7 @@ def test_fast_api_mounted_app(serve_instance):
     class A:
         pass
 
-    A.deploy()
+    A._deploy()
 
     assert requests.get("http://localhost:8000/api/mounted/hi").json() == "world"
 
@@ -358,10 +358,10 @@ def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
         def f(self):
             return 1
 
-    A.deploy()
+    A._deploy()
     # Without a proper fix, the actor won't be initialized correctly.
     # Because it will crash on each startup.
-    assert ray.get(A.get_handle().f.remote()) == 1
+    assert ray.get(A._get_handle().f.remote()) == 1
 
 
 def test_fastapi_lifespan_startup_failure_crashes_actor(serve_instance):
@@ -378,7 +378,7 @@ def test_fastapi_lifespan_startup_failure_crashes_actor(serve_instance):
         pass
 
     with pytest.raises(RuntimeError):
-        A.deploy()
+        A._deploy()
 
 
 def test_fastapi_duplicate_routes(serve_instance):
@@ -402,8 +402,8 @@ def test_fastapi_duplicate_routes(serve_instance):
     def ignored():
         pass
 
-    App1.deploy()
-    App2.deploy()
+    App1._deploy()
+    App2._deploy()
 
     resp = requests.get("http://localhost:8000/api/v1")
     assert resp.json() == "first"
@@ -427,7 +427,7 @@ def test_asgi_compatible(serve_instance):
     class MyApp:
         pass
 
-    MyApp.deploy()
+    MyApp._deploy()
 
     resp = requests.get("http://localhost:8000/MyApp/")
     assert resp.json() == {"hello": "world"}
@@ -444,7 +444,7 @@ def test_doc_generation(serve_instance, route_prefix):
         def func1(self, arg: str):
             return "hello"
 
-    App.deploy()
+    App._deploy()
 
     prefix = App.route_prefix
 
@@ -472,7 +472,7 @@ def test_doc_generation(serve_instance, route_prefix):
         def func2(self, arg: int):
             return "hello"
 
-    App.deploy()
+    App._deploy()
 
     r = requests.get(f"http://localhost:8000{prefix}openapi.json")
     assert r.status_code == 200
@@ -503,7 +503,7 @@ def test_fastapi_multiple_headers(serve_instance):
     class FastAPIApp:
         pass
 
-    FastAPIApp.deploy()
+    FastAPIApp._deploy()
 
     resp = requests.get("http://localhost:8000/f")
     assert resp.cookies.get_dict() == {"a": "b", "c": "d"}
@@ -537,7 +537,7 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
             test_model = TestModel(a="a", b=["b"])
             return [test_model]
 
-    TestDeployment.deploy()
+    TestDeployment._deploy()
 
     resp = requests.get("http://localhost:8000/")
     assert resp.json() == {"a": "a", "b": ["b"]}
@@ -579,7 +579,7 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
         def root(self):
             return self.test_passed
 
-    TestDeployment.deploy()
+    TestDeployment._deploy()
     resp = requests.get("http://localhost:8000/")
     assert resp.json()
 
@@ -601,8 +601,8 @@ def test_fastapi_shutdown_hook(serve_instance):
         def __del__(self):
             del_signal.send.remote()
 
-    A.deploy()
-    A.delete()
+    A._deploy()
+    A._delete()
     ray.get(shutdown_signal.wait.remote(), timeout=20)
     ray.get(del_signal.wait.remote(), timeout=20)
 
@@ -621,7 +621,7 @@ def test_fastapi_method_redefinition(serve_instance):
         def method(self):  # noqa: F811 method redefinition
             return "hi post"
 
-    A.deploy()
+    A._deploy()
     assert requests.get("http://localhost:8000/a/").json() == "hi get"
     assert requests.post("http://localhost:8000/a/").json() == "hi post"
 
@@ -652,9 +652,9 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
         def decr2(self):
             return "decr2"
 
-    CounterDeployment1.deploy()
+    CounterDeployment1._deploy()
 
-    CounterDeployment2.deploy()
+    CounterDeployment2._deploy()
 
     should_work = [
         ("/CounterDeployment1/incr", "incr"),
@@ -685,7 +685,7 @@ def test_fastapi_custom_serializers(serve_instance):
         def incr(self):
             return np.zeros(2)
 
-    D.deploy()
+    D._deploy()
 
     resp = requests.get(D.url + "/np_array")
     print(resp.text)

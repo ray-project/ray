@@ -13,6 +13,7 @@ from ray import serve
 from ray.serve.context import _get_global_client
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import safe_write_to_results_json
+from ray.serve._private import api as _private_api
 
 # Global variables / constants appear only right after imports.
 # Ray serve deployment setup constants
@@ -129,7 +130,7 @@ class RandomTest:
     def create_deployment(self, blocking: bool = True) -> str:
         if len(self.deployments) == self.max_deployments:
             deployment_to_delete = self.deployments.pop()
-            serve.get_deployment(deployment_to_delete).delete()
+            _private_api.get_deployment(deployment_to_delete)._delete()
 
         new_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 
@@ -140,11 +141,11 @@ class RandomTest:
 
         if blocking:
             ray.get(self.random_killer.spare.remote(new_name))
-            handler.deploy(_blocking=blocking)
+            handler._deploy(_blocking=blocking)
             self.deployments.append(new_name)
             ray.get(self.random_killer.stop_spare.remote(new_name))
         else:
-            handler.deploy(_blocking=False)
+            handler._deploy(_blocking=False)
             self.deployments.append(new_name)
 
         return new_name

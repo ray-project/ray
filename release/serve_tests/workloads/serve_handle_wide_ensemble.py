@@ -84,9 +84,9 @@ def construct_wide_fanout_graph_with_pure_handle(
 ) -> RayServeSyncHandle:
     nodes = []
     for id in range(fanout_degree):
-        Node.options(name=str(id)).deploy(id, init_delay_secs=init_delay_secs)
+        Node.options(name=str(id))._deploy(id, init_delay_secs=init_delay_secs)
         nodes.append(_get_global_client().get_handle(str(id), "", sync=sync_handle))
-    CombineNode.options(name="combine").deploy(
+    CombineNode.options(name="combine")._deploy(
         nodes, compute_delay_secs, sync_handle=sync_handle
     )
     return _get_global_client().get_handle("combine", "", sync=sync_handle)
