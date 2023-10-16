@@ -26,6 +26,13 @@ class PyvmomiSdkProvider:
         self.pyvmomi_sdk_client = smart_connect_obj.content
 
     def get_pyvmomi_obj_by_moid(self, vimtype, moid):
+        """
+        This function finds the vSphere object by the object moid and the object type.
+        The object type can be "VM", "Host", "Datastore", etc.
+        The object moid is a unique id for this object type under the vCenter server.
+        To check all such object information, you can go to the managed object board
+        page of your vCenter Server, such as: https://<your_vc_ip/mob
+        """
         obj = None
         if self.pyvmomi_sdk_client is None:
             raise ValueError("Must init pyvmomi_sdk_client first.")
