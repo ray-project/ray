@@ -184,9 +184,8 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_info_.find(node_id);
   if (iter == node_resource_info_.end()) {
-    iter = node_resource_info_
-               .emplace(node_id, std::make_pair(absl::Now(), rpc::ResourcesData()))
-               .first;
+    RAY_LOG(WARNING) << "Ignoring resource usage for node that is not alive: "
+                     << node_id.Hex() << ".";
   }
 
   auto &new_data = iter->second.second;
@@ -200,9 +199,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
 
   (*new_data.mutable_resources_available()) = data.resources_available();
 
-  if (data.resources_normal_task_changed()) {
-    (*new_data.mutable_resources_normal_task()) = data.resources_normal_task();
-  }
+  (*new_data.mutable_resources_normal_task()) = data.resources_normal_task();
 
   new_data.set_object_pulls_queued(data.object_pulls_queued());
   new_data.set_idle_duration_ms(data.idle_duration_ms());
@@ -254,11 +251,13 @@ void GcsAutoscalerStateManager::GetNodeStates(
 
     // The only node state we use from GcsNodeInfo is dead.
     // All others are populated with the locally kept ResourcesData,
-    // which may be more stale than GcsNodeInfo but is consistent between
+    // which may be more stale than GcsNodeInfo but is more consistent between
     // usage and load. GcsNodeInfo state contains only usage and is updated with
     // Ray Syncer usage messages, which happen at a much higher cadence than
     // autoscaler status polls, and so could be out of sync with load data,
     // which is only sent in response to the poll.
+    //
+    // See (https://github.com/ray-project/ray/issues/36926) for examples.
     if (gcs_node_info.state() == rpc::GcsNodeInfo::DEAD) {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::DEAD);
       // We don't need populate other info for a dead node.

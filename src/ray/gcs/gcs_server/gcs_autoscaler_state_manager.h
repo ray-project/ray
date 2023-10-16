@@ -62,7 +62,11 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
 
-  void RemoveNode(const NodeID &node) { node_resource_info_.erase(node); }
+  void OnNodeDead(const NodeID &node) { node_resource_info_.erase(node); }
+
+  void OnNodeAdd(const NodeID &node) {
+    node_resource_info_.emplace(node, std::make_pair(absl::Now(), rpc::ResourcesData()));
+  }
 
   const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
       &GetNodeResourceInfo() const {
