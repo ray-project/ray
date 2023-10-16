@@ -1,7 +1,7 @@
 import asyncio
 import pickle
 import sys
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Dict
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import grpc
@@ -10,18 +10,20 @@ import pytest
 import ray
 from ray import serve
 from ray.actor import ActorHandle
-from ray.serve._private.common import EndpointTag
+from ray.serve._private.common import DeploymentID, EndpointInfo, EndpointTag
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.proxy import (
+    DRAINED_MESSAGE,
     HEALTH_CHECK_SUCCESS_MESSAGE,
     HTTPProxy,
     ResponseStatus,
     gRPCProxy,
 )
-from ray.serve._private.proxy_request_response import ASGIProxyRequest
+from ray.serve._private.proxy_request_response import ProxyRequest
+from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve.generated import serve_pb2
 
 
@@ -52,18 +54,6 @@ class FakeRef:
         pass
 
 
-class FakeRefGenerator:
-    def __init__(self, messages=None):
-        self.called = False
-        self.messages = messages
-
-    def _next_async(self, *args, **kwargs):
-        if not self.called:
-            self.called = True
-            return FakeRef(messages=self.messages)
-        raise StopAsyncIteration
-
-
 class FakeActor:
     def remote(self, snapshot_ids):
         return FakeRef()
@@ -81,6 +71,89 @@ class FakeActorHandler:
         return FakeRef()
 
 
+class FakeHandle:
+    def __init__(self, streaming: bool):
+        self.deployment_id = DeploymentID("fak_deployment_name", "fake_app_name")
+        self.streaming = streaming
+
+    async def remote(self, *args, **kwargs):
+        def unary_call():
+            return "hello world"
+
+        def streaming_call():
+            for i in range(10):
+                yield f"hello world: {i}"
+        return unary_call() if not self.streaming else streaming_call()
+
+    def options(self, *args, **kwargs):
+        return self
+
+
+class FakeProxyRouter(ProxyRouter):
+    def __init__(self, *args, **kwargs):
+        self.route = None
+        self.handle = None
+        self.app_is_cross_language = None
+
+    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]):
+        pass
+
+    def get_handle_for_endpoint(self, *args, **kwargs):
+        if self.route is None and self.handle is None and self.app_is_cross_language is None:
+            return None
+
+        return self.route, self.handle, self.app_is_cross_language
+
+
+class FakeProxyRequest(ProxyRequest):
+    def __init__(self):
+        self._request_type = ""
+        self._method = ""
+        self._route_path = ""
+        self._is_route_request = False
+        self._is_health_request = False
+        self.app_name = ""
+    @property
+    def request_type(self) -> str:
+        return self._request_type
+
+    @property
+    def method(self) -> str:
+        return self._method
+
+    @property
+    def route_path(self) -> str:
+        return self._route_path
+
+    @property
+    def is_route_request(self) -> bool:
+        return self._is_route_request
+
+    @property
+    def is_health_request(self) -> bool:
+        return self._is_health_request
+
+
+class FakeGrpcContext:
+    def __init__(self):
+        self.code = None
+        self.details = None
+        self._trailing_metadata = None
+        self._invocation_metadata = []
+
+    def set_code(self, code):
+        self.code = code
+
+    def set_details(self, details):
+        self.details = details
+
+    def set_trailing_metadata(self, trailing_metadata):
+        self._trailing_metadata = trailing_metadata
+
+    def invocation_metadata(self):
+        return self._invocation_metadata
+
+
 class TestgRPCProxy:
     """Test methods implemented on gRPCProxy"""
 
@@ -92,7 +165,7 @@ class TestgRPCProxy:
             controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
-            proxy_router_class=MagicMock(),
+            proxy_router_class=FakeProxyRouter,
             controller_actor=FakeActorHandler("fake_controller_actor"),
             proxy_actor=FakeActorHandler("fake_proxy_actor"),
         )
@@ -103,7 +176,7 @@ class TestgRPCProxy:
         grpc_proxy = self.create_grpc_proxy()
 
         # Application name isn't provided.
-        proxy_request = Mock()
+        proxy_request = FakeProxyRequest()
         proxy_request.app_name = ""
         gen = grpc_proxy.not_found(proxy_request)
         status = await gen.__anext__()
@@ -115,7 +188,6 @@ class TestgRPCProxy:
         assert "Application metadata not set" in status.message
 
         # Application name is provided but wasn't found.
-        proxy_request = Mock()
         proxy_request.app_name = "foobar"
         gen = grpc_proxy.not_found(proxy_request)
         status = await gen.__anext__()
@@ -130,27 +202,19 @@ class TestgRPCProxy:
     async def test_draining_response(self):
         """Test gRPCProxy set up the correct draining response."""
         grpc_proxy = self.create_grpc_proxy()
-        proxy_request = AsyncMock()
-        draining_status = grpc.StatusCode.UNAVAILABLE
-        response = await grpc_proxy.draining_response(proxy_request=proxy_request)
+        proxy_request = FakeProxyRequest()
+        proxy_request.app_name = ""
 
-        assert response.status_code == str(draining_status)
-        proxy_request.send_status_code.assert_called_with(status_code=draining_status)
-        proxy_request.send_details.assert_called_once()
+        gen = grpc_proxy.draining_response(proxy_request)
+        message = await gen.__anext__()
+        status = await gen.__anext__()
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
 
-    @pytest.mark.asyncio
-    async def test_timeout_response(self):
-        """Test gRPCProxy set up the correct timeout response."""
-        grpc_proxy = self.create_grpc_proxy()
-        proxy_request = AsyncMock()
-        timeout_status = grpc.StatusCode.CANCELLED
-        response = await grpc_proxy.timeout_response(
-            proxy_request=proxy_request, request_id="fake-request-id"
-        )
-
-        assert response.status_code == str(timeout_status)
-        proxy_request.send_status_code.assert_called_with(status_code=timeout_status)
-        proxy_request.send_details.assert_called_once()
+        assert isinstance(message, bytes)
+        assert isinstance(status, ResponseStatus)
+        assert status.code == grpc.StatusCode.UNAVAILABLE
+        assert status.message == DRAINED_MESSAGE
 
     @pytest.mark.asyncio
     async def test_routes_response(self):
@@ -159,63 +223,81 @@ class TestgRPCProxy:
         endpoint = EndpointTag("endpoint", "app1")
         route_info = {"/route": endpoint}
         grpc_proxy.route_info = route_info
-        proxy_request = AsyncMock()
-        routes_status = grpc.StatusCode.OK
-        response = await grpc_proxy.routes_response(proxy_request=proxy_request)
+        proxy_request = FakeProxyRequest()
 
-        assert response.status_code == str(routes_status)
+        gen = grpc_proxy.routes_response(proxy_request)
+        message = await gen.__anext__()
+        status = await gen.__anext__()
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
+
+        assert isinstance(message, bytes)
+        assert isinstance(status, ResponseStatus)
+        assert status.code == grpc.StatusCode.OK
+        assert status.message == HEALTH_CHECK_SUCCESS_MESSAGE
         response_proto = serve_pb2.ListApplicationsResponse()
-        response_proto.ParseFromString(response.response)
+        response_proto.ParseFromString(message)
         assert response_proto.application_names == [endpoint.app]
-        proxy_request.send_status_code.assert_called_with(status_code=routes_status)
-        proxy_request.send_details.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_health_response(self):
         """Test gRPCProxy set up the correct health response."""
         grpc_proxy = self.create_grpc_proxy()
-        proxy_request = AsyncMock()
-        health_status = grpc.StatusCode.OK
-        response = await grpc_proxy.health_response(proxy_request=proxy_request)
+        proxy_request = FakeProxyRequest()
+        # health_status = grpc.StatusCode.OK
+        gen = grpc_proxy.health_response(proxy_request)
+        message = await gen.__anext__()
+        status = await gen.__anext__()
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
 
-        assert response.status_code == str(grpc.StatusCode.OK)
+        assert isinstance(message, bytes)
+        assert isinstance(status, ResponseStatus)
+        assert status.code == grpc.StatusCode.OK
+        assert status.message == HEALTH_CHECK_SUCCESS_MESSAGE
         response_proto = serve_pb2.HealthzResponse()
-        response_proto.ParseFromString(response.response)
+        response_proto.ParseFromString(message)
         assert response_proto.message == HEALTH_CHECK_SUCCESS_MESSAGE
-        proxy_request.send_status_code.assert_called_with(status_code=health_status)
-        proxy_request.send_details.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_service_handler_factory(self):
         """Test gRPCProxy service_handler_factory returns the correct entrypoints."""
+
+        # Ensure gRPC unary call uses the correct entry point.
         grpc_proxy = self.create_grpc_proxy()
         request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         unary_entrypoint = grpc_proxy.service_handler_factory(
             service_method="service_method", stream=False
         )
         assert unary_entrypoint.__name__ == "unary_unary"
-        mocked_proxy_request_unary = AsyncMock()
-        with patch.object(grpc_proxy, "proxy_request", mocked_proxy_request_unary):
-            await unary_entrypoint(request_proto=request_proto, context=MagicMock())
-        mocked_proxy_request_unary.assert_called_once()
 
+        # Ensure the unary entry point returns the correct result and sets the
+        # code and details on the grpc context object.
+        grpc_proxy.proxy_router.route = "route"
+        grpc_proxy.proxy_router.handle = FakeHandle(streaming=False)
+        grpc_proxy.proxy_router.app_is_cross_language = False
+        context = FakeGrpcContext()
+        result = await unary_entrypoint(request_proto=request_proto, context=context)
+        assert result == "hello world"
+        assert context.code == grpc.StatusCode.OK
+        assert context.details == ""
+
+        # Ensure gRPC streaming call uses the correct entry point.
         streaming_entrypoint = grpc_proxy.service_handler_factory(
             service_method="service_method", stream=True
         )
         assert streaming_entrypoint.__name__ == "unary_stream"
-        mocked_proxy_request_stream = AsyncMock()
-        with patch.object(grpc_proxy, "proxy_request", mocked_proxy_request_stream):
-            response = streaming_entrypoint(
-                request_proto=request_proto, context=MagicMock()
-            )
-            assert isinstance(response, AsyncGenerator)
-            while True:
-                try:
-                    obj_ref = await response.__anext__()
-                    _ = await obj_ref
-                except StopAsyncIteration:
-                    break
-        mocked_proxy_request_stream.assert_called_once()
+
+        # Ensure the streaming entry point returns the correct result and sets the
+        # code and details on the grpc context object.
+        grpc_proxy.proxy_router.route = "route"
+        grpc_proxy.proxy_router.handle = FakeHandle(streaming=True)
+        grpc_proxy.proxy_router.app_is_cross_language = False
+        context = FakeGrpcContext()
+        result = await unary_entrypoint(request_proto=request_proto, context=context)
+        assert list(result) == [f"hello world: {i}" for i in range(10)]
+        assert context.code == grpc.StatusCode.OK
+        assert context.details == ""
 
 
 class TestHTTPProxy:
