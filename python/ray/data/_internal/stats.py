@@ -150,7 +150,7 @@ class _StatsActor:
         self.bytes_spilled = Gauge(
             "data_spilled_bytes",
             description="""Bytes spilled by dataset operators.
-                DataContext.enable_get_object_locations_for_metrics 
+                DataContext.enable_get_object_locations_for_metrics
                 must be set to True to report this metric""",
             tag_keys=tags_keys,
         )
@@ -285,7 +285,8 @@ def update_stats_actor_metrics(
     stats = {key: 0 for key in metric_keys}
     for op_metric in op_metrics:
         metric_dict = op_metric.as_dict()
-        stats = {key: stats[key] + metric_dict.get(key, 0) for key in metric_keys}
+        for key in metric_keys:
+            stats[key] += metric_dict.get(key, 0)
 
     _stats_actor.update_metrics.remote(stats, tags)
 

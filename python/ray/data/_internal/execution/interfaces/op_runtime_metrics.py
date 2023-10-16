@@ -119,13 +119,16 @@ class OpRuntimeMetrics:
                 value = getattr(self, f.name)
                 result.append((f.name, value))
 
-        resource_usage = self._op.current_resource_usage()
-        result.extend(
-            [
-                ("cpu_usage", resource_usage.cpu or 0),
-                ("gpu_usage", resource_usage.gpu or 0),
-            ]
-        )
+        if metrics_only:
+            # TODO: record resource usage in OpRuntimeMetrics,
+            # avoid calling self._op.current_resource_usage()
+            resource_usage = self._op.current_resource_usage()
+            result.extend(
+                [
+                    ("cpu_usage", resource_usage.cpu or 0),
+                    ("gpu_usage", resource_usage.gpu or 0),
+                ]
+            )
         result.extend(self._extra_metrics.items())
         return dict(result)
 
