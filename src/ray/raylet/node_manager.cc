@@ -1102,7 +1102,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
                  << " died.";
           const auto &err_msg = stream.str();
           RAY_LOG(INFO) << err_msg;
-          DestroyWorker(worker, rpc::WorkerExitType::SYSTEM_ERROR, err_msg);
+          KillWorker(worker);
         }
       } else if (owner_node_id == node_id) {
         // If the leased worker's owner was on the failed node, then kill the leased
@@ -1112,7 +1112,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
                << " is killed because the owner node " << owner_node_id << " died.";
         const auto &err_msg = stream.str();
         RAY_LOG(INFO) << err_msg;
-        DestroyWorker(worker, rpc::WorkerExitType::SYSTEM_ERROR, err_msg);
+        KillWorker(worker);
       }
     }
   }
