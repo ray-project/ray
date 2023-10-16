@@ -85,9 +85,6 @@ RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
-#: Number of historically deleted deployments to store in the checkpoint.
-MAX_NUM_DELETED_DEPLOYMENTS = 1000
-
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
 MAX_CACHED_HANDLES = 100

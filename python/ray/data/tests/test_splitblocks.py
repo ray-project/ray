@@ -23,7 +23,7 @@ def test_splitrange():
     f(50, 5)
 
 
-def test_small_file_split(ray_start_10_cpus_shared):
+def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     ds = ray.data.read_csv("example://iris.csv", parallelism=1)
     assert ds.num_blocks() == 1
     assert ds.materialize().num_blocks() == 1
@@ -47,6 +47,14 @@ def test_small_file_split(ray_start_10_cpus_shared):
     stats = ds.stats()
     assert "Stage 1 ReadCSV->SplitBlocks(100)" in stats, stats
     assert "Stage 2 MapBatches" in stats, stats
+
+    ctx = ray.data.context.DataContext.get_current()
+    # Smaller than a single row.
+    ctx.target_max_block_size = 1
+    ds = ds.map_batches(lambda x: x).materialize()
+    # 150 rows.
+    assert ds.num_blocks() == 150
+    print(ds.stats())
 
 
 def test_large_file_additional_split(ray_start_10_cpus_shared, tmp_path):
@@ -72,6 +80,23 @@ def test_large_file_additional_split(ray_start_10_cpus_shared, tmp_path):
     ds = ray.data.read_parquet(tmp_path, parallelism=1000)
     assert ds.num_blocks() == 1
     assert 500 < ds.materialize().num_blocks() < 2000
+
+
+def test_map_batches_split(ray_start_10_cpus_shared, restore_data_context):
+    ds = ray.data.range(1000, parallelism=1).map_batches(lambda x: x, batch_size=1000)
+    assert ds.materialize().num_blocks() == 1
+
+    ctx = ray.data.context.DataContext.get_current()
+    # 100 integer rows per block.
+    ctx.target_max_block_size = 800
+
+    ds = ray.data.range(1000, parallelism=1).map_batches(lambda x: x, batch_size=1000)
+    assert ds.materialize().num_blocks() == 10
+
+    # A single row is already larger than the target block
+    # size.
+    ctx.target_max_block_size = 4
+    assert ds.materialize().num_blocks() == 1000
 
 
 if __name__ == "__main__":

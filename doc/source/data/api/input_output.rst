@@ -158,6 +158,15 @@ SQL Databases
 
    read_sql
 
+Databricks
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_databricks_tables
+
 Dask
 ----
 
