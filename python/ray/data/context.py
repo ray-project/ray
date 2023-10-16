@@ -214,7 +214,7 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
-        self.sreaming_output_backpressure_config = StreamingOutputBackpressureConfig()
+        self.streaming_output_backpressure_config = StreamingOutputBackpressureConfig()
 
     @staticmethod
     def get_current() -> "DataContext":

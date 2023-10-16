@@ -315,7 +315,7 @@ def build_streaming_topology(
     return (topology, i)
 
 
-def process_completed_tasks(topology: Topology) -> None:
+def process_completed_tasks(topology: Topology, enable_streaming_output_backpressure=False) -> None:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards."""
 
@@ -325,11 +325,13 @@ def process_completed_tasks(topology: Topology) -> None:
 
     context = ray.data.DataContext.get_current()
     backpressure_config = context.streaming_output_backpressure_config
+    if not backpressure_config.enabled:
+        enable_streaming_output_backpressure = False
 
     for op, state in topology.items():
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
-            if backpressure_config.enabled:
+            if enable_streaming_output_backpressure:
                 output_bufer_sizes[state] = state.outqueue_memory_usage()
 
 
@@ -345,12 +347,13 @@ def process_completed_tasks(topology: Topology) -> None:
             state, task = active_tasks.pop(ref)
             if isinstance(task, DataOpTask):
                 max_bytes_to_read = None
-                if backpressure_config.enabled:
+                if enable_streaming_output_backpressure:
                     max_bytes_to_read = (
                         backpressure_config.op_output_buffer_size_bytes - output_bufer_sizes[state]
                     )
+                print(state.op, "max_bytes_to_read", max_bytes_to_read)
                 read_bytes = task.on_data_ready(max_bytes_to_read)
-                if backpressure_config.enabled:
+                if enable_streaming_output_backpressure:
                     output_bufer_sizes[state] += read_bytes
             else:
                 assert isinstance(task, MetadataOpTask)
@@ -424,7 +427,6 @@ def select_operator_to_run(
     ops = []
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, cur_usage, limits)
-        # print(op, op.need_more_inputs(), state.num_queued(), op.should_add_input(), under_resource_limits, not op.completed())
         if (
             op.need_more_inputs()
             and state.num_queued() > 0
