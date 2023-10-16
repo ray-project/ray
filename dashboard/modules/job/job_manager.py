@@ -547,6 +547,26 @@ class JobManager:
         except Exception:
             self.event_logger = None
 
+        self._recover_running_jobs_event = asyncio.Event()
+        run_background_task(self._recover_running_jobs())
+
+    async def _recover_running_jobs(self):
+        """Recovers all running jobs from the status client.
+
+        For each job, we will spawn a coroutine to monitor it.
+        Each will be added to self._running_jobs and reconciled.
+        """
+        try:
+            all_jobs = await self._job_info_client.get_all_jobs()
+            for job_id, job_info in all_jobs.items():
+                if not job_info.status.is_terminal():
+                    run_background_task(self._monitor_job(job_id))
+        finally:
+            # This event is awaited in `submit_job` to avoid race conditions between
+            # recovery and new job submission, so it must always get set even if there
+            # are exceptions.
+            self._recover_running_jobs_event.set()
+
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
             return ray.get_actor(
@@ -589,9 +609,6 @@ class JobManager:
         while is_alive:
             try:
                 job_status = await self._job_info_client.get_status(job_id)
-                if job_status.is_terminal():
-                    break
-
                 if job_status == JobStatus.PENDING:
                     # Compare the current time with the job start time.
                     # If the job is still pending, we will set the status
@@ -893,6 +910,10 @@ class JobManager:
             entrypoint_memory = 0
         if submission_id is None:
             submission_id = generate_job_id()
+
+        # Wait for `_recover_running_jobs` to run before accepting submissions to
+        # avoid duplicate monitoring of the same job.
+        await self._recover_running_jobs_event.wait()
 
         logger.info(f"Starting job with submission_id: {submission_id}")
         job_info = JobInfo(
