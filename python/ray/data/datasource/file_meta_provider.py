@@ -284,6 +284,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         if (
             prefetched_metadata is not None
             and len(prefetched_metadata) == num_fragments
+            and all(m is not None for m in prefetched_metadata)
         ):
             # Fragment metadata was available, construct a normal
             # BlockMetadata.

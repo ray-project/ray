@@ -122,3 +122,7 @@ steps:
   - name: rllibbuild
     wanda: ci/docker/rllib.build.wanda.yaml
     depends_on: oss-ci-base_ml
+
+  - name: mlbuild
+    wanda: ci/docker/ml.build.wanda.yaml
+    depends_on: oss-ci-base_ml
