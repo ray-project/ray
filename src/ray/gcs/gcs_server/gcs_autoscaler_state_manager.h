@@ -64,7 +64,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   void RemoveNode(const NodeID &node) { node_resource_info_.erase(node); }
 
-  const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>> &GetNodeResourceInfo() const {
+  const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
+      &GetNodeResourceInfo() const {
     return node_resource_info_;
   }
 

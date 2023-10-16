@@ -191,10 +191,8 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
 
   auto &new_data = iter->second.second;
 
-  if (data.resource_load_changed()) {
-    (*new_data.mutable_resource_load()) = data.resource_load();
-    (*new_data.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
-  }
+  (*new_data.mutable_resource_load()) = data.resource_load();
+  (*new_data.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
 
   if (data.resources_total_size() > 0) {
     (*new_data.mutable_resources_total()) = data.resources_total();
