@@ -1,10 +1,12 @@
 import os
 
+from abc import ABC, abstractmethod
 import sys
 import pytest
 from ray.util.concurrent.futures.ray_executor import (
     RayExecutor,
     _ActorPool,
+    _ActorPoolBoilerPlate,
     _RoundRobinActorPool,
     _BalancedActorPool,
     ActorPoolType,
@@ -133,45 +135,33 @@ class TestShared:
         assert not ray.is_initialized()
 
 
-class TestBalancedActorPool(TestShared):
+class ActorPoolTests(ABC):
+    """
+    This set of tests should be executed for all implementations of `_ActorPool`.
+    """
+
+    @property
+    def apc(self) -> type[_ActorPoolBoilerPlate]:
+        ...
+
+    @property
+    def apt(self) -> ActorPoolType:
+        ...
 
     def test_actor_pool_must_have_actor(self):
         with pytest.raises(ValueError):
-            _BalancedActorPool(num_actors=0)
+            self.apc(num_actors=0)
 
-    def test_actor_pool_prioritises_free_actors(self):
-        def f():
-            time.sleep(10)
-            return True
-
-        pool = _BalancedActorPool(num_actors=2)
-        assert len(pool.pool) == 2
-        assert Helpers.wait_actor_state(pool, "ALIVE")
-
-        tasks = sum(pool._get_actor_task_counts().values())
-        assert tasks == 0
-
-        pool.submit(f)
-        Helpers.wait_assert(
-            partial(
-                lambda p: [0, 1] == sorted(p._get_actor_task_counts().values()), pool
-            )
-        )
-
-        pool.submit(f)
-        Helpers.wait_assert(
-            partial(
-                lambda p: [1, 1] == sorted(p._get_actor_task_counts().values()), pool
-            )
-        )
-
-    def test_actor_pool_can_get_task_count(self):
-        pool = _BalancedActorPool(num_actors=2)
-        task_counts = pool._get_actor_task_counts()
-        assert list(task_counts.values()) == [0, 0]
+    def test_actor_pool_exit_removes_from_pool(self):
+        pool = self.apc(num_actors=1)
+        assert len(pool.pool) == 1
+        [actor] = pool.pool
+        pool._exit_actor(actor)
+        assert pool.pool == []
+        assert Helpers.wait_actor_state_(actor["actor"], "DEAD")
 
     def test_actor_pool_kills_actors(self):
-        pool = _BalancedActorPool(num_actors=2)
+        pool = self.apc(num_actors=2)
         assert len(pool.pool) == 2
 
         # wait for actors to live
@@ -181,7 +171,7 @@ class TestBalancedActorPool(TestShared):
         assert Helpers.wait_actor_state(pool, "DEAD")
 
     def test_actor_pool_kills_actors_and_does_not_wait_for_tasks_to_complete(self):
-        pool = _BalancedActorPool(num_actors=2)
+        pool = self.apc(num_actors=2)
 
         def f():
             return 123
@@ -193,7 +183,7 @@ class TestBalancedActorPool(TestShared):
             future.result()
 
     def test_actor_pool_exits_actors_and_waits_for_tasks_to_complete(self):
-        pool = _BalancedActorPool(num_actors=2)
+        pool = self.apc(num_actors=2)
 
         def f():
             return 123
@@ -205,7 +195,7 @@ class TestBalancedActorPool(TestShared):
         assert future.result() == 123
 
     def test_actor_pool_replaces_expired_actors(self):
-        pool = _RoundRobinActorPool(num_actors=1, max_tasks_per_actor=2)
+        pool = self.apc(num_actors=1, max_tasks_per_actor=2)
         assert len(pool.pool) == 1
         actor_id0 = pool.pool[0]["actor"]._ray_actor_id.hex()
         pool._replace_actor_if_max_tasks()
@@ -218,234 +208,126 @@ class TestBalancedActorPool(TestShared):
         def f():
             return 123
 
-        pool = _BalancedActorPool(num_actors=1, max_tasks_per_actor=2)
+        pool = self.apc(num_actors=1, max_tasks_per_actor=2)
         assert len(pool.pool) == 1
 
         assert pool.pool[0]["task_count"] == 0
         future0 = pool.submit(f)
         assert pool.pool[0]["task_count"] == 1
-        pool.submit(f)
+        future1 = pool.submit(f)
         assert pool.pool[0]["task_count"] == 2
         actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
-        pool.submit(f)
+        future2 = pool.submit(f)
         actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
-        assert pool.pool[0]["task_count"] == 0
+        assert pool.pool[0]["task_count"] == 1
         assert actor_id01 != actor_id02
         assert future0.result() == 123
-
+        assert future1.result() == 123
+        assert future2.result() == 123
 
     def test_actor_pool_replaces_actors_exits_gracefully(self):
         def f():
             return 123
 
-        pool = _BalancedActorPool(num_actors=1, max_tasks_per_actor=1)
+        pool = self.apc(num_actors=1, max_tasks_per_actor=1)
+        assert len(pool.pool) == 1
+
         actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
         future0 = pool.submit(f)
         actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
         future1 = pool.submit(f)
         actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
         assert actor_id00 == actor_id01 != actor_id02
-        assert 123 == future0.result()
-        assert 123 == future1.result()
-
-    # def test_actor_pool_replaces_actors_exits_gracefully_in_executor(self):
-    #     # def f():
-    #     #     time.sleep(5)
-    #     #     return 123
-
-    #     # with RayExecutor(
-    #     #     address=self.address,
-    #     #     max_workers=1,
-    #     #     max_tasks_per_child=1,
-    #     #     actor_pool_type=ActorPoolType.ROUND_ROBIN,
-    #     # ) as ex:
-    #     #     pool = ex.actor_pool
-    #     #     assert pool.index == 0
-    #     #     actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
-    #     #     future0 = pool.submit(f)
-    #     #     actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
-    #     #     future1 = pool.submit(f)
-    #     #     actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
-    #     #     assert actor_id00 == actor_id01
-    #     #     assert actor_id01 != actor_id02
-    #     #     assert 123 == future0.result()
-    #     #     assert 123 == future1.result()
-
-    # def test_actor_pool_replaces_actors_exits_gracefully_in_executor2(self):
-    #     # def f():
-    #     #     time.sleep(5)
-    #     #     return 123
-
-    #     # with RayExecutor(
-    #     #     address=self.address,
-    #     #     max_workers=1,
-    #     #     max_tasks_per_child=1,
-    #     #     actor_pool_type=ActorPoolType.ROUND_ROBIN,
-    #     # ) as ex:
-    #     #     pool = ex.actor_pool
-    #     #     assert pool.index == 0
-    #     #     actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
-    #     #     future0 = ex.submit(f)
-    #     #     actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
-    #     #     future1 = ex.submit(f)
-    #     #     actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
-    #     #     assert actor_id00 == actor_id01
-    #     #     assert actor_id01 != actor_id02
-    #     #     assert 123 == future0.result()
-    #     #     assert 123 == future1.result()
-
-
-class TestRoundRobinActorPool(TestShared):
-
-    def test_actor_pool_must_have_actor(self):
-        with pytest.raises(ValueError):
-            _RoundRobinActorPool(num_actors=0)
-
-    def test_actor_pool_cycles_through_actors(self):
-        pool = _RoundRobinActorPool(num_actors=2)
-        assert len(pool.pool) == 2
-        assert pool.index == 0
-        _ = pool.next()
-        assert len(pool.pool) == 2
-        assert pool.index == 1
-        _ = pool.next()
-        assert len(pool.pool) == 2
-        assert pool.index == 0
-
-    def test_actor_pool_kills_actors(self):
-        pool = _RoundRobinActorPool(num_actors=2)
-        assert len(pool.pool) == 2
-        assert pool.index == 0
-
-        # wait for actors to live
-        assert Helpers.wait_actor_state(pool, "ALIVE")
-        pool.kill()
-        # wait for actors to die
-        assert Helpers.wait_actor_state(pool, "DEAD")
-
-    def test_actor_pool_kills_actors_and_does_not_wait_for_tasks_to_complete(self):
-        pool = _RoundRobinActorPool(num_actors=2)
-
-        def f():
-            return 123
-
-        future = pool.submit(f)
-        pool.kill()
-        assert Helpers.wait_actor_state(pool, "DEAD")
-        with pytest.raises(RayActorError):
-            future.result()
-
-    def test_actor_pool_exits_actors_and_waits_for_tasks_to_complete(self):
-        pool = _RoundRobinActorPool(num_actors=2)
-
-        def f():
-            return 123
-
-        future = pool.submit(f)
-        actor = pool._exit_actor(0)
-        assert Helpers.wait_actor_state_(actor, "DEAD")
-        assert future.result() == 123
-
-    def test_actor_pool_replaces_expired_actors(self):
-        pool = _RoundRobinActorPool(num_actors=2, max_tasks_per_actor=2)
-        assert pool.index == 0
-        actor_id0 = pool.pool[0]["actor"]._ray_actor_id.hex()
-        pool._replace_actor_if_max_tasks()
-        assert pool.pool[0]["actor"]._ray_actor_id.hex() == actor_id0
-        pool.pool[0]["task_count"] = 2
-        pool._replace_actor_if_max_tasks()
-        assert pool.pool[0]["actor"]._ray_actor_id.hex() != actor_id0
-
-    def test_actor_pool_replaces_actors_allowing_tasks_to_finish(self):
-        def f():
-            return 123
-
-        pool = _RoundRobinActorPool(num_actors=2, max_tasks_per_actor=2)
-        assert pool.index == 0
-
-        actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
-        future0 = pool.submit(f)
-
-        assert pool.index == 1
-        future1 = pool.submit(f)
-
-        assert pool.index == 0
-        pool.submit(f)
-
-        assert pool.index == 1
-        pool.submit(f)
-
-        actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
-        assert pool.index == 0
-        pool.submit(f)
-        actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
-
-        assert pool.index == 1
-        assert actor_id00 == actor_id01
-        assert actor_id01 != actor_id02
-
         assert future0.result() == 123
         assert future1.result() == 123
 
-    def test_actor_pool_replaces_actors_exits_gracefully(self):
-        def f():
-            return 123
-
-        pool = _RoundRobinActorPool(num_actors=1, max_tasks_per_actor=1)
-        actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
-        future0 = pool.submit(f)
-        actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
-        future1 = pool.submit(f)
-        actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
-        assert actor_id00 == actor_id01 != actor_id02
-        assert 123 == future0.result()
-        assert 123 == future1.result()
-
     def test_actor_pool_replaces_actors_exits_gracefully_in_executor(self):
         def f():
-            time.sleep(5)
             return 123
 
         with RayExecutor(
             address=self.address,
             max_workers=1,
             max_tasks_per_child=1,
-            actor_pool_type=ActorPoolType.ROUND_ROBIN,
+            actor_pool_type=self.apt,
         ) as ex:
             pool = ex.actor_pool
-            assert pool.index == 0
+            assert len(pool.pool) == 1
+
             actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
             future0 = pool.submit(f)
             actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
             future1 = pool.submit(f)
             actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
-            assert actor_id00 == actor_id01
-            assert actor_id01 != actor_id02
-            assert 123 == future0.result()
-            assert 123 == future1.result()
+            assert actor_id00 == actor_id01 != actor_id02
+            assert future0.result() == 123
+            assert future1.result() == 123
 
-    def test_actor_pool_replaces_actors_exits_gracefully_in_executor2(self):
+
+class TestBalancedActorPool(ActorPoolTests, TestShared):
+
+    @property
+    def apc(self) -> type[_ActorPoolBoilerPlate]:
+        return _BalancedActorPool
+
+    @property
+    def apt(self) -> ActorPoolType:
+        return ActorPoolType.BALANCED
+
+    def test_actor_pool_can_get_task_count(self):
+        pool = self.apc(num_actors=2)
+        task_counts = pool.get_actor_task_counts()
+        assert list(task_counts.values()) == [0, 0]
+
+    def test_actor_pool_prioritises_free_actors(self):
         def f():
-            time.sleep(5)
-            return 123
+            time.sleep(10)
+            return True
 
-        with RayExecutor(
-            address=self.address,
-            max_workers=1,
-            max_tasks_per_child=1,
-            actor_pool_type=ActorPoolType.ROUND_ROBIN,
-        ) as ex:
-            pool = ex.actor_pool
-            assert pool.index == 0
-            actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
-            future0 = ex.submit(f)
-            actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
-            future1 = ex.submit(f)
-            actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
-            assert actor_id00 == actor_id01
-            assert actor_id01 != actor_id02
-            assert 123 == future0.result()
-            assert 123 == future1.result()
+        pool = self.apc(num_actors=2)
+        assert len(pool.pool) == 2
+        assert Helpers.wait_actor_state(pool, "ALIVE")
+
+        tasks = sum(pool.get_actor_task_counts().values())
+        assert tasks == 0
+
+        pool.submit(f)
+        Helpers.wait_assert(
+            partial(
+                lambda p: [0, 1] == sorted(p.get_actor_task_counts().values()), pool
+            )
+        )
+
+        pool.submit(f)
+        Helpers.wait_assert(
+            partial(
+                lambda p: [1, 1] == sorted(p.get_actor_task_counts().values()), pool
+            )
+        )
+
+
+class TestRoundRobinActorPool(ActorPoolTests, TestShared):
+
+    @property
+    def apc(self) -> type[_ActorPoolBoilerPlate]:
+        return _RoundRobinActorPool
+
+    @property
+    def apt(self) -> ActorPoolType:
+        return ActorPoolType.ROUND_ROBIN
+
+
+    def test_actor_pool_cycles_through_actors(self):
+        pool = self.apc(num_actors=2)
+        assert len(pool.pool) == 2
+        assert pool.index == 0
+        _ = pool.next()
+        assert len(pool.pool) == 2
+        assert pool.index == 1
+        _ = pool.next()
+        assert len(pool.pool) == 2
+        assert pool.index == 0
+
 
 
 class TestExistingInstanceSetup(TestShared):

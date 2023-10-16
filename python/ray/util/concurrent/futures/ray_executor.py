@@ -90,6 +90,10 @@ class _ActorPool(ABC):
         ...
 
     @abstractmethod
+    def next(self) -> _PoolActor:
+        ...
+
+    @abstractmethod
     def get_actor_ids(self) -> list[str]:
         ...
 
@@ -111,7 +115,13 @@ class _ActorPoolBoilerPlate(_ActorPool):
         self.num_actors = num_actors
         self.initializer = initializer
         self.initargs = initargs
+        self.pool: list[_PoolActor] = [
+            self._build_actor() for _ in range(self.num_actors)
+        ]
         return
+
+    def get_actor_ids(self) -> list[str]:
+        return [i["actor"]._ray_actor_id.hex() for i in self.pool]
 
     @property
     def max_tasks_per_actor(self) -> Optional[int]:
@@ -185,6 +195,60 @@ class _ActorPoolBoilerPlate(_ActorPool):
             "task_count": 0,
         }
 
+    def submit(self, fn: Callable[[], T]) -> Future[T]:
+        """
+        Submit a task to be executed on the actor.
+
+        Parameters
+        ----------
+        fn : Callable
+            This 0-arity function will be executed as a task on the actor.
+
+        Returns
+        -------
+        Future
+            A future representing the result of the task
+
+        """
+
+        pool_actor = self._replace_actor_if_max_tasks()
+        fut = pool_actor["actor"].actor_function.remote(fn).future()
+        self._increment_task_count(pool_actor)
+        return fut  # type: ignore
+
+    def kill(self) -> None:
+        """
+        Kill all of the actors in the pools without waiting for their tasks to complete
+        """
+        for i in self.pool:
+            self._kill_actor(i)
+        return
+
+    def _replace_actor_if_max_tasks(self) -> _PoolActor:
+        pool_actor = self.next()
+        if self.max_tasks_per_actor is not None:
+            if pool_actor["task_count"] >= self.max_tasks_per_actor:
+                self._exit_actor(pool_actor)
+                pool_actor = self._build_actor()
+                self.pool.append(pool_actor)
+        return pool_actor
+
+    def _increment_task_count(self, pool_actor: _PoolActor) -> None:
+        pool_actor["task_count"] += 1
+        return
+
+    def _kill_actor(self, pool_actor: _PoolActor) -> None:
+        ray.kill(pool_actor["actor"])
+        return
+
+    def _exit_actor(self, pool_actor: _PoolActor) -> "ActorHandle":
+        """
+        Gracefully exit the actor and allow running jobs to finish.
+        """
+        self.pool = [i for i in self.pool if i != pool_actor]
+        pool_actor["actor"].exit.remote()
+        return pool_actor["actor"]
+
 
 class _BalancedActorPool(_ActorPoolBoilerPlate):
 
@@ -212,17 +276,7 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
         concurrent.futures.ProcessPoolExecutor).
     """
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self.pool: list[_PoolActor] = [
-            self._build_actor() for _ in range(self.num_actors)
-        ]
-        return
-
-    def get_actor_ids(self) -> list[str]:
-        return [i["actor"]._ray_actor_id.hex() for i in self.pool]
-
-    def _get_actor_task_counts(self) -> dict[str, int]:
+    def get_actor_task_counts(self) -> dict[str, int]:
         actor_tasks = {actor_id: 0 for actor_id in self.get_actor_ids()}
         for task_state in rus.list_tasks():
             t_actor_id = task_state.actor_id
@@ -246,7 +300,7 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
         _PoolActor
             The current priority actor in the pool
         """
-        task_counts = self._get_actor_task_counts()
+        task_counts = self.get_actor_task_counts()
         actor_id = min(task_counts, key=lambda k: task_counts[k])
         try:
             [pool_actor] = [
@@ -258,58 +312,6 @@ class _BalancedActorPool(_ActorPoolBoilerPlate):
             ) from err
         return pool_actor
 
-    def submit(self, fn: Callable[[], T]) -> Future[T]:
-        """
-        Submit a task to be executed on the actor.
-
-        Parameters
-        ----------
-        fn : Callable
-            This 0-arity function will be executed as a task on the actor.
-
-        Returns
-        -------
-        Future
-            A future representing the result of the task
-
-        """
-
-        pool_actor = self.next()
-        self._replace_actor_if_max_tasks(pool_actor)
-        fut = pool_actor["actor"].actor_function.remote(fn).future()
-        pool_actor["task_count"] += 1
-        return fut  # type: ignore
-
-    def kill(self) -> None:
-        """
-        Kill all of the actors in the pools without waiting for their tasks to complete
-        """
-        for i in self.pool:
-            self._kill_actor(i)
-        return
-
-    def _replace_actor_if_max_tasks(self, pool_actor: _PoolActor) -> None:
-        if self.max_tasks_per_actor is not None:
-            if pool_actor["task_count"] >= self.max_tasks_per_actor:
-                self._exit_actor(pool_actor)
-                self.pool.append(self._build_actor())
-        return
-
-    def _increment_task_count(self, pool_actor: _PoolActor) -> None:
-        pool_actor["task_count"] += 1
-        return
-
-    def _kill_actor(self, pool_actor: _PoolActor) -> None:
-        ray.kill(pool_actor["actor"])
-        return
-
-    def _exit_actor(self, pool_actor: _PoolActor) -> "ActorHandle":
-        """
-        Gracefully exit the actor and allow running jobs to finish.
-        """
-        self.pool = [i for i in self.pool if i != pool_actor]
-        pool_actor["actor"].exit.remote()
-        return pool_actor["actor"]
 
 
 class _RoundRobinActorPool(_ActorPoolBoilerPlate):
@@ -339,80 +341,24 @@ class _RoundRobinActorPool(_ActorPoolBoilerPlate):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.pool: Dict[int, _PoolActor] = {
-            i: self._build_actor() for i in range(self.num_actors)
-        }
         self.index: int = 0
         return
 
-    def get_actor_ids(self) -> list[str]:
-        return [i["actor"]._ray_actor_id.hex() for i in self.pool.values()]
-
-    def next(self) -> "ActorHandle":
+    def next(self) -> _PoolActor:
         """
         Get the next indexed member of the actor pool
 
         Returns
         -------
-        ActorHandle
-            A handle referring to the current actor in the pool
+        _PoolActor
+            The current priority actor in the pool
         """
-        obj = self.pool[self.index]["actor"]
+        obj = self.pool[self.index]
         self.index += 1
         if self.index >= len(self.pool):
             self.index = 0
         return obj
 
-    def submit(self, fn: Callable[[], T]) -> Future[T]:
-        """
-        Submit a task to be executed on the actor.
-
-        Parameters
-        ----------
-        fn : Callable
-            This 0-arity function will be executed as a task on the actor.
-
-        Returns
-        -------
-        Future
-            A future representing the result of the task
-
-        """
-        self._replace_actor_if_max_tasks()
-        self._increment_task_count()
-        return self.next().actor_function.remote(fn).future()  # type: ignore
-
-    def kill(self) -> None:
-        """
-        Kill all of the actors in the pools without waiting for their tasks to complete
-        """
-        for i in self.pool:
-            self._kill_actor(i)
-        return
-
-    def _replace_actor_if_max_tasks(self) -> None:
-        if self.max_tasks_per_actor is not None:
-            if self.pool[self.index]["task_count"] >= self.max_tasks_per_actor:
-                self._exit_actor(self.index)
-                self.pool[self.index] = self._build_actor()
-        return
-
-    def _increment_task_count(self) -> None:
-        self.pool[self.index]["task_count"] += 1
-        return
-
-    def _kill_actor(self, i: int) -> None:
-        pool_actor = self.pool[i]
-        ray.kill(pool_actor["actor"])
-        return
-
-    def _exit_actor(self, i: int) -> "ActorHandle":
-        """
-        Gracefully exit the actor and allow running jobs to finish.
-        """
-        pool_actor = self.pool.pop(i)
-        pool_actor["actor"].exit.remote()
-        return pool_actor["actor"]
 
 
 @PublicAPI(stability="alpha")  # type: ignore
