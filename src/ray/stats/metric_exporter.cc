@@ -236,7 +236,6 @@ void OpenCensusProtoExporter::UpdateMetricsData(const std::pair<opencensus::stat
     RAY_LOG(FATAL) << "Unknown view data type.";
     break;
   }
-  addGlobalTagsToGrpcMetric(*request_point_proto);
 }
 
 }  // namespace stats
