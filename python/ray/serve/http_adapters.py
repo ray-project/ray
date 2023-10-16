@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import starlette.requests
 from fastapi import File, Request
-from pydantic import BaseModel, Field
 
+from ray._private.pydantic_compat import BaseModel, Field
 from ray.serve._private.constants import DAG_DEPRECATION_MESSAGE
 from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.utils import require_packages
