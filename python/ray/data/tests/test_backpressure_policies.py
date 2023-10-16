@@ -1,35 +1,38 @@
-from contextlib import contextmanager
 import unittest
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 from pyarrow.hdfs import os
 
-from ray.data._internal.execution.backpressure_policy import ConcurrencyCapBackpressurePolicy
-
+from ray.data._internal.execution.backpressure_policy import (
+    ConcurrencyCapBackpressurePolicy,
+)
 from ray.data._internal.execution.streaming_executor_state import Topology
 
 
 class TestConcurrentcyCapBackpressurePolicy(unittest.TestCase):
-
     @contextmanager
     def _patch_env_var(self, value):
-        with patch.dict(os.environ, {ConcurrencyCapBackpressurePolicy.CONFIG_ENV_VAR: value}):
+        with patch.dict(
+            os.environ, {ConcurrencyCapBackpressurePolicy.CONFIG_ENV_VAR: value}
+        ):
             yield
 
     def test_basic(self):
         op = MagicMock()
         op.metrics = MagicMock(
-            num_tasks_running=0, num_tasks_finished=0,
+            num_tasks_running=0,
+            num_tasks_finished=0,
         )
-        topology = {
-            op: MagicMock()
-        }
+        topology = {op: MagicMock()}
 
         init_cap = 4
         cap_multiply_threshold = 0.5
         cap_multiplier = 2.0
 
-        with self._patch_env_var(f"{init_cap},{cap_multiply_threshold},{cap_multiplier}"):
+        with self._patch_env_var(
+            f"{init_cap},{cap_multiply_threshold},{cap_multiplier}"
+        ):
             policy = ConcurrencyCapBackpressurePolicy(topology)
 
         self.assertEqual(policy._concurrency_caps[op], 4)
@@ -71,7 +74,8 @@ class TestConcurrentcyCapBackpressurePolicy(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
