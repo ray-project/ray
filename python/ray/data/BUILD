@@ -99,7 +99,7 @@ py_test(
 
 py_test(
     name = "test_auto_parallelism",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_auto_parallelism.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -117,6 +117,14 @@ py_test(
     name = "test_block_batching",
     size = "medium",
     srcs = ["tests/block_batching/test_block_batching.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_block_sizing",
+    size = "small",
+    srcs = ["tests/test_block_sizing.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
