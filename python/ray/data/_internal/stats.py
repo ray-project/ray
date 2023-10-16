@@ -284,7 +284,7 @@ def update_stats_actor_metrics(
     metric_keys = OpRuntimeMetrics.get_metric_keys()
     stats = {key: 0 for key in metric_keys}
     for op_metric in op_metrics:
-        metric_dict = op_metric.as_dict()
+        metric_dict = op_metric.as_dict(metrics_only=True)
         for key in metric_keys:
             stats[key] += metric_dict.get(key, 0)
 
