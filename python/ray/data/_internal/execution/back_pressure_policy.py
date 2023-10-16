@@ -12,8 +12,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# TODO(hchen): Enable ConcurrencyCapBackPressurePolicy by default.
+DEFAULT_BACK_PRESSURE_PLOCIES = []
+
+
 def get_back_pressure_policies(topology: "Topology"):
-    return [ConcurrencyCapBackPressurePolicy(topology)]
+    return [policy(topology) for policy in DEFAULT_BACK_PRESSURE_PLOCIES]
 
 
 class BackPressurePolicy(ABC):
