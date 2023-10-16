@@ -55,7 +55,7 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> StreamingObjectRefGenerator:
         return self._streaming_gen
 
-    def on_data_ready(self, max_bytes_to_read: Optional[int] = None) -> int:
+    def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
         read_bytes = 0
         # Handle all the available outputs of the streaming generator.
         while max_bytes_to_read is None or max_bytes_to_read > 0:

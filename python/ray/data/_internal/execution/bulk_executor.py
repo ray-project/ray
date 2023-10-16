@@ -9,6 +9,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.physical_operator import DataOpTask, MetadataOpTask
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
@@ -109,7 +110,12 @@ def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
                 timeout=0.1,
             )
             for ready in done:
-                waitable_to_tasks[ready].on_waitable_ready()
+                task = waitable_to_tasks[ready]
+                if isinstance(task, DataOpTask):
+                    task.on_data_ready(None)
+                else:
+                    assert isinstance(task, MetadataOpTask)
+                    task.on_task_finished()
             tasks = op.get_active_tasks()
             while op.has_next():
                 bar.update(1)
