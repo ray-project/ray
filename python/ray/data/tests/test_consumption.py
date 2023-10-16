@@ -228,7 +228,7 @@ def test_schema(ray_start_regular_shared):
     )
 
 
-def test_schema_lazy(ray_start_regular_shared):
+def test_schema_no_execution(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=10)
     # We do not kick off the read task by default.
     assert ds._plan._in_blocks._num_computed() == 0
@@ -289,7 +289,7 @@ def test_schema_repr(ray_start_regular_shared):
     assert repr(ds.schema()) == expected_repr
 
 
-def test_count_lazy(ray_start_regular_shared):
+def test_count(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=10)
     # We do not kick off the read task by default.
     assert ds._plan._in_blocks._num_computed() == 0

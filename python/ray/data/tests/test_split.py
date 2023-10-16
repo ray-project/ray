@@ -773,7 +773,7 @@ def test_train_test_split(ray_start_regular_shared):
 
 def test_split_is_not_disruptive(ray_start_cluster):
     ray.shutdown()
-    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x).lazy()
+    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x)
 
     def verify_integrity(splits):
         for dss in splits:
