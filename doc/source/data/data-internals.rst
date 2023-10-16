@@ -136,9 +136,9 @@ Lazy Execution
 Lazy execution offers opportunities for improved performance and memory stability due
 to stage fusion optimizations and aggressive garbage collection of intermediate results.
 
-Dataset creation and transformation APIs are lazy, with execution only triggered via "sink"
+Dataset creation and transformation APIs are lazy, with execution only triggered by "sink"
 APIs, such as consuming (:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`),
-writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), or manually triggering via
+writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), or manually triggering with
 :meth:`ds.materialize() <ray.data.Dataset.materialize>`. There are a few
 exceptions to this rule, where transformations such as :meth:`ds.union()
 <ray.data.Dataset.union>` and
@@ -252,7 +252,7 @@ This section describes how Ray Data manages execution and object store memory.
 Execution Memory
 ----------------
 
-During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory via Ray's object store.
+During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
 
 Ray Data attempts to bound its heap memory usage to ``num_execution_slots * max_block_size``. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified. The maximum block size is set by the configuration parameter `ray.data.DataContext.target_max_block_size` and is set to 512MiB by default. When a task's output is larger than this value, the worker automatically splits the output into multiple smaller blocks to avoid running out of heap memory.
 

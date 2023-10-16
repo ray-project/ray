@@ -5,18 +5,17 @@ import ray
 from pkg_resources import packaging
 from ray.dashboard.utils import get_address_for_submission_client
 from ray.dashboard.modules.job.utils import strip_keys_with_value_none
+from ray.dashboard.modules.job.pydantic_models import (
+    JobDetails,
+)
 
 
 try:
     import aiohttp
     import requests
-    from ray.dashboard.modules.job.pydantic_models import (
-        JobDetails,
-    )
 except ImportError:
     aiohttp = None
     requests = None
-    JobDetails = None
 
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,

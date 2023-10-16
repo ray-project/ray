@@ -1,15 +1,13 @@
+from test_transformers_predictor import (
+    model_checkpoint,
+    test_strings,
+    tokenizer_checkpoint,
+)
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from ray.train.huggingface import TransformersCheckpoint
-
-
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.tests.test_torch_checkpoint import assert_equal_torch_models
-from test_transformers_predictor import (
-    model_checkpoint,
-    tokenizer_checkpoint,
-    test_strings,
-)
 
 
 def test_transformers_checkpoint(tmp_path):
@@ -42,6 +40,7 @@ def test_transformers_checkpoint(tmp_path):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

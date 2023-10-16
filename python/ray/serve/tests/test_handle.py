@@ -7,6 +7,7 @@ import requests
 
 import ray
 from ray import serve
+from ray.serve._private import api as _private_api
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
@@ -74,7 +75,7 @@ async def test_async_handle_serializable(serve_instance):
     def f():
         return "hello"
 
-    f.deploy()
+    f._deploy()
 
     @ray.remote
     class DelegateActor:
@@ -207,12 +208,12 @@ def test_repeated_get_handle_cached(serve_instance):
     def f(_):
         return ""
 
-    f.deploy()
+    f._deploy()
 
-    handle_sets = {f.get_handle() for _ in range(100)}
+    handle_sets = {f._get_handle() for _ in range(100)}
     assert len(handle_sets) == 1
 
-    handle_sets = {serve.get_deployment("f").get_handle() for _ in range(100)}
+    handle_sets = {_private_api.get_deployment("f")._get_handle() for _ in range(100)}
     assert len(handle_sets) == 1
 
 
@@ -225,9 +226,9 @@ async def test_args_kwargs(serve_instance, sync):
         assert kwargs["kwarg1"] == 1
         assert kwargs["kwarg2"] == "2"
 
-    f.deploy()
+    f._deploy()
 
-    handle = f.get_handle(sync=sync)
+    handle = f._get_handle(sync=sync)
 
     def call():
         return handle.remote("hi", kwarg1=1, kwarg2="2")
@@ -248,8 +249,8 @@ async def test_nonexistent_method(serve_instance, sync):
         def exists(self):
             pass
 
-    A.deploy()
-    handle = A.get_handle(sync=sync)
+    A._deploy()
+    handle = A._get_handle(sync=sync)
 
     if sync:
         obj_ref = handle.does_not_exist.remote()
@@ -280,17 +281,17 @@ async def test_handle_across_loops(serve_instance):
         def exists(self):
             return True
 
-    A.deploy()
+    A._deploy()
 
     async def refresh_get():
-        handle = A.get_handle(sync=False)
+        handle = A._get_handle(sync=False)
         assert await (await handle.exists.remote())
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
         asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
 
-    handle = A.get_handle(sync=False)
+    handle = A._get_handle(sync=False)
 
     async def cache_get():
         assert await (await handle.exists.remote())

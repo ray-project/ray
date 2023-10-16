@@ -47,7 +47,7 @@ def test_fastapi_serialization(shutdown_ray):
             return data.values.tolist()
 
     serve.start()
-    CustomService.deploy()
+    CustomService._deploy()
 
 
 def test_np_in_composed_model(serve_instance):
@@ -238,7 +238,7 @@ def test_uvicorn_duplicate_headers(serve_instance):
         def func(self):
             return JSONResponse({"a": "b"})
 
-    A.deploy()
+    A._deploy()
     resp = requests.get("http://127.0.0.1:8000/A")
     # If the header duplicated, it will be "9, 9"
     assert resp.headers["content-length"] == "9"
