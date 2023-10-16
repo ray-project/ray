@@ -154,7 +154,7 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
                            numReturns,
                            resources,
                            concurrency_group_name,
-                           /*streaming_generator_backpressure_size_bytes*/-1,
+                           /*streaming_generator_backpressure_size_bytes*/ -1,
                            serialzied_runtime_env_info};
   return task_options;
 }

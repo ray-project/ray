@@ -3,6 +3,8 @@ import pytest
 import numpy as np
 import sys
 import time
+import signal
+import os
 
 import ray
 from ray._private.test_utils import wait_for_condition
@@ -49,6 +51,9 @@ def test_streaming_generator_backpressure_basic(shutdown_only, store_in_plasma, 
 
     @ray.remote
     class A:
+        @ray.method(
+            _streaming_generator_backpressure_size_bytes=0, num_returns="streaming"
+        )
         def f(self, reporter):
             for i in range(TOTAL_RETURN):
                 print("yield ", i)
@@ -65,13 +70,12 @@ def test_streaming_generator_backpressure_basic(shutdown_only, store_in_plasma, 
 
     if actor:
         a = A.remote()
-        gen = a.f.options(
-            num_returns="streaming",
-            _streaming_generator_backpressure_size_bytes=threshold,
-        ).remote(reporter)
+        gen = a.f.remote(reporter)
     else:
         gen = f.remote(reporter)
 
+    # Don't iterate everything to test is deleing the generator
+    # would stop backpressure (see the end of the test).
     for i in range(TOTAL_RETURN - 4):
         print("iteration ", i)
         r, _ = ray.wait([gen])
@@ -211,7 +215,7 @@ def test_caller_failure_doesnt_hang(shutdown_only):
 
     wait_for_condition(verify)
 
-    # If caller fails with an exit, f should finish.
+    # If caller fails with an exit, f (child) should finish.
     print("Check caller exits")
     caller = Caller.remote()
     r = caller.f.remote("exit", False, "3")  # noqa
@@ -223,7 +227,7 @@ def test_caller_failure_doesnt_hang(shutdown_only):
 
     wait_for_condition(verify)
 
-    # If caller fails by a system exit, f should fail.
+    # If caller fails by a system exit, f (child) should fail.
     print("Check caller killed")
     caller = Caller.remote()
     r = caller.f.remote(None, True, "4")  # noqa
@@ -295,12 +299,38 @@ def test_threaded_actor_generator_backpressure(shutdown_only):
     asyncio.run(main())
 
 
-# Backpressure + failure
+def test_backpressure_pause_signal(shutdown_only):
+    """Verify the signal can be caught while the main thread is blocked
+    by a backpressure.
+    """
+
+    @ray.remote(
+        num_returns="streaming",
+        _streaming_generator_backpressure_size_bytes=0,
+        max_retries=0,
+    )
+    def backpressure_task():
+        for i in range(5):
+            print("yield ", i)
+            yield i
+
+    gen = backpressure_task.remote()
+    print(ray.get(next(gen)))
+
+    def wait_for_task():
+        t = list_tasks(filters=[("name", "=", "backpressure_task")])[0]
+        assert t.state == "RUNNING"
+        return True
+
+    wait_for_condition(wait_for_task)
+
+    t = list_tasks(filters=[("name", "=", "backpressure_task")])[0]
+    os.kill(t.worker_pid, signal.SIGTERM)
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(gen._generator_ref)
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

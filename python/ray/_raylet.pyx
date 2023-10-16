@@ -964,7 +964,7 @@ cdef class StreamingGeneratorExecutionContext:
             application error.
         streaming_generator_backpressure_size_bytes: The backpressure threshold
             for streaming generator. The stremaing generator pauses if
-            unconsumed objects exceed this threshold.
+            total size of unconsumed objects exceed this threshold.
     """
 
     cdef:
@@ -3918,6 +3918,7 @@ cdef class CoreWorker:
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_returns,
+                                         method_meta.streaming_generator_backpressure_size_bytes, # noqa
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)

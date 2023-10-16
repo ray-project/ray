@@ -270,7 +270,13 @@ class GeneratorBackpressureWaiter {
  public:
   GeneratorBackpressureWaiter(int64_t streaming_generator_backpressure_size_bytes);
   /// Block a thread and wait until objects are consumed from a consumer.
-  void WaitUntilObjectConsumed();
+  /// It return OK status if the backpressure is not needed or backpressure is
+  /// finished.
+  /// It periodically checks the signals (Python code has to keep checking
+  /// signals while it is blocked by cpp) using a callback `check_signals`.
+  /// If check_signals returns non-ok status, it finishes blocking and returns
+  /// the non-ok status to the caller.
+  Status WaitUntilObjectConsumed(std::function<Status()> check_signals);
   void UpdateTotalObjectConsumed(int64_t total_objects_consumed);
   void UpdateObjectGenerated(int64_t objects_generated);
   int64_t TotalObjectConsumed();

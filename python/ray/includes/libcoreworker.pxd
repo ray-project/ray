@@ -97,7 +97,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
     cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
         CGeneratorBackpressureWaiter(int64_t streaming_generator_backpressure_size_bytes) # noqa
-        void WaitUntilObjectConsumed()
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()

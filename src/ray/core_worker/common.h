@@ -88,7 +88,8 @@ struct TaskOptions {
   /// Propagated to child actors and tasks.
   std::string serialized_runtime_env_info;
   /// Only applicable when streaming generator is used.
-  /// -1 means it is not used.
+  /// -1 means either streaming generator is not used or
+  /// it is used but the feature is disabled.
   int64_t streaming_generator_backpressure_size_bytes;
 };
 

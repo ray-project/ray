@@ -113,21 +113,32 @@ GeneratorBackpressureWaiter::GeneratorBackpressureWaiter(
       total_objects_generated_(0),
       total_objects_consumed_(0) {}
 
-void GeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
+Status GeneratorBackpressureWaiter::WaitUntilObjectConsumed(
+    std::function<Status()> check_signals) {
   absl::MutexLock lock(&mutex_);
   if (backpressure_threshold_ < 0) {
-    RAY_CHECK(backpressure_threshold_ == -1);
+    RAY_CHECK_EQ(backpressure_threshold_, -1);
     // Backpressure disabled if backpressure_threshold_ == -1.
-    return;
+    return Status::OK();
   }
+  RAY_CHECK(check_signals != nullptr);
 
+  auto return_status = Status::OK();
   auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
   if (total_object_unconsumed > backpressure_threshold_) {
     RAY_LOG(DEBUG) << "Generator backpressured, consumed: " << total_objects_consumed_
                    << ". generated: " << total_objects_generated_
                    << ". threshold: " << backpressure_threshold_;
-    cond_var_.Wait(&mutex_);
+    while (total_object_unconsumed > backpressure_threshold_) {
+      cond_var_.WaitWithTimeout(&mutex_, absl::Seconds(1));
+      total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
+      auto return_status = check_signals();
+      if (!return_status.ok()) {
+        break;
+      }
+    }
   }
+  return return_status;
 }
 
 void GeneratorBackpressureWaiter::UpdateTotalObjectConsumed(
@@ -3002,8 +3013,13 @@ Status CoreWorker::ReportGeneratorItemReturns(
       });
   // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
   // details.
-  waiter->WaitUntilObjectConsumed();
-  return Status::OK();
+  return waiter->WaitUntilObjectConsumed(/*check_signals*/ [this]() {
+    if (options_.check_signals) {
+      return options_.check_signals();
+    } else {
+      return Status::OK();
+    }
+  });
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(
