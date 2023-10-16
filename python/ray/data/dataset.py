@@ -87,12 +87,7 @@ from ray.data._internal.stage_impl import (
     ZipStage,
 )
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data._internal.util import (
-    ConsumptionAPI,
-    _estimate_available_parallelism,
-    _is_local_scheme,
-    validate_compute,
-)
+from ray.data._internal.util import ConsumptionAPI, _is_local_scheme, validate_compute
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -107,12 +102,7 @@ from ray.data.block import (
     _apply_strict_mode_batch_format,
     _apply_strict_mode_batch_size,
 )
-from ray.data.context import (
-    ESTIMATED_SAFE_MEMORY_FRACTION,
-    OK_PREFIX,
-    WARN_PREFIX,
-    DataContext,
-)
+from ray.data.context import DataContext
 from ray.data.datasource import (
     BigQueryDatasource,
     BlockWritePathProvider,
@@ -159,7 +149,6 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
-    from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_data import GroupedData
 
 
@@ -292,7 +281,10 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -343,8 +335,15 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
                 You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
@@ -380,7 +379,10 @@ class Dataset:
                 compute,
                 ray_remote_args,
                 fn=fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
             )
         )
 
@@ -389,7 +391,10 @@ class Dataset:
             map_op = MapRows(
                 logical_plan.dag,
                 fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
@@ -799,7 +804,10 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -844,8 +852,15 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
                 You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
@@ -879,7 +894,10 @@ class Dataset:
                 compute,
                 ray_remote_args,
                 fn=fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
             )
         )
 
@@ -888,7 +906,10 @@ class Dataset:
             op = FlatMap(
                 input_op=logical_plan.dag,
                 fn=fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
@@ -1707,9 +1728,8 @@ class Dataset:
                 )
             return ds.split_at_indices([ds_length - test_size])
 
-    @ConsumptionAPI
     def union(self, *other: List["Dataset"]) -> "Dataset":
-        """Materialize and concatenate :class:`Datasets <ray.data.Dataset>` across rows.
+        """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
         The order of the blocks in the datasets is preserved, as is the
         relative ordering between the datasets passed in the argument list.
@@ -1911,7 +1931,7 @@ class Dataset:
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ds = self.groupby(column).count().select_columns([column])
+        ds = self.select_columns([column]).groupby(column).count()
         return [item[column] for item in ds.take_all()]
 
     @ConsumptionAPI
@@ -2258,7 +2278,6 @@ class Dataset:
             logical_plan = LogicalPlan(op)
         return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
-    @ConsumptionAPI
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
 
@@ -4431,7 +4450,7 @@ class Dataset:
 
     @Deprecated
     @ConsumptionAPI
-    def repeat(self, times: Optional[int] = None) -> "DatasetPipeline":
+    def repeat(self, times: Optional[int] = None):
         """Convert this into a DatasetPipeline by looping over this dataset.
 
         Transformations prior to the call to ``repeat()`` are evaluated once.
@@ -4445,7 +4464,7 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(5, parallelism=1)
             >>> # Infinite pipeline of numbers [0, 5)
-            >>> ds.repeat().take_batch()
+            >>> ds.repeat().take_batch()  # doctest: +SKIP
             {'id': array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...])}
             >>> # Can shuffle each epoch (dataset) in the pipeline.
             >>> ds.repeat().random_shuffle().take_batch() # doctest: +SKIP
@@ -4455,68 +4474,7 @@ class Dataset:
             times: The number of times to loop over this dataset, or None
                 to repeat indefinitely.
         """
-        from ray.data._internal.plan import _rewrite_read_stage
-        from ray.data.dataset_pipeline import DatasetPipeline
-
-        ctx = DataContext.get_current()
-        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
-            blocks, _, stages = self._plan._get_source_blocks_and_stages()
-            blocks.clear()
-            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
-            read_stage = stages[0]
-        else:
-            blocks = self._plan.execute()
-            outer_stats = self._plan.stats()
-            read_stage = None
-        uuid = self._get_uuid()
-        outer_stats.dataset_uuid = uuid
-
-        if times is not None and times < 1:
-            raise ValueError("`times` must be >= 1, got {}".format(times))
-
-        class Iterator:
-            def __init__(self, blocks):
-                self._blocks = blocks
-                self._i = 0
-
-            def __next__(self) -> Callable[[], "Dataset"]:
-                if times and self._i >= times:
-                    raise StopIteration
-                epoch = self._i
-                blocks = self._blocks
-                self._i += 1
-
-                def gen():
-                    ds = Dataset(
-                        ExecutionPlan(
-                            blocks,
-                            outer_stats,
-                            dataset_uuid=uuid,
-                            run_by_consumer=True,
-                        ),
-                        epoch,
-                        lazy=False,
-                    )
-                    ds._set_uuid(uuid)
-                    return ds
-
-                return gen
-
-        class Iterable:
-            def __init__(self, blocks):
-                self._blocks = blocks
-
-            def __iter__(self):
-                return Iterator(self._blocks)
-
-        pipe = DatasetPipeline(Iterable(blocks), False, length=times or float("inf"))
-        if read_stage:
-            pipe = pipe.foreach_window(
-                lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage), ds._epoch, True
-                )
-            )
-        return pipe
+        _raise_dataset_pipeline_deprecation_warning()
 
     @Deprecated
     def window(
@@ -4524,7 +4482,7 @@ class Dataset:
         *,
         blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
-    ) -> "DatasetPipeline":
+    ):
         """Convert this into a DatasetPipeline by windowing over data blocks.
 
         Transformations prior to the call to ``window()`` are evaluated in
@@ -4575,144 +4533,7 @@ class Dataset:
                 window will still include at least one block. This is mutually
                 exclusive with ``blocks_per_window``.
         """
-        from ray.data._internal.plan import _rewrite_read_stage
-        from ray.data.dataset_pipeline import DatasetPipeline
-
-        if blocks_per_window is not None and bytes_per_window is not None:
-            raise ValueError("Only one windowing scheme can be specified.")
-
-        if blocks_per_window is None:
-            blocks_per_window = 10
-
-        ctx = DataContext.get_current()
-        if self._plan.is_read_stage_equivalent() and ctx.optimize_fuse_read_stages:
-            blocks, _, stages = self._plan._get_source_blocks_and_stages()
-            blocks.clear()
-            blocks, outer_stats, stages = _rewrite_read_stage(blocks, stages)
-            read_stage = stages[0]
-        else:
-            blocks = self._plan.execute()
-            outer_stats = self._plan.stats()
-            read_stage = None
-
-        class Iterator:
-            def __init__(self, splits, epoch):
-                self._splits = splits.copy()
-                self._epoch = epoch
-
-            def __next__(self) -> "Dataset":
-                if not self._splits:
-                    raise StopIteration
-
-                blocks = self._splits.pop(0)
-
-                def gen():
-                    ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats, run_by_consumer=True),
-                        self._epoch,
-                        lazy=True,
-                    )
-                    return ds
-
-                return gen
-
-        class Iterable:
-            def __init__(self, blocks, epoch):
-                if bytes_per_window:
-                    self._splits = blocks.split_by_bytes(bytes_per_window)
-                else:
-                    self._splits = blocks.split(split_size=blocks_per_window)
-                try:
-                    sizes = [s.size_bytes() for s in self._splits]
-                    num_blocks = [s.initial_num_blocks() for s in self._splits]
-                    assert [s > 0 for s in sizes], sizes
-
-                    def fmt(size_bytes):
-                        if size_bytes > 1024 * 1024 * 1024:
-                            return "{}GiB".format(
-                                round(size_bytes / (1024 * 1024 * 1024), 2)
-                            )
-                        elif size_bytes > 10 * 1024:
-                            return "{}MiB".format(round(size_bytes / (1024 * 1024), 2))
-                        else:
-                            return "{}b".format(size_bytes)
-
-                    mean_bytes = int(np.mean(sizes))
-                    logger.info(
-                        "Created DatasetPipeline with {} windows: "
-                        "{} min, {} max, {} mean".format(
-                            len(self._splits),
-                            fmt(min(sizes)),
-                            fmt(max(sizes)),
-                            fmt(mean_bytes),
-                        )
-                    )
-                    mean_num_blocks = int(np.mean(num_blocks))
-                    logger.info(
-                        "Blocks per window: "
-                        "{} min, {} max, {} mean".format(
-                            min(num_blocks),
-                            max(num_blocks),
-                            mean_num_blocks,
-                        )
-                    )
-                    # TODO(ekl) we should try automatically choosing the default
-                    # windowing settings to meet these best-practice constraints.
-                    avail_parallelism = _estimate_available_parallelism()
-                    if mean_num_blocks < avail_parallelism:
-                        logger.warning(
-                            f"{WARN_PREFIX} This pipeline's parallelism is limited "
-                            f"by its blocks per window to ~{mean_num_blocks} "
-                            "concurrent tasks per window. To maximize "
-                            "performance, increase the blocks per window to at least "
-                            f"{avail_parallelism}. This may require increasing the "
-                            "base dataset's parallelism and/or adjusting the "
-                            "windowing parameters."
-                        )
-                    else:
-                        logger.info(
-                            f"{OK_PREFIX} This pipeline's per-window parallelism "
-                            "is high enough to fully utilize the cluster."
-                        )
-                    obj_store_mem = ray.cluster_resources().get(
-                        "object_store_memory", 0
-                    )
-                    safe_mem_bytes = int(obj_store_mem * ESTIMATED_SAFE_MEMORY_FRACTION)
-                    if mean_bytes > safe_mem_bytes:
-                        logger.warning(
-                            f"{WARN_PREFIX} This pipeline's windows are "
-                            f"~{fmt(mean_bytes)} in size each and may not fit in "
-                            "object store memory without spilling. To improve "
-                            "performance, consider reducing the size of each window "
-                            f"to {fmt(safe_mem_bytes)} or less."
-                        )
-                    else:
-                        logger.info(
-                            f"{OK_PREFIX} This pipeline's windows likely fit in "
-                            "object store memory without spilling."
-                        )
-                except Exception as e:
-                    logger.info(
-                        "Created DatasetPipeline with {} windows; "
-                        "error getting sizes: {}".format(
-                            len(self._splits),
-                            e,
-                        )
-                    )
-                self._epoch = epoch
-
-            def __iter__(self):
-                return Iterator(self._splits, self._epoch)
-
-        it = Iterable(blocks, self._epoch)
-        pipe = DatasetPipeline(it, False, length=len(it._splits))
-        if read_stage:
-            pipe = pipe.foreach_window(
-                lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage), ds._epoch, True
-                )
-            )
-        return pipe
+        _raise_dataset_pipeline_deprecation_warning()
 
     @Deprecated(message="Use `Dataset.materialize()` instead.")
     def fully_executed(self) -> "MaterializedDataset":
@@ -5386,3 +5207,11 @@ def _do_write(
     write_args = _unwrap_arrow_serialization_workaround(write_args)
     DataContext._set_current(ctx)
     return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)
+
+
+def _raise_dataset_pipeline_deprecation_warning():
+    raise DeprecationWarning(
+        "`DatasetPipeline` is deprecated from Ray 2.8. Use `Dataset` instead. "
+        "It supports lazy and streaming execution natively. To learn more, "
+        "see https://docs.ray.io/en/latest/data/data-internals.html#execution."
+    )

@@ -28,6 +28,7 @@ from ray.dashboard.modules.version import (
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
+from ray._private.pydantic_compat import ValidationError
 
 
 logger = logging.getLogger(__name__)
@@ -224,7 +225,6 @@ def create_serve_rest_api(
         async def put_all_deployments(self, req: Request) -> Response:
             from ray.serve._private.api import serve_start_async
             from ray.serve.schema import ServeApplicationSchema
-            from pydantic import ValidationError
             from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
             from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
@@ -309,7 +309,6 @@ def create_serve_rest_api(
             from ray.serve.config import ProxyLocation
             from ray.serve._private.api import serve_start_async
             from ray.serve.schema import ServeDeploySchema
-            from pydantic import ValidationError
             from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
             try:

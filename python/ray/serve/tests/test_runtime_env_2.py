@@ -47,7 +47,7 @@ class Test:
 
 handle = serve.run(Test.bind())
 assert ray.get(handle.remote()) == "world2"
-Test.delete()
+Test._delete()
 """
 
     run_string_as_driver(driver2)
