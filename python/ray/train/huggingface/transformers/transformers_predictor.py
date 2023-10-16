@@ -244,30 +244,6 @@ class TransformersPredictor(Predictor):
             **pipeline_call_kwargs: additional kwargs to pass to the
                 ``pipeline`` object.
 
-        Examples:
-            >>> import pandas as pd
-            >>> from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-            >>> from transformers.pipelines import pipeline
-            >>> from ray.train.huggingface import TransformersPredictor
-            >>>
-            >>> model_checkpoint = "gpt2"
-            >>> tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
-            >>> tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-            >>>
-            >>> model_config = AutoConfig.from_pretrained(model_checkpoint)
-            >>> model = AutoModelForCausalLM.from_config(model_config)
-            >>> predictor = TransformersPredictor(
-            ...     pipeline=pipeline(
-            ...         task="text-generation", model=model, tokenizer=tokenizer
-            ...     )
-            ... )
-            >>>
-            >>> prompts = pd.DataFrame(
-            ...     ["Complete me", "And me", "Please complete"], columns=["sentences"]
-            ... )
-            >>> predictions = predictor.predict(prompts)
-
-
         Returns:
             Prediction result.
         """
