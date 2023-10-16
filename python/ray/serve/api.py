@@ -122,7 +122,8 @@ def start(
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
-        logging_config=logging_config**kwargs,
+        logging_config=logging_config,
+        **kwargs,
     )
 
 

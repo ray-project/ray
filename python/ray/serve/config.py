@@ -276,6 +276,8 @@ class LoggingConfig(BaseModel):
     def version(self):
         if not self.logs_dir:
             logs_dir = ""
+        else:
+            logs_dir = self.logs_dir
         return crc32(
             (
                 str(self.encoding)

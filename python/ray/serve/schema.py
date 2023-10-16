@@ -59,6 +59,15 @@ def _route_prefix_format(cls, v):
     return v
 
 
+@PublicAPI(stability="alpha")
+class LoggingConfigSchema(BaseModel):
+
+    encoding: Optional[Union[EncodingType, Dict]] = EncodingType.TEXT
+    log_level: Optional[int] = logging.INFO
+    logs_dir: Optional[str] = None
+    enable_access_log: Optional[bool] = True
+
+
 @PublicAPI(stability="stable")
 class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""
@@ -140,7 +149,7 @@ class RayActorOptionsSchema(BaseModel):
 
 
 @PublicAPI(stability="stable")
-class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
+class DeploymentSchema(BaseModel):
     """
     Specifies options for one deployment within a Serve application. For each deployment
     this can optionally be included in `ServeApplicationSchema` to override deployment
@@ -286,7 +295,6 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
 
         Any field not set to DEFAULT.VALUE is considered a user-configured option.
         """
-
         return {
             field for field, value in self.dict().items() if value is not DEFAULT.VALUE
         }
@@ -392,6 +400,7 @@ class ServeApplicationSchema(BaseModel):
         default={},
         description="Arguments that will be passed to the application builder.",
     )
+    logging_config: LoggingConfigSchema = Field(default=None)
 
     @property
     def deployment_names(self) -> List[str]:
@@ -579,14 +588,6 @@ class HTTPOptionsSchema(BaseModel):
         "before closing them when no requests are ongoing. Defaults to "
         f"{DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S} seconds.",
     )
-
-
-@PublicAPI(stability="alpha")
-class LoggingConfigSchema(BaseModel):
-    encoding: Optional[Union[EncodingType, Dict]] = EncodingType.TEXT
-    log_level: Optional[int] = logging.INFO
-    logs_dir: Optional[str] = None
-    enable_access_log: Optional[bool] = True
 
 
 @PublicAPI(stability="stable")

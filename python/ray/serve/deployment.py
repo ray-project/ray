@@ -658,7 +658,8 @@ def deployment_to_schema(
     # because internally we use these two field for autoscale and deploy.
     # We can improve the code after we separate the user faced deployment config and
     # internal deployment config.
-    return DeploymentSchema(**deployment_options)
+    schema = DeploymentSchema(**deployment_options)
+    return schema
 
 
 def schema_to_deployment(s: DeploymentSchema) -> Deployment:

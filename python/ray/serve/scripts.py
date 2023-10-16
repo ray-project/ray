@@ -32,7 +32,7 @@ from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
-from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
+from ray.serve.config import DeploymentMode, LoggingConfig, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -513,16 +513,19 @@ def run(
 
     http_options = {"host": host, "port": port, "location": "EveryNode"}
     grpc_options = gRPCOptions()
+    logging_config = LoggingConfig()
     # Merge http_options and grpc_options with the ones on ServeDeploySchema. If host
     # and/or port is passed by cli, those continue to take the priority
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
         grpc_options = gRPCOptions(**config.grpc_options.dict())
+        logging_config = LoggingConfig(**config.logging_config.dict())
 
     client = _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
+        logging_config=logging_config,
     )
 
     try:
@@ -851,6 +854,7 @@ def build(
         if _kubernetes_format:
             return schema.kubernetes_dict(exclude_unset=True)
         else:
+            schema.Config.use_enum_values = True
             return schema.dict(exclude_unset=True)
 
     config_str = (
@@ -900,7 +904,6 @@ def build(
 
         # Parse + validate the set of application configs
         ServeDeploySchema.parse_obj(deploy_config)
-
         config_str += yaml.dump(
             deploy_config,
             Dumper=ServeDeploySchemaDumper,

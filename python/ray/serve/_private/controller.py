@@ -740,6 +740,16 @@ class ServeController:
                 )
             self.deploy_mode = ServeDeployMode.SINGLE_APP
         else:
+            # Overwrite the logging config
+            global_logging_config = config.logging_config
+            for app in config.applications:
+                app_log_config = app.logging_config
+                for deployment in app.deployments:
+                    if deployment.logging_config is None:
+                        deployment.logging_config = (
+                            app_log_config or global_logging_config
+                        )
+
             applications = config.applications
             if self.deploy_mode == ServeDeployMode.SINGLE_APP:
                 raise RayServeException(
