@@ -1,18 +1,17 @@
 import argparse
+import os
+import tempfile
 from typing import Tuple
 
 import pandas as pd
-from ray.air.checkpoint import Checkpoint
-
 import torch
 import torch.nn as nn
 
 import ray
 import ray.train as train
-from ray.air import session
 from ray.data import Dataset
+from ray.train import Checkpoint, DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
 
 
 def get_datasets(split: float = 0.7) -> Tuple[Dataset]:
@@ -71,8 +70,8 @@ def train_func(config):
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
-    train_dataset_shard = session.get_dataset_shard("train")
-    validation_dataset = session.get_dataset_shard("validation")
+    train_dataset_shard = train.get_dataset_shard("train")
+    validation_dataset = train.get_dataset_shard("validation")
 
     model = nn.Sequential(
         nn.Linear(100, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1)
@@ -97,12 +96,15 @@ def train_func(config):
         device = train.torch.get_device()
 
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
-        if session.get_world_rank() == 0:
+        if train.get_context().get_world_rank() == 0:
             result = validate_epoch(validation_torch_dataset, model, loss_fn, device)
         else:
             result = {}
         results.append(result)
-        session.report(result, checkpoint=Checkpoint.from_dict(dict(model=model)))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.module.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report(result, checkpoint=Checkpoint.from_directory(tmpdir))
 
     return results
 
@@ -116,6 +118,7 @@ def train_regression(num_workers=2, use_gpu=False):
         train_loop_config=config,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": train_dataset, "validation": val_dataset},
+        dataset_config=DataConfig(datasets_to_split=["train"]),
     )
 
     result = trainer.fit()

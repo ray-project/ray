@@ -74,7 +74,6 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
-from ray.util import log_once
 
 gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
@@ -306,11 +305,11 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self.disable_env_checking = False
+        self.auto_wrap_old_gym_envs = True
+        self.action_mask_key = "action_mask"
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
         self._is_atari = None
-        self.auto_wrap_old_gym_envs = True
-        self.action_mask_key = "action_mask"
 
         # `self.rollouts()`
         self.env_runner_cls = None
@@ -339,7 +338,23 @@ class AlgorithmConfig(_Config):
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
-        self.model = copy.deepcopy(MODEL_DEFAULTS)
+        # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
+        #  the main AlgorithmConfig. We should not require the user to provide those
+        #  settings in both, the AlgorithmConfig (as property) AND the model config
+        #  dict. We should generally move to a world, in which there exists an
+        #  AlgorithmConfig that a) has-a user provided model config object and b)
+        #  is given a chance to compile a final model config (dict or object) that is
+        #  then passed into the RLModule/Catalog. This design would then match our
+        #  "compilation" pattern, where we compile automatically those settings that
+        #  should NOT be touched by the user.
+        #  In case, an Algorithm already uses the above described pattern (and has
+        #  `self.model` as a @property, ignore AttributeError (for trying to set this
+        #  property).
+        try:
+            self.model = copy.deepcopy(MODEL_DEFAULTS)
+        except AttributeError:
+            pass
+
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -648,15 +663,8 @@ class AlgorithmConfig(_Config):
                 # Resolve possible classpath.
                 value = deserialize_type(value)
                 self.rollouts(sample_collector=value)
-            # If config key matches a property, just set it, otherwise, warn and set.
+            # Set the property named `key` to `value`.
             else:
-                if not hasattr(self, key) and log_once(
-                    "unknown_property_in_algo_config"
-                ):
-                    logger.warning(
-                        f"Cannot create {type(self).__name__} from given "
-                        f"`config_dict`! Property {key} not supported."
-                    )
                 setattr(self, key, value)
 
         self.evaluation(**eval_call)
@@ -1010,6 +1018,30 @@ class AlgorithmConfig(_Config):
                         )
             else:
                 self.rl_module_spec = default_rl_module_spec
+
+            not_compatible_w_rlm_msg = (
+                "Cannot use `{}` option with RLModule API. `{"
+                "}` is part of the ModelV2 API and Policy API,"
+                " which are not compatible with the RLModule "
+                "API. You can either deactivate the RLModule "
+                "API by setting `config.rl_module( "
+                "_enable_rl_module_api=False)` and "
+                "`config.training(_enable_learner_api=False)` ,"
+                "or use the RLModule API and implement your "
+                "custom model as an RLModule."
+            )
+
+            if self.model["custom_model"] is not None:
+                raise ValueError(
+                    not_compatible_w_rlm_msg.format("custom_model", "custom_model")
+                )
+
+            if self.model["custom_model_config"] != {}:
+                raise ValueError(
+                    not_compatible_w_rlm_msg.format(
+                        "custom_model_config", "custom_model_config"
+                    )
+                )
 
             if self.exploration_config:
                 # This is not compatible with RLModules, which have a method
@@ -2531,29 +2563,10 @@ class AlgorithmConfig(_Config):
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
             if _enable_rl_module_api is True and self.exploration_config:
-                logger.warning(
-                    "Setting `exploration_config={}` because you set "
-                    "`_enable_rl_module_api=True`. When RLModule API are "
-                    "enabled, exploration_config can not be "
-                    "set. If you want to implement custom exploration behaviour, "
-                    "please modify the `forward_exploration` method of the "
-                    "RLModule at hand. On configs that have a default exploration "
-                    "config, this must be done with "
-                    "`config.exploration_config={}`."
-                )
                 self.__prior_exploration_config = self.exploration_config
                 self.exploration_config = {}
             elif _enable_rl_module_api is False and not self.exploration_config:
                 if self.__prior_exploration_config is not None:
-                    logger.warning(
-                        "Setting `exploration_config="
-                        f"{self.__prior_exploration_config}` because you set "
-                        "`_enable_rl_module_api=False`. This exploration config was "
-                        "restored from a prior exploration config that was overriden "
-                        "when setting `_enable_rl_module_api=True`. This occurs "
-                        "because when RLModule API are enabled, exploration_config "
-                        "can not be set."
-                    )
                     self.exploration_config = self.__prior_exploration_config
                     self.__prior_exploration_config = None
                 else:
@@ -2562,7 +2575,7 @@ class AlgorithmConfig(_Config):
                         "exploration config was found to be restored."
                     )
         else:
-            # throw a warning if the user has used this API but not enabled it.
+            # Throw a warning if the user has used this API but not enabled it.
             logger.warning(
                 "You have called `config.rl_module(...)` but "
                 "have not enabled the RLModule API. To enable it, call "
@@ -2648,13 +2661,10 @@ class AlgorithmConfig(_Config):
             # We do NOT attempt to auto-detect Atari env for other specified types like
             # a callable, to avoid running heavy logics in validate().
             # For these cases, users can explicitly set `environment(atari=True)`.
-            if not type(self.env) == str:
+            if type(self.env) is not str:
                 return False
             try:
-                if self.env.startswith("ALE/"):
-                    env = gym.make("GymV26Environment-v0", env_id=self.env)
-                else:
-                    env = gym.make(self.env)
+                env = gym.make(self.env)
             # Any gymnasium error -> Cannot be an Atari env.
             except gym.error.Error:
                 return False
@@ -2905,7 +2915,14 @@ class AlgorithmConfig(_Config):
                     ):
                         obs_space = None
                         mapping_fn = self.policy_mapping_fn
-                        if mapping_fn:
+                        one_obs_space = next(iter(env_obs_space.values()))
+                        # If all obs spaces are the same anyways, just use the first
+                        # single-agent space.
+                        if all(s == one_obs_space for s in env_obs_space.values()):
+                            obs_space = one_obs_space
+                        # Otherwise, we have to match the policy ID with all possible
+                        # agent IDs and find the agent ID that matches.
+                        elif mapping_fn:
                             for aid in env.get_agent_ids():
                                 # Match: Assign spaces for this agentID to the PolicyID.
                                 if mapping_fn(aid, None, worker=None) == pid:
@@ -2959,7 +2976,14 @@ class AlgorithmConfig(_Config):
                     ):
                         act_space = None
                         mapping_fn = self.policy_mapping_fn
-                        if mapping_fn:
+                        one_act_space = next(iter(env_act_space.values()))
+                        # If all action spaces are the same anyways, just use the first
+                        # single-agent space.
+                        if all(s == one_act_space for s in env_act_space.values()):
+                            act_space = one_act_space
+                        # Otherwise, we have to match the policy ID with all possible
+                        # agent IDs and find the agent ID that matches.
+                        elif mapping_fn:
                             for aid in env.get_agent_ids():
                                 # Match: Assign spaces for this AgentID to the PolicyID.
                                 if mapping_fn(aid, None, worker=None) == pid:
@@ -3002,12 +3026,14 @@ class AlgorithmConfig(_Config):
 
         # If container given, construct a simple default callable returning True
         # if the PolicyID is found in the list/set of IDs.
-        is_policy_to_train = self.policies_to_train
         if self.policies_to_train is not None and not callable(self.policies_to_train):
             pols = set(self.policies_to_train)
 
             def is_policy_to_train(pid, batch=None):
                 return pid in pols
+
+        else:
+            is_policy_to_train = self.policies_to_train
 
         return policies, is_policy_to_train
 
@@ -3326,7 +3352,6 @@ class AlgorithmConfig(_Config):
         return marl_module_spec
 
     def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
-
         if not self._is_frozen:
             raise ValueError(
                 "Cannot call `get_learner_group_config()` on an unfrozen "
@@ -3660,21 +3685,15 @@ class AlgorithmConfig(_Config):
             )
 
     @property
-    @Deprecated(error=False)
+    @Deprecated(
+        old="AlgorithmConfig.multiagent['[some key]']",
+        new="AlgorithmConfig.[some key]",
+        error=True,
+    )
     def multiagent(self):
-        """Shim method to help pretend we are a dict with 'multiagent' key."""
-        return {
-            "policies": self.policies,
-            "policy_mapping_fn": self.policy_mapping_fn,
-            "policies_to_train": self.policies_to_train,
-            "policy_map_capacity": self.policy_map_capacity,
-            "policy_map_cache": self.policy_map_cache,
-            "count_steps_by": self.count_steps_by,
-            "observation_fn": self.observation_fn,
-        }
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=False)
+    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
     def num_workers(self):
-        """For backward-compatibility purposes only."""
-        return self.num_rollout_workers
+        pass

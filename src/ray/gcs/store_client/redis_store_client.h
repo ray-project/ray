@@ -122,7 +122,7 @@ class RedisStoreClient : public StoreClient {
   // only when there is no in-flight request for the key.
   size_t PushToSendingQueue(const std::vector<std::string> &keys,
                             std::function<void()> send_request)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Take requests from the sending queue and erase the queue if it's
   // empty.
@@ -131,7 +131,7 @@ class RedisStoreClient : public StoreClient {
   //
   // \return The requests to send.
   std::vector<std::function<void()>> TakeRequestsFromSendingQueue(
-      const std::vector<std::string> &keys) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      const std::vector<std::string> &keys) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status DoPut(const std::string &key,
                const std::string &data,
@@ -163,7 +163,7 @@ class RedisStoreClient : public StoreClient {
   // The pending redis requests queue for each key.
   // The queue will be poped when the request is processed.
   absl::flat_hash_map<std::string, std::queue<std::function<void()>>>
-      pending_redis_request_by_key_ GUARDED_BY(mu_);
+      pending_redis_request_by_key_ ABSL_GUARDED_BY(mu_);
   FRIEND_TEST(RedisStoreClientTest, Random);
 };
 

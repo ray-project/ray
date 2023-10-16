@@ -149,10 +149,12 @@ class AgentConnector(Connector):
     AgentConnectorDataTypes can be used to specify arbitrary type of env data,
 
     Example:
-        .. testcode::
-            import numpy as np
 
-            # Represent a list of agent data from one env step() call.
+        Represent a list of agent data from one env step() call.
+
+        .. testcode::
+
+            import numpy as np
             ac = AgentConnectorDataType(
                 env_id="env_1",
                 agent_id=None,
@@ -162,15 +164,20 @@ class AgentConnector(Connector):
                 }
             )
 
-            # ... or a single agent data ready to be preprocessed.
+        Or a single agent data ready to be preprocessed.
+
+        .. testcode::
+
             ac = AgentConnectorDataType(
                 env_id="env_1",
                 agent_id="agent_1",
                 data=np.array([1, 2, 3]),
             )
 
-            # We can also adapt a simple stateless function into an agent connector by
-            # using register_lambda_agent_connector:
+        We can also adapt a simple stateless function into an agent connector by
+        using register_lambda_agent_connector:
+
+        .. testcode::
 
             import numpy as np
             from ray.rllib.connectors.agent.lambdas import (
@@ -283,7 +290,9 @@ class ActionConnector(Connector):
     into an ActionConnector by using register_lambda_action_connector.
 
     Example:
+
     .. testcode::
+
         from ray.rllib.connectors.action.lambdas import (
             register_lambda_action_connector
         )

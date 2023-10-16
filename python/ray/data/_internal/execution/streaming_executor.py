@@ -74,7 +74,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[OpState] = None
 
         Executor.__init__(self, options)
-        threading.Thread.__init__(self, daemon=True)
+        thread_name = f"StreamingExecutor-{self._execution_id}"
+        threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
@@ -99,12 +100,11 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
-        _validate_dag(dag, self._get_or_refresh_resource_limits())
         self._topology, _ = build_streaming_topology(dag, self._options)
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
-            self._global_info = ProgressBar("Running", dag.num_outputs_total() or 1)
+            self._global_info = ProgressBar("Running", dag.num_outputs_total())
 
         self._output_node: OpState = self._topology[dag]
         self.start()
@@ -130,7 +130,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     else:
                         # Otherwise return a concrete RefBundle.
                         if self._outer._global_info:
-                            self._outer._global_info.update(1)
+                            self._outer._global_info.update(
+                                1, dag._estimated_output_blocks
+                            )
                         return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
@@ -211,7 +213,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 continue
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multistage(op.get_stats())
-            stats.extra_metrics = op.get_metrics()
+            stats.extra_metrics = op.metrics.as_dict()
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
@@ -338,10 +340,39 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
         base_usage = base_usage.add(op.base_resource_usage())
 
     if not base_usage.satisfies_limit(limits):
-        raise ValueError(
-            f"The base resource usage of this topology {base_usage} "
-            f"exceeds the execution limits {limits}!"
+        error_message = (
+            "The current cluster doesn't have the required resources to execute your "
+            "Dataset pipeline:\n"
         )
+        if (
+            base_usage.cpu is not None
+            and limits.cpu is not None
+            and base_usage.cpu > limits.cpu
+        ):
+            error_message += (
+                f"- Your application needs {base_usage.cpu} CPU(s), but your cluster "
+                f"only has {limits.cpu}.\n"
+            )
+        if (
+            base_usage.gpu is not None
+            and limits.gpu is not None
+            and base_usage.gpu > limits.gpu
+        ):
+            error_message += (
+                f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
+                f"only has {limits.gpu}.\n"
+            )
+        if (
+            base_usage.object_store_memory is not None
+            and base_usage.object_store_memory is not None
+            and base_usage.object_store_memory > limits.object_store_memory
+        ):
+            error_message += (
+                f"- Your application needs {base_usage.object_store_memory}B object "
+                f"store memory, but your cluster only has "
+                f"{limits.object_store_memory}B.\n"
+            )
+        raise ValueError(error_message.strip())
 
 
 def _debug_dump_topology(topology: Topology) -> None:

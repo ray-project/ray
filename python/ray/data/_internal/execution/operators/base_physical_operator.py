@@ -68,14 +68,14 @@ class AllToAllOperator(PhysicalOperator):
         self._stats: StatsDict = {}
         super().__init__(name, [input_op])
 
-    def num_outputs_total(self) -> Optional[int]:
+    def num_outputs_total(self) -> int:
         return (
             self._num_outputs
             if self._num_outputs
             else self.input_dependencies[0].num_outputs_total()
         )
 
-    def add_input(self, refs: RefBundle, input_index: int) -> None:
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
@@ -93,7 +93,7 @@ class AllToAllOperator(PhysicalOperator):
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         return self._output_buffer.pop(0)
 
     def get_stats(self) -> StatsDict:

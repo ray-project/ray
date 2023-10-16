@@ -5,7 +5,6 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 import numpy as np
 
 import ray
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
@@ -52,15 +51,28 @@ class Datasource:
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
+    def on_write_start(self, **write_args) -> None:
+        """Callback for when a write job starts.
+
+        Use this method to perform setup for write tasks. For example, creating a
+        staging bucket in S3.
+
+        Args:
+            write_args: Additional kwargs to pass to the datasource impl.
+        """
+        pass
+
     def write(
         self,
         blocks: Iterable[Block],
+        ctx: TaskContext,
         **write_args,
     ) -> WriteResult:
         """Write blocks out to the datasource. This is used by a single write task.
 
         Args:
             blocks: List of data blocks.
+            ctx: ``TaskContext`` for the write task.
             write_args: Additional kwargs to pass to the datasource impl.
 
         Returns:
@@ -198,13 +210,11 @@ class ReadTask(Callable[[], Iterable[Block]]):
     def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
         self._metadata = metadata
         self._read_fn = read_fn
-        self._additional_output_splits = 1
 
     def get_metadata(self) -> BlockMetadata:
         return self._metadata
 
     def __call__(self) -> Iterable[Block]:
-        context = DataContext.get_current()
         result = self._read_fn()
         if not hasattr(result, "__iter__"):
             DeprecationWarning(
@@ -212,29 +222,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
                 "Probably you need to return `[block]` instead of "
                 "`block`.".format(result)
             )
-
-        if context.block_splitting_enabled:
-            for block in result:
-                yield from self._do_additional_splits(block)
-        else:
-            builder = DelegatingBlockBuilder()
-            for block in result:
-                builder.add_block(block)
-            yield builder.build()
-
-    def _set_additional_split_factor(self, k: int) -> None:
-        self._additional_output_splits = k
-
-    def _do_additional_splits(self, block: Block) -> Iterable[Block]:
-        if self._additional_output_splits > 1:
-            block = BlockAccessor.for_block(block)
-            offset = 0
-            split_sizes = _splitrange(block.num_rows(), self._additional_output_splits)
-            for size in split_sizes:
-                yield block.slice(offset, offset + size, copy=True)
-                offset += size
-        else:
-            yield block
+        yield from result
 
 
 @PublicAPI
@@ -496,21 +484,3 @@ class _RandomIntRowDatasourceReader(Reader):
             i += block_size
 
         return read_tasks
-
-
-def _splitrange(n, k):
-    """Calculates array lens of np.array_split().
-
-    This is the equivalent of
-    `[len(x) for x in np.array_split(range(n), k)]`.
-    """
-    base = n // k
-    output = [base] * k
-    rem = n - sum(output)
-    for i in range(len(output)):
-        if rem > 0:
-            output[i] += 1
-            rem -= 1
-    assert rem == 0, (rem, output, n, k)
-    assert sum(output) == n, (output, n, k)
-    return output

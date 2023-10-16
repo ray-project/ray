@@ -209,10 +209,10 @@
                     "type": "string",
                     "default": "ubuntu"
                 },
-                "ssh_public_key": { 
+                "ssh_public_key": {
                     "type": "string"
                 },
-                "ssh_private_key": { 
+                "ssh_private_key": {
                     "type": "string"
                 },
                 "ssh_proxy_command": {
@@ -239,7 +239,7 @@
                     "type": "boolean",
                     "description": "run `docker pull` first"
                 },
-                "run_options": { 
+                "run_options": {
                     "type": "array",
                     "description": "shared options for starting head/worker docker"
                 },
@@ -258,7 +258,7 @@
                 "worker_run_options": {
                     "type": "array",
                     "description": "analogous to head_run_options"
-                }, 
+                },
                 "disable_automatic_runtime_detection" : {
                     "type": "boolean",
                     "description": "disable Ray from automatically using the NVIDIA runtime if available",
@@ -351,6 +351,14 @@
 							   ".*":{
 								   "type": "integer",
 								   "minimum": 0
+							   }
+						   }
+                       },
+                       "labels": {
+						   "type": "object",
+						   "patternProperties": {
+							   ".*":{
+								   "type": "string"
 							   }
 						   }
                        },

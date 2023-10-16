@@ -17,7 +17,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
-from ray.data.dataset import Dataset, MaterializedDataset, _sliding_window
+from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
@@ -494,7 +494,7 @@ def test_convert_types(ray_start_regular_shared):
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert extract_values("item", ds.take()) == ["hello", "world"]
-    assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
+    assert isinstance(next(iter(ds.iter_batches(batch_format=None))), pa.Table)
 
 
 @pytest.mark.parametrize("parallelism", list(range(1, 21)))
@@ -542,25 +542,6 @@ def test_take_all(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         assert ray.data.range(5).take_all(4)
-
-
-def test_sliding_window():
-    arr = list(range(10))
-
-    # Test all windows over this iterable.
-    window_sizes = list(range(1, len(arr) + 1))
-    for window_size in window_sizes:
-        windows = list(_sliding_window(arr, window_size))
-        assert len(windows) == len(arr) - window_size + 1
-        assert all(len(window) == window_size for window in windows)
-        assert all(
-            list(window) == arr[i : i + window_size] for i, window in enumerate(windows)
-        )
-
-    # Test window size larger than iterable length.
-    windows = list(_sliding_window(arr, 15))
-    assert len(windows) == 1
-    assert list(windows[0]) == arr
 
 
 def test_iter_rows(ray_start_regular_shared):
@@ -1164,7 +1145,9 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
     assert ds.min("A") == 0
 
     # Test empty dataset
-    ds = ray.data.range(10)
+    # Note: we explicitly set parallelism here to ensure there are no empty
+    # input blocks.
+    ds = ray.data.range(10, parallelism=10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["id"] > 10).min("id") is None
@@ -1205,7 +1188,9 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
     assert ds.max("A") == 99
 
     # Test empty dataset
-    ds = ray.data.range(10)
+    # Note: we explicitly set parallelism here to ensure there are no empty
+    # input blocks.
+    ds = ray.data.range(10, parallelism=10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["id"] > 10).max("id") is None
@@ -1246,7 +1231,9 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
     assert ds.mean("A") == 49.5
 
     # Test empty dataset
-    ds = ray.data.range(10)
+    # Note: we explicitly set parallelism here to ensure there are no empty
+    # input blocks.
+    ds = ray.data.range(10, parallelism=10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["id"] > 10).mean("id") is None
@@ -1407,12 +1394,6 @@ def test_unsupported_pyarrow_versions_check_disabled(
     except ImportError as e:
         pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
 
-    # Test read_parquet.
-    try:
-        ray.data.read_parquet("example://iris.parquet").take_all()
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
-
     # Test from_numpy (we use Arrow for representing the tensors).
     try:
         ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
@@ -1561,7 +1542,9 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
     ds1 = ray.data.read_datasource(FlakyCSVDatasource(), parallelism=1, paths=path1)
     ds1.write_datasource(FlakyCSVDatasource(), path=local_path, dataset_uuid="data")
     assert df1.equals(
-        pd.read_csv(os.path.join(local_path, "data_000000.csv"), storage_options={})
+        pd.read_csv(
+            os.path.join(local_path, "data_000000_000000.csv"), storage_options={}
+        )
     )
 
     counter = Counter.remote()
@@ -1639,26 +1622,26 @@ def test_polars_lazy_import(shutdown_only):
 
 def test_batch_formats(shutdown_only):
     ds = ray.data.range(100)
-    assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
-    assert isinstance(next(ds.iter_batches(batch_format="default")), dict)
-    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
-    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
-    assert isinstance(next(ds.iter_batches(batch_format="numpy")), dict)
+    assert isinstance(next(iter(ds.iter_batches(batch_format=None))), pa.Table)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="default"))), dict)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="pandas"))), pd.DataFrame)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="pyarrow"))), pa.Table)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="numpy"))), dict)
 
     ds = ray.data.range_tensor(100)
-    assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
-    assert isinstance(next(ds.iter_batches(batch_format="default")), dict)
-    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
-    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
-    assert isinstance(next(ds.iter_batches(batch_format="numpy")), dict)
+    assert isinstance(next(iter(ds.iter_batches(batch_format=None))), pa.Table)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="default"))), dict)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="pandas"))), pd.DataFrame)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="pyarrow"))), pa.Table)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="numpy"))), dict)
 
     df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
     ds = ray.data.from_pandas(df)
-    assert isinstance(next(ds.iter_batches(batch_format=None)), pd.DataFrame)
-    assert isinstance(next(ds.iter_batches(batch_format="default")), dict)
-    assert isinstance(next(ds.iter_batches(batch_format="pandas")), pd.DataFrame)
-    assert isinstance(next(ds.iter_batches(batch_format="pyarrow")), pa.Table)
-    assert isinstance(next(ds.iter_batches(batch_format="numpy")), dict)
+    assert isinstance(next(iter(ds.iter_batches(batch_format=None))), pd.DataFrame)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="default"))), dict)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="pandas"))), pd.DataFrame)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="pyarrow"))), pa.Table)
+    assert isinstance(next(iter(ds.iter_batches(batch_format="numpy"))), dict)
 
 
 def test_dataset_schema_after_read_stats(ray_start_cluster):
@@ -1675,7 +1658,7 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 
 
 def test_dataset_plan_as_string(ray_start_cluster):
-    ds = ray.data.read_parquet("example://iris.parquet")
+    ds = ray.data.read_parquet("example://iris.parquet", parallelism=8)
     assert ds._plan.get_plan_as_string("Dataset") == (
         "Dataset(\n"
         "   num_blocks=8,\n"

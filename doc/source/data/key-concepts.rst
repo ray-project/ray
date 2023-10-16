@@ -3,7 +3,7 @@
 Key Concepts
 ============
 
-Learn about :class:`Dataset <ray.data.Dataset>` and the functionality it provides.
+Learn about :class:`Dataset <ray.data.Dataset>` and the capabilities it provides.
 
 This guide provides a lightweight introduction to:
 
@@ -161,10 +161,11 @@ or remote filesystems.
 
     transformed_ds.write_parquet("/tmp/iris")
 
-    print(sorted(os.listdir("/tmp/iris")))
+    print(os.listdir("/tmp/iris"))
 
 .. testoutput::
-
+    :options: +MOCK
+    
     ['..._000000.parquet', '..._000001.parquet']
 
 

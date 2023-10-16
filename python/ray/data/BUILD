@@ -74,6 +74,14 @@ py_test(
 )
 
 py_test(
+    name = "test_bigquery",
+    size = "large",
+    srcs = ["tests/test_bigquery.py"],
+    tags = ["team:data", "exclusive", "data_integration"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_actor_pool_map_operator",
     size = "small",
     srcs = ["tests/test_actor_pool_map_operator.py"],
@@ -170,6 +178,14 @@ py_test(
 )
 
 py_test(
+    name = "test_file_based_datasource",
+    size = "small",
+    srcs = ["tests/test_file_based_datasource.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],
@@ -211,7 +227,7 @@ py_test(
 
 py_test(
     name = "test_numpy",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_numpy.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -229,14 +245,6 @@ py_test(
     name = "test_parquet",
     size = "medium",
     srcs = ["tests/test_parquet.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_pipeline",
-    size = "medium",
-    srcs = ["tests/test_pipeline.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -371,22 +379,6 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_incremental_take",
-    size = "small",
-    srcs = ["tests/test_pipeline_incremental_take.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_pipeline_nohang",
-    size = "medium",
-    srcs = ["tests/test_pipeline_nohang.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
     name = "test_progress_bar",
     size = "small",
     srcs = ["tests/test_progress_bar.py"],
@@ -444,7 +436,7 @@ py_test(
 
 py_test(
     name = "test_stats",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_stats.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -452,7 +444,7 @@ py_test(
 
 py_test(
     name = "test_streaming_executor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],

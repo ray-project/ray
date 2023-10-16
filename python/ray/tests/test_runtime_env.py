@@ -12,7 +12,10 @@ from typing import Any, Dict, List
 from unittest import mock
 
 import pytest
-from ray.runtime_env.runtime_env import RuntimeEnvConfig
+from ray.runtime_env.runtime_env import (
+    RuntimeEnvConfig,
+    _merge_runtime_env,
+)
 import requests
 
 import ray
@@ -38,6 +41,71 @@ from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
 import ray._private.ray_constants as ray_constants
+
+
+def test_runtime_env_merge():
+    # Both are None.
+    parent = None
+    child = None
+    assert _merge_runtime_env(parent, child) == {}
+
+    parent = {}
+    child = None
+    assert _merge_runtime_env(parent, child) == {}
+
+    parent = None
+    child = {}
+    assert _merge_runtime_env(parent, child) == {}
+
+    parent = {}
+    child = {}
+    assert _merge_runtime_env(parent, child) == {}
+
+    # Only parent is given.
+    parent = {"conda": ["requests"], "env_vars": {"A": "1"}}
+    child = None
+    assert _merge_runtime_env(parent, child) == parent
+
+    # Only child is given.
+    parent = None
+    child = {"conda": ["requests"], "env_vars": {"A": "1"}}
+    assert _merge_runtime_env(parent, child) == child
+
+    # Successful case.
+    parent = {"conda": ["requests"], "env_vars": {"A": "1"}}
+    child = {"pip": ["requests"], "env_vars": {"B": "2"}}
+    assert _merge_runtime_env(parent, child) == {
+        "conda": ["requests"],
+        "pip": ["requests"],
+        "env_vars": {"A": "1", "B": "2"},
+    }
+
+    # Failure case
+    parent = {"pip": ["requests"], "env_vars": {"A": "1"}}
+    child = {"pip": ["colors"], "env_vars": {"B": "2"}}
+    assert _merge_runtime_env(parent, child) is None
+
+    # Failure case (env_vars)
+    parent = {"pip": ["requests"], "env_vars": {"A": "1"}}
+    child = {"conda": ["requests"], "env_vars": {"A": "2"}}
+    assert _merge_runtime_env(parent, child) is None
+
+    # override = True
+    parent = {"pip": ["requests"], "env_vars": {"A": "1"}}
+    child = {"pip": ["colors"], "env_vars": {"B": "2"}}
+    assert _merge_runtime_env(parent, child, override=True) == {
+        "pip": ["colors"],
+        "env_vars": {"A": "1", "B": "2"},
+    }
+
+    # override = True + env vars
+    parent = {"pip": ["requests"], "env_vars": {"A": "1"}}
+    child = {"pip": ["colors"], "conda": ["requests"], "env_vars": {"A": "2"}}
+    assert _merge_runtime_env(parent, child, override=True) == {
+        "pip": ["colors"],
+        "env_vars": {"A": "2"},
+        "conda": ["requests"],
+    }
 
 
 def test_get_wheel_filename():

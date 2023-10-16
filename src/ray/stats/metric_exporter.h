@@ -53,6 +53,7 @@ class MetricPointExporter final : public opencensus::stats::StatsExporter::Handl
   void ExportViewData(
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                   opencensus::stats::ViewData>> &data) override;
+  void addGlobalTagsToGrpcMetric(MetricPoint &metric);
 
  private:
   template <class DTYPE>
@@ -98,21 +99,27 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   OpenCensusProtoExporter(const int port,
                           instrumented_io_context &io_service,
                           const std::string address,
-                          const WorkerID &worker_id);
+                          const WorkerID &worker_id,
+                          size_t report_batch_size);
 
   ~OpenCensusProtoExporter() = default;
 
   static void Register(const int port,
                        instrumented_io_context &io_service,
                        const std::string address,
-                       const WorkerID &worker_id) {
+                       const WorkerID &worker_id,
+                       size_t report_batch_size) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address, worker_id));
+        absl::make_unique<OpenCensusProtoExporter>(port, io_service, address, worker_id, report_batch_size));
   }
 
   void ExportViewData(
       const std::vector<std::pair<opencensus::stats::ViewDescriptor,
                                   opencensus::stats::ViewData>> &data) override;
+  void addGlobalTagsToGrpcMetric(opencensus::proto::metrics::v1::Metric &metric);
+  void SendData(rpc::ReportOCMetricsRequest &request);
+  void UpdateMetricsData(const std::pair<opencensus::stats::ViewDescriptor,
+                                opencensus::stats::ViewData> &datum, rpc::ReportOCMetricsRequest &request_proto);
 
  private:
   /// Call Manager for gRPC client.
@@ -120,9 +127,11 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   /// Lock to protect the client
   mutable absl::Mutex mu_;
   /// Client to call a metrics agent gRPC server.
-  std::unique_ptr<rpc::MetricsAgentClient> client_ GUARDED_BY(&mu_);
+  std::unique_ptr<rpc::MetricsAgentClient> client_ ABSL_GUARDED_BY(&mu_);
   /// The worker ID of the current component.
   WorkerID worker_id_;
+  /// The maximum batch size to be included in a single gRPC metrics report request.
+  size_t report_batch_size_;
 };
 
 }  // namespace stats

@@ -103,7 +103,7 @@ class ActorHandle {
   // Protobuf-defined persistent state of the actor handle.
   const rpc::ActorHandle inner_;
   // Number of tasks that have been submitted on this handle.
-  uint64_t task_counter_ GUARDED_BY(mutex_) = 0;
+  uint64_t task_counter_ ABSL_GUARDED_BY(mutex_) = 0;
 
   /// Mutex to protect fields in the actor handle.
   mutable absl::Mutex mutex_;

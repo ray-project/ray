@@ -43,6 +43,12 @@ def _import_azure(provider_config):
     return AzureNodeProvider
 
 
+def _import_vsphere(provider_config):
+    from ray.autoscaler._private.vsphere.node_provider import VsphereNodeProvider
+
+    return VsphereNodeProvider
+
+
 def _import_local(provider_config):
     if "coordinator_address" in provider_config:
         from ray.autoscaler._private.local.coordinator_node_provider import (
@@ -96,6 +102,12 @@ def _import_aliyun(provider_config):
     return AliyunNodeProvider
 
 
+def _import_spark(provider_config):
+    from ray.autoscaler._private.spark.node_provider import SparkNodeProvider
+
+    return SparkNodeProvider
+
+
 def _load_fake_multinode_docker_defaults_config():
     import ray.autoscaler._private.fake_multi_node as ray_fake_multinode
 
@@ -120,6 +132,12 @@ def _load_aws_defaults_config():
     import ray.autoscaler.aws as ray_aws
 
     return os.path.join(os.path.dirname(ray_aws.__file__), "defaults.yaml")
+
+
+def _load_vsphere_defaults_config():
+    import ray.autoscaler.vsphere as ray_vsphere
+
+    return os.path.join(os.path.dirname(ray_vsphere.__file__), "defaults.yaml")
 
 
 def _load_gcp_defaults_config():
@@ -152,11 +170,13 @@ _NODE_PROVIDERS = {
     "readonly": _import_readonly,
     "aws": _import_aws,
     "gcp": _import_gcp,
+    "vsphere": _import_vsphere,
     "azure": _import_azure,
     "kubernetes": _import_kubernetes,
     "kuberay": _import_kuberay,
     "aliyun": _import_aliyun,
     "external": _import_external,  # Import an external module
+    "spark": _import_spark,
 }
 
 _PROVIDER_PRETTY_NAMES = {
@@ -171,6 +191,7 @@ _PROVIDER_PRETTY_NAMES = {
     "kuberay": "Kuberay",
     "aliyun": "Aliyun",
     "external": "External",
+    "vsphere": "vSphere",
 }
 
 _DEFAULT_CONFIGS = {
@@ -181,6 +202,7 @@ _DEFAULT_CONFIGS = {
     "azure": _load_azure_defaults_config,
     "aliyun": _load_aliyun_defaults_config,
     "kubernetes": _load_kubernetes_defaults_config,
+    "vsphere": _load_vsphere_defaults_config,
 }
 
 

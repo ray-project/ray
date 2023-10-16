@@ -180,7 +180,9 @@ class MLPHeadConfig(_MLPConfig):
     See _MLPConfig for usage details.
 
     Example:
-    .. code-block:: python
+
+    .. testcode::
+
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[4],  # must be 1D tensor
@@ -201,7 +203,9 @@ class MLPHeadConfig(_MLPConfig):
         # Linear(8, 2, bias=True)
 
     Example:
-    .. code-block:: python
+
+    .. testcode::
+
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[2],
@@ -516,7 +520,7 @@ class CNNTransposeHeadConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Model":
-        self._validate()
+        self._validate(framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.heads import TorchCNNTransposeHead
@@ -548,6 +552,7 @@ class CNNEncoderConfig(ModelConfig):
     Example:
 
     .. testcode::
+
         # Configuration:
         config = CNNEncoderConfig(
             input_dims=[84, 84, 3],  # must be 3D tensor (image: w x h x C)
@@ -677,7 +682,7 @@ class CNNEncoderConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Model":
-        self._validate()
+        self._validate(framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchCNNEncoder
@@ -741,7 +746,7 @@ class MLPEncoderConfig(_MLPConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":
-        self._validate()
+        self._validate(framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchMLPEncoder
