@@ -177,46 +177,37 @@ def test_callable_classes(shutdown_only):
             assert kwarg == 2
             return x
 
-    # map_batches with args & kwargs
-    result = ds.map_batches(
-        StatefulFnWithArgs,
+    # map_batches & map with args & kwargs
+    for ds_map in (ds.map_batches, ds.map):
+        result = ds_map(
+            StatefulFnWithArgs,
+            compute=ray.data.ActorPoolStrategy(),
+            fn_args=(1,),
+            fn_kwargs={"kwarg": 2},
+            fn_constructor_args=(1,),
+            fn_constructor_kwargs={"kwarg": 2},
+        ).take()
+        assert sorted(extract_values("id", result)) == list(range(10)), result
+
+    class StatefulFlatMapFnWithArgs:
+        def __init__(self, arg, kwarg):
+            self._arg = arg
+            assert arg == 1
+            assert kwarg == 2
+
+        def __call__(self, x, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+            return [x] * self._arg
+
+    # flat_map with args & kwargs
+    result = ds.flat_map(
+        StatefulFlatMapFnWithArgs,
         compute=ray.data.ActorPoolStrategy(),
         fn_args=(1,),
         fn_kwargs={"kwarg": 2},
         fn_constructor_args=(1,),
         fn_constructor_kwargs={"kwarg": 2},
-    ).take()
-    assert sorted(extract_values("id", result)) == list(range(10)), result
-
-    class StatefulFlatMapFnWithInitArg:
-        def __init__(self, arg):
-            self._arg = arg
-            assert arg == 1
-
-        def __call__(self, x):
-            return [x] * self._arg
-
-    # flat_map with args
-    result = ds.flat_map(
-        StatefulFlatMapFnWithInitArg,
-        compute=ray.data.ActorPoolStrategy(),
-        fn_constructor_args=(1,),
-    ).take()
-    assert sorted(extract_values("id", result)) == list(range(10)), result
-
-    class StatefulMapFnWithInitArg:
-        def __init__(self, arg):
-            self._arg = arg
-            assert arg == 1
-
-        def __call__(self, x):
-            return x
-
-    # map with args
-    result = ds.map(
-        StatefulMapFnWithInitArg,
-        compute=ray.data.ActorPoolStrategy(),
-        fn_constructor_args=(1,),
     ).take()
     assert sorted(extract_values("id", result)) == list(range(10)), result
 

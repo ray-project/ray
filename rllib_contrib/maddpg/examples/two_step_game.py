@@ -30,10 +30,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--stop-timesteps", type=int, default=70000, help="Number of timesteps to train."
+    "--stop-timesteps", type=int, default=20000, help="Number of timesteps to train."
 )
 parser.add_argument(
-    "--stop-reward", type=float, default=8.0, help="Reward at which we stop training."
+    "--stop-reward", type=float, default=7.2, help="Reward at which we stop training."
 )
 
 
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     (
         config.framework("tf")
         .environment(env_config={"actions_are_logits": True})
-        .training(num_steps_sampled_before_learning_starts=100)
+        .training(num_steps_sampled_before_learning_starts=200)
         .multi_agent(
             policies={
                 "pol1": PolicySpec(

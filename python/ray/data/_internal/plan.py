@@ -140,11 +140,6 @@ class ExecutionManager:
         # determined by the config at the time it was created.
         self._context = copy.deepcopy(DataContext.get_current())
 
-        # Whether the corresponding dataset is generated from a pipeline.
-        # Currently, when this is True, this skips the new execution plan optimizer.
-        # TODO(scottjlee): remove this once we remove DatasetPipeline.
-        self._generated_from_pipeline = False
-
     def __repr__(self) -> str:
         return (
             f"ExecutionPlan("
@@ -317,7 +312,6 @@ class ExecutionManager:
         execution_manager_copy = ExecutionManager(
             self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
         )
-        execution_manager_copy._generated_from_pipeline = self._generated_from_pipeline
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
             execution_manager_copy._snapshot_blocks = self._snapshot_blocks
@@ -353,7 +347,6 @@ class ExecutionManager:
             dataset_uuid=dataset_uuid,
             run_by_consumer=self._run_by_consumer,
         )
-        execution_manager_copy._generated_from_pipeline = self._generated_from_pipeline
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
             execution_manager_copy._snapshot_blocks = self._snapshot_blocks.copy()
@@ -603,12 +596,7 @@ class ExecutionManager:
                     StreamingExecutor,
                 )
 
-                if context.use_streaming_executor:
-                    executor = StreamingExecutor(
-                        copy.deepcopy(context.execution_options)
-                    )
-                else:
-                    executor = BulkExecutor(copy.deepcopy(context.execution_options))
+                executor = StreamingExecutor(copy.deepcopy(context.execution_options))
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
@@ -655,7 +643,6 @@ class ExecutionManager:
                     logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                         stats_summary_string,
                     )
-
             # Retrieve memory-related stats from ray.
             reply = get_memory_info_reply(
                 get_state_from_address(ray.get_runtime_context().gcs_address)

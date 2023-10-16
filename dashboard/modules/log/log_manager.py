@@ -12,11 +12,10 @@ from ray.util.state.common import (
 )
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
+from ray._private.pydantic_compat import BaseModel
 
 # TODO(sang): Remove the usage of this class.
 from ray.dashboard.datacenter import DataSource
-
-from pydantic import BaseModel
 
 
 logger = logging.getLogger(__name__)
