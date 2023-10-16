@@ -85,6 +85,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     }
     data.set_node_id(node->node_id());
     data.set_node_manager_address(node->node_manager_address());
+    gcs_autoscaler_state_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(data);
   }
 
@@ -94,7 +95,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     gcs_node_manager_->alive_nodes_.erase(node_id);
     gcs_node_manager_->dead_nodes_[node_id] = node;
     gcs_resource_manager_->OnNodeDead(node_id);
-    gcs_autoscaler_state_manager_->RemoveNode(node_id);
+    gcs_autoscaler_state_manager_->OnNodeDead(node_id);
   }
 
   void CheckNodeResources(
