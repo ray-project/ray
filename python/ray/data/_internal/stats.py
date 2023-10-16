@@ -149,7 +149,9 @@ class _StatsActor:
         tags_keys = ("dataset",)
         self.bytes_spilled = Gauge(
             "data_spilled_bytes",
-            description="Bytes spilled by dataset operators",
+            description="""Bytes spilled by dataset operators.
+                DataContext.enable_get_object_locations_for_metrics 
+                must be set to True to report this metric""",
             tag_keys=tags_keys,
         )
         self.bytes_allocated = Gauge(
@@ -169,12 +171,12 @@ class _StatsActor:
         )
         self.cpu_usage = Gauge(
             "data_cpu_usage_cores",
-            description="CPUs used by dataset operators",
+            description="CPUs allocated to dataset operators",
             tag_keys=tags_keys,
         )
         self.gpu_usage = Gauge(
             "data_gpu_usage_cores",
-            description="GPUs used by dataset operators",
+            description="GPUs allocated to dataset operators",
             tag_keys=tags_keys,
         )
         self.bytes_outputted = Gauge(

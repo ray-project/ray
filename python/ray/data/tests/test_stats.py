@@ -10,7 +10,6 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.stats import DatasetStats, _StatsActor
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
