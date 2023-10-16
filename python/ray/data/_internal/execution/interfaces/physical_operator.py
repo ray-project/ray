@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
@@ -25,15 +25,6 @@ class OpTask(ABC):
     @abstractmethod
     def get_waitable(self) -> Waitable:
         """Return the ObjectRef or StreamingObjectRefGenerator to wait on."""
-        pass
-
-    @abstractmethod
-    def on_waitable_ready(self, outqueue_size: int):
-        """Called when the waitable is ready.
-
-        This method may get called multiple times if the waitable is a
-        streaming generator.
-        """
         pass
 
 
@@ -64,27 +55,22 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> StreamingObjectRefGenerator:
         return self._streaming_gen
 
-    def on_waitable_ready(self, outqueue_size: int):
+    def on_data_ready(self, max_bytes_to_read: Optional[int] = None) -> int:
+        read_bytes = 0
         # Handle all the available outputs of the streaming generator.
-        while True:
+        while max_bytes_to_read is None or max_bytes_to_read > 0:
             try:
-                if outqueue_size > 500 * 1024 * 1024:
-                    # print(f"Backpressured {outqueue_size / 1024 / 1024:.2f} MB")
-                    break
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
-                    return
+                    break
             except StopIteration:
                 self._task_done_callback()
-                return
+                break
 
             try:
-                # print("waiting for meta", block_ref)
-                meta_ref = next(self._streaming_gen)
-                # print("got meta", meta_ref)
-                meta = ray.get(meta_ref)
+                meta = ray.get(next(self._streaming_gen))
             except StopIteration:
                 # The generator should always yield 2 values (block and metadata)
                 # each time. If we get a StopIteration here, it means an error
@@ -98,8 +84,10 @@ class DataOpTask(OpTask):
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
-            # print(f"new output {meta.size_bytes / 1024 / 1024:.2f} MB")
-            outqueue_size += meta.size_bytes
+            if max_bytes_to_read is not None:
+                max_bytes_to_read -= meta.size_bytes
+            read_bytes += meta.size_bytes
+        return read_bytes
 
 
 class MetadataOpTask(OpTask):
@@ -119,7 +107,7 @@ class MetadataOpTask(OpTask):
     def get_waitable(self) -> ray.ObjectRef:
         return self._object_ref
 
-    def on_waitable_ready(self, outqueue_size: int):
+    def on_task_finished(self):
         self._task_done_callback()
 
 

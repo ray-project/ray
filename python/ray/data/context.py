@@ -1,5 +1,6 @@
 import os
 import threading
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 import ray
@@ -133,6 +134,13 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
+@dataclass
+class StreamingOutputBackpressureConfig:
+    enabled: bool = False
+    streaming_gen_buffer_size_bytes: int = 2 * 1024 * 1024 * 1024
+    op_output_buffer_size_bytes: int = 2 * 1024 * 1024 * 1024
+
+
 @DeveloperAPI
 class DataContext:
     """Singleton for shared Dataset resources and configurations.
@@ -206,6 +214,7 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
+        self.sreaming_output_backpressure_config = StreamingOutputBackpressureConfig()
 
     @staticmethod
     def get_current() -> "DataContext":
