@@ -353,10 +353,10 @@ class Dataset:
         map_op = MapRows(
             logical_plan.dag,
             fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
+            fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -838,10 +838,10 @@ class Dataset:
         op = FlatMap(
             input_op=logical_plan.dag,
             fn=fn,
-                fn_args=fn_args,
-                fn_kwargs=fn_kwargs,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
-                fn_constructor_kwargs=fn_constructor_kwargs,
+            fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )

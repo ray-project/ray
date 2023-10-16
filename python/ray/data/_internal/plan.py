@@ -586,9 +586,7 @@ class ExecutionManager:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            # if self._run_with_new_execution_backend():
-            if True:
-                from ray.data._internal.execution.bulk_executor import BulkExecutor
+            if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )
@@ -790,6 +788,40 @@ class ExecutionManager:
             and not self._operators_added_after_snapshot
             and not self._snapshot_blocks.is_cleared()
         )
+
+    def _run_with_new_execution_backend(self) -> bool:
+        """Whether this plan should run with new backend."""
+        return True
+        # from ray.data._internal.stage_impl import RandomizeBlocksStage
+
+        # # The read-equivalent stage is handled in the following way:
+        # # - Read only: handle with legacy backend
+        # # - Read->randomize_block_order: handle with new backend
+        # # Note that both are considered read equivalent, hence this extra check.
+        # context = self._context
+        # trailing_randomize_block_order_stage = (
+        #     self._operators_added_after_snapshot
+        #     and len(self._operators_added_after_snapshot) == 1
+        #     and isinstance(
+        #       self._operators_added_after_snapshot[0], RandomizeBlocksStage
+        #       )
+        # )
+        # return (
+        #     context.new_execution_backend
+        #     and (
+        #         not self.is_read_stage_equivalent()
+        #         or trailing_randomize_block_order_stage
+        #     )
+        #     and (
+        #         self._operators_added_after_snapshot
+        #         # If snapshot is cleared, we'll need to recompute from the source.
+        #         or (
+        #             self._snapshot_blocks is not None
+        #             and self._snapshot_blocks.is_cleared()
+        #             and self._operators_added_before_snapshot
+        #         )
+        #     )
+        # )
 
     def require_preserve_order(self) -> bool:
         """Whether this dataset's plan requires preserving order during execution."""

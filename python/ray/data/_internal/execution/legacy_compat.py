@@ -170,6 +170,7 @@ def _get_initial_stats_from_plan(plan: ExecutionManager) -> DatasetStats:
     else:
         return plan._in_stats
 
+
 def _to_operator_dag(
     plan: ExecutionManager, allow_clear_input_blocks: bool
 ) -> Tuple[PhysicalOperator, DatasetStats]:
@@ -189,6 +190,7 @@ def _to_operator_dag(
     for stage in stages:
         operator = _stage_to_operator(stage, operator)
     return operator, stats
+
 
 def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOperator:
     """Translate a block list into an InputBuffer operator.
