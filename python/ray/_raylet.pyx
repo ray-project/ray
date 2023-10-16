@@ -454,6 +454,13 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsRpcError():
         raise RpcError(message, rpc_code=status.rpc_code())
+    elif status.IsIntentionalSystemExit():
+        with gil:
+            raise_sys_exit_with_custom_error_message(message)
+    elif status.IsUnexpectedSystemExit():
+        with gil:
+            raise_sys_exit_with_custom_error_message(
+                message, exit_code=1)
     else:
         raise RaySystemError(message)
 
@@ -689,6 +696,33 @@ cdef int prepare_actor_concurrency_groups(
             key.encode("ascii"), value["max_concurrency"], c_fd_list)
         concurrency_groups.push_back(cg)
     return 1
+
+
+def raise_sys_exit_with_custom_error_message(
+        ray_terminate_msg: str,
+        exit_code: int = 0) -> None:
+    """It is equivalent to sys.exit, but it can contain
+    a custom message. Custom message is reported to
+    raylet and is accessible via GCS (from `ray get workers`).
+
+    Note that sys.exit == raise SystemExit. I.e., this API
+    simply raises SystemExit with a custom error message accessible
+    via `e.ray_terminate_msg`.
+
+    Args:
+        ray_terminate_msg: The error message to propagate to GCS.
+        exit_code: The exit code. If it is not 0, it is considered
+            as a system error.
+    """
+    # Raising SystemExit(0) is equivalent to
+    # sys.exit(0).
+    # https://docs.python.org/3/library/exceptions.html#SystemExit
+    e = SystemExit(exit_code)
+    # If it is True, exit is considered as intentional.
+    e.is_ray_terminate = exit_code == 0
+    e.ray_terminate_msg = ray_terminate_msg
+    raise e
+
 
 cdef prepare_args_and_increment_put_refs(
         CoreWorker core_worker,
@@ -1500,10 +1534,7 @@ cdef void execute_task(
     # actor, Ray will exit the actor.
     def exit_current_actor_if_asyncio():
         if core_worker.current_actor_is_asyncio():
-            error = SystemExit(0)
-            error.is_ray_terminate = True
-            error.ray_terminate_msg = "exit_actor() is called."
-            raise error
+            raise_sys_exit_with_custom_error_message("exit_actor() is called.")
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
@@ -1967,12 +1998,9 @@ cdef execute_task_with_cancellation_handler(
         # If we've reached the max number of executions for this worker, exit.
         task_counter = manager.get_task_counter(function_descriptor)
         if task_counter == execution_info.max_calls:
-            exit = SystemExit(0)
-            exit.is_ray_terminate = True
-            exit.ray_terminate_msg = (
+            raise_sys_exit_with_custom_error_message(
                 "max_call has reached, "
                 f"max_calls: {execution_info.max_calls}")
-            raise exit
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -2058,7 +2086,7 @@ cdef CRayStatus task_execution_handler(
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
-            if hasattr(e, "is_ray_terminate"):
+            if hasattr(e, "is_ray_terminate") and e.is_ray_terminate:
                 return CRayStatus.IntentionalSystemExit(e.ray_terminate_msg)
             elif hasattr(e, "is_creation_task_error"):
                 return CRayStatus.CreationTaskError(e.init_error_message)
@@ -2075,8 +2103,10 @@ cdef CRayStatus task_execution_handler(
                 if "KUBERNETES_SERVICE_HOST" in os.environ:
                     msg += (
                         " The worker may have exceeded K8s pod memory limits.")
+                if hasattr(e, "ray_terminate_msg"):
+                    msg += (f" {e.ray_terminate_msg}")
                 if hasattr(e, "unexpected_error_traceback"):
-                    msg += (f"\n {e.unexpected_error_traceback}")
+                    msg += (f" {e.unexpected_error_traceback}")
                 return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
@@ -2093,10 +2123,30 @@ cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
 
 cdef CRayStatus check_signals() nogil:
     with gil:
+        # The Python exceptions are not handled if it is raised from cdef,
+        # so we have to handle it here.
         try:
             PyErr_CheckSignals()
         except KeyboardInterrupt:
             return CRayStatus.Interrupted(b"")
+        except SystemExit as e:
+            error_msg = (
+                "SystemExit is raised (sys.exit is called).")
+            if e.code is not None:
+                error_msg += f" Exit code: {e.code}."
+            else:
+                error_msg += " Exit code was not specified."
+
+            if hasattr(e, "ray_terminate_msg"):
+                error_msg += f" {e.ray_terminate_msg}"
+
+            if e.code and e.code == 0:
+                return CRayStatus.IntentionalSystemExit(error_msg.encode("utf-8"))
+            else:
+                return CRayStatus.UnexpectedSystemExit(error_msg.encode("utf-8"))
+        # By default, if signals raise an exception, Python just prints them.
+        # To keep the same behavior, we don't handle any other exceptions.
+
     return CRayStatus.OK()
 
 

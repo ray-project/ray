@@ -58,7 +58,10 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import (
+    StreamingObjectRefGenerator,
+    raise_sys_exit_with_custom_error_message,
+)
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -786,29 +789,11 @@ class Worker:
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
-        ray_terminate_msg = "SIGTERM is received to the process."
 
         def sigterm_handler(signum, frame):
-            def exit_with_sigterm_error_message():
-                e = SystemExit(0)
-                e.is_ray_terminate = True
-                e.ray_terminate_msg = ray_terminate_msg
-                raise e
-
-            if not hasattr(global_worker, "core_worker"):
-                exit_with_sigterm_error_message()
-
-            core_worker = global_worker.core_worker
-            if core_worker.is_task_running():
-                # If a task is running, sys.exit will
-                # raise a SystemExit exception, and exit
-                # will be proceeded.
-                exit_with_sigterm_error_message()
-            else:
-                # If nothing is running, exit the worker.
-                global_worker.core_worker.drain_and_exit_worker(
-                    "intentional_system_exit", ray_terminate_msg
-                )
+            raise_sys_exit_with_custom_error_message(
+                "The process receives a SIGTERM.", exit_code=1
+            )
             # Note: shutdown() function is called from atexit handler.
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
@@ -1788,6 +1773,7 @@ def shutdown(_exiting_interpreter: bool = False):
     global_worker.set_mode(None)
 
 
+# atexit.register(shutdown, True)
 atexit.register(shutdown, True)
 
 # Define a custom excepthook so that if the driver exits with an exception, we

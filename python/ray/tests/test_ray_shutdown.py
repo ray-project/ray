@@ -14,7 +14,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     run_string_as_driver_nonblocking,
 )
-from ray.util.state import get_worker
+from ray.util.state import get_worker, list_tasks
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 WAIT_TIMEOUT = 20
@@ -357,7 +357,7 @@ def test_worker_sigterm(shutdown_only):
         alive = w.is_alive
         assert not alive
         assert "SIGTERM" in w.exit_detail
-        assert w.exit_type == "INTENDED_SYSTEM_EXIT"
+        assert w.exit_type == "SYSTEM_ERROR"
         return True
 
     wait_for_condition(verify)
@@ -376,7 +376,7 @@ def test_worker_sigterm(shutdown_only):
         alive = w.is_alive
         assert not alive
         assert "SIGTERM" in w.exit_detail
-        assert w.exit_type == "INTENDED_SYSTEM_EXIT"
+        assert w.exit_type == "SYSTEM_ERROR"
         return True
 
     wait_for_condition(verify)
@@ -430,6 +430,46 @@ def test_worker_proc_child_no_leak(shutdown_only):
         w = get_worker(id=worker_id)
         assert "placement group was removed" in w.exit_detail
         assert w.exit_type == "INTENDED_SYSTEM_EXIT"
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_sigterm_while_ray_get(shutdown_only):
+    """Verify when sigterm is received while running
+    ray.get, it will clean up the worker process properly.
+    """
+
+    @ray.remote(max_retries=0)
+    def f():
+        time.sleep(300)
+
+    @ray.remote(max_retries=0)
+    def ray_get_task():
+        ray.get(f.remote())
+
+    # TODO(sang): The task failure is not properly propagated.
+    r = ray_get_task.remote()
+
+    def wait_for_task():
+        t = list_tasks(filters=[("name", "=", "ray_get_task")])[0]
+        return t.state == "RUNNING"
+
+    wait_for_condition(wait_for_task)
+
+    # Kill a task that's blocked by ray.get
+    t = list_tasks(filters=[("name", "=", "ray_get_task")])[0]
+    os.kill(t.worker_pid, signal.SIGTERM)
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(r)
+
+    def verify():
+        t = list_tasks(filters=[("name", "=", "ray_get_task")])[0]
+        w = get_worker(t.worker_id)
+        assert t.state == "FAILED"
+        assert w.exit_type == "SYSTEM_ERROR"
+        assert "SIGTERM" in w.exit_detail
         return True
 
     wait_for_condition(verify)
