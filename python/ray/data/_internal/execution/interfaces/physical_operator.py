@@ -69,7 +69,8 @@ class DataOpTask(OpTask):
         while True:
             try:
                 if outqueue_size > 500 * 1024 * 1024:
-                    print(f"Backpressured {outqueue_size / 1024 / 1024:.2f} MB")
+                    # print(f"Backpressured {outqueue_size / 1024 / 1024:.2f} MB")
+                    break
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
@@ -80,7 +81,10 @@ class DataOpTask(OpTask):
                 return
 
             try:
-                meta = ray.get(next(self._streaming_gen))
+                # print("waiting for meta", block_ref)
+                meta_ref = next(self._streaming_gen)
+                # print("got meta", meta_ref)
+                meta = ray.get(meta_ref)
             except StopIteration:
                 # The generator should always yield 2 values (block and metadata)
                 # each time. If we get a StopIteration here, it means an error
@@ -94,7 +98,7 @@ class DataOpTask(OpTask):
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
-            print(f"new output {meta.size_bytes / 1024 / 1024:.2f} MB")
+            # print(f"new output {meta.size_bytes / 1024 / 1024:.2f} MB")
             outqueue_size += meta.size_bytes
 
 

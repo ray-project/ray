@@ -255,7 +255,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 break
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
-            print("Dispatching", op)
             topology[op].dispatch_next_task()
             cur_usage = TopologyResourceUsage.of(topology)
             op = select_operator_to_run(

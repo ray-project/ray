@@ -333,7 +333,7 @@ def process_completed_tasks(topology: Topology) -> None:
         )
         for ref in ready:
             outqueue_size = topology[waitables_to_ops[ref]].outqueue_memory_usage()
-            print(f"{waitables_to_ops[ref]} waitable_ready {outqueue_size / 1024 / 1024:.2f} MB")
+            # print(f"{waitables_to_ops[ref]} waitable_ready {outqueue_size / 1024 / 1024:.2f} MB")
             active_tasks[ref].on_waitable_ready(outqueue_size)
 
     # Pull any operator outputs into the streaming op state.
@@ -404,6 +404,7 @@ def select_operator_to_run(
     ops = []
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, cur_usage, limits)
+        # print(op, op.need_more_inputs(), state.num_queued(), op.should_add_input(), under_resource_limits, not op.completed())
         if (
             op.need_more_inputs()
             and state.num_queued() > 0
@@ -571,4 +572,5 @@ def _execution_allowed(
         object_store_memory=downstream_usage.object_store_memory
     ).satisfies_limit(downstream_limit)
 
-    return global_ok_sans_memory and downstream_memory_ok
+    return global_ok_sans_memory
+    # return global_ok_sans_memory and downstream_memory_ok
