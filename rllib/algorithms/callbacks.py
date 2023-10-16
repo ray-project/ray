@@ -89,11 +89,11 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     ) -> None:
         """Callback run after an EnvRunner object (local or remote) has been created.
 
-        Note that any "worker" inside the algorithm's `self.worker` and
-        `self.evaluation_workers` WorkerSets are instances of a subclass of EnvRunner.
-
         You can access (and change) the worker in question via the following code snippet
         inside your custom override of this method:
+
+        Note that any "worker" inside the algorithm's `self.worker` and
+        `self.evaluation_workers` WorkerSets are instances of a subclass of EnvRunner.
 
         .. code-block:: python
             from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -140,7 +140,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         Args:
             policy_id: ID of the newly created policy.
-            policy: the policy just created.
+            policy: The policy just created.
         """
         pass
 

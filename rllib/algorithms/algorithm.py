@@ -645,7 +645,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 local_worker=True,
                 logdir=self.logdir,
                 on_worker_created_callback=functools.partial(
-                    self.callbacks.on_worker_created, algorithm=self, is_evaluation=False
+                    self.callbacks.on_worker_created,
+                    algorithm=self,
+                    is_evaluation=False,
                 ),
             )
 
