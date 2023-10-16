@@ -225,8 +225,10 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     Checkpoints will be saved in the following structure:
 
-    checkpoint_00000*/      # Ray Train Checkpoint
-    └─ checkpoint.ckpt      # PyTorch Lightning Checkpoint
+    .. testcode::
+
+        # checkpoint_00000*/      Ray Train Checkpoint
+        # └─ checkpoint.ckpt      PyTorch Lightning Checkpoint
 
     For customized reporting and checkpointing logic, implement your own
     `lightning.pytorch.callbacks.Callback` following this user

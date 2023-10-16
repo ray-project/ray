@@ -239,8 +239,10 @@ class RayTrainReportCallback(TrainerCallback):
 
     Checkpoints will be saved in the following structure:
 
-    checkpoint_00000*/   # Ray Train Checkpoint
-    └─ checkpoint/       # Hugging Face Transformers Checkpoint
+    .. testcode::
+
+        # checkpoint_00000*/   Ray Train Checkpoint
+        # └─ checkpoint/       Hugging Face Transformers Checkpoint
 
     For customized reporting and checkpointing logic, implement your own
     `transformers.TrainerCallback` following this user
