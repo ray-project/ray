@@ -3,6 +3,8 @@ import os
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+import ray
+
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
@@ -12,12 +14,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Default enabled backpressure policies and its config key.
+# Use `DataContext.set_plugin_config` to config it.
 # TODO(hchen): Enable ConcurrencyCapBackpressurePolicy by default.
-DEFAULT_BACKPRESSURE_POLICIES = []
+ENABLED_BACKPRESSURE_POLICIES = []
+ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY = "backpressure_policies.enabled"
 
 
 def get_backpressure_policies(topology: "Topology"):
-    return [policy(topology) for policy in DEFAULT_BACKPRESSURE_POLICIES]
+    data_context = ray.data.DataContext.get_current()
+    policies = data_context.get_plugin_config(
+        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY, ENABLED_BACKPRESSURE_POLICIES
+    )
+
+    return [policy(topology) for policy in policies]
 
 
 class BackpressurePolicy(ABC):
@@ -50,40 +60,42 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
       increase.
     """
 
-    # Environment variable to configure this policy.
-    # The format is: "<init_cap>,<cap_multiply_threshold>,<cap_multiplier>"
-    CONFIG_ENV_VAR = "RAY_DATA_CONCURRENCY_CAP_CONFIG"
+    # Following are the default values followed by the config keys of the available configs.
+    # Use `DataContext.set_plugin_config` to config them.
 
     # The intial concurrency cap for each operator.
     INIT_CAP = 4
+    INIT_CAP_CONFIG_KEY = "backpressure_policies.concurrency_cap.init_cap"
     # When the number of finished tasks reaches this threshold, the concurrency cap
     # will be multiplied by the multiplier.
     CAP_MULTIPLY_THRESHOLD = 0.5
+    CAP_MULTIPLY_THRESHOLD_CONFIG_KEY = (
+        "backpressure_policies.concurrency_cap.cap_multiply_threshold"
+    )
     # The multiplier to multiply the concurrency cap by.
     CAP_MULTIPLIER = 2.0
+    CAP_MULTIPLIER_CONFIG_KEY = "backpressure_policies.concurrency_cap.cap_multiplier"
 
     def __init__(self, topology: "Topology"):
         self._concurrency_caps: dict["PhysicalOperator", float] = {}
 
-        self._init_cap = self.INIT_CAP
-        self._cap_multiplier = self.CAP_MULTIPLIER
-        self._cap_multiply_threshold = self.CAP_MULTIPLY_THRESHOLD
+        data_context = ray.data.DataContext.get_current()
+        self._init_cap = data_context.get_plugin_config(
+            self.INIT_CAP_CONFIG_KEY, self.INIT_CAP
+        )
+        self._cap_multiplier = data_context.get_plugin_config(
+            self.CAP_MULTIPLIER_CONFIG_KEY, self.CAP_MULTIPLIER
+        )
+        self._cap_multiply_threshold = data_context.get_plugin_config(
+            self.CAP_MULTIPLY_THRESHOLD_CONFIG_KEY, self.CAP_MULTIPLY_THRESHOLD
+        )
 
-        env_config = os.environ.get(self.CONFIG_ENV_VAR, "")
-        if env_config:
-            try:
-                configs = env_config.split(",")
-                self._init_cap = int(configs[0])
-                self._cap_multiply_threshold = float(configs[1])
-                self._cap_multiplier = float(configs[2])
-                assert self._init_cap > 0
-                assert 0 < self._cap_multiply_threshold <= 1
-                assert self._cap_multiplier > 1
-            except Exception as e:
-                raise ValueError("Invalid concurrency cap config", env_config) from e
+        assert self._init_cap > 0
+        assert 0 < self._cap_multiply_threshold <= 1
+        assert self._cap_multiplier > 1
 
         logger.debug(
-            "Concurrency cap config: "
+            "ConcurrencyCapBackpressurePolicy initialized with config: "
             f"{self._init_cap}, {self._cap_multiply_threshold}, {self._cap_multiplier}"
         )
 

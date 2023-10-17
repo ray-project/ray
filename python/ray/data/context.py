@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -206,6 +206,7 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
+        self._plugin_configs: Dict[str, Any] = {}
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -268,6 +269,15 @@ class DataContext:
         """
         global _default_context
         _default_context = context
+
+    def get_plugin_config(self, key: str, default: Any = None) -> Any:
+        return self._plugin_configs.get(key, default)
+
+    def set_plugin_config(self, key: str, value: Any) -> None:
+        self._plugin_configs[key] = value
+
+    def remove_plugin_config(self, key: str) -> None:
+        self._plugin_configs.pop(key, None)
 
 
 # Backwards compatibility alias.
