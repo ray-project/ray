@@ -271,6 +271,7 @@ def generate_task_data(events_by_task):
         events_by_task=events_by_task,
         num_status_task_events_dropped=0,
         num_profile_task_events_dropped=0,
+        num_total_stored=len(events_by_task),
     )
 
 
@@ -3463,6 +3464,10 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
             "RAY_MAX_LIMIT_FROM_DATA_SOURCE",
             "10",
         )
+        m.setenv(
+            "RAY_task_events_skip_driver_for_test",
+            "1",
+        )
         ray.init()
 
         @ray.remote
@@ -3479,7 +3484,7 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
         try:
             list_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "Failed to retrieve all" in str(e)
             assert "(> 10)" in str(e)
         else:
             assert False
@@ -3487,7 +3492,7 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
         try:
             summarize_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "Failed to retrieve all" in str(e)
             assert "(> 10)" in str(e)
         else:
             assert False

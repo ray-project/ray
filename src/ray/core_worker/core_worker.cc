@@ -410,7 +410,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
     // Add the driver task info.
     if (task_event_buffer_->Enabled() &&
-        !RayConfig::instance().task_events_skip_driver()) {
+        !RayConfig::instance().task_events_skip_driver_for_test()) {
       const auto spec = builder.Build();
       auto task_event = std::make_unique<worker::TaskStatusEvent>(
           task_id,
@@ -708,7 +708,7 @@ void CoreWorker::Disconnect(
 
   // Driver exiting.
   if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled() &&
-      !RayConfig::instance().task_events_skip_driver()) {
+      !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         worker_context_.GetCurrentTaskID(),
         worker_context_.GetCurrentJobID(),

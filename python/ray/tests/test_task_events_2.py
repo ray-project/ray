@@ -976,7 +976,7 @@ async def test_task_events_gc_jobs(shutdown_only):
         num_cpus=8,
         _system_config={
             "task_events_max_num_task_in_gcs": 3,
-            "task_events_skip_driver": True,
+            "task_events_skip_driver_for_test": True,
             "task_events_report_interval_ms": 100,
         },
     )
@@ -1050,7 +1050,7 @@ def test_task_events_gc_default_policy(shutdown_only):
         num_cpus=8,
         _system_config={
             "task_events_max_num_task_in_gcs": 5,
-            "task_events_skip_driver": True,
+            "task_events_skip_driver_for_test": True,
             "task_events_report_interval_ms": 100,
         },
     )

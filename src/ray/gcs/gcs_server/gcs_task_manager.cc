@@ -31,7 +31,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
     const {
   std::vector<rpc::TaskEvents> ret;
   // From the higher priority to the lower priority list.
-  for (int i = gc_policy_->NumList() - 1; i >= 0; --i) {
+  for (int i = gc_policy_->MaxPriority() - 1; i >= 0; --i) {
     // Reverse iterate the list to get the latest task events.
     for (auto itr = task_events_list_[i].rbegin(); itr != task_events_list_[i].rend();
          ++itr) {
@@ -44,34 +44,34 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
     JobID job_id) const {
-  auto task_attempts_itr = job_index_.find(job_id);
-  if (task_attempts_itr == job_index_.end()) {
+  auto task_locators_itr = job_index_.find(job_id);
+  if (task_locators_itr == job_index_.end()) {
     // Not found any tasks related to this job.
     return {};
   }
-  return GetTaskEvents(task_attempts_itr->second);
+  return GetTaskEvents(task_locators_itr->second);
 }
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
     const absl::flat_hash_set<TaskID> &task_ids) const {
-  absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> select_task_attempts;
+  absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> select_task_locators;
   for (const auto &task_id : task_ids) {
-    auto task_attempts_itr = task_index_.find(task_id);
-    if (task_attempts_itr != task_index_.end()) {
-      select_task_attempts.insert(task_attempts_itr->second.begin(),
-                                  task_attempts_itr->second.end());
+    auto task_locator_itr = task_index_.find(task_id);
+    if (task_locator_itr != task_index_.end()) {
+      select_task_locators.insert(task_locator_itr->second.begin(),
+                                  task_locator_itr->second.end());
     }
   }
 
-  return GetTaskEvents(select_task_attempts);
+  return GetTaskEvents(select_task_locators);
 }
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
-    const absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> &task_attempts) const {
+    const absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> &task_locators) const {
   std::vector<rpc::TaskEvents> result;
-  for (const auto &task_attempt_loc : task_attempts) {
+  for (const auto &task_attempt_loc : task_locators) {
     // Copy the task event to the output.
-    result.push_back(task_attempt_loc->GetTaskEvents());
+    result.push_back(task_attempt_loc->GetTaskEventsMutable());
   }
 
   return result;
@@ -103,15 +103,15 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
     const std::shared_ptr<TaskEventLocator> &locator,
     int64_t failed_ts,
     const rpc::RayErrorInfo &error_info) {
-  auto &task_event = locator->GetTaskEvents();
+  auto &task_events = locator->GetTaskEventsMutable();
   // We don't mark tasks as failed if they are already terminated.
-  if (IsTaskTerminated(task_event)) {
+  if (IsTaskTerminated(task_events)) {
     return;
   }
 
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
-  auto state_updates = task_event.mutable_state_updates();
+  auto state_updates = task_events.mutable_state_updates();
   state_updates->set_failed_ts(failed_ts);
   state_updates->mutable_error_info()->CopyFrom(error_info);
 }
@@ -140,7 +140,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
 void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
     const std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator> &loc,
     const rpc::TaskEvents &task_events) {
-  auto &existing_task = loc->GetTaskEvents();
+  auto &existing_task = loc->GetTaskEventsMutable();
   // Update the tracking
   if (task_events.has_task_info() && !existing_task.has_task_info()) {
     stats_counter_.Increment(kTaskTypeToCounterType.at(task_events.task_info().type()));
@@ -152,7 +152,7 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   stats_counter_.Increment(kNumTaskEventsBytesStored, existing_task.ByteSizeLong());
 
   // Move the task events around different gc priority list.
-  auto target_list_index = gc_policy_->GetTaskListIndex(existing_task);
+  auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
   auto cur_list_index = loc->GetCurrentListIndex();
   if (target_list_index != cur_list_index) {
     // Need to add to the new list first.
@@ -164,22 +164,22 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
 
   // Update the index if needed. Adding to index is idempotent so it is safe to call it
   // multiple times.
-  AddToIndex(loc);
+  UpdateIndex(loc);
 }
 
 std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator>
 GcsTaskManager::GcsTaskManagerStorage::AddNewTaskEvent(rpc::TaskEvents &&task_events) {
   // Create a new locator.
-  auto target_list_index = gc_policy_->GetTaskListIndex(task_events);
+  auto target_list_index = gc_policy_->GetTaskListPriority(task_events);
   task_events_list_.at(target_list_index).push_front(std::move(task_events));
   auto list_itr = task_events_list_.at(target_list_index).begin();
 
   auto loc = std::make_shared<TaskEventLocator>(list_itr, target_list_index);
 
   // Add to index.
-  AddToIndex(loc);
+  UpdateIndex(loc);
 
-  const auto &added_task_events = loc->GetTaskEvents();
+  const auto &added_task_events = loc->GetTaskEventsMutable();
 
   // Stats tracking
   stats_counter_.Increment(kNumTaskEventsBytesStored, added_task_events.ByteSizeLong());
@@ -193,9 +193,9 @@ GcsTaskManager::GcsTaskManagerStorage::AddNewTaskEvent(rpc::TaskEvents &&task_ev
   return loc;
 }
 
-void GcsTaskManager::GcsTaskManagerStorage::AddToIndex(
+void GcsTaskManager::GcsTaskManagerStorage::UpdateIndex(
     const std::shared_ptr<TaskEventLocator> &loc) {
-  const auto &task_events = loc->GetTaskEvents();
+  const auto &task_events = loc->GetTaskEventsMutable();
   const auto task_attempt = GetTaskAttempt(task_events);
   const auto job_id = JobID::FromBinary(task_events.job_id());
   const auto task_id = TaskID::FromBinary(task_events.task_id());
@@ -214,7 +214,7 @@ void GcsTaskManager::GcsTaskManagerStorage::AddToIndex(
 
 void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
     const std::shared_ptr<TaskEventLocator> &loc) {
-  const auto &task_events = loc->GetTaskEvents();
+  const auto &task_events = loc->GetTaskEventsMutable();
   const auto task_attempt = GetTaskAttempt(task_events);
   const auto job_id = JobID::FromBinary(task_events.job_id());
   const auto task_id = TaskID::FromBinary(task_events.task_id());
@@ -272,7 +272,7 @@ GcsTaskManager::GcsTaskManagerStorage::UpdateOrInitTaskEventLocator(
 
 void GcsTaskManager::GcsTaskManagerStorage::RemoveTaskAttempt(
     std::shared_ptr<TaskEventLocator> loc) {
-  const auto &to_remove = loc->GetTaskEvents();
+  const auto &to_remove = loc->GetTaskEventsMutable();
 
   const auto job_id = JobID::FromBinary(to_remove.job_id());
 
@@ -295,13 +295,13 @@ void GcsTaskManager::GcsTaskManagerStorage::RemoveTaskAttempt(
 void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
   // Choose one task event to evict
   size_t list_index = 0;
-  for (; list_index < gc_policy_->NumList(); ++list_index) {
+  for (; list_index < gc_policy_->MaxPriority(); ++list_index) {
     // Find the lowest priority list to gc.
     if (!task_events_list_[list_index].empty()) {
       break;
     }
   }
-  RAY_CHECK(list_index < gc_policy_->NumList());
+  RAY_CHECK(list_index < gc_policy_->MaxPriority());
 
   // Evict from the end.
   const auto &to_evict = task_events_list_[list_index].back();

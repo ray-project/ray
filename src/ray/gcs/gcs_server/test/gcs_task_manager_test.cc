@@ -48,6 +48,11 @@ class GcsTaskManagerTest : public ::testing::Test {
     return task_ids;
   }
 
+  TaskID GenTaskIDForJob(int job_id) {
+    auto random_parent = RandomTaskId();
+    return TaskID::ForNormalTask(JobID::FromInt(job_id), random_parent, 0);
+  }
+
   std::vector<WorkerID> GenWorkerIDs(size_t num_workers) {
     std::vector<WorkerID> worker_ids;
     for (size_t i = 0; i < num_workers; ++i) {
@@ -881,6 +886,86 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitReturnRecentTasksWhenGetAll) {
             << TaskID::FromBinary(task_event.task_id()).Hex() << "not there, at " << i;
       }
     }
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestTaskDataLossWorker) {
+  // Test that if a task is reported as data loss from the worker, GCS
+  // should drop the entire task attempt.
+  auto task_id = GenTaskIDForJob(0);
+
+  // Add a task event.
+  SyncAddTaskEvent({task_id}, {{rpc::TaskStatus::RUNNING, 1}});
+  auto reply = SyncGetTaskEvents({});
+  EXPECT_EQ(reply.events_by_task_size(), 1);
+
+  // Report it as data loss.
+  auto data = Mocker::GenTaskEventsDataLoss({{task_id, 0}});
+  SyncAddTaskEventData(data);
+
+  // The task attempt should be dropped.
+  reply = SyncGetTaskEvents({});
+  EXPECT_EQ(reply.events_by_task_size(), 0);
+  EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+
+  // Adding any new task attempt should also be dropped.
+  SyncAddTaskEvent({task_id}, {{rpc::TaskStatus::RUNNING, 2}});
+  reply = SyncGetTaskEvents({});
+  EXPECT_EQ(reply.events_by_task_size(), 0);
+  EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+}
+
+TEST_F(GcsTaskManagerTest, TestMultipleJobsDataLoss) {
+  auto job_task0 = GenTaskIDForJob(0);
+  auto job_task1 = GenTaskIDForJob(1);
+
+  SyncAddTaskEvent({job_task0}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 0);
+  SyncAddTaskEvent({job_task1}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 1);
+
+  // Make data loss happens on job 0.
+  auto data = Mocker::GenTaskEventsDataLoss({{job_task0, 0}}, 0);
+  SyncAddTaskEventData(data);
+
+  // Job 0 has data loss
+  {
+    auto reply = SyncGetTaskEvents({}, /* job_id */ JobID::FromInt(0));
+    EXPECT_EQ(reply.events_by_task_size(), 0);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+  }
+
+  // Job 1 no data loss
+  {
+    auto reply = SyncGetTaskEvents({}, /* job_id */ JobID::FromInt(1));
+    EXPECT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 0);
+  }
+
+  {
+    auto reply = SyncGetTaskEvents({});
+    EXPECT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+  }
+
+  {
+    // Finish the job should keep the data.
+    task_manager->OnJobFinished(JobID::FromInt(0), 3);
+
+    // Wait for longer than the default timer
+    boost::asio::io_service io;
+    boost::asio::deadline_timer timer(
+        io,
+        boost::posix_time::milliseconds(
+            2 * RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
+    timer.wait();
+
+    auto reply = SyncGetTaskEvents({}, /* job_id */ JobID::FromInt(0));
+    EXPECT_EQ(reply.events_by_task_size(), 0);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+
+    // Verify no leak from the dropped task attempts tracking.
+    auto job_summary =
+        task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
+    EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 0);
   }
 }
 

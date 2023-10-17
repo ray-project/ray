@@ -302,9 +302,7 @@ inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
   if (!task_event.has_profile_events()) {
     return 0;
   }
-
-  auto profile_events = task_event.profile_events();
-  return static_cast<size_t>(profile_events.events_size());
+  return static_cast<size_t>(task_event.profile_events().events_size());
 }
 
 inline TaskAttempt GetTaskAttempt(const rpc::TaskEvents &task_event) {

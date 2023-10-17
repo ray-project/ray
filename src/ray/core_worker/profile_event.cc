@@ -28,7 +28,7 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
     : task_event_buffer_(task_event_buffer) {
   const auto &task_spec = worker_context.GetCurrentTask();
   if (worker_context.GetWorkerType() == rpc::WorkerType::DRIVER &&
-      RayConfig::instance().task_events_skip_driver()) {
+      RayConfig::instance().task_events_skip_driver_for_test()) {
     return;
   }
   event_.reset(new TaskProfileEvent(worker_context.GetCurrentTaskID(),
