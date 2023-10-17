@@ -20,6 +20,7 @@ import threading
 import time
 from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 import warnings
+from ipaddress import ip_address, IPv4Address
 from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
@@ -500,9 +501,10 @@ def set_tpu_visible_ids_and_bounds(tpu_chips: List[str]) -> None:
 
 
 def _set_visible_ids(visible_ids: List[str], env_var: str):
-    """Set the environment variable (e.g., CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES,
-     TPU_VISIBLE_CHIPS) passed based on accelerator runtime and will raise an error if
-     the function uses different environment variable.
+    """
+    Set the environment variable (e.g., CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES,
+    TPU_VISIBLE_CHIPS) passed based on accelerator runtime and will raise an error if
+    the function uses different environment variable.
 
     Args:
         visible_ids (List[str]): List of strings representing GPU IDs or NeuronCore IDs.
@@ -1479,6 +1481,20 @@ def validate_namespace(namespace: str):
         )
 
 
+def build_grpc_address(address: str):
+    """
+    Given an address string, return address supported for IPv4 and IPv6
+    IPv4 format : <address>:<port>
+    IPv6 format : "ipv6":[<address>]:<port>
+    """
+    ip, _, port = address.rpartition(":")
+    return (
+        "{}:{}".format(ip, port)
+        if type(ip_address(ip)) is IPv4Address
+        else "{}:[{}]:{}".format("ipv6", ip, port)
+    )
+
+
 def init_grpc_channel(
     address: str,
     options: Optional[Sequence[Tuple[str, Any]]] = None,
@@ -1504,7 +1520,7 @@ def init_grpc_channel(
         "grpc.keepalive_timeout_ms", ray._config.grpc_client_keepalive_timeout_ms()
     )
     options = options_dict.items()
-
+    gcs_grpc_address = build_grpc_address(address)
     if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
@@ -1512,9 +1528,11 @@ def init_grpc_channel(
             private_key=private_key,
             root_certificates=ca_cert,
         )
-        channel = grpc_module.secure_channel(address, credentials, options=options)
+        channel = grpc_module.secure_channel(
+            gcs_grpc_address, credentials, options=options
+        )
     else:
-        channel = grpc_module.insecure_channel(address, options=options)
+        channel = grpc_module.insecure_channel(gcs_grpc_address, options=options)
 
     return channel
 

@@ -609,7 +609,7 @@ def resolve_ip_for_localhost(address: str):
     """
     if not address:
         raise ValueError(f"Malformed address: {address}")
-    address_parts = address.split(":")
+    address_parts = address.rsplit(":", 1)
     if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
         # Make sure localhost isn't resolved to the loopback ip
         ip_address = get_node_ip_address()
@@ -628,7 +628,7 @@ def node_ip_address_from_perspective(address: str):
     Returns:
         The IP address by which the local node can be reached from the address.
     """
-    ip_address, port = address.split(":")
+    ip_address, port = address.rsplit(":", 1)
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # This command will raise an exception if there is no internet

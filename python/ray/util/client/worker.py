@@ -24,6 +24,7 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray._private.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.utils import build_grpc_address
 
 # Use cloudpickle's version of pickle for UnpicklingError
 from ray.cloudpickle.compat import pickle
@@ -167,7 +168,8 @@ class Worker:
         if self.channel is not None:
             self.channel.unsubscribe(self._on_channel_state_change)
             self.channel.close()
-
+        # Determine GRPC IP address to support IPV6
+        grpc_address = build_grpc_address(self._conn_str)
         if self._secure:
             if self._credentials is not None:
                 credentials = self._credentials
@@ -185,10 +187,10 @@ class Worker:
             else:
                 credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
-                self._conn_str, credentials, options=GRPC_OPTIONS
+                grpc_address, credentials, options=GRPC_OPTIONS
             )
         else:
-            self.channel = grpc.insecure_channel(self._conn_str, options=GRPC_OPTIONS)
+            self.channel = grpc.insecure_channel(grpc_address, options=GRPC_OPTIONS)
 
         self.channel.subscribe(self._on_channel_state_change)
 
