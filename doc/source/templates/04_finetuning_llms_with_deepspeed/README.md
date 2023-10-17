@@ -98,7 +98,7 @@ This dataset is trained with a context length of 512 which includes excessive pa
 
 ### Launching fine-tuning
 
-The script is written using Ray Train + Deepspeed integration via accelerate API. The script is general enough that it can be used to fine-tune all released sizes of LLaMA 2 models. 
+The script is written using Ray Train + Deepspeed integration via accelerate API. The script is general enough that it can be used to fine-tune all released sizes of Llama-2 models. 
 
 The command for seeing all the options is:
 
