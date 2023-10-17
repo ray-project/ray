@@ -85,9 +85,6 @@ RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
-#: Number of historically deleted deployments to store in the checkpoint.
-MAX_NUM_DELETED_DEPLOYMENTS = 1000
-
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
 MAX_CACHED_HANDLES = 100
@@ -163,6 +160,11 @@ MIGRATION_MESSAGE = (
 MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "
     "config files."
+)
+
+DAG_DEPRECATION_MESSAGE = (
+    "The DAG API is deprecated. Please use the recommended model composition pattern "
+    "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
 )
 
 # Jsonify the log messages

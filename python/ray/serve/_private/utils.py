@@ -10,6 +10,7 @@ import string
 import threading
 import time
 import traceback
+from abc import ABC, abstractmethod
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
@@ -22,6 +23,7 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._private.pydantic_compat import IS_PYDANTIC_2
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
@@ -106,6 +108,10 @@ if pd is not None:
 
 def install_serve_encoders_to_fastapi():
     """Inject Serve's encoders so FastAPI's jsonable_encoder can pick it up."""
+    if IS_PYDANTIC_2:
+        # TODO(edoakes): add support for Pydantic 2.0 or drop custom encoders.
+        return
+
     # https://stackoverflow.com/questions/62311401/override-default-encoders-for-jsonable-encoder-in-fastapi # noqa
     pydantic.json.ENCODERS_BY_TYPE.update(serve_encoders)
     # FastAPI cache these encoders at import time, so we also needs to refresh it.
@@ -634,3 +640,15 @@ def is_running_in_asyncio_loop() -> bool:
         return True
     except RuntimeError:
         return False
+
+
+class TimerBase(ABC):
+    @abstractmethod
+    def time(self) -> float:
+        """Return the current time."""
+        raise NotImplementedError
+
+
+class Timer(TimerBase):
+    def time(self) -> float:
+        return time.time()

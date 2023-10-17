@@ -1,10 +1,10 @@
 import math
 import os
 import tempfile
+import time
 from unittest.mock import patch
 
 import pytest
-import time
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -13,20 +13,20 @@ from ray.air._internal.util import StartTraceback
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.train import DataConfig
 from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
     TrainBackendError,
     TrainingWorkerError,
 )
-from ray.train import DataConfig
-from ray.train._internal.worker_group import WorkerGroup, WorkerMetadata
 from ray.train._internal.storage import StorageContext
+from ray.train._internal.worker_group import WorkerGroup, WorkerMetadata
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-    TRAIN_ENABLE_WORKER_SPREAD_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
@@ -236,6 +236,8 @@ def test_train_single_worker_failure(ray_start_2_cpus):
     assert isinstance(exc.value.__cause__, ValueError)
 
 
+# TODO(@justinvyu: fix test and/or deprecate relevant code path)
+@pytest.mark.skip("Mocked execute_async doesn't work as intended")
 def test_worker_failure(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)

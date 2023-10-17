@@ -11,10 +11,10 @@ from typing import Dict, List, Optional, Tuple
 import click
 import watchfiles
 import yaml
-from pydantic import ValidationError
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import ValidationError
 from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
@@ -51,9 +51,9 @@ RAY_INIT_ADDRESS_HELP_STR = (
     "using the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard agent (defaults to "
-    "http://localhost:52365). Can also be specified using the "
-    "RAY_AGENT_ADDRESS environment variable."
+    "Address to use to query the Ray dashboard head (defaults to "
+    "http://localhost:8265). Can also be specified using the "
+    "RAY_DASHBOARD_ADDRESS environment variable."
 )
 
 
@@ -126,6 +126,15 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
         args_dict[split[0]] = split[1]
 
     return args_dict
+
+
+def warn_if_agent_address_set():
+    if "RAY_AGENT_ADDRESS" in os.environ:
+        cli_logger.warning(
+            "The `RAY_AGENT_ADDRESS` env var has been deprecated in favor of "
+            "the `RAY_DASHBOARD_ADDRESS` env var. The `RAY_AGENT_ADDRESS` is "
+            "ignored."
+        )
 
 
 @click.group(
@@ -240,12 +249,14 @@ def start(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 def deploy(config_file_name: str, address: str):
+    warn_if_agent_address_set()
+
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
@@ -255,6 +266,12 @@ def deploy(config_file_name: str, address: str):
     except ValidationError as v2_err:
         try:
             ServeApplicationSchema.parse_obj(config)
+            cli_logger.warning(
+                "The single-application config format is deprecated and will be "
+                "removed in a future version. Please switch to using the multi-"
+                "application config (see "
+                "https://docs.ray.io/en/latest/serve/multi-app.html)."
+            )
             ServeSubmissionClient(address).deploy_application(config)
         except ValidationError as v1_err:
             # If we find the field "applications" in the config, most likely
@@ -454,6 +471,12 @@ def run(
             except ValidationError as v2_err:
                 try:
                     config = ServeApplicationSchema.parse_obj(config_dict)
+                    cli_logger.warning(
+                        "The single-application config format is deprecated and will "
+                        "be removed in a future version. Please switch to using the "
+                        "multi-application config (see "
+                        "https://docs.ray.io/en/latest/serve/multi-app.html)."
+                    )
                     # If host or port is specified as a CLI argument, they should take
                     # priority over config values.
                     if host is None:
@@ -519,7 +542,9 @@ def run(
             client.deploy_apps(config, _blocking=gradio)
             cli_logger.success("Submitted deploy config successfully.")
             if gradio:
-                handle = serve.get_deployment("DAGDriver").get_handle()
+                handle = serve.get_deployment_handle(
+                    "DAGDriver", app_name=SERVE_DEFAULT_APP_NAME
+                )
         else:
             handle = serve.run(app, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")
@@ -579,7 +604,7 @@ def run(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -595,6 +620,8 @@ def run(
     ),
 )
 def config(address: str, name: Optional[str]):
+    warn_if_agent_address_set()
+
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -652,7 +679,7 @@ def config(address: str, name: Optional[str]):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -669,6 +696,8 @@ def config(address: str, name: Optional[str]):
     ),
 )
 def status(address: str, name: Optional[str]):
+    warn_if_agent_address_set()
+
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -708,13 +737,15 @@ def status(address: str, name: Optional[str]):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
+    warn_if_agent_address_set()
+
     if not yes:
         click.confirm(
             f"This will shut down Serve on the cluster at address "
@@ -774,7 +805,7 @@ def shutdown(address: str, yes: bool):
 @click.option(
     "--single-app",
     is_flag=True,
-    help="Generate a single-application config from one target.",
+    help="[DEPRECATED] Generate a single-application config from one target.",
 )
 @click.option(
     "--grpc-servicer-functions",
@@ -842,6 +873,11 @@ def build(
     )
 
     if single_app:
+        cli_logger.warning(
+            "The single-application config format is deprecated and will be removed in "
+            "a future version. Please switch to using the multi-application config "
+            "(see https://docs.ray.io/en/latest/serve/multi-app.html)."
+        )
         if len(import_paths) > 1:
             raise click.ClickException(
                 "Got more than one argument. Only one import path is accepted when "
