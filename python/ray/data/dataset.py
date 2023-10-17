@@ -11,7 +11,6 @@ from typing import (
     Dict,
     Generic,
     Iterable,
-    Iterator,
     List,
     Literal,
     Mapping,
@@ -60,7 +59,6 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import ExecutionManager
-from ray.data._internal.planner.plan_write_op import generate_write_fn
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
@@ -808,17 +806,6 @@ class Dataset:
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
 
-        # plan = self._execution_manager.with_stage(
-        #     OneToOneStage(
-        #         "FlatMap",
-        #         transform_fn,
-        #         compute,
-        #         ray_remote_args,
-        #         fn=fn,
-        #         fn_constructor_args=fn_constructor_args,
-        #     )
-        # )
-
         logical_plan = self._logical_plan
         op = FlatMap(
             input_op=logical_plan.dag,
@@ -831,9 +818,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op)
-        return Dataset(
-            self._execution_manager.with_operator(op), logical_plan
-        )
+        return Dataset(self._execution_manager.with_operator(op), logical_plan)
 
     def filter(
         self,
@@ -1017,9 +1002,7 @@ class Dataset:
             seed=seed,
         )
         logical_plan = LogicalPlan(op)
-        return Dataset(
-            self._execution_manager.with_operator(op), logical_plan
-        )
+        return Dataset(self._execution_manager.with_operator(op), logical_plan)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -2131,9 +2114,7 @@ class Dataset:
             sort_key=sort_key,
         )
         logical_plan = LogicalPlan(op)
-        return Dataset(
-            self._execution_manager.with_operator(op), logical_plan
-        )
+        return Dataset(self._execution_manager.with_operator(op), logical_plan)
 
     def zip(self, other: "Dataset") -> "Dataset":
         """Materialize and zip the columns of this dataset with the columns of another.
@@ -2171,9 +2152,7 @@ class Dataset:
         other_logical_plan = other._logical_plan
         op = Zip(logical_plan.dag, other_logical_plan.dag)
         logical_plan = LogicalPlan(op)
-        return Dataset(
-            self._execution_manager.with_operator(op), logical_plan
-        )
+        return Dataset(self._execution_manager.with_operator(op), logical_plan)
 
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
@@ -2199,9 +2178,7 @@ class Dataset:
         logical_plan = self._logical_plan
         op = Limit(logical_plan.dag, limit=limit)
         logical_plan = LogicalPlan(op)
-        return Dataset(
-            self._execution_manager.with_operator(op), logical_plan
-        )
+        return Dataset(self._execution_manager.with_operator(op), logical_plan)
 
     @ConsumptionAPI
     def take_batch(
@@ -3346,23 +3323,7 @@ class Dataset:
             )
 
         if type(datasource).write != Datasource.write:
-            write_fn = generate_write_fn(datasource, **write_args)
-
-            def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
-                return write_fn(blocks, ctx)
-
-            # plan = self._execution_manager.with_stage(
-            #     OneToOneStage(
-            #         "Write",
-            #         write_fn_wrapper,
-            #         TaskPoolStrategy(),
-            #         ray_remote_args,
-            #         fn=lambda x: x,
-            #     )
-            # )
-
             logical_plan = self._logical_plan
-            # if logical_plan is not None:
             write_op = Write(
                 logical_plan.dag,
                 datasource,

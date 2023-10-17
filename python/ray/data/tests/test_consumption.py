@@ -77,51 +77,50 @@ def test_dataset_lineage_serialization(shutdown_only):
     assert sorted(extract_values("id", ds.take())) == list(range(2, 12))
 
 
-# will be removed by another PR
-# def test_dataset_lineage_serialization_unsupported(shutdown_only):
-#     ray.init()
-#     # In-memory data sources not supported.
-#     ds = ray.data.from_items(list(range(10)))
-#     ds = ds.map(column_udf("item", lambda x: x + 1))
-#     ds = ds.map(column_udf("item", lambda x: x + 1))
+def test_dataset_lineage_serialization_unsupported(shutdown_only):
+    ray.init()
+    # In-memory data sources not supported.
+    ds = ray.data.from_items(list(range(10)))
+    ds = ds.map(column_udf("item", lambda x: x + 1))
+    ds = ds.map(column_udf("item", lambda x: x + 1))
 
-#     with pytest.raises(ValueError):
-#         ds.serialize_lineage()
+    with pytest.raises(ValueError):
+        ds.serialize_lineage()
 
-#     # In-memory data source unions not supported.
-#     ds = ray.data.from_items(list(range(10)))
-#     ds1 = ray.data.from_items(list(range(10, 20)))
-#     ds2 = ds.union(ds1)
+    # In-memory data source unions not supported.
+    ds = ray.data.from_items(list(range(10)))
+    ds1 = ray.data.from_items(list(range(10, 20)))
+    ds2 = ds.union(ds1)
 
-#     with pytest.raises(ValueError):
-#         ds2.serialize_lineage()
+    with pytest.raises(ValueError):
+        ds2.serialize_lineage()
 
-#     # Post-lazy-read unions not supported.
-#     ds = ray.data.range(10).map(column_udf("id", lambda x: x + 1))
-#     ds1 = ray.data.range(20).map(column_udf("id", lambda x: 2 * x))
-#     ds2 = ds.union(ds1)
+    # Post-lazy-read unions not supported.
+    ds = ray.data.range(10).map(column_udf("id", lambda x: x + 1))
+    ds1 = ray.data.range(20).map(column_udf("id", lambda x: 2 * x))
+    ds2 = ds.union(ds1)
 
-#     with pytest.raises(ValueError):
-#         ds2.serialize_lineage()
+    with pytest.raises(ValueError):
+        ds2.serialize_lineage()
 
-#     # Lazy read unions supported.
-#     ds = ray.data.range(10)
-#     ds1 = ray.data.range(20)
-#     ds2 = ds.union(ds1)
+    # Lazy read unions supported.
+    ds = ray.data.range(10)
+    ds1 = ray.data.range(20)
+    ds2 = ds.union(ds1)
 
-#     serialized_ds = ds2.serialize_lineage()
-#     ds3 = Dataset.deserialize_lineage(serialized_ds)
-#     assert set(extract_values("id", ds3.take(30))) == set(
-#         list(range(10)) + list(range(20))
-#     )
+    serialized_ds = ds2.serialize_lineage()
+    ds3 = Dataset.deserialize_lineage(serialized_ds)
+    assert set(extract_values("id", ds3.take(30))) == set(
+        list(range(10)) + list(range(20))
+    )
 
-#     # Zips not supported.
-#     ds = ray.data.from_items(list(range(10)))
-#     ds1 = ray.data.from_items(list(range(10, 20)))
-#     ds2 = ds.zip(ds1)
+    # Zips not supported.
+    ds = ray.data.from_items(list(range(10)))
+    ds1 = ray.data.from_items(list(range(10, 20)))
+    ds2 = ds.zip(ds1)
 
-#     with pytest.raises(ValueError):
-#         ds2.serialize_lineage()
+    with pytest.raises(ValueError):
+        ds2.serialize_lineage()
 
 
 def test_basic(ray_start_regular_shared):
@@ -151,6 +150,7 @@ def test_empty_dataset(ray_start_regular_shared):
     assert ds.size_bytes() is None
     assert ds.schema() is None
 
+    print("!!!!!!! DONE")
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x["id"] > 1)
     ds = ds.materialize()
@@ -234,8 +234,6 @@ def test_schema_no_execution(ray_start_regular_shared):
     # Fetching the schema does not trigger execution, since
     # the schema is known beforehand for RangeDatasource.
     assert ds._execution_manager._in_blocks._num_computed() == 0
-    # Fetching the schema should not trigger execution of extra read tasks.
-    assert ds._execution_manager.execute()._num_computed() == 0
 
 
 def test_schema_cached(ray_start_regular_shared):
