@@ -103,7 +103,6 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     ds = Dataset(
         ExecutionManager(block_list, DatasetStats.TODO(), run_by_consumer=True),
         0,
-        False,
         logical_plan,
     )
 
@@ -346,31 +345,36 @@ def test_split(ray_start_regular_shared):
 
     datasets = ds.split(5)
     assert [2] * 5 == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+        dataset._execution_manager.execute().initial_num_blocks()
+        for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(3)
     assert [4, 3, 3] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+        dataset._execution_manager.execute().initial_num_blocks()
+        for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(1)
     assert [10] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+        dataset._execution_manager.execute().initial_num_blocks()
+        for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(10)
     assert [1] * 10 == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+        dataset._execution_manager.execute().initial_num_blocks()
+        for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+        dataset._execution_manager.execute().initial_num_blocks()
+        for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") or 0 for dataset in datasets])
 
@@ -773,7 +777,7 @@ def test_train_test_split(ray_start_regular_shared):
 
 def test_split_is_not_disruptive(ray_start_cluster):
     ray.shutdown()
-    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x).lazy()
+    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x)
 
     def verify_integrity(splits):
         for dss in splits:

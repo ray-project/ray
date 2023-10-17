@@ -44,6 +44,7 @@ class TaskPoolMapOperator(MapOperator):
         # Submit the task as a normal Ray task.
         map_task = cached_remote_fn(_map_task, num_returns="streaming")
         input_blocks = [block for block, _ in bundle.blocks]
+        input_files = [meta.input_files for _, meta in bundle.blocks]
         ctx = TaskContext(task_idx=self._next_data_task_idx)
         gen = map_task.options(
             **self._get_runtime_ray_remote_args(input_bundle=bundle), name=self.name
@@ -51,6 +52,7 @@ class TaskPoolMapOperator(MapOperator):
             self._map_transformer_ref,
             DataContext.get_current(),
             ctx,
+            input_files,
             *input_blocks,
         )
         self._submit_data_task(gen, bundle)

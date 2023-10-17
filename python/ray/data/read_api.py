@@ -187,12 +187,13 @@ def from_items(
 
     from_items_op = FromItems(blocks, metadata)
     logical_plan = LogicalPlan(from_items_op)
+    execution_manager = ExecutionManager(
+        BlockList(blocks, metadata, owned_by_consumer=False),
+        DatasetStats(stages={"FromItems": metadata}, parent=None),
+        run_by_consumer=False,
+    )
     return MaterializedDataset(
-        ExecutionManager(
-            BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromItems": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        execution_manager,
         0,
         logical_plan,
     )
@@ -2148,12 +2149,13 @@ def from_pandas_refs(
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         logical_plan = LogicalPlan(FromPandas(dfs, metadata))
+        execution_manager = ExecutionManager(
+            BlockList(dfs, metadata, owned_by_consumer=False),
+            DatasetStats(stages={"FromPandas": metadata}, parent=None),
+            run_by_consumer=False,
+        )
         return MaterializedDataset(
-            ExecutionManager(
-                BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"FromPandas": metadata}, parent=None),
-                run_by_consumer=False,
-            ),
+            execution_manager,
             0,
             logical_plan,
         )
@@ -2164,12 +2166,13 @@ def from_pandas_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
     logical_plan = LogicalPlan(FromPandas(blocks, metadata))
+    execution_manager = ExecutionManager(
+        BlockList(blocks, metadata, owned_by_consumer=False),
+        DatasetStats(stages={"FromPandas": metadata}, parent=None),
+        run_by_consumer=False,
+    )
     return MaterializedDataset(
-        ExecutionManager(
-            BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromPandas": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        execution_manager,
         0,
         logical_plan,
     )
@@ -2251,13 +2254,14 @@ def from_numpy_refs(
     metadata = ray.get(metadata)
 
     logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
+    execution_manager = ExecutionManager(
+        BlockList(blocks, metadata, owned_by_consumer=False),
+        DatasetStats(stages={"FromNumpy": metadata}, parent=None),
+        run_by_consumer=False,
+    )
 
     return MaterializedDataset(
-        ExecutionManager(
-            BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromNumpy": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        execution_manager,
         0,
         logical_plan,
     )
@@ -2333,12 +2337,14 @@ def from_arrow_refs(
     metadata = ray.get([get_metadata.remote(t) for t in tables])
     logical_plan = LogicalPlan(FromArrow(tables, metadata))
 
+    execution_manager = ExecutionManager(
+        BlockList(tables, metadata, owned_by_consumer=False),
+        DatasetStats(stages={"FromArrow": metadata}, parent=None),
+        run_by_consumer=False,
+    )
+
     return MaterializedDataset(
-        ExecutionManager(
-            BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromArrow": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        execution_manager,
         0,
         logical_plan,
     )

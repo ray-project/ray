@@ -360,6 +360,7 @@ def _map_task(
     map_transformer: MapTransformer,
     data_context: DataContext,
     ctx: TaskContext,
+    input_files: Optional[List[List[str]]],
     *blocks: Block,
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
     """Remote function for a single operator task.
@@ -375,13 +376,24 @@ def _map_task(
     """
     DataContext._set_current(data_context)
     stats = BlockExecStats.builder()
+    block_idx = 0
+    print("===> blocks:", blocks)
+    print("===> _map_task input_files is:", input_files)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
+        print("===> block_idx: ", block_idx)
+        print("===> b_out:", b_out)
         # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        block_input_files = []
+        if input_files:
+            block_input_files = input_files[block_idx]
+        m_out = BlockAccessor.for_block(b_out).get_metadata(block_input_files, None)
         m_out.exec_stats = stats.build()
         yield b_out
         yield m_out
         stats = BlockExecStats.builder()
+        block_idx += 1
+    print("===> done")
+    # 1/0
 
 
 class _BlockRefBundler:

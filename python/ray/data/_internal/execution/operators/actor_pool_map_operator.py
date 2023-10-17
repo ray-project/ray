@@ -359,7 +359,7 @@ class _MapWorker:
         ctx: TaskContext,
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(self._map_transformer, data_context, ctx, *blocks)
+        yield from _map_task(self._map_transformer, data_context, ctx, None, *blocks)
 
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"

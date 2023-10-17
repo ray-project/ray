@@ -41,6 +41,7 @@ class InputDataBuffer(PhysicalOperator):
             self._input_data_factory = input_data_factory
             self._is_input_initialized = False
         self._num_output_blocks = num_output_blocks
+        self._input_files: List[List[str]] = []
         super().__init__("Input", [])
 
     def start(self, options: ExecutionOptions) -> None:
@@ -70,8 +71,14 @@ class InputDataBuffer(PhysicalOperator):
 
         self._num_output_bundles = len(self._input_data)
         block_metadata = []
+        input_files = []
         for bundle in self._input_data:
-            block_metadata.extend([m for (_, m) in bundle.blocks])
+            curr_bundle_input_files = []
+            for (_, m) in bundle.blocks:
+                block_metadata.append(m)
+                curr_bundle_input_files.extend(m.input_files)
+            input_files.append(curr_bundle_input_files)
         self._stats = {
             "input": block_metadata,
         }
+        self._input_files = input_files

@@ -255,7 +255,7 @@ def assert_base_partitioned_ds():
         # For Datasets with long string representations, the format will include
         # whitespace and newline characters, which is difficult to generalize
         # without implementing the formatting logic again (from
-        # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
+        # `ExecutionManager.get_plan_as_string()`). Therefore, we remove whitespace
         # characters to test the string contents regardless of the string repr length.
         def _remove_whitespace(ds_str):
             for c in ["\n", "   ", " "]:

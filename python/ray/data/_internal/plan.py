@@ -142,7 +142,7 @@ class ExecutionManager:
 
     def __repr__(self) -> str:
         return (
-            f"ExecutionPlan("
+            f"ExecutionManager("
             f"dataset_uuid={self._dataset_uuid}, "
             f"run_by_consumer={self._run_by_consumer}, "
             f"in_blocks={self._in_blocks}, "
@@ -158,7 +158,7 @@ class ExecutionManager:
             The string representation of this execution plan.
         """
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
-        # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
+        # representation. Ideally ExecutionManager.__repr__ should be replaced with this
         # method as well.
 
         # Do not force execution for schema, as this method is expected to be very
@@ -586,7 +586,8 @@ class ExecutionManager:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
-            if self._run_with_new_execution_backend():
+            # if self._run_with_new_execution_backend():
+            if True:
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )

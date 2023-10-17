@@ -1767,10 +1767,11 @@ class Dataset:
             parent=[d._execution_manager.stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time
+        execution_manager = ExecutionManager(
+            blocklist, stats, run_by_consumer=owned_by_consumer
+        ).with_operator(op)
         return Dataset(
-            ExecutionManager(
-                blocklist, stats, run_by_consumer=owned_by_consumer
-            ).with_operator(op),
+            execution_manager,
             max_epoch,
             logical_plan,
         )
@@ -4534,12 +4535,13 @@ class Dataset:
             for block_with_metadata in blocks_with_metadata
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        execution_manager = ExecutionManager(
+            blocks,
+            copy._execution_manager.stats(),
+            run_by_consumer=False,
+        )
         output = MaterializedDataset(
-            ExecutionManager(
-                blocks,
-                copy._execution_manager.stats(),
-                run_by_consumer=False,
-            ),
+            execution_manager,
             copy._epoch,
             logical_plan,
         )
