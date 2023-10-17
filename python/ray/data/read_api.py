@@ -1,13 +1,13 @@
 import collections
 import logging
 import os
-import sys
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     List,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -80,13 +80,8 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import dask
@@ -191,8 +186,6 @@ def from_items(
             DatasetStats(stages={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
-        True,
         logical_plan,
     )
 
@@ -239,11 +232,6 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
         block_format="arrow",
         column_name="id",
     )
-
-
-@Deprecated
-def range_table(n: int, *, parallelism: int = -1) -> Dataset:
-    raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
 
 
 @PublicAPI
@@ -423,8 +411,6 @@ def read_datasource(
 
     return Dataset(
         plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
-        epoch=0,
-        lazy=True,
         logical_plan=logical_plan,
     )
 
@@ -2108,8 +2094,6 @@ def from_pandas_refs(
                 DatasetStats(stages={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
-            0,
-            True,
             logical_plan,
         )
 
@@ -2125,8 +2109,6 @@ def from_pandas_refs(
             DatasetStats(stages={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
-        True,
         logical_plan,
     )
 
@@ -2214,8 +2196,6 @@ def from_numpy_refs(
             DatasetStats(stages={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
-        True,
         logical_plan,
     )
 
@@ -2296,8 +2276,6 @@ def from_arrow_refs(
             DatasetStats(stages={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
-        0,
-        True,
         logical_plan,
     )
 

@@ -11,7 +11,6 @@ from typing import (
     Union,
 )
 
-import contextlib
 import collections
 from dataclasses import dataclass
 import datetime
@@ -813,36 +812,20 @@ def _detect_reporter(
     config: Optional[Dict] = None,
     progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
 ):
-    # TODO: Add JupyterNotebook and Ray Client case later.
-    rich_enabled = bool(int(os.environ.get("RAY_AIR_RICH_LAYOUT", "0")))
     if entrypoint in {
         AirEntrypoint.TUNE_RUN,
         AirEntrypoint.TUNE_RUN_EXPERIMENTS,
         AirEntrypoint.TUNER,
     }:
-        if rich_enabled:
-            if not rich:
-                raise ImportError("Please run `pip install rich`. ")
-            reporter = TuneRichReporter(
-                verbosity,
-                num_samples=num_samples,
-                metric=metric,
-                mode=mode,
-                config=config,
-                progress_metrics=progress_metrics,
-            )
-        else:
-            reporter = TuneTerminalReporter(
-                verbosity,
-                num_samples=num_samples,
-                metric=metric,
-                mode=mode,
-                config=config,
-                progress_metrics=progress_metrics,
-            )
+        reporter = TuneTerminalReporter(
+            verbosity,
+            num_samples=num_samples,
+            metric=metric,
+            mode=mode,
+            config=config,
+            progress_metrics=progress_metrics,
+        )
     else:
-        if rich_enabled:
-            logger.warning("`RAY_AIR_RICH_LAYOUT` is only effective with Tune usecase.")
         reporter = TrainReporter(verbosity, progress_metrics=progress_metrics)
     return reporter
 
@@ -1026,93 +1009,6 @@ class TuneTerminalReporter(TuneReporterBase):
         )
         if any(trial.status == Trial.TERMINATED for trial in trials_with_error):
             print("* The trial terminated successfully after retrying.")
-
-
-class TuneRichReporter(TuneReporterBase):
-    _wrap_headers = True
-
-    def __init__(
-        self,
-        verbosity: AirVerbosity,
-        num_samples: int = 0,
-        metric: Optional[str] = None,
-        mode: Optional[str] = None,
-        config: Optional[Dict] = None,
-        progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
-    ):
-        super().__init__(
-            verbosity=verbosity,
-            num_samples=num_samples,
-            metric=metric,
-            mode=mode,
-            config=config,
-            progress_metrics=progress_metrics,
-        )
-        self._live = None
-
-    # since sticky table, we can afford to do that more often.
-    _heartbeat_freq = 5
-
-    @contextlib.contextmanager
-    def with_live(self):
-        with rich.live.Live(
-            refresh_per_second=4, redirect_stdout=True, redirect_stderr=True
-        ) as live:
-            self._live = live
-            yield
-            self._live = None
-
-    def _render_layout(self, heartbeat_strs: List[str], table_data: _TrialTableData):
-        # generate a nested table, the top table will write some basic info
-        # and the bottom table shows trial status.
-        table = rich.table.Table(
-            show_header=False,
-            show_edge=False,
-            show_lines=False,
-        )
-        table_basic_info = rich.table.Table(
-            show_header=False,
-            show_edge=False,
-            show_lines=False,
-        )
-        for s in heartbeat_strs:
-            table_basic_info.add_row(str(s))
-        table_trial = rich.table.Table(
-            box=rich.box.SQUARE,
-            expand=True,
-            show_header=False,
-            title=":glowing_star: Ray Tune Trial Status Table :glowing_star:",
-        )
-        header = table_data.header
-        table_data = table_data.data
-        for _ in header:
-            table_trial.add_column(overflow="fold")
-        table_trial.add_row(*header)
-        for per_status_info in table_data:
-            trial_infos = per_status_info.trial_infos
-            more_info = per_status_info.more_info
-            for trial_info in trial_infos:
-                table_trial.add_row(*[str(_) for _ in trial_info])
-            if more_info:
-                table_trial.add_row(more_info)
-        table.add_row(table_basic_info)
-        table.add_row(table_trial)
-
-        self._live.update(table)
-
-    def _print_heartbeat(self, trials, *args, force: bool = False):
-        if not rich:
-            return
-        if not self._live:
-            logger.warning(
-                "`print_heartbeat` is not supposed to "
-                "be called without `with_live` context manager."
-            )
-            return
-        heartbeat_strs, table_data = self._get_heartbeat(
-            trials, *args, force_full_output=force
-        )
-        self._render_layout(heartbeat_strs, table_data)
 
 
 class TrainReporter(ProgressReporter):

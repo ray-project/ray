@@ -1378,5 +1378,36 @@ def test_redeploy_old_config_after_failed_deployment(
     wait_for_condition(check_application_running)
 
 
+def test_change_route_prefix(client: ServeControllerClient):
+    # Deploy application with route prefix /old
+    app_config = {
+        "name": "default",
+        "route_prefix": "/old",
+        "import_path": "ray.serve.tests.test_config_files.pid.node",
+    }
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+
+    wait_for_condition(check_running, _client=client)
+    pid1 = requests.get("http://localhost:8000/old").json()[0]
+
+    # Redeploy application with route prefix /new.
+    app_config["route_prefix"] = "/new"
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+
+    # Check that the old route is gone and the response from the new route
+    # has the same PID (replica wasn't restarted).
+    def check_switched():
+        # Old route should be gone
+        resp = requests.get("http://localhost:8000/old")
+        assert "Path '/old' not found." in resp.text
+
+        # Response from new route should be same PID
+        pid2 = requests.get("http://localhost:8000/new").json()[0]
+        assert pid2 == pid1
+        return True
+
+    wait_for_condition(check_switched)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

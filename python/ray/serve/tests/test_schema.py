@@ -6,7 +6,6 @@ from typing import Dict, List
 import pytest
 import requests
 
-import ray
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.common import (
@@ -757,7 +756,7 @@ def test_deployment_to_schema_to_deployment():
         pass
 
     deployment = schema_to_deployment(deployment_to_schema(f))
-    deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
+    deployment.set_options(func_or_class=global_f)
 
     assert deployment.num_replicas == 3
     assert deployment.route_prefix == "/hello"
@@ -770,8 +769,8 @@ def test_deployment_to_schema_to_deployment():
     ]
 
     serve.start()
-    deployment._deploy()
-    assert ray.get(deployment._get_handle().remote()) == "Hello world!"
+    handle = serve.run(deployment.bind()).options(use_new_handle_api=True)
+    assert handle.remote().result() == "Hello world!"
     assert requests.get("http://localhost:8000/hello").text == "Hello world!"
     serve.shutdown()
 
