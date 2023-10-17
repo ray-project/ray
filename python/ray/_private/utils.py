@@ -282,11 +282,11 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
 
     from ray._private.accelerators import (
         get_all_accelerator_resource_names,
-        get_accelerator_for_resource,
+        get_accelerator_manager_for_resource,
     )
 
     return {
-        accelerator_resource_name: get_accelerator_for_resource(
+        accelerator_resource_name: get_accelerator_manager_for_resource(
             accelerator_resource_name
         ).get_visible_accelerator_ids()
         for accelerator_resource_name in get_all_accelerator_resource_names()
@@ -346,9 +346,9 @@ def set_visible_accelerator_ids() -> None:
     ):
         if last_set_visible_accelerator_ids.get(resource_name, None) == accelerator_ids:
             continue  # optimization: already set
-        ray._private.accelerators.get_accelerator_for_resource(
+        ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
-        ).set_visible_accelerator_ids(accelerator_ids)
+        ).set_current_process_visible_accelerator_ids(accelerator_ids)
         last_set_visible_accelerator_ids[resource_name] = accelerator_ids
 
 

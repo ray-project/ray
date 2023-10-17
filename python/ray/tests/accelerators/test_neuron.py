@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import patch
 
 import ray
-from ray._private.accelerators import NeuronAccelerator
+from ray._private.accelerators import NeuronAcceleratorManager
 
 
 def test_user_configured_more_than_visible(monkeypatch, call_ray_stop_only):
@@ -53,7 +53,7 @@ def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
 @patch("os.path.isdir", return_value=True)
 @patch("sys.platform", "linux")
 def test_get_neuron_core_count_single_device(mock_isdir, mock_subprocess):
-    assert NeuronAccelerator.get_num_accelerators() == 2
+    assert NeuronAcceleratorManager.get_current_node_num_accelerators() == 2
 
 
 @patch(
@@ -73,7 +73,7 @@ def test_get_neuron_core_count_single_device(mock_isdir, mock_subprocess):
 @patch("os.path.isdir", return_value=True)
 @patch("sys.platform", "linux")
 def test_get_neuron_core_count_multiple_devices(mock_isdir, mock_subprocess):
-    assert NeuronAccelerator.get_num_accelerators() == 4
+    assert NeuronAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
 @patch(
@@ -85,7 +85,7 @@ def test_get_neuron_core_count_multiple_devices(mock_isdir, mock_subprocess):
 @patch("os.path.isdir", return_value=True)
 @patch("sys.platform", "linux")
 def test_get_neuron_core_count_failure_with_error(mock_isdir, mock_subprocess):
-    assert NeuronAccelerator.get_num_accelerators() == 0
+    assert NeuronAcceleratorManager.get_current_node_num_accelerators() == 0
 
 
 @patch(
@@ -95,7 +95,7 @@ def test_get_neuron_core_count_failure_with_error(mock_isdir, mock_subprocess):
 @patch("os.path.isdir", return_value=True)
 @patch("sys.platform", "linux")
 def test_get_neuron_core_count_failure_with_empty_results(mock_isdir, mock_subprocess):
-    assert NeuronAccelerator.get_num_accelerators() == 0
+    assert NeuronAcceleratorManager.get_current_node_num_accelerators() == 0
 
 
 if __name__ == "__main__":

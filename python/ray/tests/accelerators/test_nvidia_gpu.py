@@ -3,7 +3,7 @@ import sys
 import pytest
 from unittest.mock import patch, mock_open
 
-from ray._private.accelerators import NvidiaGPUAccelerator
+from ray._private.accelerators import NvidiaGPUAcceleratorManager
 
 
 @patch("importlib.util.find_spec", return_value=False)
@@ -23,7 +23,7 @@ Device Minor:    0
 Blacklisted:     No
     """
     with patch("builtins.open", mock_open(read_data=info_string)):
-        assert NvidiaGPUAccelerator.get_accelerator_type() == "V100"
+        assert NvidiaGPUAcceleratorManager.get_current_node_accelerator_type() == "V100"
 
     info_string = """Model:           Tesla T4
 IRQ:             10
@@ -37,7 +37,7 @@ Device Minor:    0
 Blacklisted:     No
     """
     with patch("builtins.open", mock_open(read_data=info_string)):
-        assert NvidiaGPUAccelerator.get_accelerator_type() == "T4"
+        assert NvidiaGPUAcceleratorManager.get_current_node_accelerator_type() == "T4"
 
 
 if __name__ == "__main__":

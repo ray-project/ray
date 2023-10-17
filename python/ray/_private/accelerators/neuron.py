@@ -3,9 +3,9 @@ import sys
 import json
 import logging
 import subprocess
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
-from ray._private.accelerators.accelerator import Accelerator
+from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ AWS_NEURON_INSTANCE_MAP = {
 }
 
 
-class NeuronAccelerator(Accelerator):
+class NeuronAcceleratorManager(AcceleratorManager):
     """AWS Inferentia and Trainium accelerators."""
 
     @staticmethod
@@ -36,16 +36,14 @@ class NeuronAccelerator(Accelerator):
         return "neuron_cores"
 
     @staticmethod
-    def is_available() -> bool:
-        return NeuronAccelerator.get_num_accelerators() > 0
-
-    @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
         return NEURON_RT_VISIBLE_CORES_ENV_VAR
 
     @staticmethod
-    def get_visible_accelerator_ids() -> Optional[List[str]]:
-        neuron_visible_cores = os.environ.get(NEURON_RT_VISIBLE_CORES_ENV_VAR, None)
+    def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
+        neuron_visible_cores = os.environ.get(
+            NeuronAcceleratorManager.get_visible_accelerator_ids_env_var(), None
+        )
 
         if neuron_visible_cores is None:
             return None
@@ -56,7 +54,7 @@ class NeuronAccelerator(Accelerator):
         return list(neuron_visible_cores.split(","))
 
     @staticmethod
-    def get_num_accelerators() -> int:
+    def get_current_node_num_accelerators() -> int:
         """
         Attempt to detect the number of Neuron cores on this machine.
 
@@ -78,24 +76,29 @@ class NeuronAccelerator(Accelerator):
         return nc_count
 
     @staticmethod
-    def get_accelerator_type() -> Optional[str]:
+    def get_current_node_accelerator_type() -> Optional[str]:
         from ray.util.accelerators import AWS_NEURON_CORE
 
         return AWS_NEURON_CORE
 
     @staticmethod
-    def validate_resource_request_quantity(quantity: float) -> Optional[str]:
+    def validate_resource_request_quantity(
+        quantity: float,
+    ) -> Tuple[bool, Optional[str]]:
         if isinstance(quantity, float) and not quantity.is_integer():
             return (
-                f"{NeuronAccelerator.get_resource_name()} resource quantity"
+                False,
+                f"{NeuronAcceleratorManager.get_resource_name()} resource quantity"
                 " must be whole numbers. "
-                f"The specified quantity {quantity} is invalid."
+                f"The specified quantity {quantity} is invalid.",
             )
         else:
-            return None
+            return (True, None)
 
     @staticmethod
-    def set_visible_accelerator_ids(visible_neuron_core_ids: List[str]) -> None:
+    def set_current_process_visible_accelerator_ids(
+        visible_neuron_core_ids: List[str],
+    ) -> None:
         """Set the NEURON_RT_VISIBLE_CORES environment variable based on
         given visible_neuron_core_ids.
 
@@ -105,12 +108,14 @@ class NeuronAccelerator(Accelerator):
         if os.environ.get(NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR):
             return
 
-        os.environ[NEURON_RT_VISIBLE_CORES_ENV_VAR] = ",".join(
-            [str(i) for i in visible_neuron_core_ids]
-        )
+        os.environ[
+            NeuronAcceleratorManager.get_visible_accelerator_ids_env_var()
+        ] = ",".join([str(i) for i in visible_neuron_core_ids])
 
     @staticmethod
-    def get_ec2_num_accelerators(instance_type: str, instances: dict) -> Optional[int]:
+    def get_ec2_instance_num_accelerators(
+        instance_type: str, instances: dict
+    ) -> Optional[int]:
         # TODO: AWS SDK (public API) doesn't yet expose the NeuronCore
         # information. It will be available (work-in-progress)
         # as xxAcceleratorInfo in InstanceTypeInfo.
@@ -119,7 +124,9 @@ class NeuronAccelerator(Accelerator):
         return AWS_NEURON_INSTANCE_MAP.get(instance_type.lower(), None)
 
     @staticmethod
-    def get_ec2_accelerator_type(instance_type: str, instances: dict) -> Optional[str]:
+    def get_ec2_instance_accelerator_type(
+        instance_type: str, instances: dict
+    ) -> Optional[str]:
         from ray.util.accelerators import AWS_NEURON_CORE
 
         return AWS_NEURON_CORE

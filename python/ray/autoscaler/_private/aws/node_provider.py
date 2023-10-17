@@ -641,16 +641,22 @@ class AWSNodeProvider(NodeProvider):
                     memory_resources = int(memory_total * prop)
                     autodetected_resources["memory"] = memory_resources
 
-                for accelerator in ray._private.accelerators.get_all_accelerators():
-                    num_accelerators = accelerator.get_ec2_num_accelerators(
-                        instance_type, instances_dict
+                for (
+                    accelerator_manager
+                ) in ray._private.accelerators.get_all_accelerator_managers():
+                    num_accelerators = (
+                        accelerator_manager.get_ec2_instance_num_accelerators(
+                            instance_type, instances_dict
+                        )
                     )
-                    accelerator_type = accelerator.get_ec2_accelerator_type(
-                        instance_type, instances_dict
+                    accelerator_type = (
+                        accelerator_manager.get_ec2_instance_accelerator_type(
+                            instance_type, instances_dict
+                        )
                     )
                     if num_accelerators:
                         autodetected_resources[
-                            accelerator.get_resource_name()
+                            accelerator_manager.get_resource_name()
                         ] = num_accelerators
                         if accelerator_type:
                             autodetected_resources[

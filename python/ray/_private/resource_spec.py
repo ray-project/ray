@@ -168,15 +168,19 @@ class ResourceSpec(
         for (
             accelerator_resource_name
         ) in ray._private.accelerators.get_all_accelerator_resource_names():
-            accelerator = ray._private.accelerators.get_accelerator_for_resource(
-                accelerator_resource_name
+            accelerator_manager = (
+                ray._private.accelerators.get_accelerator_manager_for_resource(
+                    accelerator_resource_name
+                )
             )
             num_accelerators = None
             if accelerator_resource_name == "GPU":
                 num_accelerators = self.num_gpus
             else:
                 num_accelerators = resources.get(accelerator_resource_name, None)
-            visible_accelerator_ids = accelerator.get_visible_accelerator_ids()
+            visible_accelerator_ids = (
+                accelerator_manager.get_current_process_visible_accelerator_ids()
+            )
             # Check that the number of accelerators that the raylet wants doesn't
             # exceed the amount allowed by visible accelerator ids.
             if (
@@ -187,12 +191,14 @@ class ResourceSpec(
                 raise ValueError(
                     f"Attempting to start raylet with {num_accelerators} "
                     f"{accelerator_resource_name}, "
-                    f"but {accelerator.get_visible_accelerator_ids_env_var()} "
+                    f"but {accelerator_manager.get_visible_accelerator_ids_env_var()} "
                     f"contains {visible_accelerator_ids}."
                 )
             if num_accelerators is None:
                 # Try to automatically detect the number of accelerators.
-                num_accelerators = accelerator.get_num_accelerators()
+                num_accelerators = (
+                    accelerator_manager.get_current_node_num_accelerators()
+                )
                 # Don't use more accelerators than allowed by visible accelerator ids.
                 if visible_accelerator_ids is not None:
                     num_accelerators = min(
@@ -205,7 +211,9 @@ class ResourceSpec(
                 else:
                     resources[accelerator_resource_name] = num_accelerators
 
-                accelerator_type = accelerator.get_accelerator_type()
+                accelerator_type = (
+                    accelerator_manager.get_current_node_accelerator_type()
+                )
                 if accelerator_type:
                     resources[
                         f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"

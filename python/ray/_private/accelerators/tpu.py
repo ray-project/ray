@@ -3,9 +3,9 @@ import re
 import glob
 import requests
 import logging
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
-from ray._private.accelerators.accelerator import Accelerator
+from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 
 
-class TPUAccelerator(Accelerator):
+class TPUAcceleratorManager(AcceleratorManager):
     """Google TPU accelerators."""
 
     @staticmethod
@@ -52,16 +52,14 @@ class TPUAccelerator(Accelerator):
         return "TPU"
 
     @staticmethod
-    def is_available() -> bool:
-        return TPUAccelerator.get_num_accelerators() > 0
-
-    @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
         return TPU_VISIBLE_CHIPS_ENV_VAR
 
     @staticmethod
-    def get_visible_accelerator_ids() -> Optional[List[str]]:
-        tpu_visible_chips = os.environ.get(TPU_VISIBLE_CHIPS_ENV_VAR, None)
+    def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
+        tpu_visible_chips = os.environ.get(
+            TPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
+        )
 
         if tpu_visible_chips is None:
             return None
@@ -72,7 +70,7 @@ class TPUAccelerator(Accelerator):
         return list(tpu_visible_chips.split(","))
 
     @staticmethod
-    def get_num_accelerators() -> int:
+    def get_current_node_num_accelerators() -> int:
         """Attempt to detect the number of TPUs on this machine.
 
         TPU chips are represented as devices within `/dev/`, either as
@@ -94,7 +92,7 @@ class TPUAccelerator(Accelerator):
             return 0
 
     @staticmethod
-    def get_accelerator_type() -> Optional[str]:
+    def get_current_node_accelerator_type() -> Optional[str]:
         """Attempt to detect the TPU accelerator type.
 
         Individual TPU VMs within a TPU pod must know what type
@@ -117,7 +115,9 @@ class TPUAccelerator(Accelerator):
         def tpu_accelerator_type_to_ray_accelerator_type(
             tpu_accelerator_type: str,
         ) -> Optional[str]:
-            if TPUAccelerator.is_valid_tpu_accelerator_type(tpu_accelerator_type):
+            if TPUAcceleratorManager.is_valid_tpu_accelerator_type(
+                tpu_accelerator_type
+            ):
                 return "TPU-" + str(tpu_accelerator_type.split("-")[0]).upper()
             else:
                 return None
@@ -197,19 +197,23 @@ class TPUAccelerator(Accelerator):
         return True
 
     @staticmethod
-    def validate_resource_request_quantity(quantity: float) -> Optional[str]:
-        """Possibly warn against misconfigured TPU chip configuration."""
+    def validate_resource_request_quantity(
+        quantity: float,
+    ) -> Tuple[bool, Optional[str]]:
         if quantity not in TPU_VALID_CHIP_OPTIONS:
             return (
+                False,
                 f"The number of requested 'TPU' was set to {quantity} which "
                 "is not a supported chip configuration. Supported configs: "
-                f"{TPU_VALID_CHIP_OPTIONS}"
+                f"{TPU_VALID_CHIP_OPTIONS}",
             )
         else:
-            return None
+            return (True, None)
 
     @staticmethod
-    def set_visible_accelerator_ids(visible_tpu_chips: List[str]) -> None:
+    def set_current_process_visible_accelerator_ids(
+        visible_tpu_chips: List[str],
+    ) -> None:
         """Set TPU environment variables based on the provided visible_tpu_chips.
 
         To access a subset of the TPU visible chips, we must use a combination of
@@ -230,9 +234,9 @@ class TPUAccelerator(Accelerator):
         if num_visible_tpu_chips == TPU_NUM_CHIPS_PER_HOST:
             # Let the ML framework use the defaults
             return
-        os.environ[TPU_VISIBLE_CHIPS_ENV_VAR] = ",".join(
-            [str(i) for i in visible_tpu_chips]
-        )
+        os.environ[
+            TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
+        ] = ",".join([str(i) for i in visible_tpu_chips])
         if num_visible_tpu_chips == 1:
             os.environ[
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR

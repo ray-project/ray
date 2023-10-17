@@ -5,7 +5,7 @@ import pytest
 import requests
 from unittest.mock import patch
 
-from ray._private.accelerators import TPUAccelerator
+from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators import tpu
 
 
@@ -17,7 +17,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
         "/dev/accel2",
         "/dev/accel3",
     ]
-    assert TPUAccelerator.get_num_accelerators() == 4
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
 @patch("glob.glob")
@@ -25,7 +25,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
     mock_glob.return_value = []
     mock_list.return_value = [f"{i}" for i in range(4)]
-    assert TPUAccelerator.get_num_accelerators() == 4
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
 @patch("glob.glob")
@@ -33,7 +33,7 @@ def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
 def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
     mock_list.side_effect = FileNotFoundError
     mock_glob.return_value = []
-    assert TPUAccelerator.get_num_accelerators() == 0
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
 
 
 @pytest.mark.parametrize(
@@ -67,7 +67,7 @@ def test_autodetect_tpu_accelerator_type(
         mock_os.return_value = None
     else:
         mock_os.return_value = accelerator_type
-    assert TPUAccelerator.get_accelerator_type() == expected_version
+    assert TPUAcceleratorManager.get_current_node_accelerator_type() == expected_version
 
 
 @pytest.mark.parametrize(
@@ -95,13 +95,13 @@ def test_autodetect_invalid_type(mock_os, mock_request, test_case):
         mock_os.return_value = None
     else:
         mock_os.return_value = accelerator_type
-    assert TPUAccelerator.get_accelerator_type() is None
+    assert TPUAcceleratorManager.get_current_node_accelerator_type() is None
 
 
 def test_autodetect_tpu_accelerator_type_fails_gracefully():
     with patch("requests.get") as mock_get:
         mock_get.side_effect = requests.exceptions.RequestException
-        assert TPUAccelerator.get_accelerator_type() is None
+        assert TPUAcceleratorManager.get_current_node_accelerator_type() is None
 
 
 @pytest.mark.parametrize(
@@ -116,9 +116,23 @@ def test_validate_resource_request_quantity(test_config):
     num_tpus, expect_error = test_config
 
     if expect_error:
-        assert TPUAccelerator.validate_resource_request_quantity(num_tpus) is not None
+        assert (
+            TPUAcceleratorManager.validate_resource_request_quantity(num_tpus)[0]
+            is False
+        )
+        assert (
+            TPUAcceleratorManager.validate_resource_request_quantity(num_tpus)[1]
+            is not None
+        )
     else:
-        assert TPUAccelerator.validate_resource_request_quantity(num_tpus) is None
+        assert (
+            TPUAcceleratorManager.validate_resource_request_quantity(num_tpus)[0]
+            is True
+        )
+        assert (
+            TPUAcceleratorManager.validate_resource_request_quantity(num_tpus)[1]
+            is None
+        )
 
 
 @pytest.mark.parametrize(
@@ -131,7 +145,7 @@ def test_validate_resource_request_quantity(test_config):
 )
 def test_set_tpu_visible_ids_and_bounds(tpu_chips):
     with patch.dict("os.environ", {}, clear=True):
-        TPUAccelerator.set_visible_accelerator_ids(tpu_chips)
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
         if len(tpu_chips) == 1:
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]

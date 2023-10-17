@@ -4,14 +4,14 @@ import sys
 import logging
 import subprocess
 import importlib
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 try:
     import GPUtil
 except ImportError:
     pass
 
-from ray._private.accelerators.accelerator import Accelerator
+from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
 
 
-class NvidiaGPUAccelerator(Accelerator):
+class NvidiaGPUAcceleratorManager(AcceleratorManager):
     """Nvidia GPU accelerators."""
 
     @staticmethod
@@ -31,16 +31,14 @@ class NvidiaGPUAccelerator(Accelerator):
         return "GPU"
 
     @staticmethod
-    def is_available() -> bool:
-        return NvidiaGPUAccelerator.get_num_accelerators() > 0
-
-    @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
         return CUDA_VISIBLE_DEVICES_ENV_VAR
 
     @staticmethod
-    def get_visible_accelerator_ids() -> Optional[List[str]]:
-        cuda_visible_devices = os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None)
+    def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
+        cuda_visible_devices = os.environ.get(
+            NvidiaGPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
+        )
 
         if cuda_visible_devices is None:
             return None
@@ -54,7 +52,7 @@ class NvidiaGPUAccelerator(Accelerator):
         return list(cuda_visible_devices.split(","))
 
     @staticmethod
-    def get_num_accelerators() -> int:
+    def get_current_node_num_accelerators() -> int:
         num_gpus = 0
         if importlib.util.find_spec("GPUtil"):
             gpu_list = GPUtil.getGPUs()
@@ -71,13 +69,13 @@ class NvidiaGPUAccelerator(Accelerator):
         return num_gpus
 
     @staticmethod
-    def get_accelerator_type() -> Optional[str]:
+    def get_current_node_accelerator_type() -> Optional[str]:
         try:
             if importlib.util.find_spec("GPUtil"):
                 gpu_list = GPUtil.getGPUs()
                 if len(gpu_list) > 0:
                     gpu_list_names = [gpu.name for gpu in gpu_list]
-                    return NvidiaGPUAccelerator._gpu_name_to_accelerator_type(
+                    return NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
                         gpu_list_names.pop()
                     )
             elif sys.platform.startswith("linux"):
@@ -101,7 +99,7 @@ class NvidiaGPUAccelerator(Accelerator):
                     if k.strip() == "Model":
                         full_model_name = v.strip()
                         break
-                return NvidiaGPUAccelerator._gpu_name_to_accelerator_type(
+                return NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
                     full_model_name
                 )
         except Exception:
@@ -116,20 +114,26 @@ class NvidiaGPUAccelerator(Accelerator):
         return match.group(1) if match else None
 
     @staticmethod
-    def validate_resource_request_quantity(quantity: float) -> Optional[str]:
-        return None
+    def validate_resource_request_quantity(
+        quantity: float,
+    ) -> Tuple[bool, Optional[str]]:
+        return (True, None)
 
     @staticmethod
-    def set_visible_accelerator_ids(visible_cuda_devices: List[str]) -> None:
+    def set_current_process_visible_accelerator_ids(
+        visible_cuda_devices: List[str],
+    ) -> None:
         if os.environ.get(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
             return
 
-        os.environ[CUDA_VISIBLE_DEVICES_ENV_VAR] = ",".join(
-            [str(i) for i in visible_cuda_devices]
-        )
+        os.environ[
+            NvidiaGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
+        ] = ",".join([str(i) for i in visible_cuda_devices])
 
     @staticmethod
-    def get_ec2_num_accelerators(instance_type: str, instances: dict) -> Optional[int]:
+    def get_ec2_instance_num_accelerators(
+        instance_type: str, instances: dict
+    ) -> Optional[int]:
         if instance_type not in instances:
             return None
 
@@ -141,7 +145,9 @@ class NvidiaGPUAccelerator(Accelerator):
         return None
 
     @staticmethod
-    def get_ec2_accelerator_type(instance_type: str, instances: dict) -> Optional[str]:
+    def get_ec2_instance_accelerator_type(
+        instance_type: str, instances: dict
+    ) -> Optional[str]:
         if instance_type not in instances:
             return None
 

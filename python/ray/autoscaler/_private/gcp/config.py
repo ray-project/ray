@@ -13,7 +13,7 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
 
-from ray._private.accelerators import TPUAccelerator, tpu
+from ray._private.accelerators import TPUAcceleratorManager, tpu
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -65,7 +65,7 @@ def _validate_tpu_config(node: dict):
         )
     if "acceleratorType" in node:
         accelerator_type = node["acceleratorType"]
-        if not TPUAccelerator.is_valid_tpu_accelerator_type(accelerator_type):
+        if not TPUAcceleratorManager.is_valid_tpu_accelerator_type(accelerator_type):
             raise ValueError(
                 "`acceleratorType` should match v(generation)-(cores/chips). "
                 f"Got {accelerator_type}."

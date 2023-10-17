@@ -79,9 +79,16 @@ def _validate_resource_quantity(name, quantity):
         )
     resource_name = "GPU" if name == "num_gpus" else name
     if resource_name in ray._private.accelerators.get_all_accelerator_resource_names():
-        return ray._private.accelerators.get_accelerator_for_resource(
+        (
+            valid,
+            error_message,
+        ) = ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
-        ).validate_resource_request_quantity(quantity)
+        ).validate_resource_request_quantity(
+            quantity
+        )
+        if not valid:
+            return error_message
     return None
 
 
