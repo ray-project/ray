@@ -1,5 +1,4 @@
 import pytest
-import subprocess
 import sys
 import ray
 from ray._private.test_utils import enable_external_redis
@@ -9,12 +8,13 @@ from ray._private.test_utils import enable_external_redis
 def setup_tls(monkeypatch):
     from pathlib import Path
 
-    tls_path =  Path(__file__).parent
+    tls_path = Path(__file__).parent
     monkeypatch.setenv("RAY_REDIS_CA_CERT", f"{str(tls_path)}/tls/ca.crt")
     monkeypatch.setenv("RAY_REDIS_CLIENT_CERT", f"{str(tls_path)}/tls/redis.crt")
     monkeypatch.setenv("RAY_REDIS_CLIENT_KEY", f"{str(tls_path)}/tls/redis.key")
     ray._raylet.Config.initialize("")
     yield
+
 
 @pytest.fixture
 def setup_replicas(request, monkeypatch):
