@@ -294,8 +294,8 @@ class DataContext:
         """Get the value for a key-value style config.
 
         Args:
-            key (str): The key of the config.
-            default (Any): The default value to return if the key is not found.
+            key: The key of the config.
+            default: The default value to return if the key is not found.
         Returns: The value for the key, or the default value if the key is not found.
         """
         return self._kv_configs.get(key, default)
@@ -304,8 +304,8 @@ class DataContext:
         """Set the value for a key-value style config.
 
         Args:
-            key (str): The key of the config.
-            value (Any): The value of the config.
+            key: The key of the config.
+            value: The value of the config.
         """
         self._kv_configs[key] = value
 
@@ -313,7 +313,7 @@ class DataContext:
         """Remove a key-value style config.
 
         Args:
-            key (str): The key of the config.
+            key: The key of the config.
         """
         self._kv_configs.pop(key, None)
 
