@@ -12,7 +12,7 @@ steps:
     job_env: forge
   - label: ":train: ml: train tests and examples with AWS Neuron"
     tags: train
-    instance_type: neuron
+    instance_type: trainium
     parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
