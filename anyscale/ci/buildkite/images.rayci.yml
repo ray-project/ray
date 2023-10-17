@@ -1,0 +1,79 @@
+group: runtime images
+steps:
+  - label: ":tapioca: build: ray py{{matrix}} wheel"
+    key: runtime-wheels
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}}
+      - bash anyscale/ci/upload-wheels.sh
+    depends_on:
+      - manylinux
+      - forge
+    job_env: forge
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
+  - label: ":tapioca: build: ray py{{matrix.py}} container images"
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}}
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - raycpubase
+      - raycudabase
+    job_env: forge
+    matrix:
+      setup:
+        py:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        base:
+          - "cpu"
+          - "cu11.8.0"
+          - "cu12.1.1"
+
+  - label: ":tapioca: build: ray py{{matrix.py}} container images"
+    if: build.env("RUNTIME_BUILD_ALL") == "true"
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}}
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - raycpubase
+      - raycudabase
+    job_env: forge
+    matrix:
+      setup:
+        py:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        base:
+          - "cu11.5.2"
+          - "cu11.6.2"
+          - "cu11.7.1"
+
+  - label: ":tapioca: build: ray-ml py{{matrix}} container images"
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}} ray-ml
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - ray-mlcpubase
+      - ray-mlcudabase
+    job_env: forge
+    matrix:
+      setup:
+        py:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+        base:
+          - "cpu"
+          - "cu11.8.0"
