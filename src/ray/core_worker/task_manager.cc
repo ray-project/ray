@@ -57,6 +57,10 @@ absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   return result;
 }
 
+bool ObjectRefStream::IsObjectConsumed(int64_t item_index) {
+  return item_index < next_index_;
+}
+
 Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   *object_id_out = GetObjectRefAtIndex(next_index_);
   bool is_eof_set = end_of_stream_index_ != -1;
@@ -642,11 +646,14 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto total_generated = stream_it->second.TotalObjectSizeWritten();
   auto total_consumed = stream_it->second.TotalObjectSizeConsumed();
 
-  if (num_objects_written == 0) {
+  // If the object is already consumed, signal
+  // the caller.
+  if (stream_it->second.IsObjectConsumed(item_index)) {
     execution_signal_callback(Status::OK(), total_consumed);
     return false;
   }
 
+  // Otherwise, follow the regular backpressure logic.
   auto total_unconsumed = total_generated - total_consumed;
   if (backpressure_threshold != -1 && total_unconsumed > backpressure_threshold) {
     RAY_LOG(DEBUG) << "Stream " << generator_id
@@ -660,7 +667,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     // No need to backpressure.
     execution_signal_callback(Status::OK(), total_consumed);
   }
-  return true;
+  return num_objects_written != 0;
 }
 
 bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,

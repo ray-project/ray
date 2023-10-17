@@ -2991,12 +2991,14 @@ Status CoreWorker::ReportGeneratorItemReturns(
   waiter->UpdateObjectGenerated(object_size);
   client->ReportGeneratorItemReturns(
       request,
-      [waiter, object_size](const Status &status,
-                            const rpc::ReportGeneratorItemReturnsReply &reply) {
-        RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. object_size: "
-                       << object_size
+      [waiter, object_size, generator_id](
+          const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
+        RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
+                       << " object_size: " << object_size
                        << ". Total object consumed: " << waiter->TotalObjectConsumed()
-                       << ". Total object generated: " << waiter->TotalObjectGenerated();
+                       << ". Total object generated: " << waiter->TotalObjectGenerated()
+                       << ". total_consumed_reported: "
+                       << reply.total_object_consumed_bytes();
         if (status.ok()) {
           /// Since unary gRPC requests are not ordered, it is possible the stale
           /// total value can be replied. Since total object consumed only can
@@ -3026,13 +3028,20 @@ void CoreWorker::HandleReportGeneratorItemReturns(
     rpc::ReportGeneratorItemReturnsRequest request,
     rpc::ReportGeneratorItemReturnsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  auto generator_id = ObjectID::FromBinary(request.generator_id());
+  auto worker_id = WorkerID::FromBinary(request.worker_addr().worker_id());
   task_manager_->HandleReportGeneratorItemReturns(
       request,
       /*execution_signal_callback*/
-      [reply, send_reply_callback = std::move(send_reply_callback)](
+      [reply,
+       worker_id = std::move(worker_id),
+       generator_id = std::move(generator_id),
+       send_reply_callback = std::move(send_reply_callback)](
           Status status, int64_t total_object_consumed_bytes) {
         RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
-                          "executor to resume tasks.";
+                          "executor to resume tasks. "
+                       << generator_id << ". Worker ID: " << worker_id
+                       << ". Total consumed: " << total_object_consumed_bytes;
         if (!status.ok()) {
           RAY_CHECK_EQ(total_object_consumed_bytes, -1);
         }

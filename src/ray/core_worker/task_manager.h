@@ -112,6 +112,9 @@ class ObjectRefStream {
 
   ObjectID PeekNextItem();
 
+  /// Return True if the item_index is already consumed.
+  bool IsObjectConsumed(int64_t item_index);
+
   /// Insert the object id to the stream of an index item_index.
   ///
   /// If the item_index has been already read (by TryReadNextItem),
