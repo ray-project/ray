@@ -14,27 +14,26 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 class OnWorkerCreatedCallbacks(DefaultCallbacks):
 
-    def on_worker_created(
+    def on_workers_recreated(
         self,
+        *,
         algorithm,
-        worker_ref,
-        worker_index,
+        worker_set,
+        worker_ids,
         is_evaluation,
-        recreated_worker,
         **kwargs,
     ):
         # Store in the algorithm object's counters the number of times, this worker
-        # (ID'd by index and whether eval or not) has been created/restarted.
-        key = f"num_{'eval_' if is_evaluation else ''}worker_{worker_index}_created"
-        # Just making sure the `recreated_worker` flag is populated correctly.
-        if not recreated_worker:
-            assert algorithm._counters[key] == 0
-        else:
-            assert algorithm._counters[key] > 0
+        # (ID'd by index and whether eval or not) has been recreated/restarted.
+        for id_ in worker_ids:
+            key = f"{'eval_' if is_evaluation else ''}worker_{id_}_recreated"
+            # Increase the counter.
+            algorithm._counters[key] += 1
+            print(f"changed {key} to {algorithm._counters[key]}")
 
-        # Increase the counter.
-        algorithm._counters[key] += 1
-        print(f"changed {key} to {algorithm._counters[key]}")
+        # Execute some dummy code on each of the recreated workers.
+        results = worker_set.foreach_worker(lambda w: w.ping())
+        print(results)  # should print "pong" n times (one for each recreated worker).
 
 
 class EpisodeAndSampleCallbacks(DefaultCallbacks):
@@ -101,15 +100,10 @@ class TestCallbacks(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_on_worker_created_callback(self):
+    def test_on_workers_recreated_callback(self):
         config = (
             APPOConfig()
-            .environment(CartPoleCrashing, env_config={
-                ## Crash deterministically after 50 timesteps. This way, we most
-                ## certainly will have at least one crash during a single rollout.
-                "p_crash": 0.1,
-                ##"crash_after_n_steps": 25,
-            })
+            .environment(CartPoleCrashing)
             .callbacks(OnWorkerCreatedCallbacks)
             .rollouts(num_rollout_workers=2)
             .fault_tolerance(recreate_failed_workers=True)
@@ -117,22 +111,27 @@ class TestCallbacks(unittest.TestCase):
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             algo = config.build()
-            # After building the algorithm, each worker should have a
-            # "created" counter value of 1.
-            self.assertEqual(algo._counters["num_worker_0_created"], 1)
-            self.assertEqual(algo._counters["num_worker_1_created"], 1)
-            self.assertEqual(algo._counters["num_worker_2_created"], 1)
-            # Train a bit (and have the env crash at least once).
-            algo.train()
-            algo.train()
-            algo.train()
-            algo.train()
-            algo.train()
-            algo.train()
-            # The local worker does NOT sample, so it should not have crashed.
-            self.assertEqual(algo._counters["num_worker_0_created"], 1)
-            self.assertGreater(algo._counters["num_worker_1_created"], 1)
-            self.assertGreater(algo._counters["num_worker_2_created"], 1)
+            original_worker_ids = algo.workers.healthy_worker_ids()
+            for id_ in original_worker_ids:
+                self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 0)
+
+            # After building the algorithm, we should have 2 healthy (remote) workers.
+            self.assertTrue(len(original_worker_ids) == 2)
+
+            # Train a bit (and have the envs/workers crash a couple of times).
+            for _ in range(3):
+                algo.train()
+
+            # After training, each new worker should have been recreated.
+            worker_ids_2 = algo.workers.healthy_worker_ids()
+            for id_ in worker_ids_2:
+                # A newly created worker: It's recreated counter should be 1.
+                if id_ not in original_worker_ids:
+                    self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 1)
+                # Still an original worker, recreated counter should still be 0.
+                else:
+                    self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 0)
+
             algo.stop()
 
     def test_episode_and_sample_callbacks(self):

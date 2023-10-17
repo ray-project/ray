@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
 
-import ray
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.episode import Episode
@@ -33,8 +32,7 @@ import psutil
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.env.env_runner import EnvRunner
-    from ray.rllib.evaluation import RolloutWorker
+    from ray.rllib.evaluation import RolloutWorker, WorkerSet
 
 
 @PublicAPI
@@ -78,20 +76,19 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
-    def on_workers_created_or_restored(
+    def on_workers_recreated(
         self,
         *,
         algorithm: "Algorithm",
-        worker_ref: Union["EnvRunner", ray.ObjectRef],
-        worker_index: int,
+        worker_set: "WorkerSet",
+        worker_ids: List[int],
         is_evaluation: bool,
-        recreated_worker: bool,
         **kwargs,
     ) -> None:
-        """Callback run after an EnvRunner object (local or remote) has been created.
+        """Callback run after one or more workers have been recreated.
 
-        You can access (and change) the worker in question via the following code snippet
-        inside your custom override of this method:
+        You can access (and change) the worker(s) in question via the following code
+        snippet inside your custom override of this method:
 
         Note that any "worker" inside the algorithm's `self.worker` and
         `self.evaluation_workers` WorkerSets are instances of a subclass of EnvRunner.
@@ -100,38 +97,45 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
             class MyCallbacks(DefaultCallbacks):
-                def on_worker_created(
+                def on_workers_recreated(
                     self,
+                    *,
                     algorithm,
-                    worker_ref,
-                    worker_index,
+                    worker_set,
+                    worker_ids,
                     is_evaluation,
-                    recreated_worker,
                     **kwargs,
                 ):
+                    # Define what you would like to do on the recreated
+                    # workers:
                     def func(w):
-                        w._custom_property = 1
+                        # Here, we just set some arbitrary property to 1.
+                        if is_evaluation:
+                            w._custom_property_for_evaluation = 1
+                        else:
+                            w._custom_property_for_training = 1
 
-                    # A remote worker.
-                    if worker_index > 0:
-                        worker_ref.apply.remote(func)
-                    # Local worker.
-                    else:
-                        func(worker_ref)
+                    # Use the `foreach_workers` method of the worker set and
+                    # only loop through those worker IDs that have been restarted.
+                    # Note that we set `local_worker=False` to NOT include it (local
+                    # workers are never recreated; if they fail, the entire Algorithm
+                    # fails).
+                    worker_set.foreach_worker(
+                        func,
+                        remote_worker_ids=worker_ids,
+                        local_worker=False,
+                    )
 
         Args:
             algorithm: Reference to the Algorithm instance.
-            worker_ref: The ray remote object reference (or the worker object directly,
-                if local) of the worker in question.
-            worker_index: The index of the worker in the WorkerSet (0=local worker,
-                1=first remote worker, etc..).
-            is_evaluation: Whether this is an evaluation worker (inside
-                Algorithm.evaluation_workers) or not.
-            recreated: Whether the EnvRunner is a recreated one. EnvRunners are
-                recreated by an Algorithm (via WorkerSet) in case
-                `recreate_failed_workers=True` and one of the original EnvRunners (or an
-                already recreated one) has failed. They don't differ from original
-                workers other than the value of this flag (`self.recreated_worker`).
+            worker_set: The WorkerSet object in which the workers in question reside.
+                You can use a `worker_set.foreach_worker(remote_worker_ids=...,
+                local_worker=False)` method call to execute custom
+                code on the recreated (remote) workers. Note that the local worker is
+                never recreated as a failure of this would also crash the Algorithm.
+            worker_ids: The list of (remote) worker IDs that have been recreated.
+            is_evaluation: Whether `worker_set` is the evaluation WorkerSet (located
+                in `Algorithm.evaluation_workers`) or not.
         """
         pass
 

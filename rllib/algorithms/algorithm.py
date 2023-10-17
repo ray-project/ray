@@ -644,12 +644,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 num_workers=self.config.num_rollout_workers,
                 local_worker=True,
                 logdir=self.logdir,
-                on_worker_created_callback=functools.partial(
-                    type(self.callbacks).on_worker_created,
-                    self.callbacks,
-                    algorithm=self,
-                    is_evaluation=False,
-                ),
             )
 
             # TODO (avnishn): Remove the execution plan API by q1 2023
@@ -1405,21 +1399,12 @@ class Algorithm(Trainable, AlgorithmBase):
                 mark_healthy=True,
             )
 
-        # Every time a worker gets created (local or remote), call the
-        # `on_worker_created()` callback, if provided.
-            self._on_worker_created_callback(
-                worker_ref=worker,
-                worker_index=worker_index,
-                recreated_worker=recreated_worker,
-            )
-
             # Fire the callback for re-created workers.
-            self.callbacks.on_workers_created_or_restored(
+            self.callbacks.on_workers_recreated(
                 algorithm=self,
-                worker_ids=restored,
                 worker_set=workers,
-                is_evaluation=,
-                re=True,
+                worker_ids=restored,
+                is_evaluation=workers.local_worker().config.in_evaluation,
             )
 
     @OverrideToImplementCustomLogic
