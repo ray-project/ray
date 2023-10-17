@@ -56,8 +56,16 @@ class DataOpTask(OpTask):
         return self._streaming_gen
 
     def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
+        """Callback when data is ready to be read from the streaming generator.
+
+        Args:
+            max_bytes_to_read: The max size in bytes of blocks to read. If None, read
+                all available blocks. This is used for streaming output backpressure.
+        Returns: The total size in bytes of the blocks that have been read.
+        """
         read_bytes = 0
-        # Handle all the available outputs of the streaming generator.
+        # If max_bytes_to_read is None, we will read all available blocks.
+        # Otherwise, we will read until we reach max_bytes_to_read.
         while max_bytes_to_read is None or max_bytes_to_read > 0:
             try:
                 block_ref = self._streaming_gen._next_sync(0)
@@ -108,6 +116,7 @@ class MetadataOpTask(OpTask):
         return self._object_ref
 
     def on_task_finished(self):
+        """Callback when the task is finished."""
         self._task_done_callback()
 
 

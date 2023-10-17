@@ -319,8 +319,10 @@ def process_completed_tasks(topology: Topology) -> None:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards."""
 
-    # Update active tasks.
+    # All active tasks, keyed by their waitable.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
+    # Current output buffer sizes for each operator.
+    # Used for streaming output backpressure.
     output_bufer_sizes: Dict[OpState, int] = {}
 
     context = ray.data.DataContext.get_current()
@@ -349,7 +351,6 @@ def process_completed_tasks(topology: Topology) -> None:
                     max_bytes_to_read = (
                         backpressure_config.op_output_buffer_size_bytes - output_bufer_sizes[state]
                     )
-                print(state.op, "max_bytes_to_read", max_bytes_to_read)
                 read_bytes = task.on_data_ready(max_bytes_to_read)
                 if backpressure_config.enabled:
                     output_bufer_sizes[state] += read_bytes
