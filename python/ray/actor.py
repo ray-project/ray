@@ -880,6 +880,7 @@ class ActorClass:
         actor_placement_resources = {}
         assert actor_method_cpu in [0, 1]
         if actor_method_cpu == 1:
+            actor_placement_resources = resources.copy()
             actor_placement_resources["CPU"] += 1
         if meta.is_cross_language:
             creation_args = cross_language._format_args(worker, args, kwargs)
