@@ -4,7 +4,6 @@ import ray
 from ray import train
 from ray.train import CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
-
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 

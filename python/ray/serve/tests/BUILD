@@ -50,7 +50,6 @@ py_test_module_list(
 # Medium tests.
 py_test_module_list(
   files = [
-    "test_get_deployment.py",
     "test_healthcheck.py",
     "test_http_routes.py",
     "test_logging.py",
@@ -66,7 +65,6 @@ py_test_module_list(
     "test_cluster.py",
     "test_autoscaling_policy.py",
     "test_fastapi.py",
-    "test_air_integrations.py",
     "test_deployment_graph.py",
     "test_deployment_graph_autoscaling.py",
     "test_cancellation.py",
@@ -129,17 +127,6 @@ py_test_module_list(
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
   data = glob(["test_config_files/**/*"]),
 )
-
-# GPU tests.
-py_test_module_list(
-  files = [
-    "test_air_integrations_gpu.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "team:serve", "gpu"],
-  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
-)
-
 
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(

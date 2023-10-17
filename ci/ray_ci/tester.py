@@ -9,6 +9,22 @@ from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 
+CUDA_COPYRIGHT = """
+==========
+== CUDA ==
+==========
+
+CUDA Version 11.8.0
+
+Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+By pulling and using the container, you accept the terms and conditions of this license:
+https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+
+A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
+"""  # noqa: E501
+
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
@@ -67,6 +83,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help="Environment variables to set for the test.",
 )
 @click.option(
+    "--test-arg",
+    type=str,
+    help=("Arguments to pass to the test."),
+)
+@click.option(
     "--build-name",
     type=str,
     help="Name of the build used to run tests",
@@ -82,6 +103,7 @@ def main(
     run_flaky_tests: bool,
     skip_ray_installation: bool,
     test_env: List[str],
+    test_arg: Optional[str],
     build_name: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
@@ -105,7 +127,7 @@ def main(
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(test_targets, test_env)
+    success = container.run_tests(test_targets, test_env, test_arg)
     sys.exit(0 if success else 1)
 
 
@@ -169,7 +191,6 @@ def _get_test_targets(
     """
     Get test targets that are owned by a particular team
     """
-
     query = _get_all_test_query(targets, team, except_tags, only_tags)
     test_targets = set(
         container.run_script_with_output(
@@ -178,6 +199,8 @@ def _get_test_targets(
             ]
         )
         .decode("utf-8")
+        # CUDA image comes with a license header that we need to remove
+        .replace(CUDA_COPYRIGHT, "")
         .strip()
         .split("\n")
     )

@@ -42,5 +42,6 @@ def plan_write_op(op: Write, input_physical_dag: PhysicalOperator) -> PhysicalOp
         map_transformer,
         input_physical_dag,
         name="Write",
+        target_max_block_size=None,
         ray_remote_args=op._ray_remote_args,
     )

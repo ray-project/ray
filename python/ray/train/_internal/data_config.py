@@ -1,25 +1,13 @@
-from typing import Optional, Union, Dict, List
+from typing import Dict, List, Literal, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
+from ray.data.preprocessor import Preprocessor
 
 # TODO(justinvyu): Fix the circular import error
 from ray.train.constants import TRAIN_DATASET_KEY  # noqa
-from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.data import (
-    Dataset,
-    DataIterator,
-    ExecutionOptions,
-    NodeIdStr,
-)
-from ray.data.preprocessor import Preprocessor
-
-import sys
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 @PublicAPI(stability="stable")
