@@ -167,6 +167,9 @@ def evaluate(
         # workers.
         losses.append(accelerator.gather(loss[None]))
 
+        if as_test:
+            break
+
     # We stack losses so that we have a tensor of shape (T, K) where T is the number of
     # steps and K is the number of workers.
     losses = torch.stack(losses)
@@ -297,6 +300,7 @@ def training_function(kwargs: dict):
 
         print(f"Attempting to apply LoRA config: {lora_config}")
 
+        model.enable_input_require_grads()
         model = get_peft_model(model, lora_config)
         
         num_parameters = get_number_of_params(model)
@@ -406,6 +410,9 @@ def training_function(kwargs: dict):
                     f"[epoch {epoch} step {step}] "
                     f"loss: {loss.item()} step-time: {e_opt_step - s_fwd}"
                 )
+
+            if config["as_test"]:
+                break
 
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):

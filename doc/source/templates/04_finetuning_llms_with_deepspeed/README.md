@@ -131,7 +131,7 @@ To launch a LoRA fine-tuning, you can use the following command or similar comma
 ./run_llama_ft.sh --size=7b --lora
 ```
 
-Fine-tuning a model with lora results in a checkpoint containing only the fine-tuned weights.
+Fine-tuning a model with LoRA results in a checkpoint containing only the fine-tuned weights.
 As an example, the default Llama 2 LoRA configuration should yield a 42/64/202MB checkpoint for 7B/13B/70B models.
 If we want to evaluate the model after training, we can merge the model weights with the original (non-fine-tuned) model.
 We provide a script to merge the fine-tuned weights with the original weights to produce a full-parameter checkpoint.
