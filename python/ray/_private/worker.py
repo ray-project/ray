@@ -37,10 +37,7 @@ from urllib.parse import urlparse
 import colorama
 import setproctitle
 
-if sys.version_info >= (3, 8):
-    from typing import Literal, Protocol
-else:
-    from typing_extensions import Literal, Protocol
+from typing import Literal, Protocol
 
 import ray
 import ray._private.node
