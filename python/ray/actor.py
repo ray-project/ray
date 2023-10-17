@@ -1281,6 +1281,7 @@ class ActorHandle:
             ray_constants.
             # Currently, we use default num returns
             DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,
+            self._ray_method_streaming_generator_backpressure_size_bytes,
             # Currently, cross-lang actor method not support decorator
             decorator=None,
         )
