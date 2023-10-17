@@ -185,9 +185,9 @@ class GroupedData:
             aggs=aggs,
         )
         logical_plan = LogicalPlan(op)
-        execution_manager = self._dataset._execution_manager.with_operator(op)
+        plan = self._dataset._plan.with_operator(op)
         return Dataset(
-            execution_manager,
+            plan,
             logical_plan,
         )
 

@@ -210,11 +210,11 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ray.data.range(10)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
-    for s in ds._execution_manager._stages_before_snapshot:
+    for s in ds._plan._stages_before_snapshot:
         assert s.ray_remote_args == {}, s.ray_remote_args
-    for s in ds._execution_manager._stages_after_snapshot:
+    for s in ds._plan._stages_after_snapshot:
         assert s.ray_remote_args == {}, s.ray_remote_args
-    _, _, optimized_stages = ds._execution_manager._optimize()
+    _, _, optimized_stages = ds._plan._optimize()
     assert len(optimized_stages) == 1, optimized_stages
     assert optimized_stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
@@ -232,17 +232,17 @@ def _assert_has_stages(stages, stage_names):
 def test_stage_linking(ray_start_regular_shared):
     # Test lazy dataset.
     ds = ray.data.range(10)
-    assert len(ds._execution_manager._stages_before_snapshot) == 0
-    assert len(ds._execution_manager._stages_after_snapshot) == 0
-    assert ds._execution_manager._last_optimized_stages is None
+    assert len(ds._plan._stages_before_snapshot) == 0
+    assert len(ds._plan._stages_after_snapshot) == 0
+    assert ds._plan._last_optimized_stages is None
     ds = ds.map(column_udf("id", lambda x: x + 1))
-    assert len(ds._execution_manager._stages_before_snapshot) == 0
-    _assert_has_stages(ds._execution_manager._stages_after_snapshot, ["Map"])
-    assert ds._execution_manager._last_optimized_stages is None
+    assert len(ds._plan._stages_before_snapshot) == 0
+    _assert_has_stages(ds._plan._stages_after_snapshot, ["Map"])
+    assert ds._plan._last_optimized_stages is None
     ds = ds.materialize()
-    _assert_has_stages(ds._execution_manager._stages_before_snapshot, ["Map"])
-    assert len(ds._execution_manager._stages_after_snapshot) == 0
-    _assert_has_stages(ds._execution_manager._last_optimized_stages, ["ReadRange->Map"])
+    _assert_has_stages(ds._plan._stages_before_snapshot, ["Map"])
+    assert len(ds._plan._stages_after_snapshot) == 0
+    _assert_has_stages(ds._plan._last_optimized_stages, ["ReadRange->Map"])
 
 
 def test_optimize_reorder(ray_start_regular_shared):
@@ -336,11 +336,11 @@ def test_optimize_lazy_reuse_base_data(
 
 def test_require_preserve_order(ray_start_regular_shared):
     ds = ray.data.range(100).map_batches(lambda x: x).sort()
-    assert ds._execution_manager.require_preserve_order()
+    assert ds._plan.require_preserve_order()
     ds2 = ray.data.range(100).map_batches(lambda x: x).zip(ds)
-    assert ds2._execution_manager.require_preserve_order()
+    assert ds2._plan.require_preserve_order()
     ds3 = ray.data.range(100).map_batches(lambda x: x).repartition(10)
-    assert not ds3._execution_manager.require_preserve_order()
+    assert not ds3._plan.require_preserve_order()
 
 
 if __name__ == "__main__":

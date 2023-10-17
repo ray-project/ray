@@ -83,7 +83,7 @@ class Stage:
         return repr(self)
 
 
-class ExecutionManager:
+class ExecutionPlan:
     """A lazy execution plan for a Dataset."""
 
     # Implementation Notes:
@@ -141,7 +141,7 @@ class ExecutionManager:
 
     def __repr__(self) -> str:
         return (
-            f"ExecutionManager("
+            f"ExecutionPlan("
             f"dataset_uuid={self._dataset_uuid}, "
             f"run_by_consumer={self._run_by_consumer}, "
             f"in_blocks={self._in_blocks}, "
@@ -157,7 +157,7 @@ class ExecutionManager:
             The string representation of this execution plan.
         """
         # NOTE: this is used for Dataset.__repr__ to give a user-facing string
-        # representation. Ideally ExecutionManager.__repr__ should be replaced with this
+        # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
 
         # Do not force execution for schema, as this method is expected to be very
@@ -276,14 +276,14 @@ class ExecutionManager:
             plan_str += f"{trailing_space}+- {dataset_str}"
         return plan_str
 
-    def with_operator(self, op: "Operator") -> "ExecutionManager":
+    def with_operator(self, op: "Operator") -> "ExecutionPlan":
         """Return a copy of this plan with the given operator appended.
 
         Args:
             op: The operator to append.
 
         Returns:
-            A new ExecutionManager with this operator appended.
+            A new ExecutionPlan with this operator appended.
         """
         copy = self.copy()
         copy._operators_added_after_snapshot.append(op)
@@ -299,7 +299,7 @@ class ExecutionManager:
         """
         self._logical_plan = logical_plan
 
-    def copy(self) -> "ExecutionManager":
+    def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.
 
         This copy can be executed without mutating the original, but clearing the copy
@@ -308,22 +308,22 @@ class ExecutionManager:
         Returns:
             A shallow copy of this execution plan.
         """
-        execution_manager_copy = ExecutionManager(
+        plan_copy = ExecutionPlan(
             self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
         )
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
-            execution_manager_copy._snapshot_blocks = self._snapshot_blocks
-            execution_manager_copy._snapshot_stats = self._snapshot_stats
-        execution_manager_copy._operators_added_before_snapshot = (
+            plan_copy._snapshot_blocks = self._snapshot_blocks
+            plan_copy._snapshot_stats = self._snapshot_stats
+        plan_copy._operators_added_before_snapshot = (
             self._operators_added_before_snapshot.copy()
         )
-        execution_manager_copy._operators_added_after_snapshot = (
+        plan_copy._operators_added_after_snapshot = (
             self._operators_added_after_snapshot.copy()
         )
-        return execution_manager_copy
+        return plan_copy
 
-    def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionManager":
+    def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionPlan":
         """Create a deep copy of this execution plan.
 
         This copy can be executed AND cleared without mutating the original.
@@ -340,7 +340,7 @@ class ExecutionManager:
         in_blocks = self._in_blocks
         if isinstance(in_blocks, BlockList):
             in_blocks = in_blocks.copy()
-        execution_manager_copy = ExecutionManager(
+        plan_copy = ExecutionPlan(
             in_blocks,
             copy.copy(self._in_stats),
             dataset_uuid=dataset_uuid,
@@ -348,15 +348,15 @@ class ExecutionManager:
         )
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
-            execution_manager_copy._snapshot_blocks = self._snapshot_blocks.copy()
-            execution_manager_copy._snapshot_stats = copy.copy(self._snapshot_stats)
-        execution_manager_copy._operators_added_before_snapshot = (
+            plan_copy._snapshot_blocks = self._snapshot_blocks.copy()
+            plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
+        plan_copy._operators_added_before_snapshot = (
             self._operators_added_before_snapshot.copy()
         )
-        execution_manager_copy._operators_added_after_snapshot = (
+        plan_copy._operators_added_after_snapshot = (
             self._operators_added_after_snapshot.copy()
         )
-        return execution_manager_copy
+        return plan_copy
 
     def initial_num_blocks(self) -> int:
         """Get the estimated number of blocks after applying all plan stages."""
@@ -366,7 +366,7 @@ class ExecutionManager:
         # If there are any AllToAll operators (e.g. Repartition, Shuffle, etc)
         # which were added after the most recent snapshot, these can potentially
         # modify the number of blocks.
-        # However, this will not be reflected in the ExecutionManager's snapshot
+        # However, this will not be reflected in the ExecutionPlan's snapshot
         # until execution of this Operator, so we override the existing snapshot's
         # number of blocks here.
         for op in self._operators_added_after_snapshot:

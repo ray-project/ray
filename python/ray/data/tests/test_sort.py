@@ -147,7 +147,7 @@ def test_sort_arrow_with_empty_blocks(
         assert (
             len(
                 ray.data._internal.sort.sample_boundaries(
-                    ds._execution_manager.execute().get_blocks(), SortKey("id"), 3
+                    ds._plan.execute().get_blocks(), SortKey("id"), 3
                 )
             )
             == 2
@@ -246,7 +246,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     assert (
         len(
             ray.data._internal.sort.sample_boundaries(
-                ds._execution_manager.execute().get_blocks(), SortKey("id"), 3
+                ds._plan.execute().get_blocks(), SortKey("id"), 3
             )
         )
         == 2
@@ -389,7 +389,7 @@ def test_push_based_shuffle_stats(ray_start_cluster):
         assert "1 nodes used" not in ds.stats()
 
         # Check all merge tasks are included in stats.
-        internal_stats = ds._execution_manager.stats()
+        internal_stats = ds._plan.stats()
         num_merge_tasks = len(internal_stats.stages["RandomShuffleMerge"])
         # Merge factor is 2 for random_shuffle ops.
         merge_factor = 2

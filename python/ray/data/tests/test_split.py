@@ -14,7 +14,7 @@ from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.plan import ExecutionManager
+from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.split import (
     _drop_empty_block_split,
     _generate_global_split_results,
@@ -101,7 +101,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
 
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
     ds = Dataset(
-        ExecutionManager(block_list, DatasetStats.TODO(), run_by_consumer=True),
+        ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
         logical_plan,
     )
 
@@ -344,36 +344,31 @@ def test_split(ray_start_regular_shared):
 
     datasets = ds.split(5)
     assert [2] * 5 == [
-        dataset._execution_manager.execute().initial_num_blocks()
-        for dataset in datasets
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(3)
     assert [4, 3, 3] == [
-        dataset._execution_manager.execute().initial_num_blocks()
-        for dataset in datasets
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(1)
     assert [10] == [
-        dataset._execution_manager.execute().initial_num_blocks()
-        for dataset in datasets
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(10)
     assert [1] * 10 == [
-        dataset._execution_manager.execute().initial_num_blocks()
-        for dataset in datasets
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
-        dataset._execution_manager.execute().initial_num_blocks()
-        for dataset in datasets
+        dataset._plan.execute().initial_num_blocks() for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") or 0 for dataset in datasets])
 

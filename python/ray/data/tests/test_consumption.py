@@ -55,11 +55,11 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
     uuid = ds._get_uuid()
-    plan_uuid = ds._execution_manager._dataset_uuid
+    plan_uuid = ds._plan._dataset_uuid
 
     serialized_ds = ds.serialize_lineage()
     # Confirm that the original Dataset was properly copied before clearing/mutating.
-    in_blocks = ds._execution_manager._in_blocks
+    in_blocks = ds._plan._in_blocks
     # Should not raise.
     in_blocks._check_if_cleared()
     assert isinstance(in_blocks, LazyBlockList)
@@ -71,7 +71,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = Dataset.deserialize_lineage(serialized_ds)
     # Check Dataset state.
     assert ds._get_uuid() == uuid
-    assert ds._execution_manager._dataset_uuid == plan_uuid
+    assert ds._plan._dataset_uuid == plan_uuid
     # Check Dataset content.
     assert ds.count() == 10
     assert sorted(extract_values("id", ds.take())) == list(range(2, 12))
@@ -228,12 +228,12 @@ def test_schema(ray_start_regular_shared):
 def test_schema_no_execution(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=10)
     # We do not kick off the read task by default.
-    assert ds._execution_manager._in_blocks._num_computed() == 0
+    assert ds._plan._in_blocks._num_computed() == 0
     schema = ds.schema()
     assert schema.names == ["id"]
     # Fetching the schema does not trigger execution, since
     # the schema is known beforehand for RangeDatasource.
-    assert ds._execution_manager._in_blocks._num_computed() == 0
+    assert ds._plan._in_blocks._num_computed() == 0
 
 
 def test_schema_cached(ray_start_regular_shared):
@@ -287,11 +287,11 @@ def test_schema_repr(ray_start_regular_shared):
 def test_count(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=10)
     # We do not kick off the read task by default.
-    assert ds._execution_manager._in_blocks._num_computed() == 0
+    assert ds._plan._in_blocks._num_computed() == 0
     assert ds.count() == 100
     # Getting number of rows should not trigger execution of any read tasks
     # for ray.data.range(), as the number of rows is known beforehand.
-    assert ds._execution_manager._in_blocks._num_computed() == 0
+    assert ds._plan._in_blocks._num_computed() == 0
 
 
 # will be removed by another PR
@@ -302,9 +302,9 @@ def test_count(ray_start_regular_shared):
 #         if ray.data.context.DataContext.get_current().use_streaming_executor:
 #             # In streaing executor, ds.take() will not invoke partial execution
 #             # in LazyBlocklist.
-#             assert ds._execution_manager.execute()._num_computed() == 0
+#             assert ds._plan.execute()._num_computed() == 0
 #         else:
-#             assert ds._execution_manager.execute()._num_computed() == expected
+#             assert ds._plan.execute()._num_computed() == expected
 
 #     check_num_computed(0)
 #     assert extract_values("id", ds.take(10)) == list(range(10))
@@ -1035,9 +1035,9 @@ def test_iter_batches_grid(ray_start_regular_shared):
 #         if ray.data.context.DataContext.get_current().use_streaming_executor:
 #             # In streaming execution of ds.iter_batches(), there is no partial
 #             # execution so _num_computed() in LazyBlocklist is 0.
-#             assert ds._execution_manager.execute()._num_computed() == 0
+#             assert ds._plan.execute()._num_computed() == 0
 #         else:
-#             assert ds._execution_manager.execute()._num_computed() == expected
+#             assert ds._plan.execute()._num_computed() == expected
 
 
 def test_union(ray_start_regular_shared):
@@ -1658,7 +1658,7 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 
 def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet", parallelism=8)
-    assert ds._execution_manager.get_plan_as_string("Dataset") == (
+    assert ds._plan.get_plan_as_string("Dataset") == (
         "Dataset(\n"
         "   num_blocks=8,\n"
         "   num_rows=150,\n"
@@ -1673,7 +1673,7 @@ def test_dataset_plan_as_string(ray_start_cluster):
     )
     for _ in range(5):
         ds = ds.map_batches(lambda x: x)
-    assert ds._execution_manager.get_plan_as_string("Dataset") == (
+    assert ds._plan.get_plan_as_string("Dataset") == (
         "MapBatches(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
@@ -1703,7 +1703,7 @@ class LoggerWarningCalled(Exception):
 
 
 def test_warning_execute_with_no_cpu(ray_start_cluster):
-    """Tests ExecutionManager.execute() to ensure a warning is logged
+    """Tests ExecutionPlan.execute() to ensure a warning is logged
     when no CPU resources are available."""
     # Create one node with no CPUs to trigger the Dataset warning
     ray.init(ray_start_cluster.address)
@@ -1736,7 +1736,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
 
 
 def test_nowarning_execute_with_cpu(ray_start_cluster):
-    """Tests ExecutionManager.execute() to ensure no warning is logged
+    """Tests ExecutionPlan.execute() to ensure no warning is logged
     when there are available CPU resources."""
     # Create one node with CPUs to avoid triggering the Dataset warning
     ray.init(ray_start_cluster.address)

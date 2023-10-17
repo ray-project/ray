@@ -75,7 +75,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._execution_manager.execute().get_blocks_with_metadata():
+    for block, meta in ds._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -238,7 +238,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._execution_manager.execute().get_blocks_with_metadata():
+    for block, meta in ds._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes()
 
     # Directory and file, two files.
@@ -524,7 +524,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._execution_manager.execute().get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     if fs is None:
@@ -551,7 +551,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
         ds2df = ds2.to_pandas()
         assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
         # Test metadata ops.
-        for block, meta in ds2._execution_manager.execute().get_blocks_with_metadata():
+        for block, meta in ds2._plan.execute().get_blocks_with_metadata():
             BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 

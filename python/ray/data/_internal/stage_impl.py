@@ -179,7 +179,7 @@ class ZipStage(AllToAllStage):
             # Execute other to a block list.
             # NOTE: Require to preserve order when executing the other side,
             # because streaming execution does not preserve order by default.
-            other_block_list = other._execution_manager.execute(preserve_order=True)
+            other_block_list = other._plan.execute(preserve_order=True)
             other_blocks_with_metadata = other_block_list.get_blocks_with_metadata()
             other_block_rows, other_block_bytes = _calculate_blocks_rows_and_bytes(
                 other_blocks_with_metadata

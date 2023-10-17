@@ -36,10 +36,10 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
     # not affected by operations like take() as it's executed via streaming
     # executor.
     if not ray.data.context.DataContext.get_current().use_streaming_executor:
-        assert ds._execution_manager.execute()._num_computed() == expected
+        assert ds._plan.execute()._num_computed() == expected
     else:
         pass
-        # assert ds._execution_manager.execute()._num_computed() == streaming_expected
+        # assert ds._plan.execute()._num_computed() == streaming_expected
 
 
 @pytest.mark.parametrize(
@@ -210,8 +210,8 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     # Expect precomputed row counts and block sizes to be missing.
     assert ds._meta_count() is None
     assert (
-        ds._execution_manager._snapshot_blocks is None
-        or ds._execution_manager._snapshot_blocks.size_bytes() == -1
+        ds._plan._snapshot_blocks is None
+        or ds._plan._snapshot_blocks.size_bytes() == -1
     )
 
     # Expect to lazily compute all metadata correctly.
@@ -1051,7 +1051,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._execution_manager.execute().get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)

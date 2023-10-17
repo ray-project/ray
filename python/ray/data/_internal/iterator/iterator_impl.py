@@ -29,7 +29,7 @@ class DataIteratorImpl(DataIterator):
         bool,
     ]:
         ds = self._base_dataset
-        block_iterator, stats, executor = ds._execution_manager.execute_to_iterator()
+        block_iterator, stats, executor = ds._plan.execute_to_iterator()
         ds._current_executor = executor
         return block_iterator, stats, False
 
