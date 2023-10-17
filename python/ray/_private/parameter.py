@@ -1,7 +1,6 @@
 import logging
 import os
 from typing import Dict, List, Optional
-import pkg_resources
 
 import ray._private.ray_constants as ray_constants
 from ray._private.utils import (
