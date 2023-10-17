@@ -149,7 +149,6 @@ tensorboardX==2.6
 tifffile==2023.7.10
 tqdm @ file:///croot/tqdm_1679561862951/work
 typer==0.9.0
-typing_extensions==4.5.0
 tzdata==2023.3
 uritemplate==3.0.1
 urllib3 @ file:///croot/urllib3_1686163155763/work
