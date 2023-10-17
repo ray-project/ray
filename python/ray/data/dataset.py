@@ -243,6 +243,7 @@ class Dataset:
 
         self._plan = plan
         self._uuid = uuid4().hex
+        self._plan._dataset_uuid = self._uuid
         self._logical_plan = logical_plan
         if logical_plan is not None:
             self._plan.link_logical_plan(logical_plan)
@@ -4557,6 +4558,9 @@ class Dataset:
         )
         output._plan.execute()  # No-op that marks the plan as fully executed.
         output._plan._in_stats.dataset_uuid = self._get_uuid()
+        # Metrics are tagged with `copy`s uuid, update the output uuid with
+        # this so the user can access the metrics label.
+        output._uuid = copy._get_uuid()
         return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
