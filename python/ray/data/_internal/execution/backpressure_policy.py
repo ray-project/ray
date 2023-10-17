@@ -1,5 +1,4 @@
 import logging
-import os
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -55,12 +54,14 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
     The concrete stategy is as follows:
     - Each PhysicalOperator is assigned an initial concurrency cap.
-    - An PhysicalOperator can run new tasks if the number of running tasks is less than the cap.
+    - An PhysicalOperator can run new tasks if the number of running tasks is less
+      than the cap.
     - When the number of finished tasks reaches a threshold, the concurrency cap will
       increase.
     """
 
-    # Following are the default values followed by the config keys of the available configs.
+    # Following are the default values followed by the config keys of the
+    # available configs.
     # Use `DataContext.set_plugin_config` to config them.
 
     # The intial concurrency cap for each operator.
