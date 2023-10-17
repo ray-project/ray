@@ -6,18 +6,14 @@ https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 Fine-tune a BERT model with DeepSpeed ZeRO-3 and Ray Train and Ray Data
 """
 
+from tempfile import TemporaryDirectory
+
 import deepspeed
 import torch
-
 from datasets import load_dataset
 from deepspeed.accelerator import get_accelerator
-from tempfile import TemporaryDirectory
 from torchmetrics.classification import BinaryAccuracy, BinaryF1Score
-from transformers import (
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    set_seed,
-)
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, set_seed
 
 import ray
 import ray.train

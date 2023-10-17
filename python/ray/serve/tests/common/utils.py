@@ -13,13 +13,14 @@ from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.proxy import DRAINED_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import TimerBase
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
 
 
-class MockTimer:
+class MockTimer(TimerBase):
     def __init__(self, start_time=None):
         if start_time is None:
             start_time = time.time()
@@ -183,7 +184,7 @@ def ping_grpc_call_method(channel, app_name, test_not_found=False):
     else:
         response, call = stub.__call__.with_call(request=request, metadata=metadata)
         assert call.code() == grpc.StatusCode.OK
-        assert response.greeting == "Hello foo from bar"
+        assert response.greeting == "Hello foo from bar", response.greeting
 
 
 def ping_grpc_another_method(channel, app_name):

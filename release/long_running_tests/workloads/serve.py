@@ -67,7 +67,7 @@ class Echo:
         return await self.handle_batch(request)
 
 
-Echo.deploy()
+Echo._deploy()
 
 print("Warming up")
 for _ in range(5):

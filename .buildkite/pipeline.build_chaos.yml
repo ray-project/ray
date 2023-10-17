@@ -1,0 +1,30 @@
+#ci:group=:kubernetes: :mending_heart: chaos tests
+
+- label: "chaos test {{matrix.workload}} under {{matrix.fault}}"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  instance_size: medium
+  commands:
+    - |
+      cleanup() {
+        if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
+        kind delete cluster
+      }
+      trap cleanup EXIT
+    - echo "--- Preparing chaos testing environment"
+    - ./python/ray/tests/chaos/prepare_env.sh
+    # First run: no faults
+    - echo "--- Running the workload without faults"
+    - "./python/ray/tests/chaos/{{matrix.workload}}.sh"
+    # Second run: with faults
+    - kubectl apply -f python/ray/tests/chaos/{{matrix.fault}}.yaml
+    - echo "--- Running the script {{matrix.workload}} with injected fault {{matrix.fault}}"
+    - "./python/ray/tests/chaos/{{matrix.workload}}.sh"
+  matrix:
+    setup:
+      fault:
+        - "chaos_network_delay"
+        - "chaos_network_bandwidth"
+      workload:
+        - "test_potato_passer"
+        - "test_streaming_llm"
+        - "test_many_job_submissions"
