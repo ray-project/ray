@@ -1346,7 +1346,7 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
     ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
 
     # Test Arrow-native creation APIs.
-    # Test range_table.
+    # Test range.
     with pytest.raises(ImportError):
         ray.data.range(10).take_all()
 
@@ -1378,7 +1378,7 @@ def test_unsupported_pyarrow_versions_check_disabled(
     )
 
     # Test Arrow-native creation APIs.
-    # Test range_table.
+    # Test range.
     try:
         ray.data.range(10).take_all()
     except ImportError as e:

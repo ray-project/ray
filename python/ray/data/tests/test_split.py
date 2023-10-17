@@ -102,7 +102,6 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
     ds = Dataset(
         ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
-        0,
         logical_plan,
     )
 
