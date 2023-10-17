@@ -20,7 +20,7 @@ set -euo pipefail
 WHEEL_NAME="$(basename $WHEEL_PATH)"
 
 $HOME/anaconda3/bin/pip --no-cache-dir \
-    install -c $CONSTRAINTS_FILE "${WHEEL_NAME}" \
+    install -c $CONSTRAINTS_FILE "${WHEEL_NAME}"[all] \
     --find-links $FIND_LINKS_PATH
 
 sudo rm "${WHEEL_NAME}"
