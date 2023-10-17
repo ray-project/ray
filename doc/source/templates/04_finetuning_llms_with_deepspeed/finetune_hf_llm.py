@@ -305,7 +305,7 @@ def training_function(kwargs: dict):
             raise ValueError(f"Expected {expected_num_parameters} parameters, got {num_parameters} parameters."
                              f"LoRA-ification failed.")
 
-        print(f"LoRA-ification done in {time.time() - s} seconds. Estimated checkpoint size (16 bit parameters): {num_parameters * 2 / 1e6} MB")
+        print(f"LoRA-ification done in {time.time() - s} seconds. Estimated checkpoint size (fp16): {num_parameters * 2 / 1e6} MB")
     
     print(f"Number of checkpointed parameters: {get_number_of_params(model)}")
 

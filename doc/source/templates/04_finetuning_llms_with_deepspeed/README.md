@@ -124,7 +124,7 @@ To launch a full fine-tuning you can use the following command:
 
 ### Launching LoRA fine-tuning
 
-You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve similar fine-tuning results as vanilla fine-tuning, but unlocking smaller instance types and more effecient model serving.
+You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve more resource efficient fine-tuning results than full-parameter fine-tuning, but unlocking smaller instance types and more effecient model serving.
 To launch a LoRA fine-tuning, you can use the following command or similar commands for other model sizes:
 
 ```
