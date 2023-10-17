@@ -19,7 +19,6 @@
 /src/ray/protobuf/common.proto @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
 /src/ray/protobuf/gcs.proto @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
 /src/ray/protobuf/gcs_service.proto @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
-/dashboard/modules/snapshot @alanwguo @nikitavemuri
 
 # Autoscaler
 /python/ray/autoscaler/ @ericl @ray-project/ray-core @architkulkarni
