@@ -13,7 +13,6 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 
 class OnWorkerCreatedCallbacks(DefaultCallbacks):
-
     def on_workers_recreated(
         self,
         *,
