@@ -12,9 +12,6 @@ def test_strict_read_schemas(ray_start_regular_shared):
     ds = ray.data.range(1)
     assert ds.take()[0] == {"id": 0}
 
-    with pytest.raises(DeprecationWarning):
-        ds = ray.data.range_table(1)
-
     ds = ray.data.range_tensor(1)
     assert ds.take()[0] == {"data": np.array([0])}
 
