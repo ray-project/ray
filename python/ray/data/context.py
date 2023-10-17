@@ -219,7 +219,13 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
-        self._plugin_configs: Dict[str, Any] = {}
+        # The extra key-value style configs.
+        # These configs are managed by individual components or plugins via
+        # `set_config`, `get_config` and `remove_config`.
+        # The reason why we use a dict instead of individual fields is to decouple
+        # the DataContext from the plugin implementations, as well as to avoid
+        # circular dependencies.
+        self._kv_configs: Dict[str, Any] = {}
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -284,14 +290,32 @@ class DataContext:
         global _default_context
         _default_context = context
 
-    def get_plugin_config(self, key: str, default: Any = None) -> Any:
-        return self._plugin_configs.get(key, default)
+    def get_config(self, key: str, default: Any = None) -> Any:
+        """Get the value for a key-value style config.
 
-    def set_plugin_config(self, key: str, value: Any) -> None:
-        self._plugin_configs[key] = value
+        Args:
+            key (str): The key of the config.
+            default (Any): The default value to return if the key is not found.
+        Returns: The value for the key, or the default value if the key is not found.
+        """
+        return self._kv_configs.get(key, default)
 
-    def remove_plugin_config(self, key: str) -> None:
-        self._plugin_configs.pop(key, None)
+    def set_config(self, key: str, value: Any) -> None:
+        """Set the value for a key-value style config.
+
+        Args:
+            key (str): The key of the config.
+            value (Any): The value of the config.
+        """
+        self._kv_configs[key] = value
+
+    def remove_config(self, key: str) -> None:
+        """Remove a key-value style config.
+
+        Args:
+            key (str): The key of the config.
+        """
+        self._kv_configs.pop(key, None)
 
 
 # Backwards compatibility alias.
