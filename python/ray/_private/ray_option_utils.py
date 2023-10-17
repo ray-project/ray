@@ -192,6 +192,7 @@ _task_only_options = {
         else "retry_exceptions must be either a boolean or a list of exceptions",
         default_value=False,
     ),
+    "_streaming_generator_backpressure_size_bytes": Option((int, type(None))),
 }
 
 _actor_only_options = {

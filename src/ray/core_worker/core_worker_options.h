@@ -62,7 +62,8 @@ struct CoreWorkerOptions {
       // TODO(sang): Remove it and combine it with dynamic returns.
       bool is_streaming_generator,
       // True if task can be retried upon exception.
-      bool retry_exception)>;
+      bool retry_exception,
+      int64_t streaming_generator_backpressure_size_bytes)>;
 
   CoreWorkerOptions()
       : store_socket(""),
