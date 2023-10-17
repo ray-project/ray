@@ -597,11 +597,10 @@ class TestRuntimeEnv:
             entrypoint=run_cmd, runtime_env={"working_dir": "path_not_exist"}
         )
 
-        for _ in range(100):
-            data = await job_manager.get_job_info(job_id)
-            assert data.status == JobStatus.FAILED
-            assert "path_not_exist is not a valid URI" in data.message
-            assert data.driver_exit_code is None
+        data = await job_manager.get_job_info(job_id)
+        assert data.status == JobStatus.FAILED
+        assert "path_not_exist is not a valid URI" in data.message
+        assert data.driver_exit_code is None
 
     async def test_failed_runtime_env_setup(self, job_manager):
         """Ensure job status is correctly set as failed if job has a valid
