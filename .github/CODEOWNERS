@@ -16,14 +16,12 @@
 # ==== Ray core ====
 
 # API compatibility
-/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
-/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
-/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
-/dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
-/python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
+/src/ray/protobuf/common.proto @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/gcs.proto @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/gcs_service.proto @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
 
 # Autoscaler
-/python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl @ray-project/ray-core @architkulkarni
+/python/ray/autoscaler/ @ericl @ray-project/ray-core @architkulkarni
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
@@ -64,7 +62,7 @@
 /cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core
 
 # Ray Client
-/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017
+/src/ray/protobuf/ray_client.proto @ameerhajali @ckw017
 
 # Runtime Env
 # TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.
@@ -86,7 +84,7 @@
 /doc/source/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke @ray-project/ray-docs
 
 # Cluster (docs)
-/doc/source/cluster/ @architkulkarni @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
+/doc/source/cluster/ @architkulkarni @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
 
 # Tune (docs)
 /doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @justinvyu @woshiyyya @ray-project/ray-docs

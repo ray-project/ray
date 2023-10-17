@@ -3,9 +3,13 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 from fastapi import FastAPI
+
+# Intentionally import directly from pydantic instead of pydantic_compat because
+# we want to test serializing both the v1 and v2 model implementations.
 from pydantic import BaseModel
 
 import ray
+from ray._private.pydantic_compat import IS_PYDANTIC_2
 
 
 @pytest.fixture(scope="session")
@@ -148,8 +152,9 @@ def test_serialize_app_imported_closure(start_ray):
     ray.get(ray.put(closure))
 
 
-@pytest.mark.skip(
-    reason="Test fails with Pydantic 1.10.12, but succeeds with Pydantic 1.9.2."
+@pytest.mark.skipif(
+    not IS_PYDANTIC_2,
+    reason="Test fails with Pydantic 1.10.12, but succeeds with Pydantic 1.9.2.",
 )
 def test_serialize_serve_dataclass(start_ray):
     @dataclass
