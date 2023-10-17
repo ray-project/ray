@@ -1234,13 +1234,6 @@ Ray Examples
         Learning to Play Pong
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item core rl
-        :link: /ray-core/examples/plot_example-a3c
-        :link-type: doc
-
-        Asynchronous Advantage Actor Critic (A3C)
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core
         :link: /ray-core/examples/gentle_walkthrough
         :link-type: doc
