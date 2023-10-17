@@ -114,6 +114,11 @@ def create_serve_rest_api(
         async def get_all_deployments(self, req: Request) -> Response:
             from ray.serve.schema import ServeApplicationSchema
 
+            logger.warning(
+                "The Serve REST API endpoint `GET /api/serve/deployments/` is "
+                "deprecated. Please switch to using `GET /api/serve/applications/`. "
+            )
+
             controller = await self.get_serve_controller()
 
             if controller is None:
@@ -177,6 +182,11 @@ def create_serve_rest_api(
         async def get_all_deployment_statuses(self, req: Request) -> Response:
             from ray.serve.schema import _serve_status_to_schema, ServeStatusSchema
 
+            logger.warning(
+                "The Serve REST API endpoint `GET /api/serve/deployments/status` is "
+                "deprecated. Please switch to using `GET /api/serve/applications/`. "
+            )
+
             controller = await self.get_serve_controller()
 
             if controller is None:
@@ -204,6 +214,11 @@ def create_serve_rest_api(
         async def delete_serve_application(self, req: Request) -> Response:
             from ray import serve
 
+            logger.warning(
+                "The Serve REST API endpoint `DELETE /api/serve/deployments/` is "
+                "deprecated. Please switch to using `DELETE /api/serve/applications/`. "
+            )
+
             if await self.get_serve_controller() is not None:
                 serve.shutdown()
 
@@ -227,6 +242,13 @@ def create_serve_rest_api(
             from ray.serve.schema import ServeApplicationSchema
             from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
             from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+            logger.warning(
+                "The Serve REST API endpoint `PUT /api/serve/deployments/` and the "
+                "single-application config format is deprecated. Please switch to "
+                "using `PUT /api/serve/applications/` and the multi-application config "
+                "format."
+            )
 
             try:
                 config = ServeApplicationSchema.parse_obj(await req.json())

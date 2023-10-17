@@ -134,44 +134,6 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-def test_v1_shutdown_actors(ray_shutdown):
-    """Tests serve.shutdown() works correctly in 1.x case.
-
-    Ensures that after deploying deployments using 1.x API, serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    ray.init(num_cpus=16)
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    f._deploy()
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    serve.shutdown()
-    wait_for_condition(check_dead)
-
-
 def test_single_app_shutdown_actors(ray_shutdown):
     """Tests serve.shutdown() works correctly in single-app case
 
@@ -261,12 +223,13 @@ def test_deployment(ray_cluster):
     first_job_id = ray.get_runtime_context().get_job_id()
     serve.start()
 
-    @serve.deployment(route_prefix="/say_hi_f")
+    @serve.deployment
     def f(*args):
         return "from_f"
 
-    f._deploy()
-    assert ray.get(f._get_handle().remote()) == "from_f"
+    handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
+    handle = handle.options(use_new_handle_api=True)
+    assert handle.remote().result() == "from_f"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
     serve.context._global_client = None
@@ -276,12 +239,13 @@ def test_deployment(ray_cluster):
     ray.init(head_node.address, namespace="serve")
     assert ray.get_runtime_context().get_job_id() != first_job_id
 
-    @serve.deployment(route_prefix="/say_hi_g")
+    @serve.deployment
     def g(*args):
         return "from_g"
 
-    g._deploy()
-    assert ray.get(g._get_handle().remote()) == "from_g"
+    handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
+    handle = handle.options(use_new_handle_api=True)
+    assert handle.remote().result() == "from_g"
     assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
@@ -293,11 +257,15 @@ def test_connect(ray_shutdown):
 
     @serve.deployment
     def connect_in_deployment(*args):
-        connect_in_deployment.options(name="deployment-ception")._deploy()
+        serve.run(
+            connect_in_deployment.options(name="deployment-ception").bind(),
+            name="app2",
+            route_prefix="/app2",
+        )
 
     handle = serve.run(connect_in_deployment.bind())
     ray.get(handle.remote())
-    assert "deployment-ception" in _private_api.list_deployments()
+    assert "deployment-ception" in serve.status().applications["app2"].deployments
 
 
 def test_set_socket_reuse_port():
@@ -495,7 +463,7 @@ def test_http_root_path(ray_shutdown):
     port = new_port()
     root_path = "/serve"
     serve.start(http_options=dict(root_path=root_path, port=port))
-    hello._deploy()
+    serve.run(hello.bind(), route_prefix="/hello")
 
     # check whether url is prefixed correctly
     assert hello.url == f"http://127.0.0.1:{port}{root_path}/hello"
@@ -508,7 +476,7 @@ def test_http_root_path(ray_shutdown):
     # check advertized routes are prefixed correctly
     resp = requests.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
     assert resp.status_code == 200
-    assert resp.json() == {"/hello": "hello"}
+    assert resp.json() == {"/hello": "default"}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")

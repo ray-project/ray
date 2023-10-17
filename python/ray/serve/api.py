@@ -473,6 +473,7 @@ def run(
     Returns:
         RayServeSyncHandle: A handle that can be used to call the application.
     """
+    # trigger tests
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 
