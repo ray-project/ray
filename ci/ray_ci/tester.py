@@ -9,6 +9,22 @@ from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 
+CUDA_COPYRIGHT = """
+==========
+== CUDA ==
+==========
+
+CUDA Version 11.8.0
+
+Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+By pulling and using the container, you accept the terms and conditions of this license:
+https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+
+A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
+"""  # noqa: E501
+
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
@@ -183,6 +199,8 @@ def _get_test_targets(
             ]
         )
         .decode("utf-8")
+        # CUDA image comes with a license header that we need to remove
+        .replace(CUDA_COPYRIGHT, "")
         .strip()
         .split("\n")
     )

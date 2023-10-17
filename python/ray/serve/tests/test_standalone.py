@@ -22,6 +22,7 @@ from ray._private.test_utils import (
 )
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.serve._private import api as _private_api
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -119,7 +120,7 @@ def test_shutdown(ray_shutdown):
 
     serve.shutdown()
     with pytest.raises(RayServeException):
-        serve.list_deployments()
+        _private_api.list_deployments()
 
     def check_dead():
         for actor_name in actor_names:
@@ -146,7 +147,7 @@ def test_v1_shutdown_actors(ray_shutdown):
     def f():
         pass
 
-    f.deploy()
+    f._deploy()
 
     actor_names = {
         "ServeController",
@@ -264,8 +265,8 @@ def test_deployment(ray_cluster):
     def f(*args):
         return "from_f"
 
-    f.deploy()
-    assert ray.get(f.get_handle().remote()) == "from_f"
+    f._deploy()
+    assert ray.get(f._get_handle().remote()) == "from_f"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
     serve.context._global_client = None
@@ -279,8 +280,8 @@ def test_deployment(ray_cluster):
     def g(*args):
         return "from_g"
 
-    g.deploy()
-    assert ray.get(g.get_handle().remote()) == "from_g"
+    g._deploy()
+    assert ray.get(g._get_handle().remote()) == "from_g"
     assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
@@ -292,11 +293,11 @@ def test_connect(ray_shutdown):
 
     @serve.deployment
     def connect_in_deployment(*args):
-        connect_in_deployment.options(name="deployment-ception").deploy()
+        connect_in_deployment.options(name="deployment-ception")._deploy()
 
     handle = serve.run(connect_in_deployment.bind())
     ray.get(handle.remote())
-    assert "deployment-ception" in serve.list_deployments()
+    assert "deployment-ception" in _private_api.list_deployments()
 
 
 def test_set_socket_reuse_port():
@@ -494,7 +495,7 @@ def test_http_root_path(ray_shutdown):
     port = new_port()
     root_path = "/serve"
     serve.start(http_options=dict(root_path=root_path, port=port))
-    hello.deploy()
+    hello._deploy()
 
     # check whether url is prefixed correctly
     assert hello.url == f"http://127.0.0.1:{port}{root_path}/hello"

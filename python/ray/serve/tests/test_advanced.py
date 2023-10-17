@@ -45,7 +45,7 @@ def test_serve_graceful_shutdown(serve_instance):
 
     @ray.remote(num_cpus=0)
     def do_blocking_delete():
-        Wait.delete()
+        Wait._delete()
 
     # Now delete the deployment. This should trigger the shutdown sequence.
     delete_ref = do_blocking_delete.remote()

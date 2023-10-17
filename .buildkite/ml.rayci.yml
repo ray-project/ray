@@ -1,6 +1,6 @@
 group: ml tests
 steps:
-  - label: ":train: ml: train tests and examples"
+  - label: ":train: ml: train tests"
     tags: train
     instance_type: large
     parallelism: 2
@@ -9,4 +9,18 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags gpu_only,gpu,minimal,tune,doctest,needs_credentials 
     depends_on: mlbuild
+    job_env: forge
+
+  - label: ":train: ml: train gpu tests"
+    tags: 
+      - train
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/air/... //doc/... ml
+        --parallelism-per-worker 2
+        --build-name mlgpubuild
+        --only-tags gpu,gpu_only
+        --except-tags doctest
+    depends_on: mlgpubuild
     job_env: forge

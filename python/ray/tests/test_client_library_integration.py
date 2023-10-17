@@ -60,8 +60,8 @@ async def test_serve_handle(ray_start_regular):
             def hello():
                 return "hello"
 
-            hello.deploy()
-            handle = hello.get_handle()
+            hello._deploy()
+            handle = hello._get_handle()
             assert ray.get(handle.remote()) == "hello"
             assert await handle.remote() == "hello"
 

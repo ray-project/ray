@@ -49,6 +49,7 @@ class ActorPoolMapOperator(MapOperator):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int],
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
@@ -63,6 +64,8 @@ class ActorPoolMapOperator(MapOperator):
             autoscaling_policy: A policy controlling when the actor pool should be
                 scaled up and scaled down.
             name: The name of this operator.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -70,7 +73,12 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            map_transformer, input_op, name, min_rows_per_bundle, ray_remote_args
+            map_transformer,
+            input_op,
+            name,
+            target_max_block_size,
+            min_rows_per_bundle,
+            ray_remote_args,
         )
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         self._min_rows_per_bundle = min_rows_per_bundle
@@ -175,7 +183,10 @@ class ActorPoolMapOperator(MapOperator):
             # Submit the map task.
             bundle = self._bundle_queue.popleft()
             input_blocks = [block for block, _ in bundle.blocks]
-            ctx = TaskContext(task_idx=self._next_data_task_idx)
+            ctx = TaskContext(
+                task_idx=self._next_data_task_idx,
+                target_max_block_size=self.actual_target_max_block_size,
+            )
             gen = actor.submit.options(num_returns="streaming", name=self.name).remote(
                 DataContext.get_current(), ctx, *input_blocks
             )
@@ -342,7 +353,10 @@ class _MapWorker:
     """An actor worker for MapOperator."""
 
     def __init__(
-        self, ctx: DataContext, src_fn_name: str, map_transformer: MapTransformer
+        self,
+        ctx: DataContext,
+        src_fn_name: str,
+        map_transformer: MapTransformer,
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
@@ -359,7 +373,12 @@ class _MapWorker:
         ctx: TaskContext,
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(self._map_transformer, data_context, ctx, *blocks)
+        yield from _map_task(
+            self._map_transformer,
+            data_context,
+            ctx,
+            *blocks,
+        )
 
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"
