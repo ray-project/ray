@@ -340,8 +340,6 @@ if setup_spec.type == SetupType.RAY:
         "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
-        "numpy >= 1.16; python_version < '3.9'",
-        "numpy >= 1.19.3; python_version >= '3.9'",
         "packaging",
         "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
