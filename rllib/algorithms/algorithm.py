@@ -645,7 +645,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 local_worker=True,
                 logdir=self.logdir,
                 on_worker_created_callback=functools.partial(
-                    self.callbacks.on_worker_created,
+                    type(self.callbacks).on_worker_created,
+                    self.callbacks,
                     algorithm=self,
                     is_evaluation=False,
                 ),
@@ -689,9 +690,6 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.evaluation_config,
                 num_workers=self.config.evaluation_num_workers,
                 logdir=self.logdir,
-                on_worker_created_callback=functools.partial(
-                    self.callbacks.on_worker_created, algorithm=self, is_evaluation=True
-                ),
             )
 
             if self.config.enable_async_evaluation:
@@ -1405,6 +1403,23 @@ class Algorithm(Trainable, AlgorithmBase):
                 timeout_seconds=self.config.worker_restore_timeout_s,
                 # Bring back actor after successful state syncing.
                 mark_healthy=True,
+            )
+
+        # Every time a worker gets created (local or remote), call the
+        # `on_worker_created()` callback, if provided.
+            self._on_worker_created_callback(
+                worker_ref=worker,
+                worker_index=worker_index,
+                recreated_worker=recreated_worker,
+            )
+
+            # Fire the callback for re-created workers.
+            self.callbacks.on_workers_created_or_restored(
+                algorithm=self,
+                worker_ids=restored,
+                worker_set=workers,
+                is_evaluation=,
+                re=True,
             )
 
     @OverrideToImplementCustomLogic

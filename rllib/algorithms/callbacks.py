@@ -78,9 +78,10 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
-    def on_worker_created(
+    def on_workers_created_or_restored(
         self,
-        algorithm: Algorithm,
+        *,
+        algorithm: "Algorithm",
         worker_ref: Union["EnvRunner", ray.ObjectRef],
         worker_index: int,
         is_evaluation: bool,

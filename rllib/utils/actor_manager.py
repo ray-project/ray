@@ -158,7 +158,7 @@ class FaultAwareApply:
         *args,
         **kwargs,
     ) -> T:
-        """Calls the given function with this rollout worker instance.
+        """Calls the given function with this Actor instance.
 
         A generic interface for applying arbitray member functions on a
         remote actor.

@@ -93,9 +93,6 @@ class WorkerSet:
         num_workers: int = 0,
         local_worker: bool = True,
         logdir: Optional[str] = None,
-        on_worker_created_callback: Optional[
-            Callable[[ray.ObjectRef, int, bool], None]
-        ] = None,
         _setup: bool = True,
     ):
         """Initializes a WorkerSet instance.
@@ -116,12 +113,6 @@ class WorkerSet:
                 in the returned set as well (default: True). If `num_workers`
                 is 0, always create a local worker.
             logdir: Optional logging directory for workers.
-            on_worker_created_callback: Optional callable to call after a worker has been
-                created by this WorkerSet. This could be during initialization of this
-                WorkerSet or after a worker has failed and been restarted.
-                The args of the callable are the worker itself (or the ray.ObjectRef in
-                case of a remote worker, the worker's index (0=local, 1=1st remote,
-                etc.), and a bool indicating whether the worker has been restarted.
             _setup: Whether to actually set up workers. This is only for testing.
         """
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -160,8 +151,6 @@ class WorkerSet:
             ),
             init_id=1,
         )
-
-        self._on_worker_created_callback = on_worker_created_callback
 
         if _setup:
             try:
@@ -894,15 +883,16 @@ class WorkerSet:
 
     @DeveloperAPI
     def probe_unhealthy_workers(self) -> List[int]:
-        """Checks the unhealth workers, and try restoring their states.
+        """Checks for unhealthy workers and tries restoring their states.
 
         Returns:
-            IDs of the workers that were restored.
+            List of IDs of the workers that were restored.
         """
         return self.__worker_manager.probe_unhealthy_actors(
             timeout_seconds=self._remote_config.worker_health_probe_timeout_s
         )
 
+    # TODO (sven): Deprecate once ARS/ES have been moved to `rllib_contrib`.
     @staticmethod
     def _from_existing(
         local_worker: RolloutWorker, remote_workers: List[ActorHandle] = None
@@ -940,11 +930,6 @@ class WorkerSet:
             spaces=spaces,
             dataset_shards=self._ds_shards,
         )
-
-        # Every time a worker gets created (local or remote), call the
-        # `on_worker_created()` callback, if provided.
-        if self._on_worker_created_callback:
-            self._on_worker_created_callback(worker, worker_index, recreated_worker)
 
         return worker
 

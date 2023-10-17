@@ -2,10 +2,10 @@ from collections import Counter
 import unittest
 
 import ray
+from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.pg import PGConfig
-from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.random_env import RandomEnv
@@ -34,6 +34,7 @@ class OnWorkerCreatedCallbacks(DefaultCallbacks):
 
         # Increase the counter.
         algorithm._counters[key] += 1
+        print(f"changed {key} to {algorithm._counters[key]}")
 
 
 class EpisodeAndSampleCallbacks(DefaultCallbacks):
@@ -102,21 +103,37 @@ class TestCallbacks(unittest.TestCase):
 
     def test_on_worker_created_callback(self):
         config = (
-            PPOConfig()
-            .environment("CartPole-v1")
+            APPOConfig()
+            .environment(CartPoleCrashing, env_config={
+                ## Crash deterministically after 50 timesteps. This way, we most
+                ## certainly will have at least one crash during a single rollout.
+                "p_crash": 0.1,
+                ##"crash_after_n_steps": 25,
+            })
             .callbacks(OnWorkerCreatedCallbacks)
+            .rollouts(num_rollout_workers=2)
+            .fault_tolerance(recreate_failed_workers=True)
         )
 
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            pg = config.build()
-            pg.train()
-            pg.train()
-            callback_obj = pg.workers.local_worker().callbacks
-            self.assertGreater(callback_obj.counts["sample"], 0)
-            self.assertGreater(callback_obj.counts["start"], 0)
-            self.assertGreater(callback_obj.counts["end"], 0)
-            self.assertGreater(callback_obj.counts["step"], 0)
-            pg.stop()
+        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+            algo = config.build()
+            # After building the algorithm, each worker should have a
+            # "created" counter value of 1.
+            self.assertEqual(algo._counters["num_worker_0_created"], 1)
+            self.assertEqual(algo._counters["num_worker_1_created"], 1)
+            self.assertEqual(algo._counters["num_worker_2_created"], 1)
+            # Train a bit (and have the env crash at least once).
+            algo.train()
+            algo.train()
+            algo.train()
+            algo.train()
+            algo.train()
+            algo.train()
+            # The local worker does NOT sample, so it should not have crashed.
+            self.assertEqual(algo._counters["num_worker_0_created"], 1)
+            self.assertGreater(algo._counters["num_worker_1_created"], 1)
+            self.assertGreater(algo._counters["num_worker_2_created"], 1)
+            algo.stop()
 
     def test_episode_and_sample_callbacks(self):
         config = (
