@@ -1,7 +1,6 @@
 import copy
 import functools
 import itertools
-import uuid
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -110,7 +109,6 @@ class ExecutionPlan:
         self,
         in_blocks: BlockList,
         stats: DatasetStats,
-        dataset_uuid=None,
         *,
         run_by_consumer: bool,
     ):
@@ -135,9 +133,7 @@ class ExecutionPlan:
         self._last_optimized_stages = None
         # Cached schema.
         self._schema = None
-        self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
-        if not stats.dataset_uuid:
-            stats.dataset_uuid = self._dataset_uuid
+        self._dataset_uuid = None
 
         self._run_by_consumer = run_by_consumer
 
