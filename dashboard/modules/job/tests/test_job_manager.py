@@ -1245,12 +1245,13 @@ sys.exit({EXIT_CODE})
 
 
 @pytest.mark.asyncio
-async def test_invalid_runtime_env_error_not_overwritten(shared_ray_instance, tmp_path):
+async def test_actor_creation_error_not_overwritten(shared_ray_instance, tmp_path):
     """Regression test for: https://github.com/ray-project/ray/issues/40062.
 
-    Previously there existed a race condition that could overwrite the invalid
-    `runtime_env` error message. This would happen after an initial correct error
-    message was set and was not deterministic, so this test runs many iterations.
+    Previously there existed a race condition that could overwrite error messages from
+    actor creation (such as an invalid `runtime_env`). This would happen
+    non-deterministically after an initial correct error message was set, so this test
+    runs many iterations.
 
     Without the fix in place, this test failed consistently.
     """
