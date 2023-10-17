@@ -353,7 +353,7 @@ void LocalResourceManager::PopulateResourceUsage(
 
 std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
     int64_t after_version, syncer::MessageType message_type) const {
-  RAY_CHECK(message_type == syncer::MessageType::RESOURCE_VIEW);
+  RAY_CHECK_EQ(message_type, syncer::MessageType::RESOURCE_VIEW);
   // We check the memory inside version, so version is not a const function.
   // Ideally, we need to move the memory check somewhere else.
   // TODO(iycheng): Make version as a const function.
