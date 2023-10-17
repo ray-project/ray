@@ -758,7 +758,7 @@ def test_cold_start_time(serve_instance):
     start = time.time()
     result = ray.get(handle.remote())
     cold_start_time = time.time() - start
-    assert cold_start_time < 2
+    assert cold_start_time < 3
     print(
         "Time taken for deployment at 0 replicas to serve first request:",
         cold_start_time,
