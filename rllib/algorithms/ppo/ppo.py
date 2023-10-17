@@ -83,7 +83,7 @@ class PPOConfig(PGConfig):
 
         # Update the config object.
         config.training(
-        lr=tune.grid_search([0.001 ]), clip_param=0.2
+            lr=tune.grid_search([0.001 ]), clip_param=0.2
         )
         # Set the config object's env.
         config = config.environment(env="CartPole-v1")
