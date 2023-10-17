@@ -50,38 +50,57 @@ OPTIM_WEIGHT_DECAY = 0.0
 ATTENTION_LAYER_NAME = "self_attn"
 
 
-def get_expected_lora_num_parameters(lora_config, model):
+def get_expected_lora_num_parameters(
+    model, lora_config: LoraConfig, attn_layer_name: str = ATTENTION_LAYER_NAME
+):
     """Calculate the expected number of parameters for lora finetuning."""
     sum_params = 0
     num_attention_layers = 0
     modules = model.named_modules()
     loraified_modules = 0
-    # We calculate the number of parameters we need for lora finetuning by calculating 
+    # We calculate the number of parameters we need for lora finetuning by calculating
     # the sizes of the deecomposed weight matrices according to the paper.
     for full_name, target in modules:
         layer_name = full_name.split(".")[-1]
-        
-        if layer_name == ATTENTION_LAYER_NAME:
-            # Detected another attention layer (for example, llama 2 70b should have 80 of these)
+
+        if layer_name == attn_layer_name:
+            # Detected another attention layer (for example, llama 2 70b should have 80
+            # of these)
             num_attention_layers += 1
         elif layer_name in lora_config.modules_to_save:
-            # Detect another non-lora module to save, which will also contribute to the number of checkpointed parameters
-            # This will result in one set of trainable parameters "<layer>.original_module.weight" and another one with "<layer>.modules_to_save.default.weight"
-            # Therefore, each layer contributes 2 x the number of actual elements in that layer.
+            # Detect another non-lora module to save, which will also contribute to the
+            # number of checkpointed parameters. This will result in one set of
+            # trainable parameters "<layer>.original_module.weight" and another one with
+            # "<layer>.modules_to_save.default.weight"
+            # Therefore, each layer contributes 2 x the number of actual elements in
+            # that layer.
             sum_params += 2 * target.weight.numel()
-            print("Found non-lora-layer to checkpoint: ", layer_name, " with num params ", target.weight.numel())
+            print(
+                "Found non-lora-layer to checkpoint: ",
+                layer_name,
+                " with num params ",
+                target.weight.numel(),
+            )
         else:
             for module_name in lora_config.target_modules:
                 if layer_name == module_name:
                     loraified_modules += 1
-                    if hasattr(target, "in_features"):
+                    if isinstance(target, nn.Linear):
                         # Target is attention weight
-                        sum_params += (target.in_features + target.out_features) * lora_config.r
-                    else:
+                        sum_params += (
+                            target.in_features + target.out_features
+                        ) * lora_config.r
+                    elif isinstance(target, nn.Embedding):
                         # Target is linear weight
-                        sum_params += (target.weight.shape[0] + target.weight.shape[1]) * lora_config.r
-    
-    print(f"Detected {num_attention_layers} attention layers, containing {loraified_modules} modules to modify according to LoRA's `target_modules`. This should yield {sum_params} trainable parameters.")
+                        sum_params += (
+                            target.embedding_dim + target.num_embeddings
+                        ) * lora_config.r
+
+    print(
+        f"Detected {num_attention_layers} attention layers, containing"
+        f" {loraified_modules} modules to modify according to LoRA's `target_modules`."
+        f" This should yield {sum_params} trainable parameters."
+    )
 
     return sum_params
     
