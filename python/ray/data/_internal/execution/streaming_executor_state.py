@@ -322,8 +322,11 @@ def process_completed_tasks(topology: Topology) -> None:
     # All active tasks, keyed by their waitable.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
     # Current output buffer sizes for each operator.
-    # Used for streaming output backpressure.
-    output_bufer_sizes: Dict[OpState, int] = {}
+    # If streaming output backpressure is enabled, we will stop reading data.
+    # when `read_data_bytes + output_buffer_sizes_bytes[op] >=
+    # `StreamingOutputBackpressureConfig.max_op_output_buffer_size_bytes`
+    # for each operator in this round.
+    output_buffer_sizes_bytes: Dict[OpState, int] = {}
 
     context = ray.data.DataContext.get_current()
     backpressure_config = context.streaming_output_backpressure_config
@@ -332,7 +335,7 @@ def process_completed_tasks(topology: Topology) -> None:
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
             if backpressure_config.enabled:
-                output_bufer_sizes[state] = state.outqueue_memory_usage()
+                output_buffer_sizes_bytes[state] = state.outqueue_memory_usage()
 
     # Process completed Ray tasks and notify operators.
     if active_tasks:
@@ -349,11 +352,11 @@ def process_completed_tasks(topology: Topology) -> None:
                 if backpressure_config.enabled:
                     max_bytes_to_read = (
                         backpressure_config.op_output_buffer_size_bytes
-                        - output_bufer_sizes[state]
+                        - output_buffer_sizes_bytes[state]
                     )
                 read_bytes = task.on_data_ready(max_bytes_to_read)
                 if backpressure_config.enabled:
-                    output_bufer_sizes[state] += read_bytes
+                    output_buffer_sizes_bytes[state] += read_bytes
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()

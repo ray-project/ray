@@ -147,20 +147,34 @@ DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 @dataclass
 class StreamingOutputBackpressureConfig:
-    """Configuration for task-level streaming output backpressure."""
+    """Configuration for task-level streaming output backpressure.
+
+    Streaming output backpressure throttles the outputs of a DataOpTask.
+    This is done at 2 levels:
+    - At the Ray Core level, we use
+      `max_streaming_gen_output_buffer_size_bytes` to limit the output buffer size
+      of streaming generators. When it's reached, the task will be blocked at `yield`.
+    - At the Ray Data level, we use
+      `max_op_output_buffer_size_bytes` to limit the output buffer size of the
+      operators. When it's reached, we'll stop reading from the tasks' output streaming
+      generators (see `streaming_executor_state.py::process_completed_tasks`),
+      and thus trigger backpressure at the Ray Core level.
+    """
 
     # Whether to enable streaming output backpressure.
     enabled: bool = False
 
     # TODO(hchen): Can we merge the following two configs? To do so,
-    # we need to make the Ray core-level streaming generator aware of
+    # we may need to make the Ray core-level streaming generators aware of
     # the app-level buffer size.
 
-    # The streaming genenrator-level backpressure size (i.e., the
-    # `_streaming_generator_backpressure_size_bytes` parameter).
-    streaming_gen_backpressure_size: int = 1 * 1024 * 1024 * 1024
-    # Max size of the output buffer (`OpState.outqueue`) for each operator.
-    op_output_buffer_size_bytes: int = 1 * 1024 * 1024 * 1024
+    # The max size of the output buffer at the Ray Core streaming generator level.
+    # This will be used to set the `_streaming_generator_backpressure_size_bytes`
+    # parameter.
+    max_streaming_gen_output_buffer_size_bytes: int = 1 * 1024 * 1024 * 1024
+    # The max size of the output buffer at the Ray Data operator level.
+    # I.e., the max size of `OpState.outqueue`.
+    max_op_output_buffer_size_bytes: int = 1 * 1024 * 1024 * 1024
 
 
 @DeveloperAPI

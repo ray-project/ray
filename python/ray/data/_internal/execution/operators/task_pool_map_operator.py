@@ -63,7 +63,7 @@ class TaskPoolMapOperator(MapOperator):
         if backpressure_config.enabled:
             ray_remote_args[
                 "_streaming_generator_backpressure_size_bytes"
-            ] = backpressure_config.streaming_gen_backpressure_size
+            ] = backpressure_config.max_streaming_gen_output_buffer_size_bytes
 
         gen = map_task.options(**ray_remote_args).remote(
             self._map_transformer_ref,
