@@ -38,7 +38,6 @@ py_library(
 #
 # Tags:
 # "team:ml": Tag indicating this test is owned by the ML team.
-# "client": Test uses the ray client.
 # "example": Test runs a tune example script.
 # "exclusive": ???
 # "soft_imports": Tests checking whether Tune runs without any of its soft dependencies.
