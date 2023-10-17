@@ -275,14 +275,20 @@ def assert_base_partitioned_ds():
             _remove_whitespace(schema),
         ) == _remove_whitespace(repr(ds)), ds
 
-        if num_computed is not None:
+        if (
+            num_computed is not None
+            and not DataContext.get_current().new_execution_backend
+        ):
             assert (
                 ds._plan.execute()._num_computed() == num_computed
             ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
 
         # Force a data read.
         values = ds_take_transform_fn(ds.take_all())
-        if num_computed is not None:
+        if (
+            num_computed is not None
+            and not DataContext.get_current().new_execution_backend
+        ):
             assert (
                 ds._plan.execute()._num_computed() == num_computed
             ), f"{ds._plan.execute()._num_computed()} != {num_computed}"

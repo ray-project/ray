@@ -210,9 +210,9 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ray.data.range(10)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
-    for s in ds._plan._stages_before_snapshot:
+    for s in ds._plan._operators_added_before_snapshot:
         assert s.ray_remote_args == {}, s.ray_remote_args
-    for s in ds._plan._stages_after_snapshot:
+    for s in ds._plan._operators_added_after_snapshot:
         assert s.ray_remote_args == {}, s.ray_remote_args
     _, _, optimized_stages = ds._plan._optimize()
     assert len(optimized_stages) == 1, optimized_stages
@@ -232,16 +232,16 @@ def _assert_has_stages(stages, stage_names):
 def test_stage_linking(ray_start_regular_shared):
     # Test lazy dataset.
     ds = ray.data.range(10)
-    assert len(ds._plan._stages_before_snapshot) == 0
-    assert len(ds._plan._stages_after_snapshot) == 0
+    assert len(ds._plan._operators_added_before_snapshot) == 0
+    assert len(ds._plan._operators_added_after_snapshot) == 0
     assert ds._plan._last_optimized_stages is None
     ds = ds.map(column_udf("id", lambda x: x + 1))
-    assert len(ds._plan._stages_before_snapshot) == 0
-    _assert_has_stages(ds._plan._stages_after_snapshot, ["Map"])
+    assert len(ds._plan._operators_added_before_snapshot) == 0
+    _assert_has_stages(ds._plan._operators_added_after_snapshot, ["Map"])
     assert ds._plan._last_optimized_stages is None
     ds = ds.materialize()
-    _assert_has_stages(ds._plan._stages_before_snapshot, ["Map"])
-    assert len(ds._plan._stages_after_snapshot) == 0
+    _assert_has_stages(ds._plan._operators_added_before_snapshot, ["Map"])
+    assert len(ds._plan._operators_added_after_snapshot) == 0
     _assert_has_stages(ds._plan._last_optimized_stages, ["ReadRange->Map"])
 
 

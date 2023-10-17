@@ -295,28 +295,29 @@ def test_count(ray_start_regular_shared):
 
 
 # will be removed by another PR
-# def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
-#     ds = ray.data.range(100, parallelism=20)
+def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
+    ds = ray.data.range(100, parallelism=20)
 
-#     def check_num_computed(expected):
-#         if ray.data.context.DataContext.get_current().use_streaming_executor:
-#             # In streaing executor, ds.take() will not invoke partial execution
-#             # in LazyBlocklist.
-#             assert ds._plan.execute()._num_computed() == 0
-#         else:
-#             assert ds._plan.execute()._num_computed() == expected
+    def check_num_computed(expected):
+        if ray.data.context.DataContext.get_current().use_streaming_executor:
+            # In streaing executor, ds.take() will not invoke partial execution
+            # in LazyBlocklist.
+            pass
+            # assert ds._plan.execute()._num_computed() == 0
+        else:
+            assert ds._plan.execute()._num_computed() == expected
 
-#     check_num_computed(0)
-#     assert extract_values("id", ds.take(10)) == list(range(10))
-#     check_num_computed(2)
-#     assert extract_values("id", ds.take(20)) == list(range(20))
-#     check_num_computed(4)
-#     assert extract_values("id", ds.take(30)) == list(range(30))
-#     check_num_computed(8)
-#     assert extract_values("id", ds.take(50)) == list(range(50))
-#     check_num_computed(16)
-#     assert extract_values("id", ds.take(100)) == list(range(100))
-#     check_num_computed(20)
+    check_num_computed(0)
+    assert extract_values("id", ds.take(10)) == list(range(10))
+    check_num_computed(2)
+    assert extract_values("id", ds.take(20)) == list(range(20))
+    check_num_computed(4)
+    assert extract_values("id", ds.take(30)) == list(range(30))
+    check_num_computed(8)
+    assert extract_values("id", ds.take(50)) == list(range(50))
+    check_num_computed(16)
+    assert extract_values("id", ds.take(100)) == list(range(100))
+    check_num_computed(20)
 
 
 def test_dataset_repr(ray_start_regular_shared):
@@ -1027,17 +1028,17 @@ def test_iter_batches_grid(ray_start_regular_shared):
                         assert len(batches[-1]) == num_rows % batch_size
 
 
-# will be removed by another PR
-# def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
-#     ds = ray.data.range(32, parallelism=8)
-#     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
-#     for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
-#         if ray.data.context.DataContext.get_current().use_streaming_executor:
-#             # In streaming execution of ds.iter_batches(), there is no partial
-#             # execution so _num_computed() in LazyBlocklist is 0.
-#             assert ds._plan.execute()._num_computed() == 0
-#         else:
-#             assert ds._plan.execute()._num_computed() == expected
+def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
+    ds = ray.data.range(32, parallelism=8)
+    expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
+    for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
+        if ray.data.context.DataContext.get_current().use_streaming_executor:
+            # In streaming execution of ds.iter_batches(), there is no partial
+            # execution so _num_computed() in LazyBlocklist is 0.
+            pass
+            # assert ds._plan.execute()._num_computed() == 0
+        else:
+            assert ds._plan.execute()._num_computed() == expected
 
 
 def test_union(ray_start_regular_shared):
