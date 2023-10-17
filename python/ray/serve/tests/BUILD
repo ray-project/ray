@@ -50,7 +50,6 @@ py_test_module_list(
 # Medium tests.
 py_test_module_list(
   files = [
-    "test_get_deployment.py",
     "test_healthcheck.py",
     "test_http_routes.py",
     "test_logging.py",

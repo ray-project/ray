@@ -5,10 +5,10 @@ from typing import Dict, List
 
 import pytest
 import requests
-from pydantic import ValidationError
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.common import (
     ApplicationStatusInfo,
     DeploymentStatusInfo,
@@ -770,8 +770,8 @@ def test_deployment_to_schema_to_deployment():
     ]
 
     serve.start()
-    deployment.deploy()
-    assert ray.get(deployment.get_handle().remote()) == "Hello world!"
+    deployment._deploy()
+    assert ray.get(deployment._get_handle().remote()) == "Hello world!"
     assert requests.get("http://localhost:8000/hello").text == "Hello world!"
     serve.shutdown()
 

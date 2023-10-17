@@ -262,9 +262,9 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_accelerate_trainer_gpu",
+    name = "test_torch_accelerate",
     size = "large",
-    srcs = ["tests/test_accelerate_trainer_gpu.py"],
+    srcs = ["tests/test_torch_accelerate.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib",  ":conftest"]
 )

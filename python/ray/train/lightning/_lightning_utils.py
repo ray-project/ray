@@ -31,12 +31,15 @@ _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
 _TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_available()
 
-if _LIGHTNING_GREATER_EQUAL_2_0:
+try:
     from lightning.pytorch.plugins.environments import LightningEnvironment
-    from lightning.pytorch.strategies import FSDPStrategy
-else:
+except ModuleNotFoundError:
     from pytorch_lightning.plugins.environments import LightningEnvironment
-    from pytorch_lightning.strategies import DDPFullyShardedStrategy as FSDPStrategy
+
+if _LIGHTNING_GREATER_EQUAL_2_0:
+    FSDPStrategy = pl.strategies.FSDPStrategy
+else:
+    FSDPStrategy = pl.strategies.DDPFullyShardedStrategy
 
 if _TORCH_FSDP_AVAILABLE:
     from torch.distributed.fsdp import (
@@ -85,7 +88,7 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
 
 @PublicAPI(stability="beta")
-class RayFSDPStrategy(FSDPStrategy):
+class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
     """Subclass of FSDPStrategy to ensure compatibility with Ray orchestration.
 
     For a full list of initialization arguments, please refer to:
@@ -152,7 +155,7 @@ class RayDeepSpeedStrategy(pl.strategies.DeepSpeedStrategy):
 
 
 @PublicAPI(stability="beta")
-class RayLightningEnvironment(LightningEnvironment):
+class RayLightningEnvironment(LightningEnvironment):  # noqa: F821
     """Setup Lightning DDP training environment for Ray cluster."""
 
     def __init__(self, *args, **kwargs):
