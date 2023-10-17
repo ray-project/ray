@@ -162,6 +162,11 @@ MULTI_APP_MIGRATION_MESSAGE = (
     "config files."
 )
 
+DAG_DEPRECATION_MESSAGE = (
+    "The DAG API is deprecated. Please use the recommended model composition pattern "
+    "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
+)
+
 # Jsonify the log messages
 RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
 # Logging format attributes
