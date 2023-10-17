@@ -266,9 +266,8 @@ def shared_ray_instance():
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
 
 
-@pytest.mark.asyncio
 @pytest.fixture
-async def job_manager(shared_ray_instance, tmp_path):
+def job_manager(shared_ray_instance, tmp_path):
     yield create_job_manager(shared_ray_instance, tmp_path)
 
 
@@ -598,10 +597,11 @@ class TestRuntimeEnv:
             entrypoint=run_cmd, runtime_env={"working_dir": "path_not_exist"}
         )
 
-        data = await job_manager.get_job_info(job_id)
-        assert data.status == JobStatus.FAILED
-        assert "path_not_exist is not a valid URI" in data.message
-        assert data.driver_exit_code is None
+        for _ in range(100):
+            data = await job_manager.get_job_info(job_id)
+            assert data.status == JobStatus.FAILED
+            assert "path_not_exist is not a valid URI" in data.message
+            assert data.driver_exit_code is None
 
     async def test_failed_runtime_env_setup(self, job_manager):
         """Ensure job status is correctly set as failed if job has a valid

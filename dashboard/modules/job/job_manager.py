@@ -979,10 +979,13 @@ class JobManager:
                 self._monitor_job(submission_id, job_supervisor=supervisor)
             )
         except Exception as e:
+            logger.warning(
+                f"Failed to start supervisor actor for job {submission_id}: '{e}'"
+            )
             await self._job_info_client.put_status(
                 submission_id,
                 JobStatus.FAILED,
-                message=f"Failed to start Job Supervisor actor: {e}.",
+                message=f"Failed to start supervisor actor {submission_id}: '{e}'",
             )
 
         return submission_id
