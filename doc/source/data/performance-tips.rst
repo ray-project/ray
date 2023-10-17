@@ -188,4 +188,4 @@ Monitoring your application
 ---------------------------
 
 View the Ray Data dashboard located in the Metrics tab of the Ray Dashboard to monitor your application and troubleshoot issues. Ray Data exports metrics in real-time while a Dataset is executing, and the Ray Data dashboard displays these metrics grouped by Dataset.
-To learn more about the Ray dashboard, see :ref:`Ray Dashboard <observability-getting-started>`.
+To learn more about the Ray dashboard, including detailed setup instructions, see :ref:`Ray Dashboard <observability-getting-started>`.
