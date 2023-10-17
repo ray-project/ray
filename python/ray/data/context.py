@@ -147,7 +147,7 @@ DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 @dataclass
 class StreamingOutputBackpressureConfig:
-    """Configuration for task-level streaming output backpressure.
+    """[Experimental] Configuration for task-level streaming output backpressure.
 
     Streaming output backpressure throttles the outputs of a DataOpTask.
     This is done at 2 levels:
@@ -159,6 +159,11 @@ class StreamingOutputBackpressureConfig:
       operators. When it's reached, we'll stop reading from the tasks' output streaming
       generators (see `streaming_executor_state.py::process_completed_tasks`),
       and thus trigger backpressure at the Ray Core level.
+
+    Note, this feature is experimental and may lead to deadlocks if not configured
+    properly. E.g., when all resources are occupied by an upstream operator, and all its
+    tasks are backpressured, we will have not resources for downstream operators to
+    consume the upstream's outputs.
     """
 
     # Whether to enable streaming output backpressure.
