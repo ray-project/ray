@@ -16,7 +16,8 @@ def test_user_configured_more_than_visible(monkeypatch, call_ray_stop_only):
 
 
 @patch(
-    "ray._private.accelerators.NeuronAccelerator.get_num_accelerators", return_value=4
+    "ray._private.accelerators.NeuronAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
+    return_value=4,
 )
 def test_auto_detected_more_than_visible(
     mock_get_num_accelerators, monkeypatch, shutdown_only
@@ -29,7 +30,8 @@ def test_auto_detected_more_than_visible(
 
 
 @patch(
-    "ray._private.accelerators.NeuronAccelerator.get_num_accelerators", return_value=2
+    "ray._private.accelerators.NeuronAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
+    return_value=2,
 )
 def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
     # Test that ray node resources are filled with auto detected count.
