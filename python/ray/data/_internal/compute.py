@@ -63,7 +63,7 @@ class TaskPoolStrategy(ComputeStrategy):
         block_list: BlockList,
         clear_input_blocks: bool,
         name: Optional[str] = None,
-        target_block_size: Optional[int] = None,
+        min_rows_per_block: Optional[int] = None,
         fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -85,9 +85,9 @@ class TaskPoolStrategy(ComputeStrategy):
             name = "map"
         blocks = block_list.get_blocks_with_metadata()
         # Bin blocks by target block size.
-        if target_block_size is not None:
-            _check_batch_size(blocks, target_block_size, name)
-            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size)
+        if min_rows_per_block is not None:
+            _check_batch_size(blocks, min_rows_per_block, name)
+            block_bundles = _bundle_blocks_up_to_size(blocks, min_rows_per_block)
         else:
             block_bundles = [((b,), (m,)) for b, m in blocks]
         del blocks
@@ -236,7 +236,7 @@ class ActorPoolStrategy(ComputeStrategy):
         block_list: BlockList,
         clear_input_blocks: bool,
         name: Optional[str] = None,
-        target_block_size: Optional[int] = None,
+        min_rows_per_block: Optional[int] = None,
         fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -266,20 +266,20 @@ class ActorPoolStrategy(ComputeStrategy):
         #    cap the number of bundles to match the size of the ActorPool.
         #    This avoids additional overhead in submitting new actor tasks and allows
         #    the actor task to do optimizations such as batch prefetching.
-        if target_block_size is None:
-            target_block_size = 0
+        if min_rows_per_block is None:
+            min_rows_per_block = 0
         if not math.isinf(self.max_size):
             total_size = sum(
                 meta.num_rows if meta.num_rows is not None else 0
                 for _, meta in blocks_in
             )
             pool_max_block_size = total_size // self.max_size
-            target_block_size = max(target_block_size, pool_max_block_size)
-        if target_block_size > 0:
-            _check_batch_size(blocks_in, target_block_size, name)
+            min_rows_per_block = max(min_rows_per_block, pool_max_block_size)
+        if min_rows_per_block > 0:
+            _check_batch_size(blocks_in, min_rows_per_block, name)
             block_bundles: List[
                 Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]
-            ] = _bundle_blocks_up_to_size(blocks_in, target_block_size)
+            ] = _bundle_blocks_up_to_size(blocks_in, min_rows_per_block)
         else:
             block_bundles = [((b,), (m,)) for b, m in blocks_in]
 

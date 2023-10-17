@@ -11,6 +11,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.stats import StatsDict
+from ray.data.context import DataContext
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, StreamingObjectRefGenerator]
@@ -153,11 +154,18 @@ class PhysicalOperator(Operator):
     be interleaved.
     """
 
-    def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
+    def __init__(
+        self,
+        name: str,
+        input_dependencies: List["PhysicalOperator"],
+        target_max_block_size: Optional[int],
+    ):
         super().__init__(name, input_dependencies)
+
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._target_max_block_size = target_max_block_size
         self._dependents_complete = False
         self._started = False
         self._metrics = OpRuntimeMetrics(self)
@@ -165,6 +173,24 @@ class PhysicalOperator(Operator):
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
+
+    @property
+    def target_max_block_size(self) -> Optional[int]:
+        """
+        Target max block size output by this operator. If this returns None,
+        then the default from DataContext should be used.
+        """
+        return self._target_max_block_size
+
+    @property
+    def actual_target_max_block_size(self) -> int:
+        """
+        The actual target max block size output by this operator.
+        """
+        target_max_block_size = self._target_max_block_size
+        if target_max_block_size is None:
+            target_max_block_size = DataContext.get_current().target_max_block_size
+        return target_max_block_size
 
     def completed(self) -> bool:
         """Return True when this operator is completed.
