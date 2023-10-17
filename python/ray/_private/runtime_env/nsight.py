@@ -35,7 +35,8 @@ def parse_nsight_config(nsight_config: Dict[str, str]) -> List[str]:
     """
     nsight_cmd = ["nsys", "profile"]
     for option, option_val in nsight_config.items():
-        # option standard based on https://www.gnu.org/software/libc/manual/html_node/Argument-Syntax.html
+        # option standard based on
+        # https://www.gnu.org/software/libc/manual/html_node/Argument-Syntax.html
         if len(option) > 1:
             nsight_cmd.append(f"--{option}={option_val}")
         else:
@@ -132,8 +133,7 @@ class NsightPlugin(RuntimeEnvPlugin):
             )
         # add set output path to logs dir
         nsight_config["o"] = str(
-            Path(self._nsight_dir)
-            / nsight_config.get("o", NSIGHT_DEFAULT_CONFIG["o"])
+            Path(self._nsight_dir) / nsight_config.get("o", NSIGHT_DEFAULT_CONFIG["o"])
         )
 
         self.nsight_cmd = parse_nsight_config(nsight_config)

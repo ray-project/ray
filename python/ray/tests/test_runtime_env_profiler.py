@@ -230,7 +230,13 @@ class TestNsightProfiler:
             "two-dash": "double_dash",
         }
         nsight_cmd = parse_nsight_config(nsight_config)
-        assert nsight_cmd == ["nsys", "profile", "-o", "single_dash", "--two-dash=double_dash"]
+        assert nsight_cmd == [
+            "nsys",
+            "profile",
+            "-o",
+            "single_dash",
+            "--two-dash=double_dash",
+        ]
 
 
 @pytest.mark.skipif(
