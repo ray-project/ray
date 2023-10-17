@@ -24,6 +24,7 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import (
+    JobLogStorageClient,
     JobManager,
     JobSupervisor,
     generate_job_id,
@@ -619,6 +620,10 @@ class TestRuntimeEnv:
         data = await job_manager.get_job_info(job_id)
         assert "runtime_env setup failed" in data.message
         assert data.driver_exit_code is None
+        log_path = JobLogStorageClient().get_log_file_path(job_id=job_id)
+        with open(log_path, "r") as f:
+            job_logs = f.read()
+        assert "Traceback (most recent call last):" in job_logs
 
     async def test_pass_metadata(self, job_manager):
         def dict_to_str(d):

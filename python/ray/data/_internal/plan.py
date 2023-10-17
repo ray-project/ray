@@ -135,7 +135,6 @@ class ExecutionPlan:
         self._last_optimized_stages = None
         # Cached schema.
         self._schema = None
-
         self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
         if not stats.dataset_uuid:
             stats.dataset_uuid = self._dataset_uuid
@@ -525,7 +524,9 @@ class ExecutionPlan:
         )
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
-        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
+        executor = StreamingExecutor(
+            copy.deepcopy(ctx.execution_options), self._dataset_uuid
+        )
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,
@@ -582,7 +583,9 @@ class ExecutionPlan:
                     StreamingExecutor,
                 )
 
-                executor = StreamingExecutor(copy.deepcopy(context.execution_options))
+                executor = StreamingExecutor(
+                    copy.deepcopy(context.execution_options), self._dataset_uuid
+                )
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
