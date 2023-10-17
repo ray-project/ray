@@ -30,7 +30,11 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import (
+    DatasetStats,
+    clear_stats_actor_metrics,
+    update_stats_actor_metrics,
+)
 from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
@@ -54,7 +58,7 @@ class StreamingExecutor(Executor, threading.Thread):
     a way that maximizes throughput under resource constraints.
     """
 
-    def __init__(self, options: ExecutionOptions):
+    def __init__(self, options: ExecutionOptions, dataset_uuid: str = "unknown_uuid"):
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
@@ -72,6 +76,8 @@ class StreamingExecutor(Executor, threading.Thread):
         # generator `yield`s.
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
+
+        self._dataset_uuid = dataset_uuid
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -104,7 +110,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
-            self._global_info = ProgressBar("Running", dag.num_outputs_total() or 1)
+            self._global_info = ProgressBar("Running", dag.num_outputs_total())
 
         self._output_node: OpState = self._topology[dag]
         self.start()
@@ -130,7 +136,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     else:
                         # Otherwise return a concrete RefBundle.
                         if self._outer._global_info:
-                            self._outer._global_info.update(1)
+                            self._outer._global_info.update(
+                                1, dag._estimated_output_blocks
+                            )
                         return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
@@ -192,6 +200,9 @@ class StreamingExecutor(Executor, threading.Thread):
         finally:
             # Signal end of results.
             self._output_node.outqueue.append(None)
+            # Clears metrics for this dataset so that they do
+            # not persist in the grafana dashboard after execution
+            clear_stats_actor_metrics({"dataset": self._dataset_uuid})
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -211,7 +222,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 continue
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multistage(op.get_stats())
-            stats.extra_metrics = op.get_metrics()
+            stats.extra_metrics = op.metrics.as_dict()
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
@@ -269,6 +280,10 @@ class StreamingExecutor(Executor, threading.Thread):
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():
             op_state.refresh_progress_bar()
+
+        update_stats_actor_metrics(
+            [op.metrics for op in self._topology], {"dataset": self._dataset_uuid}
+        )
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)

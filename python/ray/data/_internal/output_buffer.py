@@ -1,7 +1,7 @@
 from typing import Any
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.block import Block, DataBatch
+from ray.data.block import Block, BlockAccessor, DataBatch
 
 
 class BlockOutputBuffer:
@@ -68,7 +68,22 @@ class BlockOutputBuffer:
     def next(self) -> Block:
         """Returns the next complete output block."""
         assert self.has_next()
-        block = self._buffer.build()
+
+        block_to_yield = self._buffer.build()
+        block_remainder = None
+        block = BlockAccessor.for_block(block_to_yield)
+        if block.size_bytes() > self._target_max_block_size:
+            num_bytes_per_row = block.size_bytes() // block.num_rows()
+            target_num_rows = self._target_max_block_size // num_bytes_per_row
+            target_num_rows = max(1, target_num_rows)
+
+            num_rows = min(target_num_rows, block.num_rows())
+            block_to_yield = block.slice(0, num_rows)
+            block_remainder = block.slice(num_rows, block.num_rows())
+
         self._buffer = DelegatingBlockBuilder()
+        if block_remainder is not None:
+            self._buffer.add_block(block_remainder)
+
         self._returned_at_least_one_block = True
-        return block
+        return block_to_yield

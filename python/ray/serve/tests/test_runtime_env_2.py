@@ -35,6 +35,7 @@ assert ray.get(handle.remote()) == "world"
     driver2 = """
 import ray
 from ray import serve
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
@@ -47,7 +48,7 @@ class Test:
 
 handle = serve.run(Test.bind())
 assert ray.get(handle.remote()) == "world2"
-Test.delete()
+serve.delete(SERVE_DEFAULT_APP_NAME)
 """
 
     run_string_as_driver(driver2)
