@@ -123,7 +123,9 @@ py_test_module_list(
   files = [
     "test_actor_bounded_threads.py",
     "test_autoscaler_fake_scaledown.py",
-    "test_accelerator.py",
+    "accelerators/test_neuron.py",
+    "accelerators/test_tpu.py",
+    "accelerators/test_nvidia_gpu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
