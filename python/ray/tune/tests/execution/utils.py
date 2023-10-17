@@ -15,6 +15,8 @@ from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.utils.resource_updater import _ResourceUpdater
 
+from ray.train.tests.util import mock_storage_context
+
 
 class NoopClassCache:
     def get(self, trainable_name: str):
@@ -105,18 +107,21 @@ class _FakeResourceUpdater(_ResourceUpdater):
 
 
 class TestingTrial(Trial):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("storage", mock_storage_context())
+        super().__init__(*args, **kwargs)
+
     def get_trainable_cls(self):
         return self.trainable_name
 
     def create_placement_group_factory(self):
         self.placement_group_factory = self._default_placement_group_factory
 
-    def set_runner(self, runner):
+    def set_ray_actor(self, ray_actor):
         pass
 
 
 def create_execution_test_objects(
-    tmpdir,
     max_pending_trials: int = 8,
     resources: Optional[Dict[str, float]] = None,
     reuse_actors: bool = True,
@@ -127,9 +132,11 @@ def create_execution_test_objects(
 
     resources = resources or {"CPU": 4}
 
+    storage = kwargs.pop("storage", mock_storage_context())
+
     tune_controller = tune_controller_cls(
-        experiment_path=str(tmpdir),
         reuse_actors=reuse_actors,
+        storage=storage,
         **kwargs,
     )
     resource_manager = BudgetResourceManager(total_resources=resources)

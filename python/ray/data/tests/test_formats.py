@@ -190,6 +190,21 @@ def test_from_torch(shutdown_only, tmp_path):
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
 
+    import torch
+
+    class IterMNIST(torch.utils.data.IterableDataset):
+        def __len__(self):
+            return len(torch_dataset)
+
+        def __iter__(self):
+            return iter(torch_dataset)
+
+    iter_torch_dataset = IterMNIST()
+    ray_dataset = ray.data.from_torch(iter_torch_dataset)
+
+    actual_data = extract_values("item", list(ray_dataset.take_all()))
+    assert actual_data == expected_data
+
 
 class NodeLoggerOutputDatasource(Datasource):
     """A writable datasource that logs node IDs of write tasks, for testing."""
@@ -297,28 +312,28 @@ def test_read_s3_file_error(shutdown_only, s3_path):
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_get_read_tasks(shutdown_only):
+def test_get_reader(shutdown_only):
     # Note: if you get TimeoutErrors here, try installing required dependencies
     # with `pip install -U "ray[default]"`.
     ray.init()
 
     head_node_id = ray.get_runtime_context().get_node_id()
 
-    # Issue read so `_get_read_tasks` being executed.
+    # Issue read so `_get_reader` being executed.
     ray.data.range(10).materialize()
 
-    # Verify `_get_read_tasks` being executed on same node (head node).
-    def verify_get_read_tasks():
+    # Verify `_get_reader` being executed on same node (head node).
+    def verify_get_reader():
         from ray.util.state import list_tasks
 
-        task_states = list_tasks(filters=[("name", "=", "_get_read_tasks")])
+        task_states = list_tasks(filters=[("name", "=", "_get_reader")])
         # Verify only one task being executed on same node.
         assert len(task_states) == 1
-        assert task_states[0]["name"] == "_get_read_tasks"
+        assert task_states[0]["name"] == "_get_reader"
         assert task_states[0]["node_id"] == head_node_id
         return True
 
-    wait_for_condition(verify_get_read_tasks, timeout=20)
+    wait_for_condition(verify_get_reader, timeout=20)
 
 
 if __name__ == "__main__":

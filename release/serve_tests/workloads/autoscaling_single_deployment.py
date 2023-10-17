@@ -31,6 +31,7 @@ import logging
 import math
 import os
 
+import ray
 from ray import serve
 from serve_test_utils import (
     aggregate_all_metrics,
@@ -45,6 +46,7 @@ from serve_test_cluster_utils import (
     NUM_CPU_PER_NODE,
     NUM_CONNECTIONS,
 )
+from ray.serve._private import api as _private_api
 from typing import Optional
 
 logger = logging.getLogger(__file__)
@@ -84,7 +86,25 @@ def deploy_replicas(min_replicas, max_replicas, max_batch_size):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    Echo.deploy()
+    Echo._deploy()
+
+
+def deploy_proxy_replicas():
+    # Deploy a special proxy deployment replica on each node
+    # to guarantee that the http proxy actor runs on each node
+    # even when the node has zero echo deployment replicas.
+    # This is needed since later on wrk will send requests to
+    # the http proxy on each node.
+    @serve.deployment(
+        name="proxy",
+        num_replicas=len(ray.nodes()),
+        ray_actor_options={"num_cpus": 0, "resources": {"proxy": 1}},
+    )
+    class Proxy:
+        def __call__(self, request):
+            return "Proxy"
+
+    Proxy._deploy()
 
 
 def save_results(final_result, default_name):
@@ -139,6 +159,8 @@ def main(
     http_port = str(serve_client._http_config.port)
     logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
+    deploy_proxy_replicas()
+
     logger.info(
         f"Deploying with min {min_replicas} and max {max_replicas} "
         f"target replicas ....\n"
@@ -151,7 +173,7 @@ def main(
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    all_endpoints = list(serve.list_deployments().keys())
+    all_endpoints = list(_private_api.list_deployments().keys() - {"proxy"})
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
     )

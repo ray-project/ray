@@ -20,6 +20,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    create_map_transformer_from_block_fn,
+)
 from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.optimizers import get_execution_plan
@@ -131,11 +134,7 @@ def _get_execution_dag(
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    if (
-        DataContext.get_current().optimizer_enabled
-        # TODO(scottjlee): remove this once we remove DatasetPipeline.
-        and not plan._generated_from_pipeline
-    ):
+    if DataContext.get_current().optimizer_enabled:
         dag = get_execution_plan(plan._logical_plan).dag
         stats = _get_initial_stats_from_plan(plan)
     else:
@@ -217,7 +216,10 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                             cleaned_metadata(read_task),
                         )
                     ],
-                    owns_blocks=True,
+                    # `owns_blocks` is False, because these refs are the root of the
+                    # DAG. We shouldn't eagerly free them. Otherwise, the DAG cannot
+                    # be reconstructed.
+                    owns_blocks=False,
                 )
                 for read_task in read_tasks
             ]
@@ -237,7 +239,11 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         if isinstance(blocks, LazyBlockList):
             task_name = getattr(blocks, "_read_stage_name", task_name)
         return MapOperator.create(
-            do_read, inputs, name=task_name, ray_remote_args=remote_args
+            create_map_transformer_from_block_fn(do_read),
+            inputs,
+            name=task_name,
+            target_max_block_size=None,
+            ray_remote_args=remote_args,
         )
     else:
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
@@ -299,12 +305,12 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             yield from block_fn(blocks, ctx, *fn_args, **fn_kwargs)
 
         return MapOperator.create(
-            do_map,
+            create_map_transformer_from_block_fn(do_map, init_fn),
             input_op,
-            init_fn=init_fn,
             name=stage.name,
+            target_max_block_size=None,
             compute_strategy=compute,
-            min_rows_per_bundle=stage.target_block_size,
+            min_rows_per_bundle=stage.min_rows_per_block,
             ray_remote_args=stage.ray_remote_args,
         )
     elif isinstance(stage, LimitStage):
@@ -335,6 +341,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         return AllToAllOperator(
             bulk_fn,
             input_op,
+            target_max_block_size=None,
             name=stage.name,
             num_outputs=stage.num_blocks,
             sub_progress_bar_names=stage.sub_stage_names,

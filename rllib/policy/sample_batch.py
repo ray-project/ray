@@ -334,11 +334,9 @@ class SampleBatch(dict):
 
     @staticmethod
     @PublicAPI
-    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
-    def concat_samples(
-        samples: Union[List["SampleBatch"], List["MultiAgentBatch"]],
-    ) -> Union["SampleBatch", "MultiAgentBatch"]:
-        return concat_samples(samples)
+    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=True)
+    def concat_samples(samples):
+        pass
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -770,9 +768,9 @@ class SampleBatch(dict):
 
             return slices
 
-    @Deprecated(new="SampleBatch.right_zero_pad", error=False)
+    @Deprecated(new="SampleBatch.right_zero_pad", error=True)
     def zero_pad(self, max_seq_len, exclude_states=True):
-        return self.right_zero_pad(max_seq_len, exclude_states)
+        pass
 
     def right_zero_pad(self, max_seq_len: int, exclude_states: bool = True):
         """Right (adding zeros at end) zero-pads this SampleBatch in-place.

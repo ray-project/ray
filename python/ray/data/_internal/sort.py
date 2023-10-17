@@ -43,7 +43,7 @@ class SortKey:
     def __init__(
         self,
         key: Optional[Union[str, List[str]]] = None,
-        descending: bool = False,
+        descending: Union[bool, List[bool]] = False,
     ):
         if key is None:
             key = []
@@ -53,6 +53,15 @@ class SortKey:
             raise ValueError(
                 f"Key must be a string or a list of strings, but got {key}."
             )
+        if isinstance(descending, bool):
+            descending = [descending for _ in key]
+        elif isinstance(descending, list):
+            if len(descending) != len(key):
+                raise ValueError(
+                    "Length of `descending` does not match the length of the key."
+                )
+            if len(set(descending)) != 1:
+                raise ValueError("Sorting with mixed key orders not supported yet.")
         self._columns = key
         self._descending = descending
 
@@ -60,16 +69,16 @@ class SortKey:
         return self._columns
 
     def get_descending(self) -> bool:
-        return self._descending
+        return self._descending[0]
 
     def to_arrow_sort_args(self) -> List[Tuple[str, str]]:
         return [
-            (key, "descending" if self._descending else "ascending")
+            (key, "descending" if self._descending[0] else "ascending")
             for key in self._columns
         ]
 
     def to_pandas_sort_args(self) -> Tuple[List[str], bool]:
-        return self._columns, not self._descending
+        return self._columns, not self._descending[0]
 
     def validate_schema(self, schema: Optional[Union[type, "pyarrow.lib.Schema"]]):
         """Check the key function is valid on the given schema."""
@@ -130,11 +139,9 @@ def sample_boundaries(
     """
     Return (num_reducers - 1) items in ascending order from the blocks that
     partition the domain into ranges with approximately equally many elements.
+    Each boundary item is a tuple of a form (col1_value, col2_value, ...).
     """
     columns = sort_key.get_columns()
-    # TODO(Clark): Support multiple boundary sampling keys.
-    if len(columns) > 1:
-        raise ValueError("Multiple boundary sampling keys not supported.")
 
     n_samples = int(num_reducers * 10 / len(blocks))
 
@@ -166,14 +173,23 @@ def sample_boundaries(
     for sample in samples:
         builder.add_block(sample)
     samples = builder.build()
-    column = sort_key.get_columns()[0]
-    sample_items = BlockAccessor.for_block(samples).to_numpy(column)
-    sample_items = np.sort(sample_items)
-    ret = [
-        np.quantile(sample_items, q, interpolation="nearest")
-        for q in np.linspace(0, 1, num_reducers)
+    sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
+    # Compute sorted indices of the samples. In np.lexsort last key is the
+    # primary key hence have to reverse the order.
+    indices = np.lexsort(list(reversed(list(sample_dict.values()))))
+    # Sort each column by indices, and calculate q-ths quantile items.
+    # Ignore the 1st item as it's not required for the boundary
+    for k, v in sample_dict.items():
+        sorted_v = v[indices]
+        sample_dict[k] = [
+            np.quantile(sorted_v, q, interpolation="nearest")
+            for q in np.linspace(0, 1, num_reducers)
+        ][1:]
+    # Return the list of boundaries as tuples
+    # of a form (col1_value, col2_value, ...)
+    return [
+        tuple(sample_dict[k][i] for k in sample_dict) for i in range(num_reducers - 1)
     ]
-    return ret[1:]
 
 
 # Note: currently the map_groups() API relies on this implementation

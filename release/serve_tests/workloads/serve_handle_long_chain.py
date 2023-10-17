@@ -19,7 +19,7 @@ from typing import Optional
 
 import ray
 from ray import serve
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -67,10 +67,12 @@ def construct_long_chain_graph_with_pure_handle(
 ):
     prev_handle = None
     for id in range(chain_length):
-        Node.options(name=str(id)).deploy(
+        Node.options(name=str(id))._deploy(
             id, prev_handle, init_delay_secs, compute_delay_secs, sync_handle
         )
-        prev_handle = get_global_client().get_handle(str(id), sync=sync_handle)
+        prev_handle = _get_global_client().get_handle(
+            str(id), app_name="", sync=sync_handle
+        )
     return prev_handle
 
 

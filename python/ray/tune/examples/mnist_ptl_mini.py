@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, random_split
 from torchmetrics import Accuracy
 from torchvision import transforms
 from torchvision.datasets import MNIST
-from ray.tune.integration.pytorch_lightning import TuneReportCallback
+from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
 
 from ray import train, tune
 
@@ -125,7 +125,11 @@ def train_mnist_tune(config, num_epochs=10, num_gpus=0):
         # If fractional GPUs passed in, convert to int.
         gpus=math.ceil(num_gpus),
         enable_progress_bar=False,
-        callbacks=[TuneReportCallback(metrics, on="validation_end")],
+        callbacks=[
+            TuneReportCheckpointCallback(
+                metrics, on="validation_end", save_checkpoints=False
+            )
+        ],
     )
     trainer.fit(model, dm)
 

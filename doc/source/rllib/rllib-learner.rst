@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/announcement.rst
-
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. |tensorflow| image:: images/tensorflow.png
@@ -72,9 +70,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 	:hide:
     :skipif: True
 
-	from gymnasium.envs.classic_control.cartpole import CartPoleEnv
-
-	config = config.environment(env=CartPoleEnv)
+	config = config.environment(env="CartPole-v1")
 	config.build()  # test that the algorithm can be built with the given resources
 
 

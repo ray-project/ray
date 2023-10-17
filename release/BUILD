@@ -33,6 +33,16 @@ compile_pip_requirements(
 )
 
 compile_pip_requirements(
+    name = "requirements_byod_3.11",
+    requirements_in = "ray_release/byod/requirements_byod_3.11.in",
+    requirements_txt = "ray_release/byod/requirements_byod_3.11.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+compile_pip_requirements(
     name = "requirements_ml_byod_3.8",
     requirements_in = "ray_release/byod/requirements_ml_byod_3.8.in",
     requirements_txt = "ray_release/byod/requirements_ml_byod_3.8.txt",
@@ -286,7 +296,7 @@ py_test(
         "--data-format=parquet",
         "--smoke-test",
     ],
-    main = "air_tests/air_benchmarks/workloads/gpu_batch_inference.py",
+    main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
         "team:data",
@@ -306,7 +316,7 @@ py_test(
         "--data-format=raw",
         "--smoke-test",
     ],
-    main = "air_tests/air_benchmarks/workloads/gpu_batch_inference.py",
+    main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
         "team:data",
@@ -605,6 +615,22 @@ py_test(
     ],
     deps = [
         ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_global_config",
+    size = "small",
+    srcs = ["ray_release/tests/test_global_config.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        ":test_utils",
         bk_require("pytest"),
     ],
 )

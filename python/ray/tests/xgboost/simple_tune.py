@@ -73,7 +73,7 @@ def main():
     )
 
     # Load in the best performing model.
-    best_bst = load_best_model(analysis.best_logdir)
+    best_bst = load_best_model(analysis.best_trial.local_path)
 
     # Use the following code block instead if using Ray Client.
     # import ray
@@ -81,7 +81,7 @@ def main():
     #     # If using Ray Client best_logdir is a directory on the server.
     #     # So we want to make sure we wrap model loading in a task.
     #     remote_load_fn = ray.remote(load_best_model)
-    #     best_bst = ray.get(remote_load_fn.remote(analysis.best_logdir))
+    #     best_bst = ray.get(remote_load_fn.remote(analysis.best_trial.local_path))
 
     # Do something with the best model.
     _ = best_bst

@@ -1,3 +1,5 @@
+region: us-west1
+allowed_azs: [any]
 head_node_type:
   name: head_node_type
   instance_type: g5.48xlarge

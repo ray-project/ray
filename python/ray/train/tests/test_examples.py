@@ -1,25 +1,24 @@
 import pytest
 
-from ray.train import ScalingConfig
 from ray.air.constants import TRAINING_ITERATION
-
+from ray.train import ScalingConfig
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
+)
+from ray.train.examples.pytorch.torch_fashion_mnist_example import (
+    train_func_per_worker as fashion_mnist_train_func,
+)
+from ray.train.examples.pytorch.torch_linear_example import (
+    train_func as linear_train_func,
+)
+from ray.train.examples.pytorch.torch_quick_start import (
+    train_func as torch_quick_start_train_func,
 )
 from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
 from ray.train.examples.tf.tensorflow_quick_start import (
     train_func as tf_quick_start_train_func,
-)
-from ray.train.examples.pytorch.torch_quick_start import (
-    train_func as torch_quick_start_train_func,
-)
-from ray.train.examples.pytorch.torch_fashion_mnist_example import (
-    train_func as fashion_mnist_train_func,
-)
-from ray.train.examples.pytorch.torch_linear_example import (
-    train_func as linear_train_func,
 )
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
@@ -82,7 +81,7 @@ def test_torch_fashion_mnist(ray_start_4_cpus):
     num_workers = 2
     epochs = 3
 
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    config = {"lr": 1e-3, "batch_size_per_worker": 32, "epochs": epochs}
     trainer = TorchTrainer(
         fashion_mnist_train_func,
         train_loop_config=config,
