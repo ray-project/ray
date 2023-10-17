@@ -219,7 +219,6 @@ test_serve() {
       -python/ray/serve/tests:test_gradio
       -python/ray/serve/tests:test_gradio_visualization
       -python/ray/serve/tests:test_fastapi
-      -python/ray/serve/tests:test_get_deployment # address violation
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?

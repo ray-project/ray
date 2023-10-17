@@ -8,7 +8,6 @@ import os
 from typing import Dict, Optional
 
 import aiohttp.web
-from pydantic import BaseModel, Extra, Field, validator
 
 import ray
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
@@ -17,6 +16,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.storage import _load_class
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JobInfoStorageClient
+from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
 
 from ray.job_submission import JobInfo
 from ray.runtime_env import RuntimeEnv
