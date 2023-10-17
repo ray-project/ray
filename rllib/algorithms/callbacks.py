@@ -93,7 +93,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         Note that any "worker" inside the algorithm's `self.worker` and
         `self.evaluation_workers` WorkerSets are instances of a subclass of EnvRunner.
 
-        .. code-block:: python
+        .. testcode::
             from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
             class MyCallbacks(DefaultCallbacks):
