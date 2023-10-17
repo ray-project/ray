@@ -3,7 +3,6 @@ import copy
 import html
 import itertools
 import logging
-import sys
 import time
 from typing import (
     TYPE_CHECKING,
@@ -14,6 +13,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Mapping,
     Optional,
     Tuple,
@@ -111,11 +111,6 @@ from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import dask
@@ -515,12 +510,12 @@ class Dataset:
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
-        target_block_size = None
+        min_rows_per_block = None
         if batch_size is not None and batch_size != "default":
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
             # Enable blocks bundling when batch_size is specified by caller.
-            target_block_size = batch_size
+            min_rows_per_block = batch_size
 
         batch_size = _apply_strict_mode_batch_size(
             batch_size, use_gpu="num_gpus" in ray_remote_args
@@ -555,7 +550,7 @@ class Dataset:
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
-            target_block_size=target_block_size,
+            min_rows_per_block=min_rows_per_block,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -963,7 +958,7 @@ class Dataset:
         .. tip::
 
             This method can be slow. For better performance, try
-            `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+            :ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
             Also, see :ref:`Optimizing shuffles <optimizing_shuffles>`.
 
         Examples:
@@ -3482,8 +3477,8 @@ class Dataset:
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
-        """Return an iterator over the rows in this dataset.
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
+        """Return an iterable over the rows in this dataset.
 
         Examples:
             >>> import ray
@@ -3500,7 +3495,7 @@ class Dataset:
                 current block during the scan.
 
         Returns:
-            An iterator over the rows in this dataset.
+            An iterable over the rows in this dataset.
         """
         return self.iterator().iter_rows(prefetch_blocks=prefetch_blocks)
 
@@ -3517,8 +3512,8 @@ class Dataset:
         _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator[DataBatch]:
-        """Return an iterator over batches of data.
+    ) -> Iterable[DataBatch]:
+        """Return an iterable over batches of data.
 
         This method is useful for model training.
 
@@ -3563,7 +3558,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over batches of data.
+            An iterable over batches of data.
         """
         batch_format = _apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
@@ -3593,10 +3588,10 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator[TorchBatchType]:
-        """Return an iterator over batches of data represented as Torch tensors.
+    ) -> Iterable[TorchBatchType]:
+        """Return an iterable over batches of data represented as Torch tensors.
 
-        This iterator yields batches of type ``Dict[str, torch.Tensor]``.
+        This iterable yields batches of type ``Dict[str, torch.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to Torch tensors.
 
@@ -3670,7 +3665,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over Torch Tensor batches.
+            An iterable over Torch Tensor batches.
 
         .. seealso::
             :meth:`Dataset.iter_batches`
@@ -3700,10 +3695,10 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator[TensorFlowTensorBatchType]:
-        """Return an iterator over batches of data represented as TensorFlow tensors.
+    ) -> Iterable[TensorFlowTensorBatchType]:
+        """Return an iterable over batches of data represented as TensorFlow tensors.
 
-        This iterator yields batches of type ``Dict[str, tf.Tensor]``.
+        This iterable yields batches of type ``Dict[str, tf.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to TensorFlow tensors.
 
@@ -3757,7 +3752,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over TensorFlow Tensor batches.
+            An iterable over TensorFlow Tensor batches.
 
         .. seealso::
             :meth:`Dataset.iter_batches`
@@ -4664,7 +4659,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=1,
+                   num_blocks=16,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4747,7 +4742,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=1,
+                   num_blocks=16,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
