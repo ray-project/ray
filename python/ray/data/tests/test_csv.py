@@ -236,7 +236,7 @@ def test_csv_ignore_missing_paths(
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_csv(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.fully_executed()
+            ds.materialize()
 
 
 @pytest.mark.parametrize(

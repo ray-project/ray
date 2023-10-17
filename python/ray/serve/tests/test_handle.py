@@ -7,7 +7,6 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve._private import api as _private_api
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
@@ -74,8 +73,6 @@ async def test_async_handle_serializable(serve_instance):
     @serve.deployment
     def f():
         return "hello"
-
-    f._deploy()
 
     @ray.remote
     class DelegateActor:
@@ -208,57 +205,63 @@ def test_repeated_get_handle_cached(serve_instance):
     def f(_):
         return ""
 
-    f._deploy()
+    serve.run(f.bind())
 
-    handle_sets = {f._get_handle() for _ in range(100)}
+    handle_sets = {serve.get_app_handle("default") for _ in range(100)}
     assert len(handle_sets) == 1
 
-    handle_sets = {_private_api.get_deployment("f")._get_handle() for _ in range(100)}
+    handle_sets = {serve.get_deployment_handle("f", "default") for _ in range(100)}
     assert len(handle_sets) == 1
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("sync", [True, False])
-async def test_args_kwargs(serve_instance, sync):
+def test_args_kwargs_sync(serve_instance):
     @serve.deployment
     async def f(*args, **kwargs):
         assert args[0] == "hi"
         assert kwargs["kwarg1"] == 1
         assert kwargs["kwarg2"] == "2"
 
-    f._deploy()
-
-    handle = f._get_handle(sync=sync)
-
-    def call():
-        return handle.remote("hi", kwarg1=1, kwarg2="2")
-
-    if sync:
-        obj_ref = call()
-    else:
-        obj_ref = await call()
-
-    ray.get(obj_ref)
+    handle = serve.run(f.bind()).options(use_new_handle_api=True)
+    handle.remote("hi", kwarg1=1, kwarg2="2").result()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("sync", [True, False])
-async def test_nonexistent_method(serve_instance, sync):
+async def test_args_kwargs_async(serve_instance):
+    @serve.deployment
+    async def f(*args, **kwargs):
+        assert args[0] == "hi"
+        assert kwargs["kwarg1"] == 1
+        assert kwargs["kwarg2"] == "2"
+
+    handle = serve.run(f.bind()).options(use_new_handle_api=True)
+    await handle.remote("hi", kwarg1=1, kwarg2="2")
+
+
+def test_nonexistent_method_sync(serve_instance):
     @serve.deployment
     class A:
         def exists(self):
             pass
 
-    A._deploy()
-    handle = A._get_handle(sync=sync)
-
-    if sync:
-        obj_ref = handle.does_not_exist.remote()
-    else:
-        obj_ref = await handle.does_not_exist.remote()
-
+    handle = serve.run(A.bind()).options(use_new_handle_api=True)
     with pytest.raises(RayServeException) as excinfo:
-        ray.get(obj_ref)
+        handle.does_not_exist.remote().result()
+
+    exception_string = str(excinfo.value)
+    assert "'does_not_exist'" in exception_string
+    assert "Available methods: ['exists']" in exception_string
+
+
+@pytest.mark.asyncio
+async def test_nonexistent_method_async(serve_instance):
+    @serve.deployment
+    class A:
+        def exists(self):
+            pass
+
+    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    with pytest.raises(RayServeException) as excinfo:
+        await handle.does_not_exist.remote()
 
     exception_string = str(excinfo.value)
     assert "'does_not_exist'" in exception_string
@@ -281,24 +284,24 @@ async def test_handle_across_loops(serve_instance):
         def exists(self):
             return True
 
-    A._deploy()
+    serve.run(A.bind())
 
     async def refresh_get():
-        handle = A._get_handle(sync=False)
-        assert await (await handle.exists.remote())
+        handle = serve.get_app_handle("default")
+        assert await handle.exists.remote()
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
         asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
 
-    handle = A._get_handle(sync=False)
+    handle = serve.get_app_handle("default")
 
     async def cache_get():
-        assert await (await handle.exists.remote())
+        assert await handle.exists.remote()
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
-        asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
+        asyncio.run_coroutine_threadsafe(cache_get(), loop).result()
 
 
 def test_handle_typing(serve_instance):

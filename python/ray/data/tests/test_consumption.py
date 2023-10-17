@@ -54,7 +54,6 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
-    epoch = ds._get_epoch()
     uuid = ds._get_uuid()
     plan_uuid = ds._execution_manager._dataset_uuid
 
@@ -71,7 +70,6 @@ def test_dataset_lineage_serialization(shutdown_only):
 
     ds = Dataset.deserialize_lineage(serialized_ds)
     # Check Dataset state.
-    assert ds._get_epoch() == epoch
     assert ds._get_uuid() == uuid
     assert ds._execution_manager._dataset_uuid == plan_uuid
     # Check Dataset content.
@@ -193,12 +191,10 @@ def test_cache_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.map(inc)
-    assert not ds.is_fully_executed()
     assert not isinstance(ds, MaterializedDataset)
     ds2 = ds.materialize()
-    assert ds2.is_fully_executed()
     assert isinstance(ds2, MaterializedDataset)
-    assert not ds.is_fully_executed()
+    assert not isinstance(ds, MaterializedDataset)
 
     # Tests standard iteration uses the materialized blocks.
     for _ in range(10):
@@ -229,18 +225,17 @@ def test_schema(ray_start_regular_shared):
     )
 
 
-# will be removed by another PR
-# def test_schema_lazy(ray_start_regular_shared):
-#     ds = ray.data.range(100, parallelism=10)
-#     # We do not kick off the read task by default.
-#     assert ds._execution_manager._in_blocks._num_computed() == 0
-#     schema = ds.schema()
-#     assert schema.names == ["id"]
-#     # Fetching the schema does not trigger execution, since
-#     # the schema is known beforehand for RangeDatasource.
-#     assert ds._execution_manager._in_blocks._num_computed() == 0
-#     # Fetching the schema should not trigger execution of extra read tasks.
-#     assert ds._execution_manager.execute()._num_computed() == 0
+def test_schema_no_execution(ray_start_regular_shared):
+    ds = ray.data.range(100, parallelism=10)
+    # We do not kick off the read task by default.
+    assert ds._execution_manager._in_blocks._num_computed() == 0
+    schema = ds.schema()
+    assert schema.names == ["id"]
+    # Fetching the schema does not trigger execution, since
+    # the schema is known beforehand for RangeDatasource.
+    assert ds._execution_manager._in_blocks._num_computed() == 0
+    # Fetching the schema should not trigger execution of extra read tasks.
+    assert ds._execution_manager.execute()._num_computed() == 0
 
 
 def test_schema_cached(ray_start_regular_shared):
@@ -291,7 +286,7 @@ def test_schema_repr(ray_start_regular_shared):
     assert repr(ds.schema()) == expected_repr
 
 
-def test_count_lazy(ray_start_regular_shared):
+def test_count(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=10)
     # We do not kick off the read task by default.
     assert ds._execution_manager._in_blocks._num_computed() == 0
@@ -1356,7 +1351,7 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
     ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
 
     # Test Arrow-native creation APIs.
-    # Test range_table.
+    # Test range.
     with pytest.raises(ImportError):
         ray.data.range(10).take_all()
 
@@ -1388,7 +1383,7 @@ def test_unsupported_pyarrow_versions_check_disabled(
     )
 
     # Test Arrow-native creation APIs.
-    # Test range_table.
+    # Test range.
     try:
         ray.data.range(10).take_all()
     except ImportError as e:

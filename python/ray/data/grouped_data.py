@@ -188,7 +188,6 @@ class GroupedData:
         execution_manager = self._dataset._execution_manager.with_operator(op)
         return Dataset(
             execution_manager,
-            self._dataset._epoch,
             logical_plan,
         )
 

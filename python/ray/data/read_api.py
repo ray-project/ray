@@ -80,7 +80,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -187,7 +187,6 @@ def from_items(
     )
     return MaterializedDataset(
         execution_manager,
-        0,
         logical_plan,
     )
 
@@ -234,11 +233,6 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
         block_format="arrow",
         column_name="id",
     )
-
-
-@Deprecated
-def range_table(n: int, *, parallelism: int = -1) -> Dataset:
-    raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
 
 
 @PublicAPI
@@ -423,7 +417,6 @@ def read_datasource(
 
     return Dataset(
         execution_manager=execution_manager,
-        epoch=0,
         logical_plan=logical_plan,
     )
 
@@ -2108,7 +2101,6 @@ def from_pandas_refs(
         )
         return MaterializedDataset(
             execution_manager,
-            0,
             logical_plan,
         )
 
@@ -2125,7 +2117,6 @@ def from_pandas_refs(
     )
     return MaterializedDataset(
         execution_manager,
-        0,
         logical_plan,
     )
 
@@ -2214,7 +2205,6 @@ def from_numpy_refs(
 
     return MaterializedDataset(
         execution_manager,
-        0,
         logical_plan,
     )
 
@@ -2297,7 +2287,6 @@ def from_arrow_refs(
 
     return MaterializedDataset(
         execution_manager,
-        0,
         logical_plan,
     )
 
