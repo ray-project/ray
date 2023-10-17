@@ -178,19 +178,19 @@ class ApplyLocalLimitRule(Rule):
         down_logical_op = self._op_map.pop(down_op)
         new_map_op_name = f"{up_op._name[:-1]}->Limit[{n_limit}])"
         compute = None
-        target_block_size = None
+        min_rows_per_block = None
         ray_remote_args = up_logical_op._ray_remote_args
 
         if isinstance(up_logical_op, AbstractUDFMap):
             compute = get_compute(up_logical_op._compute)
-            target_block_size = up_logical_op._target_block_size
+            min_rows_per_block = up_logical_op._min_rows_per_block
 
         up_op = MapOperator.create(
             new_map_transfomer,
             up_op.input_dependency,
             name=new_map_op_name,
             compute_strategy=compute,
-            min_rows_per_bundle=target_block_size,
+            min_rows_per_bundle=min_rows_per_block,
             ray_remote_args=ray_remote_args,
         )
 
@@ -203,7 +203,7 @@ class ApplyLocalLimitRule(Rule):
                 up_logical_op._fn_kwargs,
                 up_logical_op._fn_constructor_args,
                 up_logical_op._fn_constructor_kwargs,
-                target_block_size,
+                min_rows_per_block,
                 compute,
                 ray_remote_args,
             )
