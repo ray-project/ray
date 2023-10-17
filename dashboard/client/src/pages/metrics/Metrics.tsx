@@ -189,15 +189,15 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=3",
       },
       {
-        title: "Memory Store Usage",
+        title: "Object Store Memory",
         pathParams: "orgId=1&theme=light&panelId=4",
       },
       {
-        title: "CPU Usage",
+        title: "CPUs (logical slots)",
         pathParams: "orgId=1&theme=light&panelId=5",
       },
       {
-        title: "GPU Usage",
+        title: "GPUs (logical slots)",
         pathParams: "orgId=1&theme=light&panelId=6",
       },
       {

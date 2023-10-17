@@ -45,7 +45,7 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=4,
-        title="Memory Store Usage",
+        title="Object Store Memory",
         description="Amount of memory store used by dataset operators.",
         unit="bytes",
         targets=[
@@ -57,7 +57,7 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=5,
-        title="CPU Usage",
+        title="CPUs (logical slots)",
         description="Logical CPUs allocated to dataset operators.",
         unit="cores",
         targets=[
@@ -69,7 +69,7 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=6,
-        title="GPU Usage",
+        title="GPUs (logical slots)",
         description="Logical GPUs allocated to dataset operators.",
         unit="cores",
         targets=[
