@@ -1081,7 +1081,6 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     @serve.deployment(
         max_concurrent_queries=1,
-        graceful_shutdown_timeout_s=0.0001,
     )
     async def hang_on_first_request():
         await signal.wait.remote()
@@ -1110,12 +1109,6 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         r = requests.get("http://localhost:8000/")
         r.raise_for_status()
         return r
-
-    def first_request_executing(request_future) -> bool:
-        try:
-            request_future.get(timeout=0.1)
-        except Exception:
-            return ray.get(signal.cur_num_waiters.remote()) == 1
 
     # Make a request to block the deployment from accepting other requests.
     first_ref = do_request.remote()
@@ -1170,8 +1163,8 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     # Disconnect all requests by terminating the process pool.
-    ray.cancel(first_ref)
-    [ray.cancel(ref) for ref in subsequent_refs]
+    ray.cancel(first_ref, force=True)
+    [ray.cancel(ref, force=True) for ref in subsequent_refs]
     print("Cancelled all HTTP requests.")
 
     wait_for_condition(
@@ -1205,6 +1198,9 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         expected=0,
     )
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
+
+    # Unblock hanging request.
+    ray.get(signal.send.remote())
 
 
 def test_long_poll_host_sends_counted(serve_instance):
