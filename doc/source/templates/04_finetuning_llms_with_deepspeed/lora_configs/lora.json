@@ -2,7 +2,7 @@
     "r": 8,
     "lora_alpha": 16,
     "lora_dropout": 0.05,
-    "target_modules": ["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj", "embed_tokens", "lm_head"],
+    "target_modules": ["gate_proj", "up_proj", "down_proj"],
     "task_type": "CAUSAL_LM",
     "modules_to_save": [],
     "bias": "none",

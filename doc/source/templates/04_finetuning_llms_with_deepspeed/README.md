@@ -1,21 +1,21 @@
-# Finetuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer
+# Fine-tuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer
 | Template Specification | Description |
 | ---------------------- | ----------- |
 | Summary | This template, demonstrates how to perform fine-tuning (full parameter or LoRA) for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
-| Time to Run | Around 15 min. for 7B for 1 epoch on 3.5M tokens. |
-| Minimum Compute Requirements | At least 1xg5.16xlarge for head-node and 15xg5.4xlarge for worker nodes |
-| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu116`](https://docs.anyscale.com/reference/base-images/overview). |
+| Time to Run | ~14 min. for 7B for 1 epoch on 3.5M tokens. ~26 min for 13B for 1 epoch.  |
+| Minimum Compute Requirements | 16xg5.4xlarge for worker nodes for 7B model, 4xg5.12xlarge nodes for 13B model, and 4xg5.48xlarge (or 2xp4de.24xlarge) nodes for 70B|
+| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview). |
 
 ## Getting Started
 
-For 7B- or 13B-parameter models, set up a cluster on AWS with the following settings:
+For a full-parameter fine-tuning of 7B models, set up a cluster on AWS with the following settings:
 
 |            | num | instance type | GPU per node | GPU Memory | CPU Memory |
 |------------|-----|---------------|--------------|------------|------------|
 | Head node  | 1   | m5.xlarge   | -     | -     | -     |
 | Worker node| 16  | g5.4xlarge    | 1 x A10G     | 24 GB      | 64 GB      |
 
-And launch the following script to finetune LLaMA 2 7B:
+And launch the following script to fine-tune LLaMA 2 7B:
 
 ```
 ./run_llama_ft.sh --size=7b --as-test
@@ -84,7 +84,7 @@ And the special tokens can be:
 {"tokens": ["<ASSISTANT>", "</ASSISTANT>", "<USER>", "</USER>"]}
 ```
 
-Depending on the dataset you want to finetune on, the tokenization and dataset pre-processing will likely need to be adjusted. The current code is configured to train on the Grade School Math 8k (GSM8K) dataset. By running the code below we create three files that are needed to launch the training script with. 
+Depending on the dataset you want to fine-tune on, the tokenization and dataset pre-processing will likely need to be adjusted. The current code is configured to train on the Grade School Math 8k (GSM8K) dataset. By running the code below we create three files that are needed to launch the training script with. 
 
 ```
 python create_dataset.py
@@ -116,7 +116,7 @@ This script was tested across three model sizes on the following cluster configu
 | 70B        | `meta-llama/Llama-2-70b-hf`  | 8                     | 32x A10G (24G) | ~190 min.             |
 
 
-To launch a successful finetuning you can use the following command:
+To launch a full fine-tuning you can use the following command:
 
 ```
 ./run_llama_ft.sh --size=7b
@@ -124,25 +124,24 @@ To launch a successful finetuning you can use the following command:
 
 ### Launching LoRA fine-tuning
 
-You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve similar finetuning results than vanilla finetuning while using less compute during training and enabling quick swapping of finetuned parameters.
-When adapting `target_modules` in the LoRA config (at lora_configs/lora.json), be aware that different models have different names for the
-sub-models that can be tuned with LoRA. To launch a LoRA finetuning, you can use the following command or similar commands for other model sizes:
+You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve similar fine-tuning results as vanilla fine-tuning, but unlocking smaller instance types and more effecient model serving.
+To launch a LoRA fine-tuning, you can use the following command or similar commands for other model sizes:
 
 ```
 ./run_llama_ft.sh --size=7b --lora
 ```
 
-Finetuning a model with lora results in a checkpoint containing only the finetuned weights.
-As an example, the default lora configuration should yield a 42/64/202MB checkpoint for 7B/13B/70B models.
-If we want to evaluate the model after training, we can merge the model weights with the original (non-finetuned) model.
-We provide a script to merge the finetuned weights with the original weights to produce a full-parameter checkpoint.
-The script has high CPU memory requirements because it requires us to load all parameters into memory at the same time, 152GB for 7B/13B/70B models. We set the following coarse expectations for time requirements for this script: Downloading and loading the original weights should take ~1min/~2min/~10min each, merging and saving the weights ~4min/~8min/~50min on a p4de.24xlarge instance for the 7B/13B/70B models. You can run the script as follows:
+Fine-tuning a model with lora results in a checkpoint containing only the fine-tuned weights.
+As an example, the default Llama 2 LoRA configuration should yield a 42/64/202MB checkpoint for 7B/13B/70B models.
+If we want to evaluate the model after training, we can merge the model weights with the original (non-fine-tuned) model.
+We provide a script to merge the fine-tuned weights with the original weights to produce a full-parameter checkpoint.
+The script has high CPU memory requirements because it requires us to load all parameters into memory at the same time, 152GB for 7B/13B/70B models. Downloading and loading the original weights should take ~1min/~2min/~10min each on a p4de.24xlarge instance for the 7B/13B/70B models. You can run the script as follows:
 
 ```
 python merge_model_weights.py --model-name=7b --checkpoint=<path to your checkpoint> --output-path=<desired output path>
 ```
 
-This leaves a self-contained lora fine-tuned model, config and tokenizer at the desired output path.
+This leaves a self-contained LoRA fine-tuned model, config and tokenizer at the desired output path.
 
 ### Guideline on how to pick node instances when A100s are not available.
 
