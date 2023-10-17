@@ -4707,7 +4707,7 @@ class Dataset:
             )
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
-        plan_copy = self._plan.deep_copy(preserve_uuid=True)
+        plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
         ds._plan.clear_block_refs()
