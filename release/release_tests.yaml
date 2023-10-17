@@ -1044,7 +1044,7 @@
 
   run:
     timeout: 1000
-    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --as-test
+    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --as-test && ./run_llama_ft.sh --size=7b --lora --as-test
 
   variations:
       - __suffix__: aws
