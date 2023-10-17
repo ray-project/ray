@@ -1,16 +1,15 @@
-from typing import Any, Dict, Optional, Union
 import hashlib
 import json
 import logging
 import time
-
-from ray.serve._private.config import ReplicaConfig, DeploymentConfig
-from ray.serve.schema import ServeApplicationSchema
-from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.common import DeploymentInfo, DeploymentID
+from typing import Any, Dict, Optional, Union
 
 import ray
 import ray.util.serialization_addons
+from ray.serve._private.common import DeploymentID, DeploymentInfo
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -22,7 +21,6 @@ def get_deploy_args(
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
-    is_driver_deployment: Optional[str] = None,
     docs_path: Optional[str] = None,
 ) -> Dict:
     """
@@ -56,7 +54,6 @@ def get_deploy_args(
         "replica_config_proto_bytes": replica_config.to_proto_bytes(),
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
-        "is_driver_deployment": is_driver_deployment,
         "docs_path": docs_path,
         "ingress": ingress,
     }
@@ -71,7 +68,6 @@ def deploy_args_to_deployment_info(
     deployer_job_id: Union[str, bytes],
     route_prefix: Optional[str],
     docs_path: Optional[str],
-    is_driver_deployment: Optional[bool] = False,
     app_name: Optional[str] = None,
     ingress: bool = False,
     **kwargs,
@@ -101,7 +97,6 @@ def deploy_args_to_deployment_info(
         replica_config=replica_config,
         deployer_job_id=deployer_job_id,
         start_time_ms=int(time.time() * 1000),
-        is_driver_deployment=is_driver_deployment,
         route_prefix=route_prefix,
         docs_path=docs_path,
         ingress=ingress,

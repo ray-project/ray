@@ -1,0 +1,168 @@
+group: rllib tests
+steps:
+  - label: ":brain: rllib: algorithm, model and others"
+    tags: rllib_directly
+    parallelism: 4
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --except-tags learning_tests,memory_leak_tests,examples,tests_dir,documentation,multi_gpu,no_cpu,torch_2.x_only_benchmark,manual
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: learning tests tf2-static-graph"
+    tags: rllib
+    parallelism: 3
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --only-tags fake_gpus,learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous
+        --except-tags torch_only,tf2_only,no_tf_static_graph,multi_gpu
+        --test-arg --framework=tf
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: learning tests pytorch"
+    tags: rllib
+    parallelism: 3
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --only-tags fake_gpus,learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous
+        --except-tags tf_only,tf2_only,multi_gpu
+        --test-arg --framework=torch
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: examples"
+    tags: rllib
+    parallelism: 3
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --only-tags examples
+        --except-tags multi_gpu,gpu 
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: learning tests tf2-eager-tracing"
+    tags: rllib
+    parallelism: 2
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --only-tags learning_tests_discrete,learning_tests_continuous,crashing_cartpole,stateless_cartpole
+        --except-tags fake_gpus,torch_only,multi_gpu,no_tf_eager_tracing
+        --test-arg --framework=tf2
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: tests dir"
+    tags: rllib_directly
+    parallelism: 2
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --only-tags tests_dir
+        --except-tags multi_gpu,manual
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: rlmodule tests"
+    tags: rllib_directly
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --parallelism-per-worker 3
+        --only-tags rlm
+        --test-env RLLIB_ENABLE_RL_MODULE=1
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: data tests"
+    if: build.branch != "master"
+    tags: data
+    instance_type: large
+    commands:
+      # learning tests pytorch
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --parallelism-per-worker 3
+        --only-tags learning_tests_with_ray_data
+        --except-tags multi_gpu,gpu,tf_only,tf2_only
+        --test-arg --framework=torch
+
+      # learning tests tF2
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --parallelism-per-worker 3
+        --only-tags learning_tests_with_ray_data
+        --except-tags multi_gpu,gpu,torch_only
+        --test-arg --framework=tf2
+        --skip-ray-installation # reuse the same docker image as the previous run
+
+      # rllib unittests
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --parallelism-per-worker 3
+        --only-tags ray_data
+        --except-tags learning_tests_with_ray_data,multi_gpu,gpu
+        --skip-ray-installation # reuse the same docker image as the previous run
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: benchmarks"
+    tags: rllib
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --only-tags torch_2.x_only_benchmark
+    depends_on: rllibbuild
+    job_env: forge
+
+  - label: ":brain: rllib: flaky tests"
+    tags: rllib
+    instance_type: large
+    commands:
+      # torch
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests --parallelism-per-worker 3
+        --only-tags fake_gpus,learning_tests_discrete,learning_tests_with_ray_data,crashing_cartpole,stateless_cartpole,learning_tests_continuous
+        --except-tags tf_only,tf2_only,multi_gpu
+        --test-arg --framework=torch
+
+      # tf2-static-graph
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests --parallelism-per-worker 3
+        --only-tags tf_only
+        --except-tags torch_only,tf2_only,no_tf_static_graph,multi_gpu
+        --test-arg --framework=tf
+        --skip-ray-installation # reuse the same docker image as the previous run
+
+      # tf2-eager-tracing
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests --parallelism-per-worker 3
+        --only-tags tf2_only
+        --except-tags fake_gpus,torch_only,multi_gpu,no_tf_eager_tracing
+        --test-arg --framework=tf2
+        --skip-ray-installation # reuse the same docker image as the previous run
+
+      # examples
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib  --run-flaky-tests --parallelism-per-worker 3
+        --only-tags examples
+        --except-tags multi_gpu,gpu 
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+        --skip-ray-installation # reuse the same docker image as the previous run
+
+      # rlmodule tests
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests --parallelism-per-worker 3
+        --only-tags rlm
+        --test-env RLLIB_ENABLE_RL_MODULE=1
+        --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+        --skip-ray-installation # reuse the same docker image as the previous run
+    depends_on: rllibbuild
+    soft_fail: true
+    job_env: forge

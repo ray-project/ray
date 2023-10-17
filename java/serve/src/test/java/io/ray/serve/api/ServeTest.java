@@ -31,6 +31,7 @@ public class ServeTest {
           replicaName.getReplicaTag(),
           controllerName,
           servableObject,
+          null,
           null);
 
       ReplicaContext replicaContext = Serve.getReplicaContext();
@@ -54,7 +55,7 @@ public class ServeTest {
       // The default port 8000 is occupied by other processes on the ci platform.
       Map<String, String> config = Maps.newHashMap();
       config.put(RayServeConfig.PROXY_HTTP_PORT, "8341");
-      Serve.start(true, false, config);
+      Serve.start(config);
 
       Optional<PyActorHandle> controller = Ray.getActor(Constants.SERVE_CONTROLLER_NAME);
       Assert.assertTrue(controller.isPresent());
@@ -96,7 +97,7 @@ public class ServeTest {
       Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Mock replica context.
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, null, null);
 
       // Get client.
       ServeControllerClient client = Serve.getGlobalClient();
@@ -104,18 +105,6 @@ public class ServeTest {
     } finally {
       BaseServeTest.shutdownRay();
       BaseServeTest.clearContext();
-    }
-  }
-
-  @Test(groups = {"cluster"})
-  public void connectTest() {
-    try {
-      BaseServeTest.startServe();
-
-      ServeControllerClient client = Serve.connect();
-      Assert.assertNotNull(client);
-    } finally {
-      BaseServeTest.shutdownServe();
     }
   }
 }

@@ -190,6 +190,21 @@ def test_from_torch(shutdown_only, tmp_path):
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
 
+    import torch
+
+    class IterMNIST(torch.utils.data.IterableDataset):
+        def __len__(self):
+            return len(torch_dataset)
+
+        def __iter__(self):
+            return iter(torch_dataset)
+
+    iter_torch_dataset = IterMNIST()
+    ray_dataset = ray.data.from_torch(iter_torch_dataset)
+
+    actual_data = extract_values("item", list(ray_dataset.take_all()))
+    assert actual_data == expected_data
+
 
 class NodeLoggerOutputDatasource(Datasource):
     """A writable datasource that logs node IDs of write tasks, for testing."""

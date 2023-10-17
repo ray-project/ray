@@ -67,7 +67,7 @@ def construct_long_chain_graph_with_pure_handle(
 ):
     prev_handle = None
     for id in range(chain_length):
-        Node.options(name=str(id)).deploy(
+        Node.options(name=str(id))._deploy(
             id, prev_handle, init_delay_secs, compute_delay_secs, sync_handle
         )
         prev_handle = _get_global_client().get_handle(

@@ -1,34 +1,30 @@
+import json
 import sys
 import time
-import json
+from typing import Dict, List
+
 import pytest
 import requests
-from pydantic import ValidationError
-from typing import List, Dict
-
-import ray
-from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 
 from ray import serve
+from ray._private.pydantic_compat import ValidationError
+from ray.serve._private.common import (
+    ApplicationStatusInfo,
+    DeploymentStatusInfo,
+    StatusOverview,
+)
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
-from ray.serve.deployment import (
-    deployment_to_schema,
-    schema_to_deployment,
-)
+from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
-    RayActorOptionsSchema,
     DeploymentSchema,
+    RayActorOptionsSchema,
     ServeApplicationSchema,
-    ServeStatusSchema,
     ServeDeploySchema,
+    ServeStatusSchema,
     _serve_status_to_schema,
 )
-from ray.serve._private.common import (
-    StatusOverview,
-    DeploymentStatusInfo,
-    ApplicationStatusInfo,
-)
+from ray.util.accelerators.accelerators import NVIDIA_TESLA_P4, NVIDIA_TESLA_V100
 
 
 def get_valid_runtime_envs() -> List[Dict]:
@@ -760,7 +756,7 @@ def test_deployment_to_schema_to_deployment():
         pass
 
     deployment = schema_to_deployment(deployment_to_schema(f))
-    deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
+    deployment.set_options(func_or_class=global_f)
 
     assert deployment.num_replicas == 3
     assert deployment.route_prefix == "/hello"
@@ -773,8 +769,8 @@ def test_deployment_to_schema_to_deployment():
     ]
 
     serve.start()
-    deployment.deploy()
-    assert ray.get(deployment.get_handle().remote()) == "Hello world!"
+    handle = serve.run(deployment.bind()).options(use_new_handle_api=True)
+    assert handle.remote().result() == "Hello world!"
     assert requests.get("http://localhost:8000/hello").text == "Hello world!"
     serve.shutdown()
 

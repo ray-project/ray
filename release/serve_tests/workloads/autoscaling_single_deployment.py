@@ -46,6 +46,7 @@ from serve_test_cluster_utils import (
     NUM_CPU_PER_NODE,
     NUM_CONNECTIONS,
 )
+from ray.serve._private import api as _private_api
 from typing import Optional
 
 logger = logging.getLogger(__file__)
@@ -85,7 +86,7 @@ def deploy_replicas(min_replicas, max_replicas, max_batch_size):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    Echo.deploy()
+    Echo._deploy()
 
 
 def deploy_proxy_replicas():
@@ -103,7 +104,7 @@ def deploy_proxy_replicas():
         def __call__(self, request):
             return "Proxy"
 
-    Proxy.deploy()
+    Proxy._deploy()
 
 
 def save_results(final_result, default_name):
@@ -172,7 +173,7 @@ def main(
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    all_endpoints = list(serve.list_deployments().keys() - {"proxy"})
+    all_endpoints = list(_private_api.list_deployments().keys() - {"proxy"})
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
     )
