@@ -102,8 +102,12 @@ class RemoteFunction:
 
         # When gpu is used, set the task non-recyclable by default.
         # https://github.com/ray-project/ray/issues/29624 for more context.
+        # Note: Ray task worker process is not being reused when nsight
+        # profiler is running, as nsight generate report once the process exit.
         num_gpus = self._default_options.get("num_gpus") or 0
-        if num_gpus > 0 and self._default_options.get("max_calls", None) is None:
+        if (
+            num_gpus > 0 and self._default_options.get("max_calls", None) is None
+        ) or "nsight" in (self._default_options.get("runtime_env") or {}):
             self._default_options["max_calls"] = 1
 
         # TODO(suquark): This is a workaround for class attributes of options.

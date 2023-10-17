@@ -15,6 +15,7 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private import api as _private_api
 from ray.serve._private.autoscaling_policy import (
     BasicAutoscalingPolicy,
     calculate_desired_num_replicas,
@@ -937,7 +938,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     wait_for_condition(
         lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
     )
-    handle = serve.get_deployment("A").get_handle()
+    handle = _private_api.get_deployment("A")._get_handle()
     start_time = get_deployment_start_time(controller, "A")
 
     assert check_autoscale_num_replicas(controller, "A") == 0

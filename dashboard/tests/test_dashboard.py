@@ -920,12 +920,11 @@ def test_dashboard_does_not_depend_on_serve():
 
     ctx = ray.init()
 
-    # Ensure standard dashboard features, like snapshot, still work
-    response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")
+    # Ensure standard dashboard features, like component_activities, still work
+    response = requests.get(f"http://{ctx.dashboard_url}/api/component_activities")
     assert response.status_code == 200
 
-    assert response.json()["result"] is True
-    assert "snapshot" in response.json()["data"]
+    assert "driver" in response.json()
 
     agent_url = (
         ctx.address_info["node_ip_address"]
