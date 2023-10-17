@@ -208,12 +208,11 @@ def test_ray_worker_dev_flow(start_cluster):
         def f():
             return "hi"
 
-        f._deploy()
-        h = f._get_handle()
+        h = serve.run(f.bind()).options(use_new_handle_api=True)
 
-        assert ray.get(h.remote()) == "hi"
+        assert h.remote().result() == "hi"
 
-        f._delete()
+        serve.delete("default")
         return [serve.__path__]
 
     assert ray.get(test_serve.remote()) != serve.__path__[0]
