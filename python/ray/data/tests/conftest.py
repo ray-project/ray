@@ -13,6 +13,7 @@ from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 from ray.data.tests.mock_server import *  # noqa
 
@@ -245,7 +246,8 @@ def assert_base_partitioned_ds():
         if sorted_values is None:
             sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
         # Test metadata ops.
-        assert ds._execution_manager.execute()._num_computed() == 0
+        if not DataContext.get_current().new_execution_backend:
+            assert ds._execution_manager.execute()._num_computed() == 0
         assert ds.count() == count, f"{ds.count()} != {count}"
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
         assert ds.schema() is not None

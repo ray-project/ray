@@ -338,9 +338,9 @@ def test_require_preserve_order(ray_start_regular_shared):
     ds = ray.data.range(100).map_batches(lambda x: x).sort()
     assert ds._execution_manager.require_preserve_order()
     ds2 = ray.data.range(100).map_batches(lambda x: x).zip(ds)
-    assert ds2._plan.require_preserve_order()
+    assert ds2._execution_manager.require_preserve_order()
     ds3 = ray.data.range(100).map_batches(lambda x: x).repartition(10)
-    assert not ds3._plan.require_preserve_order()
+    assert not ds3._execution_manager.require_preserve_order()
 
 
 if __name__ == "__main__":

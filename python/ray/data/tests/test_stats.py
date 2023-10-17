@@ -615,7 +615,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     )
 
     def check_stats2():
-        stats = canonicalize(repr(ds2._plan.stats().to_summary()))
+        stats = canonicalize(repr(ds2._execution_manager.stats().to_summary()))
         assert stats == expected_stats2
         return True
 
@@ -1145,14 +1145,17 @@ def test_stats_actor_metrics():
     # last emitted metrics from map operator
     final_metric = update_fn.call_args_list[-1].args[0][-1]
 
-    assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
+    assert (
+        final_metric.obj_store_mem_spilled
+        == ds._execution_manager.stats().dataset_bytes_spilled
+    )
     assert (
         final_metric.obj_store_mem_alloc
-        == ds._plan.stats().extra_metrics["obj_store_mem_alloc"]
+        == ds._execution_manager.stats().extra_metrics["obj_store_mem_alloc"]
     )
     assert (
         final_metric.obj_store_mem_freed
-        == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
+        == ds._execution_manager.stats().extra_metrics["obj_store_mem_freed"]
     )
     assert final_metric.bytes_outputs_generated == 1000 * 80 * 80 * 4 * 8  # 8B per int
     # There should be nothing in object store at the end of execution.

@@ -731,7 +731,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds2._execution_manager.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
@@ -743,7 +743,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds2._execution_manager.execute().get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
