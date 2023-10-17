@@ -10,7 +10,6 @@ from ray.air._internal.uri_utils import URI
 from ray.train import CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.base_trainer import BaseTrainer
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.huggingface import TransformersTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.torch import TorchTrainer
@@ -175,59 +174,6 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypat
             callbacks=[FailureInjectionCallback(fail_marker_path, num_iters=2)],
         ),
         num_boost_round=5,
-    )
-    with pytest.raises(TrainingFailedError):
-        result = trainer.fit()
-
-    trainer = trainer_cls.restore(str(tmp_path / exp_name), datasets=datasets)
-    result = trainer.fit()
-    assert not result.error
-    assert result.metrics["training_iteration"] == 5
-    assert result.metrics["iterations_since_restore"] == 3
-    assert tmp_path / exp_name in Path(result.path).parents
-
-
-@pytest.mark.parametrize("trainer_cls", [TransformersTrainer])
-def test_trainer_with_init_fn_restore(
-    ray_start_4_cpus, tmp_path, trainer_cls, monkeypatch
-):
-    """Tests restore for data parallel trainers that take in a `train_init` function
-    and config. Success criteria: same as for data parallel trainers."""
-    # TODO(justinvyu): Failure injection callback doesn't work very well to test this.
-    pytest.skip("Re-enable after coming up with a better way to inject a failure.")
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
-    exp_name = f"{trainer_cls.__name__}_restore_test"
-
-    if trainer_cls == TransformersTrainer:
-        from ray.train.tests.test_transformers_trainer import train_df
-        from ray.train.tests.test_transformers_trainer import train_function as hf_init
-
-        trainer_init_fn = hf_init
-        trainer_init_config = {"epochs": 5, "save_strategy": "epoch"}
-        datasets = {"train": ray.data.from_pandas(train_df)}
-    # TODO(ml-team): Add MosaicTrainer test after Mosaic checkpointing is supported
-    # else:
-    #     from ray.train.tests.test_mosaic_trainer import (
-    #         trainer_init_per_worker as mosaic_init,
-    #     )
-
-    #     trainer_init_fn = mosaic_init
-    #     trainer_init_config = {"max_duration": "5ep"}
-    #     datasets = {}
-
-    fail_marker_path = tmp_path / "fail_marker"
-    fail_marker_path.touch()
-
-    trainer = trainer_cls(
-        trainer_init_per_worker=trainer_init_fn,
-        trainer_init_config=trainer_init_config,
-        datasets=datasets,
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(
-            name=exp_name,
-            checkpoint_config=CheckpointConfig(num_to_keep=1),
-            callbacks=[FailureInjectionCallback(fail_marker_path, num_iters=2)],
-        ),
     )
     with pytest.raises(TrainingFailedError):
         result = trainer.fit()

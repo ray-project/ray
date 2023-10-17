@@ -1,10 +1,11 @@
 from time import sleep
 import pytest
 
-from ray import workflow, serve
+from ray import workflow
 from ray.workflow.http_event_provider import HTTPListener
 from ray.tests.conftest import *  # noqa
 from ray.workflow.tests import utils
+from ray.serve._private import api as _private_api
 
 import requests
 
@@ -51,7 +52,7 @@ def test_checkpoint_success_by_http(workflow_start_regular_shared_serve):
     )
 
     # wait until HTTPEventProvider is ready
-    while len(serve.list_deployments().keys()) < 1:
+    while len(_private_api.list_deployments().keys()) < 1:
         sleep(0.1)
 
     test_msg = "new_event_message"
@@ -108,7 +109,7 @@ def test_checkpoint_failed_by_http(workflow_start_regular_shared_serve):
     )
 
     # wait until HTTPEventProvider is ready
-    while len(serve.list_deployments().keys()) < 1:
+    while len(_private_api.list_deployments().keys()) < 1:
         sleep(0.1)
 
     test_msg = "new_event_message"

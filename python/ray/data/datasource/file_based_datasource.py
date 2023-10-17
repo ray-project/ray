@@ -11,6 +11,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -28,7 +29,6 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _resolve_custom_scheme,
-    get_attribute_from_class_name,
     make_async_gen,
 )
 from ray.data.block import Block, BlockAccessor
@@ -379,6 +379,7 @@ class _FileBasedDatasourceReader(Reader):
         partition_filter: PathPartitionFilter = None,
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
+        shuffle: Union[Literal["files"], None] = None,
         **reader_args,
     ):
         _check_pyarrow_version()
@@ -419,10 +420,9 @@ class _FileBasedDatasourceReader(Reader):
                     "No input files found to read. Please double check that "
                     "'partition_filter' field is set properly."
                 )
-
-        ctx = DataContext.get_current()
-        shuffler_class = get_attribute_from_class_name(ctx.file_metadata_shuffler)
-        self._file_metadata_shuffler = shuffler_class(self._reader_args)
+        self._file_metadata_shuffler = None
+        if shuffle == "files":
+            self._file_metadata_shuffler = np.random.default_rng()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -439,10 +439,15 @@ class _FileBasedDatasourceReader(Reader):
         reader_args = self._reader_args
         partitioning = self._partitioning
 
-        paths_and_sizes = self._file_metadata_shuffler.shuffle_files(
-            list(zip(self._paths, self._file_sizes))
-        )
-        paths, file_sizes = list(map(list, zip(*paths_and_sizes)))
+        if self._file_metadata_shuffler is not None:
+            files_metadata = list(zip(self._paths, self._file_sizes))
+            shuffled_files_metadata = [
+                files_metadata[i]
+                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
+            ]
+            paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
+        else:
+            paths, file_sizes = self._paths, self._file_sizes
 
         read_stream = self._delegate._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)

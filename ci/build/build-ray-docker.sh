@@ -15,6 +15,8 @@ cp .whl/"$WHEEL_NAME" "${CPU_TMP}/.whl/${WHEEL_NAME}"
 cp docker/ray/Dockerfile "${CPU_TMP}/Dockerfile"
 cp python/requirements_compiled.txt "${CPU_TMP}/."
 
+export DOCKER_BUILDKIT=1
+
 # Build the image.
 cd "${CPU_TMP}"
 tar --mtime="UTC 2020-01-01" -c -f - . \
