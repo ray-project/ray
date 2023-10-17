@@ -100,7 +100,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
-  // TODO(vitsai) surgery on this thing
+  // TODO(vitsai): State API RPCs should use the same source of truth as autoscaler.
   for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
     if (node_resources_entry.first == local_scheduling_node_id) {
       continue;
@@ -188,8 +188,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::GetAllResourceUsageRequest request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // This is a hack. We use the stale but less inconsistent resource info
-  // from GCS autoscaler state manager instead of our local resource info.
   if (!node_resource_usages_.empty()) {
     rpc::ResourceUsageBatchData batch;
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
@@ -260,7 +258,7 @@ void GcsResourceManager::UpdateFromResourceCommand(const rpc::ResourcesData &dat
 
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
-  // TODO(vitsai): This may be inconsistent with autoscaler state, which is
+  // Note: This may be inconsistent with autoscaler state, which is
   // not reported as often as a Ray Syncer message.
   if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
       maybe_node_info != absl::nullopt) {
