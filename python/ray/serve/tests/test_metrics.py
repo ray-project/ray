@@ -1,7 +1,5 @@
 import os
 import sys
-from functools import partial
-from multiprocessing import Pool
 from typing import DefaultDict, Dict, List, Optional
 
 import grpc
@@ -1107,19 +1105,25 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
+    @ray.remote
+    def do_request():
+        r = requests.get("http://localhost:8000/")
+        r.raise_for_status()
+        return r
+
     def first_request_executing(request_future) -> bool:
         try:
             request_future.get(timeout=0.1)
         except Exception:
             return ray.get(signal.cur_num_waiters.remote()) == 1
 
-    url = "http://localhost:8000/"
-    pool = Pool()
+    # Make a request to block the deployment from accepting other requests.
+    first_ref = do_request.remote()
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+    )
 
-    # Make a request to block the deployment from accepting other requests
-    fut = pool.apply_async(partial(requests.get, url))
-    wait_for_condition(lambda: first_request_executing(fut), timeout=5)
-    print("Executed first request.")
+    print("First request is executing.")
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
@@ -1129,9 +1133,8 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
     num_requests = 5
-    for _ in range(num_requests):
-        pool.apply_async(partial(requests.get, url))
-    print(f"Executed {num_requests} more requests.")
+    subsequent_refs = [do_request.remote() for _ in range(num_requests)]
+    print(f"{num_requests} more requests now pending.")
 
     # First request should be processing. All others should be queued.
     wait_for_condition(
@@ -1167,8 +1170,9 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     # Disconnect all requests by terminating the process pool.
-    pool.terminate()
-    print("Terminated all requests.")
+    ray.cancel(first_ref)
+    [ray.cancel(ref) for ref in subsequent_refs]
+    print("Cancelled all HTTP requests.")
 
     wait_for_condition(
         check_metric_float_eq,
