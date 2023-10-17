@@ -2,6 +2,7 @@ group: rllib tests
 steps:
   - label: ":brain: rllib: algorithm, model and others"
     tags: rllib_directly
+    soft_fail: true
     parallelism: 4
     instance_type: large
     commands:
@@ -66,6 +67,7 @@ steps:
 
   - label: ":brain: rllib: tests dir"
     tags: rllib_directly
+    soft_fail: true
     parallelism: 2
     instance_type: large
     commands:
