@@ -137,6 +137,7 @@ class ExecutionPlan:
         self._dataset_uuid = None
 
         self._run_by_consumer = run_by_consumer
+        self._dataset_name = None
 
         # Snapshot the current context, so that the config of Datasets is always
         # determined by the config at the time it was created.
@@ -318,6 +319,7 @@ class ExecutionPlan:
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
+        plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
     def deep_copy(self) -> "ExecutionPlan":
@@ -342,6 +344,7 @@ class ExecutionPlan:
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
+        plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
     def initial_num_blocks(self) -> int:
@@ -573,8 +576,10 @@ class ExecutionPlan:
                     StreamingExecutor,
                 )
 
+                metrics_tag = (self._dataset_name or None) + self._dataset_uuid
                 executor = StreamingExecutor(
-                    copy.deepcopy(context.execution_options), self._dataset_uuid
+                    copy.deepcopy(context.execution_options),
+                    metrics_tag,
                 )
                 blocks = execute_to_legacy_block_list(
                     executor,

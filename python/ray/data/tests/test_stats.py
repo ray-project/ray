@@ -1172,6 +1172,44 @@ def test_stats_actor_metrics():
     assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
 
 
+def test_dataset_name():
+    ds = ray.data.range(100).map_batches(lambda x: x)
+    ds.set_name("test_ds")
+    with patch(
+        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
+    ) as update_fn:
+        ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"].startswith("test_ds")
+
+    # Names persist after an execution
+    ds = ds.random_shuffle()
+    with patch(
+        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
+    ) as update_fn:
+        ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"].startswith("test_ds")
+
+    ds.set_name("test_ds_two")
+    ds = ds.map_batches(lambda x: x)
+    with patch(
+        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
+    ) as update_fn:
+        ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"].startswith("test_ds_two")
+
+    ds.set_name(None)
+    ds = ds.map_batches(lambda x: x)
+    with patch(
+        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
+    ) as update_fn:
+        ds.materialize()
+
+    assert not update_fn.call_args_list[-1].args[1]["dataset"].startswith("test_ds_two")
+
+
 if __name__ == "__main__":
     import sys
 
