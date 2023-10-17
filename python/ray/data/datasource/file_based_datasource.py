@@ -12,6 +12,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -44,11 +45,6 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import pandas as pd

@@ -16,6 +16,13 @@ Hence, we recommend enabling GCS fault tolerance on the RayService custom resour
 See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.
 ```
 
+## Use cases
+
+* **Ray Serve**: The recommended configuration is enabling GCS fault tolerance on the RayService custom resource to ensure high availability.
+See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.
+
+* **Other workloads**: GCS fault tolerance isn't recommended and the compatibility isn't guaranteed.
+
 ## Prerequisites
 
 * Ray 2.0.0+
@@ -196,7 +203,39 @@ Note that the fault tolerance doesn't persist the actor's state.
 The reason why the result is 2 instead of 1 is that the detached actor is on the worker Pod which is always running.
 On the other hand, if the head Pod hosts the detached actor, the `increment_counter.py` script yields a result of 1 in this step.
 
-### Step 9: Delete the Kubernetes cluster
+### Step 9: Remove the key stored in Redis when deleting RayCluster
+
+```shell
+# Step 9.1: Delete the RayCluster custom resource.
+kubectl delete raycluster raycluster-external-redis
+
+# Step 9.2: KubeRay operator deletes all Pods in the RayCluster.
+# Step 9.3: KubeRay operator creates a Kubernetes Job to delete the Redis key after the head Pod is terminated.
+
+# Step 9.4: Check whether the RayCluster has been deleted.
+kubectl get raycluster
+# [Expected output]: No resources found in default namespace.
+
+# Step 9.5: Check Redis keys after the Kubernetes Job finishes.
+export REDIS_POD=$(kubectl get pods --selector=app=redis -o custom-columns=POD:metadata.name --no-headers)
+kubectl exec -it $REDIS_POD -- redis-cli -a "5241590000000000"
+KEYS *
+# [Expected output]: (empty list or set)
+```
+
+Starting from KubeRay v1.0.0-rc.0, the KubeRay operator creates a Kubernetes Job to delete the Redis key when a user removes the RayCluster custom resource.
+To ensure Redis cleanup, the KubeRay operator adds a Kubernetes finalizer to the RayCluster with GCS fault tolerance enabled.
+KubeRay only removes this finalizer after the Kubernetes Job successfully cleans up Redis.
+
+* In other words, if the Kubernetes Job fails, the RayCluster won't be deleted. In that case, you should remove the finalizer and cleanup Redis manually.
+  ```shell
+  kubectl patch rayclusters.ray.io raycluster-external-redis --type json --patch='[ { "op": "remove", "path": "/metadata/finalizers" } ]'
+  ```
+
+Users can turn off this by setting the feature gate value `ENABLE_GCS_FT_REDIS_CLEANUP`.
+Refer to the [KubeRay GCS fault tolerance configurations](kuberay-redis-cleanup-gate) section for more details.
+
+### Step 10: Delete the Kubernetes cluster
 
 ```sh
 kind delete cluster
@@ -266,7 +305,12 @@ Refer to [this section](kuberay-external-storage-namespace-example) in the earli
         ray.io/external-storage-namespace: "my-raycluster-storage" # <- Add this annotation to specify a storage namespace
     ```
 
+(kuberay-redis-cleanup-gate)=
+### 4. Turn off Redis cleanup
+
+* `ENABLE_GCS_FT_REDIS_CLEANUP`: The feature gate `ENABLE_GCS_FT_REDIS_CLEANUP` is true by default, and users can turn if off by setting the environment variable in [KubeRay operator's Helm chart](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml).
+
 ## Next steps
 
 * See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.
-* See `Ray Core GCS fault tolerance documentation <fault-tolerance-gcs>` for more information.
+* See {ref}`Ray Core GCS fault tolerance documentation <fault-tolerance-gcs>` for more information.

@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 AIR_TRAINERS = {
     "HorovodTrainer",
-    "TransformersTrainer",
     "LightGBMTrainer",
     "MosaicTrainer",
     "SklearnTrainer",

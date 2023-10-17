@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, Optional, Union
 from fastapi import Depends, FastAPI
 
 from ray import cloudpickle, serve
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import DAG_DEPRECATION_MESSAGE, SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import install_serve_encoders_to_fastapi
@@ -13,12 +13,12 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers_utils import load_http_adapter
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="beta")
+@Deprecated(message=DAG_DEPRECATION_MESSAGE)
 @serve.deployment
 class DAGDriver(ASGIAppReplicaWrapper):
     """A driver implementation that accepts HTTP requests."""
