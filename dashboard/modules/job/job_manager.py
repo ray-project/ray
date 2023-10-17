@@ -661,19 +661,20 @@ class JobManager:
                         # We will wait for the next loop.
                         continue
                     else:
-                        # The job supervisor actor is not created, but the job
-                        # status is not PENDING. This means the job supervisor
-                        # actor is not created due to some unexpected errors.
-                        # We will set the job status to FAILED.
-                        logger.error(f"Failed to get job supervisor for job {job_id}.")
-                        await self._job_info_client.put_status(
-                            job_id,
-                            JobStatus.FAILED,
-                            message=(
-                                "Unexpected error occurred: "
-                                "Failed to get job supervisor."
-                            ),
-                        )
+                        if job_status != JobStatus.FAILED:                  
+                            # The job supervisor actor is not created, but the job
+                            # status is not PENDING. This means the job supervisor
+                            # actor is not created due to some unexpected errors.
+                            # We will set the job status to FAILED.
+                            logger.error(f"Failed to get job supervisor for job {job_id}.")
+                            await self._job_info_client.put_status(
+                                job_id,
+                                JobStatus.FAILED,
+                                message=(
+                                    "Unexpected error occurred: "
+                                    "Failed to get job supervisor."
+                                ),
+                            )
                         is_alive = False
                         continue
 
@@ -945,7 +946,7 @@ class JobManager:
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
             supervisor = self._supervisor_actor_cls.options(
-                lifetime="detached",
+                lifetime="detacheds",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=entrypoint_num_cpus,
                 num_gpus=entrypoint_num_gpus,
@@ -961,6 +962,8 @@ class JobManager:
                 _start_signal_actor=_start_signal_actor,
                 resources_specified=resources_specified,
             )
+
+            await supervisor.ping.remote()
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
