@@ -4,7 +4,11 @@ import tempfile
 from contextlib import contextmanager
 
 import ray
-from ray.data._internal.execution.interfaces.physical_operator import DataOpTask, MetadataOpTask, PhysicalOperator
+from ray.data._internal.execution.interfaces.physical_operator import (
+    DataOpTask,
+    MetadataOpTask,
+    PhysicalOperator,
+)
 
 
 @ray.remote

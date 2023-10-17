@@ -47,15 +47,14 @@ class TaskPoolMapOperator(MapOperator):
         ctx = TaskContext(task_idx=self._next_data_task_idx)
         data_context = DataContext.get_current()
         ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
-        ray_remote_args['name'] = self.name
-        if data_context.streaming_output_backpressure_config.enabled:
-            ray_remote_args['_streaming_generator_backpressure_size_bytes'] = (
-                data_context.streaming_output_backpressure_config.streaming_gen_buffer_size_bytes
-            )
+        ray_remote_args["name"] = self.name
+        backpressure_config = data_context.streaming_output_backpressure_config
+        if backpressure_config.enabled:
+            ray_remote_args[
+                "_streaming_generator_backpressure_size_bytes"
+            ] = backpressure_config.streaming_gen_backpressure_size
 
-        gen = map_task.options(
-            **ray_remote_args
-        ).remote(
+        gen = map_task.options(**ray_remote_args).remote(
             self._map_transformer_ref,
             data_context,
             ctx,

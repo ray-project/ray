@@ -334,7 +334,6 @@ def process_completed_tasks(topology: Topology) -> None:
             if backpressure_config.enabled:
                 output_bufer_sizes[state] = state.outqueue_memory_usage()
 
-
     # Process completed Ray tasks and notify operators.
     if active_tasks:
         ready, _ = ray.wait(
@@ -349,7 +348,8 @@ def process_completed_tasks(topology: Topology) -> None:
                 max_bytes_to_read = None
                 if backpressure_config.enabled:
                     max_bytes_to_read = (
-                        backpressure_config.op_output_buffer_size_bytes - output_bufer_sizes[state]
+                        backpressure_config.op_output_buffer_size_bytes
+                        - output_bufer_sizes[state]
                     )
                 read_bytes = task.on_data_ready(max_bytes_to_read)
                 if backpressure_config.enabled:

@@ -136,9 +136,20 @@ DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 @dataclass
 class StreamingOutputBackpressureConfig:
+    """Configuration for task-level streaming output backpressure."""
+
+    # Whether to enable streaming output backpressure.
     enabled: bool = False
-    streaming_gen_buffer_size_bytes: int = 2 * 1024 * 1024 * 1024
-    op_output_buffer_size_bytes: int = 2 * 1024 * 1024 * 1024
+
+    # TODO(hchen): Can we merge the following two configs? To do so,
+    # we need to make the Ray core-level streaming generator aware of
+    # the app-level buffer size.
+
+    # The streaming genenrator-level backpressure size (i.e., the
+    # `_streaming_generator_backpressure_size_bytes` parameter).
+    streaming_gen_backpressure_size: int = 1 * 1024 * 1024 * 1024
+    # Max size of the output buffer (`OpState.outqueue`) for each operator.
+    op_output_buffer_size_bytes: int = 1 * 1024 * 1024 * 1024
 
 
 @DeveloperAPI
