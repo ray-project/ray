@@ -4712,6 +4712,7 @@ class Dataset:
         ds = Dataset(plan_copy, logical_plan_copy)
         ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
+        ds._plan._dataset_uuid = self._get_uuid()
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
             # Custom reducer for Ray remote function handles that allows for
