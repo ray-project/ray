@@ -1104,14 +1104,14 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def do_request():
         r = requests.get("http://localhost:8000/")
         r.raise_for_status()
         return r
 
     # Make a request to block the deployment from accepting other requests.
-    first_ref = do_request.remote()
+    request_refs = [do_request.remote()]
     wait_for_condition(
         lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
     )
@@ -1125,23 +1125,23 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
-    num_requests = 5
-    subsequent_refs = [do_request.remote() for _ in range(num_requests)]
-    print(f"{num_requests} more requests now pending.")
+    num_queued_requests = 3
+    request_refs.extend([do_request.remote() for _ in range(num_queued_requests)])
+    print(f"{num_queued_requests} more requests now queued.")
 
     # First request should be processing. All others should be queued.
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
         metric="ray_serve_deployment_queued_queries",
-        expected=num_requests,
+        expected=num_queued_requests,
     )
     print("ray_serve_deployment_queued_queries updated successfully.")
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
         metric="ray_serve_num_ongoing_http_requests",
-        expected=num_requests + 1,
+        expected=num_queued_requests + 1,
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
@@ -1162,9 +1162,8 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
-    # Disconnect all requests by terminating the process pool.
-    ray.cancel(first_ref, force=True)
-    [ray.cancel(ref, force=True) for ref in subsequent_refs]
+    # Disconnect all requests by cancelling the Ray tasks.
+    [ray.cancel(ref, force=True) for ref in request_refs]
     print("Cancelled all HTTP requests.")
 
     wait_for_condition(
