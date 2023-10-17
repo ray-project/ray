@@ -16,6 +16,8 @@ from typing import (
     Union,
 )
 
+import numpy as np
+
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.dataset_logger import DatasetLogger
