@@ -93,36 +93,6 @@
       --test_env=DOCKER_TLS_CERTDIR=/certs
       -- python/ray/tests/...
 
-- label: ":python: Debug Test"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - pip uninstall -y ray
-    - RAY_DEBUG_BUILD=debug ./ci/ci.sh build
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci-debug $(./ci/run/bazel_export_options)
-      --test_tag_filters=-kubernetes,debug_tests
-      python/ray/tests/...
-
-- label: ":python: (ASAN tests)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel build $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:ray_pkg
-    - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
-      --config=asan-buildkite
-      --test_tag_filters=-kubernetes,asan_tests
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      python/ray/tests/...
-
 - label: ":book: Doctest (CPU)"
   instance_size: large
   commands:

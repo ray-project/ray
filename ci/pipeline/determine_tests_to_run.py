@@ -232,6 +232,11 @@ if __name__ == "__main__":
                     if changed_file.endswith(compiled_extension):
                         RAY_CI_COMPILED_PYTHON_AFFECTED = 1
                         break
+            elif (
+                changed_file.startswith("ci/ray_ci")
+                or changed_file == ".buildkite/core.rayci.yml"
+            ):
+                RAY_CI_PYTHON_AFFECTED = 1
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
             elif changed_file.startswith("cpp/"):
