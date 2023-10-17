@@ -378,7 +378,7 @@ def select_operator_to_run(
     topology: Topology,
     cur_usage: TopologyResourceUsage,
     limits: ExecutionResources,
-    back_pressure_policies: List[BackpressurePolicy],
+    backpressure_policies: List[BackpressurePolicy],
     ensure_at_least_one_running: bool,
     execution_id: str,
     autoscaling_state: AutoscalingState,
@@ -408,7 +408,7 @@ def select_operator_to_run(
             and op.should_add_input()
             and under_resource_limits
             and not op.completed()
-            and all(p.can_run(op) for p in back_pressure_policies)
+            and all(p.can_run(op) for p in backpressure_policies)
         ):
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.

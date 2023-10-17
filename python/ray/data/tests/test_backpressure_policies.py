@@ -10,7 +10,7 @@ from ray.data._internal.execution.backpressure_policy import (
 from ray.data._internal.execution.streaming_executor_state import Topology
 
 
-class TestConcurrentcyCapBackpressurePolicy(unittest.TestCase):
+class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
     @contextmanager
     def _patch_env_var(self, value):
         with patch.dict(
@@ -43,11 +43,22 @@ class TestConcurrentcyCapBackpressurePolicy(unittest.TestCase):
         # Now num_tasks_running reaches the cap, so can_run should return False.
         self.assertFalse(policy.can_run(op))
 
-        # Increase num_tasks_finished to the threshold to trigger the cap increase,
-        # and can_run should return True.
+        # If we increase num_task_finished to the threshold (4 * 0.5 = 2),
+        # it should trigger the cap to increase.
         op.metrics.num_tasks_finished = init_cap * cap_multiply_threshold
         self.assertEqual(policy.can_run(op), True)
         self.assertEqual(policy._concurrency_caps[op], init_cap * cap_multiplier)
+
+        # Now the cap is 8 (4 * 2).
+        # If we increase num_tasks_finished directly to the next-level's threshold
+        # (8 * 2 * 0.5 = 8), it should trigger the cap to increase twice.
+        op.metrics.num_tasks_finished = (
+            policy._concurrency_caps[op] * cap_multiplier * cap_multiply_threshold
+        )
+        op.metrics.num_tasks_running = 0
+        self.assertEqual(policy.can_run(op), True)
+        self.assertEqual(policy._concurrency_caps[op], init_cap * cap_multiplier ** 3)
+
 
     def test_env_var_config(self):
         topology = MagicMock(Topology)

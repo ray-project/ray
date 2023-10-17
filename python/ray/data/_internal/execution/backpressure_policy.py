@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 # TODO(hchen): Enable ConcurrencyCapBackpressurePolicy by default.
-DEFAULT_BACKPRESSURE_PLOCIES = []
+DEFAULT_BACKPRESSURE_POLICIES = []
 
 
 def get_backpressure_policies(topology: "Topology"):
-    return [policy(topology) for policy in DEFAULT_BACKPRESSURE_PLOCIES]
+    return [policy(topology) for policy in DEFAULT_BACKPRESSURE_POLICIES]
 
 
 class BackpressurePolicy(ABC):
@@ -29,8 +29,10 @@ class BackpressurePolicy(ABC):
 
     @abstractmethod
     def can_run(self, op: "PhysicalOperator") -> bool:
-        """Called when StreamingExecutor is about to select an operator to run.
-        Returns True if the operator can run, False otherwise.
+        """Called when StreamingExecutor selects an operator to run in
+        `streaming_executor_state.select_operator_to_run()`.
+
+        Returns: True if the operator can run, False otherwise.
         """
         ...
 
@@ -42,8 +44,8 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     It will be set to an intial value, and will ramp up exponentially.
 
     The concrete stategy is as follows:
-    - Each op is assigned an initial concurrency cap.
-    - An op can run new tasks if the number of running tasks is less than the cap.
+    - Each PhysicalOperator is assigned an initial concurrency cap.
+    - An PhysicalOperator can run new tasks if the number of running tasks is less than the cap.
     - When the number of finished tasks reaches a threshold, the concurrency cap will
       increase.
     """
@@ -90,7 +92,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
     def can_run(self, op: "PhysicalOperator") -> bool:
         metrics = op.metrics
-        if metrics.num_tasks_finished >= (
+        while metrics.num_tasks_finished >= (
             self._concurrency_caps[op] * self._cap_multiply_threshold
         ):
             self._concurrency_caps[op] *= self._cap_multiplier
