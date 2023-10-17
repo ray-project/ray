@@ -208,9 +208,7 @@ prepare_docker() {
 
 # For running Serve tests on Windows.
 test_serve() {
-  local pathsep=":" args=()
   if [ "${OSTYPE}" = msys ]; then
-    pathsep=";"
     args+=(
       python/ray/serve/...
       -python/ray/serve/tests:test_cross_language # Ray java not built on Windows yet.
@@ -243,9 +241,7 @@ test_serve() {
 
 # For running Python tests on Windows (excluding Serve).
 test_python() {
-  local pathsep=":" args=()
   if [ "${OSTYPE}" = msys ]; then
-    pathsep=";"
     args+=(
       python/ray/tests/...
       python/ray/train:test_windows
