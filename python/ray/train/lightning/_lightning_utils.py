@@ -223,12 +223,10 @@ class RayTrainReportCallback(pl.callbacks.Callback):
     It fetches the latest `trainer.callback_metrics` and reports together with
     the checkpoint on each training epoch end.
 
-    Checkpoints will be saved in the following structure:
+    Checkpoints will be saved in the following structure::
 
-    .. testcode::
-
-        # checkpoint_00000*/      Ray Train Checkpoint
-        # └─ checkpoint.ckpt      PyTorch Lightning Checkpoint
+        checkpoint_00000*/      Ray Train Checkpoint
+        └─ checkpoint.ckpt      PyTorch Lightning Checkpoint
 
     For customized reporting and checkpointing logic, implement your own
     `lightning.pytorch.callbacks.Callback` following this user

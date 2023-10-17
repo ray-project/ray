@@ -237,12 +237,10 @@ class RayTrainReportCallback(TrainerCallback):
     from `TrainerState.log_history` and reports it with the latest checkpoint
     to Ray Train.
 
-    Checkpoints will be saved in the following structure:
+    Checkpoints will be saved in the following structure::
 
-    .. testcode::
-
-        # checkpoint_00000*/   Ray Train Checkpoint
-        # └─ checkpoint/       Hugging Face Transformers Checkpoint
+        checkpoint_00000*/   Ray Train Checkpoint
+        └─ checkpoint/       Hugging Face Transformers Checkpoint
 
     For customized reporting and checkpointing logic, implement your own
     `transformers.TrainerCallback` following this user
