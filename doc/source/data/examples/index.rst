@@ -47,8 +47,12 @@ Batch inference
 Many model training
 -------------------
 
-.. grid-item-card::
+.. grid:: 1 2 2 3
+    :gutter: 1
+    :class-container: container pb-4
 
-    .. button-ref:: batch_training
+    .. grid-item-card::
 
-        Many Model Training with Ray Data
+        .. button-ref:: batch_training
+
+            Many Model Training with Ray Data

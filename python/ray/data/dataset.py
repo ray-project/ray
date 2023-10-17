@@ -3431,9 +3431,6 @@ class Dataset:
     ) -> None:
         """Writes the dataset to a custom :class:`~ray.data.Datasource`.
 
-        For an example of how to use this method, see
-        :ref:`Implementing a Custom Datasource <custom_datasources>`.
-
         Time complexity: O(dataset size / parallelism)
 
         Args:
