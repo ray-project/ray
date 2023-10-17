@@ -278,6 +278,26 @@ are the two main APIs to interact with Train checkpoints:
     :end-before: __inspect_checkpoint_example_end__
 
 
+For Lightning and Transformers, if you are using the default `RayTrainReportCallback` for checkpoint saving in your training function, 
+you can retrieve the original checkpoint files as below:
+
+.. tab-set::
+
+    .. tab-item:: PyTorch Lightning
+
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __inspect_lightning_checkpoint_example_start__
+            :end-before: __inspect_lightning_checkpoint_example_end__
+    
+    .. tab-item:: Transformers
+
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __inspect_transformers_checkpoint_example_start__
+            :end-before: __inspect_transformers_checkpoint_example_end__
+
+
 .. _train-dl-loading-checkpoints:
 
 Restore training state from a checkpoint

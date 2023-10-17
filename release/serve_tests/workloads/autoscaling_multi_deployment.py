@@ -47,6 +47,7 @@ from serve_test_cluster_utils import (
     NUM_CONNECTIONS,
 )
 from typing import Optional
+from ray.serve._private import api as _private_api
 
 logger = logging.getLogger(__file__)
 
@@ -94,9 +95,9 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments)
             # during deployment warmup so each deployment has reference to
             # all other handles to send recursive inference call
             if len(self.all_deployment_async_handles) < len(all_deployment_names):
-                deployments = list(serve.list_deployments().values())
+                deployments = list(_private_api.list_deployments().values())
                 self.all_deployment_async_handles = [
-                    deployment.get_handle(sync=False) for deployment in deployments
+                    deployment._get_handle(sync=False) for deployment in deployments
                 ]
 
             return random.choice(self.all_deployment_async_handles)
@@ -115,7 +116,7 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments)
             return await self.handle_request(request, 0)
 
     for deployment in all_deployment_names:
-        Echo.options(name=deployment).deploy()
+        Echo.options(name=deployment)._deploy()
 
 
 @click.command()
@@ -173,7 +174,7 @@ def main(
 
     logger.info("Warming up cluster ....\n")
     endpoint_refs = []
-    all_endpoints = list(serve.list_deployments().keys())
+    all_endpoints = list(_private_api.list_deployments().keys())
     for endpoint in all_endpoints:
         endpoint_refs.append(
             warm_up_one_cluster.options(num_cpus=0).remote(

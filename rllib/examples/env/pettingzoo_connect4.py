@@ -1,8 +1,10 @@
+import copy
+from typing import Dict, Any
+
 from pettingzoo import AECEnv
 from pettingzoo.classic.connect_four_v3 import raw_env as connect_four_v3
-import copy
+
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from typing import Dict, Any
 
 
 class MultiAgentConnect4(MultiAgentEnv):

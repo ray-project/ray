@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data._internal.planner.plan_read_op import _splitrange
+from ray.data._internal.execution.operators.map_transformer import _splitrange
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -67,6 +67,7 @@ def test_large_file_additional_split(ray_start_10_cpus_shared, tmp_path):
 
     ds = ray.data.read_parquet(tmp_path, parallelism=1)
     assert ds.num_blocks() == 1
+    print(ds.materialize().stats())
     assert 5 < ds.materialize().num_blocks() < 20  # Size-based block split
 
     ds = ray.data.read_parquet(tmp_path, parallelism=10)
