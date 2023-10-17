@@ -249,7 +249,7 @@ Next, copy the following code into a file called ``serve_debugging.py``:
     model.fit(iris_dataset["data"], iris_dataset["target"])
 
     # Define Ray Serve model,
-    @serve.deployment(route_prefix="/iris")
+    @serve.deployment
     class BoostingModel:
         def __init__(self):
             self.model = model
@@ -264,8 +264,7 @@ Next, copy the following code into a file called ``serve_debugging.py``:
             return {"result": human_name}
 
     # Deploy model
-    serve.start()
-    BoostingModel.deploy()
+    serve.run(BoostingModel.bind(), route_prefix="/iris")
 
     time.sleep(3600.0)
 
