@@ -273,9 +273,9 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_accelerate_trainer_gpu",
+    name = "test_torch_accelerate",
     size = "large",
-    srcs = ["tests/test_accelerate_trainer_gpu.py"],
+    srcs = ["tests/test_torch_accelerate.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib",  ":conftest"]
 )
@@ -421,46 +421,6 @@ py_test(
     size = "medium",
     srcs = ["tests/test_lightgbm_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_lightning_checkpoint",
-    size = "medium",
-    srcs = ["tests/test_lightning_checkpoint.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_lightning_trainer_restore",
-    size = "medium",
-    srcs = ["tests/test_lightning_trainer_restore.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_lightning_trainer",
-    size = "large",
-    srcs = ["tests/test_lightning_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_lightning_predictor",
-    size = "medium",
-    srcs = ["tests/test_lightning_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_lightning_deepspeed",
-    size = "large",
-    srcs = ["tests/test_lightning_deepspeed.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
     deps = [":train_lib"]
 )
 

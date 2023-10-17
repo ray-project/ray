@@ -37,6 +37,7 @@ from serve_test_utils import (
     save_test_results,
     is_smoke_test,
 )
+from ray.serve._private import api as _private_api
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -79,9 +80,9 @@ def setup_multi_deployment_replicas(num_replicas, num_deployments) -> List[str]:
             # during deployment warmup so each deployment has reference to
             # all other handles to send recursive inference call
             if len(self.all_deployment_async_handles) < len(all_deployment_names):
-                deployments = list(serve.list_deployments().values())
+                deployments = list(_private_api.list_deployments().values())
                 self.all_deployment_async_handles = [
-                    deployment.get_handle(sync=False) for deployment in deployments
+                    deployment._get_handle(sync=False) for deployment in deployments
                 ]
 
             return random.choice(self.all_deployment_async_handles)
@@ -100,7 +101,7 @@ def setup_multi_deployment_replicas(num_replicas, num_deployments) -> List[str]:
             return await self.handle_request(request, 0)
 
     for deployment in all_deployment_names:
-        Echo.options(name=deployment).deploy()
+        Echo.options(name=deployment)._deploy()
 
     return all_deployment_names
 

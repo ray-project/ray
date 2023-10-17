@@ -99,7 +99,7 @@ py_test(
 
 py_test(
     name = "test_auto_parallelism",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_auto_parallelism.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -122,9 +122,9 @@ py_test(
 )
 
 py_test(
-    name = "test_bulk_executor",
+    name = "test_block_sizing",
     size = "small",
-    srcs = ["tests/test_bulk_executor.py"],
+    srcs = ["tests/test_block_sizing.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -245,14 +245,6 @@ py_test(
     name = "test_parquet",
     size = "medium",
     srcs = ["tests/test_parquet.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_pipeline",
-    size = "medium",
-    srcs = ["tests/test_pipeline.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -382,22 +374,6 @@ py_test(
     name = "test_partitioning",
     size = "medium",
     srcs = ["tests/test_partitioning.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_pipeline_incremental_take",
-    size = "small",
-    srcs = ["tests/test_pipeline_incremental_take.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_pipeline_nohang",
-    size = "medium",
-    srcs = ["tests/test_pipeline_nohang.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

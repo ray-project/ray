@@ -1,4 +1,3 @@
-import sys
 from typing import Optional
 
 import ray
@@ -6,10 +5,7 @@ from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 
 def iter_batches(
