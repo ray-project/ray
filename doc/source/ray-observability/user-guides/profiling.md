@@ -8,6 +8,7 @@ Here is a list of common profiling tools you may use when debugging Ray applicat
     - memray
 - GPU profiling
     - PyTorch Profiler
+    - Nsight System
 - Ray Task / Actor timeline
 
 If Ray doesn't work with certain profiling tools, try running them without Ray to debug the issues.
@@ -52,7 +53,7 @@ Here are the {ref}`steps to profile the memory usage of Ray Tasks and Actors <me
 ## GPU profiling
 GPU and GRAM profiling for your GPU workloads like distributed training. This helps you analyze performance and debug memory issues. 
 - PyTorch profiler is supported out of box when used with Ray Train
-- NVIDIA Nsight System is not natively supported yet. Leave your comments in this [feature request for Nisght System support](https://github.com/ray-project/ray/issues/19631).
+- {ref}`NVIDIA Nsight System <ray-profiling>` is now natively supported
 
 (profiling-pytoch-profiler)=
 ### PyTorch Profiler

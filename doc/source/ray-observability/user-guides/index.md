@@ -10,3 +10,4 @@ The guides include:
 * {ref}`configure-logging`
 * {ref}`application-level-metrics`
 * {ref}`ray-tracing`
+* {ref}`ray-profiling`
