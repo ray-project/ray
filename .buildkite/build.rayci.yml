@@ -37,6 +37,7 @@ steps:
       - python_dependencies
       - docker
       - core_cpp
+      - ray_image
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
@@ -60,6 +61,7 @@ steps:
       - python_dependencies
       - docker
       - core_cpp
+      - ray_ml_image
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
