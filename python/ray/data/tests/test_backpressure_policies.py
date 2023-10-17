@@ -10,7 +10,6 @@ from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
     ConcurrencyCapBackpressurePolicy,
 )
-from ray.data._internal.execution.streaming_executor_state import Topology
 
 
 @contextmanager
@@ -109,7 +108,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         self.assertEqual(policy._concurrency_caps[op], init_cap * cap_multiplier**3)
 
     def test_config(self):
-        topology = MagicMock(Topology)
+        topology = {}
         # Test good config.
         with self._patch_config(10, 0.3, 1.5):
             policy = ConcurrencyCapBackpressurePolicy(topology)
