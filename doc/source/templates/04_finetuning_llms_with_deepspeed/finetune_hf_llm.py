@@ -320,15 +320,10 @@ def training_function(kwargs: dict):
     ):
         lr_scheduler = get_linear_schedule_with_warmup(
             optimizer=optimizer,
-<<<<<<< HEAD
-            num_warmup_steps=int((num_epochs * train_ds_len / 20)),
-            num_training_steps=(num_epochs * train_ds_len * batch_size),
-=======
             num_warmup_steps=100,
             num_training_steps=(
                 (train_ds_len * num_epochs) // gradient_accumulation_steps
             ),
->>>>>>> master
         )
     else:
         lr_scheduler = DummyScheduler(
