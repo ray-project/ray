@@ -15,7 +15,7 @@ For 7B- or 13B-parameter models, set up a cluster on AWS with the following sett
 | Head node  | 1   | m5.xlarge   | -     | -     | -     |
 | Worker node| 16  | g5.4xlarge    | 1 x A10G     | 24 GB      | 64 GB      |
 
-And launch the following script to finetune LLaMA 2 7B:
+And launch the following script for a demo of the finetuning on LLaMA 2 7B:
 
 ```
 ./run_llama_ft.sh --size=7b --as-test
