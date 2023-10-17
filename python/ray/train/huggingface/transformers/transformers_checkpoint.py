@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 TRANSFORMERS_CHECKPOINT_DEPRECATION_MESSAGE = (
-    "`TransformersCheckpoint` is deprecated. Please use `ray.train.Checkpoint`"
-    "instead."
+    "`TransformersCheckpoint` will be hard deprecated in Ray 2.8. Please use "
+    "`ray.train.Checkpoint` instead."
 )
 
 
