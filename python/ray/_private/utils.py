@@ -288,7 +288,7 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     return {
         accelerator_resource_name: get_accelerator_manager_for_resource(
             accelerator_resource_name
-        ).get_visible_accelerator_ids()
+        ).get_current_process_visible_accelerator_ids()
         for accelerator_resource_name in get_all_accelerator_resource_names()
     }
 
