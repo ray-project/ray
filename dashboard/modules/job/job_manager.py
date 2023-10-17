@@ -678,7 +678,7 @@ class JobManager:
                             JobStatus.FAILED,
                             message=(
                                 "Unexpected error occurred: "
-                                "Failed to get job supervisor."
+                                "failed to get job supervisor."
                             ),
                         )
                         is_alive = False

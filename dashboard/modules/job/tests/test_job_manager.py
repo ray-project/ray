@@ -1244,5 +1244,32 @@ sys.exit({EXIT_CODE})
     assert job_info.driver_exit_code == EXIT_CODE
 
 
+@pytest.mark.asyncio
+async def test_invalid_runtime_env_error_not_overwritten(shared_ray_instance, tmp_path):
+    """Regression test for: https://github.com/ray-project/ray/issues/40062.
+
+    Previously there existed a race condition that could overwrite the invalid
+    `runtime_env` error message. This would happen after an initial correct error
+    message was set and was not deterministic, so this test runs many iterations.
+
+    Without the fix in place, this test failed consistently.
+    """
+    for _ in range(10):
+        # Race condition existed when a job was submitted just after constructing the
+        # `JobManager`, so make a new one in each test iteration.
+        job_manager = create_job_manager(shared_ray_instance, tmp_path)
+        job_id = await job_manager.submit_job(
+            entrypoint="doesn't matter", runtime_env={"working_dir": "path_not_exist"}
+        )
+
+        # `await` many times to yield the `asyncio` loop and verify that the error
+        # message does not get overwritten.
+        for _ in range(100):
+            data = await job_manager.get_job_info(job_id)
+            assert data.status == JobStatus.FAILED
+            assert "path_not_exist is not a valid URI" in data.message
+            assert data.driver_exit_code is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
