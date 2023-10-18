@@ -17,7 +17,6 @@ from typing import (
     Mapping,
     Optional,
     Tuple,
-    Type,
     TypeVar,
     Union,
 )
@@ -29,7 +28,6 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.util.data_batch_conversion import BlockFormat
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
@@ -233,8 +231,6 @@ class Dataset:
     def __init__(
         self,
         plan: ExecutionPlan,
-        epoch: int,
-        lazy: bool = True,
         logical_plan: Optional[LogicalPlan] = None,
     ):
         """Construct a Dataset (internal API).
@@ -246,15 +242,10 @@ class Dataset:
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
         self._plan = plan
-        self._uuid = uuid4().hex
-        self._epoch = epoch
-        self._lazy = lazy
+        self._set_uuid(uuid4().hex)
         self._logical_plan = logical_plan
         if logical_plan is not None:
             self._plan.link_logical_plan(logical_plan)
-
-        if not lazy:
-            self._plan.execute(allow_clear_input_blocks=False)
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
@@ -267,9 +258,9 @@ class Dataset:
         if not _as:
             _as = type(ds)
         if _deep_copy:
-            return _as(ds._plan.deep_copy(), ds._epoch, ds._lazy, ds._logical_plan)
+            return _as(ds._plan.deep_copy(), ds._logical_plan)
         else:
-            return _as(ds._plan.copy(), ds._epoch, ds._lazy, ds._logical_plan)
+            return _as(ds._plan.copy(), ds._logical_plan)
 
     def map(
         self,
@@ -396,7 +387,7 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(map_op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def map_batches(
         self,
@@ -631,7 +622,7 @@ class Dataset:
             )
             logical_plan = LogicalPlan(map_batches_op)
 
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def add_column(
         self,
@@ -915,7 +906,7 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def filter(
         self,
@@ -971,7 +962,7 @@ class Dataset:
             )
             logical_plan = LogicalPlan(op)
 
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
@@ -1026,7 +1017,7 @@ class Dataset:
                 shuffle=shuffle,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def random_shuffle(
         self,
@@ -1076,7 +1067,7 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def randomize_block_order(
         self,
@@ -1114,7 +1105,7 @@ class Dataset:
                 seed=seed,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -1369,8 +1360,6 @@ class Dataset:
                             stats,
                             run_by_consumer=owned_by_consumer,
                         ),
-                        self._epoch,
-                        self._lazy,
                         logical_plan,
                     )
                 )
@@ -1496,8 +1485,6 @@ class Dataset:
                         stats,
                         run_by_consumer=owned_by_consumer,
                     ),
-                    self._epoch,
-                    self._lazy,
                     logical_plan,
                 )
             )
@@ -1582,8 +1569,6 @@ class Dataset:
                         stats,
                         run_by_consumer=block_list._owned_by_consumer,
                     ),
-                    self._epoch,
-                    self._lazy,
                     logical_plan,
                 )
             )
@@ -1828,16 +1813,6 @@ class Dataset:
                 )
                 logical_plan = LogicalPlan(op)
 
-        epochs = [ds._get_epoch() for ds in datasets]
-        max_epoch = max(*epochs)
-        if len(set(epochs)) > 1:
-            if ray.util.log_once("dataset_epoch_warned"):
-                logger.warning(
-                    "Dataset contains data from multiple epochs: {}, "
-                    "likely due to a `rewindow()` call. The higher epoch "
-                    "number {} will be used. This warning will not "
-                    "be shown again.".format(set(epochs), max_epoch)
-                )
         stats = DatasetStats(
             stages={"Union": []},
             parent=[d._plan.stats() for d in datasets],
@@ -1845,8 +1820,6 @@ class Dataset:
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),
-            max_epoch,
-            self._lazy,
             logical_plan,
         )
 
@@ -2237,7 +2210,7 @@ class Dataset:
                 sort_key=sort_key,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def zip(self, other: "Dataset") -> "Dataset":
         """Materialize and zip the columns of this dataset with the columns of another.
@@ -2279,7 +2252,7 @@ class Dataset:
         if logical_plan is not None and other_logical_plan is not None:
             op = Zip(logical_plan.dag, other_logical_plan.dag)
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
@@ -2307,7 +2280,7 @@ class Dataset:
         if logical_plan is not None:
             op = Limit(logical_plan.dag, limit=limit)
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
     def take_batch(
@@ -3426,9 +3399,6 @@ class Dataset:
     ) -> None:
         """Writes the dataset to a custom :class:`~ray.data.Datasource`.
 
-        For an example of how to use this method, see
-        :ref:`Implementing a Custom Datasource <custom_datasources>`.
-
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -3479,9 +3449,7 @@ class Dataset:
                 import pandas as pd
 
                 datasource.on_write_start(**write_args)
-                self._write_ds = Dataset(
-                    plan, self._epoch, self._lazy, logical_plan
-                ).materialize()
+                self._write_ds = Dataset(plan, logical_plan).materialize()
                 blocks = ray.get(self._write_ds._plan.execute().get_blocks())
                 assert all(
                     isinstance(block, pd.DataFrame) and len(block) == 1
@@ -4538,24 +4506,6 @@ class Dataset:
         """
         _raise_dataset_pipeline_deprecation_warning()
 
-    @Deprecated(message="Use `Dataset.materialize()` instead.")
-    def fully_executed(self) -> "MaterializedDataset":
-        logger.warning(
-            "Deprecation warning: use Dataset.materialize() instead of "
-            "fully_executed()."
-        )
-        self._plan.execute(force_read=True)
-        return self
-
-    @Deprecated(message="Check `isinstance(Dataset, MaterializedDataset)` instead.")
-    def is_fully_executed(self) -> bool:
-        logger.warning(
-            "Deprecation warning: Check "
-            "`isinstance(Dataset, MaterializedDataset)` "
-            "instead of using is_fully_executed()."
-        )
-        return self._plan.has_computed_output()
-
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this dataset into object store memory.
@@ -4600,12 +4550,12 @@ class Dataset:
                 copy._plan.stats(),
                 run_by_consumer=False,
             ),
-            copy._epoch,
-            copy._lazy,
             logical_plan,
         )
         output._plan.execute()  # No-op that marks the plan as fully executed.
-        output._plan._in_stats.dataset_uuid = self._get_uuid()
+        # Metrics are tagged with `copy`s uuid, update the output uuid with
+        # this so the user can access the metrics label.
+        output._set_uuid(copy._get_uuid())
         return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
@@ -4668,28 +4618,6 @@ class Dataset:
         blocks = self._plan.execute().get_blocks()
         self._synchronize_progress_bar()
         return blocks
-
-    @Deprecated(
-        message="Dataset is lazy by default, so this conversion call is no longer "
-        "needed and this API will be removed in a future release"
-    )
-    def lazy(self) -> "Dataset":
-        """Enable lazy evaluation.
-
-        Dataset is lazy by default, so this is only useful for datasets created
-        from :func:`ray.data.from_items() <ray.data.read_api.from_items>`, which is
-        eager.
-
-        The returned dataset is a lazy dataset, where all subsequent operations
-        on the stream won't be executed until the dataset is consumed
-        (e.g. ``.take()``, ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.)
-        or execution is manually triggered via ``.materialize()``.
-        """
-        ds = Dataset(
-            self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
-        )
-        ds._set_uuid(self._get_uuid())
-        return ds
 
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
@@ -4774,9 +4702,9 @@ class Dataset:
             )
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
-        plan_copy = self._plan.deep_copy(preserve_uuid=True)
+        plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
-        ds = Dataset(plan_copy, self._get_epoch(), self._lazy, logical_plan_copy)
+        ds = Dataset(plan_copy, logical_plan_copy)
         ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
@@ -4856,25 +4784,13 @@ class Dataset:
             ExecutionPlan(
                 left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
             ),
-            self._epoch,
-            self._lazy,
         )
         r_ds = Dataset(
             ExecutionPlan(
                 right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
             ),
-            self._epoch,
-            self._lazy,
         )
         return l_ds, r_ds
-
-    @Deprecated(message="The batch format is no longer exposed as a public API.")
-    def default_batch_format(self) -> Type:
-        raise ValueError("default_batch_format() is not allowed in Ray 2.5")
-
-    @Deprecated(message="The dataset format is no longer exposed as a public API.")
-    def dataset_format(self) -> BlockFormat:
-        raise ValueError("dataset_format() is not allowed in Ray 2.5")
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs
@@ -5047,12 +4963,8 @@ class Dataset:
 
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
-
-    def _get_epoch(self) -> int:
-        return self._epoch
-
-    def _set_epoch(self, epoch: int) -> None:
-        self._epoch = epoch
+        self._plan._dataset_uuid = uuid
+        self._plan._in_stats.dataset_uuid = uuid
 
     def _synchronize_progress_bar(self):
         """Flush progress bar output by shutting down the current executor.
@@ -5074,16 +4986,12 @@ class Dataset:
         return {
             "plan": self._plan,
             "uuid": self._uuid,
-            "epoch": self._epoch,
-            "lazy": self._lazy,
             "logical_plan": self._logical_plan,
         }
 
     def __setstate__(self, state):
         self._plan = state["plan"]
         self._uuid = state["uuid"]
-        self._epoch = state["epoch"]
-        self._lazy = state["lazy"]
         self._logical_plan = state["logical_plan"]
         self._current_executor = None
 
