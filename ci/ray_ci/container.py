@@ -81,6 +81,7 @@ class Container:
             "--volume",
             "/tmp/artifacts:/artifact-mount",
         ]
+        command += ["--device", "/dev/neuron0", "--device", "/dev/neuron1"]
         for volume in self.volumes:
             command += ["--volume", volume]
         for env in _DOCKER_ENV:
