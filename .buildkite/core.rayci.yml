@@ -56,14 +56,14 @@ steps:
       # core tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
         --parallelism-per-worker 3
-        --build-name minbuild-py{{matrix}}
+        --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
       # core redis tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
         --parallelism-per-worker 3
-        --build-name minbuild-py{{matrix}}
+        --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=TEST_EXTERNAL_REDIS=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
@@ -72,11 +72,11 @@ steps:
       # serve tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve 
         --parallelism-per-worker 3
-        --build-name minbuild-py{{matrix}}
+        --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --only-tags minimal
         --skip-ray-installation
-    depends_on: minbuild
+    depends_on: minbuild-core
     job_env: forge
     matrix:
       - "3.8"
@@ -92,3 +92,16 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... core --run-flaky-tests --parallelism-per-worker 3
     depends_on: corebuild
     job_env: forge
+
+  - name: minbuild-core
+    label: "wanda: minbuild-core-py{{matrix}}"
+    wanda: ci/docker/min.build.wanda.yaml
+    depends_on: oss-ci-base_build
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      EXTRA_DEPENDENCY: core
