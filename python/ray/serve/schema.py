@@ -1,4 +1,5 @@
 import json
+import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Union
@@ -61,6 +62,25 @@ def _route_prefix_format(cls, v):
         )
 
     return v
+
+
+@PublicAPI(stability="alpha")
+class LoggingConfigSchema(BaseModel):
+    """Logging config schema for configuring serve components logs.
+
+    encoding: Encoding type for the logs. Default to TEXT.
+    log_level: Log level for the logs. Default to logging.INFO.
+    logs_dir: Directory to store the logs. Default to None, which means
+        logs will be stored in the default direction
+        ("/tmp/ray/session_latest/logs/serve/...").
+    enable_access_log: Whether to enable log to the file. Default to True.
+        When set to False, the logs is not written to the file.
+    """
+
+    encoding: Optional[str] = "TEXT"
+    log_level: Optional[int] = logging.INFO
+    logs_dir: Optional[str] = None
+    enable_access_log: Optional[bool] = True
 
 
 @PublicAPI(stability="stable")
