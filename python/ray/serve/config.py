@@ -269,13 +269,15 @@ class LoggingConfig(BaseModel):
     """Logging config for configuring serve components logs.
 
     Args:
-        encoding: Encoding type for the logs. Default to EncodingType.TEXT.
-        log_level: Log level for the logs. Default to logging.INFO.
+        encoding: Encoding type for the logs. Default to 'TEXT'. 'JSON' is
+            also supported to format all serve logs into json structure.
+        log_level: Log level for the serve logs. Default to logging.INFO.
+            You can set it to 'logging.DEBUG' to get more detailed logs.
         logs_dir: Directory to store the logs. Default to None, which means
             logs will be stored in the default direction
             ("/tmp/ray/session_latest/logs/serve/...").
-        enable_access_log: Whether to enable log to the file. Default to True.
-            When set to False, the logs is not written to the file.
+        enable_access_log: Whether to write serve log to the file. Default to True.
+            When set to False, the serve logs are not written to files.
     """
 
     encoding: Optional[EncodingType] = EncodingType.TEXT

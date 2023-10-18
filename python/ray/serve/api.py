@@ -10,7 +10,7 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.serve._private.config import DeploymentConfig, LoggingConfig, ReplicaConfig
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -37,6 +37,7 @@ from ray.serve.config import (
     AutoscalingConfig,
     DeploymentMode,
     HTTPOptions,
+    LoggingConfig,
     ProxyLocation,
     gRPCOptions,
 )

@@ -66,21 +66,47 @@ def _route_prefix_format(cls, v):
 
 @PublicAPI(stability="alpha")
 class LoggingConfigSchema(BaseModel):
-    """Logging config schema for configuring serve components logs.
+    """Logging config schema for configuring serve components logs."""
 
-    encoding: Encoding type for the logs. Default to TEXT.
-    log_level: Log level for the logs. Default to logging.INFO.
-    logs_dir: Directory to store the logs. Default to None, which means
-        logs will be stored in the default direction
-        ("/tmp/ray/session_latest/logs/serve/...").
-    enable_access_log: Whether to enable log to the file. Default to True.
-        When set to False, the logs is not written to the file.
-    """
+    encoding: str = Field(
+        default="TEXT",
+        description=(
+            "Encoding type for the serve logs. Default to 'TEXT'. 'JSON' is also "
+            "supported to format all serve logs into json structure."
+        ),
+    )
+    log_level: int = Field(
+        default=logging.INFO,
+        description=(
+            "Log level for the serve logs. Default to logging.INFO. You can set it to "
+            "'logging.DEBUG' to get more detailed logs."
+        ),
+    )
+    logs_dir: Union[str, None] = Field(
+        default=None,
+        description=(
+            "Directory to store the logs. Default to None, which means "
+            "logs will be stored in the default directory "
+            "('/tmp/ray/session_latest/logs/serve/...')."
+        ),
+    )
+    enable_access_log: bool = Field(
+        default=True,
+        description=(
+            "Whether to write serve log to the file. Default to True."
+            " When set to False, the serve logs are not written to files."
+        ),
+    )
 
-    encoding: Optional[str] = "TEXT"
-    log_level: Optional[int] = logging.INFO
-    logs_dir: Optional[str] = None
-    enable_access_log: Optional[bool] = True
+    @validator("encoding")
+    def valid_encoding_format(cls, v):
+
+        if v not in ["TEXT", "JSON"]:
+            raise ValueError(
+                f'Got "{v}" for encoding. Encoding must be one of "TEXT" or "JSON".'
+            )
+
+        return v
 
 
 @PublicAPI(stability="stable")
@@ -284,6 +310,10 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             "Defaults to no limitation."
         ),
     )
+    logging_config: LoggingConfigSchema = Field(
+        default=DEFAULT.VALUE,
+        description="Logging config for configuring serve deployment logs.",
+    )
 
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
@@ -408,6 +438,10 @@ class ServeApplicationSchema(BaseModel):
     args: Dict = Field(
         default={},
         description="Arguments that will be passed to the application builder.",
+    )
+    logging_config: LoggingConfigSchema = Field(
+        default=None,
+        description="Logging config for configuring serve application logs.",
     )
 
     @property
@@ -623,6 +657,10 @@ class ServeDeploySchema(BaseModel):
     )
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
+    )
+    logging_config: LoggingConfigSchema = Field(
+        default=None,
+        description="Logging config for configuring serve components logs.",
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."

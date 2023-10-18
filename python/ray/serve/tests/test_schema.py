@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 import time
 from typing import Dict, List
@@ -19,6 +20,7 @@ from ray.serve.context import _get_global_client
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
+    LoggingConfigSchema,
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -723,6 +725,34 @@ class TestServeStatusSchema:
                 deployment_statuses=[],
                 fake_field=None,
             )
+
+
+class TestLoggingConfigSchema:
+    def test_parse_dict(self):
+        schema = LoggingConfigSchema.parse_obj(
+            {
+                "logging_level": logging.INFO,
+                "encoding": "JSON",
+                "logs_dir": "/my_dir",
+                "enable_access_log": True,
+            }
+        )
+        assert schema.log_level == logging.INFO
+
+    def test_wrong_encoding_type(self):
+        with pytest.raises(ValidationError):
+            LoggingConfigSchema.parse_obj(
+                {
+                    "logging_level": logging.INFO,
+                    "encoding": "NOT_EXIST",
+                    "logs_dir": "/my_dir",
+                    "enable_access_log": True,
+                }
+            )
+
+    def test_default_values(self):
+        schema = LoggingConfigSchema.parse_obj({})
+        assert schema.log_level == logging.INFO
 
 
 # This function is defined globally to be accessible via import path

@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from ray import cloudpickle
@@ -8,7 +10,9 @@ from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentMode,
+    EncodingType,
     HTTPOptions,
+    LoggingConfig,
     ProxyLocation,
     gRPCOptions,
 )
@@ -507,6 +511,28 @@ def test_grpc_options():
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
         grpc_options.grpc_servicer_func_callable
     assert "is not a callable function!" in str(exception)
+
+
+def test_logging_config():
+    """
+    Test logging config schema, verify the default values and user defined values.
+    """
+    logging_config = LoggingConfig()
+    assert logging_config.enable_access_log
+    assert logging_config.encoding == EncodingType.TEXT
+    assert logging_config.log_level == logging.INFO
+    assert logging_config.logs_dir is None
+
+    logging_config = LoggingConfig(
+        encoding=EncodingType.JSON,
+        logs_dir="/dir",
+        log_level=logging.DEBUG,
+        enable_access_log=False,
+    )
+    assert logging_config.encoding == EncodingType.JSON
+    assert logging_config.logs_dir == "/dir"
+    assert logging_config.log_level == logging.DEBUG
+    assert logging_config.enable_access_log is False
 
 
 def test_proxy_location_to_deployment_mode():
