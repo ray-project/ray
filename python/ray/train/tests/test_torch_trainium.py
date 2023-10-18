@@ -1,19 +1,17 @@
 import pytest
 import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch_xla.core.xla_model as xm
+import torch_xla.distributed.xla_backend  # noqa: F401
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 import ray
+import ray.train
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.train.torch.xla import TorchXLAConfig
 
-import os
-import torch
-import torch.nn as nn
-from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.optim as optim
-import torch_xla.core.xla_model as xm
-import torch_xla.distributed.xla_backend
-import ray.train
 
 @pytest.fixture
 def ray_start_2_neuron_cores():
@@ -21,6 +19,7 @@ def ray_start_2_neuron_cores():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
 
 def test_torch_e2e(ray_start_2_neuron_cores):
     class Model(nn.Module):
@@ -53,9 +52,12 @@ def test_torch_e2e(ray_start_2_neuron_cores):
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         torch_config=TorchXLAConfig(),
-        scaling_config=ScalingConfig(num_workers=2, resources_per_worker={"neuron_cores": 1}),
+        scaling_config=ScalingConfig(
+            num_workers=2, resources_per_worker={"neuron_cores": 1}
+        ),
     )
     trainer.fit()
+
 
 if __name__ == "__main__":
     import sys
