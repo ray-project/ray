@@ -1,4 +1,4 @@
-name: "servepydantic2build"
+name: "servepydantic1build"
 froms: ["cr.ray.io/rayproject/oss-ci-base_build"]
 dockerfile: ci/docker/serve.build.Dockerfile
 srcs:
@@ -6,6 +6,6 @@ srcs:
   - python/requirements_compiled.txt
   - python/requirements/test-requirements.txt
 build_args:
-  - PYDANTIC_VERSION=2.4.2
+  - PYDANTIC_VERSION=1.10.12
 tags:
-  - cr.ray.io/rayproject/servepydantic2build
+  - cr.ray.io/rayproject/servepydantic1build
