@@ -313,7 +313,7 @@ doctest(
         ],
         exclude=[
             # Quarantined
-	        "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/user-guides/data-loading-preprocessing.rst",
             # GPU
             "source/train/getting-started-pytorch-lightning.rst",
             "source/train/getting-started-pytorch.rst",
