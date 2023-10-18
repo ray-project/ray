@@ -103,7 +103,7 @@ def get_expected_lora_num_parameters(
     )
 
     return sum_params
-    
+
 
 def get_number_of_params(model: nn.Module):
     sum = 0
@@ -296,21 +296,27 @@ def training_function(kwargs: dict):
         s = time.time()
         lora_config = LoraConfig(**config["lora_config"])
 
-        expected_num_parameters = get_expected_lora_num_parameters(lora_config=lora_config, model=model)
+        expected_num_parameters = get_expected_lora_num_parameters(
+            lora_config=lora_config, model=model
+        )
 
         print(f"Attempting to apply LoRA config: {lora_config}")
 
         model.enable_input_require_grads()
         model = get_peft_model(model, lora_config)
-        
+
         num_parameters = get_number_of_params(model)
 
         if num_parameters != expected_num_parameters:
-            raise ValueError(f"Expected {expected_num_parameters} parameters, got {num_parameters} parameters."
-                             f"LoRA-ification failed.")
+            raise ValueError(
+                f"Expected {expected_num_parameters} parameters, got {num_parameters} parameters."
+                f"LoRA-ification failed."
+            )
 
-        print(f"LoRA-ification done in {time.time() - s} seconds. Estimated checkpoint size (fp16): {num_parameters * 2 / 1e6} MB")
-    
+        print(
+            f"LoRA-ification done in {time.time() - s} seconds. Estimated checkpoint size (fp16): {num_parameters * 2 / 1e6} MB"
+        )
+
     print(f"Number of checkpointed parameters: {get_number_of_params(model)}")
 
     print("Model initialized with pretrained weights. Training starting...")
@@ -336,7 +342,7 @@ def training_function(kwargs: dict):
     # Creates Dummy Scheduler if `scheduler` was specified in the config file
     # else, creates `args.lr_scheduler_type` Scheduler
     # get train and valid dataset lengths
-    
+
     if (
         accelerator.state.deepspeed_plugin is None
         or "scheduler" not in accelerator.state.deepspeed_plugin.deepspeed_config
@@ -542,11 +548,10 @@ def training_function(kwargs: dict):
                 time.perf_counter() - checkpoint_save_start,
             )
 
-
         if perplex < args.stop_perplexity:
             print(f"Perplexity reached {perplex} < {args.stop_perplexity}. Stopping.")
             break
-        
+
         if config["as_test"]:
             break
 
@@ -572,7 +577,12 @@ def parse_args():
         help="Batch size to use per device.",
     )
 
-    parser.add_argument("--stop-perplexity", default=0, type=float, help="Target perplexity to reach after which to stop training. Default is 0. If 0, training will not stop on perplexity.")
+    parser.add_argument(
+        "--stop-perplexity",
+        default=0,
+        type=float,
+        help="Target perplexity to reach after which to stop training. Default is 0. If 0, training will not stop on perplexity.",
+    )
 
     parser.add_argument(
         "--eval-batch-size-per-device",
@@ -588,7 +598,7 @@ def parse_args():
         "--grad_accum", type=int, default=1, help="Gradient accumulation steps."
     )
     parser.add_argument("--train_path", type=str, help="Path to training jsonl file")
-    
+
     parser.add_argument("--test_path", type=str, help="Path to testing jsonl file")
 
     parser.add_argument(

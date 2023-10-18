@@ -26,19 +26,26 @@ STOP_TOKEN = "<END_A>"
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of training script.")
 
-    parser.add_argument("--output-path", type=str, help="Path to output directory. Defaults to the orginal checkpoint directory.", required=True)
-
     parser.add_argument(
-        "--model-name", required=True, type=str, help="7b, 13b or 70b."
+        "--output-path",
+        type=str,
+        help="Path to output directory. Defaults to the orginal checkpoint directory.",
+        required=True,
     )
 
+    parser.add_argument("--model-name", required=True, type=str, help="7b, 13b or 70b.")
+
     parser.add_argument(
-        "--checkpoint", type=str, required=True, help="Path to checkpoint containing the LoRA weights."
+        "--checkpoint",
+        type=str,
+        required=True,
+        help="Path to checkpoint containing the LoRA weights.",
     )
 
     args = parser.parse_args()
 
     return args
+
 
 def test_eval(model, tokenizer):
     """Query the model with a single prompt to sanity check it."""
@@ -48,11 +55,13 @@ def test_eval(model, tokenizer):
     model.eval()
     model.to("cuda")
 
-    print(f"Prompting model with promtp : " , TEST_PROMPT)
+    print(f"Prompting model with promtp : ", TEST_PROMPT)
     input_ids = tokenizer(TEST_PROMPT, return_tensors="pt")["input_ids"].to("cuda")
 
-    stop_token_embeding = tokenizer(STOP_TOKEN, return_tensors="pt", add_special_tokens=False)["input_ids"].to("cuda")
-      
+    stop_token_embeding = tokenizer(
+        STOP_TOKEN, return_tensors="pt", add_special_tokens=False
+    )["input_ids"].to("cuda")
+
     def custom_stopping_criteria(embeddings, *args, **kwargs) -> bool:
         return stop_token_embeding in embeddings
 
@@ -64,11 +73,11 @@ def test_eval(model, tokenizer):
             output_scores=True,
             max_new_tokens=500,
             stopping_criteria=stopping_criteria,
-    )
-    
+        )
+
     decoded = tokenizer.batch_decode(generation_output)
     print("Outputs: ", decoded)
-    
+
 
 def main():
     args = parse_args()
@@ -76,11 +85,11 @@ def main():
     # Sanity checks
     if not Path(args.checkpoint).exists():
         raise ValueError(f"Checkpoint {args.checkpoint} does not exist.")
-    
+
     if not args.output_path:
         args.output_path = Path(args.checkpoint) / "merged_model"
         print(f"Output path not specified. Using {args.output_path}")
-    
+
     Path(args.output_path).mkdir(parents=True, exist_ok=True)
 
     # Load orignal model
@@ -119,13 +128,13 @@ def main():
     print(f"Done downloading and loading model after {time.time() - s2} seconds.")
     print(f"Loading and merging peft weights...")
     s3 = time.time()
-    
+
     # Load LoRA weights
     model: peft.PeftModel = peft.PeftModel.from_pretrained(
-        model=model, 
+        model=model,
         model_id=args.checkpoint,
     )
-    
+
     # Merge weights and save
     model = model.merge_and_unload()
     output_path = Path(args.output_path)
