@@ -389,7 +389,7 @@ class Dataset:
             logical_plan = LogicalPlan(map_op)
         return Dataset(plan, logical_plan)
 
-    def set_name(self, name: Optional[str]):
+    def _set_name(self, name: Optional[str]):
         """Set the name of the dataset.
 
         Used as a prefix for metrics tags.
@@ -397,7 +397,7 @@ class Dataset:
         self._plan._dataset_name = name
 
     @property
-    def name(self) -> Optional[str]:
+    def _name(self) -> Optional[str]:
         """Returns the dataset name"""
         return self._plan._dataset_name
 

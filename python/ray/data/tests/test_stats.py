@@ -1174,8 +1174,8 @@ def test_stats_actor_metrics():
 
 def test_dataset_name():
     ds = ray.data.range(100).map_batches(lambda x: x)
-    ds.set_name("test_ds")
-    assert ds.name == "test_ds"
+    ds._set_name("test_ds")
+    assert ds._name == "test_ds"
     with patch(
         "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
     ) as update_fn:
@@ -1185,7 +1185,7 @@ def test_dataset_name():
 
     # Names persist after an execution
     ds = ds.random_shuffle()
-    assert ds.name == "test_ds"
+    assert ds._name == "test_ds"
     with patch(
         "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
     ) as update_fn:
@@ -1193,9 +1193,9 @@ def test_dataset_name():
 
     assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
 
-    ds.set_name("test_ds_two")
+    ds._set_name("test_ds_two")
     ds = ds.map_batches(lambda x: x)
-    assert ds.name == "test_ds_two"
+    assert ds._name == "test_ds_two"
     with patch(
         "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
     ) as update_fn:
@@ -1203,9 +1203,9 @@ def test_dataset_name():
 
     assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds_two" + mds._uuid
 
-    ds.set_name(None)
+    ds._set_name(None)
     ds = ds.map_batches(lambda x: x)
-    assert ds.name is None
+    assert ds._name is None
     with patch(
         "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
     ) as update_fn:
