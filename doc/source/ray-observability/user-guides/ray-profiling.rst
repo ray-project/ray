@@ -10,7 +10,7 @@ Profiling is one of the most important debugging tools to diagnose performance, 
     Ray Profiling is under active development with more profilers to be natively supported in the future. APIs are subject to change.
 
 GPU Profiling
-------------
+--------------
 
 Installation
 ~~~~~~~~~~~~
