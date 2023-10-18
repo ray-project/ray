@@ -138,7 +138,7 @@ attrs==21.4.0
     #   sarif-om
     #   semgrep
     #   sphinx-external-toc
-autodoc-pydantic==1.6.1
+autodoc-pydantic==2.0.1
     # via -r /ray/ci/../doc/requirements-doc.txt
 autograd==1.6.2
     # via pymoo
@@ -260,7 +260,7 @@ cffi==1.16.0
     #   pymunk
     #   pynacl
     #   soundfile
-cfn-lint==0.82.1
+cfn-lint==0.82.2
     # via moto
 charset-normalizer==3.3.0
     # via
@@ -770,6 +770,7 @@ importlib-metadata==4.10.0
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ale-py
     #   alembic
+    #   autodoc-pydantic
     #   flask
     #   gym
     #   gymnasium
@@ -1640,7 +1641,9 @@ pydantic-core==2.10.1
 pydantic-extra-types==2.1.0
     # via fastapi
 pydantic-settings==2.0.3
-    # via fastapi
+    # via
+    #   autodoc-pydantic
+    #   fastapi
 pydata-sphinx-theme==0.8.1
     # via sphinx-book-theme
 pydeprecate==0.3.2
