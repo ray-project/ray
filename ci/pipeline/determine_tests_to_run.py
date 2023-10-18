@@ -242,6 +242,7 @@ if __name__ == "__main__":
                 or changed_file == ".buildkite/_forge.rayci.yml"
                 or changed_file == "ci/docker/min.build.Dockerfile"
                 or changed_file == "ci/docker/min.build.wanda.yaml"
+                or changed_file == ".buildkite/serverless.rayci.yml"
             ):
                 RAY_CI_PYTHON_AFFECTED = 1
             elif changed_file.startswith("java/"):
