@@ -992,20 +992,22 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-* Extra metrics: {STANDARD_EXTRA_METRICS.replace(": Z", ": N")}
+* Extra metrics: {STANDARD_EXTRA_METRICS}
 
 Dataset iterator time breakdown:
 * Total time user code is blocked: T
 * Total time in user code: T
 * Total time overall: T
-* Num blocks local: N
-* Num blocks remote: N
+* Num blocks local: Z
+* Num blocks remote: Z
 * Num blocks unknown location: N
 * Batch iteration time breakdown (summed across prefetch threads):
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
-"""
+""".replace(
+            ": Z", ": N"
+        )
     )
 
 
