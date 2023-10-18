@@ -658,6 +658,14 @@ py_test(
     deps = [":train_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_torch_trainium",
+    size = "large",
+    srcs = ["tests/test_torch_trainium.py"],
+    tags = ["team:ml", "exclusive", "trainium"],
+    deps = [":train_lib"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
