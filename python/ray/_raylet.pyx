@@ -1080,6 +1080,7 @@ cdef report_streaming_generator_output(
     cdef:
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+        int64_t generator_index = context.generator_index
 
     if isinstance(output_or_exception, Exception):
         create_generator_error_object(
@@ -1108,13 +1109,14 @@ cdef report_streaming_generator_output(
                 return_obj.first,
                 is_plasma_object(return_obj.second)))
 
-        CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-            return_obj,
-            context.generator_id,
-            context.caller_address,
-            context.generator_index,
-            context.attempt_number,
-            context.waiter)
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+                return_obj,
+                context.generator_id,
+                context.caller_address,
+                generator_index,
+                context.attempt_number,
+                context.waiter)
         context.generator_index += 1
         return True
     else:
@@ -1141,13 +1143,14 @@ cdef report_streaming_generator_output(
         logger.debug(
             "Writes to a ObjectRefStream of an "
             "index {}".format(context.generator_index))
-        CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-            return_obj,
-            context.generator_id,
-            context.caller_address,
-            context.generator_index,
-            context.attempt_number,
-            context.waiter)
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+                return_obj,
+                context.generator_id,
+                context.caller_address,
+                generator_index,
+                context.attempt_number,
+                context.waiter)
         context.generator_index += 1
         return False
 
