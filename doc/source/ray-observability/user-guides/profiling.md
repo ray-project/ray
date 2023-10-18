@@ -53,7 +53,7 @@ Here are the {ref}`steps to profile the memory usage of Ray Tasks and Actors <me
 ## GPU profiling
 GPU and GRAM profiling for your GPU workloads like distributed training. This helps you analyze performance and debug memory issues. 
 - PyTorch profiler is supported out of box when used with Ray Train
-- {ref}`NVIDIA Nsight System <ray-profiling>` is now natively supported
+- NVIDIA Nsight System is now natively supported. More details can be found {ref}`here <ray-profiling>`
 
 (profiling-pytoch-profiler)=
 ### PyTorch Profiler

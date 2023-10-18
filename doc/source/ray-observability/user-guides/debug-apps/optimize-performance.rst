@@ -347,6 +347,21 @@ Here are the steps to use PyTorch Profiler during training with Ray Train or bat
 * Visualize the results with tools like Tensorboard.
 
 
+GPU Profiling with Nsight Profiler
+----------------------------------
+Here are the steps to use Nsight Profiler with Ray Core:
+
+* Follow the `Nsight Profiler documentation <https://docs.nvidia.com/nsight-systems/UserGuide/index.html>`_ to specify which APIs to be profiled.
+
+* Setup the Ray tasks or actors which you want to profile by following this :ref:`user guide <ray-profiling>`.
+
+* Run your Ray script.
+
+* Collect the profiling results from all the nodes (compared to 1 node in a non-distributed setting).
+
+* Visualize the results with the `Nsight GUI <https://developer.nvidia.com/nsight-systems/get-started>`_ based on user host machine.
+
+
 Profiling for Developers
 ------------------------
 If you are developing Ray Core or debugging some system level failures, profiling the Ray Core could help. In this case, see :ref:`Profiling for Ray developers <ray-core-internal-profiling>`.
