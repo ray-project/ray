@@ -1,13 +1,14 @@
-import os
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.optim as optim
 import torch_xla.core.xla_model as xm
-import torch_xla.distributed.xla_multiprocessing as xmp
-import torch_xla.distributed.xla_backend
-import ray.train
+import torch_xla.distributed.xla_backend  # noqa: F401
+
+from ray.train import ScalingConfig
+from ray.train.torch import TorchTrainer
+from ray.train.torch.xla import TorchXLAConfig
+
 
 class Model(nn.Module):
     def __init__(self):
@@ -18,6 +19,7 @@ class Model(nn.Module):
 
     def forward(self, x):
         return self.net2(self.relu(self.net1(x)))
+
 
 def train_func():
     device = xm.xla_device()
@@ -40,13 +42,13 @@ def train_func():
         if rank == 0:
             print(f"Loss after step {step}: {loss.cpu()}")
 
-from ray.train.torch.xla import TorchXLAConfig
-from ray.train.torch import TorchTrainer
 
 trainer = TorchTrainer(
     train_loop_per_worker=train_func,
     torch_config=TorchXLAConfig(),
-    scaling_config=ray.train.ScalingConfig(num_workers=2, resources_per_worker={"neuron_cores": 1}),
+    scaling_config=ScalingConfig(
+        num_workers=2, resources_per_worker={"neuron_cores": 1}
+    ),
 )
 result = trainer.fit()
 print(result)
