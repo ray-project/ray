@@ -25,6 +25,7 @@ from ray.serve._private.proxy import (
 from ray.serve._private.proxy_request_response import ProxyRequest
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve.generated import serve_pb2
+from ray.serve.tests.common.utils import FakeGrpcContext
 
 
 class FakeRef:
@@ -149,26 +150,6 @@ class FakeProxyRequest(ProxyRequest):
     @property
     def is_health_request(self) -> bool:
         return self._is_health_request
-
-
-class FakeGrpcContext:
-    def __init__(self):
-        self.code = None
-        self.details = None
-        self._trailing_metadata = None
-        self._invocation_metadata = []
-
-    def set_code(self, code):
-        self.code = code
-
-    def set_details(self, details):
-        self.details = details
-
-    def set_trailing_metadata(self, trailing_metadata):
-        self._trailing_metadata = trailing_metadata
-
-    def invocation_metadata(self):
-        return self._invocation_metadata
 
 
 class FakeHTTPHandle:
