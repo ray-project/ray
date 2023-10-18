@@ -1,5 +1,5 @@
-name: "rllibbuild"
-froms: ["cr.ray.io/rayproject/oss-ci-base_ml"]
+name: "$IMAGE_TO"
+froms: ["$IMAGE_FROM"]
 dockerfile: ci/docker/rllib.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
@@ -8,7 +8,11 @@ srcs:
   - python/requirements/test-requirements.txt
   - python/requirements/ml/core-requirements.txt
   - python/requirements/ml/dl-cpu-requirements.txt
+  - python/requirements/ml/dl-gpu-requirements.txt
   - python/requirements/ml/rllib-requirements.txt
   - python/requirements/ml/rllib-test-requirements.txt
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=$IMAGE_FROM
+  - RAYCI_IS_GPU_BUILD
 tags:
-  - cr.ray.io/rayproject/rllibbuild
+  - cr.ray.io/rayproject/$IMAGE_TO
