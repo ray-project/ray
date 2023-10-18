@@ -124,7 +124,7 @@ struct ActorCreationOptions {
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
       RAY_CHECK(it != this->placement_resources.end());
-      RAY_CHECK(it->second >= resource.second);
+      RAY_CHECK_GE(it->second, resource.second);
     }
   };
 
