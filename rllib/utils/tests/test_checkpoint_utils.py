@@ -3,12 +3,16 @@ from pathlib import Path
 import tempfile
 import unittest
 
+import gymnasium as gym
+
 import ray
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.simple_q import SimpleQConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.checkpoints import (
     get_checkpoint_info,
@@ -17,6 +21,10 @@ from ray.rllib.utils.checkpoints import (
 )
 from ray.rllib.utils.test_utils import check
 from ray import tune
+
+
+class DummyCallbacks(DefaultCallbacks):
+    pass
 
 
 class TestCheckpointUtils(unittest.TestCase):
@@ -92,7 +100,14 @@ class TestCheckpointUtils(unittest.TestCase):
         pickle-checkpoint-recovered Algorithm (given same initial config).
         """
         # Base config used for both pickle-based checkpoint and msgpack-based one.
-        config = SimpleQConfig().environment("CartPole-v1")
+        config = (
+            SimpleQConfig()
+            .environment(RandomEnv, env_config={
+                "observation_space": gym.spaces.Dict({"a": gym.spaces.Discrete(2)}),
+                "some_non_serializable_setting": gym.spaces.Discrete(4),
+            })
+            .callbacks(DummyCallbacks)
+        )
         # Build algorithm object.
         algo1 = config.build()
         # Fake one result for the checkpoint saving to succeed
@@ -109,7 +124,9 @@ class TestCheckpointUtils(unittest.TestCase):
                 convert_to_msgpack_checkpoint(pickle_cp_dir, msgpack_cp_dir)
                 msgpack_cp_info = get_checkpoint_info(msgpack_cp_dir)
                 # Try recreating a new algorithm object from the msgpack checkpoint.
-                algo2 = Algorithm.from_checkpoint(msgpack_cp_dir)
+                # We must provide the original config here for this to work as msgpack
+                # checkpoints don't carry this information.
+                algo2 = Algorithm.from_checkpoint(msgpack_cp_dir, config=config)
         # Get the state of the algorithm recovered from msgpack.
         msgpack_state = algo2.__getstate__()
 

@@ -208,7 +208,11 @@ def convert_to_msgpack_checkpoint(
     # Convert all code in state into serializable data.
     # Serialize the algorithm class.
     state["algorithm_class"] = serialize_type(state["algorithm_class"])
-    # Serialize the algorithm's config object.
+    # Serialize the algorithm's config object. However, this field will NOT be used when
+    # recovering from the msgpack checkpoint as it's impossible to properly serialize
+    # things like lambdas, constructed classes, and other code-containing items.
+    # Therefore, the user must bring their own original config code when recovering
+    # from a msgpack checkpoint.
     state["config"] = state["config"].serialize()
 
     # Extract policy states from worker state (Policies get their own

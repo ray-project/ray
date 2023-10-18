@@ -1,5 +1,6 @@
 import contextlib
 from functools import partial
+from typing import Callable, Dict, List, Tuple, Union
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
@@ -60,6 +61,36 @@ def add_mixins(base, mixins, reversed=False):
         base = new_base
 
     return base
+
+
+@DeveloperAPI
+def deep_transform(
+    transform: Callable,
+    struct: Union[Dict, List, Tuple],
+    include_tuples: bool = False,
+) -> Union[Dict, List, Tuple]:
+    """
+    Recursively apply a lambda transform on each non-dict, non-list element in a struct.
+
+    Args:
+        transform: Transformation lambda/function to apply to each leaf.
+        struct: Input structure (a dict or list).
+        include_tuples: If True, tuples are also traversed, otherwise, tuples are treated
+            as leafs.
+
+    Returns:
+        The transformed struct.
+    """
+    if isinstance(struct, dict):
+        return {
+            k: deep_transform(transform, v, include_tuples) for k, v in struct.items()
+        }
+    elif isinstance(struct, list):
+        return [deep_transform(transform, v, include_tuples) for v in struct]
+    elif include_tuples and isinstance(struct, tuple):
+        return tuple(deep_transform(transform, v, include_tuples) for v in struct)
+    else:
+        return transform(struct)
 
 
 @DeveloperAPI
