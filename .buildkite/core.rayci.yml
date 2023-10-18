@@ -23,6 +23,31 @@ steps:
     depends_on: corebuild
     job_env: forge
 
+  - label: ":ray: core: debug test"
+    tags: python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core 
+        --build-type debug
+        --parallelism-per-worker 3
+        --only-tags debug_tests
+        --except-tags kubernetes
+    depends_on: corebuild
+    job_env: forge
+
+  - label: ":ray: core: asan tests"
+    tags: python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core 
+        --build-type asan
+        --parallelism-per-worker 2
+        --only-tags asan_tests
+        --except-tags kubernetes 
+    depends_on: corebuild
+    job_env: forge
+
+
   - label: ":ray: core: flaky tests"
     tags: python
     instance_type: large

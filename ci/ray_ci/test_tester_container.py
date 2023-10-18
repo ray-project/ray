@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import chunk_into_n
+from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
 
 
 class MockPopen:
@@ -24,7 +25,7 @@ def test_run_tests_in_docker() -> None:
     def _mock_popen(input: List[str]) -> None:
         input_str = " ".join(input)
         assert (
-            "bazel test --config=ci $(./ci/run/bazel_export_options) "
+            "bazel test --config=ci $(./ci/run/bazel_export_options) --config=ci-debug "
             "--test_env v=k --test_arg flag t1 t2" in input_str
         )
 
@@ -32,7 +33,7 @@ def test_run_tests_in_docker() -> None:
         "ci.ray_ci.tester_container.TesterContainer.install_ray",
         return_value=None,
     ):
-        container = TesterContainer("team")
+        container = TesterContainer("team", build_type="debug")
         container._run_tests_in_docker(["t1", "t2"], ["v=k"], "flag")
 
 
@@ -54,7 +55,7 @@ def test_run_script_in_docker() -> None:
 def test_skip_ray_installation() -> None:
     install_ray_called = []
 
-    def _mock_install_ray() -> None:
+    def _mock_install_ray(build_type: Optional[str]) -> None:
         install_ray_called.append(True)
 
     with mock.patch(
@@ -66,6 +67,31 @@ def test_skip_ray_installation() -> None:
         assert len(install_ray_called) == 1
         TesterContainer("team", skip_ray_installation=True)
         assert len(install_ray_called) == 1
+
+
+def test_ray_installation() -> None:
+    install_ray_cmds = []
+
+    def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
+        install_ray_cmds.append(inputs)
+
+    with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
+        TesterContainer("team", build_type="debug")
+        docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-team"
+        assert install_ray_cmds[-1] == [
+            "docker",
+            "build",
+            "--pull",
+            "--build-arg",
+            f"BASE_IMAGE={docker_image}",
+            "--build-arg",
+            "BUILD_TYPE=debug",
+            "-t",
+            docker_image,
+            "-f",
+            "/ray/ci/ray_ci/tests.env.Dockerfile",
+            "/ray",
+        ]
 
 
 def test_run_tests() -> None:
