@@ -58,13 +58,10 @@ class _IterableFromIterator(Iterable[T]):
 
 @PublicAPI(stability="beta")
 class DataIterator(abc.ABC):
-    """An iterator for reading records from a :class:`~Dataset` or
-    :class:`~DatasetPipeline`.
+    """An iterator for reading records from a :class:`~Dataset`.
 
     For Datasets, each iteration call represents a complete read of all items in the
-    Dataset. For DatasetPipelines, each iteration call represents one pass (epoch)
-    over the base Dataset. Note that for DatasetPipelines, each pass iterates over
-    the original Dataset, instead of a window (if ``.window()`` was used).
+    Dataset.
 
     If using Ray Train, each trainer actor should get its own iterator by calling
     :meth:`ray.train.get_dataset_shard("train")
@@ -146,7 +143,7 @@ class DataIterator(abc.ABC):
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over record batches.
+            An iterable over record batches.
         """
 
         if prefetch_blocks > 0:
@@ -210,7 +207,7 @@ class DataIterator(abc.ABC):
                 current block during the scan.
 
         Returns:
-            An iterator over rows of the dataset.
+            An iterable over rows of the dataset.
         """
         iter_batch_args = {"batch_size": None, "batch_format": None}
 
@@ -252,7 +249,7 @@ class DataIterator(abc.ABC):
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
 
-        This iterator yields a dictionary of column-tensors. If you are looking for
+        This iterable yields a dictionary of column-tensors. If you are looking for
         more flexibility in the tensor conversion (e.g. casting dtypes) or the batch
         format, try using :meth:`~ray.data.iterator.DataIterator.iter_batches` directly.
 
@@ -327,7 +324,7 @@ class DataIterator(abc.ABC):
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over Torch Tensor batches.
+            An iterable over Torch Tensor batches.
         """
 
         from ray.air._internal.torch_utils import (
@@ -398,7 +395,7 @@ class DataIterator(abc.ABC):
     ) -> Iterable["TensorFlowTensorBatchType"]:
         """Return a batched iterable of TensorFlow Tensors over the dataset.
 
-        This iterator will yield single-tensor batches of the underlying dataset
+        This iterable will yield single-tensor batches of the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
         column-tensors.
 

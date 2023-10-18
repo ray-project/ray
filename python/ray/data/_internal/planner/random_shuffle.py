@@ -37,6 +37,7 @@ def generate_random_shuffle_fn(
         upstream_map_fn = None
         nonlocal ray_remote_args
         if map_transformer:
+            map_transformer.set_target_max_block_size(ctx.target_max_block_size)
 
             def upstream_map_fn(blocks):
                 return map_transformer.apply_transform(blocks, ctx)

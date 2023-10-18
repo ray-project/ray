@@ -384,8 +384,10 @@ class StreamingObjectRefGenerator:
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait([self.suppress_exceptions(ref)],
-                                            timeout=timeout_s)
+        ready, unready = await asyncio.wait(
+            [asyncio.create_task(self.suppress_exceptions(ref))],
+            timeout=timeout_s
+        )
         if len(unready) > 0:
             return ObjectRef.nil()
 
@@ -1852,7 +1854,7 @@ cdef execute_task_with_cancellation_handler(
 
     # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
     # runtime_ids to restrict availability to this task.
-    ray._private.utils.set_gpu_and_accelerator_runtime_ids()
+    ray._private.utils.set_visible_accelerator_ids()
 
     # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
     # It will be unset after the task execution if it was overwridden here.

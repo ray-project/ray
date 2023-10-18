@@ -138,7 +138,6 @@ if __name__ == "__main__":
         # End of dry run.
 
         skip_prefix_list = [
-            ".buildkite/",
             "doc/",
             "examples/",
             "dev/",
@@ -186,12 +185,19 @@ if __name__ == "__main__":
             elif re.match("rllib_contrib/", changed_file):
                 if not changed_file.endswith(".md"):
                     RAY_CI_RLLIB_CONTRIB_AFFECTED = 1
-            elif changed_file.startswith("python/ray/serve"):
+            elif (
+                changed_file.startswith("python/ray/serve")
+                or changed_file == ".buildkite/serve.rayci.yml"
+                or changed_file == "ci/docker/serve.build.Dockerfile"
+            ):
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
+            elif changed_file == ".buildkite/pipeline.build.yml":
+                RAY_CI_PYTHON_AFFECTED = 1
+                RAY_CI_SERVE_AFFECTED = 1
             elif changed_file.startswith("python/ray/dashboard"):
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 # https://github.com/ray-project/ray/pull/15981
@@ -226,6 +232,11 @@ if __name__ == "__main__":
                     if changed_file.endswith(compiled_extension):
                         RAY_CI_COMPILED_PYTHON_AFFECTED = 1
                         break
+            elif (
+                changed_file.startswith("ci/ray_ci")
+                or changed_file == ".buildkite/core.rayci.yml"
+            ):
+                RAY_CI_PYTHON_AFFECTED = 1
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
             elif changed_file.startswith("cpp/"):
@@ -295,6 +306,8 @@ if __name__ == "__main__":
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
+                RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
                 RAY_CI_CPP_AFFECTED = 1

@@ -1110,14 +1110,6 @@ py_test(
     srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
 )
 
-# Dreamer (V1)
-py_test(
-    name = "test_dreamer",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
-)
-
 # DreamerV3
 py_test(
     name = "test_dreamerv3",

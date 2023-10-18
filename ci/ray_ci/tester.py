@@ -9,6 +9,22 @@ from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 
+CUDA_COPYRIGHT = """
+==========
+== CUDA ==
+==========
+
+CUDA Version 11.8.0
+
+Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+By pulling and using the container, you accept the terms and conditions of this license:
+https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+
+A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
+"""  # noqa: E501
+
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
@@ -76,6 +92,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     type=str,
     help="Name of the build used to run tests",
 )
+@click.option(
+    "--build-type",
+    type=click.Choice(["optimized", "debug", "asan"]),
+    default="optimized",
+)
 def main(
     targets: List[str],
     team: str,
@@ -89,6 +110,7 @@ def main(
     test_env: List[str],
     test_arg: Optional[str],
     build_name: Optional[str],
+    build_type: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -101,6 +123,7 @@ def main(
         worker_id,
         parallelism_per_worker,
         build_name,
+        build_type,
         skip_ray_installation,
     )
     test_targets = _get_test_targets(
@@ -121,6 +144,7 @@ def _get_container(
     worker_id: int,
     parallelism_per_worker: int,
     build_name: Optional[str] = None,
+    build_type: Optional[str] = None,
     skip_ray_installation: bool = False,
 ) -> TesterContainer:
     shard_count = workers * parallelism_per_worker
@@ -132,6 +156,7 @@ def _get_container(
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
         skip_ray_installation=skip_ray_installation,
+        build_type=build_type,
     )
 
 
@@ -175,7 +200,6 @@ def _get_test_targets(
     """
     Get test targets that are owned by a particular team
     """
-
     query = _get_all_test_query(targets, team, except_tags, only_tags)
     test_targets = set(
         container.run_script_with_output(
@@ -184,6 +208,8 @@ def _get_test_targets(
             ]
         )
         .decode("utf-8")
+        # CUDA image comes with a license header that we need to remove
+        .replace(CUDA_COPYRIGHT, "")
         .strip()
         .split("\n")
     )
