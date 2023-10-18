@@ -317,16 +317,3 @@ message DeploymentArgs {
   bool ingress = 6;
   optional string docs_path = 7;
 }
-
-// Serve logging config
-enum LoggingEncoding {
-  TEXT = 0;
-  JSON = 1;
-}
-
-message LoggingConfig {
-  LoggingEncoding encoding = 1;
-  int32 log_level = 2;
-  string logs_dir = 3;
-  bool enable_access_log = 4;
-}
