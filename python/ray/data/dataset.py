@@ -396,6 +396,11 @@ class Dataset:
         """
         self._plan._dataset_name = name
 
+    @property
+    def name(self) -> Optional[str]:
+        """Returns the dataset name"""
+        return self._plan._dataset_name
+
     def map_batches(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
