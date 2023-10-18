@@ -17,7 +17,6 @@ steps:
     parallelism: 2
     tags: 
       - serve
-      - ml
       - python
     instance_type: large
     soft_fail: true
@@ -26,6 +25,16 @@ steps:
         --except-tags post_wheel_build,gpu,worker-container,xcommit
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
     depends_on: servepydantic2build
+    job_env: forge
+
+  - label: ":ray-serve: serve: release tests"
+    tags:
+      - serve
+      - python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //release/... serve --parallelism-per-worker 3
+    depends_on: servebuild
     job_env: forge
 
   - label: ":ray-serve: serve: flaky tests"
