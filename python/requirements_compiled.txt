@@ -1593,7 +1593,7 @@ py-spy==0.3.14
     # via -r /ray/ci/../python/requirements.txt
 py3nvml==0.2.7
     # via aim
-py4j==0.10.9.5
+py4j==0.10.9.7
     # via
     #   hyperopt
     #   pyspark
@@ -1717,7 +1717,7 @@ pyrsistent==0.19.3
     # via jsonschema
 pysocks==1.7.1
     # via requests
-pyspark==3.3.1
+pyspark==3.4.1
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   raydp
