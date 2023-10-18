@@ -1480,6 +1480,8 @@ class Algorithm(Trainable, AlgorithmBase):
             "execution logic instead."
         )
 
+    # TODO (sven): Deprecate this API in favor of extracting the correct RLModule
+    #  and simply calling `forward_inference()` on it (see DreamerV3 for an example).
     @PublicAPI
     def compute_single_action(
         self,
