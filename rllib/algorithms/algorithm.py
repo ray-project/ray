@@ -2773,22 +2773,38 @@ class Algorithm(Trainable, AlgorithmBase):
                 with open(policy_state_file, "rb") as f:
                     if msgpack is not None:
                         worker_state["policy_states"][pid] = msgpack.load(f)
+                        # Replace PolicySpec's config with given one (msgpack does NOT
+                        # store config information).
+                        worker_state["policy_states"][pid]["policy_spec"]["config"] = (
+                            new_config.copy(copy_frozen=False).update_from_dict(
+                                new_config.policies[pid].config or {}
+                            )
+                        )
                     else:
                         worker_state["policy_states"][pid] = pickle.load(f)
 
             # These two functions are never serialized in a msgpack checkpoint (which
             # does not store code, unlike a cloudpickle checkpoint). Hence the user has
             # to provide them with the `Algorithm.from_checkpoint()` call.
-            if policy_mapping_fn is not None:
+            if msgpack is not None:
+                worker_state["policy_mapping_fn"] = (
+                    policy_mapping_fn or new_config.policy_mapping_fn
+                )
+            elif policy_mapping_fn is not None:
                 worker_state["policy_mapping_fn"] = policy_mapping_fn
-            if (
+
+            if msgpack is not None:
+                worker_state["is_policy_to_train"] = (
+                    policies_to_train or new_config.policies_to_train
+                )
+            elif (
                 policies_to_train is not None
                 # `policies_to_train` might be left None in case all policies should be
                 # trained.
                 or worker_state["is_policy_to_train"] == NOT_SERIALIZABLE
             ):
                 worker_state["is_policy_to_train"] = policies_to_train
-
+    
         return state
 
     @DeveloperAPI

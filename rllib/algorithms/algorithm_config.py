@@ -3540,13 +3540,13 @@ class AlgorithmConfig(_Config):
         if isinstance(config.get("policies"), tuple):
             config["policies"] = list(config["policies"])
 
-        # Serialize the rest.
-
+        # Non-JSON'able items will be masked out via NOT_SERIALIZABLE.
         def _serialize_item(item):
             try:
-                return json.dumps(item)
+                json.dumps(item)
             except TypeError:
                 return NOT_SERIALIZABLE
+            return item
 
         config = tree.map_structure(_serialize_item, config)
 
