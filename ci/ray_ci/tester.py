@@ -151,6 +151,17 @@ def _get_container(
     )
 
 
+def _get_tag_matcher(tag: str) -> str:
+    """
+    Return a regular expression that matches the given bazel tag. This is required for
+    an exact tag match because bazel query uses regex to match tags.
+
+    The word boundary is escaped twice because it is used in a python string and then
+    used again as a string in bazel query.
+    """
+    return f"\\\\b{tag}\\\\b"
+
+
 def _get_all_test_query(
     targets: List[str],
     team: str,
@@ -162,17 +173,23 @@ def _get_all_test_query(
     have the given tags
     """
     test_query = " union ".join([f"tests({target})" for target in targets])
-    query = f"attr(tags, 'team:{team}\\\\b', {test_query})"
+    query = f"attr(tags, '{_get_tag_matcher(f'team:{team}')}', {test_query})"
 
     if only_tags:
         only_query = " union ".join(
-            [f"attr(tags, {t}, {test_query})" for t in only_tags.split(",")]
+            [
+                f"attr(tags, '{_get_tag_matcher(t)}', {test_query})"
+                for t in only_tags.split(",")
+            ]
         )
         query = f"{query} intersect ({only_query})"
 
     if except_tags:
         except_query = " union ".join(
-            [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
+            [
+                f"attr(tags, '{_get_tag_matcher(t)}', {test_query})"
+                for t in except_tags.split(",")
+            ]
         )
         query = f"{query} except ({except_query})"
 
