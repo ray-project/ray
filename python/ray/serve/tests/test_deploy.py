@@ -5,10 +5,10 @@ from collections import defaultdict
 
 import pytest
 import requests
-from pydantic.error_wrappers import ValidationError
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor
 from ray.serve._private.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
@@ -16,50 +16,44 @@ from ray.serve.exceptions import RayServeException
 
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_deploy_basic(serve_instance, use_handle):
-    @serve.deployment(version="1")
-    def d(*args):
-        return f"1|{os.getpid()}"
+    """Test basic serve.run().
+
+    1. Deploy an application with one deployment `d`.
+    2. Redeploy `d` and check that a new actor is started.
+    3. Update the code for `d`, redeploy `d`, and check that a new actor
+        is started with the new code.
+    """
+
+    @serve.deployment
+    def d():
+        return "code version 1", os.getpid()
 
     def call():
         if use_handle:
-            ret = ray.get(d.get_handle().remote())
+            handle = serve.get_deployment_handle("d", "default")
+            return handle.remote().result()
         else:
-            ret = requests.get("http://localhost:8000/d").text
+            return requests.get("http://localhost:8000/d").json()
 
-        return ret.split("|")[0], ret.split("|")[1]
+    serve.run(d.bind())
+    resp, pid1 = call()
+    assert resp == "code version 1"
 
-    d.deploy()
-    val1, pid1 = call()
-    assert val1 == "1"
+    # Redeploying should start a new actor.
+    serve.run(d.bind())
+    resp, pid2 = call()
+    assert resp == "code version 1"
+    assert pid2 != pid1
 
-    # Redeploying with the same version and code should do nothing.
-    d.deploy()
-    val2, pid2 = call()
-    assert val2 == "1"
-    assert pid2 == pid1
+    # Redeploying with new code should start a new actor with new code
+    @serve.deployment
+    def d():
+        return "code version 2", os.getpid()
 
-    # Redeploying with a new version should start a new actor.
-    d.options(version="2").deploy()
-    val3, pid3 = call()
-    assert val3 == "1"
+    serve.run(d.bind())
+    resp, pid3 = call()
+    assert resp == "code version 2"
     assert pid3 != pid2
-
-    @serve.deployment(version="2")
-    def d(*args):
-        return f"2|{os.getpid()}"
-
-    # Redeploying with the same version and new code should do nothing.
-    d.deploy()
-    val4, pid4 = call()
-    assert val4 == "1"
-    assert pid4 == pid3
-
-    # Redeploying with new code and a new version should start a new actor
-    # running the new code.
-    d.options(version="3").deploy()
-    val5, pid5 = call()
-    assert val5 == "2"
-    assert pid5 != pid4
 
 
 def test_empty_decorator(serve_instance):
@@ -79,105 +73,6 @@ def test_empty_decorator(serve_instance):
 
     class_handle = serve.run(Class.bind())
     assert ray.get(class_handle.ping.remote()) == "pong"
-
-
-@pytest.mark.parametrize("use_handle", [True, False])
-def test_deploy_no_version(serve_instance, use_handle):
-    name = "test"
-
-    @serve.deployment(name=name)
-    def v1(*args):
-        return f"1|{os.getpid()}"
-
-    def call():
-        if use_handle:
-            ret = ray.get(v1.get_handle().remote())
-        else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
-
-        return ret.split("|")[0], ret.split("|")[1]
-
-    v1.deploy()
-    val1, pid1 = call()
-    assert val1 == "1"
-
-    @serve.deployment(name=name)
-    def v2(*args):
-        return f"2|{os.getpid()}"
-
-    # Not specifying a version tag should cause it to always be updated.
-    v2.deploy()
-    val2, pid2 = call()
-    assert val2 == "2"
-    assert pid2 != pid1
-
-    v2.deploy()
-    val3, pid3 = call()
-    assert val3 == "2"
-    assert pid3 != pid2
-
-    # Specifying the version should stop updates from happening.
-    v2.options(version="1").deploy()
-    val4, pid4 = call()
-    assert val4 == "2"
-    assert pid4 != pid3
-
-    v2.options(version="1").deploy()
-    val5, pid5 = call()
-    assert val5 == "2"
-    assert pid5 == pid4
-
-
-@pytest.mark.parametrize("use_handle", [True, False])
-def test_config_change(serve_instance, use_handle):
-    @serve.deployment(version="1")
-    class D:
-        def __init__(self):
-            self.ret = "1"
-
-        def reconfigure(self, d):
-            self.ret = d["ret"]
-
-        def __call__(self, *args):
-            return f"{self.ret}|{os.getpid()}"
-
-    def call():
-        if use_handle:
-            ret = ray.get(D.get_handle().remote())
-        else:
-            ret = requests.get("http://localhost:8000/D").text
-
-        return ret.split("|")[0], ret.split("|")[1]
-
-    # First deploy with no user config set.
-    D.deploy()
-    val1, pid1 = call()
-    assert val1 == "1"
-
-    # Now update the user config without changing versions. Actor should stay
-    # alive but return value should change.
-    D.options(user_config={"ret": "2"}).deploy()
-    val2, pid2 = call()
-    assert pid2 == pid1
-    assert val2 == "2"
-
-    # Update the user config without changing the version again.
-    D.options(user_config={"ret": "3"}).deploy()
-    val3, pid3 = call()
-    assert pid3 == pid2
-    assert val3 == "3"
-
-    # Update the version without changing the user config.
-    D.options(version="2", user_config={"ret": "3"}).deploy()
-    val4, pid4 = call()
-    assert pid4 != pid3
-    assert val4 == "3"
-
-    # Update the version and the user config.
-    D.options(version="3", user_config={"ret": "4"}).deploy()
-    val5, pid5 = call()
-    assert pid5 != pid4
-    assert val5 == "4"
 
 
 def test_reconfigure_with_exception(serve_instance):
@@ -616,61 +511,21 @@ def test_deploy_handle_validation(serve_instance):
         ray.get(handle.c.remote())
 
 
-def test_init_args(serve_instance):
-    @serve.deployment(init_args=(1, 2, 3))
+def test_deploy_with_init_args(serve_instance):
+    @serve.deployment()
     class D:
         def __init__(self, *args):
             self._args = args
 
-        def get_args(self, *args):
+        def get_args(self):
             return self._args
 
-    D.deploy()
-    handle = D.get_handle()
-
-    def check(*args):
-        assert ray.get(handle.get_args.remote()) == args
-
-    # Basic sanity check.
-    assert ray.get(handle.get_args.remote()) == (1, 2, 3)
-    check(1, 2, 3)
-
-    # Check passing args to `.deploy()`.
-    D.deploy(4, 5, 6)
-    check(4, 5, 6)
-
-    # Passing args to `.deploy()` shouldn't override those passed in decorator.
-    D.deploy()
-    check(1, 2, 3)
-
-    # Check setting with `.options()`.
-    new_D = D.options(init_args=(7, 8, 9))
-    new_D.deploy()
-    check(7, 8, 9)
-
-    # Should not have changed old deployment object.
-    D.deploy()
-    check(1, 2, 3)
-
-    # Check that args are only updated on version change.
-    D.options(version="1").deploy()
-    check(1, 2, 3)
-
-    D.options(version="1").deploy(10, 11, 12)
-    check(1, 2, 3)
-
-    D.options(version="2").deploy(10, 11, 12)
-    check(10, 11, 12)
+    handle = serve.run(D.bind(1, 2, 3)).options(use_new_handle_api=True)
+    assert handle.get_args.remote().result() == (1, 2, 3)
 
 
-def test_init_kwargs(serve_instance):
-    with pytest.raises(TypeError):
-
-        @serve.deployment(init_kwargs=[1, 2, 3])
-        class BadInitArgs:
-            pass
-
-    @serve.deployment(init_kwargs={"a": 1, "b": 2})
+def test_deploy_with_init_kwargs(serve_instance):
+    @serve.deployment()
     class D:
         def __init__(self, **kwargs):
             self._kwargs = kwargs
@@ -678,41 +533,8 @@ def test_init_kwargs(serve_instance):
         def get_kwargs(self, *args):
             return self._kwargs
 
-    D.deploy()
-    handle = D.get_handle()
-
-    def check(kwargs):
-        assert ray.get(handle.get_kwargs.remote()) == kwargs
-
-    # Basic sanity check.
-    check({"a": 1, "b": 2})
-
-    # Check passing args to `.deploy()`.
-    D.deploy(a=3, b=4)
-    check({"a": 3, "b": 4})
-
-    # Passing args to `.deploy()` shouldn't override those passed in decorator.
-    D.deploy()
-    check({"a": 1, "b": 2})
-
-    # Check setting with `.options()`.
-    new_D = D.options(init_kwargs={"c": 8, "d": 10})
-    new_D.deploy()
-    check({"c": 8, "d": 10})
-
-    # Should not have changed old deployment object.
-    D.deploy()
-    check({"a": 1, "b": 2})
-
-    # Check that args are only updated on version change.
-    D.options(version="1").deploy()
-    check({"a": 1, "b": 2})
-
-    D.options(version="1").deploy(c=10, d=11)
-    check({"a": 1, "b": 2})
-
-    D.options(version="2").deploy(c=10, d=11)
-    check({"c": 10, "d": 11})
+    handle = serve.run(D.bind(a=1, b=2)).options(use_new_handle_api=True)
+    assert handle.get_kwargs.remote().result() == {"a": 1, "b": 2}
 
 
 def test_init_args_with_closure(serve_instance):
