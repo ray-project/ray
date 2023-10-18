@@ -63,9 +63,7 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 def find_version(*filepath):
     # Extract version information from filepath
     with open(os.path.join(ROOT_DIR, *filepath)) as fp:
-        version_match = re.search(
-            r"^__version__ = ['\"]([^'\"]*)['\"]", fp.read(), re.M
-        )
+        version_match = re.search(r"^version = ['\"]([^'\"]*)['\"]", fp.read(), re.M)
         if version_match:
             return version_match.group(1)
         raise RuntimeError("Unable to find version string.")
@@ -89,7 +87,7 @@ class SetupSpec:
     ):
         self.type: SetupType = type
         self.name: str = name
-        version = find_version("ray", "__init__.py")
+        version = find_version("ray", "_version.py")
         # add .dbg suffix if debug mode is on.
         if build_type == BuildType.DEBUG:
             self.version: str = f"{version}+dbg"
