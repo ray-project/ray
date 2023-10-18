@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 import ray
-from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
