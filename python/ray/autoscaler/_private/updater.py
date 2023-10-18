@@ -2,8 +2,8 @@ import logging
 import os
 import subprocess
 import time
-from threading import Thread
 import traceback
+from threading import Thread
 
 import click
 
@@ -165,12 +165,14 @@ class NodeUpdater:
 
             cli_logger.error("!!!")
             if hasattr(e, "cmd"):
-                stderr_output = getattr(e, "stderr", "No stderr available")  # Capture stderr if it exists, else default message
+                stderr_output = getattr(
+                    e, "stderr", "No stderr available"
+                )  # Capture stderr if it exists, else default message
                 cli_logger.error(
                     "Setup command `{}` failed with exit code {}. stderr: {}",
                     cf.bold(e.cmd),
                     e.returncode,
-                    stderr_output
+                    stderr_output,
                 )
             else:
                 # Log the full attributes of the exception.
