@@ -488,6 +488,7 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :inherited-members: BaseModel
 
    schema.ServeInstanceDetails
    schema.ApplicationDetails
