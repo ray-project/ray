@@ -61,11 +61,12 @@ steps:
         --except-tags doctest
     depends_on: mlgpubuild
     job_env: forge
-    
+
   - label: ":train: ml: AWS Trainium Ray Train Tests"
     tags: train
     instance_type: trainium
     commands:
+      - pip freeze
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
         --parallelism-per-worker 2
         --only-tags trainium
