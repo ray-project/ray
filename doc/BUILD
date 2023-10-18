@@ -292,8 +292,8 @@ doctest(
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            "source/train/faq.rst",
-	    "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/**/*.rst",
+            "source/train/**/*.md",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
@@ -301,6 +301,38 @@ doctest(
     ),
     size = "large",
     tags = ["team:none"]
+)
+
+
+doctest(
+    name="doctest[train]",
+    files = glob(
+        include=[
+            "source/train/**/*.rst",
+            "source/train/**/*.md"
+        ],
+        exclude=[
+            # Quarantined
+	        "source/train/user-guides/data-loading-preprocessing.rst",
+            # GPU
+            "source/train/getting-started-pytorch-lightning.rst",
+            "source/train/getting-started-pytorch.rst",
+            "source/train/getting-started-transformers.rst"
+        ]
+    ),
+    tags = ["team:ml"]
+)
+
+doctest(
+    name="doctest[train][gpu]",
+    files = glob(
+        include=[
+            "source/train/getting-started-pytorch-lightning.rst",
+            "source/train/getting-started-pytorch.rst",
+            "source/train/getting-started-transformers.rst"
+        ]
+    ),
+    tags = ["team:ml"]
 )
 
 

@@ -146,7 +146,8 @@ Here are a few examples of saving checkpoints with different training frameworks
         evaluation. If users want to keep the best 3 checkpoints according to ``eval_loss``, they
         should align the saving and evaluation frequency. Below are two examples of valid configurations:
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             args = TrainingArguments(
                 ...,

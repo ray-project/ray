@@ -29,7 +29,7 @@ Ray Train documentation uses the following conventions:
 #. `train_func` is a user-defined function that contains the training code.
 #. `train_func` is passed into the Trainer's `train_loop_per_worker` parameter.
 
-.. code-block:: python
+.. testcode::
 
     def train_func():
         """User-defined training function that runs on each distributed worker process.
@@ -60,7 +60,7 @@ Specify two basic parameters for worker parallelism and compute resources:
 * :class:`num_workers <ray.train.ScalingConfig>`: The number of workers to launch for a distributed training job.
 * :class:`use_gpu <ray.train.ScalingConfig>`: Whether each worker should use a GPU or CPU.
 
-.. code-block:: python
+.. testcode::
 
     from ray.train import ScalingConfig
 
@@ -86,7 +86,15 @@ Calling the :meth:`fit() <ray.train.trainer.BaseTrainer.fit>` method executes th
 #. Setting up the framework's distributed environment on all workers.
 #. Running the `train_func` on all workers.
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    def train_func():
+        pass
+
+    scaling_config = ScalingConfig(num_workers=1, use_gpu=False)
+
+.. testcode::
 
     from ray.train.torch import TorchTrainer
     

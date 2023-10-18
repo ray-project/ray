@@ -40,7 +40,8 @@ Cloud storage (AWS S3, Google Cloud Storage)
 
 Use cloud storage by specifying a bucket URI as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray import train
     from ray.train.torch import TorchTrainer
@@ -63,7 +64,8 @@ Shared filesystem (NFS, HDFS)
 
 Use by specifying the shared storage path as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray import train
     from ray.train.torch import TorchTrainer
@@ -95,7 +97,8 @@ Results are saved to ``~/ray_results`` in a sub-directory with a unique auto-gen
 unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.train.RunConfig`.
 
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray import train
     from ray.train.torch import TorchTrainer
@@ -155,7 +158,8 @@ Implement custom storage upload and download logic by providing an implementatio
     then the ``storage_path`` should be ``bucket-name/sub-path/`` with the ``s3://`` stripped.
     See the example below for example usage.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import pyarrow.fs
 
@@ -186,7 +190,8 @@ such as ``s3fs``, ``gcsfs``, etc.
 
 You can use any of these implementations by wrapping the ``fsspec`` filesystem with a ``pyarrow.fs`` utility:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     # Make sure to install: `pip install -U s3fs`
     import s3fs
@@ -218,7 +223,8 @@ a custom S3 filesystem to work with MinIO.
 
 Note that including these as query parameters in the ``storage_path`` URI directly is another option:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray import train
     from ray.train.torch import TorchTrainer
@@ -243,7 +249,8 @@ and how they're structured in storage.
 
     This example includes checkpointing, which is covered in detail in :ref:`train-checkpointing`.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import os
     import tempfile
@@ -305,7 +312,8 @@ Here's a rundown of all files that will be persisted to storage:
 The :class:`~ray.train.Result` and :class:`~ray.train.Checkpoint` objects returned by
 ``trainer.fit`` are the easiest way to access the data in these files:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     result.filesystem, result.path
     # S3FileSystem, "bucket-name/sub-path/experiment_name/TorchTrainer_46367_00000_0_..."
@@ -352,7 +360,8 @@ Note that this behavior is off by default.
     A best practice is to only write artifacts from a single worker unless you
     really need artifacts from multiple.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         from ray import train
 
@@ -377,7 +386,8 @@ By default, this intermediate local directory is a sub-directory of ``~/ray_resu
 
 Customize this intermediate local directory with the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import os
     os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/custom/"

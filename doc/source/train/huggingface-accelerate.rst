@@ -7,7 +7,8 @@ The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `Acce
 
 You only need to run your existing training code with a TorchTrainer. You can expect the final code to look like this:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from accelerate import Accelerator
 
@@ -66,7 +67,8 @@ object in your training function. Below are starter examples for configuring Acc
         For example, to run DeepSpeed with Accelerate, create a `DeepSpeedPlugin <https://huggingface.co/docs/accelerate/main/en/package_reference/deepspeed>`_ 
         from a dictionary:
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             from accelerate import Accelerator, DeepSpeedPlugin
 
@@ -124,7 +126,8 @@ object in your training function. Below are starter examples for configuring Acc
         For PyTorch FSDP, create a `FullyShardedDataParallelPlugin <https://huggingface.co/docs/accelerate/main/en/package_reference/fsdp>`_ 
         and pass it to the Accelerator.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             from torch.distributed.fsdp.fully_sharded_data_parallel import FullOptimStateDictConfig, FullStateDictConfig
             from accelerate import Accelerator, FullyShardedDataParallelPlugin

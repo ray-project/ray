@@ -10,7 +10,8 @@ Code example
 
 You only need to run your existing training code with a TorchTrainer. You can expect the final code to look like this:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import deepspeed
     from deepspeed.accelerator import get_accelerator
