@@ -341,7 +341,7 @@ def training_function(kwargs: dict):
     )
 
     # Instantiate scheduler
-    # Creates Dummy Scheduler if `scheduler` was specified in the config file
+    # Creates Dummy Scheduler if `scheduler` was specified in the config file or
     # else, creates `args.lr_scheduler_type` Scheduler
     # get train and valid dataset lengths
 
