@@ -68,6 +68,13 @@ Ray Examples
         GPT-J-6B Fine-Tuning with Ray Train and DeepSpeed
 
     .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item llm gen-ai huggingface training nlp
+        :link: /train/examples/deepspeed/dolly_v2_deepspeed_instruction_fine_tuning
+        :link-type: doc
+
+        Dolly-V2-3B Instruction Fine-Tuning with Ray Train and DeepSpeed
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item llm gen-ai
         :link: https://github.com/ray-project/aviary/
 
