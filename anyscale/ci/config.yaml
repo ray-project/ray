@@ -32,9 +32,7 @@ skip_tags:
   - disabled
   - java
   - arm64
-  - linux_wheels # These are upstream oss wheels only
-  - ray_image
-  - ray_ml_image
+  - oss
   - gpu
   # RLlib tests are too flaky; and not much activity on runtime.
   # The efforts are also deprioritized.
