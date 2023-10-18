@@ -345,7 +345,7 @@ def training_function(kwargs: dict):
     # else, creates `args.lr_scheduler_type` Scheduler
     # get train and valid dataset lengths
 
-    num_steps_per_epoch = math.ceil(train_ds_len / config.train_batch_size_per_device)
+    num_steps_per_epoch = math.ceil(train_ds_len / args.batch_size_per_device)
     total_training_steps = (
         num_steps_per_epoch * num_epochs // gradient_accumulation_steps
     )
@@ -356,8 +356,8 @@ def training_function(kwargs: dict):
     ):
         lr_scheduler = get_linear_schedule_with_warmup(
             optimizer=optimizer,
-            warmup_num_steps=NUM_WARMUP_STEPS * args.num_devices,
-            total_num_steps=total_training_steps * args.num_devices,
+            num_warmup_steps=NUM_WARMUP_STEPS * args.num_devices,
+            num_training_steps=total_training_steps * args.num_devices,
         )
     else:
         lr_scheduler = DummyScheduler(
