@@ -787,7 +787,7 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
 
 
 def test_status_schema_helpers():
-    
+
     status_overview = StatusOverview(
         app_status=ApplicationStatusInfo(
             status="DEPLOYING",
@@ -809,9 +809,7 @@ def test_status_schema_helpers():
     )
 
     # Check statuses
-    deployment_statuses = _serve_status_to_schema(
-        status_overview
-    ).deployment_statuses
+    deployment_statuses = _serve_status_to_schema(status_overview).deployment_statuses
 
     assert len(deployment_statuses) == 2
     assert deployment_statuses[0].status in {"HEALTHY"}
