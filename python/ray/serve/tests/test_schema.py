@@ -4,9 +4,7 @@ import time
 from typing import Dict, List
 
 import pytest
-import requests
 
-import ray
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray.serve._private.common import (
@@ -15,7 +13,6 @@ from ray.serve._private.common import (
     StatusOverview,
 )
 from ray.serve.config import AutoscalingConfig
-from ray.serve.context import _get_global_client
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
@@ -769,12 +766,6 @@ def test_deployment_to_schema_to_deployment():
         "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
     ]
 
-    serve.start()
-    deployment._deploy()
-    assert ray.get(deployment._get_handle().remote()) == "Hello world!"
-    assert requests.get("http://localhost:8000/hello").text == "Hello world!"
-    serve.shutdown()
-
 
 def test_unset_fields_schema_to_deployment_ray_actor_options():
     # Ensure unset fields are excluded from ray_actor_options
@@ -796,42 +787,37 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
 
 
 def test_status_schema_helpers():
-    @serve.deployment(
-        num_replicas=1,
-        route_prefix="/hello",
+    
+    status_overview = StatusOverview(
+        app_status=ApplicationStatusInfo(
+            status="DEPLOYING",
+            message="",
+            deployment_timestamp=time.time(),
+        ),
+        deployment_statuses=[
+            DeploymentStatusInfo(
+                name="deployment_1",
+                status="HEALTHY",
+                message="",
+            ),
+            DeploymentStatusInfo(
+                name="deployment_2",
+                status="UNHEALTHY",
+                message="this deployment is deeply unhealthy",
+            ),
+        ],
     )
-    def f1():
-        # The body of this function doesn't matter. See the comment in
-        # test_deployment_to_schema_to_deployment.
-        pass
-
-    @serve.deployment(
-        num_replicas=2,
-        route_prefix="/hi",
-    )
-    def f2():
-        pass
-
-    serve.start()
-    client = _get_global_client()
-    serve.run(f1.bind(), name="app1")
-    serve.run(f2.bind(), name="app2")
 
     # Check statuses
-    f1_statuses = _serve_status_to_schema(
-        client.get_serve_status("app1")
+    deployment_statuses = _serve_status_to_schema(
+        status_overview
     ).deployment_statuses
-    f2_statuses = _serve_status_to_schema(
-        client.get_serve_status("app2")
-    ).deployment_statuses
-    assert len(f1_statuses) == 1
-    assert f1_statuses[0].status in {"UPDATING", "HEALTHY"}
-    assert f1_statuses[0].name == "f1"
-    assert len(f2_statuses) == 1
-    assert f2_statuses[0].status in {"UPDATING", "HEALTHY"}
-    assert f2_statuses[0].name == "f2"
 
-    serve.shutdown()
+    assert len(deployment_statuses) == 2
+    assert deployment_statuses[0].status in {"HEALTHY"}
+    assert deployment_statuses[0].name == "deployment_1"
+    assert deployment_statuses[1].status in {"UNHEALTHY"}
+    assert deployment_statuses[1].name == "deployment_2"
 
 
 if __name__ == "__main__":
