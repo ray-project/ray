@@ -23,4 +23,4 @@ pip3 install -U \
     sentencepiece==0.1.99 \
     "urllib3<1.27" \
     git+https://github.com/huggingface/transformers.git@d0c1aeb 
-    git+https://github.com/huggingface/peft.git@08368a1
+    git+https://github.com/huggingface/peft.git@08368a1fba16de09756f067637ff326c71598fb3
