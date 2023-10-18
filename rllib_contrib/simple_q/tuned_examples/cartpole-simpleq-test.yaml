@@ -1,0 +1,11 @@
+# Run this experiment by doing:
+# $ rllib train file [this very file]
+
+cartpole-simpleq-test:
+    env: CartPole-v1
+    run: SimpleQ
+    stop:
+        sampler_results/episode_reward_mean: 50.0
+        timesteps_total: 10000
+    config:
+        framework: torch
