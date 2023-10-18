@@ -23,9 +23,10 @@ RUN if [[ "$IS_GPU_BUILD" == "true" ]]; then \
   fi
 
 # Install AWS Trainium Drivers
-RUN sudo tee /etc/apt/sources.list.d/neuron.list > /dev/null <<EOF
-RUN deb https://apt.repos.neuron.amazonaws.com ${VERSION_CODENAME} main
-RUN EOF
+RUN . /etc/os-release && \
+    echo "deb https://apt.repos.neuron.amazonaws.com ${VERSION_CODENAME} main" | \
+    sudo tee /etc/apt/sources.list.d/neuron.list > /dev/null
+    
 RUN wget -qO - https://apt.repos.neuron.amazonaws.com/GPG-PUB-KEY-AMAZON-AWS-NEURON.PUB | sudo apt-key add -
 RUN sudo apt-get update -y
 RUN sudo apt-get install aws-neuronx-collectives=2.* -y
