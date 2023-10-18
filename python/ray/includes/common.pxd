@@ -243,6 +243,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
     cdef CLanguage LANGUAGE_CPP "Language::CPP"
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
+    cdef CLanguage LANGUAGE_JULIA "Language::JULIA"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::core::WorkerType::WORKER"
