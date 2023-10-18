@@ -214,10 +214,13 @@ class ResourceSpec(
                 accelerator_type = (
                     accelerator_manager.get_current_node_accelerator_type()
                 )
+                print("Accelerator type: ", accelerator_type)
                 if accelerator_type:
                     resources[
                         f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
                     ] = 1
+                    print("Resources after accelerator type update: ", resources)
+                accelerator_manager.postprocess_resources(resources=resources)
 
         # Choose a default object store size.
         system_memory = ray._private.utils.get_system_memory()

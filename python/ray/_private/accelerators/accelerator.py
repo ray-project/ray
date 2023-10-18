@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Tuple
+from typing import Optional, List, Mapping, Tuple
 
 
 class AcceleratorManager(ABC):
@@ -50,6 +50,11 @@ class AcceleratorManager(ABC):
             Return None if it's unknown or the node doesn't have
             accelerators of this family.
         """
+
+    @staticmethod
+    def postprocess_resources(resources: Mapping[str, float]):
+        """Apply accelerator specific postprocessing, if applicable."""
+        return
 
     @staticmethod
     @abstractmethod

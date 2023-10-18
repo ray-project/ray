@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators import tpu
+from ray.util.accelerators.tpu import pod_name, pod_worker_count
 
 
 @patch("glob.glob")
@@ -165,6 +166,61 @@ def test_set_tpu_visible_ids_and_bounds(tpu_chips):
             assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
             assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
             assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
+
+
+@pytest.mark.parametrize(
+    "test_config",
+    [
+        (0, {"TPU-v4-16": 1, "my-tpu": 1, "TPU": 4}),
+        (1, {"my-tpu": 1, "TPU": 4}),
+    ],
+)
+def test_tpu_pod_detect_and_configure_worker(test_config):
+    worker_id, expected_value = test_config
+    resources = {"TPU": 4}
+    with patch(
+        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_tpu_id",
+        return_value="my-tpu",
+    ):
+        with patch(
+            "ray._private.accelerators.tpu.TPUAcceleratorManager."
+            "get_tpu_accelerator_type",
+            return_value="v4-16",
+        ):
+            with patch(
+                "ray._private.accelerators.tpu.TPUAcceleratorManager.get_tpu_worker_id",
+                return_value=worker_id,
+            ):
+                TPUAcceleratorManager.postprocess_resources(resources=resources)
+
+    assert resources == expected_value
+
+
+def test_pod_name_smoke():
+    with patch(
+        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_tpu_id",
+        return_value="my-tpu",
+    ):
+        name = pod_name()
+    assert name == "my-tpu"
+
+
+def test_empty_pod_name_returns_none():
+    with patch(
+        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_tpu_id",
+        return_value="",
+    ):
+        name = pod_name()
+    assert name is None
+
+
+def test_worker_count():
+    with patch(
+        "ray._private.accelerators.tpu.TPUAcceleratorManager.num_workers_in_tpu_pod",
+        return_value=4,
+    ):
+        worker_count = pod_worker_count()
+    assert worker_count == 4
 
 
 if __name__ == "__main__":

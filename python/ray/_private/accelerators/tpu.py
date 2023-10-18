@@ -3,7 +3,7 @@ import re
 import glob
 import requests
 import logging
-from typing import Optional, List, Tuple
+from typing import Optional, List, Mapping, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
@@ -18,12 +18,15 @@ GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
 # See https://cloud.google.com/compute/docs/metadata/overview
 # for more details about VM instance metadata.
 GCE_TPU_ACCELERATOR_ENDPOINT = (
-    "http://metadata.google.internal/computeMetadata/"
-    "v1/instance/attributes/accelerator-type"
+    "http://metadata.google.internal/computeMetadata/v1/instance/attributes/"
 )
 GCE_TPU_HEADERS = {"Metadata-Flavor": "Google"}
+GCE_TPU_ACCELERATOR_KEY = "accelerator-type"
+GCE_TPU_INSTANCE_ID_KEY = "instance-id"
+GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP = {"v2", "v3", "v4"}
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
@@ -42,6 +45,29 @@ TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
 
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
+
+
+def _get_tpu_metadata(key: str) -> str:
+    """Poll and get TPU metadata."""
+    try:
+        accelerator_type_request = requests.get(
+            os.path.join(GCE_TPU_ACCELERATOR_ENDPOINT, key),
+            headers=GCE_TPU_HEADERS,
+        )
+        if (
+            accelerator_type_request.status_code == 200
+            and accelerator_type_request.text
+        ):
+            return accelerator_type_request.text
+        else:
+            logging.debug(
+                "Unable to poll TPU GCE Metadata. Got "
+                f"status code: {accelerator_type_request.status_code} and "
+                f"content: {accelerator_type_request.text}"
+            )
+    except requests.RequestException as e:
+        logging.debug("Unable to poll the TPU GCE Metadata: %s", e)
+    return ""
 
 
 class TPUAcceleratorManager(AcceleratorManager):
@@ -90,90 +116,6 @@ class TPUAcceleratorManager(AcceleratorManager):
         except FileNotFoundError as e:
             logger.debug("Failed to detect number of TPUs: %s", e)
             return 0
-
-    @staticmethod
-    def get_current_node_accelerator_type() -> Optional[str]:
-        """Attempt to detect the TPU accelerator type.
-
-        Individual TPU VMs within a TPU pod must know what type
-        of pod it is a part of. This is necessary for the
-        ML framework to work properly.
-
-        The logic is different if the TPU was provisioned via:
-        ```
-        gcloud tpus tpu-vm create ...
-        ```
-        (i.e. a GCE VM), vs through GKE:
-        - GCE VMs will always have a metadata server to poll this info
-        - GKE VMS will have environment variables preset.
-
-        Returns:
-            A string representing the TPU accelerator type,
-            e.g. "TPU-V2", "TPU-V3", "TPU-V4" if applicable, else None.
-        """
-
-        def tpu_accelerator_type_to_ray_accelerator_type(
-            tpu_accelerator_type: str,
-        ) -> Optional[str]:
-            if TPUAcceleratorManager.is_valid_tpu_accelerator_type(
-                tpu_accelerator_type
-            ):
-                return "TPU-" + str(tpu_accelerator_type.split("-")[0]).upper()
-            else:
-                return None
-
-        ray_accelerator_type = None
-        # GKE-based check
-        tpu_accelerator_type = os.getenv(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, None)
-        if tpu_accelerator_type is not None:
-            ray_accelerator_type = tpu_accelerator_type_to_ray_accelerator_type(
-                tpu_accelerator_type
-            )
-            if ray_accelerator_type is None:
-                logger.info(
-                    "While trying to autodetect a TPU type and "
-                    f"parsing {GKE_TPU_ACCELERATOR_TYPE_ENV_VAR}, "
-                    f"received malformed accelerator_type: {tpu_accelerator_type}"
-                )
-        else:
-            # GCE-based VM check
-            try:
-                tpu_accelerator_type_request = requests.get(
-                    GCE_TPU_ACCELERATOR_ENDPOINT,
-                    headers=GCE_TPU_HEADERS,
-                    timeout=30,
-                )
-                if (
-                    tpu_accelerator_type_request.status_code == 200
-                    and tpu_accelerator_type_request.text
-                ):
-                    ray_accelerator_type = tpu_accelerator_type_to_ray_accelerator_type(
-                        tpu_accelerator_type_request.text
-                    )
-                    if ray_accelerator_type is None:
-                        logger.info(
-                            "While trying to autodetect a TPU type, "
-                            "the TPU GCE metadata "
-                            "returned a malformed accelerator type: "
-                            f"{tpu_accelerator_type_request.text}."
-                        )
-                else:
-                    logger.info(
-                        "While trying to autodetect a TPU type, "
-                        "unable to poll TPU GCE metadata. Got "
-                        f"status code: {tpu_accelerator_type_request.status_code} and "
-                        f"content: {tpu_accelerator_type_request.text}"
-                    )
-            except requests.RequestException as e:
-                logger.info(
-                    "While trying to autodetect a TPU type, "
-                    " unable to poll TPU GCE metadata: %s",
-                    e,
-                )
-
-        if ray_accelerator_type is None:
-            logging.info("Failed to auto-detect TPU type.")
-        return ray_accelerator_type
 
     @staticmethod
     def is_valid_tpu_accelerator_type(tpu_accelerator_type: str) -> bool:
@@ -247,3 +189,168 @@ class TPUAcceleratorManager(AcceleratorManager):
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
             ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
+        elif num_visible_tpu_chips == 4:
+            os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = None
+            os.environ[TPU_HOST_BOUNDS_ENV_VAR] = None
+
+    @staticmethod
+    def get_tpu_accelerator_type() -> Optional[str]:
+        """Get the TPU accelerator type if applicable.
+
+        Individual TPU VMs within a TPU pod must know what type
+        of pod it is a part of. This is necessary for the
+        ML framework to work properly.
+
+        The logic is different if the TPU was provisioned via:
+        ```
+        gcloud tpus tpu-vm create ...
+        ```
+        (i.e. a GCE VM), vs through GKE:
+        - GCE VMs will always have a metadata server to poll this info
+        - GKE VMS will have environment variables preset.
+
+        Returns:
+            A string representing the TPU accelerator type, e.g.
+            v4-16.
+
+        """
+        # GKE-based check
+        accelerator_type = os.getenv(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
+        if not accelerator_type:
+            # GCE-based VM check
+            accelerator_type = _get_tpu_metadata(key=GCE_TPU_ACCELERATOR_KEY)
+        if TPUAcceleratorManager.is_valid_tpu_accelerator_type(
+            tpu_accelerator_type=accelerator_type
+        ):
+            return accelerator_type
+        logging.debug("Failed to get a valid accelerator type.")
+        return None
+
+    @staticmethod
+    def get_tpu_id() -> str:
+        """Return the name of the TPU pod that this worker node is a part of."""
+        return _get_tpu_metadata(key=GCE_TPU_INSTANCE_ID_KEY)
+
+    @staticmethod
+    def get_tpu_worker_id() -> Optional[int]:
+        """Return the worker index of the TPU pod."""
+        try:
+            worker_id = _get_tpu_metadata(key=GCE_TPU_WORKER_ID_KEY)
+            return int(worker_id)
+        except ValueError as e:
+            logging.debug("Could not get TPU worker id: %s", e)
+            return None
+
+    @staticmethod
+    def num_workers_in_tpu_pod() -> Optional[int]:
+        """Return the total number of workers in a TPU pod."""
+        accelerator_type = TPUAcceleratorManager.get_tpu_accelerator_type()
+        if accelerator_type:
+            version = accelerator_type.split("-")[0]
+            num_chips_or_cores = int(accelerator_type.split("-")[1])
+            if version in TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP:
+                return num_chips_or_cores // 8
+            else:
+                return num_chips_or_cores // 4
+        else:
+            logging.debug("Could not get num workers in TPU pod.")
+            return None
+
+    @staticmethod
+    def get_current_node_accelerator_type() -> Optional[List[str]]:
+        """Attempt to detect the TPU accelerator type.
+
+        Returns:
+            A string representing the TPU accelerator type,
+            e.g. "TPU-V2", "TPU-V3", "TPU-V4" if applicable, else None.
+
+        """
+
+        def tpu_accelerator_type_to_ray_accelerator_type(
+            tpu_accelerator_type: str,
+        ) -> Optional[str]:
+            return "TPU-" + str(tpu_accelerator_type.split("-")[0].upper())
+
+        ray_accelerator_type = None
+        tpu_accelerator_type = TPUAcceleratorManager.get_tpu_accelerator_type()
+
+        if tpu_accelerator_type is not None:
+            ray_accelerator_type = tpu_accelerator_type_to_ray_accelerator_type(
+                tpu_accelerator_type
+            )
+            if ray_accelerator_type is None:
+                logger.info(
+                    "While trying to autodetect a TPU type, "
+                    f"received malformed accelerator_type: {tpu_accelerator_type}"
+                )
+
+        if ray_accelerator_type is None:
+            logging.info("Failed to auto-detect TPU type.")
+
+        return ray_accelerator_type
+
+    def postprocess_resources(resources: Mapping[str, float]):
+        """Apply TPU pod-specific postprocessing to input resources.
+
+        This will populate the TPU version and additional resources
+        used for TPU pod execution.
+
+        When running workloads on a TPU pod, we need a way to run
+        the same binary on every worker in the TPU pod.
+
+        See https://jax.readthedocs.io/en/latest/multi_process.html
+        for more information.
+
+        To do this in ray, we take advantage of custom resources. We
+        mark worker 0 of the TPU pod as a "coordinator" that identifies
+        the other workers in the TPU pod. We therefore need:
+        - worker 0 to be targetable.
+        - all workers in the TPU pod to have a unique identifier consistent
+        within a TPU pod.
+
+        So assuming we want to run the following workload:
+
+        @ray.remote
+        def my_jax_fn():
+            import jax
+            return jax.device_count()
+
+        We could broadcast this on a TPU pod (e.g. a v4-16) as follows:
+
+        @ray.remote(resources={"tpu-v4-16"})
+        def run_jax_fn(executable):
+            # Note this will execute on worker 0
+            tpu_name = ray.util.accelerators.tpu.get_tpu_pod_name()
+            num_workers = ray.util.accelerators.tpu.get_tpu_num_workers()
+            tpu_executable = executable.options(resources={"TPU": 4, tpu_name: 1})
+            return [tpu_executable.remote() for _ in range(num_workers)]
+
+        Returns:
+            An optional list of strings representing:
+            - the TPU accelerator version, e.g. "TPU-V2", "TPU-V3",
+              "TPU-V4" if applicable, else None.
+            - the TPU pod name
+            - if worker 0, the TPU topology.
+        """
+        tpu_id = TPUAcceleratorManager.get_tpu_id()
+        worker_id = TPUAcceleratorManager.get_tpu_worker_id()
+        tpu_accelerator_type = TPUAcceleratorManager.get_tpu_accelerator_type()
+
+        if tpu_id and worker_id is not None and tpu_accelerator_type:
+            pod_resource_name = f"TPU-{tpu_accelerator_type}"
+            # Add the name of the TPU ID to the resource.
+            resources[tpu_id] = 1
+            # Only add in the TPU pod resource type to worker 0.
+            if worker_id == 0:
+                resources[pod_resource_name] = 1
+            else:
+                if pod_resource_name in resources:
+                    resources.pop(pod_resource_name)
+        else:
+            logging.info(
+                "Failed to configure TPU pod. Got: "
+                "tpu_id: %s, worker_id: %s, accelerator_type: %s",
+                tpu_id,
+                worker_id,
+                tpu_accelerator_type,
+            )
