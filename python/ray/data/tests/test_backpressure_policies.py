@@ -15,16 +15,16 @@ from ray.data._internal.execution.backpressure_policy import (
 @contextmanager
 def enable_backpressure_policies(policies):
     data_context = ray.data.DataContext.get_current()
-    old_policies = data_context.get_plugin_config(
+    old_policies = data_context.get_config(
         ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
         [],
     )
-    data_context.set_plugin_config(
+    data_context.set_config(
         ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
         policies,
     )
     yield
-    data_context.set_plugin_config(
+    data_context.set_config(
         ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
         old_policies,
     )
@@ -45,26 +45,24 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
     @contextmanager
     def _patch_config(self, init_cap, cap_multiply_threshold, cap_multiplier):
         data_context = ray.data.DataContext.get_current()
-        data_context.set_plugin_config(
+        data_context.set_config(
             ConcurrencyCapBackpressurePolicy.INIT_CAP_CONFIG_KEY,
             init_cap,
         )
-        data_context.set_plugin_config(
+        data_context.set_config(
             ConcurrencyCapBackpressurePolicy.CAP_MULTIPLY_THRESHOLD_CONFIG_KEY,
             cap_multiply_threshold,
         )
-        data_context.set_plugin_config(
+        data_context.set_config(
             ConcurrencyCapBackpressurePolicy.CAP_MULTIPLIER_CONFIG_KEY,
             cap_multiplier,
         )
         yield
-        data_context.remove_plugin_config(
-            ConcurrencyCapBackpressurePolicy.INIT_CAP_CONFIG_KEY
-        )
-        data_context.remove_plugin_config(
+        data_context.remove_config(ConcurrencyCapBackpressurePolicy.INIT_CAP_CONFIG_KEY)
+        data_context.remove_config(
             ConcurrencyCapBackpressurePolicy.CAP_MULTIPLY_THRESHOLD_CONFIG_KEY
         )
-        data_context.remove_plugin_config(
+        data_context.remove_config(
             ConcurrencyCapBackpressurePolicy.CAP_MULTIPLIER_CONFIG_KEY
         )
 

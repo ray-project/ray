@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 # Default enabled backpressure policies and its config key.
-# Use `DataContext.set_plugin_config` to config it.
+# Use `DataContext.set_config` to config it.
 # TODO(hchen): Enable ConcurrencyCapBackpressurePolicy by default.
 ENABLED_BACKPRESSURE_POLICIES = []
 ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY = "backpressure_policies.enabled"
@@ -22,7 +22,7 @@ ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY = "backpressure_policies.enabled"
 
 def get_backpressure_policies(topology: "Topology"):
     data_context = ray.data.DataContext.get_current()
-    policies = data_context.get_plugin_config(
+    policies = data_context.get_config(
         ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY, ENABLED_BACKPRESSURE_POLICIES
     )
 
@@ -62,7 +62,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
     # Following are the default values followed by the config keys of the
     # available configs.
-    # Use `DataContext.set_plugin_config` to config them.
+    # Use `DataContext.set_config` to config them.
 
     # The intial concurrency cap for each operator.
     INIT_CAP = 4
@@ -81,13 +81,13 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         self._concurrency_caps: dict["PhysicalOperator", float] = {}
 
         data_context = ray.data.DataContext.get_current()
-        self._init_cap = data_context.get_plugin_config(
+        self._init_cap = data_context.get_config(
             self.INIT_CAP_CONFIG_KEY, self.INIT_CAP
         )
-        self._cap_multiplier = data_context.get_plugin_config(
+        self._cap_multiplier = data_context.get_config(
             self.CAP_MULTIPLIER_CONFIG_KEY, self.CAP_MULTIPLIER
         )
-        self._cap_multiply_threshold = data_context.get_plugin_config(
+        self._cap_multiply_threshold = data_context.get_config(
             self.CAP_MULTIPLY_THRESHOLD_CONFIG_KEY, self.CAP_MULTIPLY_THRESHOLD
         )
 
