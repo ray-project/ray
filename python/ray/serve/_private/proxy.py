@@ -344,6 +344,7 @@ class GenericProxy(ABC):
                     response_generator=self.draining_response(proxy_request),
                     application_name="",
                     deployment_name="",
+                    route=proxy_request.route_path,
                     should_record_access_log=False,
                     should_record_request_metrics=False,
                     should_increment_ongoing_requests=False,
@@ -353,6 +354,7 @@ class GenericProxy(ABC):
                     response_generator=self.routes_response(proxy_request),
                     application_name="",
                     deployment_name="",
+                    route=proxy_request.route_path,
                     should_record_access_log=False,
                     # TODO(edoakes): should we be recording metrics for routes?
                     should_record_request_metrics=True,
@@ -364,6 +366,7 @@ class GenericProxy(ABC):
                     response_generator=self.draining_response(proxy_request),
                     application_name="",
                     deployment_name="",
+                    route=proxy_request.route_path,
                     should_record_access_log=False,
                     should_record_request_metrics=False,
                     should_increment_ongoing_requests=False,
@@ -373,6 +376,7 @@ class GenericProxy(ABC):
                     response_generator=self.health_response(proxy_request),
                     application_name="",
                     deployment_name="",
+                    route=proxy_request.route_path,
                     should_record_access_log=False,
                     # TODO(edoakes): should we be recording metrics for health check?
                     should_record_request_metrics=True,
@@ -392,6 +396,7 @@ class GenericProxy(ABC):
                     response_generator=self.not_found(proxy_request),
                     application_name="",
                     deployment_name="",
+                    route=proxy_request.route_path,
                     should_record_access_log=True,
                     should_record_request_metrics=True,
                     should_increment_ongoing_requests=False,
@@ -425,6 +430,7 @@ class GenericProxy(ABC):
                     response_generator=response_generator,
                     application_name=handle.deployment_id.app,
                     deployment_name=handle.deployment_id.name,
+                    route=route_path,
                     should_record_access_log=True,
                     should_record_request_metrics=True,
                     should_increment_ongoing_requests=True,
@@ -475,7 +481,7 @@ class GenericProxy(ABC):
         if response_handler_info.should_record_request_metrics:
             self.request_counter.inc(
                 tags={
-                    "route": proxy_request.route_path,
+                    "route": response_handler_info.route,
                     "method": proxy_request.method,
                     "application": response_handler_info.application_name,
                     "status_code": str(status.code),
@@ -486,7 +492,7 @@ class GenericProxy(ABC):
                 latency_ms,
                 tags={
                     "method": proxy_request.method,
-                    "route": proxy_request.route_path,
+                    "route": response_handler_info.route,
                     "application": response_handler_info.application_name,
                     "status_code": str(status.code),
                 },
@@ -494,7 +500,7 @@ class GenericProxy(ABC):
             if status.is_error:
                 self.request_error_counter.inc(
                     tags={
-                        "route": proxy_request.route_path,
+                        "route": response_handler_info.route,
                         "error_code": str(status.code),
                         "method": proxy_request.method,
                         "application": response_handler_info.application_name,
@@ -505,7 +511,7 @@ class GenericProxy(ABC):
                         "deployment": response_handler_info.deployment_name,
                         "error_code": str(status.code),
                         "method": proxy_request.method,
-                        "route": proxy_request.route_path,
+                        "route": response_handler_info.route,
                         "application": response_handler_info.application_name,
                     }
                 )

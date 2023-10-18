@@ -184,6 +184,7 @@ class ResponseHandlerInfo:
     response_generator: ResponseGenerator
     application_name: str
     deployment_name: str
+    route: str
     should_record_access_log: bool
     should_record_request_metrics: bool
     should_increment_ongoing_requests: bool
