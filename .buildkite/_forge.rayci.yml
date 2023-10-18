@@ -145,3 +145,11 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
       IMAGE_TO: mlgpubuild
       IS_GPU_BUILD: "true"
+  
+  - name: mltrainiumbuild
+    wanda: ci/docker/ml.trainium.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
+      IMAGE_TO: mltrainiumbuild
+      IS_GPU_BUILD: "true"
