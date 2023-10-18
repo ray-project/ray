@@ -1,0 +1,15 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+max_workers: 3
+
+head_node_type:
+    name: head_node
+    instance_type: trn1.2xlarge
+
+aws:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
