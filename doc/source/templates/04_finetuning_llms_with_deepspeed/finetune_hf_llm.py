@@ -425,9 +425,9 @@ def training_function(kwargs: dict):
             if config["as_test"]:
                 break
 
+            aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
-                aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
                 train.report(
                     {
                         "epoch": epoch,
