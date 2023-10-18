@@ -439,7 +439,7 @@ class TestHTTPProxy:
 
         assert any([message.get("headers") is not None for message in messages])
         assert any(
-            ['{"/route": "app1"}' in str(message.get("body")) for message in messages]
+            ['{"/route":"app1"}' in str(message.get("body")) for message in messages]
         )
         assert isinstance(status, ResponseStatus)
         assert status.code == 200
