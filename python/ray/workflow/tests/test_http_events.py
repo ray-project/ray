@@ -5,7 +5,8 @@ import ray
 from ray import workflow
 from ray.workflow.http_event_provider import HTTPListener
 from ray.tests.conftest import *  # noqa
-from ray.serve._private import api as _private_api
+from ray import serve
+from ray.workflow import common
 
 import requests
 
@@ -37,7 +38,9 @@ def test_receive_event_by_http(workflow_start_regular_shared_serve):
     workflow.run_async(event_promise, workflow_id="workflow_test_receive_event_by_http")
 
     # wait until HTTPEventProvider is ready
-    while len(_private_api.list_deployments().keys()) < 1:
+    while (
+        serve.status().applications[common.HTTP_EVENT_PROVIDER_NAME].status != "RUNNING"
+    ):
         sleep(0.1)
 
     # repeat send_event() until the returned status code is not 404
@@ -89,7 +92,9 @@ def test_dynamic_event_by_http(workflow_start_regular_shared_serve):
     )
 
     # wait until HTTPEventProvider is ready
-    while len(_private_api.list_deployments().keys()) < 1:
+    while (
+        serve.status().applications[common.HTTP_EVENT_PROVIDER_NAME].status != "RUNNING"
+    ):
         sleep(0.1)
 
     # repeat send_event() until the returned status code is not 404
