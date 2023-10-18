@@ -6,14 +6,9 @@ import pyarrow.fs
 
 import ray
 from ray.air.config import RunConfig
-from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
-from ray.train._internal.storage import (
-    _exists_at_fs_path,
-    _use_storage_context,
-    get_fs_and_path,
-)
+from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
 from ray.tune import TuneError
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.experimental.output import (
@@ -294,31 +289,28 @@ class Tuner:
                 pass
 
             name = "exp_name"
-            local_dir = "~/ray_results"
-            exp_dir = os.path.join(local_dir, name)
+            storage_path = os.path.expanduser("~/ray_results")
+            exp_dir = os.path.join(storage_path, name)
 
             if Tuner.can_restore(exp_dir):
                 tuner = Tuner.restore(exp_dir, trainable=train_fn, resume_errored=True)
             else:
                 tuner = Tuner(
                     train_fn,
-                    run_config=RunConfig(name=name, local_dir=local_dir),
+                    run_config=RunConfig(name=name, storage_path=storage_path),
                 )
             tuner.fit()
 
         Args:
             path: The path to the experiment directory of the Tune experiment.
-                This can be either a local directory (e.g. ~/ray_results/exp_name)
-                or a remote URI (e.g. s3://bucket/exp_name).
+                This can be either a local directory or a remote URI
+                (e.g. s3://bucket/exp_name).
 
         Returns:
             bool: True if this path exists and contains the Tuner state to resume from
         """
-        if _use_storage_context():
-            fs, fs_path = get_fs_and_path(path, storage_filesystem)
-            return _exists_at_fs_path(fs, os.path.join(fs_path, _TUNER_PKL))
-
-        return _TUNER_PKL in list_at_uri(str(path))
+        fs, fs_path = get_fs_and_path(path, storage_filesystem)
+        return _exists_at_fs_path(fs, os.path.join(fs_path, _TUNER_PKL))
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
         run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
@@ -351,7 +343,15 @@ class Tuner:
 
         .. code-block:: python
 
-            tuner = Tuner.restore("~/ray_results/tuner_resume", trainable=trainable)
+            import os
+            from ray.tune import Tuner
+
+            trainable = ...
+
+            tuner = Tuner.restore(
+                os.path.expanduser("~/ray_results/tuner_resume"),
+                trainable=trainable
+            )
             tuner.fit()
 
         Raises:
@@ -424,3 +424,12 @@ class Tuner:
                 string_queue,
             )
             return ray.get(get_results_future)
+
+    def __getattribute__(self, item):
+        if item == "restore":
+            raise AttributeError(
+                "`Tuner.restore()` is a classmethod and cannot be called on an "
+                "instance. Use `tuner = Tuner.restore(...)` to instantiate the "
+                "Tuner instead."
+            )
+        return super().__getattribute__(item)

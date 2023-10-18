@@ -443,7 +443,7 @@ class Monitor:
         if autoscaler_summary is None:
             return None
 
-        for resource_name in ["CPU", "GPU"]:
+        for resource_name in ["CPU", "GPU", "TPU"]:
             _, total = load_metrics_summary.usage.get(resource_name, (0, 0))
             pending = autoscaler_summary.pending_resources.get(resource_name, 0)
             self.prom_metrics.cluster_resources.labels(
@@ -493,14 +493,14 @@ class Monitor:
     def update_event_summary(self):
         """Report the current size of the cluster.
 
-        To avoid log spam, only cluster size changes (CPU or GPU count change)
+        To avoid log spam, only cluster size changes (CPU, GPU or TPU count change)
         are reported to the event summarizer. The event summarizer will report
         only the latest cluster size per batch.
         """
         avail_resources = self.load_metrics.resources_avail_summary()
         if not self.readonly_config and avail_resources != self.last_avail_resources:
             self.event_summarizer.add(
-                "Resized to {}.",  # e.g., Resized to 100 CPUs, 4 GPUs.
+                "Resized to {}.",  # e.g., Resized to 100 CPUs, 4 GPUs, 4 TPUs.
                 quantity=avail_resources,
                 aggregate=lambda old, new: new,
             )

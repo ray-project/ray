@@ -15,6 +15,10 @@ import useSWR from "swr";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import { NodeLink } from "../../common/links";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+} from "../../common/ProfilingLink";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
@@ -137,7 +141,12 @@ export const NodeRow = ({
       </TableCell>
       <TableCell>
         {raylet.state !== "DEAD" && (
-          <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
+          <Link
+            to={`/logs/${encodeURIComponent(logUrl)}`}
+            style={{ textDecoration: "none" }}
+          >
+            Log
+          </Link>
         )}
       </TableCell>
       <TableCell>
@@ -250,27 +259,17 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
-        <Link to={workerLogUrl} target="_blank">
-          Logs
+        <Link
+          to={workerLogUrl}
+          target="_blank"
+          style={{ textDecoration: "none" }}
+        >
+          Log
         </Link>
         <br />
-        <a
-          href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
-          target="_blank"
-          title="Sample the current Python stack trace for this worker."
-          rel="noreferrer"
-        >
-          Stack&nbsp;Trace
-        </a>
+        <CpuStackTraceLink pid={pid} ip={ip} type="" />
         <br />
-        <a
-          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
-          target="_blank"
-          title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-          rel="noreferrer"
-        >
-          CPU&nbsp;Flame&nbsp;Graph
-        </a>
+        <CpuProfilingLink pid={pid} ip={ip} type="" />
         <br />
       </TableCell>
       <TableCell>

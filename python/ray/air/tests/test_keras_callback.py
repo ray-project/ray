@@ -7,13 +7,13 @@ import tensorflow as tf
 
 import ray
 from ray import train
-from ray.air.integrations.keras import Callback, ReportCheckpointCallback
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train import ScalingConfig
 from ray.train.tensorflow import (
-    LegacyTensorflowCheckpoint,
     TensorflowTrainer,
     TensorflowPredictor,
+    TensorflowCheckpoint,
 )
 
 
@@ -138,7 +138,7 @@ class TestReportCheckpointCallback:
         assert second_metric == {"loss": 1}
         assert second_checkpoint is not None
 
-    def parse_call(self, call) -> Tuple[Dict, ray.air.Checkpoint]:
+    def parse_call(self, call) -> Tuple[Dict, train.Checkpoint]:
         (metrics,), kwargs = call
         checkpoint = kwargs["checkpoint"]
         return metrics, checkpoint
@@ -193,20 +193,12 @@ def test_keras_callback_e2e():
         datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
     checkpoint = trainer.fit().checkpoint
-    assert isinstance(checkpoint, LegacyTensorflowCheckpoint)
-    assert checkpoint._flavor == LegacyTensorflowCheckpoint.Flavor.MODEL_WEIGHTS
-
-    predictor = TensorflowPredictor.from_checkpoint(
-        checkpoint, model_definition=build_model
+    tf_checkpoint = TensorflowCheckpoint(
+        path=checkpoint.path, filesystem=checkpoint.filesystem
     )
-
+    predictor = TensorflowPredictor.from_checkpoint(tf_checkpoint)
     items = np.random.uniform(0, 1, size=(10, 1))
     predictor.predict(data=items)
-
-
-def test_keras_callback_is_deprecated():
-    with pytest.raises(DeprecationWarning):
-        Callback()
 
 
 if __name__ == "__main__":

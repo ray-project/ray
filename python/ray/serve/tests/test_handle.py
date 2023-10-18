@@ -6,16 +6,12 @@ import pytest
 import requests
 
 import ray
-
 from ray import serve
-from ray.serve.exceptions import RayServeException
-from ray.serve.handle import _HandleOptions, RayServeHandle, RayServeSyncHandle
-from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_DEFAULT_APP_NAME,
-)
 from ray.serve._private.common import RequestProtocol
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle, _HandleOptions
 
 
 def test_handle_options():
@@ -30,6 +26,7 @@ def test_handle_options():
     assert only_set_method.method_name == "hi"
     assert only_set_method.multiplexed_model_id == ""
     assert only_set_method.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -42,6 +39,7 @@ def test_handle_options():
     assert only_set_model_id.method_name == "__call__"
     assert only_set_model_id.multiplexed_model_id == "hi"
     assert only_set_model_id.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -54,6 +52,7 @@ def test_handle_options():
     assert only_set_stream.method_name == "__call__"
     assert only_set_stream.multiplexed_model_id == ""
     assert only_set_stream.stream is True
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -75,21 +74,24 @@ async def test_async_handle_serializable(serve_instance):
     def f():
         return "hello"
 
-    f.deploy()
-
     @ray.remote
-    class TaskActor:
-        async def task(self, handle):
+    class DelegateActor:
+        async def call_handle(self, handle):
             ref = await handle.remote()
-            output = await ref
-            return output
+            return await ref
 
-    # Test pickling via ray.remote()
-    handle = f.get_handle(sync=False)
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._handle = handle
 
-    task_actor = TaskActor.remote()
-    result = await task_actor.task.remote(handle)
-    assert result == "hello"
+        async def __call__(self):
+            # Test pickling handle via `actor.method.remote()`.
+            a = DelegateActor.remote()
+            return await a.call_handle.remote(self._handle)
+
+    app_handle = serve.run(Ingress.bind(f.bind()))
+    assert ray.get(app_handle.remote()) == "hello"
 
 
 def test_sync_handle_serializable(serve_instance):
@@ -140,15 +142,13 @@ def test_sync_handle_in_thread(serve_instance):
     handle = serve.run(f.bind())
 
     def thread_get_handle(deploy):
-        handle = serve.get_deployment_handle(
-            deploy._name, SERVE_DEFAULT_APP_NAME, sync=True
-        )
+        handle = serve.get_deployment_handle(deploy._name, SERVE_DEFAULT_APP_NAME)
         return handle
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         fut = executor.submit(thread_get_handle, f)
         handle = fut.result()
-        assert ray.get(handle.remote()) == "hello"
+        assert handle.remote().result() == "hello"
 
 
 def test_handle_in_endpoint(serve_instance):
@@ -170,29 +170,6 @@ def test_handle_in_endpoint(serve_instance):
     serve.run(end_p2)
 
     assert requests.get("http://127.0.0.1:8000/Endpoint2").text == "hello"
-
-
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Not supported w/ streaming."
-)
-def test_handle_inject_starlette_request(serve_instance):
-    @serve.deployment(name="echo")
-    def echo_request_type(request):
-        return str(type(request))
-
-    echo_request_type.deploy()
-
-    @serve.deployment(name="wrapper")
-    def wrapper_model(web_request):
-        handle = echo_request_type.get_handle()
-        return ray.get(handle.remote(web_request))
-
-    wrapper_model.deploy()
-
-    for route in ["echo", "wrapper"]:
-        resp = requests.get(f"http://127.0.0.1:8000/{route}")
-        request_type = resp.text
-        assert request_type == "<class 'starlette.requests.Request'>"
 
 
 def test_handle_option_chaining(serve_instance):
@@ -228,57 +205,63 @@ def test_repeated_get_handle_cached(serve_instance):
     def f(_):
         return ""
 
-    f.deploy()
+    serve.run(f.bind())
 
-    handle_sets = {f.get_handle() for _ in range(100)}
+    handle_sets = {serve.get_app_handle("default") for _ in range(100)}
     assert len(handle_sets) == 1
 
-    handle_sets = {serve.get_deployment("f").get_handle() for _ in range(100)}
+    handle_sets = {serve.get_deployment_handle("f", "default") for _ in range(100)}
     assert len(handle_sets) == 1
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("sync", [True, False])
-async def test_args_kwargs(serve_instance, sync):
+def test_args_kwargs_sync(serve_instance):
     @serve.deployment
     async def f(*args, **kwargs):
         assert args[0] == "hi"
         assert kwargs["kwarg1"] == 1
         assert kwargs["kwarg2"] == "2"
 
-    f.deploy()
-
-    handle = f.get_handle(sync=sync)
-
-    def call():
-        return handle.remote("hi", kwarg1=1, kwarg2="2")
-
-    if sync:
-        obj_ref = call()
-    else:
-        obj_ref = await call()
-
-    ray.get(obj_ref)
+    handle = serve.run(f.bind()).options(use_new_handle_api=True)
+    handle.remote("hi", kwarg1=1, kwarg2="2").result()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("sync", [True, False])
-async def test_nonexistent_method(serve_instance, sync):
+async def test_args_kwargs_async(serve_instance):
+    @serve.deployment
+    async def f(*args, **kwargs):
+        assert args[0] == "hi"
+        assert kwargs["kwarg1"] == 1
+        assert kwargs["kwarg2"] == "2"
+
+    handle = serve.run(f.bind()).options(use_new_handle_api=True)
+    await handle.remote("hi", kwarg1=1, kwarg2="2")
+
+
+def test_nonexistent_method_sync(serve_instance):
     @serve.deployment
     class A:
         def exists(self):
             pass
 
-    A.deploy()
-    handle = A.get_handle(sync=sync)
-
-    if sync:
-        obj_ref = handle.does_not_exist.remote()
-    else:
-        obj_ref = await handle.does_not_exist.remote()
-
+    handle = serve.run(A.bind()).options(use_new_handle_api=True)
     with pytest.raises(RayServeException) as excinfo:
-        ray.get(obj_ref)
+        handle.does_not_exist.remote().result()
+
+    exception_string = str(excinfo.value)
+    assert "'does_not_exist'" in exception_string
+    assert "Available methods: ['exists']" in exception_string
+
+
+@pytest.mark.asyncio
+async def test_nonexistent_method_async(serve_instance):
+    @serve.deployment
+    class A:
+        def exists(self):
+            pass
+
+    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    with pytest.raises(RayServeException) as excinfo:
+        await handle.does_not_exist.remote()
 
     exception_string = str(excinfo.value)
     assert "'does_not_exist'" in exception_string
@@ -301,24 +284,24 @@ async def test_handle_across_loops(serve_instance):
         def exists(self):
             return True
 
-    A.deploy()
+    serve.run(A.bind())
 
     async def refresh_get():
-        handle = A.get_handle(sync=False)
-        assert await (await handle.exists.remote())
+        handle = serve.get_app_handle("default")
+        assert await handle.exists.remote()
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
         asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
 
-    handle = A.get_handle(sync=False)
+    handle = serve.get_app_handle("default")
 
     async def cache_get():
-        assert await (await handle.exists.remote())
+        assert await handle.exists.remote()
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
-        asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
+        asyncio.run_coroutine_threadsafe(cache_get(), loop).result()
 
 
 def test_handle_typing(serve_instance):
@@ -377,18 +360,28 @@ class MyRouter(PowerOfTwoChoicesReplicaScheduler):
     pass
 
 
-def test_handle_options_custom_router(serve_instance):
+@pytest.mark.parametrize("use_new_handle_api", [False, True])
+def test_handle_options_custom_router(serve_instance, use_new_handle_api: bool):
     @serve.deployment
     def echo(name: str):
         return f"Hi {name}"
 
-    handle = serve.run(echo.bind())
-    handle2 = handle.options(_router_cls="ray.serve.tests.test_handle.MyRouter")
-    ray.get(handle2.remote("HI"))
-    print("Router class used", handle2._router._replica_scheduler)
+    handle = serve.run(echo.bind()).options(
+        _router_cls="ray.serve.tests.test_handle.MyRouter",
+        use_new_handle_api=use_new_handle_api,
+    )
+
+    if use_new_handle_api:
+        result = handle.remote("HI").result()
+    else:
+        result = ray.get(handle.remote("HI"))
+
+    assert result == "Hi HI"
+
+    print("Router class used", handle._router._replica_scheduler)
     assert (
-        "MyRouter" in handle2._router._replica_scheduler.__class__.__name__
-    ), handle2._router._replica_scheduler
+        "MyRouter" in handle._router._replica_scheduler.__class__.__name__
+    ), handle._router._replica_scheduler
 
 
 def test_set_request_protocol(serve_instance):
@@ -424,6 +417,7 @@ def test_set_request_protocol(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

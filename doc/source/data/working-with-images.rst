@@ -250,7 +250,7 @@ and :ref:`Transforming batches with actors <transforming_data_actors>`.
 Saving images
 -------------
 
-Save images with formats like PNG, Parquet, and Numpy. To view all supported formats,
+Save images with formats like PNG, Parquet, and NumPy. To view all supported formats,
 see the :ref:`Input/Output reference <input-output>`.
 
 .. tab-set::

@@ -3,12 +3,11 @@ import numbers
 from typing import Any, Callable, List, Optional, Tuple
 
 from ray._private.dict import flatten_dict
-from ray.air.config import MAX
 from ray.air._internal.util import is_nan
+from ray.air.config import MAX
 from ray.train import CheckpointConfig
-from ray.train._internal.storage import _delete_fs_path
 from ray.train._internal.session import _TrainingResult
-
+from ray.train._internal.storage import _delete_fs_path
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +62,7 @@ class _CheckpointManager:
         # The latest registered checkpoint.
         # This should never be immediately deleted upon registration,
         # even if it's not in the top K checkpoints, based on score.
-        self._latest_checkpoint_result: _TrainingResult = None
+        self._latest_checkpoint_result: Optional[_TrainingResult] = None
 
         if (
             self._checkpoint_config.num_to_keep is not None

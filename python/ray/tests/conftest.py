@@ -589,11 +589,16 @@ def call_ray_start_context(request):
     except Exception as e:
         print(type(e), e)
         raise
+
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
-    address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
-    address = out[address_location:]
-    address = address.split("'")[0]
+    idx = out.find(redis_substring_prefix)
+    if idx >= 0:
+        address_location = idx + len(redis_substring_prefix)
+        address = out[address_location:]
+        address = address.split("'")[0]
+    else:
+        address = None
 
     yield address
 

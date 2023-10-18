@@ -118,21 +118,6 @@ class TestToTF:
         assert tuple(features.shape) == (4, 3, 32, 32)
         assert tuple(labels.shape) == (4,)
 
-    def test_element_spec_pipeline(self):
-        ds = ray.data.from_items(
-            8 * [{"spam": np.zeros([3, 32, 32]), "ham": 0}]
-        ).repeat(2)
-
-        dataset = ds.to_tf(feature_columns="spam", label_columns="ham", batch_size=4)
-
-        feature_spec, label_spec = dataset.element_spec
-        assert tuple(feature_spec.shape) == (None, 3, 32, 32)
-        assert tuple(label_spec.shape) == (None,)
-
-        features, labels = next(iter(dataset))
-        assert tuple(features.shape) == (4, 3, 32, 32)
-        assert tuple(labels.shape) == (4,)
-
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_element_spec_shape_with_ragged_tensors(self, batch_size):
         df = pd.DataFrame(
@@ -172,9 +157,11 @@ class TestToTF:
             multi_worker_model.fit(dataset)
 
         dataset = ray.data.from_items(8 * [{"X0": 0, "X1": 0, "Y": 0}])
+        concatenator = Concatenator(exclude=["Y"], output_column_name="X")
+        dataset = concatenator.transform(dataset)
+
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_func,
-            preprocessor=Concatenator(exclude=["Y"], output_column_name="X"),
             scaling_config=ScalingConfig(num_workers=2),
             datasets={"train": dataset},
         )

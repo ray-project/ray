@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Iterator, Optional
+from typing import Any, Dict, Optional
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -8,8 +8,9 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
+from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data.block import Block
+from ray.data.context import DataContext
 
 
 class TaskPoolMapOperator(MapOperator):
@@ -17,8 +18,9 @@ class TaskPoolMapOperator(MapOperator):
 
     def __init__(
         self,
-        transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
+        map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int],
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -29,6 +31,8 @@ class TaskPoolMapOperator(MapOperator):
             transform_fn: The function to apply to each ref bundle input.
             input_op: Operator generating input data for this op.
             name: The name of this operator.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -36,17 +40,31 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            transform_fn, input_op, name, min_rows_per_bundle, ray_remote_args
+            map_transformer,
+            input_op,
+            name,
+            target_max_block_size,
+            min_rows_per_bundle,
+            ray_remote_args,
         )
 
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
         map_task = cached_remote_fn(_map_task, num_returns="streaming")
         input_blocks = [block for block, _ in bundle.blocks]
-        ctx = TaskContext(task_idx=self._next_data_task_idx)
+
+        ctx = TaskContext(
+            task_idx=self._next_data_task_idx,
+            target_max_block_size=self.actual_target_max_block_size,
+        )
         gen = map_task.options(
             **self._get_runtime_ray_remote_args(input_bundle=bundle), name=self.name
-        ).remote(self._transform_fn_ref, ctx, *input_blocks)
+        ).remote(
+            self._map_transformer_ref,
+            DataContext.get_current(),
+            ctx,
+            *input_blocks,
+        )
         self._submit_data_task(gen, bundle)
 
     def shutdown(self):
@@ -75,7 +93,7 @@ class TaskPoolMapOperator(MapOperator):
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            object_store_memory=self._metrics.cur,
+            object_store_memory=self.metrics.obj_store_mem_cur,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:

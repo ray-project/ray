@@ -15,6 +15,9 @@ from ray.includes.common cimport (
     CRayStatus,
     CGcsClientOptions,
 )
+from ray.includes.optional cimport (
+    optional
+)
 
 cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
@@ -29,7 +32,8 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_vector[c_string] GetAllTaskEvents()
         unique_ptr[c_string] GetObjectInfo(const CObjectID &object_id)
         unique_ptr[c_string] GetAllResourceUsage()
-        c_vector[c_string] GetAllActorInfo()
+        c_vector[c_string] GetAllActorInfo(
+            optional[CActorID], optional[CJobID], optional[c_string])
         unique_ptr[c_string] GetActorInfo(const CActorID &actor_id)
         unique_ptr[c_string] GetWorkerInfo(const CWorkerID &worker_id)
         c_vector[c_string] GetAllWorkerInfo()
@@ -45,6 +49,72 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         CRayStatus GetNodeToConnectForDriver(
             const c_string &node_ip_address,
             c_string *node_to_connect)
+
+cdef extern from * namespace "ray::gcs" nogil:
+    """
+    #include <thread>
+    #include "ray/gcs/gcs_server/store_client_kv.h"
+    namespace ray {
+    namespace gcs {
+
+    bool RedisGetKeySync(const std::string& host,
+                         int32_t port,
+                         const std::string& password,
+                         bool use_ssl,
+                         const std::string& config,
+                         const std::string& key,
+                         std::string* data) {
+      InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                             ray::RayLog::ShutDownRayLog,
+                                             "ray_init",
+                                             ray::RayLogLevel::WARNING,
+                                             "" /* log_dir */);
+
+      RedisClientOptions options(host, port, password, false, use_ssl);
+
+      std::string config_list;
+      RAY_CHECK(absl::Base64Unescape(config, &config_list));
+      RayConfig::instance().initialize(config_list);
+
+      instrumented_io_context io_service;
+
+      auto redis_client = std::make_shared<RedisClient>(options);
+      auto status = redis_client->Connect(io_service);
+      if(!status.ok()) {
+        RAY_LOG(ERROR) << "Failed to connect to redis: " << status.ToString();
+        return false;
+      }
+
+      auto cli = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<RedisStoreClient>(std::move(redis_client)));
+
+      bool ret_val = false;
+      cli->Get("session", key, [&](std::optional<std::string> result) {
+        if (result.has_value()) {
+          *data = result.value();
+          ret_val = true;
+        } else {
+          RAY_LOG(INFO) << "Failed to retrieve the key " << key
+                        << " from persistent storage.";
+          ret_val = false;
+        }
+      });
+      io_service.run_for(std::chrono::milliseconds(1000));
+
+      return ret_val;
+    }
+
+    }
+    }
+    """
+    c_bool RedisGetKeySync(const c_string& host,
+                           c_int32_t port,
+                           const c_string& password,
+                           c_bool use_ssl,
+                           const c_string& config,
+                           const c_string& key,
+                           c_string* data)
+
 
 cdef extern from * namespace "ray::gcs" nogil:
     """

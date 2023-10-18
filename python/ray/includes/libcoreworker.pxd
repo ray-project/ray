@@ -108,7 +108,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool retry_exceptions,
             const CSchedulingStrategy &scheduling_strategy,
             c_string debugger_breakpoint,
-            c_string serialized_retry_exception_allowlist)
+            c_string serialized_retry_exception_allowlist,
+            const CTaskID current_task_id)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -125,7 +126,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options,
-            c_vector[CObjectReference]&)
+            c_vector[CObjectReference] &task_returns,
+            const CTaskID current_task_id)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)
@@ -173,6 +175,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerID GetWorkerID()
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         const CActorID &GetActorId()
+        const c_string GetActorName()
         void SetActorTitle(const c_string &title)
         void SetActorReprName(const c_string &repr_name)
         void SetWebuiDisplay(const c_string &key, const c_string &message)
@@ -263,10 +266,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
 
         unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
+        c_vector[CTaskID] GetPendingChildrenTasks(const CTaskID &task_id) const
 
         void GetAsync(const CObjectID &object_id,
                       ray_callback_function success_callback,
-                      void* python_future)
+                      void* python_user_callback)
 
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)
@@ -349,6 +353,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string&,
             const c_vector[c_string]&) nogil) run_on_util_worker_handler
         (void(const CRayObject&) nogil) unhandled_exception_handler
+        (void(
+            const CTaskID &c_task_id,
+            const CRayFunction &ray_function,
+            const c_string c_name_of_concurrency_group_to_execute
+        ) nogil) cancel_async_task
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool is_local_mode
         int num_workers

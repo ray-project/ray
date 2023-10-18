@@ -7,7 +7,7 @@ import tempfile
 import time
 
 from ray import train, tune
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.tune.callback import Callback
 from ray._private.test_utils import safe_write_to_results_json
 
@@ -67,7 +67,6 @@ class TestDurableTrainable(tune.Trainable):
         checkpoint_data = np.random.uniform(0, 1, size=self._checkpoint_num_items)
         with open(checkpoint_file, "wb") as fp:
             pickle.dump(checkpoint_data, fp)
-        return tmp_checkpoint_dir
 
     def load_checkpoint(self, checkpoint):
         pass

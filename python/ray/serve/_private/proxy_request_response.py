@@ -1,15 +1,15 @@
-from abc import ABC, abstractmethod
-import grpc
 import logging
 import pickle
+from abc import ABC, abstractmethod
+from typing import Any, Generator, List, Optional, Tuple
 
+import grpc
 from starlette.types import Receive, Scope, Send
-from typing import Any, List, Generator, Optional, Tuple
 
 from ray.actor import ActorHandle
+from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT
-from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -124,7 +124,7 @@ class gRPCProxyRequest(ProxyRequest):
         if not self.is_route_request and not self.is_health_request:
             service_method_split = self.service_method.split("/")
             self.request = pickle.dumps(self.request)
-            self.method_name = service_method_split[-1].lower()
+            self.method_name = service_method_split[-1]
             for key, value in self.context.invocation_metadata():
                 if key == "application":
                     self.app_name = value
@@ -139,7 +139,7 @@ class gRPCProxyRequest(ProxyRequest):
 
     @property
     def method(self) -> str:
-        return "GRPC"
+        return self.service_method
 
     @property
     def route_path(self) -> str:

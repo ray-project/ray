@@ -1,14 +1,13 @@
 import pytest
 
 import ray
-from ray.exceptions import RayError
-from ray._private.test_utils import wait_for_condition
 from ray import serve
+from ray._private.test_utils import wait_for_condition
+from ray.exceptions import RayError
 from ray.serve._private.common import DeploymentStatus
-from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 from ray.serve._private.constants import (
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
 
 
@@ -223,10 +222,7 @@ def test_health_check_failure_makes_deployment_unhealthy(serve_instance):
 
     app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
     assert (
-        app_status.deployments[
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}AlwaysUnhealthy"
-        ].status
-        == DeploymentStatus.UNHEALTHY
+        app_status.deployments["AlwaysUnhealthy"].status == DeploymentStatus.UNHEALTHY
     )
 
 
@@ -260,13 +256,7 @@ def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instan
 
     def check_status(expected_status: DeploymentStatus):
         app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-        assert (
-            app_status.deployments[
-                f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}"
-                "WillBeUnhealthy"
-            ].status
-            == expected_status
-        )
+        assert app_status.deployments["WillBeUnhealthy"].status == expected_status
         return True
 
     toggle = ray.remote(Toggle).remote()

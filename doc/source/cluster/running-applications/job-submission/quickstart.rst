@@ -296,9 +296,10 @@ Now let's try it with a runtime environment that pins the version of the ``reque
     # Job 'raysubmit_vGGV4MiP9rYkYUnb' succeeded
     # ------------------------------------------
 
-.. warning::
+.. note::
 
-    When using the Ray Jobs API, the runtime environment should be specified only in the Jobs API (e.g. in `ray job submit --runtime-env=...` or `JobSubmissionClient.submit_job(runtime_env=...)`), not via `ray.init(runtime_env=...)` in the driver script.
+    If both the Driver and Job specify a runtime environment, Ray tries to merge them and raises an exception if they conflict.
+    See :ref:`runtime environments <runtime-environments-job-conflict>` for more details.
 
 - The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-cli-ref>`. 
 - The full API reference for the Ray Jobs SDK can be found :ref:`here <ray-job-submission-sdk-ref>`.

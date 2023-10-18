@@ -17,8 +17,10 @@
 #include <exception>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "grpcpp/opencensus.h"
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
@@ -103,7 +105,7 @@ static inline void Init(const TagsType &global_tags,
 
   MetricPointExporter::Register(exporter, metrics_report_batch_size);
   OpenCensusProtoExporter::Register(
-      metrics_agent_port, (*metrics_io_service), "127.0.0.1", worker_id);
+      metrics_agent_port, (*metrics_io_service), "127.0.0.1", worker_id, RayConfig::instance().metrics_report_batch_size());
   StatsConfig::instance().SetGlobalTags(global_tags);
   for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();
@@ -126,6 +128,23 @@ static inline void Shutdown() {
   exporter = nullptr;
   StatsConfig::instance().SetIsInitialized(false);
   RAY_LOG(INFO) << "Stats module has shutdown.";
+}
+
+// Enables grpc metrics collection if `my_component` is in
+// `RAY_enable_grpc_metrics_collection_for`.
+// Must be called early, before any grpc call, or the program crashes.
+static inline void enable_grpc_metrics_collection_if_needed(
+    std::string_view my_component) {
+  if (!RayConfig::instance().enable_grpc_metrics_collection_for().empty()) {
+    std::vector<std::string> results;
+    boost::split(results,
+                 RayConfig::instance().enable_grpc_metrics_collection_for(),
+                 boost::is_any_of(","));
+    if (std::find(results.begin(), results.end(), my_component) != results.end()) {
+      grpc::RegisterOpenCensusPlugin();
+      grpc::RegisterOpenCensusViewsForExport();
+    }
+  }
 }
 
 }  // namespace stats

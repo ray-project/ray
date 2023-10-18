@@ -21,6 +21,7 @@
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 /// Convert an unique ID to a flatbuffer string.
 ///
@@ -222,4 +223,22 @@ static inline std::vector<ray::ObjectID> ObjectRefsToIds(
     object_ids.push_back(ObjectRefToId(ref));
   }
   return object_ids;
+}
+
+static inline ray::rpc::ActorTableData::ActorState StringToActorState(
+    const std::string &actor_state_name) {
+  if (actor_state_name == "DEPENDENCIES_UNREADY") {
+    return ray::rpc::ActorTableData::DEPENDENCIES_UNREADY;
+  } else if (actor_state_name == "PENDING_CREATION") {
+    return ray::rpc::ActorTableData::PENDING_CREATION;
+  } else if (actor_state_name == "ALIVE") {
+    return ray::rpc::ActorTableData::ALIVE;
+  } else if (actor_state_name == "RESTARTING") {
+    return ray::rpc::ActorTableData::RESTARTING;
+  } else if (actor_state_name == "DEAD") {
+    return ray::rpc::ActorTableData::DEAD;
+  } else {
+    RAY_CHECK(false) << "Invalid actor state name:" << actor_state_name;
+    return {};
+  }
 }

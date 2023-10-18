@@ -47,7 +47,7 @@ def train_convnet(config):
             # Every 5 steps, checkpoint our current state.
             # First get the checkpoint directory from tune.
             # Need to create a directory under current working directory
-            # to construct an AIR Checkpoint object from.
+            # to construct checkpoint object from.
             os.makedirs("my_model", exist_ok=True)
             torch.save(
                 {
@@ -65,7 +65,7 @@ def train_convnet(config):
 # __train_end__
 
 
-def test_best_model(results: tune.ResultGrid):
+def eval_best_model(results: tune.ResultGrid):
     """Test the best model given output of tuner.fit()."""
     with results.get_best_result().checkpoint.as_directory() as best_checkpoint_path:
         best_model = ConvNet()
@@ -141,4 +141,4 @@ if __name__ == "__main__":
     results = tuner.fit()
     # __tune_end__
 
-    test_best_model(results)
+    eval_best_model(results)

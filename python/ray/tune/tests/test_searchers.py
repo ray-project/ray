@@ -2,13 +2,16 @@ import contextlib
 from copy import deepcopy
 import numpy as np
 import os
+from packaging.version import Version
+import pandas
+import pytest
 import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune.search import ConcurrencyLimiter
 
@@ -18,21 +21,21 @@ def _invalid_objective(config):
     metric = "point" if "point" in config else "report"
 
     if config[metric] > 4:
-        tune.report(float("inf"))
+        train.report({"_metric": float("inf")})
     elif config[metric] > 3:
-        tune.report(float("-inf"))
+        train.report({"_metric": float("-inf")})
     elif config[metric] > 2:
-        tune.report(np.nan)
+        train.report({"_metric": np.nan})
     else:
-        tune.report(float(config[metric]) or 0.1)
+        train.report({"_metric": float(config[metric]) or 0.1})
 
 
 def _multi_objective(config):
-    tune.report(a=config["a"] * 100, b=config["b"] * -100, c=config["c"])
+    train.report(dict(a=config["a"] * 100, b=config["b"] * -100, c=config["c"]))
 
 
 def _dummy_objective(config):
-    tune.report(metric=config["report"])
+    train.report(dict(metric=config["report"]))
 
 
 class InvalidValuesTest(unittest.TestCase):
@@ -224,6 +227,9 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertCorrectExperimentOutput(out)
 
     def testHEBO(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         from ray.tune.search.hebo import HEBOSearch
 
         with self.check_searcher_checkpoint_errors_scope():
@@ -507,6 +513,9 @@ class AddEvaluatedPointTest(unittest.TestCase):
             dbr_searcher.add_evaluated_point(point, 1.0)
 
     def testHEBO(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         from ray.tune.search.hebo import HEBOSearch
 
         searcher = HEBOSearch(
@@ -684,6 +693,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testHEBO(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         from ray.tune.search.hebo import HEBOSearch
 
         searcher = HEBOSearch(
@@ -816,7 +828,6 @@ class MultiObjectiveTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))

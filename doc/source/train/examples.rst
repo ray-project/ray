@@ -3,159 +3,66 @@
 Ray Train Examples
 ==================
 
-.. Example .rst files should be organized in the same manner as the
+.. Organize example .rst files in the same manner as the
    .py files in ray/python/ray/train/examples.
 
-Below are examples for using Ray Train with a variety of models, frameworks,
-and use cases. You can filter these examples by the following categories:
+Below are examples for using Ray Train with a variety of frameworks and use cases.
+
+Beginner
+--------
+
+.. list-table::
+  :widths: 1 5
+  :header-rows: 1
+
+  * - Framework
+    - Example
+  * - PyTorch
+    - :ref:`Train a Fashion MNIST Image Classifier with PyTorch <torch_fashion_mnist_ex>`
+  * - Lightning
+    - :ref:`Train an MNIST Image Classifier with Lightning <lightning_mnist_example>`
+  * - Transformers
+    - :ref:`Fine-tune a Text Classifier on the Yelp Reviews Dataset with Hugging Face Transformers <transformers_torch_trainer_basic_example>`
+  * - Accelerate
+    - :ref:`Distributed Data Parallel Training with Hugging Face Accelerate <accelerate_example>`
+  * - DeepSpeed
+    - :ref:`Train with DeepSpeed ZeRO-3 <deepspeed_example>`
+  * - TensorFlow
+    - :ref:`Train an MNIST Image Classifier with TensorFlow <tensorflow_mnist_example>`
+  * - Horovod
+    - :ref:`Train with Horovod and PyTorch <horovod_example>`
+
+Intermediate
+------------
+
+.. list-table::
+  :widths: 1 5
+  :header-rows: 1
+
+  * - Framework
+    - Example
+  * - PyTorch
+    - :ref:`Fine-tune of Stable Diffusion with DreamBooth and Ray Train <torch_finetune_dreambooth_ex>`
+  * - Lightning
+    - :ref:`Train with PyTorch Lightning and Ray Data <lightning_advanced_example>`
+  * - Transformers
+    - :ref:`Fine-tune a Text Classifier on GLUE Benchmark with Hugging Face Accelerate <train_transformers_glue_example>`
 
 
-Distributed Training Examples using Ray Train
----------------------------------------------
+Advanced
+--------
 
-.. grid:: 1 2 3 3
-    :gutter: 1
-    :class-container: container pb-4
+.. list-table::
+  :widths: 1 5
+  :header-rows: 1
 
-    .. grid-item-card::
-        :img-top: /images/pytorch_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: torch_fashion_mnist_ex
-
-            PyTorch Fashion MNIST Training Example
-
-    .. grid-item-card::
-        :img-top: /images/hugging.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: train_transformers_example
-
-            Transformers with PyTorch Training Example
-
-    .. grid-item-card::
-        :img-top: /images/tf_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: tensorflow_mnist_example
-
-            TensorFlow MNIST Training Example
-
-    .. grid-item-card::
-        :img-top: /images/horovod.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: horovod_example
-
-            End-to-end Horovod Training Example
-
-    .. grid-item-card::
-        :img-top: /images/pytorch_lightning_small.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: lightning_mnist_example
-
-            End-to-end PyTorch Lightning Training Example
-
-    .. grid-item-card::
-        :img-top: /images/pytorch_lightning_small.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: lightning_advanced_example
-
-            Use LightningTrainer with Ray Data and Batch Predictor
-
-    .. grid-item-card::
-        :img-top: /images/pytorch_lightning_small.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: dolly_lightning_fsdp_finetuning
-
-            Fine-tune LLM with LightningTrainer and FSDP
-    
-    .. grid-item-card::
-        :img-top: /images/pytorch_lightning_small.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: vicuna_lightning_deepspeed_finetuning
-
-            Fine-tune vicuna-13b-v1.3 with Deepspeed and LightningTrainer
-
-
-Ray Train Examples Using Loggers & Callbacks
---------------------------------------------
-
-
-.. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
-
-    .. grid-item-card::
-        :img-top: /images/mlflow.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: train_mlflow_example
-
-            Logging Training Runs with MLflow
-
-    .. grid-item-card::
-        :img-top: /images/pytorch_lightning_small.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: lightning_experiment_tracking
-
-            Using Experiment Tracking Tools in LightningTrainer
-
-
-Ray Train & Tune Integration Examples
--------------------------------------
-
-.. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
-
-    .. grid-item-card::
-        :img-top: /images/tune.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: tune_train_tf_example
-
-            End-to-end Example for Tuning a TensorFlow Model
-
-    .. grid-item-card::
-        :img-top: /images/tune.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: tune_train_torch_example
-
-            End-to-end Example for Tuning a PyTorch Model with PBT
-
-..
-    TODO implement these examples!
-
-    Features
-    --------
-
-    * Example for using a custom callback
-    * End-to-end example for running on an elastic cluster (elastic training)
-
-    Models
-    ------
-
-    * Example training on Vision model.
-
-Ray Train Benchmarks
---------------------
-
-
-.. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
-
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: train_benchmark
-
-            Benchmark example for the PyTorch data transfer auto pipeline
+  * - Framework
+    - Example
+  * - Accelerate, DeepSpeed
+    - `Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
+  * - Transformers, DeepSpeed
+    - :ref:`Fine-tune GPT-J-6B with Ray Train and DeepSpeed <gptj_deepspeed_finetune>`
+  * - Lightning, DeepSpeed
+    - :ref:`Fine-tune vicuna-13b with PyTorch Lightning and DeepSpeed <vicuna_lightning_deepspeed_finetuning>`
+  * - Lightning
+    - :ref:`Fine-tune dolly-v2-7b with PyTorch Lightning and FSDP <dolly_lightning_fsdp_finetuning>`

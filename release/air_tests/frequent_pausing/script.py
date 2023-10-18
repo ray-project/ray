@@ -20,8 +20,7 @@ import pickle
 import tempfile
 
 from ray import train
-from ray.train import RunConfig
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, RunConfig
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
