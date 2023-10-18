@@ -488,7 +488,7 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
-   :inherited-members: BaseModel
+   :template: autosummary/class_with_inherited_members.rst
 
    schema.ServeInstanceDetails
    schema.ApplicationDetails
