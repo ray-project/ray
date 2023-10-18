@@ -336,6 +336,7 @@ def process_completed_tasks(topology: Topology) -> None:
             active_tasks[task.get_waitable()] = (state, task)
             if backpressure_config.enabled:
                 output_buffer_sizes_bytes[state] = state.outqueue_memory_usage()
+    # print("output_buffer_sizes_bytes", [(state.op, size) for state, size in output_buffer_sizes_bytes.items()])
 
     # Process completed Ray tasks and notify operators.
     if active_tasks:
