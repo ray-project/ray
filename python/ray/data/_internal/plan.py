@@ -128,6 +128,8 @@ class ExecutionPlan:
         # A computed snapshot of some prefix of stages.
         self._snapshot_blocks = None
         self._snapshot_stats = None
+        # Executor._generate_stats call for updating stats
+        self._get_executor_stats = None
         # Chains of stages.
         self._stages_before_snapshot = []
         self._stages_after_snapshot = []
@@ -541,6 +543,8 @@ class ExecutionPlan:
         except StopIteration:
             pass
         self._snapshot_stats = executor.get_stats()
+        # Store executor stats getter to update _snapshot_stats during execution.
+        self._get_executor_stats = executor.get_stats
         return block_iter, self._snapshot_stats, executor
 
     def execute(
@@ -689,6 +693,18 @@ class ExecutionPlan:
         """
         if not self._snapshot_stats:
             return DatasetStats(stages={}, parent=None)
+        if self._get_executor_stats is not None:
+            # If executing to iterator, extra_metrics will not be updated for
+            # _snapshot_stats. Retrieve current stats from executor and
+            # update _snapshot_stats with current extra_metrics.
+            def merge_stats(snapshot_stats: DatasetStats, executor_stats: DatasetStats):
+                snapshot_stats.extra_metrics = executor_stats.extra_metrics
+                for snapshot_parent, executor_parent in zip(
+                    snapshot_stats.parents, executor_stats.parents
+                ):
+                    merge_stats(snapshot_parent, executor_parent)
+
+            merge_stats(self._snapshot_stats, self._get_executor_stats())
         return self._snapshot_stats
 
     def stats_summary(self) -> DatasetStatsSummary:
