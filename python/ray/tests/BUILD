@@ -123,7 +123,9 @@ py_test_module_list(
   files = [
     "test_actor_bounded_threads.py",
     "test_autoscaler_fake_scaledown.py",
-    "test_accelerator.py",
+    "accelerators/test_neuron.py",
+    "accelerators/test_tpu.py",
+    "accelerators/test_nvidia_gpu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -208,7 +210,6 @@ py_test_module_list(
     "test_mini.py",
     "test_minimal_install.py",
     "test_numba.py",
-    "test_redis_tls.py",
     "test_raylet_output.py",
     "test_top_level_api.py",
     "test_unhandled_error.py",
@@ -218,6 +219,16 @@ py_test_module_list(
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+      "test_redis_tls.py",
+  ],
+  size = "small",
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+  data = glob(["tls/*"]),
 )
 
 py_test_module_list(
@@ -369,7 +380,8 @@ py_test_module_list(
     "test_runtime_env_working_dir_2.py",
     "test_runtime_env_working_dir_3.py",
     "test_runtime_env_working_dir_4.py",
-    "test_runtime_env_working_dir_remote_uri.py"
+    "test_runtime_env_working_dir_remote_uri.py",
+    "test_runtime_env_profiler.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_2", "team:core"],

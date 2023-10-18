@@ -39,7 +39,9 @@ class ZipOperator(PhysicalOperator):
         self._right_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
-        super().__init__("Zip", [left_input_op, right_input_op])
+        super().__init__(
+            "Zip", [left_input_op, right_input_op], target_max_block_size=None
+        )
 
     def num_outputs_total(self) -> int:
         left_num_outputs = self.input_dependencies[0].num_outputs_total()

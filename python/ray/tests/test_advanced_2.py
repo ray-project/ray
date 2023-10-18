@@ -652,7 +652,6 @@ def test_neuron_core_with_placement_group(shutdown_only):
 def test_gpu_and_neuron_cores(shutdown_only):
     num_gpus = 2
     num_nc = 2
-    nc_accelerator_type = AWS_NEURON_CORE
     ray.init(num_cpus=2, num_gpus=num_gpus, resources={"neuron_cores": num_nc})
 
     def get_gpu_ids(num_gpus_per_worker):
@@ -684,36 +683,6 @@ def test_gpu_and_neuron_cores(shutdown_only):
     assert ray.get(gpu_f.remote()) == 2
     nc_f = ray.remote(resources={"neuron_cores": 2})(lambda: get_neuron_core_ids(2))
     assert ray.get(nc_f.remote()) == 2
-
-    with pytest.raises(ValueError):
-        ray.remote(resources={"neuron_cores": 2}, num_gpus=1)(
-            lambda: get_neuron_core_ids(2)
-        )
-
-    with pytest.raises(ValueError):
-        ray.remote(accelerator_type=nc_accelerator_type, num_gpus=1)(
-            lambda: get_neuron_core_ids(2)
-        )
-
-    with pytest.raises(ValueError):
-
-        @ray.remote(resources={"neuron_cores": 2}, num_gpus=2)
-        class IncorrectNeuronCoreActorWithGPU:
-            def test(self):
-                neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
-                    "neuron_cores"
-                ]
-                return len(neuron_core_ids)
-
-    with pytest.raises(ValueError):
-
-        @ray.remote(accelerator_type=nc_accelerator_type, num_gpus=2)
-        class IncorrectNeuronCoreAcceleratorWithGPU:
-            def test(self):
-                neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
-                    "neuron_cores"
-                ]
-                return len(neuron_core_ids)
 
 
 # TODO: 5 retry attempts may be too little for Travis and we may need to
