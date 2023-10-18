@@ -122,8 +122,8 @@ struct ActorCreationOptions {
         scheduling_strategy(scheduling_strategy) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
-      auto it = placement_resources.find(resource.first);
-      RAY_CHECK(it != placement_resources.end());
+      auto it = this->placement_resources.find(resource.first);
+      RAY_CHECK(it != this->placement_resources.end());
       RAY_CHECK(it->second >= resource.second);
     }
   };
