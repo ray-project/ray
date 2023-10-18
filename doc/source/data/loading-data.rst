@@ -26,11 +26,10 @@ To view the full list of supported file formats, see the
         To read Parquet files, call :func:`~ray.data.read_parquet`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
-            ds = ray.data.read_parquet("local:///tmp/iris.parquet")
+            ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
 
             print(ds.schema())
 
@@ -50,16 +49,14 @@ To view the full list of supported file formats, see the
         images as NumPy ndarrays.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
-            ds = ray.data.read_images("local:///tmp/batoidea/JPEGImages/")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea/JPEGImages/")
 
             print(ds.schema())
 
         .. testoutput::
-            :skipif: True
 
             Column  Type
             ------  ----
@@ -70,11 +67,10 @@ To view the full list of supported file formats, see the
         To read lines of text, call :func:`~ray.data.read_text`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
-            ds = ray.data.read_text("local:///tmp/this.txt")
+            ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
 
             print(ds.schema())
 
@@ -89,11 +85,10 @@ To view the full list of supported file formats, see the
         To read CSV files, call :func:`~ray.data.read_csv`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
-            ds = ray.data.read_csv("local:///tmp/iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             print(ds.schema())
 
@@ -112,11 +107,10 @@ To view the full list of supported file formats, see the
         To read raw binary files, call :func:`~ray.data.read_binary_files`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
-            ds = ray.data.read_binary_files("local:///tmp/file.dat")
+            ds = ray.data.read_binary_files("s3://anonymous@ray-example-data/file.dat")
 
             print(ds.schema())
 
@@ -131,11 +125,10 @@ To view the full list of supported file formats, see the
         To read TFRecords files, call :func:`~ray.data.read_tfrecords`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
-            ds = ray.data.read_tfrecords("local:///tmp/iris.tfrecords")
+            ds = ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
 
             print(ds.schema())
 
@@ -230,7 +223,11 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             import ray
 
-            ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            filesystem = gcsfs.GCSFileSystem(project="my-google-project")
+            ds = ray.data.read_parquet(
+                "s3://anonymous@ray-example-data/iris.parquet",
+                filesystem=filesystem
+            )
 
             print(ds.schema())
 
@@ -466,7 +463,6 @@ Ray Data interoperates with distributed data processing frameworks like
         the Dask DataFrame.
 
         .. testcode::
-            :skipif: True
 
             import dask.dataframe as dd
             import pandas as pd
@@ -493,7 +489,6 @@ Ray Data interoperates with distributed data processing frameworks like
         the distributed Spark DataFrame partitions that underly the Spark DataFrame.
 
         .. testcode::
-            :skipif: True
 
             import ray
             import raydp
@@ -520,7 +515,6 @@ Ray Data interoperates with distributed data processing frameworks like
         the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
 
         .. testcode::
-            :skipif: True
 
             import modin.pandas as md
             import pandas as pd
@@ -547,7 +541,6 @@ Ray Data interoperates with distributed data processing frameworks like
         DataFrame.
 
         .. testcode::
-            :skipif: True
 
             import mars
             import mars.dataframe as md

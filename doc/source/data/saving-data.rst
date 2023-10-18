@@ -203,7 +203,6 @@ Ray Data interoperates with distributed data processing frameworks like
         :meth:`Dataset.to_dask() <ray.data.Dataset.to_dask>`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -218,7 +217,6 @@ Ray Data interoperates with distributed data processing frameworks like
         call :meth:`Dataset.to_spark() <ray.data.Dataset.to_spark>`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -232,7 +230,6 @@ Ray Data interoperates with distributed data processing frameworks like
         :meth:`Dataset.to_modin() <ray.data.Dataset.to_modin>`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -246,7 +243,6 @@ Ray Data interoperates with distributed data processing frameworks like
         :meth:`Dataset.to_mars() <ray.data.Dataset.to_mars>`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
