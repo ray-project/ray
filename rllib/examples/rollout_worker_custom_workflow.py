@@ -10,7 +10,7 @@ import gymnasium as gym
 import numpy as np
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.policy import Policy
@@ -65,7 +65,7 @@ class CustomPolicy(Policy):
         self.w = weights["w"]
 
 
-def training_workflow(config, reporter):
+def training_workflow(config):
     # Setup policy and policy evaluation actors
     env = gym.make("CartPole-v1")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
@@ -99,7 +99,7 @@ def training_workflow(config, reporter):
         # Do some arbitrary updates based on the T2 batch
         policy.update_some_value(sum(T2["rewards"]))
 
-        reporter(**collect_metrics(remote_workers=workers))
+        train.report(collect_metrics(remote_workers=workers))
 
 
 if __name__ == "__main__":
@@ -120,7 +120,7 @@ if __name__ == "__main__":
             "num_workers": args.num_workers,
             "num_iters": args.num_iters,
         },
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             verbose=1,
         ),
     )

@@ -1,12 +1,11 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from ray import cloudpickle
 from ray.serve._private.common import EndpointInfo, EndpointTag
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.long_poll import LongPollNamespace
+from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
-from ray.serve._private.long_poll import LongPollHost
 
 CHECKPOINT_KEY = "serve-endpoint-state-checkpoint"
 
@@ -74,9 +73,9 @@ class EndpointState:
         if existing_route_endpoint is not None and existing_route_endpoint != endpoint:
             logger.debug(
                 f'route_prefix "{endpoint_info.route}" is currently '
-                f'registered to deployment "{existing_route_endpoint}". '
+                f'registered to deployment "{existing_route_endpoint.name}". '
                 f'Re-registering route_prefix "{endpoint_info.route}" to '
-                f'deployment "{endpoint}".'
+                f'deployment "{endpoint.name}".'
             )
             del self._endpoints[existing_route_endpoint]
 

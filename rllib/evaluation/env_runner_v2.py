@@ -781,6 +781,7 @@ class EnvRunnerV2:
                         SampleBatch.NEXT_OBS: obs,
                         SampleBatch.INFOS: infos,
                         SampleBatch.T: episode.length,
+                        SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
                     },
                 )
                 for agent_id, obs in agents_obs

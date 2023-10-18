@@ -3,12 +3,11 @@ from typing import TYPE_CHECKING, List, Optional, Type, Union
 
 import pandas as pd
 
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.train.predictor import Predictor
 from ray.util import log_once
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 try:
     import torch
@@ -44,14 +43,23 @@ except ImportError as e:
 
 
 if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
-    from transformers.modeling_utils import PreTrainedModel
     from transformers.modeling_tf_utils import TFPreTrainedModel
+    from transformers.modeling_utils import PreTrainedModel
+
+    from ray.data.preprocessor import Preprocessor
+    from ray.train.huggingface import TransformersCheckpoint
 
 logger = logging.getLogger(__name__)
 
+TRANSFORMERS_PREDICTOR_DEPRECATION_MESSAGE = (
+    "The TransformersPredictor will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "For batch inference, see https://docs.ray.io/en/master/data/batch_inference.html"
+    "for more details."
+)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated
 class TransformersPredictor(Predictor):
     """A predictor for HuggingFace Transformers PyTorch models.
 
@@ -71,6 +79,7 @@ class TransformersPredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
         use_gpu: bool = False,
     ):
+        raise DeprecationWarning(TRANSFORMERS_PREDICTOR_DEPRECATION_MESSAGE)
 
         if TRANSFORMERS_IMPORT_ERROR is not None:
             raise TRANSFORMERS_IMPORT_ERROR
@@ -101,7 +110,7 @@ class TransformersPredictor(Predictor):
     @classmethod
     def from_checkpoint(
         cls,
-        checkpoint: Checkpoint,
+        checkpoint: "TransformersCheckpoint",
         *,
         pipeline_cls: Optional[Type["Pipeline"]] = None,
         model_cls: Optional[
@@ -111,9 +120,7 @@ class TransformersPredictor(Predictor):
         use_gpu: bool = False,
         **pipeline_kwargs,
     ) -> "TransformersPredictor":
-        """Instantiate the predictor from a Checkpoint.
-
-        The checkpoint is expected to be a result of ``TransformersTrainer``.
+        """Instantiate the predictor from a TransformersCheckpoint.
 
         Note that the Transformers ``pipeline`` used internally expects to
         receive raw text. If you have any Preprocessors in Checkpoint
@@ -122,8 +129,7 @@ class TransformersPredictor(Predictor):
 
         Args:
             checkpoint: The checkpoint to load the model, tokenizer and
-                preprocessor from. It is expected to be from the result of a
-                ``TransformersTrainer`` run.
+                preprocessor from.
             pipeline_cls: A ``transformers.pipelines.Pipeline`` class to use.
                 If not specified, will use the ``pipeline`` abstraction
                 wrapper.
@@ -140,8 +146,6 @@ class TransformersPredictor(Predictor):
                 True, 'device' will be set to 0 by default, unless 'device_map' is
                 passed.
         """
-        from ray.train.huggingface import TransformersCheckpoint
-
         if TRANSFORMERS_IMPORT_ERROR is not None:
             raise TRANSFORMERS_IMPORT_ERROR
 
@@ -155,11 +159,6 @@ class TransformersPredictor(Predictor):
 
         model = None
         if model_cls:
-            if not isinstance(checkpoint, TransformersCheckpoint):
-                raise ValueError(
-                    "If `model_cls` is passed, the checkpoint has to be a "
-                    "`TransformersCheckpoint`."
-                )
             pretrained_model_kwargs = pretrained_model_kwargs or {}
             model = checkpoint.get_model(model_cls, **pretrained_model_kwargs)
 
@@ -244,30 +243,6 @@ class TransformersPredictor(Predictor):
                 columns.
             **pipeline_call_kwargs: additional kwargs to pass to the
                 ``pipeline`` object.
-
-        Examples:
-            >>> import pandas as pd
-            >>> from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-            >>> from transformers.pipelines import pipeline
-            >>> from ray.train.huggingface import TransformersPredictor
-            >>>
-            >>> model_checkpoint = "gpt2"
-            >>> tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
-            >>> tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-            >>>
-            >>> model_config = AutoConfig.from_pretrained(model_checkpoint)
-            >>> model = AutoModelForCausalLM.from_config(model_config)
-            >>> predictor = TransformersPredictor(
-            ...     pipeline=pipeline(
-            ...         task="text-generation", model=model, tokenizer=tokenizer
-            ...     )
-            ... )
-            >>>
-            >>> prompts = pd.DataFrame(
-            ...     ["Complete me", "And me", "Please complete"], columns=["sentences"]
-            ... )
-            >>> predictions = predictor.predict(prompts)
-
 
         Returns:
             Prediction result.

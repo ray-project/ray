@@ -1,7 +1,9 @@
 import inspect
-from fastapi import Body
 from typing import Any, Callable, Optional, Type, Union
-from pydantic import BaseModel
+
+from fastapi import Body
+
+from ray._private.pydantic_compat import BaseModel
 from ray._private.utils import import_attr
 from ray.util.annotations import DeveloperAPI
 
@@ -12,7 +14,6 @@ HTTPAdapterFn = Callable[[Any], Any]
 def load_http_adapter(
     http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]]
 ) -> HTTPAdapterFn:
-
     if http_adapter is None:
         http_adapter = "ray.serve.http_adapters.starlette_request"
 

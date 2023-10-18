@@ -9,10 +9,15 @@ sudo apt-get update \
     && sudo apt-get install -y gcc \
         cmake \
         libgtk2.0-dev \
-        zlib1g-dev \
         libgl1-mesa-dev \
+        libgl1-mesa-glx \
+        libosmesa6 \
+        libosmesa6-dev \
+        libglfw3 \
+        patchelf \
         unzip \
-        unrar
+        unrar \
+        zlib1g-dev
 
 pip --no-cache-dir install -U pip pip-tools
 
@@ -48,3 +53,12 @@ pip --no-cache-dir install \
 sudo apt-get clean
 
 sudo rm ./*requirements*.txt
+
+# MuJoCo Installation.
+export MUJOCO_GL=osmesa
+wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
+mkdir -p ~/.mujoco
+mv mujoco-2.1.1-linux-x86_64.tar.gz ~/.mujoco/.
+cd ~/.mujoco || exit
+tar -xf ~/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco-2.1.1/bin

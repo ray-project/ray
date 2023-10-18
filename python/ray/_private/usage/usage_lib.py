@@ -269,6 +269,15 @@ def put_pre_init_usage_stats():
     _put_pre_init_extra_usage_tags()
 
 
+def reset_global_state():
+    global _recorded_library_usages, _recorded_extra_usage_tags
+
+    with _recorded_library_usages_lock:
+        _recorded_library_usages = set()
+    with _recorded_extra_usage_tags_lock:
+        _recorded_extra_usage_tags = dict()
+
+
 ray._private.worker._post_init_hooks.append(put_pre_init_usage_stats)
 
 
@@ -478,10 +487,10 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
     try:
         result = gcs_client.get_all_job_info()
         total_num_running_jobs = 0
-        for job_id, job_info in result.items():
-            if not job_info["is_dead"] and not job_info["config"][
-                "ray_namespace"
-            ].startswith("_ray_internal"):
+        for job_info in result.values():
+            if not job_info.is_dead and not job_info.config.ray_namespace.startswith(
+                "_ray_internal"
+            ):
                 total_num_running_jobs += 1
         return total_num_running_jobs
     except Exception as e:

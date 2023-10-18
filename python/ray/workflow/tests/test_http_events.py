@@ -2,9 +2,10 @@ from time import sleep
 import pytest
 
 import ray
-from ray import workflow, serve
+from ray import workflow
 from ray.workflow.http_event_provider import HTTPListener
 from ray.tests.conftest import *  # noqa
+from ray.serve._private import api as _private_api
 
 import requests
 
@@ -36,7 +37,7 @@ def test_receive_event_by_http(workflow_start_regular_shared_serve):
     workflow.run_async(event_promise, workflow_id="workflow_test_receive_event_by_http")
 
     # wait until HTTPEventProvider is ready
-    while len(serve.list_deployments().keys()) < 1:
+    while len(_private_api.list_deployments().keys()) < 1:
         sleep(0.1)
 
     # repeat send_event() until the returned status code is not 404
@@ -88,7 +89,7 @@ def test_dynamic_event_by_http(workflow_start_regular_shared_serve):
     )
 
     # wait until HTTPEventProvider is ready
-    while len(serve.list_deployments().keys()) < 1:
+    while len(_private_api.list_deployments().keys()) < 1:
         sleep(0.1)
 
     # repeat send_event() until the returned status code is not 404

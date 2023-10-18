@@ -76,6 +76,12 @@ To tell the Ray Jobs CLI how to find your Ray Cluster, we will pass the Ray Dash
 
 Alternatively, you can also pass the ``--address=http://127.0.0.1:8265`` flag explicitly to each Ray Jobs CLI command, or prepend each command with ``RAY_ADDRESS=http://127.0.0.1:8265``.
 
+Additionally, if you wish to pass headers per HTTP request to the Cluster, then utilize the `RAY_JOB_HEADERS` environment variable.` Must be in JSON form.
+
+.. code-block:: bash
+    
+    $ export RAY_JOB_HEADERS='{"KEY": "VALUE"}'
+
 To submit the job, we use ``ray job submit``.
 Make sure to specify the path to the working directory in the ``--working-dir`` argument.
 (For local clusters this is not strictly necessary, but for remote clusters this is required in order to upload the working directory to the cluster.)
@@ -290,9 +296,10 @@ Now let's try it with a runtime environment that pins the version of the ``reque
     # Job 'raysubmit_vGGV4MiP9rYkYUnb' succeeded
     # ------------------------------------------
 
-.. warning::
+.. note::
 
-    When using the Ray Jobs API, the runtime environment should be specified only in the Jobs API (e.g. in `ray job submit --runtime-env=...` or `JobSubmissionClient.submit_job(runtime_env=...)`), not via `ray.init(runtime_env=...)` in the driver script.
+    If both the Driver and Job specify a runtime environment, Ray tries to merge them and raises an exception if they conflict.
+    See :ref:`runtime environments <runtime-environments-job-conflict>` for more details.
 
 - The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-cli-ref>`. 
 - The full API reference for the Ray Jobs SDK can be found :ref:`here <ray-job-submission-sdk-ref>`.

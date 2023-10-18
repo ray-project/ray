@@ -4,11 +4,7 @@ import logging
 import os
 import sys
 
-# For cases like docs builds, we want the default logging config.
-skip_reset = os.environ.get("SKIP_LOG_RESET", False)
-if not skip_reset:
-    log.generate_logging_config()
-
+log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
 
@@ -47,19 +43,6 @@ def _configure_system():
                 "make sure you are using pickle5 >= 0.0.10 because "
                 "previous versions may leak memory."
             )
-
-    # MUST add pickle5 to the import path because it will be imported by some
-    # raylet modules.
-    #
-    # When running Python version < 3.8, Ray needs to use pickle5 instead of
-    # Python's built-in pickle. Add the directory containing pickle5 to the
-    # Python path so that we find the pickle5 version packaged with Ray and
-    # not a pre-existing pickle5.
-    if sys.version_info < (3, 8):
-        pickle5_path = os.path.join(
-            os.path.abspath(os.path.dirname(__file__)), "pickle5_files"
-        )
-        sys.path.insert(0, pickle5_path)
 
     # Importing psutil & setproctitle. Must be before ray._raylet is
     # initialized.
