@@ -719,6 +719,16 @@ class TestAppBuilder:
     def test_args_typed(self):
         args_dict = {"message": "hiya", "num_replicas": "3"}
 
+        def build(args):
+            """Builder with no type hint."""
+
+            return self.A.options(num_replicas=args["num_replicas"]).bind(
+                args["message"]
+            )
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
         def build(args: Dict[str, str]):
             """Builder with vanilla type hint."""
 
