@@ -69,6 +69,7 @@ steps:
       - pip freeze
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
         --parallelism-per-worker 2
+        --build-name mltrainiumbuild
         --only-tags trainium
     depends_on: mltrainiumbuild
     job_env: forge
