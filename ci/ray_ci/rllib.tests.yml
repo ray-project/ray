@@ -31,3 +31,5 @@ flaky_tests:
   - //rllib:test_memory_leak_ddpg
   # tests/ dir
   - //rllib:tests/test_io
+  # multi-gpu
+  - //rllib:TestLearnerGroupAsyncUpdate
