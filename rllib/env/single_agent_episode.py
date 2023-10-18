@@ -258,8 +258,8 @@ class SingleAgentEpisode:
 
     def __len__(self):
         assert len(self.observations) > 0, (
-            "ERROR: Cannot determine length of episode that hasn't started yet! "
-            "Call `SingleAgentEpisode.add_initial_observation(initial_observation=...)` "
+            "ERROR: Cannot determine length of episode that hasn't started yet! Call "
+            "`SingleAgentEpisode.add_initial_observation(initial_observation=...)` "
             "first (after which `len(SingleAgentEpisode)` will be 0)."
         )
         return len(self.observations) - 1
