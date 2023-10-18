@@ -309,12 +309,13 @@ def training_function(kwargs: dict):
 
         if num_parameters != expected_num_parameters:
             raise ValueError(
-                f"Expected {expected_num_parameters} parameters, got {num_parameters} parameters."
-                f"LoRA-ification failed."
+                f"Expected {expected_num_parameters} parameters, got {num_parameters} "
+                f"parameters. LoRA-ification failed."
             )
 
         print(
-            f"LoRA-ification done in {time.time() - s} seconds. Estimated checkpoint size (fp16): {num_parameters * 2 / 1e6} MB"
+            f"LoRA-ification done in {time.time() - s} seconds. Estimated checkpoint "
+            f"size (fp16): {num_parameters * 2 / 1e6} MB"
         )
 
     print(f"Number of checkpointed parameters: {get_number_of_params(model)}")
@@ -581,7 +582,8 @@ def parse_args():
         "--stop-perplexity",
         default=0,
         type=float,
-        help="Target perplexity to reach after which to stop training. Default is 0. If 0, training will not stop on perplexity.",
+        help="Target perplexity to reach after which to stop training. Default is 0. "
+        "If 0, training will not stop on perplexity.",
     )
 
     parser.add_argument(
@@ -650,7 +652,8 @@ def parse_args():
         "--lora",
         action="store_true",
         default=False,
-        help="If passed, will enable parameter efficient fine-tuning with LoRA (https://arxiv.org/pdf/2106.09685.pdf).",
+        help="If passed, will enable parameter efficient fine-tuning with LoRA ("
+        "https://arxiv.org/pdf/2106.09685.pdf).",
     )
 
     args = parser.parse_args()

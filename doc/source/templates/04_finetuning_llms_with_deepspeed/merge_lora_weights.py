@@ -17,9 +17,14 @@ from transformers import (
 
 from utils import download_model, get_mirror_link, get_checkpoint_and_refs_dir
 
-# In addition to merging the lora weights, you can also formulate a prompt for the model here to quickly test it after merging
+# In addition to merging the lora weights, you can also formulate a prompt for the
+# model here to quickly test it after merging
 TEST_EVAL = False
-TEST_PROMPT = "<START_Q>Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?<END_Q><START_A>"
+TEST_PROMPT = (
+    "<START_Q>Natalia sold clips to 48 of her friends in April, and then "
+    "she sold half as many clips in May. How many clips did Natalia sell "
+    "altogether in April and May?<END_Q><START_A>"
+)
 STOP_TOKEN = "<END_A>"
 
 
@@ -50,12 +55,12 @@ def parse_args():
 def test_eval(model, tokenizer):
     """Query the model with a single prompt to sanity check it."""
 
-    print(f"Starting model evaluation...")
+    print("Starting model evaluation...")
 
     model.eval()
     model.to("cuda")
 
-    print(f"Prompting model with promtp : ", TEST_PROMPT)
+    print("Prompting model with promtp : ", TEST_PROMPT)
     input_ids = tokenizer(TEST_PROMPT, return_tensors="pt")["input_ids"].to("cuda")
 
     stop_token_embeding = tokenizer(
@@ -99,7 +104,7 @@ def main():
     ckpt_path, _ = get_checkpoint_and_refs_dir(model_id=model_id, bucket_uri=s3_bucket)
 
     print(f"Downloading original model {model_id} from {s3_bucket} to {ckpt_path} ...")
-    print(f"Loading tokenizer...")
+    print("Loading tokenizer...")
 
     tokenizer = AutoTokenizer.from_pretrained(args.checkpoint, legacy=True)
     tokenizer.save_pretrained(Path(args.output_path))
@@ -126,7 +131,7 @@ def main():
     model.resize_token_embeddings(len(tokenizer))
 
     print(f"Done downloading and loading model after {time.time() - s2} seconds.")
-    print(f"Loading and merging peft weights...")
+    print("Loading and merging peft weights...")
     s3 = time.time()
 
     # Load LoRA weights
