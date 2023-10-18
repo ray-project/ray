@@ -1,7 +1,5 @@
 import os
 import sys
-from functools import partial
-from multiprocessing import Pool
 from typing import DefaultDict, Dict, List, Optional
 
 import grpc
@@ -1157,7 +1155,6 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     @serve.deployment(
         max_concurrent_queries=1,
-        graceful_shutdown_timeout_s=0.0001,
     )
     async def hang_on_first_request():
         await signal.wait.remote()
@@ -1181,19 +1178,19 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
-    def first_request_executing(request_future) -> bool:
-        try:
-            request_future.get(timeout=0.1)
-        except Exception:
-            return ray.get(signal.cur_num_waiters.remote()) == 1
+    @ray.remote(num_cpus=0)
+    def do_request():
+        r = requests.get("http://localhost:8000/")
+        r.raise_for_status()
+        return r
 
-    url = "http://localhost:8000/"
-    pool = Pool()
+    # Make a request to block the deployment from accepting other requests.
+    request_refs = [do_request.remote()]
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+    )
 
-    # Make a request to block the deployment from accepting other requests
-    fut = pool.apply_async(partial(requests.get, url))
-    wait_for_condition(lambda: first_request_executing(fut), timeout=5)
-    print("Executed first request.")
+    print("First request is executing.")
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
@@ -1202,24 +1199,23 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
-    num_requests = 5
-    for _ in range(num_requests):
-        pool.apply_async(partial(requests.get, url))
-    print(f"Executed {num_requests} more requests.")
+    num_queued_requests = 3
+    request_refs.extend([do_request.remote() for _ in range(num_queued_requests)])
+    print(f"{num_queued_requests} more requests now queued.")
 
     # First request should be processing. All others should be queued.
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
         metric="ray_serve_deployment_queued_queries",
-        expected=num_requests,
+        expected=num_queued_requests,
     )
     print("ray_serve_deployment_queued_queries updated successfully.")
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
         metric="ray_serve_num_ongoing_http_requests",
-        expected=num_requests + 1,
+        expected=num_queued_requests + 1,
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
@@ -1240,9 +1236,9 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
-    # Disconnect all requests by terminating the process pool.
-    pool.terminate()
-    print("Terminated all requests.")
+    # Disconnect all requests by cancelling the Ray tasks.
+    [ray.cancel(ref, force=True) for ref in request_refs]
+    print("Cancelled all HTTP requests.")
 
     wait_for_condition(
         check_metric_float_eq,
@@ -1275,6 +1271,9 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         expected=0,
     )
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
+
+    # Unblock hanging request.
+    ray.get(signal.send.remote())
 
 
 def test_long_poll_host_sends_counted(serve_instance):

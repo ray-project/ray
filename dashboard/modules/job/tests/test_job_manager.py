@@ -24,6 +24,7 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import (
+    JobLogStorageClient,
     JobManager,
     JobSupervisor,
     generate_job_id,
@@ -266,9 +267,8 @@ def shared_ray_instance():
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
 
 
-@pytest.mark.asyncio
 @pytest.fixture
-async def job_manager(shared_ray_instance, tmp_path):
+def job_manager(shared_ray_instance, tmp_path):
     yield create_job_manager(shared_ray_instance, tmp_path)
 
 
@@ -619,6 +619,10 @@ class TestRuntimeEnv:
         data = await job_manager.get_job_info(job_id)
         assert "runtime_env setup failed" in data.message
         assert data.driver_exit_code is None
+        log_path = JobLogStorageClient().get_log_file_path(job_id=job_id)
+        with open(log_path, "r") as f:
+            job_logs = f.read()
+        assert "Traceback (most recent call last):" in job_logs
 
     async def test_pass_metadata(self, job_manager):
         def dict_to_str(d):
@@ -1242,6 +1246,34 @@ sys.exit({EXIT_CODE})
     job_info = await job_manager.get_job_info(job_id)
     assert job_info.status == JobStatus.FAILED
     assert job_info.driver_exit_code == EXIT_CODE
+
+
+@pytest.mark.asyncio
+async def test_actor_creation_error_not_overwritten(shared_ray_instance, tmp_path):
+    """Regression test for: https://github.com/ray-project/ray/issues/40062.
+
+    Previously there existed a race condition that could overwrite error messages from
+    actor creation (such as an invalid `runtime_env`). This would happen
+    non-deterministically after an initial correct error message was set, so this test
+    runs many iterations.
+
+    Without the fix in place, this test failed consistently.
+    """
+    for _ in range(10):
+        # Race condition existed when a job was submitted just after constructing the
+        # `JobManager`, so make a new one in each test iteration.
+        job_manager = create_job_manager(shared_ray_instance, tmp_path)
+        job_id = await job_manager.submit_job(
+            entrypoint="doesn't matter", runtime_env={"working_dir": "path_not_exist"}
+        )
+
+        # `await` many times to yield the `asyncio` loop and verify that the error
+        # message does not get overwritten.
+        for _ in range(100):
+            data = await job_manager.get_job_info(job_id)
+            assert data.status == JobStatus.FAILED
+            assert "path_not_exist is not a valid URI" in data.message
+            assert data.driver_exit_code is None
 
 
 if __name__ == "__main__":

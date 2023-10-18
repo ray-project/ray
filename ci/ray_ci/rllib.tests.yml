@@ -12,6 +12,7 @@ flaky_tests:
   - //rllib:policy/tests/test_policy
   - //rllib:env/tests/test_local_inference_cartpole
   - //rllib:evaluation/tests/test_envs_that_crash
+  - //rllib:test_actor_manager 
   - //rllib:test_apex_ddpg
   - //rllib:test_algorithm_export_checkpoint
   - //rllib:test_dataset_reader
@@ -30,3 +31,5 @@ flaky_tests:
   - //rllib:test_memory_leak_ddpg
   # tests/ dir
   - //rllib:tests/test_io
+  # multi-gpu
+  - //rllib:TestLearnerGroupAsyncUpdate

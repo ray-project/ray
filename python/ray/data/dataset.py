@@ -3,7 +3,6 @@ import copy
 import html
 import itertools
 import logging
-import sys
 import time
 from typing import (
     TYPE_CHECKING,
@@ -14,10 +13,10 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Mapping,
     Optional,
     Tuple,
-    Type,
     TypeVar,
     Union,
 )
@@ -29,7 +28,6 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.util.data_batch_conversion import BlockFormat
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
@@ -130,11 +128,6 @@ from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import dask
@@ -238,8 +231,6 @@ class Dataset:
     def __init__(
         self,
         plan: ExecutionPlan,
-        epoch: int,
-        lazy: bool = True,
         logical_plan: Optional[LogicalPlan] = None,
     ):
         """Construct a Dataset (internal API).
@@ -251,15 +242,10 @@ class Dataset:
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
         self._plan = plan
-        self._uuid = uuid4().hex
-        self._epoch = epoch
-        self._lazy = lazy
+        self._set_uuid(uuid4().hex)
         self._logical_plan = logical_plan
         if logical_plan is not None:
             self._plan.link_logical_plan(logical_plan)
-
-        if not lazy:
-            self._plan.execute(allow_clear_input_blocks=False)
 
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
@@ -272,16 +258,19 @@ class Dataset:
         if not _as:
             _as = type(ds)
         if _deep_copy:
-            return _as(ds._plan.deep_copy(), ds._epoch, ds._lazy, ds._logical_plan)
+            return _as(ds._plan.deep_copy(), ds._logical_plan)
         else:
-            return _as(ds._plan.copy(), ds._epoch, ds._lazy, ds._logical_plan)
+            return _as(ds._plan.copy(), ds._logical_plan)
 
     def map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -332,8 +321,15 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
                 You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
@@ -354,7 +350,9 @@ class Dataset:
         """  # noqa: E501
         validate_compute(fn, compute, fn_constructor_args)
 
-        transform_fn = generate_map_rows_fn()
+        transform_fn = generate_map_rows_fn(
+            DataContext.get_current().target_max_block_size
+        )
 
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
@@ -369,7 +367,10 @@ class Dataset:
                 compute,
                 ray_remote_args,
                 fn=fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
             )
         )
 
@@ -378,12 +379,15 @@ class Dataset:
             map_op = MapRows(
                 logical_plan.dag,
                 fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(map_op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def map_batches(
         self,
@@ -536,12 +540,12 @@ class Dataset:
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
-        target_block_size = None
+        min_rows_per_block = None
         if batch_size is not None and batch_size != "default":
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
             # Enable blocks bundling when batch_size is specified by caller.
-            target_block_size = batch_size
+            min_rows_per_block = batch_size
 
         batch_size = _apply_strict_mode_batch_size(
             batch_size, use_gpu="num_gpus" in ray_remote_args
@@ -569,7 +573,9 @@ class Dataset:
                     f"CallableClass instance for fn, but got: {fn}"
                 )
 
+        ctx = DataContext.get_current()
         transform_fn = generate_map_batches_fn(
+            target_max_block_size=ctx.target_max_block_size,
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
@@ -589,7 +595,7 @@ class Dataset:
             compute,
             ray_remote_args,
             # TODO(Clark): Add a strict cap here.
-            target_block_size=target_block_size,
+            min_rows_per_block=min_rows_per_block,
             fn=fn,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
@@ -606,7 +612,7 @@ class Dataset:
                 batch_size=batch_size,
                 batch_format=batch_format,
                 zero_copy_batch=zero_copy_batch,
-                target_block_size=target_block_size,
+                min_rows_per_block=min_rows_per_block,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
@@ -616,7 +622,7 @@ class Dataset:
             )
             logical_plan = LogicalPlan(map_batches_op)
 
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def add_column(
         self,
@@ -788,7 +794,10 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -833,8 +842,15 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
                 You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
@@ -853,7 +869,9 @@ class Dataset:
         """
         validate_compute(fn, compute, fn_constructor_args)
 
-        transform_fn = generate_flat_map_fn()
+        transform_fn = generate_flat_map_fn(
+            DataContext.get_current().target_max_block_size
+        )
 
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
@@ -868,7 +886,10 @@ class Dataset:
                 compute,
                 ray_remote_args,
                 fn=fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
             )
         )
 
@@ -877,12 +898,15 @@ class Dataset:
             op = FlatMap(
                 input_op=logical_plan.dag,
                 fn=fn,
+                fn_args=fn_args,
+                fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
+                fn_constructor_kwargs=fn_constructor_kwargs,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def filter(
         self,
@@ -920,7 +944,9 @@ class Dataset:
         """
         validate_compute(fn, compute)
 
-        transform_fn = generate_filter_fn()
+        transform_fn = generate_filter_fn(
+            DataContext.get_current().target_max_block_size
+        )
 
         plan = self._plan.with_stage(
             OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
@@ -936,7 +962,7 @@ class Dataset:
             )
             logical_plan = LogicalPlan(op)
 
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
@@ -991,7 +1017,7 @@ class Dataset:
                 shuffle=shuffle,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def random_shuffle(
         self,
@@ -1005,7 +1031,7 @@ class Dataset:
         .. tip::
 
             This method can be slow. For better performance, try
-            `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+            :ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
             Also, see :ref:`Optimizing shuffles <optimizing_shuffles>`.
 
         Examples:
@@ -1041,7 +1067,7 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def randomize_block_order(
         self,
@@ -1079,7 +1105,7 @@ class Dataset:
                 seed=seed,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
@@ -1334,8 +1360,6 @@ class Dataset:
                             stats,
                             run_by_consumer=owned_by_consumer,
                         ),
-                        self._epoch,
-                        self._lazy,
                         logical_plan,
                     )
                 )
@@ -1461,8 +1485,6 @@ class Dataset:
                         stats,
                         run_by_consumer=owned_by_consumer,
                     ),
-                    self._epoch,
-                    self._lazy,
                     logical_plan,
                 )
             )
@@ -1547,8 +1569,6 @@ class Dataset:
                         stats,
                         run_by_consumer=block_list._owned_by_consumer,
                     ),
-                    self._epoch,
-                    self._lazy,
                     logical_plan,
                 )
             )
@@ -1696,9 +1716,8 @@ class Dataset:
                 )
             return ds.split_at_indices([ds_length - test_size])
 
-    @ConsumptionAPI
     def union(self, *other: List["Dataset"]) -> "Dataset":
-        """Materialize and concatenate :class:`Datasets <ray.data.Dataset>` across rows.
+        """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
         The order of the blocks in the datasets is preserved, as is the
         relative ordering between the datasets passed in the argument list.
@@ -1794,16 +1813,6 @@ class Dataset:
                 )
                 logical_plan = LogicalPlan(op)
 
-        epochs = [ds._get_epoch() for ds in datasets]
-        max_epoch = max(*epochs)
-        if len(set(epochs)) > 1:
-            if ray.util.log_once("dataset_epoch_warned"):
-                logger.warning(
-                    "Dataset contains data from multiple epochs: {}, "
-                    "likely due to a `rewindow()` call. The higher epoch "
-                    "number {} will be used. This warning will not "
-                    "be shown again.".format(set(epochs), max_epoch)
-                )
         stats = DatasetStats(
             stages={"Union": []},
             parent=[d._plan.stats() for d in datasets],
@@ -1811,8 +1820,6 @@ class Dataset:
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),
-            max_epoch,
-            self._lazy,
             logical_plan,
         )
 
@@ -2203,7 +2210,7 @@ class Dataset:
                 sort_key=sort_key,
             )
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     def zip(self, other: "Dataset") -> "Dataset":
         """Materialize and zip the columns of this dataset with the columns of another.
@@ -2245,9 +2252,8 @@ class Dataset:
         if logical_plan is not None and other_logical_plan is not None:
             op = Zip(logical_plan.dag, other_logical_plan.dag)
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
-    @ConsumptionAPI
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
 
@@ -2274,7 +2280,7 @@ class Dataset:
         if logical_plan is not None:
             op = Limit(logical_plan.dag, limit=limit)
             logical_plan = LogicalPlan(op)
-        return Dataset(plan, self._epoch, self._lazy, logical_plan)
+        return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
     def take_batch(
@@ -3393,9 +3399,6 @@ class Dataset:
     ) -> None:
         """Writes the dataset to a custom :class:`~ray.data.Datasource`.
 
-        For an example of how to use this method, see
-        :ref:`Implementing a Custom Datasource <custom_datasources>`.
-
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -3446,9 +3449,7 @@ class Dataset:
                 import pandas as pd
 
                 datasource.on_write_start(**write_args)
-                self._write_ds = Dataset(
-                    plan, self._epoch, self._lazy, logical_plan
-                ).materialize()
+                self._write_ds = Dataset(plan, logical_plan).materialize()
                 blocks = ray.get(self._write_ds._plan.execute().get_blocks())
                 assert all(
                     isinstance(block, pd.DataFrame) and len(block) == 1
@@ -3509,8 +3510,8 @@ class Dataset:
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
-        """Return an iterator over the rows in this dataset.
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
+        """Return an iterable over the rows in this dataset.
 
         Examples:
             >>> import ray
@@ -3527,7 +3528,7 @@ class Dataset:
                 current block during the scan.
 
         Returns:
-            An iterator over the rows in this dataset.
+            An iterable over the rows in this dataset.
         """
         return self.iterator().iter_rows(prefetch_blocks=prefetch_blocks)
 
@@ -3544,8 +3545,8 @@ class Dataset:
         _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator[DataBatch]:
-        """Return an iterator over batches of data.
+    ) -> Iterable[DataBatch]:
+        """Return an iterable over batches of data.
 
         This method is useful for model training.
 
@@ -3590,7 +3591,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over batches of data.
+            An iterable over batches of data.
         """
         batch_format = _apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
@@ -3620,10 +3621,10 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator[TorchBatchType]:
-        """Return an iterator over batches of data represented as Torch tensors.
+    ) -> Iterable[TorchBatchType]:
+        """Return an iterable over batches of data represented as Torch tensors.
 
-        This iterator yields batches of type ``Dict[str, torch.Tensor]``.
+        This iterable yields batches of type ``Dict[str, torch.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to Torch tensors.
 
@@ -3697,7 +3698,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over Torch Tensor batches.
+            An iterable over Torch Tensor batches.
 
         .. seealso::
             :meth:`Dataset.iter_batches`
@@ -3727,10 +3728,10 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator[TensorFlowTensorBatchType]:
-        """Return an iterator over batches of data represented as TensorFlow tensors.
+    ) -> Iterable[TensorFlowTensorBatchType]:
+        """Return an iterable over batches of data represented as TensorFlow tensors.
 
-        This iterator yields batches of type ``Dict[str, tf.Tensor]``.
+        This iterable yields batches of type ``Dict[str, tf.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to TensorFlow tensors.
 
@@ -3784,7 +3785,7 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over TensorFlow Tensor batches.
+            An iterable over TensorFlow Tensor batches.
 
         .. seealso::
             :meth:`Dataset.iter_batches`
@@ -4505,24 +4506,6 @@ class Dataset:
         """
         _raise_dataset_pipeline_deprecation_warning()
 
-    @Deprecated(message="Use `Dataset.materialize()` instead.")
-    def fully_executed(self) -> "MaterializedDataset":
-        logger.warning(
-            "Deprecation warning: use Dataset.materialize() instead of "
-            "fully_executed()."
-        )
-        self._plan.execute(force_read=True)
-        return self
-
-    @Deprecated(message="Check `isinstance(Dataset, MaterializedDataset)` instead.")
-    def is_fully_executed(self) -> bool:
-        logger.warning(
-            "Deprecation warning: Check "
-            "`isinstance(Dataset, MaterializedDataset)` "
-            "instead of using is_fully_executed()."
-        )
-        return self._plan.has_computed_output()
-
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this dataset into object store memory.
@@ -4567,12 +4550,12 @@ class Dataset:
                 copy._plan.stats(),
                 run_by_consumer=False,
             ),
-            copy._epoch,
-            copy._lazy,
             logical_plan,
         )
         output._plan.execute()  # No-op that marks the plan as fully executed.
-        output._plan._in_stats.dataset_uuid = self._get_uuid()
+        # Metrics are tagged with `copy`s uuid, update the output uuid with
+        # this so the user can access the metrics label.
+        output._set_uuid(copy._get_uuid())
         return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
@@ -4636,28 +4619,6 @@ class Dataset:
         self._synchronize_progress_bar()
         return blocks
 
-    @Deprecated(
-        message="Dataset is lazy by default, so this conversion call is no longer "
-        "needed and this API will be removed in a future release"
-    )
-    def lazy(self) -> "Dataset":
-        """Enable lazy evaluation.
-
-        Dataset is lazy by default, so this is only useful for datasets created
-        from :func:`ray.data.from_items() <ray.data.read_api.from_items>`, which is
-        eager.
-
-        The returned dataset is a lazy dataset, where all subsequent operations
-        on the stream won't be executed until the dataset is consumed
-        (e.g. ``.take()``, ``.iter_batches()``, ``.to_torch()``, ``.to_tf()``, etc.)
-        or execution is manually triggered via ``.materialize()``.
-        """
-        ds = Dataset(
-            self._plan, self._epoch, lazy=True, logical_plan=self._logical_plan
-        )
-        ds._set_uuid(self._get_uuid())
-        return ds
-
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
         later deserialized, possibly on a different cluster.
@@ -4708,7 +4669,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=1,
+                   num_blocks=16,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4741,9 +4702,9 @@ class Dataset:
             )
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
-        plan_copy = self._plan.deep_copy(preserve_uuid=True)
+        plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
-        ds = Dataset(plan_copy, self._get_epoch(), self._lazy, logical_plan_copy)
+        ds = Dataset(plan_copy, logical_plan_copy)
         ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
@@ -4791,7 +4752,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=1,
+                   num_blocks=16,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4823,25 +4784,13 @@ class Dataset:
             ExecutionPlan(
                 left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
             ),
-            self._epoch,
-            self._lazy,
         )
         r_ds = Dataset(
             ExecutionPlan(
                 right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
             ),
-            self._epoch,
-            self._lazy,
         )
         return l_ds, r_ds
-
-    @Deprecated(message="The batch format is no longer exposed as a public API.")
-    def default_batch_format(self) -> Type:
-        raise ValueError("default_batch_format() is not allowed in Ray 2.5")
-
-    @Deprecated(message="The dataset format is no longer exposed as a public API.")
-    def dataset_format(self) -> BlockFormat:
-        raise ValueError("dataset_format() is not allowed in Ray 2.5")
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs
@@ -5014,12 +4963,8 @@ class Dataset:
 
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
-
-    def _get_epoch(self) -> int:
-        return self._epoch
-
-    def _set_epoch(self, epoch: int) -> None:
-        self._epoch = epoch
+        self._plan._dataset_uuid = uuid
+        self._plan._in_stats.dataset_uuid = uuid
 
     def _synchronize_progress_bar(self):
         """Flush progress bar output by shutting down the current executor.
@@ -5041,16 +4986,12 @@ class Dataset:
         return {
             "plan": self._plan,
             "uuid": self._uuid,
-            "epoch": self._epoch,
-            "lazy": self._lazy,
             "logical_plan": self._logical_plan,
         }
 
     def __setstate__(self, state):
         self._plan = state["plan"]
         self._uuid = state["uuid"]
-        self._epoch = state["epoch"]
-        self._lazy = state["lazy"]
         self._logical_plan = state["logical_plan"]
         self._current_executor = None
 
