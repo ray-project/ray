@@ -650,7 +650,6 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
     ) -> Optional[Dict[str, Any]]:
         resources = self._head_resources
-        time.sleep(20)
         return self.create_node_with_resources_and_labels(
             node_config, tags, count, resources, {}
         )
