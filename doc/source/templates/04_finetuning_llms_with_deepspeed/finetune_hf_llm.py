@@ -422,10 +422,11 @@ def training_function(kwargs: dict):
                     f"loss: {loss.item()} step-time: {e_opt_step - s_fwd}"
                 )
 
+            aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
+
             if config["as_test"]:
                 break
 
-            aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
                 train.report(
