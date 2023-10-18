@@ -15,6 +15,8 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
+import numpy as np
+import pydantic
 import requests
 
 import ray
@@ -61,6 +63,44 @@ T = TypeVar("T")
 Default = Union[DEFAULT, T]
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+class _ServeCustomEncoders:
+    """Group of custom encoders for common types that's not handled by FastAPI."""
+
+    @staticmethod
+    def encode_np_array(obj):
+        assert isinstance(obj, np.ndarray)
+        if obj.dtype.kind == "f":  # floats
+            obj = obj.astype(float)
+        if obj.dtype.kind in {"i", "u"}:  # signed and unsigned integers.
+            obj = obj.astype(int)
+        return obj.tolist()
+
+    @staticmethod
+    def encode_np_scaler(obj):
+        assert isinstance(obj, np.generic)
+        return obj.item()
+
+    @staticmethod
+    def encode_exception(obj):
+        assert isinstance(obj, Exception)
+        return str(obj)
+
+    @staticmethod
+    def encode_pandas_dataframe(obj):
+        assert isinstance(obj, pd.DataFrame)
+        return obj.to_dict(orient="records")
+
+
+serve_encoders = {
+    np.ndarray: _ServeCustomEncoders.encode_np_array,
+    np.generic: _ServeCustomEncoders.encode_np_scaler,
+    Exception: _ServeCustomEncoders.encode_exception,
+}
+
+if pd is not None:
+    serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
 
 
 @ray.remote(num_cpus=0)
