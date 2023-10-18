@@ -2568,9 +2568,9 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Also store eval `policy_mapping_fn` (in case it's different from main one).
         if hasattr(self, "evaluation_workers") and self.evaluation_workers is not None:
-            state["eval_policy_mapping_fn"] = (
-                self.evaluation_workers.local_worker().policy_mapping_fn
-            )
+            state[
+                "eval_policy_mapping_fn"
+            ] = self.evaluation_workers.local_worker().policy_mapping_fn
 
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.

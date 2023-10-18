@@ -116,15 +116,13 @@ class TestCheckpointRestorePG(unittest.TestCase):
     def test_a3c_checkpoint_restore(self):
         # TODO(Kourosh) A3C cannot run a restored algorithm for some reason.
         test_ckpt_restore(
-            config=algorithms_and_configs["A3C"],
-            env_name="CartPole-v1",
-            run_restored_algorithm=False,
+            algorithms_and_configs["A3C"], "CartPole-v1", run_restored_algorithm=False
         )
 
     def test_ppo_checkpoint_restore(self):
         test_ckpt_restore(
-            config=algorithms_and_configs["PPO"],
-            env_name="CartPole-v1",
+            algorithms_and_configs["PPO"],
+            "CartPole-v1",
             eval_workerset=True,
         )
 
@@ -139,37 +137,28 @@ class TestCheckpointRestoreOffPolicy(unittest.TestCase):
         ray.shutdown()
 
     def test_apex_ddpg_checkpoint_restore(self):
-        test_ckpt_restore(
-            config=algorithms_and_configs["APEX_DDPG"],
-            env_name="Pendulum-v1",
-        )
+        test_ckpt_restore(algorithms_and_configs["APEX_DDPG"], "Pendulum-v1")
 
     def test_ddpg_checkpoint_restore(self):
         test_ckpt_restore(
-            config=algorithms_and_configs["DDPG"],
-            env_name="Pendulum-v1",
-            replay_buffer=True,
+            algorithms_and_configs["DDPG"], "Pendulum-v1", replay_buffer=True
         )
 
     def test_dqn_checkpoint_restore(self):
         test_ckpt_restore(
-            config=algorithms_and_configs["DQN"],
-            env_name="CartPole-v1",
+            algorithms_and_configs["DQN"],
+            "CartPole-v1",
             replay_buffer=True,
         )
 
     def test_sac_checkpoint_restore(self):
         test_ckpt_restore(
-            config=algorithms_and_configs["SAC"],
-            env_name="Pendulum-v1",
-            replay_buffer=True,
+            algorithms_and_configs["SAC"], "Pendulum-v1", replay_buffer=True
         )
 
     def test_simpleq_checkpoint_restore(self):
         test_ckpt_restore(
-            config=algorithms_and_configs["SimpleQ"],
-            env_name="CartPole-v1",
-            replay_buffer=True,
+            algorithms_and_configs["SimpleQ"], "CartPole-v1", replay_buffer=True
         )
 
 
@@ -183,10 +172,10 @@ class TestCheckpointRestoreEvolutionAlgos(unittest.TestCase):
         ray.shutdown()
 
     def test_ars_checkpoint_restore(self):
-        test_ckpt_restore(config=algorithms_and_configs["ARS"], env_name="CartPole-v1")
+        test_ckpt_restore(algorithms_and_configs["ARS"], "CartPole-v1")
 
     def test_es_checkpoint_restore(self):
-        test_ckpt_restore(config=algorithms_and_configs["ES"], env_name="CartPole-v1")
+        test_ckpt_restore(algorithms_and_configs["ES"], "CartPole-v1")
 
 
 if __name__ == "__main__":

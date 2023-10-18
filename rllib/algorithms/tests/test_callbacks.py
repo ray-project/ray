@@ -92,12 +92,16 @@ class TestCallbacks(unittest.TestCase):
         for _ in framework_iterator(config, frameworks=("torch", "tf2")):
             pg = config.build()
             self.assertTrue(pg.callbacks._on_init_was_called)
-            self.assertTrue(not hasattr(pg.callbacks, "_on_checkpoint_loaded_was_called"))
+            self.assertTrue(
+                not hasattr(pg.callbacks, "_on_checkpoint_loaded_was_called")
+            )
             pg.train()
             # Save algo and restore.
             with tempfile.TemporaryDirectory() as tmpdir:
                 pg.save(checkpoint_dir=tmpdir)
-                self.assertTrue(not hasattr(pg.callbacks, "_on_checkpoint_loaded_was_called"))
+                self.assertTrue(
+                    not hasattr(pg.callbacks, "_on_checkpoint_loaded_was_called")
+                )
                 pg.load_checkpoint(checkpoint_dir=tmpdir)
                 self.assertTrue(pg.callbacks._on_checkpoint_loaded_was_called)
             pg.stop()

@@ -1293,13 +1293,12 @@ def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.nda
 
 
 def test_ckpt_restore(
-    *,
     config: "AlgorithmConfig",
     env_name: str,
     tf2=False,
     replay_buffer=False,
-    eval_workerset=False,
     run_restored_algorithm=True,
+    eval_workerset=False,
 ):
     """Test that after an algorithm is trained, its checkpoint can be restored.
 
