@@ -542,9 +542,9 @@ def make_multi_callbacks(
                 callback.on_algorithm_init(algorithm=algorithm, **kwargs)
 
         @override(DefaultCallbacks)
-        def on_worker_created(self, **kwargs) -> None:
+        def on_workers_recreated(self, **kwargs) -> None:
             for callback in self._callback_list:
-                callback.on_worker_created(**kwargs)
+                callback.on_workers_recreated(**kwargs)
 
         @override(DefaultCallbacks)
         def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
