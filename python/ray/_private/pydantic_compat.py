@@ -47,8 +47,6 @@ elif hasattr(pydantic, "__version__") and packaging.version.parse(
     )
 else:
     IS_PYDANTIC_2 = True
-    # TODO(edoakes): compare this against the version that has the fixes.
-    monkeypatch_pydantic_2_for_cloudpickle()
     from pydantic.v1 import (
         BaseModel,
         Extra,
@@ -117,6 +115,7 @@ def register_pydantic_serializers(serialization_context):
         return
 
     if IS_PYDANTIC_2:
+        # TODO(edoakes): compare against the version that has the fixes.
         monkeypatch_pydantic_2_for_cloudpickle()
         from pydantic.v1.fields import ModelField
     else:

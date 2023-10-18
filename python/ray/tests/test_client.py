@@ -6,9 +6,12 @@ import sys
 import threading
 import time
 from unittest.mock import Mock, patch
+from typing import Type
 
 import numpy as np
 import pytest
+from pydantic import BaseModel as BaseModelV2
+from pydantic.v1 import BaseModel as BaseModelV1
 
 import ray.cloudpickle as cloudpickle
 import ray.util.client.server.server as ray_client_server
@@ -686,10 +689,9 @@ def test_client_gpu_ids(call_ray_start_shared):
             assert ray.get_gpu_ids() == []
 
 
-def test_client_serialize_addon(call_ray_start_shared):
-    import pydantic
-
-    class User(pydantic.BaseModel):
+@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
+def test_client_serialize_addon(call_ray_start_shared, BaseModel: Type):
+    class User(BaseModel):
         name: str
 
     with ray_start_client_server_for_address(call_ray_start_shared) as ray:
