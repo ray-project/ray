@@ -63,7 +63,10 @@ def convert_object_to_asgi_messages(
         body = obj.encode("utf-8")
         content_type = b"text/plain; charset=utf-8"
     else:
-        body = json.dumps(jsonable_encoder(obj, custom_encoder=serve_encoders)).encode()
+        body = json.dumps(
+            jsonable_encoder(obj, custom_encoder=serve_encoders),
+            separators=(",", ":"),
+        ).encode()
         content_type = b"application/json"
 
     return [
