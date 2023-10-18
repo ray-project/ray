@@ -242,8 +242,7 @@ class Dataset:
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
         self._plan = plan
-        self._uuid = uuid4().hex
-        self._plan._dataset_uuid = self._uuid
+        self._set_uuid(uuid4().hex)
         self._logical_plan = logical_plan
         if logical_plan is not None:
             self._plan.link_logical_plan(logical_plan)
@@ -4557,10 +4556,9 @@ class Dataset:
             logical_plan,
         )
         output._plan.execute()  # No-op that marks the plan as fully executed.
-        output._plan._in_stats.dataset_uuid = self._get_uuid()
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
-        output._uuid = copy._get_uuid()
+        output._set_uuid(copy._get_uuid())
         return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
@@ -4969,6 +4967,7 @@ class Dataset:
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
         self._plan._dataset_uuid = uuid
+        self._plan._in_stats.dataset_uuid = uuid
 
     def _synchronize_progress_bar(self):
         """Flush progress bar output by shutting down the current executor.

@@ -133,6 +133,7 @@ class ExecutionPlan:
         self._last_optimized_stages = None
         # Cached schema.
         self._schema = None
+        # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None
 
         self._run_by_consumer = run_by_consumer
