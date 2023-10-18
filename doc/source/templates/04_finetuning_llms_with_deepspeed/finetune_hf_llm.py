@@ -46,6 +46,7 @@ from utils import (
 
 OPTIM_BETAS = (0.9, 0.999)
 OPTIM_EPS = 1e-8
+NUM_WARMUP_STEPS = 10
 OPTIM_WEIGHT_DECAY = 0.0
 ATTENTION_LAYER_NAME = "self_attn"
 
@@ -344,22 +345,25 @@ def training_function(kwargs: dict):
     # else, creates `args.lr_scheduler_type` Scheduler
     # get train and valid dataset lengths
 
+    num_steps_per_epoch = math.ceil(train_ds_len / config.train_batch_size_per_device)
+    total_training_steps = (
+        num_steps_per_epoch * num_epochs // gradient_accumulation_steps
+    )
+
     if (
         accelerator.state.deepspeed_plugin is None
         or "scheduler" not in accelerator.state.deepspeed_plugin.deepspeed_config
     ):
         lr_scheduler = get_linear_schedule_with_warmup(
             optimizer=optimizer,
-            num_warmup_steps=100,
-            num_training_steps=(
-                (train_ds_len * num_epochs) // gradient_accumulation_steps
-            ),
+            warmup_num_steps=NUM_WARMUP_STEPS * args.num_devices,
+            total_num_steps=total_training_steps * args.num_devices,
         )
     else:
         lr_scheduler = DummyScheduler(
             optimizer,
-            total_num_steps=(num_epochs * train_ds_len * batch_size),
-            warmup_num_steps=int((num_epochs * train_ds_len / 20)),
+            warmup_num_steps=NUM_WARMUP_STEPS * args.num_devices,
+            total_num_steps=total_training_steps * args.num_devices,
         )
 
     # Prepare everything
