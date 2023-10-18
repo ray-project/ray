@@ -15,15 +15,10 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import fastapi.encoders
-import numpy as np
-import pydantic
-import pydantic.json
 import requests
 
 import ray
 import ray.util.serialization_addons
-from ray._private.pydantic_compat import IS_PYDANTIC_2
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
