@@ -92,6 +92,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     type=str,
     help="Name of the build used to run tests",
 )
+@click.option(
+    "--build-type",
+    type=click.Choice(["optimized", "debug", "asan"]),
+    default="optimized",
+)
 def main(
     targets: List[str],
     team: str,
@@ -105,6 +110,7 @@ def main(
     test_env: List[str],
     test_arg: Optional[str],
     build_name: Optional[str],
+    build_type: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -117,6 +123,7 @@ def main(
         worker_id,
         parallelism_per_worker,
         build_name,
+        build_type,
         skip_ray_installation,
     )
     test_targets = _get_test_targets(
@@ -137,6 +144,7 @@ def _get_container(
     worker_id: int,
     parallelism_per_worker: int,
     build_name: Optional[str] = None,
+    build_type: Optional[str] = None,
     skip_ray_installation: bool = False,
 ) -> TesterContainer:
     shard_count = workers * parallelism_per_worker
@@ -148,6 +156,7 @@ def _get_container(
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
         skip_ray_installation=skip_ray_installation,
+        build_type=build_type,
     )
 
 
