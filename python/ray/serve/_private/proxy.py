@@ -7,25 +7,14 @@ import socket
 import time
 import uuid
 from abc import ABC, abstractmethod
-from typing import (
-    Any,
-    AsyncIterator,
-    Callable,
-    Dict,
-    Generator,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
 
 import grpc
 import starlette.routing
 import uvicorn
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
-from starlette.types import Message, Receive
+from starlette.types import Receive
 
 import ray
 from ray import serve
@@ -60,10 +49,10 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     ProxyRequest,
-    gRPCProxyRequest,
-    ResponseStatus,
     ResponseGenerator,
     ResponseHandlerInfo,
+    ResponseStatus,
+    gRPCProxyRequest,
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import (
@@ -412,17 +401,16 @@ class GenericProxy(ABC):
                 # Modify the path and root path so that reverse lookups and redirection
                 # work as expected. We do this here instead of in replicas so it can be
                 # changed without restarting the replicas.
+                route_path = proxy_request.route_path
                 if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
                     assert not route_prefix.endswith("/")
-                    proxy_request.set_path(
-                        proxy_request.route_path.replace(route_prefix, "", 1)
-                    )
+                    proxy_request.set_path(route_path.replace(route_prefix, "", 1))
                     proxy_request.set_root_path(proxy_request.root_path + route_prefix)
 
                 handle, request_id = self.setup_request_context_and_handle(
                     app_name=handle.deployment_id.app,
                     handle=handle,
-                    route_path=proxy_request.route_path,
+                    route_path=route_path,
                     proxy_request=proxy_request,
                 )
 

@@ -1,8 +1,8 @@
 import asyncio
 import pickle
 import sys
-from typing import AsyncGenerator, Dict
-from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
+from typing import Dict
+from unittest.mock import AsyncMock
 
 import grpc
 import pytest
@@ -83,6 +83,7 @@ class FakeGrpcHandle:
         def streaming_call():
             for i in range(10):
                 yield f"hello world: {i}"
+
         return unary_call() if not self.streaming else streaming_call()
 
     def options(self, *args, **kwargs):
@@ -99,13 +100,21 @@ class FakeProxyRouter(ProxyRouter):
         pass
 
     def get_handle_for_endpoint(self, *args, **kwargs):
-        if self.route is None and self.handle is None and self.app_is_cross_language is None:
+        if (
+            self.route is None
+            and self.handle is None
+            and self.app_is_cross_language is None
+        ):
             return None
 
         return self.route, self.handle, self.app_is_cross_language
 
     def match_route(self, *args, **kwargs):
-        if self.route is None and self.handle is None and self.app_is_cross_language is None:
+        if (
+            self.route is None
+            and self.handle is None
+            and self.app_is_cross_language is None
+        ):
             return None
 
         return self.route, self.handle, self.app_is_cross_language
@@ -120,6 +129,7 @@ class FakeProxyRequest(ProxyRequest):
         self._is_health_request = False
         self.app_name = ""
         self.path = ""
+
     @property
     def request_type(self) -> str:
         return self._request_type
@@ -371,7 +381,9 @@ class TestHTTPProxy:
 
         not_found_message = "Please ping http://.../-/routes for route table."
         assert any([message.get("headers") is not None for message in messages])
-        assert any([not_found_message in str(message.get("body")) for message in messages])
+        assert any(
+            [not_found_message in str(message.get("body")) for message in messages]
+        )
         assert isinstance(status, ResponseStatus)
         assert status.code == 404
         assert status.is_error is True
@@ -382,7 +394,7 @@ class TestHTTPProxy:
         http_proxy = self.create_http_proxy()
         proxy_request = FakeProxyRequest()
         gen = http_proxy.draining_response(proxy_request)
-        status= None
+        status = None
         messages = []
         async for message in gen:
             if isinstance(message, ResponseStatus):
@@ -391,7 +403,9 @@ class TestHTTPProxy:
                 messages.append(message)
 
         assert any([message.get("headers") is not None for message in messages])
-        assert any([DRAINED_MESSAGE in str(message.get("body")) for message in messages])
+        assert any(
+            [DRAINED_MESSAGE in str(message.get("body")) for message in messages]
+        )
         assert isinstance(status, ResponseStatus)
         assert status.code == 503
         assert status.is_error is True
@@ -415,7 +429,12 @@ class TestHTTPProxy:
                 messages.append(message)
 
         assert any([message.get("headers") is not None for message in messages])
-        assert any([f"Request {request_id} timed out after" in str(message.get("body")) for message in messages])
+        assert any(
+            [
+                f"Request {request_id} timed out after" in str(message.get("body"))
+                for message in messages
+            ]
+        )
         assert isinstance(status, ResponseStatus)
         assert status.code == 408
         assert status.is_error is True
@@ -438,7 +457,9 @@ class TestHTTPProxy:
                 messages.append(message)
 
         assert any([message.get("headers") is not None for message in messages])
-        assert any(['{"/route": "app1"}' in str(message.get("body")) for message in messages])
+        assert any(
+            ['{"/route": "app1"}' in str(message.get("body")) for message in messages]
+        )
         assert isinstance(status, ResponseStatus)
         assert status.code == 200
         assert status.is_error is False
@@ -458,7 +479,12 @@ class TestHTTPProxy:
                 messages.append(message)
 
         assert any([message.get("headers") is not None for message in messages])
-        assert any([HEALTH_CHECK_SUCCESS_MESSAGE in str(message.get("body")) for message in messages])
+        assert any(
+            [
+                HEALTH_CHECK_SUCCESS_MESSAGE in str(message.get("body"))
+                for message in messages
+            ]
+        )
         assert isinstance(status, ResponseStatus)
         assert status.code == 200
         assert status.is_error is False
@@ -495,7 +521,10 @@ class TestHTTPProxy:
         scope = {
             "type": "http",
             "headers": [
-                (b"x-request-id", b"fake_request_id",),
+                (
+                    b"x-request-id",
+                    b"fake_request_id",
+                ),
             ],
         }
         send = FakeHttpSend()
@@ -509,7 +538,6 @@ class TestHTTPProxy:
         )
         # Ensure after calling __call__, send.messages should be expected messages.
         assert send.messages == expected_messages
-
 
     @pytest.mark.asyncio
     async def test_proxy_asgi_receive(self):
