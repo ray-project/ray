@@ -16,8 +16,6 @@ runner_queues:
   gpu: small  # TODO(aslonnie): add GPU queue
   gpu-large: large  # TODO(aslonnie): add GPU queue
   medium-arm64: mediumg
-forge_dirs:
-  - ci/forge
 buildkite_dirs:
   - .buildkite
   - anyscale/ci/buildkite
