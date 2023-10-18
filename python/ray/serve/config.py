@@ -258,7 +258,7 @@ class gRPCOptions(BaseModel):
 
 @PublicAPI(stability="alpha")
 class EncodingType(str, Enum):
-    """Encoding type for the logs."""
+    """Encoding type for the serve logs."""
 
     TEXT = "TEXT"
     JSON = "JSON"
@@ -274,7 +274,7 @@ class LoggingConfig(BaseModel):
         log_level: Log level for the serve logs. Default to logging.INFO.
             You can set it to 'logging.DEBUG' to get more detailed logs.
         logs_dir: Directory to store the logs. Default to None, which means
-            logs will be stored in the default direction
+            logs will be stored in the default directory
             ("/tmp/ray/session_latest/logs/serve/...").
         enable_access_log: Whether to write serve log to the file. Default to True.
             When set to False, the serve logs are not written to files.
