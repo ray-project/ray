@@ -116,6 +116,8 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
 
 ## Serve REST API
 
+The Serve REST API is exposed at the same port as the Ray Dashboard. The Dashboard port is `8265` by default. This port can be changed using the `--dashboard-port` argument when running `ray start`. All example requests in this section use the default port.
+
 ### V1 REST API (Single-application)
 
 #### `PUT "/api/serve/deployments/"`
@@ -126,7 +128,7 @@ Declaratively deploys the Serve application. Starts Serve on the Ray cluster if 
 
 ```http
 PUT /api/serve/deployments/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 Content-Type: application/json
 
@@ -157,7 +159,7 @@ Gets the config for the application currently deployed on the Ray cluster. This 
 **Example Request**:
 ```http
 GET /api/serve/deployments/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 ```
 
@@ -188,7 +190,7 @@ Gets the Serve application's current status, including all the deployment status
 
 ```http
 GET /api/serve/deployments/status HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 ```
 
@@ -228,7 +230,7 @@ Shuts down Serve and the Serve application running on the Ray cluster. Has no ef
 
 ```http
 DELETE /api/serve/deployments/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 ```
 
@@ -249,7 +251,7 @@ Declaratively deploys a list of Serve applications. If Serve is already running 
 
 ```http
 PUT /api/serve/applications/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 Content-Type: application/json
 
@@ -287,7 +289,7 @@ Gets cluster-level info and comprehensive details on all Serve applications depl
 
 ```http
 GET /api/serve/applications/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 ```
 
@@ -439,7 +441,7 @@ Shuts down Serve and all applications running on the Ray cluster. Has no effect 
 
 ```http
 DELETE /api/serve/applications/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 ```
 
