@@ -16,7 +16,6 @@ from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import numpy as np
-import pydantic
 import requests
 
 import ray
