@@ -1006,6 +1006,11 @@ Dataset iterator time breakdown:
 """
     )
 
+    # Test extra metrics are updated
+    ds = ray.data.range(100, parallelism=100).map(lambda x: x)
+    ds.take_all()
+    assert ds._plan.stats().extra_metrics["num_tasks_finished"] == 100
+
 
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(100, parallelism=100)
