@@ -22,4 +22,5 @@ export type Raylet = {
   objectStoreAvailableMemory: number;
   objectStoreUsedMemory: number;
   isHeadNode: boolean;
+  labels: Record<string, string>;
 };
