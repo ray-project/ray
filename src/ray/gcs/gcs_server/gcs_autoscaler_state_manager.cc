@@ -179,6 +179,18 @@ void GcsAutoscalerStateManager::GetClusterResourceConstraints(
   }
 }
 
+void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
+  NodeID node_id = NodeID::FromBinary(node.node_id());
+  auto node_info =
+      node_resource_info_
+          .emplace(node_id, std::make_pair(absl::Now(), rpc::ResourcesData()))
+          .first;
+  // Note: We populate total available resources but not load (which is only received from
+  // autoscaler reports). Temporary underreporting when node is added is fine.
+  (*node_info->second.second.mutable_resources_total()) = node.resources_total();
+  (*node_info->second.second.mutable_resources_available()) = node.resources_total();
+}
+
 void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
     const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());

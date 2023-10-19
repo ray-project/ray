@@ -202,7 +202,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     if (cluster_task_manager_) {
       // Fill the gcs info when gcs actor scheduler is enabled.
       rpc::ResourcesData gcs_resources_data;
-      // TODO(vitsai) away with ye, harlot!
       cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);
       // Aggregate the load (pending actor info) of gcs.
       FillAggregateLoad(gcs_resources_data, &aggregate_load);
