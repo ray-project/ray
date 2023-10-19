@@ -265,6 +265,18 @@ class OpState:
                 break  # Concurrent pop from the outqueue by the consumer thread.
         return object_store_memory
 
+    def outqueue_num_blocks(self) -> int:
+        """Return the number of blocks in this operator's outqueue."""
+        num_blocks = 0
+        for i in range(len(self.outqueue)):
+            try:
+                bundle = self.outqueue[i]
+                if isinstance(bundle, RefBundle):
+                    num_blocks += len(bundle.blocks)
+            except IndexError:
+                break
+        return len(self.outqueue)
+
 
 def build_streaming_topology(
     dag: PhysicalOperator, options: ExecutionOptions
@@ -329,11 +341,11 @@ def process_completed_tasks(
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
 
-    max_bytes_to_read_per_op: Dict[OpState, int] = {}
+    max_blocks_to_read_per_op: Dict[OpState, int] = {}
     for policy in backpressure_policies:
-        non_empty = len(max_bytes_to_read_per_op) > 0
-        max_bytes_to_read_per_op = policy.calcuate_max_bytes_to_read_per_op(topology)
-        if non_empty and len(max_bytes_to_read_per_op) > 0:
+        non_empty = len(max_blocks_to_read_per_op) > 0
+        max_blocks_to_read_per_op = policy.calcuate_max_blocks_to_read_per_op(topology)
+        if non_empty and len(max_blocks_to_read_per_op) > 0:
             raise ValueError(
                 "At most one backpressure policy that implements "
                 "calculate_max_bytes_to_read_per_op() can be used at a time."
@@ -350,11 +362,11 @@ def process_completed_tasks(
         for ref in ready:
             state, task = active_tasks.pop(ref)
             if isinstance(task, DataOpTask):
-                read_bytes = task.on_data_ready(
-                    max_bytes_to_read_per_op.get(state, None)
+                num_read_blocks = task.on_data_ready(
+                    max_blocks_to_read_per_op.get(state, None)
                 )
-                if state in max_bytes_to_read_per_op:
-                    max_bytes_to_read_per_op[state] -= read_bytes
+                if state in max_blocks_to_read_per_op:
+                    max_blocks_to_read_per_op[state] -= num_read_blocks
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()

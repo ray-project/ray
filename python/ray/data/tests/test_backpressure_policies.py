@@ -176,12 +176,15 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         data_context = ray.data.DataContext.get_current()
         cls._num_blocks = 20
         cls._block_size = 100 * 1024 * 1024
+        policy_cls = StreamingOutputBackpressurePolicy
         cls._configs = {
-            ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY: [
-                StreamingOutputBackpressurePolicy
-            ],
-            StreamingOutputBackpressurePolicy.MAX_OP_OUTPUT_BUFFER_SIZE_BYTES_CONFIG_KEY: cls._block_size,  # noqa
-            StreamingOutputBackpressurePolicy.MAX_STREAMING_GEN_BUFFER_SIZE_BYTES_CONFIG_KEY: cls._block_size,  # noqa
+            ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY: [policy_cls],
+            policy_cls.MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY: (
+                cls._block_size
+            ),
+            policy_cls.MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER_CONFIG_KEY: (
+                cls._block_size
+            ),
         }
         for k, v in cls._configs.items():
             data_context.set_config(k, v)

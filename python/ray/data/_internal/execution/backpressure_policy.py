@@ -36,7 +36,7 @@ class BackpressurePolicy(ABC):
     def __init__(self, topology: "Topology"):
         ...
 
-    def calcuate_max_bytes_to_read_per_op(
+    def calcuate_max_blocks_to_read_per_op(
         self, topology: "Topology"
     ) -> Dict["OpState", int]:
         """Determine how many bytes of data we can read from each operator.
@@ -154,48 +154,48 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
     # The max size of the output buffer at the Ray Core streaming generator level.
     # This will be used to set the `_streaming_generator_backpressure_size_bytes`
     # parameter.
-    MAX_STREAMING_GEN_BUFFER_SIZE_BYTES = 1 * 1024 * 1024 * 1024
-    MAX_STREAMING_GEN_BUFFER_SIZE_BYTES_CONFIG_KEY = (
-        "backpressure_policies.streaming_output.max_streaming_gen_buffer_size_bytes"
+    MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 1 * 1024 * 1024 * 1024
+    MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER_CONFIG_KEY = (
+        "backpressure_policies.streaming_output.max_num_blocks_in_streaming_gen_buffer"
     )
     # The max size of the output buffer at the Ray Data operator level.
     # I.e., the max size of `OpState.outqueue`.
-    MAX_OP_OUTPUT_BUFFER_SIZE_BYTES = 1 * 1024 * 1024 * 1024
-    MAX_OP_OUTPUT_BUFFER_SIZE_BYTES_CONFIG_KEY = (
-        "backpressure_policies.streaming_output.max_op_output_buffer_size_bytes"
+    MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE = 1 * 1024 * 1024 * 1024
+    MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY = (
+        "backpressure_policies.streaming_output.max_num_blocks_in_op_output_queue"
     )
 
     def __init__(self, topology: "Topology"):
         data_context = ray.data.DataContext.get_current()
-        self._max_streaming_gen_output_buffer_size_bytes = data_context.get_config(
-            self.MAX_STREAMING_GEN_BUFFER_SIZE_BYTES_CONFIG_KEY,
-            self.MAX_STREAMING_GEN_BUFFER_SIZE_BYTES,
+        self._max_num_blocks_in_streaming_gen_buffer = data_context.get_config(
+            self.MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER_CONFIG_KEY,
+            self.MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER,
         )
         data_context._task_pool_data_task_remote_args[
-            "_streaming_generator_backpressure_size_bytes"
-        ] = self._max_streaming_gen_output_buffer_size_bytes
+            "_streaming_generator_backpressure_num_blocks"
+        ] = self._max_num_blocks_in_streaming_gen_buffer * 2
 
-        self._max_op_output_buffer_size_bytes = data_context.get_config(
-            self.MAX_OP_OUTPUT_BUFFER_SIZE_BYTES_CONFIG_KEY,
-            self.MAX_OP_OUTPUT_BUFFER_SIZE_BYTES,
+        self._max_num_blocks_in_op_output_queue = data_context.get_config(
+            self.MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY,
+            self.MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE,
         )
 
-    def calcuate_max_bytes_to_read_per_op(
+    def calcuate_max_blocks_to_read_per_op(
         self, topology: "Topology"
     ) -> Dict["OpState", int]:
-        max_bytes_to_read_per_op: Dict["OpState", int] = {}
+        max_blocks_to_read_per_op: Dict["OpState", int] = {}
         downstream_num_active_tasks = 0
         for op, state in list(topology.items())[::-1]:
-            max_bytes_to_read_per_op[state] = (
-                self._max_op_output_buffer_size_bytes - state.outqueue_memory_usage()
+            max_blocks_to_read_per_op[state] = (
+                self._max_num_blocks_in_op_output_queue - state.outqueue_num_blocks()
             )
             if downstream_num_active_tasks == 0:
                 # If all downstream operators are idle, it could be because no resources
                 # are available. In this case, we'll make sure to read at least one
                 # block to avoid deadlock.
-                max_bytes_to_read_per_op[state] = max(
-                    max_bytes_to_read_per_op[state],
+                max_blocks_to_read_per_op[state] = max(
+                    max_blocks_to_read_per_op[state],
                     1,
                 )
             downstream_num_active_tasks += len(op.get_active_tasks())
-        return max_bytes_to_read_per_op
+        return max_blocks_to_read_per_op
