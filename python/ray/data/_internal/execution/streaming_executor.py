@@ -83,6 +83,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._backpressure_policies: Optional[List[BackpressurePolicy]] = None
 
         self._dataset_uuid = dataset_uuid
+        self._potentially_deadlocked = False
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -249,7 +250,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
-        process_completed_tasks(topology)
+        process_completed_tasks(topology, self._potentially_deadlocked)
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
@@ -283,6 +284,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 execution_id=self._execution_id,
                 autoscaling_state=self._autoscaling_state,
             )
+        self._potentially_deadlocked = i == 0
 
         update_operator_states(topology)
 
