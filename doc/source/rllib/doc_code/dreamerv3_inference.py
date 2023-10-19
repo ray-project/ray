@@ -31,8 +31,8 @@ algo = config.build()
 # Extract the actual RLModule from the local (Dreamer) EnvRunner.
 rl_module = algo.workers.local_worker().module
 # Get initial states from RLModule (note that these are always B=1, so this matches
-# our num_envs=1; if you are using a vector env >1, you would have to repeat the returned
-# states `num_env` times to get the correct batch size):
+# our num_envs=1; if you are using a vector env >1, you would have to repeat the
+# returned states `num_env` times to get the correct batch size):
 states = rl_module.get_initial_state()
 
 
@@ -41,9 +41,12 @@ while not terminated and not truncated:
     # DreamerV3 expects this particular batch format: obs, prev. states and the
     # `is_first` flag.
     batch = {
-        STATE_IN: states,  # states is already batched (B=1)
-        SampleBatch.OBS: tf.convert_to_tensor(obs),  # obs is already batched (due to vector env)
-        "is_first": tf.convert_to_tensor([is_first]),  # set to True at beginning of episode.
+        # states is already batched (B=1)
+        STATE_IN: states,
+        # obs is already batched (due to vector env).
+        SampleBatch.OBS: tf.convert_to_tensor(obs),
+        # set to True at beginning of episode.
+        "is_first": tf.convert_to_tensor([is_first]),
     }
     outs = rl_module.forward_inference(batch)
     # Extract actions (which are in one hot format) and state-outs from outs

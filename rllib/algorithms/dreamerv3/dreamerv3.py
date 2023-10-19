@@ -498,8 +498,8 @@ class DreamerV3(Algorithm):
     @override(Algorithm)
     def compute_single_action(self, *args, **kwargs):
         raise NotImplementedError(
-            "DreamerV3 does not support the `compute_single_action()` API. Refer to the "
-            "README here (https://github.com/ray-project/ray/tree/master/rllib/"
+            "DreamerV3 does not support the `compute_single_action()` API. Refer to the"
+            " README here (https://github.com/ray-project/ray/tree/master/rllib/"
             "algorithms/dreamerv3) to find more information on how to run action "
             "inference with this algorithm."
         )
