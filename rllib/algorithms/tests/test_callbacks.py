@@ -5,6 +5,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
 import ray.rllib.algorithms.dqn as dqn
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.random_env import RandomEnv
@@ -108,22 +109,22 @@ class TestCallbacks(unittest.TestCase):
 
     def test_episode_and_sample_callbacks(self):
         config = (
-            PPOConfig()
+            PGConfig()
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
             .callbacks(EpisodeAndSampleCallbacks)
             .training(train_batch_size=50)
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            algo = config.build()
-            algo.train()
-            algo.train()
-            callback_obj = algo.workers.local_worker().callbacks
+            pg = config.build()
+            pg.train()
+            pg.train()
+            callback_obj = pg.workers.local_worker().callbacks
             self.assertGreater(callback_obj.counts["sample"], 0)
             self.assertGreater(callback_obj.counts["start"], 0)
             self.assertGreater(callback_obj.counts["end"], 0)
             self.assertGreater(callback_obj.counts["step"], 0)
-            algo.stop()
+            pg.stop()
 
     def test_on_sub_environment_created(self):
 
