@@ -15,3 +15,4 @@ torchmetrics
 lm_eval==0.3.0
 tiktoken==0.1.2
 sentencepiece
+peft @ git+https://github.com/huggingface/peft.git@08368a1fba16de09756f067637ff326c71598fb3

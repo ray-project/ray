@@ -30,7 +30,6 @@ py_test_module_list(
     "test_persistence.py",
     "test_cluster_node_info_cache.py",
     "test_long_poll.py",
-    "test_schema.py",
     "test_util.py",
     "test_cross_language.py",
     "test_proxy.py",
@@ -50,7 +49,6 @@ py_test_module_list(
 # Medium tests.
 py_test_module_list(
   files = [
-    "test_get_deployment.py",
     "test_healthcheck.py",
     "test_http_routes.py",
     "test_logging.py",

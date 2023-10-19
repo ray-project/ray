@@ -1,22 +1,11 @@
-import importlib.util
 import logging
-import os
-import re
-import subprocess
 import sys
 from collections import namedtuple
 from typing import Optional
 
-import ray._private.accelerator as accelerator
-
 import ray
 import ray._private.ray_constants as ray_constants
 
-
-try:
-    import GPUtil
-except ImportError:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -175,33 +164,60 @@ class ResourceSpec(
         if num_cpus is None:
             num_cpus = ray._private.utils.get_num_cpus()
 
-        num_gpus = self.num_gpus
-        gpu_ids = ray._private.utils.get_cuda_visible_devices()
-        # Check that the number of GPUs that the raylet wants doesn't
-        # exceed the amount allowed by CUDA_VISIBLE_DEVICES.
-        if num_gpus is not None and gpu_ids is not None and num_gpus > len(gpu_ids):
-            raise ValueError(
-                "Attempting to start raylet with {} GPUs, "
-                "but CUDA_VISIBLE_DEVICES contains {}.".format(num_gpus, gpu_ids)
+        num_gpus = 0
+        for (
+            accelerator_resource_name
+        ) in ray._private.accelerators.get_all_accelerator_resource_names():
+            accelerator_manager = (
+                ray._private.accelerators.get_accelerator_manager_for_resource(
+                    accelerator_resource_name
+                )
             )
-        if num_gpus is None:
-            # Try to automatically detect the number of GPUs.
-            num_gpus = _autodetect_num_gpus()
-            # Don't use more GPUs than allowed by CUDA_VISIBLE_DEVICES.
-            if gpu_ids is not None:
-                num_gpus = min(num_gpus, len(gpu_ids))
-
-        try:
-            if importlib.util.find_spec("GPUtil") is not None:
-                gpu_types = _get_gpu_types_gputil()
+            num_accelerators = None
+            if accelerator_resource_name == "GPU":
+                num_accelerators = self.num_gpus
             else:
-                info_string = _get_gpu_info_string()
-                gpu_types = _constraints_from_gpu_info(info_string)
-            resources.update(gpu_types)
-        except Exception:
-            logger.exception("Could not parse gpu information.")
+                num_accelerators = resources.get(accelerator_resource_name, None)
+            visible_accelerator_ids = (
+                accelerator_manager.get_current_process_visible_accelerator_ids()
+            )
+            # Check that the number of accelerators that the raylet wants doesn't
+            # exceed the amount allowed by visible accelerator ids.
+            if (
+                num_accelerators is not None
+                and visible_accelerator_ids is not None
+                and num_accelerators > len(visible_accelerator_ids)
+            ):
+                raise ValueError(
+                    f"Attempting to start raylet with {num_accelerators} "
+                    f"{accelerator_resource_name}, "
+                    f"but {accelerator_manager.get_visible_accelerator_ids_env_var()} "
+                    f"contains {visible_accelerator_ids}."
+                )
+            if num_accelerators is None:
+                # Try to automatically detect the number of accelerators.
+                num_accelerators = (
+                    accelerator_manager.get_current_node_num_accelerators()
+                )
+                # Don't use more accelerators than allowed by visible accelerator ids.
+                if visible_accelerator_ids is not None:
+                    num_accelerators = min(
+                        num_accelerators, len(visible_accelerator_ids)
+                    )
 
-        accelerator.update_resources_with_accelerator_type(resources)
+            if num_accelerators:
+                if accelerator_resource_name == "GPU":
+                    num_gpus = num_accelerators
+                else:
+                    resources[accelerator_resource_name] = num_accelerators
+
+                accelerator_type = (
+                    accelerator_manager.get_current_node_accelerator_type()
+                )
+                if accelerator_type:
+                    resources[
+                        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
+                    ] = 1
 
         # Choose a default object store size.
         system_memory = ray._private.utils.get_system_memory()
@@ -284,95 +300,3 @@ class ResourceSpec(
         )
         assert spec.resolved()
         return spec
-
-
-def _autodetect_num_gpus():
-    """Attempt to detect the number of GPUs on this machine.
-
-    TODO(rkn): Only detects NVidia GPUs (except when using WMIC on windows)
-
-    Returns:
-        The number of GPUs if any were detected, otherwise 0.
-    """
-    result = 0
-    if importlib.util.find_spec("GPUtil"):
-        gpu_list = GPUtil.getGPUs()
-        result = len(gpu_list)
-    elif sys.platform.startswith("linux"):
-        proc_gpus_path = "/proc/driver/nvidia/gpus"
-        if os.path.isdir(proc_gpus_path):
-            result = len(os.listdir(proc_gpus_path))
-    elif sys.platform == "win32":
-        props = "AdapterCompatibility"
-        cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
-        lines = subprocess.check_output(cmdargs).splitlines()[1:]
-        result = len([x.rstrip() for x in lines if x.startswith(b"NVIDIA")])
-    return result
-
-
-def _get_gpu_types_gputil():
-    gpu_list = GPUtil.getGPUs()
-    if len(gpu_list) > 0:
-        gpu_list_names = [gpu.name for gpu in gpu_list]
-        info_str = gpu_list_names.pop()
-        pretty_name = _pretty_nvidia_gpu_name(info_str)
-        if pretty_name:
-            return {ray._private.utils.get_constraint_name(pretty_name): 1}
-    return {}
-
-
-def _constraints_from_gpu_info(info_str: str):
-    """Parse the contents of a /proc/driver/nvidia/gpus/*/information to get the
-    gpu model type.
-
-        Args:
-            info_str: The contents of the file.
-
-        Returns:
-            (str) The full model name.
-    """
-    if info_str is None:
-        return {}
-    lines = info_str.split("\n")
-    full_model_name = None
-    for line in lines:
-        split = line.split(":")
-        if len(split) != 2:
-            continue
-        k, v = split
-        if k.strip() == "Model":
-            full_model_name = v.strip()
-            break
-    pretty_name = _pretty_nvidia_gpu_name(full_model_name)
-    return {ray._private.utils.get_constraint_name(pretty_name): 1}
-
-
-def _get_gpu_info_string():
-    """Get the gpu type for this machine.
-
-    TODO: Detects maximum one NVidia gpu type on linux
-
-    Returns:
-        (str) The gpu's model name.
-    """
-    if sys.platform.startswith("linux"):
-        proc_gpus_path = "/proc/driver/nvidia/gpus"
-        if os.path.isdir(proc_gpus_path):
-            gpu_dirs = os.listdir(proc_gpus_path)
-            if len(gpu_dirs) > 0:
-                gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
-                info_str = open(gpu_info_path).read()
-                return info_str
-    return None
-
-
-# TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
-# the form "Tesla V100-SXM2-16GB" or "Tesla K80").
-NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
-
-
-def _pretty_nvidia_gpu_name(name):
-    if name is None:
-        return None
-    match = NVIDIA_GPU_NAME_PATTERN.match(name)
-    return match.group(1) if match else None

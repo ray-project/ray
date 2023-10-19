@@ -90,7 +90,7 @@ class TestReadImages:
                 ds = ray.data.read_images(
                     paths, ignore_missing_paths=ignore_missing_paths
                 )
-                ds.fully_executed()
+                ds.materialize()
 
     def test_filtering(self, ray_start_regular_shared):
         # "different-extensions" contains three images and two non-images.

@@ -1,43 +1,5 @@
 #ci:group=ML tests
 
-- label: ":airplane: AIR tests (ray/air)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu,-hdfs
-      python/ray/air/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air 
-      python/ray/data/...
-
-- label: ":airplane: AIR/ML release smoke tests"
-  conditions:
-    [
-        "NO_WHEELS_REQUIRED",
-        "RAY_CI_RELEASE_TESTS_AFFECTED",
-        "RAY_CI_ML_AFFECTED",
-        "RAY_CI_PYTHON_AFFECTED",
-    ]
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=team:ml
-      release/...
-
-- label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only,-ray_air,-gpu,-doctest,-needs_credentials python/ray/train/...
-
 - label: ":train: :key: Train examples with authentication"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_BRANCH_BUILD"]
   instance_size: medium
@@ -170,17 +132,14 @@
 #    - INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
 #    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/ludwig/...
 
-- label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
+- label: ":tropical_fish: ML Libraries w/ Ray Client."
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=client
-      python/ray/tune/...
 
 - label: ":potable_water: Dataset library integrations tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
@@ -461,7 +420,7 @@
     - mkdir -p /root/.mujoco
     - wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
     - mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
-    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz
+    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
     - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco-2.1.1/bin
 
     - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development]")
@@ -478,7 +437,7 @@
     - mkdir -p /root/.mujoco
     - wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
     - mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
-    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz
+    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
     - echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco-2.1.1/bin' >> /root/.bashrc
     - source /root/.bashrc
 

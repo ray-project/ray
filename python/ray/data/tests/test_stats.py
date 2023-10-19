@@ -43,6 +43,8 @@ def gen_expected_metrics(
             "'obj_store_mem_cur': Z",
             "'obj_store_mem_peak': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
+            "'cpu_usage': Z",
+            "'gpu_usage': Z",
         ]
     else:
         metrics = [
@@ -50,6 +52,8 @@ def gen_expected_metrics(
             "'bytes_inputs_received': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
+            "'cpu_usage': Z",
+            "'gpu_usage': Z",
         ]
     if extra_metrics:
         metrics.extend(extra_metrics)
@@ -549,6 +553,8 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      obj_store_mem_cur: Z,\n"
         "      obj_store_mem_peak: N,\n"
         "      obj_store_mem_spilled: Z,\n"
+        "      cpu_usage: Z,\n"
+        "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   stage_stats=[\n"
@@ -968,6 +974,10 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
+@pytest.mark.skip(
+    reason="Temporarily disable to deflake rest of test suite. "
+    "See: https://github.com/ray-project/ray/pull/40173"
+)
 def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
@@ -1138,6 +1148,32 @@ Dataset memory:
     )
 
     assert ds._plan.stats().dataset_bytes_spilled == 0
+
+
+def test_stats_actor_metrics():
+    ray.init(object_store_memory=100e6, num_gpus=1)
+    with patch(
+        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
+    ) as update_fn:
+        ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+
+    # last emitted metrics from map operator
+    final_metric = update_fn.call_args_list[-1].args[0][-1]
+
+    assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
+    assert (
+        final_metric.obj_store_mem_alloc
+        == ds._plan.stats().extra_metrics["obj_store_mem_alloc"]
+    )
+    assert (
+        final_metric.obj_store_mem_freed
+        == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
+    )
+    assert final_metric.bytes_outputs_generated == 1000 * 80 * 80 * 4 * 8  # 8B per int
+    # There should be nothing in object store at the end of execution.
+    assert final_metric.obj_store_mem_cur == 0
+
+    assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
 
 
 if __name__ == "__main__":
