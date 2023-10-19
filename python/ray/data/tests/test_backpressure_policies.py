@@ -174,17 +174,13 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             num_cpus=cls._cluster_cpus, object_store_memory=cls._cluster_object_memory
         )
         data_context = ray.data.DataContext.get_current()
-        cls._num_blocks = 20
+        cls._num_blocks = 5
         cls._block_size = 100 * 1024 * 1024
         policy_cls = StreamingOutputBackpressurePolicy
         cls._configs = {
             ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY: [policy_cls],
-            policy_cls.MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY: (
-                cls._block_size
-            ),
-            policy_cls.MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER_CONFIG_KEY: (
-                cls._block_size
-            ),
+            policy_cls.MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY: 1,
+            policy_cls.MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER_CONFIG_KEY: 1,
         }
         for k, v in cls._configs.items():
             data_context.set_config(k, v)
@@ -200,9 +196,9 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
     def _run_dataset(self, producer_num_cpus, consumer_num_cpus):
         # Create a dataset with 2 operators:
-        # - The producer op has only 1 task, which produces 20 blocks, each of which
+        # - The producer op has only 1 task, which produces 5 blocks, each of which
         #   has 100MB data.
-        # - The consumer op has 20 slow tasks, each of which consumes 1 block.
+        # - The consumer op has 5 slow tasks, each of which consumes 1 block.
         # Return the timestamps at the producer and consumer tasks for each block.
         num_blocks = self._num_blocks
         block_size = self._block_size
@@ -210,6 +206,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
         def producer(batch):
             for i in range(num_blocks):
+                print("Producing block", i)
                 yield {
                     "id": [i],
                     "data": [np.zeros(block_size, dtype=np.uint8)],
@@ -219,6 +216,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         def consumer(batch):
             assert len(batch["id"]) == 1
             time.sleep(0.1)
+            print("Consuming block", batch["id"][0])
             del batch["data"]
             batch["consumer_timestamp"] = [time.time()]
             return batch
@@ -233,16 +231,19 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
     def test_basic_backpressure(self):
         res = self._run_dataset(producer_num_cpus=1, consumer_num_cpus=2)
-        # We can buffer at most 3 blocks.
-        # Thus the producer should be backpressured after producing 3 blocks.
-        assert res[2][0] < res[0][1] < res[3][0]
+        # We can buffer at most 2 blocks.
+        # Thus the producer should be backpressured after producing 2 blocks.
+        # Note, producer timestamp of the third block is generated before
+        # the backpressure. Thus we assert
+        # producer_timestamp[2] < consumer_timestamp[0] < producer_timestamp[3].
+        assert res[2][0] < res[0][1] < res[3][0], res
 
     def test_no_deadlock(self):
         # The producer needs all 5 CPUs, and the consumer has no CPU to run.
         # In this case, we shouldn't backpressure the producer and let it run
         # until it finishes.
         res = self._run_dataset(producer_num_cpus=5, consumer_num_cpus=1)
-        assert res[len(res) - 1][0] < res[0][1]
+        assert res[-1][0] < res[0][1], res
 
 
 if __name__ == "__main__":

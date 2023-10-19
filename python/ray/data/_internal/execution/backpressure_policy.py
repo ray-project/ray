@@ -154,13 +154,13 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
     # The max size of the output buffer at the Ray Core streaming generator level.
     # This will be used to set the `_streaming_generator_backpressure_size_bytes`
     # parameter.
-    MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 1 * 1024 * 1024 * 1024
+    MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 10
     MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER_CONFIG_KEY = (
         "backpressure_policies.streaming_output.max_num_blocks_in_streaming_gen_buffer"
     )
     # The max size of the output buffer at the Ray Data operator level.
     # I.e., the max size of `OpState.outqueue`.
-    MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE = 1 * 1024 * 1024 * 1024
+    MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE = 20
     MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY = (
         "backpressure_policies.streaming_output.max_num_blocks_in_op_output_queue"
     )
@@ -172,7 +172,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             self.MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER,
         )
         data_context._task_pool_data_task_remote_args[
-            "_streaming_generator_backpressure_num_blocks"
+            "_generator_backpressure_num_objects"
         ] = self._max_num_blocks_in_streaming_gen_buffer * 2
 
         self._max_num_blocks_in_op_output_queue = data_context.get_config(
