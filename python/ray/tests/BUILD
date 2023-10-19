@@ -574,9 +574,10 @@ py_test_module_list(
     "test_actor_in_container.py",
   ],
   size = "large",
-  tags = ["exclusive", "worker-container", "team:serve"],
+  tags = ["exclusive", "team:serverless"],
+  # tags = ["exclusive", "worker-container", "team:serve"],
   # Now we run this test in a container which has installed ray
-  deps = [],
+  deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test_module_list(

@@ -67,6 +67,14 @@ class RuntimeEnvContext:
         else:
             executable = "exec "
 
+        default_worker_path = self.container.get("worker_path")
+        if self.container and default_worker_path:
+            logger.info(
+                f"Changing the default worker path from {passthrough_args[0]} to "
+                f"{default_worker_path}."
+            )
+            passthrough_args[0] = default_worker_path
+
         passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " ".join(self.command_prefix + [exec_command])

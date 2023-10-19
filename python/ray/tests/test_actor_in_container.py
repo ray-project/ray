@@ -13,7 +13,6 @@ import ray.cluster_utils
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_actor_in_container():
-    assert False
     job_config = ray.job_config.JobConfig(
         runtime_env={
             "container": {
