@@ -37,10 +37,7 @@ from urllib.parse import urlparse
 import colorama
 import setproctitle
 
-if sys.version_info >= (3, 8):
-    from typing import Literal, Protocol
-else:
-    from typing_extensions import Literal, Protocol
+from typing import Literal, Protocol
 
 import ray
 import ray._private.node
@@ -429,8 +426,8 @@ class Worker:
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
         # environment variables.
-        self.original_gpu_and_accelerator_runtime_ids = (
-            ray._private.utils.get_gpu_and_accelerator_runtime_ids()
+        self.original_visible_accelerator_ids = (
+            ray._private.utils.get_visible_accelerator_ids()
         )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -848,24 +845,22 @@ class Worker:
             # Close the pubsub client to avoid leaking file descriptors.
             subscriber.close()
 
-    def get_resource_ids_for_resource(
+    def get_accelerator_ids_for_accelerator_resource(
         self, resource_name: str, resource_regex: str
-    ) -> Union[List[str], List[int]]:
-        """Get the resource IDs that are assigned to the given resource.
+    ) -> List[str]:
+        """Get the accelerator IDs that are assigned to the given accelerator resource.
 
         Args:
             resource_name: The name of the resource.
             resource_regex: The regex of the resource.
 
         Returns:
-            (List[str]) The IDs that are assigned to the given resource pre-configured.
-            (List[int]) The IDs that are assigned to the given resource.
-
+            (List[str]) The IDs that are assigned to the given resource.
         """
         resource_ids = self.core_worker.resource_ids()
         assigned_ids = set()
-        # Handle both normal and placement group GPU, accelerator resources.
-        # Note: We should only get the GPU, accelerator ids from the placement
+        # Handle both normal and placement group accelerator resources.
+        # Note: We should only get the accelerator ids from the placement
         # group resource that does not contain the bundle index!
         import re
 
@@ -878,23 +873,20 @@ class Worker:
         # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
         # respect that in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
-        if (
-            self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
-            is not None
-        ):
-            runtime_ids = self.original_gpu_and_accelerator_runtime_ids[resource_name]
-            assigned_ids = [str(runtime_ids[i]) for i in assigned_ids]
-            # Give all accelerator ids local_mode.
+        if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
+            original_ids = self.original_visible_accelerator_ids[resource_name]
+            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            # Give all accelerator ids in local_mode.
             if self.mode == LOCAL_MODE:
                 if resource_name == ray_constants.GPU:
-                    max_runtime_ids = self.node.get_resource_spec().num_gpus
+                    max_accelerators = self.node.get_resource_spec().num_gpus
                 else:
-                    max_runtime_ids = self.node.get_resource_spec().resources.get(
+                    max_accelerators = self.node.get_resource_spec().resources.get(
                         resource_name, None
                     )
-                if max_runtime_ids:
-                    assigned_ids = runtime_ids[:max_runtime_ids]
-        return list(assigned_ids)
+                if max_accelerators:
+                    assigned_ids = original_ids[:max_accelerators]
+        return [str(assigned_id) for assigned_id in assigned_ids]
 
 
 @PublicAPI
@@ -912,9 +904,12 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return worker.get_resource_ids_for_resource(
-        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-    )
+    return [
+        int(i)
+        for i in worker.get_accelerator_ids_for_accelerator_resource(
+            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+        )
+    ]
 
 
 @Deprecated(
@@ -1334,16 +1329,27 @@ def init(
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
 
+    # terminate any signal before connecting driver
+    def sigterm_handler(signum, frame):
+        sys.exit(signum)
+
+    if threading.current_thread() is threading.main_thread():
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
+    else:
+        logger.warning(
+            "SIGTERM handler is not set because current thread "
+            "is not the main thread."
+        )
+
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
     address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if address_env_var:
-        if address is None or address == "auto":
-            address = address_env_var
-            logger.info(
-                f"Using address {address_env_var} set in the environment "
-                f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
-            )
+    if address_env_var and (address is None or address == "auto"):
+        address = address_env_var
+        logger.info(
+            f"Using address {address_env_var} set in the environment "
+            f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
+        )
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
@@ -1510,18 +1516,6 @@ def init(
 
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
-
-        # terminate any signal before connecting driver
-        def sigterm_handler(signum, frame):
-            sys.exit(signum)
-
-        try:
-            ray._private.utils.set_sigterm_handler(sigterm_handler)
-        except ValueError:
-            logger.warning(
-                "Failed to set SIGTERM handler, processes might "
-                "not be cleaned up properly on exit."
-            )
 
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._private.usage import usage_lib
@@ -1933,9 +1927,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
-                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+                return colorama.Fore.YELLOW
             else:
-                return colorama.Style.BRIGHT + colorama.Fore.CYAN
+                return colorama.Fore.CYAN
         elif os.getenv("RAY_COLOR_PREFIX") == "1":
             colors = [
                 # colorama.Fore.BLUE, # Too dark
@@ -1975,8 +1969,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,
@@ -1992,8 +1985,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}, ip={}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}, ip={}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,

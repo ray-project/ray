@@ -47,7 +47,7 @@ def test_fastapi_serialization(shutdown_ray):
             return data.values.tolist()
 
     serve.start()
-    CustomService.deploy()
+    serve.run(CustomService.bind())
 
 
 def test_np_in_composed_model(serve_instance):
@@ -79,10 +79,6 @@ def test_np_in_composed_model(serve_instance):
     assert result.json() == 100.0
 
 
-@pytest.mark.skipif(
-    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
-    reason="Failing on Python 3.7 due to different GC behavior.",
-)
 def test_replica_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
     @serve.deployment
@@ -204,7 +200,7 @@ def test_out_of_order_chaining(serve_instance):
             r2_ref = await self.m2.compute.remote(r1_task)
             await r2_ref
 
-    @serve.deployment
+    @serve.deployment(graceful_shutdown_timeout_s=0.0)
     class FirstModel:
         async def compute(self, _id):
             if _id == 0:
@@ -242,8 +238,8 @@ def test_uvicorn_duplicate_headers(serve_instance):
         def func(self):
             return JSONResponse({"a": "b"})
 
-    A.deploy()
-    resp = requests.get("http://127.0.0.1:8000/A")
+    serve.run(A.bind())
+    resp = requests.get("http://127.0.0.1:8000")
     # If the header duplicated, it will be "9, 9"
     assert resp.headers["content-length"] == "9"
 
@@ -275,6 +271,4 @@ def test_healthcheck_timeout(serve_instance):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -3,8 +3,13 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Union
 
-from pydantic import BaseModel, Extra, Field, root_validator, validator
-
+from ray._private.pydantic_compat import (
+    BaseModel,
+    Extra,
+    Field,
+    root_validator,
+    validator,
+)
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
@@ -260,12 +265,6 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
     )
 
-    is_driver_deployment: bool = Field(
-        default=DEFAULT.VALUE,
-        description="Indicate Whether the deployment is driver deployment "
-        "Driver deployments are spawned one per node.",
-    )
-
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
         if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(
@@ -312,7 +311,6 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_period_s=info.deployment_config.health_check_period_s,
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
-        is_driver_deployment=info.is_driver_deployment,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -899,7 +897,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     grpc_options: Optional[gRPCOptionsSchema] = Field(description="gRPC Proxy options.")
     proxies: Dict[str, ProxyDetails] = Field(
         description=(
-            "Mapping from node_id to details about the HTTP Proxy running on that node."
+            "Mapping from node_id to details about the Proxy running on that node."
         )
     )
     deploy_mode: ServeDeployMode = Field(

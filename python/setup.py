@@ -1,6 +1,5 @@
 import argparse
 import errno
-import glob
 import io
 import logging
 import os
@@ -10,13 +9,10 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
-import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 import warnings
-import zipfile
 from enum import Enum
 from itertools import chain
 
@@ -41,14 +37,12 @@ SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
-PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
 
 CLEANABLE_SUBDIRS = [
-    PICKLE5_SUBDIR,
     THIRDPARTY_SUBDIR,
     RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR,
 ]
@@ -64,11 +58,6 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 # .pyd is the extension Python requires on Windows for shared libraries.
 # https://docs.python.org/3/faq/windows.html#is-a-pyd-file-the-same-as-a-dll
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
-
-pickle5_url = (
-    "https://github.com/pitrou/pickle5-backport/archive/"
-    "e6117502435aba2901585cc6c692fb9582545f08.tar.gz"
-)
 
 
 def find_version(*filepath):
@@ -198,10 +187,12 @@ ray_files += [
     "ray/autoscaler/aws/cloudwatch/prometheus.yml",
     "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
+    "ray/autoscaler/spark/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
+    "ray/autoscaler/vsphere/defaults.yaml",
     "ray/autoscaler/ray-schema.json",
 ]
 
@@ -357,9 +348,6 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal",
         "frozenlist",
         "requests",
-        # Light weight requirement, can be replaced with "typing" once
-        # we deprecate Python 3.7 (this will take a while).
-        "typing_extensions; python_version < '3.8'",
     ]
 
 
@@ -408,30 +396,6 @@ def download(url):
         curl_args = ["curl", "-s", "-L", "-f", "-o", "-", url]
         result = subprocess.check_output(curl_args)
     return result
-
-
-# Installs pickle5-backport into the local subdirectory.
-def download_pickle5(pickle5_dir):
-    pickle5_file = urllib.parse.unquote(urllib.parse.urlparse(pickle5_url).path)
-    pickle5_name = re.sub("\\.tar\\.gz$", ".tgz", pickle5_file, flags=re.I)
-    url_path_parts = os.path.splitext(pickle5_name)[0].split("/")
-    (project, commit) = (url_path_parts[2], url_path_parts[4])
-    pickle5_archive = download(pickle5_url)
-    with tempfile.TemporaryDirectory() as work_dir:
-        tf = tarfile.open(None, "r", io.BytesIO(pickle5_archive))
-        try:
-            tf.extractall(work_dir)
-        finally:
-            tf.close()
-        src_dir = os.path.join(work_dir, project + "-" + commit)
-        args = [sys.executable, "setup.py", "-q", "bdist_wheel"]
-        subprocess.check_call(args, cwd=src_dir)
-        for wheel in glob.glob(os.path.join(src_dir, "dist", "*.whl")):
-            wzf = zipfile.ZipFile(wheel, "r")
-            try:
-                wzf.extractall(pickle5_dir)
-            finally:
-                wzf.close()
 
 
 def patch_isdir():
@@ -555,19 +519,6 @@ def build(build_python, build_java, build_cpp):
                 " environment variable for Bazel."
             ).format(name="BAZEL_SH")
             raise RuntimeError(msg)
-
-    # Check if the current Python already has pickle5 (either comes with newer
-    # Python versions, or has been installed by us before).
-    pickle5 = None
-    if sys.version_info >= (3, 8, 2):
-        import pickle as pickle5
-    else:
-        try:
-            import pickle5
-        except ImportError:
-            pass
-    if not pickle5:
-        download_pickle5(os.path.join(ROOT_DIR, PICKLE5_SUBDIR))
 
     # Note: We are passing in sys.executable so that we use the same
     # version of Python to build packages inside the build.sh script. Note
@@ -703,12 +654,6 @@ def pip_run(build_ext):
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
-        # We also need to install pickle5 along with Ray, so make sure that the
-        # relevant non-Python pickle5 files get copied.
-        pickle5_dir = os.path.join(ROOT_DIR, PICKLE5_SUBDIR)
-        setup_spec.files_to_include += walk_directory(
-            os.path.join(pickle5_dir, "pickle5")
-        )
 
         thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
         setup_spec.files_to_include += walk_directory(thirdparty_dir)

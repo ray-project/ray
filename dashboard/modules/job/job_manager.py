@@ -459,6 +459,7 @@ class JobSupervisor:
                             "force-killed with SIGKILL."
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
+
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
@@ -472,7 +473,9 @@ class JobSupervisor:
                 )
                 if return_code == 0:
                     await self._job_info_client.put_status(
-                        self._job_id, JobStatus.SUCCEEDED
+                        self._job_id,
+                        JobStatus.SUCCEEDED,
+                        driver_exit_code=return_code,
                     )
                 else:
                     log_tail = self._log_client.get_last_n_log_lines(self._job_id)
@@ -489,7 +492,10 @@ class JobSupervisor:
                             f"failed with exit code {return_code}. No logs available."
                         )
                     await self._job_info_client.put_status(
-                        self._job_id, JobStatus.FAILED, message=message
+                        self._job_id,
+                        JobStatus.FAILED,
+                        message=message,
+                        driver_exit_code=return_code,
                     )
         except Exception:
             logger.error(
@@ -498,7 +504,9 @@ class JobSupervisor:
             )
             try:
                 await self._job_info_client.put_status(
-                    self._job_id, JobStatus.FAILED, message=traceback.format_exc()
+                    self._job_id,
+                    JobStatus.FAILED,
+                    message=traceback.format_exc(),
                 )
             except Exception:
                 logger.error(
@@ -539,6 +547,7 @@ class JobManager:
         except Exception:
             self.event_logger = None
 
+        self._recover_running_jobs_event = asyncio.Event()
         run_background_task(self._recover_running_jobs())
 
     async def _recover_running_jobs(self):
@@ -547,10 +556,16 @@ class JobManager:
         For each job, we will spawn a coroutine to monitor it.
         Each will be added to self._running_jobs and reconciled.
         """
-        all_jobs = await self._job_info_client.get_all_jobs()
-        for job_id, job_info in all_jobs.items():
-            if not job_info.status.is_terminal():
-                run_background_task(self._monitor_job(job_id))
+        try:
+            all_jobs = await self._job_info_client.get_all_jobs()
+            for job_id, job_info in all_jobs.items():
+                if not job_info.status.is_terminal():
+                    run_background_task(self._monitor_job(job_id))
+        finally:
+            # This event is awaited in `submit_job` to avoid race conditions between
+            # recovery and new job submission, so it must always get set even if there
+            # are exceptions.
+            self._recover_running_jobs_event.set()
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
@@ -617,6 +632,10 @@ class JobManager:
                                 and job_info.entrypoint_num_gpus > 0
                             )
                             or (
+                                job_info.entrypoint_memory is not None
+                                and job_info.entrypoint_memory > 0
+                            )
+                            or (
                                 job_info.entrypoint_resources is not None
                                 and len(job_info.entrypoint_resources) > 0
                             )
@@ -625,7 +644,8 @@ class JobManager:
                             err_msg += (
                                 " This may be because the job entrypoint's specified "
                                 "resources (entrypoint_num_cpus, entrypoint_num_gpus, "
-                                "entrypoint_resources) aren't available on the cluster."
+                                "entrypoint_resources, entrypoint_memory)"
+                                "aren't available on the cluster."
                                 " Try checking the cluster's available resources with "
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
@@ -658,7 +678,7 @@ class JobManager:
                             JobStatus.FAILED,
                             message=(
                                 "Unexpected error occurred: "
-                                "Failed to get job supervisor."
+                                "failed to get job supervisor."
                             ),
                         )
                         is_alive = False
@@ -677,6 +697,7 @@ class JobManager:
                         "`Job` page or the state API `ray list jobs`."
                     )
 
+                job_error_message = ""
                 if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
@@ -695,10 +716,13 @@ class JobManager:
                         f"Failed to schedule job {job_id} because the supervisor actor "
                         f"could not be scheduled: {e}"
                     )
+                    job_error_message = (
+                        f"Job supervisor actor could not be scheduled: {e}"
+                    )
                     await self._job_info_client.put_status(
                         job_id,
                         JobStatus.FAILED,
-                        message=(f"Job supervisor actor could not be scheduled: {e}"),
+                        message=job_error_message,
                     )
                 else:
                     logger.warning(
@@ -711,6 +735,13 @@ class JobManager:
                         job_status,
                         message=job_error_message,
                     )
+
+                # Log error message to the job driver file for easy access.
+                if job_error_message:
+                    log_path = self._log_client.get_log_file_path(job_id)
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, "a") as log_file:
+                        log_file.write(job_error_message)
 
                 # Log events
                 if self.event_logger:
@@ -838,6 +869,7 @@ class JobManager:
         metadata: Optional[Dict[str, str]] = None,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
@@ -867,6 +899,9 @@ class JobManager:
             entrypoint_num_gpus: The quantity of GPUs to reserve for
                 the entrypoint command, separately from any tasks or actors launched
                 by it. Defaults to 0.
+            entrypoint_memory: The amount of total available memory for workers
+                requesting memory the entrypoint command, separately from any tasks
+                or actors launched by it. Defaults to 0.
             entrypoint_resources: The quantity of various custom resources
                 to reserve for the entrypoint command, separately from any tasks or
                 actors launched by it.
@@ -882,8 +917,14 @@ class JobManager:
             entrypoint_num_cpus = 0
         if entrypoint_num_gpus is None:
             entrypoint_num_gpus = 0
+        if entrypoint_memory is None:
+            entrypoint_memory = 0
         if submission_id is None:
             submission_id = generate_job_id()
+
+        # Wait for `_recover_running_jobs` to run before accepting submissions to
+        # avoid duplicate monitoring of the same job.
+        await self._recover_running_jobs_event.wait()
 
         logger.info(f"Starting job with submission_id: {submission_id}")
         job_info = JobInfo(
@@ -894,6 +935,7 @@ class JobManager:
             runtime_env=runtime_env,
             entrypoint_num_cpus=entrypoint_num_cpus,
             entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
         )
         new_key_added = await self._job_info_client.put_info(
@@ -913,6 +955,7 @@ class JobManager:
                 [
                     entrypoint_num_cpus is not None and entrypoint_num_cpus > 0,
                     entrypoint_num_gpus is not None and entrypoint_num_gpus > 0,
+                    entrypoint_memory is not None and entrypoint_memory > 0,
                     entrypoint_resources not in [None, {}],
                 ]
             )
@@ -928,6 +971,7 @@ class JobManager:
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=entrypoint_num_cpus,
                 num_gpus=entrypoint_num_gpus,
+                memory=entrypoint_memory,
                 resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(
@@ -946,10 +990,13 @@ class JobManager:
                 self._monitor_job(submission_id, job_supervisor=supervisor)
             )
         except Exception as e:
+            logger.warning(
+                f"Failed to start supervisor actor for job {submission_id}: '{e}'"
+            )
             await self._job_info_client.put_status(
                 submission_id,
                 JobStatus.FAILED,
-                message=f"Failed to start Job Supervisor actor: {e}.",
+                message=f"Failed to start supervisor actor {submission_id}: '{e}'",
             )
 
         return submission_id

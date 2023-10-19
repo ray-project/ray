@@ -384,8 +384,10 @@ class StreamingObjectRefGenerator:
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait([self.suppress_exceptions(ref)],
-                                            timeout=timeout_s)
+        ready, unready = await asyncio.wait(
+            [asyncio.create_task(self.suppress_exceptions(ref))],
+            timeout=timeout_s
+        )
         if len(unready) > 0:
             return ObjectRef.nil()
 
@@ -563,8 +565,11 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
             The hex IDs of the nodes that have a copy of this object.
         - object_size:
             The size of data + metadata in bytes.
+        - did_spill:
+            Whether or not this object was spilled.
     """
     object_size = c_object_location.GetObjectSize()
+    did_spill = c_object_location.GetDidSpill()
 
     node_ids = set()
     c_node_ids = c_object_location.GetNodeIDs()
@@ -585,6 +590,7 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
     return {
         "node_ids": list(node_ids),
         "object_size": object_size,
+        "did_spill": did_spill,
     }
 
 
@@ -630,6 +636,7 @@ cdef int prepare_resources(
     cdef:
         unordered_map[c_string, double] out
         c_string resource_name
+        list unit_resources
 
     if resource_dict is None:
         raise ValueError("Must provide resource map.")
@@ -640,10 +647,18 @@ cdef int prepare_resources(
         if value < 0:
             raise ValueError("Resource quantities may not be negative.")
         if value > 0:
+            unit_resources = (
+                f"{RayConfig.instance().predefined_unit_instance_resources()\
+                .decode('utf-8')},"
+                f"{RayConfig.instance().custom_unit_instance_resources()\
+                .decode('utf-8')}"
+            ).split(",")
+
             if (value >= 1 and isinstance(value, float)
-                    and not value.is_integer()):
+                    and not value.is_integer() and str(key) in unit_resources):
                 raise ValueError(
-                    "Resource quantities >1 must be whole numbers.")
+                    f"{key} resource quantities >1 must",
+                    f" be whole numbers. The specified quantity {value} is invalid.")
             resource_map[0][key.encode("ascii")] = float(value)
     return 0
 
@@ -1839,7 +1854,7 @@ cdef execute_task_with_cancellation_handler(
 
     # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
     # runtime_ids to restrict availability to this task.
-    ray._private.utils.set_gpu_and_accelerator_runtime_ids()
+    ray._private.utils.set_visible_accelerator_ids()
 
     # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
     # It will be unset after the task execution if it was overwridden here.
@@ -2917,7 +2932,10 @@ def check_health(address: str, timeout=2, skip_version_check=False):
         Raises an exception otherwise.
     """
 
-    gcs_address, gcs_port = address.split(":")
+    tokens = address.rsplit(":", 1)
+    if len(tokens) != 2:
+        raise ValueError("Invalid address: {}. Expect 'ip:port'".format(address))
+    gcs_address, gcs_port = tokens
 
     cdef:
         c_string c_gcs_address = gcs_address
@@ -4264,22 +4282,24 @@ cdef class CoreWorker:
             function_descriptor, specified_cgname)
 
         async def async_func():
-            if task_id:
-                async_task_id.set(task_id)
+            try:
+                if task_id:
+                    async_task_id.set(task_id)
 
-            if inspect.isawaitable(func_or_coro):
-                coroutine = func_or_coro
-            else:
-                coroutine = func_or_coro(*args, **kwargs)
+                if inspect.isawaitable(func_or_coro):
+                    coroutine = func_or_coro
+                else:
+                    coroutine = func_or_coro(*args, **kwargs)
 
-            return await coroutine
+                return await coroutine
+            finally:
+                event.Notify()
 
         future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
         if task_id:
             with self._task_id_to_future_lock:
                 self._task_id_to_future[task_id] = future
 
-        future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
@@ -4606,4 +4626,5 @@ def get_session_key_from_storage(host, port, password, use_ssl, config, key):
     if result:
         return data
     else:
+        logger.info("Could not retrieve session key from storage.")
         return None

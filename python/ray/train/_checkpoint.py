@@ -7,8 +7,8 @@ import platform
 import shutil
 import tempfile
 import traceback
-from typing import Any, Dict, Iterator, List, Optional, Union
 import uuid
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 import pyarrow.fs
 
@@ -265,8 +265,8 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             del_lock_path = _get_del_lock_path(self._get_temporary_checkpoint_dir())
             open(del_lock_path, "a").close()
 
+            temp_dir = self.to_directory()
             try:
-                temp_dir = self.to_directory()
                 yield temp_dir
             finally:
                 # Always cleanup the del lock after we're done with the directory.
@@ -280,6 +280,8 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
                         f"Traceback:\n{traceback.format_exc()}"
                     )
 
+                # If there are no more lock files, that means there are no more
+                # readers of this directory, and we can safely delete it.
                 # In the edge case (process crash before del lock file is removed),
                 # we do not remove the directory at all.
                 # Since it's in /tmp, this is not that big of a deal.

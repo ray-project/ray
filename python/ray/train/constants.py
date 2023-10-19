@@ -2,14 +2,11 @@ import os
 from pathlib import Path
 
 from ray.air.constants import (  # noqa: F401
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     EVALUATION_DATASET_KEY,
     MODEL_KEY,
     PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,
-    WILDCARD_KEY,
-    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
-    LAZY_CHECKPOINT_MARKER_FILE,
 )
 
 
@@ -67,6 +64,12 @@ ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
 # Backend.share_cuda_visible_devices. 1 for True, 0 for False.
 ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
 
+# Integer value which if set will not share neuron-core accelerator visible cores
+# across workers. 1 for True (default), 0 for False.
+ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV = (
+    "TRAIN_ENABLE_SHARE_NEURON_CORES_ACCELERATOR"
+)
+
 # Integer value which indicates the number of seconds to wait when creating
 # the worker placement group before timing out.
 TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
@@ -74,8 +77,6 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 # Integer value which if set will change the placement group strategy from
 # PACK to SPREAD. 1 for True, 0 for False.
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
-
-RAY_AIR_NEW_PERSISTENCE_MODE = "RAY_AIR_NEW_PERSISTENCE_MODE"
 
 # Set this to 0 to disable changing the working directory of each Tune Trainable
 # or Train worker to the trial directory. Defaults to 1.
@@ -85,9 +86,9 @@ RAY_CHDIR_TO_TRIAL_DIR = "RAY_CHDIR_TO_TRIAL_DIR"
 TRAIN_ENV_VARS = {
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
-    RAY_AIR_NEW_PERSISTENCE_MODE,
     RAY_CHDIR_TO_TRIAL_DIR,
 }
 
