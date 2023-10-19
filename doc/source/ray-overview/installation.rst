@@ -138,6 +138,8 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. note::
 
+  .. If you change the list of wheel links below, remember to update `get_wheel_filename()` in  `https://github.com/ray-project/ray/blob/master/python/ray/_private/utils.py`.
+  
   Python 3.11 support is experimental.
 
 .. _`Linux Python 3.11 (x86_64) (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_x86_64.whl

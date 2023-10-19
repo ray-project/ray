@@ -64,7 +64,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         algorithm: "Algorithm",
         **kwargs,
     ) -> None:
-        """Callback run when a new algorithm instance has finished setup.
+        """Callback run when a new Algorithm instance has finished setup.
 
         This method gets called at the end of Algorithm.setup() after all
         the initialization is done, and before actually training starts.
@@ -136,6 +136,22 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             worker_ids: The list of (remote) worker IDs that have been recreated.
             is_evaluation: Whether `worker_set` is the evaluation WorkerSet (located
                 in `Algorithm.evaluation_workers`) or not.
+        """
+        pass
+
+    def on_checkpoint_loaded(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        """Callback run when an Algorithm has loaded a new state from a checkpoint.
+
+        This method gets called at the end of `Algorithm.load_checkpoint()`.
+
+        Args:
+            algorithm: Reference to the Algorithm instance.
+            kwargs: Forward compatibility placeholder.
         """
         pass
 
@@ -545,6 +561,11 @@ def make_multi_callbacks(
         def on_workers_recreated(self, **kwargs) -> None:
             for callback in self._callback_list:
                 callback.on_workers_recreated(**kwargs)
+
+        @override(DefaultCallbacks)
+        def on_checkpoint_loaded(self, *, algorithm: "Algorithm", **kwargs) -> None:
+            for callback in self._callback_list:
+                callback.on_checkpoint_loaded(algorithm=algorithm, **kwargs)
 
         @override(DefaultCallbacks)
         def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
