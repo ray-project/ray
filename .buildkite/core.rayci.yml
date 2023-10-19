@@ -68,6 +68,7 @@ steps:
         --test-env=TEST_EXTERNAL_REDIS=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
+        --except-tags no_redis
         --skip-ray-installation
       # serve tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve 
