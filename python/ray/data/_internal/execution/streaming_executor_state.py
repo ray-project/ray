@@ -348,7 +348,7 @@ def process_completed_tasks(
         if non_empty and len(max_blocks_to_read_per_op) > 0:
             raise ValueError(
                 "At most one backpressure policy that implements "
-                "calculate_max_bytes_to_read_per_op() can be used at a time."
+                "calcuate_max_blocks_to_read_per_op() can be used at a time."
             )
 
     # Process completed Ray tasks and notify operators.

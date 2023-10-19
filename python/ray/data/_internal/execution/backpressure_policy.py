@@ -61,6 +61,9 @@ class BackpressurePolicy(ABC):
         Used in `streaming_executor_state.py::select_operator_to_run()`.
 
         Returns: True if we can add a new input to the operator, False otherwise.
+
+        Note, if multiple backpressure policies are enabled, the operator will be
+        backpressured if any of the policies returns False.
         """
         return True
 
@@ -139,45 +142,45 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
 
     The are 2 levels of configs to control the behavior:
     - At the Ray Core level, we use
-      `MAX_STREAMING_GEN_BUFFER_SIZE_BYTES` to limit the output buffer size
-      of streaming generators. When it's reached, the task will be blocked at `yield`.
+      `MAX_BLOCKS_IN_GENERATOR_BUFFER` to limit the number of blocks buffered in
+      the streaming generator of each OpDataTask. When it's reached, the task will
+      be blocked at `yield`.
     - At the Ray Data level, we use
-      `MAX_OP_OUTPUT_BUFFER_SIZE_BYTES` to limit the output buffer size of the
-      operators. When it's reached, we'll stop reading from the tasks' output streaming
-      generators, and thus trigger backpressure at the Ray Core level.
+      `MAX_BLOCKS_IN_GENERATOR_BUFFER` to limit the number of blocks buffered in the
+      output queue of each operator. When it's reached, we'll stop reading from the
+      streaming generators of the op's tasks, and thus trigger backpressure at the
+      Ray Core level.
     """
 
-    # TODO(hchen): Can we merge the following two configs? To do so,
-    # we may need to make the Ray core-level streaming generators aware of
-    # the app-level buffer size.
-
-    # The max size of the output buffer at the Ray Core streaming generator level.
-    # This will be used to set the `_streaming_generator_backpressure_size_bytes`
-    # parameter.
-    MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 10
-    MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER_CONFIG_KEY = (
-        "backpressure_policies.streaming_output.max_num_blocks_in_streaming_gen_buffer"
+    # The max number of blocks that can be buffered at the streaming generator
+    # of each `DataOpTask`.
+    MAX_BLOCKS_IN_GENERATOR_BUFFER = 10
+    MAX_BLOCKS_IN_GENERATOR_BUFFER_BUFFER_CONFIG_KEY = (
+        "backpressure_policies.streaming_output.max_blocks_in_generator_buffer"
     )
-    # The max size of the output buffer at the Ray Data operator level.
-    # I.e., the max size of `OpState.outqueue`.
-    MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE = 20
-    MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY = (
-        "backpressure_policies.streaming_output.max_num_blocks_in_op_output_queue"
+    # The max number of blocks that can be buffered at the operator output queue
+    # (`OpState.outqueue`).
+    MAX_BLOCKS_IN_OP_OUTPUT_QUEUE = 20
+    MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY = (
+        "backpressure_policies.streaming_output.max_blocks_in_op_output_queue"
     )
 
     def __init__(self, topology: "Topology"):
         data_context = ray.data.DataContext.get_current()
         self._max_num_blocks_in_streaming_gen_buffer = data_context.get_config(
-            self.MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER_CONFIG_KEY,
-            self.MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER,
+            self.MAX_BLOCKS_IN_GENERATOR_BUFFER_BUFFER_CONFIG_KEY,
+            self.MAX_BLOCKS_IN_GENERATOR_BUFFER,
         )
+        # The `_generator_backpressure_num_objects` parameter should be
+        # `2 * self._max_num_blocks_in_streaming_gen_buffer` because we yield
+        # 2 objects for each block: the block and the block metadata.
         data_context._task_pool_data_task_remote_args[
             "_generator_backpressure_num_objects"
-        ] = self._max_num_blocks_in_streaming_gen_buffer * 2
+        ] = (2 * self._max_num_blocks_in_streaming_gen_buffer)
 
         self._max_num_blocks_in_op_output_queue = data_context.get_config(
-            self.MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY,
-            self.MAX_NUM_BLOCKS_IN_OP_OUTPUT_QUEUE,
+            self.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY,
+            self.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE,
         )
 
     def calcuate_max_blocks_to_read_per_op(
