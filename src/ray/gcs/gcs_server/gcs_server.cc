@@ -717,7 +717,7 @@ void GcsServer::InstallEventListeners() {
     gcs_resource_manager_->OnNodeAdd(*node);
     gcs_placement_group_manager_->OnNodeAdd(node_id);
     gcs_actor_manager_->SchedulePendingActors();
-    gcs_autoscaler_state_manager_->OnNodeAdd(node_id);
+    gcs_autoscaler_state_manager_->OnNodeAdd(*node);
     rpc::Address address;
     address.set_raylet_id(node->node_id());
     address.set_ip_address(node->node_manager_address());

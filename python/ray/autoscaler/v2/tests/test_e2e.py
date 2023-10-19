@@ -74,9 +74,12 @@ print("end")
             assert len(status.active_nodes) <= expected_nodes
 
             # Check there's no demand if we've reached the expected number of nodes
+            if reached_threshold:
+                assert not has_task_demand
+
+            # Load disappears in the next cycle after we've fully scaled up.
             if len(status.active_nodes) == expected_nodes:
                 reached_threshold = True
-                assert not has_task_demand
 
             time.sleep(1)
 
