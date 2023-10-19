@@ -279,13 +279,8 @@ void GcsAutoscalerStateManager::GetNodeStates(
     auto const node_resource_iter =
         node_resource_info_.find(NodeID::FromBinary(node_state_proto->node_id()));
 
-    // The node has been added to GcsNodeInfo but we are missing reporting for it. Ignore.
-    if (node_resource_iter == node_resource_info_.end()) {
-      node_state_proto->set_status(rpc::autoscaler::NodeStatus::UNSPECIFIED);
-      RAY_LOG(WARNING) << "Node " << node_state_proto->node_id()
-                       << " is alive but missing resource report.";
-      return;
-    }
+    RAY_CHECK(node_resource_iter != node_resource_info_.end());
+
     auto const &node_resource_item = node_resource_iter->second;
     auto const &node_resource_data = node_resource_item.second;
     if (node_resource_data.is_draining()) {
