@@ -76,15 +76,15 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         self.assertEqual(policy._concurrency_caps[op], 4)
         # Gradually increase num_tasks_running to the cap.
         for i in range(1, init_cap + 1):
-            self.assertTrue(policy.can_run(op))
+            self.assertTrue(policy.can_add_input(op))
             op.metrics.num_tasks_running = i
-        # Now num_tasks_running reaches the cap, so can_run should return False.
-        self.assertFalse(policy.can_run(op))
+        # Now num_tasks_running reaches the cap, so can_add_input should return False.
+        self.assertFalse(policy.can_add_input(op))
 
         # If we increase num_task_finished to the threshold (4 * 0.5 = 2),
         # it should trigger the cap to increase.
         op.metrics.num_tasks_finished = init_cap * cap_multiply_threshold
-        self.assertEqual(policy.can_run(op), True)
+        self.assertEqual(policy.can_add_input(op), True)
         self.assertEqual(policy._concurrency_caps[op], init_cap * cap_multiplier)
 
         # Now the cap is 8 (4 * 2).
@@ -94,7 +94,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             policy._concurrency_caps[op] * cap_multiplier * cap_multiply_threshold
         )
         op.metrics.num_tasks_running = 0
-        self.assertEqual(policy.can_run(op), True)
+        self.assertEqual(policy.can_add_input(op), True)
         self.assertEqual(policy._concurrency_caps[op], init_cap * cap_multiplier**3)
 
     def test_config(self):

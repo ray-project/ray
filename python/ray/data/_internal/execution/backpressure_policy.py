@@ -39,8 +39,11 @@ class BackpressurePolicy(ABC):
     def calcuate_max_bytes_to_read_per_op(
         self, topology: "Topology"
     ) -> Dict["OpState", int]:
-        """Determine how many bytes of data we can read from each operator's
-        OpDataTask. See `streaming_executor_state.process_completed_tasks`.
+        """Determine how many bytes of data we can read from each operator.
+        The `DataOpTask`s of the operators will stop reading blocks when the limit is
+        reached. Then the execution of these tasks will be paused when the streaming
+        generator backpressure threshold is reached.
+        Used in `streaming_executor_state.py::process_completed_tasks()`.
 
         Returns: A dict mapping from each operator's OpState to the desired bytes to
             read. For operators that are not in the dict, all available blocks will be
@@ -52,11 +55,12 @@ class BackpressurePolicy(ABC):
         """
         return {}
 
-    def can_run(self, op: "PhysicalOperator") -> bool:
-        """Called when StreamingExecutor selects an operator to run in
-        `streaming_executor_state.select_operator_to_run()`.
+    def can_add_input(self, op: "PhysicalOperator") -> bool:
+        """Determine if we can add a new input to the operator. If returns False, the
+        operator will be backpressured and will not be able to run new tasks.
+        Used in `streaming_executor_state.py::select_operator_to_run()`.
 
-        Returns: True if the operator can run, False otherwise.
+        Returns: True if we can add a new input to the operator, False otherwise.
         """
         return True
 
@@ -118,7 +122,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         for op, _ in topology.items():
             self._concurrency_caps[op] = self._init_cap
 
-    def can_run(self, op: "PhysicalOperator") -> bool:
+    def can_add_input(self, op: "PhysicalOperator") -> bool:
         metrics = op.metrics
         while metrics.num_tasks_finished >= (
             self._concurrency_caps[op] * self._cap_multiply_threshold

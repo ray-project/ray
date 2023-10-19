@@ -323,7 +323,7 @@ def process_completed_tasks(
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards."""
 
-    # All active tasks, keyed by their waitable.
+    # All active tasks, keyed by their waitables.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
     for op, state in topology.items():
         for task in op.get_active_tasks():
@@ -434,7 +434,7 @@ def select_operator_to_run(
             and op.should_add_input()
             and under_resource_limits
             and not op.completed()
-            and all(p.can_run(op) for p in backpressure_policies)
+            and all(p.can_add_input(op) for p in backpressure_policies)
         ):
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.
