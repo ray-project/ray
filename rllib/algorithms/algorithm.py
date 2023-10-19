@@ -1480,6 +1480,8 @@ class Algorithm(Trainable, AlgorithmBase):
             "execution logic instead."
         )
 
+    # TODO (sven): Deprecate this API in favor of extracting the correct RLModule
+    #  and simply calling `forward_inference()` on it (see DreamerV3 for an example).
     @PublicAPI
     def compute_single_action(
         self,
@@ -2154,6 +2156,9 @@ class Algorithm(Trainable, AlgorithmBase):
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.load_state(learner_state_dir)
 
+        # Call the `on_checkpoint_loaded` callback.
+        self.callbacks.on_checkpoint_loaded(algorithm=self)
+
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
         # Log after the callback is invoked, so that the user has a chance
@@ -2563,6 +2568,12 @@ class Algorithm(Trainable, AlgorithmBase):
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().get_state()
 
+        # Also store eval `policy_mapping_fn` (in case it's different from main one).
+        if hasattr(self, "evaluation_workers") and self.evaluation_workers is not None:
+            state[
+                "eval_policy_mapping_fn"
+            ] = self.evaluation_workers.local_worker().policy_mapping_fn
+
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and self.config.get(
@@ -2600,10 +2611,17 @@ class Algorithm(Trainable, AlgorithmBase):
                 healthy_only=False,
             )
             if self.evaluation_workers:
+
+                def _setup_eval_worker(w):
+                    w.set_state(ray.get(remote_state))
+                    # Override `policy_mapping_fn` as it might be different for eval
+                    # workers.
+                    w.set_policy_mapping_fn(state.get("eval_policy_mapping_fn"))
+
                 # If evaluation workers are used, also restore the policies
                 # there in case they are used for evaluation purpose.
                 self.evaluation_workers.foreach_worker(
-                    lambda w: w.set_state(ray.get(remote_state)),
+                    _setup_eval_worker,
                     healthy_only=False,
                 )
         # If necessary, restore replay data as well.
