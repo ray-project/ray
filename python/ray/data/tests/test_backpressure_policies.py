@@ -5,29 +5,14 @@ from collections import defaultdict
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
+import numpy as np
+
 import ray
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
     ConcurrencyCapBackpressurePolicy,
+    StreamingOutputBackpressurePolicy,
 )
-
-
-@contextmanager
-def enable_backpressure_policies(policies):
-    data_context = ray.data.DataContext.get_current()
-    old_policies = data_context.get_config(
-        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
-        [],
-    )
-    data_context.set_config(
-        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
-        policies,
-    )
-    yield
-    data_context.set_config(
-        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
-        old_policies,
-    )
 
 
 class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
@@ -37,10 +22,17 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
     def setUpClass(cls):
         cls._cluster_cpus = 10
         ray.init(num_cpus=cls._cluster_cpus)
+        data_context = ray.data.DataContext.get_current()
+        data_context.set_config(
+            ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
+            [ConcurrencyCapBackpressurePolicy],
+        )
 
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
+        data_context = ray.data.DataContext.get_current()
+        data_context.remove_config(ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY)
 
     @contextmanager
     def _patch_config(self, init_cap, cap_multiply_threshold, cap_multiplier):
@@ -150,28 +142,103 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             yield data
             actor.record_end_time.remote(index)
 
-        with enable_backpressure_policies([ConcurrencyCapBackpressurePolicy]):
-            # Creat a dataset with 2 map ops. Each map op has N tasks, where N is
-            # the number of cluster CPUs.
-            N = self.__class__._cluster_cpus
-            ds = ray.data.range(N, parallelism=N)
-            # Use different `num_cpus` to make sure they don't fuse.
-            ds = ds.map_batches(
-                functools.partial(map_func, index=1), batch_size=None, num_cpus=1
-            )
-            ds = ds.map_batches(
-                functools.partial(map_func, index=2), batch_size=None, num_cpus=1.1
-            )
-            res = ds.take_all()
-            self.assertEqual(len(res), N)
+        # Creat a dataset with 2 map ops. Each map op has N tasks, where N is
+        # the number of cluster CPUs.
+        N = self.__class__._cluster_cpus
+        ds = ray.data.range(N, parallelism=N)
+        # Use different `num_cpus` to make sure they don't fuse.
+        ds = ds.map_batches(
+            functools.partial(map_func, index=1), batch_size=None, num_cpus=1
+        )
+        ds = ds.map_batches(
+            functools.partial(map_func, index=2), batch_size=None, num_cpus=1.1
+        )
+        res = ds.take_all()
+        self.assertEqual(len(res), N)
 
-            # We recorded the start and end time of each op,
-            # check that these 2 ops are executed interleavingly.
-            # This means that the executor didn't allocate all resources to the first
-            # op in the beginning.
-            start1, end1 = ray.get(actor.get_start_and_end_time.remote(1))
-            start2, end2 = ray.get(actor.get_start_and_end_time.remote(2))
-            assert start1 < start2 < end1 < end2, (start1, start2, end1, end2)
+        # We recorded the start and end time of each op,
+        # check that these 2 ops are executed interleavingly.
+        # This means that the executor didn't allocate all resources to the first
+        # op in the beginning.
+        start1, end1 = ray.get(actor.get_start_and_end_time.remote(1))
+        start2, end2 = ray.get(actor.get_start_and_end_time.remote(2))
+        assert start1 < start2 < end1 < end2, (start1, start2, end1, end2)
+
+
+class TestStreamOutputBackpressurePolicy(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._cluster_cpus = 5
+        cls._cluster_object_memory = 500 * 1024 * 1024
+        ray.init(
+            num_cpus=cls._cluster_cpus, object_store_memory=cls._cluster_object_memory
+        )
+        data_context = ray.data.DataContext.get_current()
+        cls._num_blocks = 20
+        cls._block_size = 100 * 1024 * 1024
+        cls._configs = {
+            ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY: [
+                StreamingOutputBackpressurePolicy
+            ],
+            StreamingOutputBackpressurePolicy.MAX_OP_OUTPUT_BUFFER_SIZE_BYTES_CONFIG_KEY: cls._block_size,
+            StreamingOutputBackpressurePolicy.MAX_STREAMING_GEN_BUFFER_SIZE_BYTES_CONFIG_KEY: cls._block_size,
+        }
+        for k, v in cls._configs.items():
+            data_context.set_config(k, v)
+        data_context.execution_options.preserve_order = True
+
+    @classmethod
+    def tearDownClass(cls):
+        data_context = ray.data.DataContext.get_current()
+        for k in cls._configs.keys():
+            data_context.remove_config(k)
+        data_context.execution_options.preserve_order = False
+        ray.shutdown()
+
+    def _run_dataset(self, producer_num_cpus, consumer_num_cpus):
+        # Create a dataset with 2 operators:
+        # - The producer op has only 1 task, which produces 20 blocks, each of which has 100MB.
+        # - The consumer op has 20 slow tasks, each of which consumes 1 block.
+        # Return the timestamps at the producer and consumer tasks for each block.
+        num_blocks = self._num_blocks
+        block_size = self._block_size
+        ray.data.DataContext.get_current().target_max_block_size = block_size
+
+        def producer(batch):
+            for i in range(num_blocks):
+                yield {
+                    "id": [i],
+                    "data": [np.zeros(block_size, dtype=np.uint8)],
+                    "producer_timestamp": [time.time()],
+                }
+
+        def consumer(batch):
+            assert len(batch["id"]) == 1
+            time.sleep(0.1)
+            del batch["data"]
+            batch["consumer_timestamp"] = [time.time()]
+            return batch
+
+        ds = ray.data.range(1, parallelism=1).materialize()
+        ds = ds.map_batches(producer, batch_size=None, num_cpus=producer_num_cpus)
+        ds = ds.map_batches(consumer, batch_size=None, num_cpus=consumer_num_cpus)
+
+        res = ds.take_all()
+        assert [row["id"] for row in res] == list(range(self._num_blocks))
+        return [(row["producer_timestamp"], row["consumer_timestamp"]) for row in res]
+
+    def test_basic_backpressure(self):
+        res = self._run_dataset(producer_num_cpus=1, consumer_num_cpus=2)
+        # We can buffer at most 3 blocks.
+        # Thus the producer should be backpressured after producing 3 blocks.
+        assert res[2][0] < res[0][1] < res[3][0]
+
+    def test_no_deadlock(self):
+        # The producer needs all 5 CPUs, and the consumer has no CPU to run.
+        # In this case, we shouldn't backpressure the producer and let it run
+        # until it finishes.
+        res = self._run_dataset(producer_num_cpus=5, consumer_num_cpus=1)
+        assert res[len(res) - 1][0] < res[0][1]
 
 
 if __name__ == "__main__":
