@@ -140,7 +140,6 @@ class TestCallbacks(unittest.TestCase):
                 # Still an original worker, recreated counter should still be 0.
                 else:
                     self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 0)
-
             algo.stop()
 
     def test_on_init_and_checkpoint_loaded(self):
