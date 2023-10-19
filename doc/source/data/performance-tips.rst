@@ -187,7 +187,17 @@ To enable deterministic execution, set the preceding to True. This setting may d
 Monitoring your application
 ---------------------------
 
-View the Ray Data dashboard located in the Metrics tab of the Ray Dashboard to monitor your application and troubleshoot issues. Ray Data emits metrics via Prometheus in real-time while a Dataset is executing, and the Ray Data dashboard displays these metrics grouped by Dataset.
+View the Ray Data dashboard located in the Metrics tab of the Ray Dashboard to monitor your application and troubleshoot issues. Ray Data emits metrics via Prometheus in real-time while a Dataset is executing, and the Ray Data dashboard displays these metrics grouped by Dataset. Datasets can also be assigned a name, which prefixes the Dataset UUID for a more identifiable label.
+
+The metrics recorded are:
+
+* Bytes Spilled
+* Bytes Allocated
+* Bytes Freed
+* Object Store Memory
+* CPUs (logical slots)
+* GPUs (logical slots)
+* Bytes Outputted
 
 .. image:: images/data-dashboard.png
    :align: center
