@@ -7,6 +7,14 @@ classes:
   class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
 projects:
+  - name: BuildFlow Integration
+    section_title: BuildFlow
+    description: BuildFlow is a backend framework that allows you to build and manage 
+      complex cloud infrastructure using pure python. With BuildFlow's decorator 
+      pattern you can turn any function into a component of your backend system.
+    website: https://docs.launchflow.com/buildflow/introduction
+    repo: https://github.com/launchflow/buildflow/
+    image: ../images/buildflow.png
   - name: Classy Vision Integration
     section_title: Classy Vision
     description: Classy Vision is a new end-to-end, PyTorch-based framework for
