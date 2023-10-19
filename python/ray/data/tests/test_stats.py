@@ -1,6 +1,7 @@
 import re
 import time
 from collections import Counter
+from contextlib import contextmanager
 from typing import List, Optional
 from unittest.mock import patch
 
@@ -134,6 +135,14 @@ def map_batches_sleep(x, n):
 def enable_get_object_locations_flag():
     ctx = ray.data.context.DataContext.get_current()
     ctx.enable_get_object_locations_for_metrics = True
+
+
+@contextmanager
+def patch_update_stats_actor():
+    with patch(
+        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
+    ) as update_fn:
+        yield update_fn
 
 
 def test_streaming_split_stats(ray_start_regular_shared):
@@ -1148,9 +1157,7 @@ Dataset memory:
 
 def test_stats_actor_metrics():
     ray.init(object_store_memory=100e6, num_gpus=1)
-    with patch(
-        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
-    ) as update_fn:
+    with patch_update_stats_actor() as update_fn:
         ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
     # last emitted metrics from map operator
@@ -1181,9 +1188,7 @@ def test_dataset_name():
         == """MapBatches(<lambda>)
 +- Dataset(name=test_ds, num_blocks=20, num_rows=100, schema={id: int64})"""
     )
-    with patch(
-        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
-    ) as update_fn:
+    with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
     assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
@@ -1191,9 +1196,7 @@ def test_dataset_name():
     # Names persist after an execution
     ds = ds.random_shuffle()
     assert ds._name == "test_ds"
-    with patch(
-        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
-    ) as update_fn:
+    with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
     assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
@@ -1201,9 +1204,7 @@ def test_dataset_name():
     ds._set_name("test_ds_two")
     ds = ds.map_batches(lambda x: x)
     assert ds._name == "test_ds_two"
-    with patch(
-        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
-    ) as update_fn:
+    with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
     assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds_two" + mds._uuid
@@ -1211,9 +1212,7 @@ def test_dataset_name():
     ds._set_name(None)
     ds = ds.map_batches(lambda x: x)
     assert ds._name is None
-    with patch(
-        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
-    ) as update_fn:
+    with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
     assert update_fn.call_args_list[-1].args[1]["dataset"] == mds._uuid
