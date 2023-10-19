@@ -16,7 +16,6 @@
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
@@ -264,30 +263,6 @@ struct TaskToRetry {
 
   /// The details of the task.
   TaskSpecification task_spec;
-};
-
-class GeneratorBackpressureWaiter {
- public:
-  GeneratorBackpressureWaiter(int64_t streaming_generator_backpressure_size_bytes);
-  /// Block a thread and wait until objects are consumed from a consumer.
-  /// It return OK status if the backpressure is not needed or backpressure is
-  /// finished.
-  /// It periodically checks the signals (Python code has to keep checking
-  /// signals while it is blocked by cpp) using a callback `check_signals`.
-  /// If check_signals returns non-ok status, it finishes blocking and returns
-  /// the non-ok status to the caller.
-  Status WaitUntilObjectConsumed(std::function<Status()> check_signals);
-  void UpdateTotalObjectConsumed(int64_t total_objects_consumed);
-  void UpdateObjectGenerated(int64_t objects_generated);
-  int64_t TotalObjectConsumed();
-  int64_t TotalObjectGenerated();
-
- private:
-  absl::Mutex mutex_;
-  absl::CondVar cond_var_;
-  int64_t backpressure_threshold_;
-  int64_t total_objects_generated_;
-  int64_t total_objects_consumed_;
 };
 
 /// Sorts TaskToRetry in descending order of the execution time.
@@ -799,15 +774,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// report from the caller side.
   /// \param[in] attempt_number The number of time the current task is retried.
   /// 0 means it is the first attempt.
-  /// \param[in] waiter The class to pause the thread if generator backpressure limit
-  /// is reached.
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,
-      uint64_t attempt_number,
-      std::shared_ptr<GeneratorBackpressureWaiter> waiter);
+      uint64_t attempt_number);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
@@ -1362,8 +1334,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &serialized_runtime_env_info,
       const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",
-      bool include_job_config = false,
-      int64_t streaming_generator_backpressure_size_bytes = -1);
+      bool include_job_config = false);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);

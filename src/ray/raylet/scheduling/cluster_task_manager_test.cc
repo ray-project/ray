@@ -166,7 +166,6 @@ RayTask CreateTask(
                                  0,
                                  /*returns_dynamic=*/false,
                                  /*is_streaming_generator*/ false,
-                                 /*streaming_generator_backpressure_size_bytes*/ -1,
                                  required_resources,
                                  {},
                                  "",

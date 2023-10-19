@@ -127,8 +127,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          const std::string name_of_concurrency_group_to_execute,
          bool is_reattempt,
          bool is_streaming_generator,
-         bool should_retry_exceptions,
-         int64_t streaming_generator_backpressure_size_bytes) {
+         bool should_retry_exceptions) {
         // These 2 parameters are used for Python only, and Java worker
         // will not use them.
         RAY_UNUSED(defined_concurrency_groups);

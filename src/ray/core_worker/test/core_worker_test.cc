@@ -571,7 +571,6 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                               num_returns,
                               false,
                               false,
-                              -1,
                               resources,
                               resources,
                               "",
