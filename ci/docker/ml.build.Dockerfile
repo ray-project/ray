@@ -1,7 +1,7 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG IS_GPU_BUILD
+ARG RAYCI_IS_GPU_BUILD
 
 # Unset dind settings; we are using the host's docker daemon.
 ENV DOCKER_TLS_CERTDIR=
@@ -18,6 +18,6 @@ RUN pip install "mosaicml==0.12.1"
 RUN TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 \
   ./ci/env/install-dependencies.sh
 
-RUN if [[ "$IS_GPU_BUILD" == "true" ]]; then \
+RUN if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then \
   pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt; \
-  fi
+fi
