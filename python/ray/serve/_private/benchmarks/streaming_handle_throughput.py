@@ -35,7 +35,8 @@ class Caller:
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
         self._h: DeploymentHandle = downstream.options(
-            use_new_handle_api=True, stream=True,
+            use_new_handle_api=True,
+            stream=True,
         )
         self._tokens_per_request = tokens_per_request
         self._batch_size = batch_size
@@ -47,7 +48,9 @@ class Caller:
             pass
 
     async def _do_single_batch(self):
-        await asyncio.gather(*[self._consume_single_stream() for _ in range(self._batch_size)])
+        await asyncio.gather(
+            *[self._consume_single_stream() for _ in range(self._batch_size)]
+        )
 
     async def run_benchmark(self) -> Tuple[float, float]:
         return await run_throughput_benchmark(
@@ -110,7 +113,9 @@ def main(
     mean, stddev = h.run_benchmark.remote().result()
     print(
         "DeploymentHandle streaming throughput {}: {} +- {} tokens/s".format(
-            f"(num_replicas={num_replicas}, tokens_per_request={tokens_per_request}, batch_size={batch_size})",
+            f"(num_replicas={num_replicas}, "
+            "tokens_per_request={tokens_per_request}, "
+            "batch_size={batch_size})",
             mean,
             stddev,
         )

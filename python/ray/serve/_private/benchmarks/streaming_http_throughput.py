@@ -31,7 +31,7 @@ class Intermediate:
     def __init__(self, downstream: RayServeHandle):
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
-        self._h = downstream.options(
+        self._h: DeploymentHandle = downstream.options(
             stream=True,
             use_new_handle_api=True,
         )
@@ -49,6 +49,7 @@ async def _consume_single_stream():
         async with session.get("http://localhost:8000") as r:
             async for line in r.content:
                 pass
+
 
 async def run_benchmark(
     tokens_per_request: int,
@@ -99,7 +100,7 @@ async def run_benchmark(
     help="Duration to run each trial of the benchmark for (seconds).",
 )
 @click.option(
-    "--intermediate-deployment",
+    "--use-intermediate-deployment",
     is_flag=True,
     default=False,
     help="Whether to run an intermediate deployment proxying the requests.",
@@ -110,10 +111,10 @@ def main(
     num_replicas: int,
     num_trials: int,
     trial_runtime: float,
-    intermediate_deployment: bool,
+    use_intermediate_deployment: bool,
 ):
     app = Downstream.options(num_replicas=num_replicas).bind(tokens_per_request)
-    if intermediate_deployment:
+    if use_intermediate_deployment:
         app = Intermediate.bind(app)
 
     serve.run(app)
@@ -128,7 +129,10 @@ def main(
     )
     print(
         "HTTP streaming throughput {}: {} +- {} tokens/s".format(
-            f"(num_replicas={num_replicas}, tokens_per_request={tokens_per_request}, batch_size={batch_size})",
+            f"(num_replicas={num_replicas}, "
+            "tokens_per_request={tokens_per_request}, "
+            "batch_size={batch_size}, "
+            "use_intermediate_deployment={use_intermediate_deployment})",
             mean,
             stddev,
         )
