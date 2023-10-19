@@ -1,8 +1,6 @@
 import itertools
 import os
 import pathlib
-import sys
-import urllib.parse
 from typing import (
     TYPE_CHECKING,
     Any,
