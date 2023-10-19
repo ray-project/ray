@@ -128,7 +128,7 @@ class ExecutionPlan:
         # A computed snapshot of some prefix of stages.
         self._snapshot_blocks = None
         self._snapshot_stats = None
-        # Executor._generate_stats call for updating stats
+        # Executor.get_stats call for updating stats
         self._get_executor_stats = None
         # Chains of stages.
         self._stages_before_snapshot = []
