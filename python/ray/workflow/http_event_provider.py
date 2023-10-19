@@ -240,7 +240,7 @@ class HTTPListener(EventListener):
         super().__init__()
         try:
             self.handle = ray.serve.get_app_handle(common.HTTP_EVENT_PROVIDER_NAME)
-        except KeyError:
+        except ray.serve.exceptions.RayServeException:
             mgr = workflow_access.get_management_actor()
             ray.get(mgr.create_http_event_provider.remote())
             self.handle = ray.serve.get_app_handle(common.HTTP_EVENT_PROVIDER_NAME)
