@@ -1054,6 +1054,30 @@
         cluster:
           cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
 
+- name: workspace_template_finetuning_llms_with_deepspeed_llama_2_7b_lora
+  group: Workspace templates
+  working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
+  python: "3.9"
+  frequency: nightly-3x
+  team: ml
+  cluster:
+    byod:
+      type: cu121
+      # This needs to be in sync with requirements under go/llm-forge.
+      post_build_script: byod_finetune_llvms.sh
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
+
+  run:
+    timeout: 1000
+    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --lora --as-test
+
+  variations:
+      - __suffix__: aws
+      - __suffix__: gce
+        env: gce
+        frequency: manual
+        cluster:
+          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
 
 
 #######################
@@ -6159,6 +6183,7 @@
 - name: dataset_shuffle_push_based_random_shuffle_100tb
   group: data-tests
   working_dir: nightly_tests
+  stable: false
 
   frequency: weekly
   team: data
