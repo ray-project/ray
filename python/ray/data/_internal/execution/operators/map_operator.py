@@ -433,7 +433,8 @@ def _map_task(
     #         block_input_files = []
     #         if input_files:
     #             block_input_files = input_files[b_in_idx]
-    #         m_out = BlockAccessor.for_block(b_out).get_metadata(block_input_files, None)
+    #         m_out = BlockAccessor.for_block(b_out).get_metadata(
+    # block_input_files, None)
     #         m_out.exec_stats = stats.build()
     #         yield b_out
     #         yield m_out
