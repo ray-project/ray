@@ -20,6 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
@@ -38,7 +39,6 @@ using raylet::ClusterTaskManager;
 
 namespace gcs {
 class GcsNodeManager;
-class GcsServer;
 
 /// Ideally, the logic related to resource calculation should be moved from
 /// `gcs_resource_manager` to `cluster_resource_manager`, and all logic related to
@@ -66,7 +66,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       instrumented_io_context &io_context,
       ClusterResourceManager &cluster_resource_manager,
       GcsNodeManager &gcs_node_manager,
-      GcsServer &gcs_server,
+      GcsAutoscalerStateManager &gcs_autoscaler_state_manager,
       NodeID local_node_id,
       std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
@@ -204,7 +204,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
 
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
-  GcsServer &gcs_server_;
+  GcsAutoscalerStateManager &gcs_autoscaler_state_manager_;
   NodeID local_node_id_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// Num of alive nodes in the cluster.

@@ -154,12 +154,10 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    GcsResourceManager &gcs_resource_manager,
     std::function<std::string(const JobID &)> get_ray_namespace)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
-      gcs_resource_manager_(gcs_resource_manager),
       get_ray_namespace_(get_ray_namespace) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
@@ -171,12 +169,10 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
             {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(key)},
              {"Source", "gcs"}});
       });
-  Tick();
 }
 
-GcsPlacementGroupManager::GcsPlacementGroupManager(
-    instrumented_io_context &io_context, GcsResourceManager &gcs_resource_manager)
-    : io_context_(io_context), gcs_resource_manager_(gcs_resource_manager) {}
+GcsPlacementGroupManager::GcsPlacementGroupManager(instrumented_io_context &io_context)
+    : io_context_(io_context) {}
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
     const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
@@ -861,18 +857,6 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
   }
 }
 
-void GcsPlacementGroupManager::Tick() {
-  UpdatePlacementGroupLoad();
-  // To avoid scheduling exhaution in some race conditions.
-  // Note that we don't currently have a known race condition that requires this, but we
-  // added as a safety check. https://github.com/ray-project/ray/pull/18419
-  SchedulePendingPlacementGroups();
-  execute_after(
-      io_context_,
-      [this] { Tick(); },
-      std::chrono::milliseconds(1000) /* milliseconds */);
-}
-
 std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementGroupLoad()
     const {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
@@ -919,12 +903,6 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
   }
 
   return placement_group_load;
-}
-
-void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
-  // TODO(rickyx): We should remove this, no other callers other than autoscaler
-  // use this info.
-  gcs_resource_manager_.UpdatePlacementGroupLoad(GetPlacementGroupLoad());
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {

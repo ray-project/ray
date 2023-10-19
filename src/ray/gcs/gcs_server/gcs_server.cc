@@ -188,6 +188,12 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs node manager.
   InitGcsNodeManager(gcs_init_data);
 
+  // Init gcs placement group manager.
+  InitGcsPlacementGroupManager(gcs_init_data);
+
+  // Init autoscaling manager
+  InitGcsAutoscalerStateManager();
+
   // Init cluster task manager.
   InitClusterTaskManager();
 
@@ -215,9 +221,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs job manager.
   InitGcsJobManager(gcs_init_data);
 
-  // Init gcs placement group manager.
-  InitGcsPlacementGroupManager(gcs_init_data);
-
   // Init gcs actor manager.
   InitGcsActorManager(gcs_init_data);
 
@@ -233,9 +236,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Install event listeners.
   InstallEventListeners();
 
-  // Init autoscaling manager
-  InitGcsAutoscalerStateManager();
-
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
@@ -249,6 +249,24 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
   RecordMetrics();
+
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+        if (!gcs_placement_group_manager_) {
+          RAY_LOG_EVERY_MS(INFO, 10000) << "Placement group manager does not exist.";
+          return;
+        }
+        // TODO(rickyx): We should move this, no other callers other than autoscaler
+        // use this info.
+        gcs_resource_manager_->UpdatePlacementGroupLoad(
+            gcs_placement_group_manager_->GetPlacementGroupLoad());
+        // To avoid scheduling exhaution in some race conditions.
+        // Note that we don't currently have a known race condition that requires this,
+        // but we added as a safety check. https://github.com/ray-project/ray/pull/18419
+        gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+      },
+      RayConfig::instance().gcs_update_placement_group_ms(),
+      "GCSServer.update_placement_group_info");
 
   periodical_runner_.RunFnPeriodically(
       [this] {
@@ -340,7 +358,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       main_service_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
-      *this,
+      *gcs_autoscaler_state_manager_,
       kGCSNodeID,
       cluster_task_manager_);
 
@@ -512,7 +530,6 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       main_service_,
       gcs_placement_group_scheduler_,
       gcs_table_storage_,
-      *gcs_resource_manager_,
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
       });

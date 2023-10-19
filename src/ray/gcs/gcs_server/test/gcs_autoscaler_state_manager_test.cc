@@ -57,16 +57,15 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
+    gcs_placement_group_manager_ = std::make_shared<MockGcsPlacementGroupManager>();
+    gcs_autoscaler_state_manager_.reset(new GcsAutoscalerStateManager(
+        "fake_cluster", *gcs_node_manager_, *gcs_placement_group_manager_, client_pool_));
     gcs_resource_manager_ =
         std::make_shared<GcsResourceManager>(io_service_,
                                              *cluster_resource_manager_,
                                              *gcs_node_manager_,
+                                             *gcs_autoscaler_state_manager_,
                                              NodeID::FromRandom());
-
-    gcs_placement_group_manager_ =
-        std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
-    gcs_autoscaler_state_manager_.reset(new GcsAutoscalerStateManager(
-        "fake_cluster", *gcs_node_manager_, *gcs_placement_group_manager_, client_pool_));
   }
 
  public:

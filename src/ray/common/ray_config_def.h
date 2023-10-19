@@ -557,6 +557,9 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
 
+/// The frequency with whichto update placement group load
+RAY_CONFIG(int64_t, gcs_update_placement_group_ms, 1000)
+
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
 RAY_CONFIG(bool, enable_worker_prestart, false)
 
