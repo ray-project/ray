@@ -1,3 +1,4 @@
+import tempfile
 from collections import Counter
 import unittest
 
@@ -6,6 +7,7 @@ from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.random_env import RandomEnv
@@ -33,6 +35,14 @@ class OnWorkerCreatedCallbacks(DefaultCallbacks):
         # Execute some dummy code on each of the recreated workers.
         results = worker_set.foreach_worker(lambda w: w.ping())
         print(results)  # should print "pong" n times (one for each recreated worker).
+
+
+class InitAndCheckpointRestoredCallbacks(DefaultCallbacks):
+    def on_algorithm_init(self, *, algorithm, **kwargs):
+        self._on_init_was_called = True
+
+    def on_checkpoint_loaded(self, *, algorithm, **kwargs):
+        self._on_checkpoint_loaded_was_called = True
 
 
 class EpisodeAndSampleCallbacks(DefaultCallbacks):
@@ -131,6 +141,29 @@ class TestCallbacks(unittest.TestCase):
                 else:
                     self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 0)
 
+            algo.stop()
+
+    def test_on_init_and_checkpoint_loaded(self):
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .callbacks(InitAndCheckpointRestoredCallbacks)
+        )
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+            algo = config.build()
+            self.assertTrue(algo.callbacks._on_init_was_called)
+            self.assertTrue(
+                not hasattr(algo.callbacks, "_on_checkpoint_loaded_was_called")
+            )
+            algo.train()
+            # Save algo and restore.
+            with tempfile.TemporaryDirectory() as tmpdir:
+                algo.save(checkpoint_dir=tmpdir)
+                self.assertTrue(
+                    not hasattr(algo.callbacks, "_on_checkpoint_loaded_was_called")
+                )
+                algo.load_checkpoint(checkpoint_dir=tmpdir)
+                self.assertTrue(algo.callbacks._on_checkpoint_loaded_was_called)
             algo.stop()
 
     def test_episode_and_sample_callbacks(self):

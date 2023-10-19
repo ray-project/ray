@@ -74,6 +74,20 @@ algorithms_and_configs = {
         .training(num_sgd_iter=5, train_batch_size=1000)
         .rollouts(num_rollout_workers=2)
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .evaluation(
+            evaluation_num_workers=1,
+            evaluation_interval=1,
+            evaluation_config=PPOConfig.overrides(
+                # Define a (slightly different mapping function to test, whether eval
+                # workers save their own version of this (and are restored properly
+                # with this different mapping).
+                # This is dummy logic; the point is to have a different source code
+                # to be able to distinguish and compare to the default mapping fn used.
+                policy_mapping_fn=lambda aid, episode, worker, **kw: (
+                    "default_policy" if aid == "a0" else "default_policy"
+                ),
+            ),
+        )
     ),
     "SimpleQ": (
         SimpleQConfig()
@@ -93,7 +107,7 @@ algorithms_and_configs = {
 class TestCheckpointRestorePG(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(num_cpus=6)
 
     @classmethod
     def tearDownClass(cls):
@@ -106,7 +120,11 @@ class TestCheckpointRestorePG(unittest.TestCase):
         )
 
     def test_ppo_checkpoint_restore(self):
-        test_ckpt_restore(algorithms_and_configs["PPO"], "CartPole-v1")
+        test_ckpt_restore(
+            algorithms_and_configs["PPO"],
+            "CartPole-v1",
+            eval_workerset=True,
+        )
 
 
 class TestCheckpointRestoreOffPolicy(unittest.TestCase):

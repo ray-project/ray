@@ -718,7 +718,7 @@ def _resolve_paths_and_filesystem(
                         from fsspec.implementations.http import HTTPFileSystem
                     except ModuleNotFoundError:
                         raise ImportError(
-                            "Please install fsspec to read files from HTTP."
+                            "To read files from HTTP, run `pip install fsspec[http]`."
                         ) from None
 
                     resolved_filesystem = PyFileSystem(FSSpecHandler(HTTPFileSystem()))
