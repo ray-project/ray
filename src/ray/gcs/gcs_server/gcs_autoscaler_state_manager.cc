@@ -198,6 +198,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   if (iter == node_resource_info_.end()) {
     RAY_LOG(WARNING) << "Ignoring resource usage for node that is not alive: "
                      << node_id.Hex() << ".";
+    return;
   }
 
   auto &new_data = iter->second.second;
