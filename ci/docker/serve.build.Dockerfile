@@ -21,4 +21,6 @@ RUN pip install -U --ignore-installed \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt
 
+RUN git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
+
 RUN if [[ -z $PYDANTIC_VERSION ]] ; then echo Not installing custom Pydantic version ; else pip install -U pydantic==$PYDANTIC_VERSION ; fi
