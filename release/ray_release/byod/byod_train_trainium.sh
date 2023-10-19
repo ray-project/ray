@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Configure Linux for Neuron repository updates
-. /etc/os-release
-sudo tee /etc/apt/sources.list.d/neuron.list > /dev/null <<EOF
-deb https://apt.repos.neuron.amazonaws.com ${VERSION_CODENAME} main
-EOF
+. /etc/os-release && \
+echo "deb https://apt.repos.neuron.amazonaws.com ${VERSION_CODENAME} main" | \
+sudo tee /etc/apt/sources.list.d/neuron.list > /dev/null
+
 wget -qO - https://apt.repos.neuron.amazonaws.com/GPG-PUB-KEY-AMAZON-AWS-NEURON.PUB | sudo apt-key add -
 
 # Update OS packages 
