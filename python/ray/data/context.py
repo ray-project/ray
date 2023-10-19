@@ -1,7 +1,7 @@
 import os
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -258,6 +258,13 @@ class DataContext:
             enable_get_object_locations_for_metrics
         )
         self.streaming_output_backpressure_config = StreamingOutputBackpressureConfig()
+        # The extra key-value style configs.
+        # These configs are managed by individual components or plugins via
+        # `set_config`, `get_config` and `remove_config`.
+        # The reason why we use a dict instead of individual fields is to decouple
+        # the DataContext from the plugin implementations, as well as to avoid
+        # circular dependencies.
+        self._kv_configs: Dict[str, Any] = {}
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -321,6 +328,33 @@ class DataContext:
         """
         global _default_context
         _default_context = context
+
+    def get_config(self, key: str, default: Any = None) -> Any:
+        """Get the value for a key-value style config.
+
+        Args:
+            key: The key of the config.
+            default: The default value to return if the key is not found.
+        Returns: The value for the key, or the default value if the key is not found.
+        """
+        return self._kv_configs.get(key, default)
+
+    def set_config(self, key: str, value: Any) -> None:
+        """Set the value for a key-value style config.
+
+        Args:
+            key: The key of the config.
+            value: The value of the config.
+        """
+        self._kv_configs[key] = value
+
+    def remove_config(self, key: str) -> None:
+        """Remove a key-value style config.
+
+        Args:
+            key: The key of the config.
+        """
+        self._kv_configs.pop(key, None)
 
 
 # Backwards compatibility alias.
