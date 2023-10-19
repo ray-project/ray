@@ -338,11 +338,11 @@ class RemoteFunction:
             # TODO(sang): This is a temporary private API.
             # Remove it when we migrate to the streaming generator.
             num_returns = ray._raylet.STREAMING_GENERATOR_RETURN
-        streaming_generator_backpressure_size_bytes = task_options[
-            "_streaming_generator_backpressure_size_bytes"
+        generator_backpressure_num_objects = task_options[
+            "_generator_backpressure_num_objects"
         ]
-        if streaming_generator_backpressure_size_bytes is None:
-            streaming_generator_backpressure_size_bytes = -1
+        if generator_backpressure_num_objects is None:
+            generator_backpressure_num_objects = -1
 
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
@@ -430,7 +430,7 @@ class RemoteFunction:
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
-                streaming_generator_backpressure_size_bytes,
+                generator_backpressure_num_objects,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

@@ -413,8 +413,10 @@ message ReportGeneratorItemReturnsRequest {
 }
 
 message ReportGeneratorItemReturnsReply {
-  // The total amount of object consumed in bytes from the generator.
-  int64 total_object_consumed_bytes = 1;
+  // The total number objects consumed from the generator.
+  // -1 means it is not known. The executor side should just
+  // assume everything is consumed if it is -1.
+  int64 total_num_object_consumed = 1;
 }
 
 service CoreWorkerService {

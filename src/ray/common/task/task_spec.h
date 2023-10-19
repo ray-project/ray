@@ -328,7 +328,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsStreamingGenerator() const;
 
-  int64_t StreamingGeneratorBackpressureSizeBytes() const;
+  int64_t GeneratorBackpressureNumObjects() const;
 
   std::vector<ObjectID> DynamicReturnIds() const;
 

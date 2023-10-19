@@ -200,7 +200,7 @@ def test_generator_wait_e2e(shutdown_only, backpressure):
     ray.init(num_cpus=8)
 
     if backpressure:
-        threshold = 0
+        threshold = 1
     else:
         threshold = -1
 
@@ -218,7 +218,7 @@ def test_generator_wait_e2e(shutdown_only, backpressure):
     gen = [
         f.options(
             num_returns="streaming",
-            _streaming_generator_backpressure_size_bytes=threshold,
+            _generator_backpressure_num_objects=threshold,
         ).remote(1)
         for _ in range(4)
     ]

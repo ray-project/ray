@@ -74,8 +74,7 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
 
   auto it = refs_written_to_stream_.find(*object_id_out);
   if (it != refs_written_to_stream_.end()) {
-    auto object_size = it->second;
-    total_object_size_consumed_ += object_size;
+    total_num_object_consumed_ += 1;
     next_index_ += 1;
     RAY_LOG_EVERY_MS(DEBUG, 10000) << "Get the next object id " << *object_id_out
                                    << " generator id: " << generator_id_;
@@ -103,9 +102,7 @@ bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_i
   return false;
 }
 
-bool ObjectRefStream::InsertToStream(const ObjectID &object_id,
-                                     int64_t item_index,
-                                     int64_t object_size) {
+bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_index) {
   RAY_CHECK_EQ(object_id, GetObjectRefAtIndex(item_index));
   if (end_of_stream_index_ != -1 && item_index >= end_of_stream_index_) {
     RAY_CHECK(next_index_ <= end_of_stream_index_);
@@ -126,13 +123,13 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id,
     temporarily_owned_refs_.erase(object_id);
   }
 
-  auto [_, inserted] = refs_written_to_stream_.emplace(object_id, object_size);
+  auto [_, inserted] = refs_written_to_stream_.emplace(object_id);
   if (!inserted) {
     return false;
   }
 
   max_index_seen_ = std::max(max_index_seen_, item_index);
-  total_object_size_written_ += object_size;
+  total_num_object_written_ += 1;
   return true;
 }
 
@@ -490,7 +487,7 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(generator_id.TaskId());
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec.StreamingGeneratorBackpressureSizeBytes();
+      backpressure_threshold = it->second.spec.GeneratorBackpressureNumObjects();
     }
   }
 
@@ -506,10 +503,10 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   /// If you could read the next item, signal the executor to resume
   /// if necessary.
   if (status.ok()) {
-    auto total_generated = stream_it->second.TotalObjectSizeWritten();
-    auto total_consumed = stream_it->second.TotalObjectSizeConsumed();
+    auto total_generated = stream_it->second.TotalNumObjectWritten();
+    auto total_consumed = stream_it->second.TotalNumObjectConsumed();
     auto total_unconsumed = total_generated - total_consumed;
-    if (backpressure_threshold != -1 && total_unconsumed <= backpressure_threshold) {
+    if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
       auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
       if (it != ref_stream_execution_signal_callbacks_.end()) {
         for (const auto &execution_signal : it->second) {
@@ -589,7 +586,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec.StreamingGeneratorBackpressureSizeBytes();
+      backpressure_threshold = it->second.spec.GeneratorBackpressureNumObjects();
       if (it->second.spec.AttemptNumber() > attempt_number) {
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
@@ -618,14 +615,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   size_t num_objects_written = 0;
   for (const auto &return_object : request.dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
-    int64_t object_size = return_object.size();
-    RAY_CHECK(object_size > 0);
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
-                   << " to the object ref stream of id " << generator_id
-                   << ". Object size: " << object_size;
-    auto index_not_used_yet =
-        stream_it->second.InsertToStream(object_id, item_index, object_size);
+                   << " to the object ref stream of id " << generator_id;
+    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
 
     // If the ref was written to a stream, we should also
     // own the dynamically generated task return.
@@ -643,8 +636,8 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // Handle backpressure if needed.
-  auto total_generated = stream_it->second.TotalObjectSizeWritten();
-  auto total_consumed = stream_it->second.TotalObjectSizeConsumed();
+  auto total_generated = stream_it->second.TotalNumObjectWritten();
+  auto total_consumed = stream_it->second.TotalNumObjectConsumed();
 
   // If the object is already consumed, signal
   // the caller.
@@ -655,7 +648,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
   // Otherwise, follow the regular backpressure logic.
   auto total_unconsumed = total_generated - total_consumed;
-  if (backpressure_threshold != -1 && total_unconsumed > backpressure_threshold) {
+  if (backpressure_threshold != -1 && total_unconsumed >= backpressure_threshold) {
     RAY_LOG(DEBUG) << "Stream " << generator_id
                    << " is backpressured. total_generated: " << total_generated
                    << ". total_consumed: " << total_consumed

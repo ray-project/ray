@@ -63,7 +63,9 @@ struct CoreWorkerOptions {
       bool is_streaming_generator,
       // True if task can be retried upon exception.
       bool retry_exception,
-      int64_t streaming_generator_backpressure_size_bytes)>;
+      // The max number of unconsumed objects where a generator
+      // can run without a pause.
+      int64_t generator_backpressure_num_objects)>;
 
   CoreWorkerOptions()
       : store_socket(""),

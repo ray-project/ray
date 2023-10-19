@@ -51,14 +51,14 @@ def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster, backpr
         ray.init(address=cluster.address)
 
         if backpressure:
-            threshold = 0
+            threshold = 1
         else:
             threshold = -1
 
         @ray.remote(
             num_returns="streaming",
             max_retries=-1,
-            _streaming_generator_backpressure_size_bytes=threshold,
+            _generator_backpressure_num_objects=threshold,
         )
         def dynamic_generator(num_returns):
             for i in range(num_returns):

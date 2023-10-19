@@ -964,7 +964,7 @@ cdef class StreamingGeneratorExecutionContext:
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
             application error.
-        streaming_generator_backpressure_size_bytes: The backpressure threshold
+        generator_backpressure_num_objects: The backpressure threshold
             for streaming generator. The stremaing generator pauses if
             total size of unconsumed objects exceed this threshold.
     """
@@ -1029,7 +1029,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error,
-        int64_t streaming_generator_backpressure_size_bytes,
+        int64_t generator_backpressure_num_objects,
     ):
         cdef StreamingGeneratorExecutionContext self = (
             StreamingGeneratorExecutionContext())
@@ -1053,7 +1053,7 @@ cdef class StreamingGeneratorExecutionContext:
         self.application_error = application_error
         self.should_retry_exceptions = should_retry_exceptions
         self.waiter = make_shared[CGeneratorBackpressureWaiter](
-            streaming_generator_backpressure_size_bytes)
+            generator_backpressure_num_objects)
         return self
 
 
@@ -1494,7 +1494,7 @@ cdef void execute_task(
         task_name,
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
-        int64_t streaming_generator_backpressure_size_bytes) except *:
+        int64_t generator_backpressure_num_objects) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -1676,15 +1676,15 @@ cdef void execute_task(
                                 streaming_generator_returns,
                                 is_retryable_error,
                                 application_error,
-                                streaming_generator_backpressure_size_bytes)
+                                generator_backpressure_num_objects)
                         # We cannot pass generator to cdef in Cython for some reasons.
                         # It is a workaround.
                         context.initialize(outputs)
 
                         if is_async_gen:
-                            if streaming_generator_backpressure_size_bytes != -1:
+                            if generator_backpressure_num_objects != -1:
                                 raise ValueError(
-                                    "_streaming_generator_backpressure_size_bytes is "
+                                    "_generator_backpressure_num_objects is "
                                     "not supported for an async actor."
                                 )
                             # Note that the report RPCs are called inside an
@@ -1856,7 +1856,7 @@ cdef execute_task_with_cancellation_handler(
         c_bool is_reattempt,
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
-        int64_t streaming_generator_backpressure_size_bytes):
+        int64_t generator_backpressure_num_objects):
 
     is_retryable_error[0] = False
 
@@ -1946,7 +1946,7 @@ cdef execute_task_with_cancellation_handler(
                      is_reattempt, execution_info, title, task_name,
                      is_streaming_generator,
                      should_retry_exceptions,
-                     streaming_generator_backpressure_size_bytes)
+                     generator_backpressure_num_objects)
 
         # Check for cancellation.
         PyErr_CheckSignals()
@@ -2023,7 +2023,7 @@ cdef CRayStatus task_execution_handler(
         c_bool is_reattempt,
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
-        int64_t streaming_generator_backpressure_size_bytes) nogil:
+        int64_t generator_backpressure_num_objects) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -2051,7 +2051,7 @@ cdef CRayStatus task_execution_handler(
                         is_reattempt,
                         is_streaming_generator,
                         should_retry_exceptions,
-                        streaming_generator_backpressure_size_bytes)
+                        generator_backpressure_num_objects)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -3531,7 +3531,7 @@ cdef class CoreWorker:
                     scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
-                    int streaming_generator_backpressure_size_bytes
+                    int64_t generator_backpressure_num_objects
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -3575,7 +3575,7 @@ cdef class CoreWorker:
             task_options = CTaskOptions(
                 name, num_returns, c_resources,
                 b"",
-                streaming_generator_backpressure_size_bytes,
+                generator_backpressure_num_objects,
                 serialized_runtime_env_info)
 
             # We are in the async context. We have to obtain
@@ -3761,7 +3761,7 @@ cdef class CoreWorker:
                           int num_returns,
                           double num_method_cpus,
                           c_string concurrency_group_name,
-                          int streaming_generator_backpressure_size_bytes):
+                          int64_t generator_backpressure_num_objects):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -3803,7 +3803,7 @@ cdef class CoreWorker:
                         num_returns,
                         c_resources,
                         concurrency_group_name,
-                        streaming_generator_backpressure_size_bytes),
+                        generator_backpressure_num_objects),
                     return_refs,
                     current_c_task_id)
             # These arguments were serialized and put into the local object
@@ -3923,7 +3923,7 @@ cdef class CoreWorker:
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_returns,
-                                         method_meta.streaming_generator_backpressure_size_bytes, # noqa
+                                         method_meta.generator_backpressure_num_objects, # noqa
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)

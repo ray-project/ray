@@ -71,7 +71,7 @@ class MockWorker {
             bool is_reattempt,
             bool is_streaming_generator,
             bool should_retry_exceptions,
-            int64_t streaming_generator_backpressure_size_bytes) {
+            int64_t generator_backpressure_num_objects) {
           return ExecuteTask(caller_address,
                              task_type,
                              task_name,

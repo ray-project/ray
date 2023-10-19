@@ -27,6 +27,7 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
@@ -264,30 +265,6 @@ struct TaskToRetry {
 
   /// The details of the task.
   TaskSpecification task_spec;
-};
-
-class GeneratorBackpressureWaiter {
- public:
-  GeneratorBackpressureWaiter(int64_t streaming_generator_backpressure_size_bytes);
-  /// Block a thread and wait until objects are consumed from a consumer.
-  /// It return OK status if the backpressure is not needed or backpressure is
-  /// finished.
-  /// It periodically checks the signals (Python code has to keep checking
-  /// signals while it is blocked by cpp) using a callback `check_signals`.
-  /// If check_signals returns non-ok status, it finishes blocking and returns
-  /// the non-ok status to the caller.
-  Status WaitUntilObjectConsumed(std::function<Status()> check_signals);
-  void UpdateTotalObjectConsumed(int64_t total_objects_consumed);
-  void UpdateObjectGenerated(int64_t objects_generated);
-  int64_t TotalObjectConsumed();
-  int64_t TotalObjectGenerated();
-
- private:
-  absl::Mutex mutex_;
-  absl::CondVar cond_var_;
-  int64_t backpressure_threshold_;
-  int64_t total_objects_generated_;
-  int64_t total_objects_consumed_;
 };
 
 /// Sorts TaskToRetry in descending order of the execution time.
@@ -1363,7 +1340,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",
       bool include_job_config = false,
-      int64_t streaming_generator_backpressure_size_bytes = -1);
+      int64_t generator_backpressure_num_objects = -1);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);

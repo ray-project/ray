@@ -100,8 +100,8 @@ class ObjectRefStream {
   ObjectRefStream(const ObjectID &generator_id)
       : generator_id_(generator_id),
         generator_task_id_(generator_id.TaskId()),
-        total_object_size_written_(0),
-        total_object_size_consumed_(0) {}
+        total_num_object_written_(0),
+        total_num_object_consumed_(0) {}
 
   /// Asynchronously read object reference of the next index.
   ///
@@ -123,11 +123,10 @@ class ObjectRefStream {
   ///
   /// \param[in] object_id The object id that will be read at index item_index.
   /// \param[in] item_index The index where the object id will be written.
-  /// \param[in] object_size The size of the object to insert to stream.
   /// If -1 is given, it means an index is not known yet. In this case,
   /// the ref will be temporarily written until it is written with an index.
   /// \return True if the ref is written to a stream. False otherwise.
-  bool InsertToStream(const ObjectID &object_id, int64_t item_index, int64_t object_size);
+  bool InsertToStream(const ObjectID &object_id, int64_t item_index);
 
   /// Sometimes, index of the object ID is not known.
   ///
@@ -154,9 +153,9 @@ class ObjectRefStream {
   /// \return A list of object IDs that are not read yet.
   absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
 
-  /// Total object size that's written to the stream
-  int64_t TotalObjectSizeWritten() const { return total_object_size_written_; }
-  int64_t TotalObjectSizeConsumed() const { return total_object_size_consumed_; }
+  /// Total number of object that's written to the stream
+  int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
+  int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
 
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
@@ -168,7 +167,7 @@ class ObjectRefStream {
   /// written to a stream, but index is not known yet.
   absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
   // A set of refs that's already written to a stream -> size of the object.
-  absl::flat_hash_map<ObjectID, int64_t> refs_written_to_stream_;
+  absl::flat_hash_set<ObjectID> refs_written_to_stream_;
   /// The last index of the stream.
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
@@ -181,10 +180,10 @@ class ObjectRefStream {
   /// ends with fewer returns. Then, we mark one past this index as the end of
   /// the stream.
   int64_t max_index_seen_ = -1;
-  /// The total size of the objects that are written to stream.
-  int64_t total_object_size_written_;
-  /// The total size of the objects that are consumed from stream.
-  int64_t total_object_size_consumed_;
+  /// The total number of the objects that are written to stream.
+  int64_t total_num_object_written_;
+  /// The total number of the objects that are consumed from stream.
+  int64_t total_num_object_consumed_;
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -292,7 +291,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    * Backpressure Impl
    * -----------------
    * Streaming generator optionally supports backpressure when
-   * `streaming_generator_backpressure_size_bytes` is included in a task spec.
+   * `generator_backpressure_num_objects` is included in a task spec.
    *
    * Executor Side:
    * - When a new object is yielded, executor sends a gRPC request that
@@ -327,9 +326,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] execution_signal_callback Note: this callback is NOT GUARANTEED
   /// to run in the same thread as the caller.
   /// The callback that receives arguments "status" and
-  /// "total_object_consumed_bytes". status: OK if the object will be consumed/already
+  /// "total_num_object_consumed". status: OK if the object will be consumed/already
   /// consumed. NotFound if the stream is already deleted or the object is from the
-  /// previous attempt. total_object_consumed_bytes: total objects consumed from the
+  /// previous attempt. total_num_object_consumed: total objects consumed from the
   /// generator. The executor can receive the value to decide to resume execution or keep
   /// being backpressured. If status is not OK, this must be -1.
   ///

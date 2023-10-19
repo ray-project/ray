@@ -492,7 +492,7 @@ message TaskSpec {
   // -1 means there's no backpressure enabled.
   // TODO(sang): Maybe we should consolidate all streaming generator related config
   // to a separate message?
-  int64 streaming_generator_backpressure_size_bytes = 38;
+  int64 generator_backpressure_num_objects = 38;
 }
 
 message TaskInfoEntry {

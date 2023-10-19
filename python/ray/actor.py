@@ -71,7 +71,7 @@ def method(*args, **kwargs):
     valid_kwargs = [
         "num_returns",
         "concurrency_group",
-        "_streaming_generator_backpressure_size_bytes",
+        "_generator_backpressure_num_objects",
     ]
     error_string = (
         "The @ray.method decorator must be applied using at least one of "
@@ -91,9 +91,9 @@ def method(*args, **kwargs):
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "concurrency_group" in kwargs:
             method.__ray_concurrency_group__ = kwargs["concurrency_group"]
-        if "_streaming_generator_backpressure_size_bytes" in kwargs:
-            method.__ray_streaming_generator_backpressure_size_bytes__ = kwargs[
-                "_streaming_generator_backpressure_size_bytes"
+        if "_generator_backpressure_num_objects" in kwargs:
+            method.__ray_generator_backpressure_num_objects__ = kwargs[
+                "_generator_backpressure_num_objects"
             ]
         return method
 
@@ -114,7 +114,7 @@ class ActorMethod:
         _method_name: The name of the actor method.
         _num_returns: The default number of return values that the method
             invocation should return.
-        _streaming_generator_backpressure_size_bytes: Generator-only config.
+        _generator_backpressure_num_objects: Generator-only config.
             The backpressure size for a generator.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
@@ -130,16 +130,14 @@ class ActorMethod:
         actor: object,
         method_name: str,
         num_returns: int,
-        streaming_generator_backpressure_size_bytes: int,
+        generator_backpressure_num_objects: int,
         decorator=None,
         hardref=False,
     ):
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
         self._num_returns = num_returns
-        self._streaming_generator_backpressure_size_bytes = (
-            streaming_generator_backpressure_size_bytes
-        )
+        self._generator_backpressure_num_objects = generator_backpressure_num_objects
         # This is a decorator that is used to wrap the function invocation (as
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
@@ -193,13 +191,13 @@ class ActorMethod:
         name="",
         num_returns=None,
         concurrency_group=None,
-        _streaming_generator_backpressure_size_bytes=None,
+        _generator_backpressure_num_objects=None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
-        if _streaming_generator_backpressure_size_bytes is None:
-            _streaming_generator_backpressure_size_bytes = (
-                self._streaming_generator_backpressure_size_bytes
+        if _generator_backpressure_num_objects is None:
+            _generator_backpressure_num_objects = (
+                self._generator_backpressure_num_objects
             )
 
         def invocation(args, kwargs):
@@ -213,8 +211,8 @@ class ActorMethod:
                 name=name,
                 num_returns=num_returns,
                 concurrency_group_name=concurrency_group,
-                streaming_generator_backpressure_size_bytes=(
-                    _streaming_generator_backpressure_size_bytes
+                generator_backpressure_num_objects=(
+                    _generator_backpressure_num_objects
                 ),
             )
 
@@ -289,7 +287,7 @@ class _ActorClassMethodMetadata(object):
         self.decorators = {}
         self.signatures = {}
         self.num_returns = {}
-        self.streaming_generator_backpressure_size_bytes = {}
+        self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
 
         for method_name, method in actor_methods:
@@ -324,10 +322,10 @@ class _ActorClassMethodMetadata(object):
                     method_name
                 ] = method.__ray_concurrency_group__
 
-            if hasattr(method, "__ray_streaming_generator_backpressure_size_bytes__"):
-                self.streaming_generator_backpressure_size_bytes[
+            if hasattr(method, "__ray_generator_backpressure_num_objects__"):
+                self.generator_backpressure_num_objects[
                     method_name
-                ] = method.__ray_streaming_generator_backpressure_size_bytes__
+                ] = method.__ray_generator_backpressure_num_objects__
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
@@ -1040,7 +1038,7 @@ class ActorClass:
             meta.method_meta.decorators,
             meta.method_meta.signatures,
             meta.method_meta.num_returns,
-            meta.method_meta.streaming_generator_backpressure_size_bytes,
+            meta.method_meta.generator_backpressure_num_objects,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
@@ -1084,7 +1082,7 @@ class ActorHandle:
         _ray_method_signatures: The signatures of the actor methods.
         _ray_method_num_returns: The default number of return values for
             each method.
-        _ray_method_streaming_generator_backpressure_size_bytes: Generator-only
+        _ray_method_generator_backpressure_num_objects: Generator-only
             config. The backpressure size in bytes for the generator.
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
@@ -1102,7 +1100,7 @@ class ActorHandle:
         method_decorators,
         method_signatures,
         method_num_returns,
-        method_streaming_generator_backpressure_size_bytes,
+        method_generator_backpressure_num_objects,
         actor_method_cpus,
         actor_creation_function_descriptor,
         session_and_job,
@@ -1114,8 +1112,8 @@ class ActorHandle:
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
         self._ray_method_num_returns = method_num_returns
-        self._ray_method_streaming_generator_backpressure_size_bytes = (
-            method_streaming_generator_backpressure_size_bytes
+        self._ray_method_generator_backpressure_num_objects = (
+            method_generator_backpressure_num_objects
         )
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_session_and_job = session_and_job
@@ -1140,7 +1138,7 @@ class ActorHandle:
                     self,
                     method_name,
                     self._ray_method_num_returns[method_name],
-                    self._ray_method_streaming_generator_backpressure_size_bytes.get(
+                    self._ray_method_generator_backpressure_num_objects.get(
                         method_name
                     ),  # noqa
                     decorator=self._ray_method_decorators.get(method_name),
@@ -1169,7 +1167,7 @@ class ActorHandle:
         name: str = "",
         num_returns: Optional[int] = None,
         concurrency_group_name: Optional[str] = None,
-        streaming_generator_backpressure_size_bytes: Optional[int] = None,
+        generator_backpressure_num_objects: Optional[int] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -1224,8 +1222,8 @@ class ActorHandle:
             # Remove it when we migrate to the streaming generator.
             num_returns = ray._raylet.STREAMING_GENERATOR_RETURN
 
-        if streaming_generator_backpressure_size_bytes is None:
-            streaming_generator_backpressure_size_bytes = -1
+        if generator_backpressure_num_objects is None:
+            generator_backpressure_num_objects = -1
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
@@ -1236,7 +1234,7 @@ class ActorHandle:
             num_returns,
             self._ray_actor_method_cpus,
             concurrency_group_name if concurrency_group_name is not None else b"",
-            streaming_generator_backpressure_size_bytes,
+            generator_backpressure_num_objects,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:
@@ -1281,7 +1279,7 @@ class ActorHandle:
             ray_constants.
             # Currently, we use default num returns
             DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,
-            self._ray_method_streaming_generator_backpressure_size_bytes,
+            self._ray_method_generator_backpressure_num_objects,
             # Currently, cross-lang actor method not support decorator
             decorator=None,
         )
@@ -1322,8 +1320,8 @@ class ActorHandle:
                     "method_decorators": self._ray_method_decorators,
                     "method_signatures": self._ray_method_signatures,
                     "method_num_returns": self._ray_method_num_returns,
-                    "method_streaming_generator_backpressure_size_bytes": (
-                        self._ray_method_streaming_generator_backpressure_size_bytes
+                    "method_generator_backpressure_num_objects": (
+                        self._ray_method_generator_backpressure_num_objects
                     ),
                     "actor_method_cpus": self._ray_actor_method_cpus,
                     "actor_creation_function_descriptor": self._ray_actor_creation_function_descriptor,  # noqa: E501
@@ -1362,7 +1360,7 @@ class ActorHandle:
                 state["method_decorators"],
                 state["method_signatures"],
                 state["method_num_returns"],
-                state["method_streaming_generator_backpressure_size_bytes"],
+                state["method_generator_backpressure_num_objects"],
                 state["actor_method_cpus"],
                 state["actor_creation_function_descriptor"],
                 worker.current_session_and_job,

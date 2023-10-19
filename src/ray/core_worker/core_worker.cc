@@ -107,65 +107,6 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
 }
 }  // namespace
 
-GeneratorBackpressureWaiter::GeneratorBackpressureWaiter(
-    int64_t streaming_generator_backpressure_size_bytes)
-    : backpressure_threshold_(streaming_generator_backpressure_size_bytes),
-      total_objects_generated_(0),
-      total_objects_consumed_(0) {}
-
-Status GeneratorBackpressureWaiter::WaitUntilObjectConsumed(
-    std::function<Status()> check_signals) {
-  absl::MutexLock lock(&mutex_);
-  if (backpressure_threshold_ < 0) {
-    RAY_CHECK_EQ(backpressure_threshold_, -1);
-    // Backpressure disabled if backpressure_threshold_ == -1.
-    return Status::OK();
-  }
-  RAY_CHECK(check_signals != nullptr);
-
-  auto return_status = Status::OK();
-  auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
-  if (total_object_unconsumed > backpressure_threshold_) {
-    RAY_LOG(DEBUG) << "Generator backpressured, consumed: " << total_objects_consumed_
-                   << ". generated: " << total_objects_generated_
-                   << ". threshold: " << backpressure_threshold_;
-    while (total_object_unconsumed > backpressure_threshold_) {
-      cond_var_.WaitWithTimeout(&mutex_, absl::Seconds(1));
-      total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
-      auto return_status = check_signals();
-      if (!return_status.ok()) {
-        break;
-      }
-    }
-  }
-  return return_status;
-}
-
-void GeneratorBackpressureWaiter::UpdateTotalObjectConsumed(
-    int64_t total_objects_consumed) {
-  absl::MutexLock lock(&mutex_);
-  total_objects_consumed_ = total_objects_consumed;
-  auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
-  if (total_object_unconsumed <= backpressure_threshold_) {
-    cond_var_.SignalAll();
-  }
-}
-
-void GeneratorBackpressureWaiter::UpdateObjectGenerated(int64_t objects_generated) {
-  absl::MutexLock lock(&mutex_);
-  total_objects_generated_ += objects_generated;
-}
-
-int64_t GeneratorBackpressureWaiter::TotalObjectConsumed() {
-  absl::MutexLock lock(&mutex_);
-  return total_objects_consumed_;
-}
-
-int64_t GeneratorBackpressureWaiter::TotalObjectGenerated() {
-  absl::MutexLock lock(&mutex_);
-  return total_objects_generated_;
-}
-
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
     : options_(options),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
@@ -1884,7 +1825,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const TaskID &main_thread_current_task_id,
     const std::string &concurrency_group_name,
     bool include_job_config,
-    int64_t streaming_generator_backpressure_size_bytes) {
+    int64_t generator_backpressure_num_objects) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1922,7 +1863,7 @@ void CoreWorker::BuildCommonTaskSpec(
       num_returns,
       returns_dynamic,
       is_streaming_generator,
-      streaming_generator_backpressure_size_bytes,
+      generator_backpressure_num_objects,
       required_resources,
       required_placement_resources,
       debugger_breakpoint,
@@ -1984,8 +1925,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,
-                      /*streaming_generator_backpressure_size_bytes*/
-                      task_options.streaming_generator_backpressure_size_bytes);
+                      /*generator_backpressure_num_objects*/
+                      task_options.generator_backpressure_num_objects);
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
@@ -2070,7 +2011,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,
-                      /*streaming_generator_backpressure_size_bytes*/ -1);
+                      /*generator_backpressure_num_objects*/ -1);
 
   // If the namespace is not specified, get it from the job.
   const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -2309,8 +2250,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       task_options.concurrency_group_name,
                       /*include_job_config*/ false,
-                      /*streaming_generator_backpressure_size_bytes*/
-                      task_options.streaming_generator_backpressure_size_bytes);
+                      /*generator_backpressure_num_objects*/
+                      task_options.generator_backpressure_num_objects);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2774,8 +2715,8 @@ Status CoreWorker::ExecuteTask(
       /*is_reattempt=*/task_spec.AttemptNumber() > 0,
       /*is_streaming_generator*/ task_spec.IsStreamingGenerator(),
       /*retry_exception*/ task_spec.ShouldRetryExceptions(),
-      /*streaming_generator_backpressure_size_bytes*/
-      task_spec.StreamingGeneratorBackpressureSizeBytes());
+      /*generator_backpressure_num_objects*/
+      task_spec.GeneratorBackpressureNumObjects());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2966,12 +2907,9 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_generator_id(generator_id.Binary());
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
-  auto object_size = 0;
 
   if (!dynamic_return_object.first.IsNil()) {
     auto return_object_proto = request.add_dynamic_return_objects();
-    object_size = dynamic_return_object.second->GetSize();
-    RAY_CHECK(object_size > 0);
     SerializeReturnObject(
         dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
     std::vector<ObjectID> deleted;
@@ -2985,26 +2923,24 @@ Status CoreWorker::ReportGeneratorItemReturns(
     memory_store_->Delete(deleted);
   }
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
-                 << ", id: " << dynamic_return_object.first
-                 << ". Object size: " << object_size;
+                 << ", id: " << dynamic_return_object.first;
 
-  waiter->UpdateObjectGenerated(object_size);
+  waiter->IncrementObjectGenerated();
   client->ReportGeneratorItemReturns(
       request,
-      [waiter, object_size, generator_id](
-          const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
+      [waiter, generator_id](const Status &status,
+                             const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
-                       << " object_size: " << object_size
                        << ". Total object consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated()
                        << ". total_consumed_reported: "
-                       << reply.total_object_consumed_bytes();
+                       << reply.total_num_object_consumed();
         if (status.ok()) {
           /// Since unary gRPC requests are not ordered, it is possible the stale
           /// total value can be replied. Since total object consumed only can
           /// increment, we always choose the larger value here.
-          waiter->UpdateTotalObjectConsumed(std::max(
-              waiter->TotalObjectConsumed(), reply.total_object_consumed_bytes()));
+          waiter->UpdateTotalObjectConsumed(
+              std::max(waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
         } else {
           // TODO(sang): Handle network error more gracefully.
           // If the request fails, we should just resume until task finishes without
@@ -3037,16 +2973,16 @@ void CoreWorker::HandleReportGeneratorItemReturns(
        worker_id = std::move(worker_id),
        generator_id = std::move(generator_id),
        send_reply_callback = std::move(send_reply_callback)](
-          Status status, int64_t total_object_consumed_bytes) {
+          Status status, int64_t total_num_object_consumed) {
         RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
                           "executor to resume tasks. "
                        << generator_id << ". Worker ID: " << worker_id
-                       << ". Total consumed: " << total_object_consumed_bytes;
+                       << ". Total consumed: " << total_num_object_consumed;
         if (!status.ok()) {
-          RAY_CHECK_EQ(total_object_consumed_bytes, -1);
+          RAY_CHECK_EQ(total_num_object_consumed, -1);
         }
 
-        reply->set_total_object_consumed_bytes(total_object_consumed_bytes);
+        reply->set_total_num_object_consumed(total_num_object_consumed);
         send_reply_callback(status, nullptr, nullptr);
       });
 }

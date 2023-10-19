@@ -11,11 +11,10 @@ from ray._private.test_utils import wait_for_condition
 from ray.util.state import list_tasks
 
 
-@pytest.mark.parametrize("store_in_plasma", [False, True])
 @pytest.mark.parametrize("actor", [False, True])
-def test_streaming_generator_backpressure_basic(shutdown_only, store_in_plasma, actor):
+def test_streaming_generator_backpressure_basic(shutdown_only, actor):
     """Verify backpressure works with
-    _streaming_generator_backpressure_size_bytes = 0
+    _generator_backpressure_num_objects = 0
     """
     ray.init(num_cpus=1)
 
@@ -32,36 +31,21 @@ def test_streaming_generator_backpressure_basic(shutdown_only, store_in_plasma, 
 
     TOTAL_RETURN = 10
 
-    if store_in_plasma:
-        threshold = 40 * 1024 * 1024  # 40MB
-    else:
-        threshold = 0
-
-    @ray.remote(
-        num_returns="streaming", _streaming_generator_backpressure_size_bytes=threshold
-    )
+    @ray.remote(num_returns="streaming", _generator_backpressure_num_objects=1)
     def f(reporter):
         for i in range(TOTAL_RETURN):
             print("yield ", i)
             ray.get(reporter.report.remote(i))
-            if store_in_plasma:
-                yield np.random.rand(5 * 1024 * 1024)  # 40 MB
-            else:
-                yield i
+            yield i
 
     @ray.remote
     class A:
-        @ray.method(
-            _streaming_generator_backpressure_size_bytes=0, num_returns="streaming"
-        )
+        @ray.method(_generator_backpressure_num_objects=1, num_returns="streaming")
         def f(self, reporter):
             for i in range(TOTAL_RETURN):
                 print("yield ", i)
                 ray.get(reporter.report.remote(i))
-                if store_in_plasma:
-                    yield np.random.rand(5 * 1024 * 1024)  # 40 MB
-                else:
-                    yield i
+                yield i
 
     reporter = Reporter.remote()
 
@@ -99,9 +83,9 @@ def test_streaming_generator_backpressure_basic(shutdown_only, store_in_plasma, 
     wait_for_condition(lambda: check_reported(TOTAL_RETURN - 1))
 
 
-@pytest.mark.parametrize("store_in_plasma", [False, True])
+@pytest.mark.parametrize("backpressure_size", [2, 3, 5, 7, 10, 15])
 def test_streaming_generator_backpressure_multiple_objects(
-    shutdown_only, store_in_plasma
+    shutdown_only, backpressure_size
 ):
     """Verify backpressure works when it needs more than 1 objects
     to backpressure.
@@ -119,24 +103,16 @@ def test_streaming_generator_backpressure_multiple_objects(
         def reported(self):
             return self.reported
 
-    TOTAL_RETURN = 6
-
-    if store_in_plasma:
-        threshold = 150 * 1024 * 1024  # 150MB
-    else:
-        threshold = 15 * 1024  # 15KB
+    TOTAL_RETURN = 10
 
     @ray.remote(
-        num_returns="streaming", _streaming_generator_backpressure_size_bytes=threshold
+        num_returns="streaming", _generator_backpressure_num_objects=backpressure_size
     )
     def f(reporter):
         for i in range(TOTAL_RETURN):
             print("yield ", i)
             ray.get(reporter.report.remote(i))
-            if store_in_plasma:
-                yield np.random.rand(10 * 1024 * 1024)  # 80 MB
-            else:
-                yield np.random.rand(1024)  # 8KB
+            yield np.random.rand(1024)  # 8KB
 
     reporter = Reporter.remote()
 
@@ -145,21 +121,24 @@ def test_streaming_generator_backpressure_multiple_objects(
 
     gen = f.remote(reporter)
     # It is backpressured for every 2 objects.
-    for i in range(0, TOTAL_RETURN - 2, 2):
+    for i in range(0, TOTAL_RETURN - backpressure_size, backpressure_size):
         print("iteration ", i)
         r, _ = ray.wait([gen])
         assert len(r) == 1
-        wait_for_condition(lambda: check_reported(i))
-        wait_for_condition(lambda: check_reported(i + 1))
-        wait_for_condition(lambda: not check_reported(i + 2))
+        for j in range(backpressure_size):
+            wait_for_condition(lambda: check_reported(i + j))
+        wait_for_condition(lambda: not check_reported(i + backpressure_size))
         # Wait a little bit to make sure it is backpressured.
         time.sleep(2)
-        wait_for_condition(lambda: not check_reported(i + 2))
+        wait_for_condition(lambda: not check_reported(i + backpressure_size))
         # Consume the ref -> task will progress.
-        ray.get(next(gen))
-        ray.get(next(gen))
-        wait_for_condition(lambda: check_reported(i + 2))
-        wait_for_condition(lambda: check_reported(i + 3))
+        for j in range(backpressure_size):
+            ray.get(next(gen))
+            # We cannot have more values than TOTAL_RETURN - 1, so
+            # we should use min here.
+            wait_for_condition(
+                lambda: check_reported(min(i + backpressure_size + j, TOTAL_RETURN - 1))
+            )
 
 
 def test_caller_failure_doesnt_hang(shutdown_only):
@@ -169,7 +148,7 @@ def test_caller_failure_doesnt_hang(shutdown_only):
     """
     ray.init(num_cpus=2)
 
-    @ray.remote(num_returns="streaming", _streaming_generator_backpressure_size_bytes=0)
+    @ray.remote(num_returns="streaming", _generator_backpressure_num_objects=1)
     def f():
         for i in range(5):
             print("yield", i)
@@ -194,7 +173,7 @@ def test_caller_failure_doesnt_hang(shutdown_only):
     # If caller finishes, f should finish.
     print("Check caller finishes")
     caller = Caller.remote()
-    r = caller.f.remote(None, False, "1")  # noqa
+    caller.f.remote(None, False, "1")
 
     def verify():
         task = list_tasks(filters=[("name", "=", "1")])[0]
@@ -244,9 +223,11 @@ def test_caller_failure_doesnt_hang(shutdown_only):
     wait_for_condition(verify)
 
 
-def test_backpressure_not_work_with_async_actor(shutdown_only):
+def test_backpressure_invalid(shutdown_only):
     """
-    Verify using backpressure + async actor raises an exception
+    Verify invalid cases.
+    1. Verify using backpressure + async actor raises an exception
+    2. Verify _generator_backpressure_num_objects == 0 is not allowed.
     """
     ray.init(num_cpus=1)
 
@@ -259,10 +240,16 @@ def test_backpressure_not_work_with_async_actor(shutdown_only):
 
     a = A.remote()
     gen = a.f.options(
-        num_returns="streaming", _streaming_generator_backpressure_size_bytes=0
+        num_returns="streaming", _generator_backpressure_num_objects=1
     ).remote()
     with pytest.raises(ValueError):
         ray.get(next(gen))
+
+    with pytest.raises(ValueError, match="backpressure_num_objects=0 is not allowed"):
+
+        @ray.remote(num_returns="streaming", _generator_backpressure_num_objects=0)
+        def f():
+            pass
 
 
 def test_threaded_actor_generator_backpressure(shutdown_only):
@@ -282,7 +269,7 @@ def test_threaded_actor_generator_backpressure(shutdown_only):
         async def run():
             i = 0
             gen = a.f.options(
-                num_returns="streaming", _streaming_generator_backpressure_size_bytes=0
+                num_returns="streaming", _generator_backpressure_num_objects=1
             ).remote()
             async for ref in gen:
                 val = ray.get(ref)
@@ -306,7 +293,7 @@ def test_backpressure_pause_signal(shutdown_only):
 
     @ray.remote(
         num_returns="streaming",
-        _streaming_generator_backpressure_size_bytes=0,
+        _generator_backpressure_num_objects=1,
         max_retries=0,
     )
     def backpressure_task():
