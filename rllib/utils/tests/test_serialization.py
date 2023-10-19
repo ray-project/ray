@@ -120,7 +120,7 @@ class TestGymCheckEnv(unittest.TestCase):
             OrderedDict(
                 {
                     "b_key": gym.spaces.Box(low=np.array([-1.0]), high=np.array([1.0])),
-                    "a_key": gym.spaces.Discrete(n=3)
+                    "a_key": gym.spaces.Discrete(n=3),
                 }
             )
         )
@@ -133,7 +133,7 @@ class TestGymCheckEnv(unittest.TestCase):
         input_space = gym.spaces.Dict(
             {
                 "b_key": gym.spaces.Box(low=np.array([-1.0]), high=np.array([1.0])),
-                "a_key": gym.spaces.Discrete(n=3)
+                "a_key": gym.spaces.Discrete(n=3),
             }
         )
         serialized_dict = space_to_dict(input_space)
