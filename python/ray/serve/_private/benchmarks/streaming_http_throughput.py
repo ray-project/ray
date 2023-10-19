@@ -130,9 +130,9 @@ def main(
     print(
         "HTTP streaming throughput {}: {} +- {} tokens/s".format(
             f"(num_replicas={num_replicas}, "
-            "tokens_per_request={tokens_per_request}, "
-            "batch_size={batch_size}, "
-            "use_intermediate_deployment={use_intermediate_deployment})",
+            f"tokens_per_request={tokens_per_request}, "
+            f"batch_size={batch_size}, "
+            f"use_intermediate_deployment={use_intermediate_deployment})",
             mean,
             stddev,
         )

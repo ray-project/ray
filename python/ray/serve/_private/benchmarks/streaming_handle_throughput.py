@@ -114,8 +114,8 @@ def main(
     print(
         "DeploymentHandle streaming throughput {}: {} +- {} tokens/s".format(
             f"(num_replicas={num_replicas}, "
-            "tokens_per_request={tokens_per_request}, "
-            "batch_size={batch_size})",
+            f"tokens_per_request={tokens_per_request}, "
+            f"batch_size={batch_size})",
             mean,
             stddev,
         )
