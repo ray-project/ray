@@ -200,7 +200,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
-  node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
+  legacy_autoscaler_stub_ = rpc::LegacyAutoscalerGcsService::NewStub(channel_);
   autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
   return Status::OK();
 }
@@ -467,7 +467,7 @@ Status PythonGcsClient::GetAllResourceUsage(int64_t timeout_ms,
   rpc::GetAllResourceUsageReply reply;
 
   grpc::Status status =
-      node_resource_info_stub_->GetAllResourceUsage(&context, request, &reply);
+      legacy_autoscaler_stub_->GetAllResourceUsageLegacy(&context, request, &reply);
   if (status.ok()) {
     if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       serialized_reply = reply.SerializeAsString();

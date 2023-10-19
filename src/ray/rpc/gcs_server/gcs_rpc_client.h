@@ -240,6 +240,10 @@ class GcsRpcClient {
     task_info_grpc_client_ =
         std::make_unique<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
 
+    legacy_autoscaler_grpc_client_ =
+        std::make_unique<GrpcClient<LegacyAutoscalerGcsService>>(channel_,
+                                                                 client_call_manager);
+
     SetupCheckTimer();
   }
 
@@ -348,6 +352,13 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
                              GetInternalConfig,
                              node_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  typedef GetAllResourceUsageRequest GetAllResourceUsageLegacyRequest;
+  typedef GetAllResourceUsageReply GetAllResourceUsageLegacyReply;
+  VOID_GCS_RPC_CLIENT_METHOD(LegacyAutoscalerGcsService,
+                             GetAllResourceUsageLegacy,
+                             legacy_autoscaler_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get node's resources from GCS Service.
@@ -605,6 +616,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
 
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
+  std::unique_ptr<GrpcClient<LegacyAutoscalerGcsService>> legacy_autoscaler_grpc_client_;
 
   std::shared_ptr<grpc::Channel> channel_;
   bool gcs_is_down_ = false;

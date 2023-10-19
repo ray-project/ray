@@ -25,13 +25,19 @@ class GcsResourceManager;
 class GcsNodeManager;
 class GcsPlacementGroupManager;
 
-class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
+class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler,
+                                  public rpc::LegacyAutoscalerHandler {
  public:
   GcsAutoscalerStateManager(
       const std::string &session_name,
       const GcsNodeManager &gcs_node_manager,
       const GcsPlacementGroupManager &gcs_placement_group_manager,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+
+  void HandleGetAllResourceUsageLegacy(
+      rpc::GetAllResourceUsageRequest request,
+      rpc::GetAllResourceUsageReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,

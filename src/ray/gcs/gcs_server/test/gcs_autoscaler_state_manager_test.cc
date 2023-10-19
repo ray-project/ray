@@ -85,7 +85,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     }
     data.set_node_id(node->node_id());
     data.set_node_manager_address(node->node_manager_address());
-    gcs_autoscaler_state_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
+    gcs_autoscaler_state_manager_->OnNodeAdd(*node);
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(data);
   }
 

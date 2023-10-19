@@ -271,7 +271,7 @@ class RAY_EXPORT PythonGcsClient {
   std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
   std::unique_ptr<rpc::RuntimeEnvGcsService::Stub> runtime_env_stub_;
   std::unique_ptr<rpc::NodeInfoGcsService::Stub> node_info_stub_;
-  std::unique_ptr<rpc::NodeResourceInfoGcsService::Stub> node_resource_info_stub_;
+  std::unique_ptr<rpc::LegacyAutoscalerGcsService::Stub> legacy_autoscaler_stub_;
   std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
   std::unique_ptr<rpc::autoscaler::AutoscalerStateService::Stub> autoscaler_stub_;
   std::shared_ptr<grpc::Channel> channel_;

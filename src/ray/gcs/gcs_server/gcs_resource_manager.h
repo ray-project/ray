@@ -62,12 +62,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                            public syncer::ReceiverInterface {
  public:
   /// Create a GcsResourceManager.
-  explicit GcsResourceManager(
-      instrumented_io_context &io_context,
-      ClusterResourceManager &cluster_resource_manager,
-      GcsNodeManager &gcs_node_manager,
-      NodeID local_node_id,
-      std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
+  explicit GcsResourceManager(instrumented_io_context &io_context,
+                              ClusterResourceManager &cluster_resource_manager,
+                              GcsNodeManager &gcs_node_manager,
+                              NodeID local_node_id);
 
   virtual ~GcsResourceManager() {}
 
@@ -204,7 +202,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
   NodeID local_node_id_;
-  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// Num of alive nodes in the cluster.
   size_t num_alive_nodes_ = 0;
 

@@ -786,7 +786,8 @@ void NodeResourceInfoAccessor::AsyncResubscribe() {
 Status NodeResourceInfoAccessor::AsyncGetAllResourceUsage(
     const ItemCallback<rpc::ResourceUsageBatchData> &callback) {
   rpc::GetAllResourceUsageRequest request;
-  client_impl_->GetGcsRpcClient().GetAllResourceUsage(
+  // Deviation: we now get this from LegacyAutoscalerService.
+  client_impl_->GetGcsRpcClient().GetAllResourceUsageLegacy(
       request,
       [callback](const Status &status, const rpc::GetAllResourceUsageReply &reply) {
         callback(reply.resource_usage_data());

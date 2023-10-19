@@ -612,6 +612,12 @@ message GetDrainingNodesReply {
   repeated bytes node_ids = 2;
 }
 
+// Legacy RPCs that GcsAutoscalerStateManager should also support.
+service LegacyAutoscalerGcsService {
+  // Get resource usage of all nodes from GCS Service.
+  rpc GetAllResourceUsageLegacy(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+}
+
 // Service for node resource info access.
 service NodeResourceInfoGcsService {
   // Get node's resources from GCS Service.
