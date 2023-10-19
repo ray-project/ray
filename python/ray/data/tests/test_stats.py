@@ -1173,7 +1173,7 @@ def test_stats_actor_metrics():
 
 
 def test_dataset_name():
-    ds = ray.data.range(100).map_batches(lambda x: x)
+    ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
     ds._set_name("test_ds")
     assert ds._name == "test_ds"
     assert (
@@ -1218,7 +1218,7 @@ def test_dataset_name():
 
     assert update_fn.call_args_list[-1].args[1]["dataset"] == mds._uuid
 
-    ds = ray.data.range(100)
+    ds = ray.data.range(100, parallelism=20)
     ds._set_name("very_loooooooong_name")
     assert (
         str(ds)
