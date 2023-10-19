@@ -145,43 +145,6 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
-@dataclass
-class StreamingOutputBackpressureConfig:
-    """[Experimental] Configuration for task-level streaming output backpressure.
-
-    Streaming output backpressure throttles the outputs of a DataOpTask.
-    This is done at 2 levels:
-    - At the Ray Core level, we use
-      `max_streaming_gen_output_buffer_size_bytes` to limit the output buffer size
-      of streaming generators. When it's reached, the task will be blocked at `yield`.
-    - At the Ray Data level, we use
-      `max_op_output_buffer_size_bytes` to limit the output buffer size of the
-      operators. When it's reached, we'll stop reading from the tasks' output streaming
-      generators (see `streaming_executor_state.py::process_completed_tasks`),
-      and thus trigger backpressure at the Ray Core level.
-
-    Note, this feature is experimental and may lead to deadlocks if not configured
-    properly. E.g., when all resources are occupied by an upstream operator, and all its
-    tasks are backpressured, we will have not resources for downstream operators to
-    consume the upstream's outputs.
-    """
-
-    # Whether to enable streaming output backpressure.
-    enabled: bool = False
-
-    # TODO(hchen): Can we merge the following two configs? To do so,
-    # we may need to make the Ray core-level streaming generators aware of
-    # the app-level buffer size.
-
-    # The max size of the output buffer at the Ray Core streaming generator level.
-    # This will be used to set the `_streaming_generator_backpressure_size_bytes`
-    # parameter.
-    max_streaming_gen_output_buffer_size_bytes: int = 1 * 1024 * 1024 * 1024
-    # The max size of the output buffer at the Ray Data operator level.
-    # I.e., the max size of `OpState.outqueue`.
-    max_op_output_buffer_size_bytes: int = 1 * 1024 * 1024 * 1024
-
-
 @DeveloperAPI
 class DataContext:
     """Singleton for shared Dataset resources and configurations.
@@ -257,7 +220,9 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
-        self.streaming_output_backpressure_config = StreamingOutputBackpressureConfig()
+        # The additonal ray remote args that should be added to
+        # the task-pool-based data tasks.
+        self._task_pool_data_task_remote_args: Dict[str, Any] = {}
         # The extra key-value style configs.
         # These configs are managed by individual components or plugins via
         # `set_config`, `get_config` and `remove_config`.

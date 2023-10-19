@@ -316,27 +316,10 @@ def build_streaming_topology(
     return (topology, i)
 
 
-def calcuate_max_bytes_to_read_per_op(topology: Topology) -> Dict[OpState, int]:
-    max_bytes_to_read_per_op: Dict[OpState, int] = {}
-    context = ray.data.DataContext.get_current()
-    backpressure_config = context.streaming_output_backpressure_config
-    if backpressure_config.enabled:
-        downstream_num_active_tasks = 0
-        for op, state in list(topology.items())[::-1]:
-            max_bytes_to_read_per_op[state] = (
-                backpressure_config.max_op_output_buffer_size_bytes
-                - state.outqueue_memory_usage()
-            )
-            if downstream_num_active_tasks == 0:
-                max_bytes_to_read_per_op[state] = max(
-                    max_bytes_to_read_per_op[state],
-                    1,
-                )
-            downstream_num_active_tasks += len(op.get_active_tasks())
-    return max_bytes_to_read_per_op
-
-
-def process_completed_tasks(topology: Topology) -> None:
+def process_completed_tasks(
+    topology: Topology,
+    backpressure_policies: List[BackpressurePolicy],
+) -> None:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards."""
 
@@ -346,7 +329,15 @@ def process_completed_tasks(topology: Topology) -> None:
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
 
-    max_bytes_to_read_per_op = calcuate_max_bytes_to_read_per_op(topology)
+    max_bytes_to_read_per_op: Dict[OpState, int] = {}
+    for policy in backpressure_policies:
+        non_empty = len(max_bytes_to_read_per_op) > 0
+        max_bytes_to_read_per_op = policy.calcuate_max_bytes_to_read_per_op(topology)
+        if non_empty and len(max_bytes_to_read_per_op) > 0:
+            raise ValueError(
+                "At most one backpressure policy that implements "
+                "calculate_max_bytes_to_read_per_op() can be used at a time."
+            )
 
     # Process completed Ray tasks and notify operators.
     if active_tasks:
