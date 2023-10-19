@@ -26,11 +26,13 @@ GcsResourceManager::GcsResourceManager(
     instrumented_io_context &io_context,
     ClusterResourceManager &cluster_resource_manager,
     GcsNodeManager &gcs_node_manager,
+    GcsServer &gcs_server,
     NodeID local_node_id,
     std::shared_ptr<ClusterTaskManager> cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
+      gcs_server_(gcs_server),
       local_node_id_(std::move(local_node_id)),
       cluster_task_manager_(std::move(cluster_task_manager)) {}
 
@@ -188,15 +190,16 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::GetAllResourceUsageRequest request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (!node_resource_usages_.empty()) {
+  if (!gcs_server_.GetAutoscalerStateManager().GetNodeResourceInfo().empty()) {
     rpc::ResourceUsageBatchData batch;
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
         aggregate_load;
 
-    for (const auto &usage : node_resource_usages_) {
+    for (const auto &usage :
+         gcs_server_.GetAutoscalerStateManager().GetNodeResourceInfo()) {
       // Aggregate the load reported by each raylet.
-      FillAggregateLoad(usage.second, &aggregate_load);
-      batch.add_batch()->CopyFrom(usage.second);
+      FillAggregateLoad(usage.second.second, &aggregate_load);
+      batch.add_batch()->CopyFrom(usage.second.second);
     }
 
     if (cluster_task_manager_) {

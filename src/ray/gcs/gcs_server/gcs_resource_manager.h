@@ -66,6 +66,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       instrumented_io_context &io_context,
       ClusterResourceManager &cluster_resource_manager,
       GcsNodeManager &gcs_node_manager,
+      GcsServer &gcs_server,
       NodeID local_node_id,
       std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
@@ -203,6 +204,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
 
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
+  GcsServer &gcs_server_;
   NodeID local_node_id_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// Num of alive nodes in the cluster.

@@ -110,6 +110,10 @@ class GcsServer {
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
 
+  const GcsAutoscalerStateManager &GetAutoscalerStateManager() const {
+    return *gcs_autoscaler_state_manager_;
+  }
+
  protected:
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;

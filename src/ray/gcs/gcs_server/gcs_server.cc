@@ -340,6 +340,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       main_service_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
+      *this,
       kGCSNodeID,
       cluster_task_manager_);
 
