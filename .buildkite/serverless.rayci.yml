@@ -10,6 +10,20 @@ steps:
     depends_on: serverlessbuild
     job_env: forge
 
+  - label: ":serverless: serverless: spark tests"
+    tags: python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless 
+        --build-type debug
+        --test-env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
+        --test-env=RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
+        --parallelism-per-worker 3
+        --only-tags spark_plugin_tests
+        --except-tags kubernetes 
+    depends_on: serverlessbuild
+    job_env: forge
+
   - label: ":serverless: serverless: flaky tests"
     tags: python
     instance_type: medium
