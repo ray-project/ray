@@ -25,7 +25,7 @@ class ContainerManager:
 
         context.container = runtime_env["container"]
 
-        container_driver = "docker"
+        container_driver = "podman"
         container_command = [
             container_driver,
             "run",
