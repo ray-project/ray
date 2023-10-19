@@ -70,8 +70,7 @@ class MockWorker {
             const std::string name_of_concurrency_group_to_execute,
             bool is_reattempt,
             bool is_streaming_generator,
-            bool should_retry_exceptions,
-            int64_t generator_backpressure_num_objects) {
+            bool should_retry_exceptions) {
           return ExecuteTask(caller_address,
                              task_type,
                              task_name,
