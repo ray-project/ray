@@ -64,7 +64,7 @@ Here are the {ref}`steps to use PyTorch Profiler with Ray Train or Ray Data <per
 (profiling-nsight-profiler)=
 ### Nsight Profiler
 
-##### Installation
+#### Installation
 
 First, install the Nsight System CLI by following the [Nsight User Guide](https://docs.nvidia.com/nsight-systems/InstallationGuide/index.html). 
 
@@ -76,7 +76,7 @@ $ nsys --version
 # NVIDIA Nsight Systems version 2022.4.1.21-0db2c85
 ```
 
-##### Run Nsight on Ray
+#### Run Nsight on Ray
 
 To enable GPU profiling, you can specify the config in `runtime_env` as follows:
 
@@ -102,7 +102,7 @@ ray.get(ray_actor.run.remote())
 
 The `"default"` config can be found in [nsight.py](https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20).
 
-##### Custom Options
+#### Custom Options
 
 You can also add [custom options](https://docs.nvidia.com/nsight-systems/UserGuide/index.html#cli-profile-command-switch-options) for Nsight profiler by specfying a dictionary of option values which will overwrite the `default` config (except for the `--output` option of the default config is preserved).
 
@@ -138,7 +138,7 @@ ray.get(ray_actor.run.remote())
 **Note:**: The default report filename (`-o, --output`) is `worker_process_{pid}.nsys-rep` in the logs dir.
 
 
-##### Profiling Result
+#### Profiling Result
 
 Profiling results can be found under the `/tmp/ray/session_*/logs/{profiler_name}` directory (subject to change). Users can download the profiling reports from the {ref}`Ray Dashboard <dash-logs-view>`.
 
