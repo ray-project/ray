@@ -44,7 +44,8 @@ class BackpressurePolicy(ABC):
 
         Returns: A dict mapping from each operator's OpState to the desired bytes to
             read. For operators that are not in the dict, all available blocks will be
-            read.
+            read. If the value is negative or 0, no data will be read. If the value is
+            positive, at least one block will be read.
 
         Note: Only one backpressure policy that implements this method can be enabled
             at a time.
