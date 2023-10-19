@@ -355,6 +355,10 @@ class RuntimeContext(object):
             res: sum(amt for _, amt in mapping)
             for res, mapping in resource_id_map.items()
         }
+        # kBundle_ResourceLabel should be invisible to the user.
+        BUNDLE_RESOURCE_LABEL = "bundle"
+        if BUNDLE_RESOURCE_LABEL in resource_map:
+            resource_map.pop(BUNDLE_RESOURCE_LABEL)
         return pasre_pg_formatted_resources_to_original(resource_map)
 
     def get_runtime_env_string(self):
