@@ -39,7 +39,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
-from ray.data.datasource.util import _resolve_paths_and_filesystem
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
