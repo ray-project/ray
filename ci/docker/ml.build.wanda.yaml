@@ -18,6 +18,6 @@ srcs:
   - python/requirements/ml/data-test-requirements.txt
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=$IMAGE_FROM
-  - IS_GPU_BUILD
+  - RAYCI_IS_GPU_BUILD
 tags:
   - cr.ray.io/rayproject/$IMAGE_TO

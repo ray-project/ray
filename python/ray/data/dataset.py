@@ -221,7 +221,7 @@ class Dataset:
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
         self._plan = plan
-        self._uuid = uuid4().hex
+        self._set_uuid(uuid4().hex)
         self._logical_plan = logical_plan
         self._plan.link_logical_plan(logical_plan)
 
@@ -3292,9 +3292,6 @@ class Dataset:
     ) -> None:
         """Writes the dataset to a custom :class:`~ray.data.Datasource`.
 
-        For an example of how to use this method, see
-        :ref:`Implementing a Custom Datasource <custom_datasources>`.
-
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -4439,7 +4436,9 @@ class Dataset:
         )
         # No-op that marks the plan as fully executed.
         output._plan.execute()
-        output._plan._in_stats.dataset_uuid = self._get_uuid()
+        # Metrics are tagged with `copy`s uuid, update the output uuid with
+        # this so the user can access the metrics label.
+        output._set_uuid(copy._get_uuid())
         return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
@@ -4586,7 +4585,7 @@ class Dataset:
             )
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
-        plan_copy = self._plan.deep_copy(preserve_uuid=True)
+        plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
         ds._plan.clear_block_refs()
@@ -4853,6 +4852,8 @@ class Dataset:
 
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
+        self._plan._dataset_uuid = uuid
+        self._plan._in_stats.dataset_uuid = uuid
 
     def _synchronize_progress_bar(self):
         """Flush progress bar output by shutting down the current executor.
