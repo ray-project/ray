@@ -11,6 +11,9 @@ S3_TEMP="s3://bk-premerge-first-jawfish-artifacts/tmp/runtime/${RAYCI_BUILD_ID}"
 RUNTIME_ECR="830883877497.dkr.ecr.us-west-2.amazonaws.com"
 IMAGE_PREFIX="${RAYCI_BUILD_ID}"
 
+# TODO(aslonnie): update with sync point's wheel URL prefix.
+OSS_WHEEL_URL_PREFIX=https://ray-wheels.s3.us-west-2.amazonaws.com/master/ad7e1fc2ee565755dd9a77cb4bd836aa8c2aa355/
+
 # Default cuda is also tagged as "gpu".
 readonly ML_CUDA_VERSION="cu118"
 
@@ -90,7 +93,8 @@ fi
 
 BUILD_TMP="$(mktemp -d)"
 
-mkdir -p "${BUILD_TMP}/.whl"
+mkdir -p "${BUILD_TMP}/oss-whl"
+mkdir -p "${BUILD_TMP}/runtime-whl"
 
 FULL_COMMIT="$(git rev-parse HEAD)"
 SHORT_COMMIT="${FULL_COMMIT:0:6}"  # Use 6 chars to be consistent with Ray upstream
@@ -99,10 +103,18 @@ if [[ ! "${RAY_VERSION:-}" =~ dev ]]; then
     SHORT_COMMIT="${RAY_VERSION}.${SHORT_COMMIT}"
 fi
 
-echo "--- Fetch wheel and base image"
 
-aws s3 cp "${S3_TEMP}/${WHEEL_FILE}" "${BUILD_TMP}/.whl/${WHEEL_FILE}"
-aws s3 cp "s3://runtime-release-test-artifacts/dataplane/20230831/dataplane.tar.gz" "${BUILD_TMP}/dataplane.tar.gz"
+####
+echo "--- Fetch wheel and base image"
+####
+
+echo "OSS wheel: ${OSS_WHEEL_URL_PREFIX}${WHEEL_FILE}"
+curl -sfL "${OSS_WHEEL_URL_PREFIX}${WHEEL_FILE}" -o "${BUILD_TMP}/oss-whl/${WHEEL_FILE}"
+
+aws s3 cp "${S3_TEMP}/${WHEEL_FILE}" "${BUILD_TMP}/runtime-whl/${WHEEL_FILE}"
+
+readonly ANYSCALE_DATAPLANE_LAYER="s3://runtime-release-test-artifacts/dataplane/20230831/dataplane.tar.gz"
+aws s3 cp "${ANYSCALE_DATAPLANE_LAYER}" "${BUILD_TMP}/dataplane.tar.gz"
 DATAPLANE_TGZ_GOT="$(sha256sum "${BUILD_TMP}/dataplane.tar.gz" | cut -d' ' -f1)"
 DATAPLANE_TGZ_WANT="3658592a3b30a93b2e940269f99296e822446eed7ef36049d707b435ff868638"
 if [[ "${DATAPLANE_TGZ_GOT}" != "${DATAPLANE_TGZ_WANT}" ]]; then
@@ -117,6 +129,11 @@ aws ecr get-login-password --region us-west-2 | docker login --username AWS --pa
 
 docker pull "${BASE_IMG}"
 
+if [[ "${BUILDKITE:-}" == "true" ]]; then
+    rm -rf /artifact-mount/sitepkg
+    mkdir -p /artifact-mount/sitepkg
+fi
+
 # Everything is prepared, starts building now.
 
 export DOCKER_BUILDKIT=1
@@ -125,27 +142,94 @@ BUILD_TAG="${IMAGE_PREFIX}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
 RAY_IMG="${RUNTIME_REPO}:${BUILD_TAG}"
 ANYSCALE_IMG="${RUNTIME_REPO}:${BUILD_TAG}-as"
 
-echo "--- Build ${RAY_IMG}"
+
+####
+echo "--- Step 1: Build OSS site package tarball"
+####
+
+CONTEXT_TMP="$(mktemp -d)"
+
+mkdir -p "${CONTEXT_TMP}/.whl"
+cp "${BUILD_TMP}/oss-whl/${WHEEL_FILE}" "${CONTEXT_TMP}/.whl/${WHEEL_FILE}"
+cp python/requirements_compiled.txt "${CONTEXT_TMP}/."
+cp anyscale/docker/Dockerfile.sitepkg "${CONTEXT_TMP}/Dockerfile"
+
+(
+    cd "${CONTEXT_TMP}"
+    tar --mtime="UTC 2020-01-01" --sort=name -c -f - . \
+        | docker build --progress=plain \
+            --build-arg FULL_BASE_IMAGE="${BASE_IMG}" \
+            --build-arg RAY_VERSION="${RAY_VERSION}" \
+            --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
+            --build-arg RAY_MOD_DATE="2020-01-01" \
+            --output="${BUILD_TMP}" --target=final -f Dockerfile -
+)
+
+mv "${BUILD_TMP}/ray.tgz" "${BUILD_TMP}/ray-oss.tgz"
+if [[ "${BUILDKITE:-}" == "true" ]]; then
+    cp "${BUILD_TMP}/ray-oss.tgz" \
+        "/artifact-mount/sitepkg/ray-oss-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}.tgz"
+fi
+
+
+####
+echo "--- Step 2: Build Runtime site package tarball"
+####
+
+# Only need to overwrite the wheel
+cp "${BUILD_TMP}/runtime-whl/${WHEEL_FILE}" "${CONTEXT_TMP}/.whl/${WHEEL_FILE}"
+
+# Runtime uses a later date, this will force pyc file recompile after
+# extraction.
+(
+    cd "${CONTEXT_TMP}"
+    tar --mtime="UTC 2023-01-01" --sort=name -c -f - . \
+        | docker build --progress=plain \
+            --build-arg FULL_BASE_IMAGE="${BASE_IMG}" \
+            --build-arg RAY_VERSION="${RAY_VERSION}" \
+            --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
+            --build-arg RAY_MOD_DATE="2023-01-01" \
+            --output="${BUILD_TMP}" --target=final -f Dockerfile -
+)
+
+mv "${BUILD_TMP}/ray.tgz" "${BUILD_TMP}/ray-opt.tgz" 
+if [[ "${BUILDKITE:-}" == "true" ]]; then
+    cp "${BUILD_TMP}/ray-opt.tgz" \
+        "/artifact-mount/sitepkg/ray-opt-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}.tgz"
+fi
+
+# Cleanup sitepkg build context.
+rm -rf "${CONTEXT_TMP}"
+
+
+####
+echo "--- Step 3: Build ${RAY_IMG}"
+####
 
 CONTEXT_TMP="$(mktemp -d)"
 
 mkdir -p "${CONTEXT_TMP}/.whl"
 
-cp "${BUILD_TMP}/.whl/${WHEEL_FILE}" "${CONTEXT_TMP}/.whl/${WHEEL_FILE}"
-cp docker/ray/Dockerfile "${CONTEXT_TMP}/Dockerfile"
+cp "${BUILD_TMP}/runtime-whl/${WHEEL_FILE}" "${CONTEXT_TMP}/.whl/${WHEEL_FILE}"
+cp anyscale/docker/Dockerfile.ray "${CONTEXT_TMP}/Dockerfile"
 cp python/requirements_compiled.txt "${CONTEXT_TMP}/."
 
-CONSTRAINTS_FILE="requirements_compiled.txt"
+# TODO(aslonnie): replace this with ray-oss.tgz when Anyscale has support
+# to inject ray-opt.tgz into the image.
+cp "${BUILD_TMP}/ray-opt.tgz" "${CONTEXT_TMP}/ray.tgz"
 
 (
     cd "${CONTEXT_TMP}"
-    tar --mtime="UTC 2020-01-01" -c -f - . \
+    tar --mtime="UTC 2023-10-01" --sort=name -c -f - . \
         | docker build --progress=plain \
             --build-arg FULL_BASE_IMAGE="${BASE_IMG}" \
             --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
-            --build-arg CONSTRAINTS_FILE="${CONSTRAINTS_FILE}" \
+            --build-arg RAY_VERSION="${RAY_VERSION}" \
+            --build-arg RAY_SITE_PKG_TGZ=ray.tgz \
             -t "${RAY_IMG}" -f Dockerfile -
 )
+
+rm -rf "${CONTEXT_TMP}"
 
 echo "--- Build ${ANYSCALE_IMG}"
 docker build --progress=plain \
@@ -153,7 +237,9 @@ docker build --progress=plain \
     -t "${ANYSCALE_IMG}" -f Dockerfile - < "${BUILD_TMP}/dataplane.tar.gz"
 
 
+####
 echo "--- Pushing images"
+####
 
 docker_push "${RAY_IMG}"
 docker_push "${ANYSCALE_IMG}"
