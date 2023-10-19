@@ -150,7 +150,6 @@ def test_empty_dataset(ray_start_regular_shared):
     assert ds.size_bytes() is None
     assert ds.schema() is None
 
-    print("!!!!!!! DONE")
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x["id"] > 1)
     ds = ds.materialize()

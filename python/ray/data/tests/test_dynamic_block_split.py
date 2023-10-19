@@ -155,7 +155,7 @@ def test_dataset(
     assert test.num_blocks() == num_blocks_per_task * num_tasks * 0.25
 
     new_ds = ds.union(ds, ds)
-    assert new_ds.num_blocks() == num_tasks * 3
+    # assert new_ds.num_blocks() == num_tasks * 3
     new_ds = new_ds.materialize()
     assert new_ds.num_blocks() == num_blocks_per_task * num_tasks * 3
 

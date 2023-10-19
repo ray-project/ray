@@ -107,7 +107,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._plan.execute()._num_computed() == 0
+    assert ds._plan._in_blocks._num_computed() == 0
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")

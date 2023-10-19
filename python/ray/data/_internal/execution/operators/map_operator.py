@@ -414,25 +414,32 @@ def _map_task(
     DataContext._set_current(data_context)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
-    b_in_idx = 0
-    print("===> blocks:", blocks)
-    print("===> _map_task input_files is:", input_files)
-    for b_in in iter(blocks):
-        for b_out in map_transformer.apply_transform([b_in], ctx):
-            # for b_out in map_transformer.apply_transform(iter(blocks), ctx):
-            print("===> b_in_idx: ", b_in_idx)
-            print("===> b_out:", b_out)
-            # TODO(Clark): Add input file propagation from input blocks.
-            block_input_files = []
-            if input_files:
-                block_input_files = input_files[b_in_idx]
-            m_out = BlockAccessor.for_block(b_out).get_metadata(block_input_files, None)
-            m_out.exec_stats = stats.build()
-            yield b_out
-            yield m_out
-            stats = BlockExecStats.builder()
-        b_in_idx += 1
-    print("===> done")
+    for b_out in map_transformer.apply_transform(iter(blocks), ctx):
+        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        m_out.exec_stats = stats.build()
+        yield b_out
+        yield m_out
+        stats = BlockExecStats.builder()
+
+    # b_in_idx = 0
+    # print("===> blocks:", blocks)
+    # print("===> _map_task input_files is:", input_files)
+    # for b_in in iter(blocks):
+    #     for b_out in map_transformer.apply_transform([b_in], ctx):
+    #         # for b_out in map_transformer.apply_transform(iter(blocks), ctx):
+    #         print("===> b_in_idx: ", b_in_idx)
+    #         print("===> b_out:", b_out)
+    #         # TODO(Clark): Add input file propagation from input blocks.
+    #         block_input_files = []
+    #         if input_files:
+    #             block_input_files = input_files[b_in_idx]
+    #         m_out = BlockAccessor.for_block(b_out).get_metadata(block_input_files, None)
+    #         m_out.exec_stats = stats.build()
+    #         yield b_out
+    #         yield m_out
+    #         stats = BlockExecStats.builder()
+    #     b_in_idx += 1
+    # print("===> done")
 
 
 class _BlockRefBundler:

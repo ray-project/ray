@@ -8,6 +8,7 @@ import pytest
 import ray
 from ray._private.internal_api import memory_summary
 from ray.data import Dataset
+from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
@@ -211,12 +212,13 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
     for s in ds._plan._operators_added_before_snapshot:
-        assert s.ray_remote_args == {}, s.ray_remote_args
+        assert s._ray_remote_args == {}, s._ray_remote_args
     for s in ds._plan._operators_added_after_snapshot:
-        assert s.ray_remote_args == {}, s.ray_remote_args
-    _, _, optimized_stages = ds._plan._optimize()
-    assert len(optimized_stages) == 1, optimized_stages
-    assert optimized_stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
+        assert s._ray_remote_args == {}, s._ray_remote_args
+    optimized_plan = get_execution_plan(ds._plan._logical_plan)
+    assert len(optimized_plan.op_map) == 1
+    physical_op = list(optimized_plan.op_map.values())[0]
+    assert physical_op._ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
 def _assert_has_stages(stages, stage_names):
