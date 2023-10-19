@@ -116,6 +116,8 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
 
 ## Serve REST API
 
+The Serve REST API is exposed at the same port as the Ray Dashboard. The Dashboard port is `8265` by default. This port can be changed using the `--dashboard-port` argument when running `ray start`. All example requests in this section use the default port.
+
 ### `PUT "/api/serve/applications/"`
 
 Declaratively deploys a list of Serve applications. If Serve is already running on the Ray cluster, removes all applications not listed in the new config. If Serve is not running on the Ray cluster, starts Serve. See [multi-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
@@ -124,7 +126,7 @@ Declaratively deploys a list of Serve applications. If Serve is already running 
 
 ```http
 PUT /api/serve/applications/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 Content-Type: application/json
 
@@ -162,7 +164,7 @@ Gets cluster-level info and comprehensive details on all Serve applications depl
 
 ```http
 GET /api/serve/applications/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 ```
 
@@ -314,7 +316,7 @@ Shuts down Serve and all applications running on the Ray cluster. Has no effect 
 
 ```http
 DELETE /api/serve/applications/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 ```
 
