@@ -412,10 +412,7 @@ message ReportGeneratorItemReturnsRequest {
   uint64 attempt_number = 6;
 }
 
-message ReportGeneratorItemReturnsReply {
-  // The total amount of object consumed in bytes from the generator.
-  int64 total_object_consumed_bytes = 1;
-}
+message ReportGeneratorItemReturnsReply {}
 
 service CoreWorkerService {
   // Notify core worker GCS has restarted.

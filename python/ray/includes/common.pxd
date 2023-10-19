@@ -318,12 +318,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
-                     c_string concurrency_group_name,
-                     int64_t streaming_generator_backpressure_size_bytes)
+                     c_string concurrency_group_name)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
-                     int64_t streaming_generator_backpressure_size_bytes,
                      c_string serialized_runtime_env)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":

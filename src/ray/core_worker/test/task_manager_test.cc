@@ -1841,66 +1841,6 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
   CompletePendingStreamingTask(spec, caller_address, 2);
 }
 
-TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
-  /**
-   * Test the RPC is not replied when backpressured.
-   * Test the RPC is replied when the stream is deleted.
-   * Test the RPC is replied when the data is consumed.
-   */
-  auto spec =
-      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
-  auto generator_id = spec.ReturnId(0);
-  rpc::Address caller_address;
-  manager_.AddPendingTask(caller_address, spec, "", 0);
-
-  auto last_idx = 2;
-  std::vector<ObjectID> dynamic_return_ids;
-  std::vector<std::shared_ptr<Buffer>> datas;
-  for (auto i = 0; i < last_idx; i++) {
-    auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), i + 2);
-    dynamic_return_ids.push_back(dynamic_return_id);
-    auto data = GenerateRandomBuffer();
-    datas.push_back(data);
-
-    auto req = GetIntermediateTaskReturn(
-        /*idx*/ i,
-        /*finished*/ false,
-        generator_id,
-        /*dynamic_return_id*/ dynamic_return_id,
-        /*data*/ data,
-        /*set_in_plasma*/ false);
-    // WRITE * 2
-    ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
-  }
-
-  // Finish the task.
-  rpc::PushTaskReply reply;
-  auto return_object = reply.add_return_objects();
-  return_object->set_object_id(generator_id.Binary());
-  auto data = GenerateRandomBuffer();
-  return_object->set_data(data->Data(), data->Size());
-  manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
-
-  ObjectID obj_id;
-  // Verify PeekObjectRefStream is idempotent and doesn't consume indexes.
-  for (auto i = 0; i < 10; i++) {
-    obj_id = manager_.PeekObjectRefStream(generator_id);
-    ASSERT_EQ(obj_id, dynamic_return_ids[0]);
-  }
-
-  for (auto i = 0; i < last_idx; i++) {
-    // READ * 2
-    auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-    ASSERT_TRUE(status.ok());
-    ASSERT_EQ(obj_id, dynamic_return_ids[i]);
-  }
-  // READ (EoF)
-  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefEndOfStream());
-  // DELETE
-  manager_.DelObjectRefStream(generator_id);
-}
-
 }  // namespace core
 }  // namespace ray
 

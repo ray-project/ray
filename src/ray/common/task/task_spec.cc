@@ -243,10 +243,6 @@ bool TaskSpecification::IsStreamingGenerator() const {
   return message_->streaming_generator();
 }
 
-int64_t TaskSpecification::StreamingGeneratorBackpressureSizeBytes() const {
-  return message_->streaming_generator_backpressure_size_bytes();
-}
-
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());
   std::vector<ObjectID> dynamic_return_ids;

@@ -195,14 +195,8 @@ def test_generator_wait(shutdown_only):
     assert len(unready) == 0
 
 
-@pytest.mark.parametrize("backpressure", [True, False])
-def test_generator_wait_e2e(shutdown_only, backpressure):
+def test_generator_wait_e2e(shutdown_only):
     ray.init(num_cpus=8)
-
-    if backpressure:
-        threshold = 0
-    else:
-        threshold = -1
 
     @ray.remote
     def f(sleep_time):
@@ -215,13 +209,7 @@ def test_generator_wait_e2e(shutdown_only, backpressure):
         time.sleep(sleep_time)
         return 10
 
-    gen = [
-        f.options(
-            num_returns="streaming",
-            _streaming_generator_backpressure_size_bytes=threshold,
-        ).remote(1)
-        for _ in range(4)
-    ]
+    gen = [f.options(num_returns="streaming").remote(1) for _ in range(4)]
     ref = [g.remote(2) for _ in range(4)]
     ready, unready = [], [*gen, *ref]
     result = []

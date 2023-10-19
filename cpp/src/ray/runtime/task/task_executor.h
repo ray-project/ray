@@ -94,8 +94,7 @@ class TaskExecutor {
       const std::string name_of_concurrency_group_to_execute,
       bool is_reattempt,
       bool is_streaming_generator,
-      bool retry_exception,
-      int64_t streaming_generator_backpressure_size_bytes);
+      bool retry_exception);
 
   virtual ~TaskExecutor(){};
 
