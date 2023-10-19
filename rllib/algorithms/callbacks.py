@@ -64,10 +64,27 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         algorithm: "Algorithm",
         **kwargs,
     ) -> None:
-        """Callback run when a new algorithm instance has finished setup.
+        """Callback run when a new Algorithm instance has finished setup.
 
         This method gets called at the end of Algorithm.setup() after all
         the initialization is done, and before actually training starts.
+
+        Args:
+            algorithm: Reference to the Algorithm instance.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_checkpoint_loaded(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        """Callback run when an Algorithm has loaded a new state from a checkpoint.
+
+        This method gets called at the end of `Algorithm.load_checkpoint()`.
 
         Args:
             algorithm: Reference to the Algorithm instance.
@@ -476,6 +493,11 @@ def make_multi_callbacks(
         def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
             for callback in self._callback_list:
                 callback.on_algorithm_init(algorithm=algorithm, **kwargs)
+
+        @override(DefaultCallbacks)
+        def on_checkpoint_loaded(self, *, algorithm: "Algorithm", **kwargs) -> None:
+            for callback in self._callback_list:
+                callback.on_checkpoint_loaded(algorithm=algorithm, **kwargs)
 
         @override(DefaultCallbacks)
         def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
