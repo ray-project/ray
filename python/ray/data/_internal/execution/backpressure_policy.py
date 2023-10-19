@@ -186,8 +186,8 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             )
             if downstream_num_active_tasks == 0:
                 # If all downstream operators are idle, it could be because no resources
-                # are available. In this case, we'll make sure to read at least one block
-                # to avoid deadlock.
+                # are available. In this case, we'll make sure to read at least one
+                # block to avoid deadlock.
                 max_bytes_to_read_per_op[state] = max(
                     max_bytes_to_read_per_op[state],
                     1,

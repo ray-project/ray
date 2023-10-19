@@ -180,8 +180,8 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
             ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY: [
                 StreamingOutputBackpressurePolicy
             ],
-            StreamingOutputBackpressurePolicy.MAX_OP_OUTPUT_BUFFER_SIZE_BYTES_CONFIG_KEY: cls._block_size,
-            StreamingOutputBackpressurePolicy.MAX_STREAMING_GEN_BUFFER_SIZE_BYTES_CONFIG_KEY: cls._block_size,
+            StreamingOutputBackpressurePolicy.MAX_OP_OUTPUT_BUFFER_SIZE_BYTES_CONFIG_KEY: cls._block_size,  # noqa
+            StreamingOutputBackpressurePolicy.MAX_STREAMING_GEN_BUFFER_SIZE_BYTES_CONFIG_KEY: cls._block_size,  # noqa
         }
         for k, v in cls._configs.items():
             data_context.set_config(k, v)
@@ -197,7 +197,8 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
     def _run_dataset(self, producer_num_cpus, consumer_num_cpus):
         # Create a dataset with 2 operators:
-        # - The producer op has only 1 task, which produces 20 blocks, each of which has 100MB.
+        # - The producer op has only 1 task, which produces 20 blocks, each of which
+        #   has 100MB data.
         # - The consumer op has 20 slow tasks, each of which consumes 1 block.
         # Return the timestamps at the producer and consumer tasks for each block.
         num_blocks = self._num_blocks

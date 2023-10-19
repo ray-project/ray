@@ -1,6 +1,5 @@
 import os
 import threading
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
