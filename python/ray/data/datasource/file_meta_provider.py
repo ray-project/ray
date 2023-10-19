@@ -490,7 +490,6 @@ def _get_file_infos_parallel(
 ) -> Iterator[Tuple[str, int]]:
     from ray.data.datasource.file_based_datasource import (
         PATHS_PER_FILE_SIZE_FETCH_TASK,
-        _fetch_metadata_parallel,
         _unwrap_s3_serialization_workaround,
         _wrap_s3_serialization_workaround,
     )
