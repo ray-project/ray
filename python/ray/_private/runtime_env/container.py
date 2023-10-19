@@ -25,13 +25,13 @@ class ContainerManager:
 
         context.container = runtime_env["container"]
 
-        container_driver = "podman"
+        container_driver = "docker"
         container_command = [
             container_driver,
             "run",
             "-v",
             self._ray_tmp_dir + ":" + self._ray_tmp_dir,
-            "--cgroup-manager=cgroupfs",
+            # "--cgroup-manager=cgroupfs",
             "--network=host",
             "--pid=host",
             "--ipc=host",
