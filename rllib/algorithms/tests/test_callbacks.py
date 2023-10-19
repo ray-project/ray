@@ -5,7 +5,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
@@ -85,45 +85,45 @@ class TestCallbacks(unittest.TestCase):
 
     def test_on_init_and_checkpoint_loaded(self):
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .callbacks(InitAndCheckpointRestoredCallbacks)
         )
         for _ in framework_iterator(config, frameworks=("torch", "tf2")):
-            pg = config.build()
-            self.assertTrue(pg.callbacks._on_init_was_called)
+            algo = config.build()
+            self.assertTrue(algo.callbacks._on_init_was_called)
             self.assertTrue(
-                not hasattr(pg.callbacks, "_on_checkpoint_loaded_was_called")
+                not hasattr(algo.callbacks, "_on_checkpoint_loaded_was_called")
             )
-            pg.train()
+            algo.train()
             # Save algo and restore.
             with tempfile.TemporaryDirectory() as tmpdir:
-                pg.save(checkpoint_dir=tmpdir)
+                algo.save(checkpoint_dir=tmpdir)
                 self.assertTrue(
-                    not hasattr(pg.callbacks, "_on_checkpoint_loaded_was_called")
+                    not hasattr(algo.callbacks, "_on_checkpoint_loaded_was_called")
                 )
-                pg.load_checkpoint(checkpoint_dir=tmpdir)
-                self.assertTrue(pg.callbacks._on_checkpoint_loaded_was_called)
-            pg.stop()
+                algo.load_checkpoint(checkpoint_dir=tmpdir)
+                self.assertTrue(algo.callbacks._on_checkpoint_loaded_was_called)
+            algo.stop()
 
     def test_episode_and_sample_callbacks(self):
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
             .callbacks(EpisodeAndSampleCallbacks)
             .training(train_batch_size=50)
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            pg = config.build()
-            pg.train()
-            pg.train()
-            callback_obj = pg.workers.local_worker().callbacks
+            algo = config.build()
+            algo.train()
+            algo.train()
+            callback_obj = algo.workers.local_worker().callbacks
             self.assertGreater(callback_obj.counts["sample"], 0)
             self.assertGreater(callback_obj.counts["start"], 0)
             self.assertGreater(callback_obj.counts["end"], 0)
             self.assertGreater(callback_obj.counts["step"], 0)
-            pg.stop()
+            algo.stop()
 
     def test_on_sub_environment_created(self):
 
