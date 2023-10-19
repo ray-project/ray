@@ -353,7 +353,7 @@ def process_completed_tasks(topology: Topology) -> None:
                 max_bytes_to_read = None
                 if backpressure_config.enabled:
                     max_bytes_to_read = (
-                        backpressure_config.op_output_buffer_size_bytes
+                        backpressure_config.max_op_output_buffer_size_bytes
                         - output_buffer_sizes_bytes[state]
                     )
                 read_bytes = task.on_data_ready(max_bytes_to_read)
