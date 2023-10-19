@@ -116,132 +116,7 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
 
 ## Serve REST API
 
-### V1 REST API (Single-application)
-
-#### `PUT "/api/serve/deployments/"`
-
-Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See [single-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
-
-**Example Request**:
-
-```http
-PUT /api/serve/deployments/ HTTP/1.1
-Host: http://localhost:52365/
-Accept: application/json
-Content-Type: application/json
-
-{
-    "import_path": "text_ml:app",
-    "runtime_env": {
-        "working_dir": "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
-    },
-    "deployments": [
-        {"name": "Translator", "user_config": {"language": "french"}},
-        {"name": "Summarizer"},
-    ]
-}
-```
-
-**Example Response**
-
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-```
-
-#### `GET "/api/serve/deployments/"`
-
-Gets the config for the application currently deployed on the Ray cluster. This config represents the current goal state for the Serve application. See [single-app config schema](serve-rest-api-config-schema) for the response's JSON schema.
-
-**Example Request**:
-```http
-GET /api/serve/deployments/ HTTP/1.1
-Host: http://localhost:52365/
-Accept: application/json
-```
-
-**Example Response**:
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{
-    "import_path": "text_ml:app",
-    "runtime_env": {
-        "working_dir": "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
-    },
-    "deployments": [
-        {"name": "Translator", "user_config": {"language": "french"}},
-        {"name": "Summarizer"},
-    ]
-}
-```
-
-
-#### `GET "/api/serve/deployments/status"`
-
-Gets the Serve application's current status, including all the deployment statuses. See [status schema](serve-rest-api-response-schema) for the response's JSON schema.
-
-**Example Request**:
-
-```http
-GET /api/serve/deployments/status HTTP/1.1
-Host: http://localhost:52365/
-Accept: application/json
-```
-
-**Example Response**
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{
-    "name": "default",
-    "app_status": {
-        "status": "RUNNING",
-        "message": "",
-        "deployment_timestamp": 1694043082.0397763
-    },
-    "deployment_statuses": [
-        {
-            "name": "Translator",
-            "status": "HEALTHY",
-            "message": ""
-        },
-        {
-            "name": "Summarizer",
-            "status": "HEALTHY",
-            "message": ""
-        }
-    ]
-}
-```
-
-#### `DELETE "/api/serve/deployments/"`
-
-Shuts down Serve and the Serve application running on the Ray cluster. Has no effect if Serve is not running on the Ray cluster.
-    
-**Example Request**:
-
-```http
-DELETE /api/serve/deployments/ HTTP/1.1
-Host: http://localhost:52365/
-Accept: application/json
-```
-
-**Example Response**
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-```
-
-### V2 REST API (Multi-application)
-
-#### `PUT "/api/serve/applications/"`
+### `PUT "/api/serve/applications/"`
 
 Declaratively deploys a list of Serve applications. If Serve is already running on the Ray cluster, removes all applications not listed in the new config. If Serve is not running on the Ray cluster, starts Serve. See [multi-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
 
@@ -281,7 +156,7 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 ```
 
-#### `GET "/api/serve/applications/"`
+### `GET "/api/serve/applications/"`
 
 Gets cluster-level info and comprehensive details on all Serve applications deployed on the Ray cluster. See [metadata schema](serve-rest-api-response-schema) for the response's JSON schema.
 
@@ -431,7 +306,7 @@ Content-Type: application/json
 }
 ```
 
-#### `DELETE "/api/serve/applications/"`
+### `DELETE "/api/serve/applications/"`
 
 Shuts down Serve and all applications running on the Ray cluster. Has no effect if Serve is not running on the Ray cluster.
 
@@ -474,16 +349,6 @@ Content-Type: application/json
 (serve-rest-api-response-schema)=
 ## Response Schemas
 
-### V1 REST API
-```{eval-rst}
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   schema.ServeStatusSchema
-```
-
-### V2 REST API
 ```{eval-rst}
 .. autosummary::
    :nosignatures:

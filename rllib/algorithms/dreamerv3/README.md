@@ -188,7 +188,7 @@ To run action inference on a DreamerV3 Algorithm object, you can use
 
 Note the slight complexity caused by the fact that DreamerV3 a) uses a recurrent model,
 b) uses the new RLModule-based API stack (no Policy class), and c) outputs actions in a one-hot
-fashion for discrete action spaces:
+fashion for discrete action spaces.
 
 
 ## References
