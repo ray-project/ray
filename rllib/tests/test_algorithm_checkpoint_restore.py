@@ -107,7 +107,7 @@ algorithms_and_configs = {
 class TestCheckpointRestorePG(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=5)
+        ray.init(num_cpus=10)
 
     @classmethod
     def tearDownClass(cls):
