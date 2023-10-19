@@ -3,8 +3,13 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Union
 
-from pydantic import BaseModel, Extra, Field, root_validator, validator
-
+from ray._private.pydantic_compat import (
+    BaseModel,
+    Extra,
+    Field,
+    root_validator,
+    validator,
+)
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,

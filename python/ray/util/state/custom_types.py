@@ -1,5 +1,3 @@
-import sys
-
 from ray.core.generated.common_pb2 import (
     TaskStatus,
     TaskType,
@@ -13,10 +11,7 @@ from ray.core.generated.gcs_pb2 import (
 )
 from ray.dashboard.memory_utils import ReferenceType
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 
 ACTOR_STATUS = [
