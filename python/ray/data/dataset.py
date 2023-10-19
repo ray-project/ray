@@ -383,6 +383,18 @@ class Dataset:
             logical_plan = LogicalPlan(map_op)
         return Dataset(plan, logical_plan)
 
+    def _set_name(self, name: Optional[str]):
+        """Set the name of the dataset.
+
+        Used as a prefix for metrics tags.
+        """
+        self._plan._dataset_name = name
+
+    @property
+    def _name(self) -> Optional[str]:
+        """Returns the dataset name"""
+        return self._plan._dataset_name
+
     def map_batches(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
