@@ -1176,6 +1176,11 @@ def test_dataset_name():
     ds = ray.data.range(100).map_batches(lambda x: x)
     ds._set_name("test_ds")
     assert ds._name == "test_ds"
+    assert (
+        str(ds)
+        == """MapBatches(<lambda>)
++- Dataset(name=test_ds, num_blocks=20, num_rows=100, schema={id: int64})"""
+    )
     with patch(
         "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
     ) as update_fn:
@@ -1212,6 +1217,18 @@ def test_dataset_name():
         mds = ds.materialize()
 
     assert update_fn.call_args_list[-1].args[1]["dataset"] == mds._uuid
+
+    ds = ray.data.range(100)
+    ds._set_name("very_loooooooong_name")
+    assert (
+        str(ds)
+        == """Dataset(
+   name=very_loooooooong_name,
+   num_blocks=20,
+   num_rows=100,
+   schema={id: int64}
+)"""
+    )
 
 
 if __name__ == "__main__":

@@ -224,8 +224,17 @@ class ExecutionPlan:
             num_blocks = "?"
         else:
             num_blocks = dataset_blocks.estimated_num_blocks()
-        dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
-            classname, num_blocks, count, schema_str
+        name_str = (
+            "name={}, ".format(self._dataset_name)
+            if self._dataset_name is not None
+            else ""
+        )
+        dataset_str = "{}({}num_blocks={}, num_rows={}, schema={})".format(
+            classname,
+            name_str,
+            num_blocks,
+            count,
+            schema_str,
         )
 
         # If the resulting string representation fits in one line, use it directly.
@@ -265,8 +274,14 @@ class ExecutionPlan:
                 schema_str = (
                     "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
                 )
+            name_str = (
+                f"\n{trailing_space}{INDENT_STR}name={self._dataset_name},"
+                if self._dataset_name is not None
+                else ""
+            )
             dataset_str = (
                 f"{classname}("
+                f"{name_str}"
                 f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
