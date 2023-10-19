@@ -190,4 +190,5 @@ Monitoring your application
 View the Ray Data dashboard located in the Metrics tab of the Ray Dashboard to monitor your application and troubleshoot issues. Ray Data emits metrics via Prometheus in real-time while a Dataset is executing, and the Ray Data dashboard displays these metrics grouped by Dataset.
 .. image:: images/data-dashboard.png
    :align: center
+
 To learn more about the Ray dashboard, including detailed setup instructions, see :ref:`Ray Dashboard <observability-getting-started>`.
