@@ -229,23 +229,35 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
 
         res = ds.take_all()
         assert [row["id"] for row in res] == list(range(self._num_blocks))
-        return [(row["producer_timestamp"], row["consumer_timestamp"]) for row in res]
+        return (
+            [row["producer_timestamp"] for row in res],
+            [row["consumer_timestamp"] for row in res],
+        )
 
     def test_basic_backpressure(self):
-        res = self._run_dataset(producer_num_cpus=1, consumer_num_cpus=2)
+        producer_timestamps, consumer_timestamps = self._run_dataset(
+            producer_num_cpus=1, consumer_num_cpus=2
+        )
         # We can buffer at most 2 blocks.
         # Thus the producer should be backpressured after producing 2 blocks.
-        # Note, producer timestamp of the third block is generated before
-        # the backpressure. Thus we assert
-        # producer_timestamp[2] < consumer_timestamp[0] < producer_timestamp[3].
-        assert res[2][0] < res[0][1] < res[3][0], res
+        # Note, although block 2 is backpressured, but producer_timestamps[2] has
+        # been generated before the backpressure. Thus we assert
+        # producer_timestamps[2] < consumer_timestamps[0] < producer_timestamps[3].
+        assert (
+            producer_timestamps[2] < consumer_timestamps[0] < producer_timestamps[3]
+        ), (producer_timestamps, consumer_timestamps)
 
     def test_no_deadlock(self):
         # The producer needs all 5 CPUs, and the consumer has no CPU to run.
         # In this case, we shouldn't backpressure the producer and let it run
         # until it finishes.
-        res = self._run_dataset(producer_num_cpus=5, consumer_num_cpus=1)
-        assert res[-1][0] < res[0][1], res
+        producer_timestamps, consumer_timestamps = self._run_dataset(
+            producer_num_cpus=5, consumer_num_cpus=1
+        )
+        assert producer_timestamps[-1] < consumer_timestamps[0], (
+            producer_timestamps,
+            consumer_timestamps,
+        )
 
 
 if __name__ == "__main__":

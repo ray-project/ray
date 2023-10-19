@@ -60,15 +60,12 @@ class DataOpTask(OpTask):
         """Callback when data is ready to be read from the streaming generator.
 
         Args:
-            max_bytes_to_read: If None, all available blocks will be read. Otherwise,
-                we'll stop reading when size of read blocks reaches max_bytes_to_read.
-                This means if it is greater than 0, we'll read at least one block.
-        Returns: The total size in bytes of the blocks that have been read.
+            max_blocks_to_read: Max number of blocks to read. If None, all available
+                will be read.
+        Returns: The number of blocks read.
         """
-        num_read_blocks = 0
-        # If max_bytes_to_read is None, we will read all available blocks.
-        # Otherwise, we will read until we reach max_bytes_to_read.
-        while max_blocks_to_read is None or max_blocks_to_read > 0:
+        num_blocks_read = 0
+        while max_blocks_to_read is None or num_blocks_read < max_blocks_to_read:
             try:
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
@@ -94,10 +91,8 @@ class DataOpTask(OpTask):
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
-            if max_blocks_to_read is not None:
-                max_blocks_to_read -= 1
-            num_read_blocks += 1
-        return num_read_blocks
+            num_blocks_read += 1
+        return num_blocks_read
 
 
 class MetadataOpTask(OpTask):

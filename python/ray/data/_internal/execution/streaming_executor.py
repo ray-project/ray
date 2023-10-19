@@ -264,7 +264,6 @@ class StreamingExecutor(Executor, threading.Thread):
             execution_id=self._execution_id,
             autoscaling_state=self._autoscaling_state,
         )
-        # print("select_operator_to_run", op)
         i = 0
         while op is not None:
             i += 1
