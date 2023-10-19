@@ -77,6 +77,12 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Skip ray installation."),
 )
 @click.option(
+    "--gpus",
+    default=0,
+    type=int,
+    help=("Number of GPUs to use for the test."),
+)
+@click.option(
     "--test-env",
     multiple=True,
     type=str,
@@ -107,6 +113,7 @@ def main(
     only_tags: str,
     run_flaky_tests: bool,
     skip_ray_installation: bool,
+    gpus: int,
     test_env: List[str],
     test_arg: Optional[str],
     build_name: Optional[str],
@@ -122,6 +129,7 @@ def main(
         workers,
         worker_id,
         parallelism_per_worker,
+        gpus,
         build_name,
         build_type,
         skip_ray_installation,
@@ -143,6 +151,7 @@ def _get_container(
     workers: int,
     worker_id: int,
     parallelism_per_worker: int,
+    gpus: int,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
     skip_ray_installation: bool = False,
@@ -155,6 +164,7 @@ def _get_container(
         build_name or f"{team}build",
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
+        gpus=gpus,
         skip_ray_installation=skip_ray_installation,
         build_type=build_type,
     )
