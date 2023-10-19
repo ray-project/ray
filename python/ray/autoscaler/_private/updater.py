@@ -165,9 +165,7 @@ class NodeUpdater:
 
             cli_logger.error("!!!")
             if hasattr(e, "cmd"):
-                stderr_output = getattr(
-                    e, "stderr", "No stderr available"
-                )  # Capture stderr if it exists, else default message
+                stderr_output = getattr(e, "stderr", "No stderr available")
                 cli_logger.error(
                     "Setup command `{}` failed with exit code {}. stderr: {}",
                     cf.bold(e.cmd),
@@ -175,13 +173,10 @@ class NodeUpdater:
                     stderr_output,
                 )
             else:
-                # Log the full attributes of the exception.
                 cli_logger.verbose_error("Exception details: {}", str(vars(e)))
-                # todo: handle this better somehow?
-                # Log the full stack trace for better debugging.
                 full_traceback = traceback.format_exc()
                 cli_logger.error("Full traceback: {}", full_traceback)
-
+                # todo: handle this better somehow?
                 cli_logger.error("Error message: {}", str(e))
             cli_logger.error("!!!")
             cli_logger.newline()
