@@ -379,7 +379,6 @@ parts:
               - file: ray-observability/user-guides/profiling
               - file: ray-observability/user-guides/add-app-metrics
               - file: ray-observability/user-guides/ray-tracing
-              - file: ray-observability/user-guides/ray-profiling
           - file: ray-observability/reference/index
             title: Reference
             sections:

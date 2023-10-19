@@ -28,7 +28,7 @@ Profile the CPU usage for Driver and Worker processes. This helps you understand
 You may run into permission errors when using py-spy in the docker containers. To fix the issue:
 
 - if you start Ray manually in a Docker container, follow the `py-spy documentation`_ to resolve it. 
-- if you are a KubeRay user, follow the :ref:`guide to configure KubeRay <kuberay-pyspy-integration>` and resolve it.
+- if you are a KubeRay user, follow the {ref}`guide to configure KubeRay <kuberay-pyspy-integration>` and resolve it.
 :::
 
 Here are the {ref}`steps to use py-spy with Ray and Ray Dashboard <observability-debug-hangs>`.
@@ -53,13 +53,107 @@ Here are the {ref}`steps to profile the memory usage of Ray Tasks and Actors <me
 ## GPU profiling
 GPU and GRAM profiling for your GPU workloads like distributed training. This helps you analyze performance and debug memory issues. 
 - PyTorch profiler is supported out of box when used with Ray Train
-- NVIDIA Nsight System is now natively supported. More details can be found {ref}`here <ray-profiling>`
+- NVIDIA Nsight System is natively supported on Ray.
 
-(profiling-pytoch-profiler)=
+(profiling-pytorch-profiler)=
 ### PyTorch Profiler
 PyTorch Profiler is a tool that allows the collection of performance metrics (especially GPU metrics) during training and inference.
 
 Here are the {ref}`steps to use PyTorch Profiler with Ray Train or Ray Data <performance-debugging-gpu-profiling>`.
+
+(profiling-nsight-profiler)=
+### Nsight Profiler
+
+##### Installation
+
+First, install the Nsight System CLI by following the [Nsight User Guide](https://docs.nvidia.com/nsight-systems/InstallationGuide/index.html). 
+
+Confirm Nsight is installed correctly:
+
+```bash
+$ nsys --version
+
+# NVIDIA Nsight Systems version 2022.4.1.21-0db2c85
+```
+
+##### Run Nsight on Ray
+
+To enable GPU profiling, you can specify the config in `runtime_env` as follows:
+
+```python
+import torch
+import ray
+
+ray.init()
+
+@ray.remote(num_gpus=1, runtime_env={ "nsight": "default"})
+class RayActor:
+    def run():
+    a = torch.tensor([1.0, 2.0, 3.0]).cuda()
+    b = torch.tensor([4.0, 5.0, 6.0]).cuda()
+    c = a * b
+
+    print("Result on GPU:", c)
+
+ray_actor = RayActor.remote()
+# Actor/task process will run with : "nsys profile [default options] ..."
+ray.get(ray_actor.run.remote())
+```
+
+The `"default"` config can be found in [nsight.py](https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20).
+
+##### Custom Options
+
+You can also add [custom options](https://docs.nvidia.com/nsight-systems/UserGuide/index.html#cli-profile-command-switch-options) for Nsight profiler by specfying a dictionary of option values which will overwrite the `default` config (except for the `--output` option of the default config is preserved).
+
+
+```python
+import torch
+import ray
+
+ray.init()
+
+@ray.remote(
+num_gpus=1, 
+runtime_env={ "nsight": {
+    "t": "cuda,cudnn,cublas",
+    "cuda-memory-usage": "true",
+    "cuda-graph-trace": "graph",
+}})
+class RayActor:
+    def run():
+    a = torch.tensor([1.0, 2.0, 3.0]).cuda()
+    b = torch.tensor([4.0, 5.0, 6.0]).cuda()
+    c = a * b
+
+    print("Result on GPU:", c)
+
+ray_actor = RayActor.remote()
+
+# Actor/task process will run with :
+# "nsys profile -t cuda,cudnn,cublas --cuda-memory-usage=True --cuda-graph-trace=graph ..."
+ray.get(ray_actor.run.remote())
+```
+
+**Note:**: The default report filename (`-o, --output`) is `worker_process_{pid}.nsys-rep` in the logs dir.
+
+
+##### Profiling Result
+
+Profiling results can be found under the `/tmp/ray/session_*/logs/{profiler_name}` directory (subject to change). Users can download the profiling reports from the {ref}`Ray Dashboard <dash-logs-view>`.
+
+![Nsight profiler folder](../images/nsight-profiler-folder.png)
+
+To visualize the result, you need to install the [Nsight System GUI](https://developer.nvidia.com/nsight-systems/get-started#latest-Platforms) on your laptop. This is called the host. Then, transfer the .nsys-rep file to your host and open it using the GUI. You can now view the visual profiling info!
+
+**Note**: The Nsight profiler output (-o, --output) option allows you to set the path to a filename. Ray uses the logs directory as the base and appends the output option to it. For example: 
+```
+--output job_name/ray_worker -> /tmp/ray/session_*/logs/nsight/job_name/ray_worker
+
+--output /Users/Desktop/job_name/ray_worker -> /Users/Desktop/job_name/ray_worker
+```
+As a best practice, only specify the filename in output option.
+
 
 (profiling-timeline)=
 ## Ray Task / Actor timeline
