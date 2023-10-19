@@ -5,7 +5,7 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 
 import math
 import time
-from collections import defaultdict, deque
+from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Tuple, Union
 
@@ -316,32 +316,28 @@ def build_streaming_topology(
     return (topology, i)
 
 
-def process_completed_tasks(topology: Topology, potentially_deadlocked=False) -> None:
+def process_completed_tasks(topology: Topology) -> None:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards."""
 
     # All active tasks, keyed by their waitable.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
+    # Current output buffer sizes for each operator.
+    # If streaming output backpressure is enabled, we will stop reading data.
+    # when `read_data_bytes + output_buffer_sizes_bytes[op] >=
+    # `StreamingOutputBackpressureConfig.max_op_output_buffer_size_bytes`
+    # for each operator in this round.
+    output_buffer_sizes_bytes: Dict[OpState, int] = {}
+
+    context = ray.data.DataContext.get_current()
+    backpressure_config = context.streaming_output_backpressure_config
 
     for op, state in topology.items():
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
-
-    max_bytes_to_read_by_op: Dict[OpState, int] = {}
-    context = ray.data.DataContext.get_current()
-    backpressure_config = context.streaming_output_backpressure_config
-    if backpressure_config.enabled:
-        for _, state in topology.items():
-            max_bytes_to_read_by_op[state] = backpressure_config.max_op_output_buffer_size_bytes - state.outqueue_memory_usage()
-            if potentially_deadlocked:
-                max_bytes_to_read_by_op[state] = max(max_bytes_to_read_by_op[state], 1)
-
-    # # Current output buffer sizes for each operator.
-    # # If streaming output backpressure is enabled, we will stop reading data.
-    # # when `read_data_bytes + output_buffer_sizes_bytes[op] >=
-    # # `StreamingOutputBackpressureConfig.max_op_output_buffer_size_bytes`
-    # # for each operator in this round.
-    # output_buffer_sizes_bytes: Dict[OpState, int] = {}
+            if backpressure_config.enabled:
+                output_buffer_sizes_bytes[state] = state.outqueue_memory_usage()
+    # print("output_buffer_sizes_bytes", [(state.op, size) for state, size in output_buffer_sizes_bytes.items()])
 
     # Process completed Ray tasks and notify operators.
     if active_tasks:
@@ -354,9 +350,15 @@ def process_completed_tasks(topology: Topology, potentially_deadlocked=False) ->
         for ref in ready:
             state, task = active_tasks.pop(ref)
             if isinstance(task, DataOpTask):
-                read_bytes = task.on_data_ready(max_bytes_to_read_by_op.get(state, None))
-                if state in max_bytes_to_read_by_op:
-                    max_bytes_to_read_by_op[state] -= read_bytes
+                max_bytes_to_read = None
+                if backpressure_config.enabled:
+                    max_bytes_to_read = (
+                        backpressure_config.max_op_output_buffer_size_bytes
+                        - output_buffer_sizes_bytes[state]
+                    )
+                read_bytes = task.on_data_ready(max_bytes_to_read)
+                if backpressure_config.enabled:
+                    output_buffer_sizes_bytes[state] += read_bytes
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()
