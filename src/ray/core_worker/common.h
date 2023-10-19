@@ -65,12 +65,14 @@ struct TaskOptions {
               int num_returns,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
+              int64_t generator_backpressure_num_objects = -1,
               const std::string &serialized_runtime_env_info = "{}")
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
-        serialized_runtime_env_info(serialized_runtime_env_info) {}
+        serialized_runtime_env_info(serialized_runtime_env_info),
+        generator_backpressure_num_objects(generator_backpressure_num_objects) {}
 
   /// The name of this task.
   std::string name;
@@ -84,6 +86,10 @@ struct TaskOptions {
   /// fields which not contained in Runtime Env, such as eager_install.
   /// Propagated to child actors and tasks.
   std::string serialized_runtime_env_info;
+  /// Only applicable when streaming generator is used.
+  /// -1 means either streaming generator is not used or
+  /// it is used but the feature is disabled.
+  int64_t generator_backpressure_num_objects;
 };
 
 /// Options for actor creation tasks.

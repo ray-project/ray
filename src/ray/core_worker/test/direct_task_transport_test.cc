@@ -66,6 +66,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             1,
                             false,
                             false,
+                            -1,
                             resources,
                             resources,
                             serialized_runtime_env,

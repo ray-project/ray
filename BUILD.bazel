@@ -1029,6 +1029,20 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "generator_waiter_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/generator_waiter_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        ":gcs_client_lib",
+        ":ray_mock",
+        "//src/ray/common:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "actor_manager_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/actor_manager_test.cc"],
