@@ -212,8 +212,6 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
 
   (*new_data.mutable_resources_available()) = data.resources_available();
 
-  (*new_data.mutable_resources_normal_task()) = data.resources_normal_task();
-
   new_data.set_object_pulls_queued(data.object_pulls_queued());
   new_data.set_idle_duration_ms(data.idle_duration_ms());
   new_data.set_is_draining(data.is_draining());
@@ -226,9 +224,6 @@ std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDema
 GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
   std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
       aggregate_load;
-  if (node_resource_info_.empty()) {
-    return aggregate_load;
-  }
   for (const auto &info : node_resource_info_) {
     // Aggregate the load reported by each raylet.
     gcs::FillAggregateLoad(info.second.second, &aggregate_load);
@@ -286,7 +281,9 @@ void GcsAutoscalerStateManager::GetNodeStates(
 
     // The node has been added to GcsNodeInfo but we are missing reporting for it. Ignore.
     if (node_resource_iter == node_resource_info_.end()) {
-      node_state_proto->set_status(rpc::autoscaler::NodeStatus::DEAD);
+      node_state_proto->set_status(rpc::autoscaler::NodeStatus::UNSPECIFIED);
+      RAY_LOG(WARNING) << "Node " << node_state_proto->node_id()
+                       << " is alive but missing resource report.";
       return;
     }
     auto const &node_resource_item = node_resource_iter->second;

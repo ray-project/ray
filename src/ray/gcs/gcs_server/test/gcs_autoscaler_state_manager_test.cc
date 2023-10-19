@@ -73,20 +73,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
     gcs_node_manager_->alive_nodes_[NodeID::FromBinary(node->node_id())] = node;
     gcs_resource_manager_->OnNodeAdd(*node);
-
-    // Normally, this would be periodically updated when polling the nodes.
-    // Since we are not running the periodical function, simulate it here.
-    rpc::ResourcesData data;
-    if (!node->resources_total().empty()) {
-      data.mutable_resources_available()->insert(node->resources_total().begin(),
-                                                 node->resources_total().end());
-      data.mutable_resources_total()->insert(node->resources_total().begin(),
-                                             node->resources_total().end());
-    }
-    data.set_node_id(node->node_id());
-    data.set_node_manager_address(node->node_manager_address());
     gcs_autoscaler_state_manager_->OnNodeAdd(*node);
-    gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(data);
   }
 
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {

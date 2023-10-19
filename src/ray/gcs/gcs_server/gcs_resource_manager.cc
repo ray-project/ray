@@ -15,8 +15,6 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
-#include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
