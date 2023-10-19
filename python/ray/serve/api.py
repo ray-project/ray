@@ -801,6 +801,19 @@ def get_deployment_handle(
         RayServeException: If no Serve controller is running, or if
             calling from outside a Serve application and no application
             name is specified.
+
+    .. code-block:: python
+
+            import ray
+            from ray import serve
+
+            @serve.deployment
+            def f(val: int) -> int:
+                return val * 2
+
+            serve.run(f.bind(), name="my_app")
+            handle = serve.get_deployment_handle("f", app_name="my_app")
+            assert handle.remote(3).result() == 6
     """
 
     client = _get_global_client()
