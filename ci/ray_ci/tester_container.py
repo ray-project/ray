@@ -18,6 +18,7 @@ class TesterContainer(Container):
         shard_count: int = 1,
         shard_ids: Optional[List[int]] = None,
         skip_ray_installation: bool = False,
+        build_type: Optional[str] = None,
     ) -> None:
         """
         :param docker_tag: Name of the wanda build to be used as test container.
@@ -28,9 +29,10 @@ class TesterContainer(Container):
         super().__init__(docker_tag)
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
+        self.build_type = build_type
 
         if not skip_ray_installation:
-            self.install_ray()
+            self.install_ray(build_type)
 
     def run_tests(
         self,
@@ -68,6 +70,10 @@ class TesterContainer(Container):
                 ]
             )
         test_cmd = "bazel test --config=ci $(./ci/run/bazel_export_options) "
+        if self.build_type == "debug":
+            test_cmd += "--config=ci-debug "
+        if self.build_type == "asan":
+            test_cmd += "--config=asan --config=asan-buildkite "
         for env in test_envs:
             test_cmd += f"--test_env {env} "
         if test_arg:
