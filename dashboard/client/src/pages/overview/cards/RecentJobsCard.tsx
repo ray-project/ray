@@ -36,7 +36,7 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
 
   const sortedJobToRender = sortedJobs.map((job) => {
     return {
-      title: job.job_id ?? job.submission_id ?? undefined,
+      title: job.submission_id ?? job.job_id ?? undefined,
       subtitle: job.entrypoint,
       link: getLink(job),
       className: className,
