@@ -350,8 +350,9 @@ void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
     const std::shared_ptr<NodeResources> &last_reported_resources) {
   // This populates load information.
-  // Usage information separately populated by caller.
   scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
+  // This populates usage information.
+  cluster_resource_scheduler_->GetLocalResourceManager().PopulateResourceUsage(data);
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(

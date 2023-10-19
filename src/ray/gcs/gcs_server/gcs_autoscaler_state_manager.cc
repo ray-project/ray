@@ -209,7 +209,15 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
     (*new_data.mutable_resources_total()) = data.resources_total();
   }
 
+  for (auto& it : data.resources_total()) {
+    RAY_LOG(INFO) << "vct total " << it.first << " " << it.second;
+  }
+
   (*new_data.mutable_resources_available()) = data.resources_available();
+
+  for (auto& it : data.resources_available()) {
+    RAY_LOG(INFO) << "vct available " << it.first << " " << it.second;
+  }
 
   (*new_data.mutable_resources_normal_task()) = data.resources_normal_task();
 
