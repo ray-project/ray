@@ -62,7 +62,7 @@ PyTorch Profiler is a tool that allows the collection of performance metrics (es
 Here are the {ref}`steps to use PyTorch Profiler with Ray Train or Ray Data <performance-debugging-gpu-profiling>`.
 
 (profiling-nsight-profiler)=
-### Nsight Profiler
+### Nsight System Profiler
 
 #### Installation
 
@@ -104,7 +104,7 @@ You can find the `"default"` config in [nsight.py](https://github.com/ray-projec
 
 #### Custom options
 
-You can also add [custom options](https://docs.nvidia.com/nsight-systems/UserGuide/index.html#cli-profile-command-switch-options) for Nsight profiler by specfying a dictionary of option values which will overwrite the `default` config (except for the `--output` option of the default config is preserved).
+You can also add [custom options](https://docs.nvidia.com/nsight-systems/UserGuide/index.html#cli-profile-command-switch-options) for Nsight System Profiler by specifying a dictionary of option values, which overwrites the `default` config, however, Ray preserves the the `--output` option of the default config.
 
 
 ```python
@@ -142,11 +142,11 @@ ray.get(ray_actor.run.remote())
 
 Find profiling results under the `/tmp/ray/session_*/logs/{profiler_name}` directory. This specific directory location may change in the future. You can download the profiling reports from the {ref}`Ray Dashboard <dash-logs-view>`.
 
-![Nsight profiler folder](../images/nsight-profiler-folder.png)
+![Nsight System Profiler folder](../images/nsight-profiler-folder.png)
 
 To visualize the results, install the [Nsight System GUI](https://developer.nvidia.com/nsight-systems/get-started#latest-Platforms) on your laptop, which becomes the host. Transfer the .nsys-rep file to your host and open it using the GUI. You can now view the visual profiling info.
 
-**Note**: The Nsight profiler output (-o, --output) option allows you to set the path to a filename. Ray uses the logs directory as the base and appends the output option to it. For example: 
+**Note**: The Nsight System Profiler output (-o, --output) option allows you to set the path to a filename. Ray uses the logs directory as the base and appends the output option to it. For example: 
 ```
 --output job_name/ray_worker -> /tmp/ray/session_*/logs/nsight/job_name/ray_worker
 
