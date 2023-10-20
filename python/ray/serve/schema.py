@@ -77,7 +77,10 @@ class EncodingType(str, Enum):
 class LoggingConfig(BaseModel):
     """Logging config schema for configuring serve components logs."""
 
-    encoding: str = Field(
+    class Config:
+        extra = Extra.forbid
+
+    encoding: Union[str, EncodingType] = Field(
         default="TEXT",
         description=(
             "Encoding type for the serve logs. Default to 'TEXT'. 'JSON' is also "
