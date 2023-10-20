@@ -1039,14 +1039,16 @@ def read_json(
         When reading large files, the default block size configured in PyArrow can be too small,
         resulting in the following error:
         ``pyarrow.lib.ArrowInvalid: straddling object straddles two block boundaries
-        (try to increase block size?)``
+        (try to increase block size?)``.
 
         To resolve this, use the ``read_options`` parameter to set a larger block size:
 
         >>> import pyarrow.json as pajson
         >>> block_size = 10 << 20 # Set block size to 10MB
-        >>> ray.data.read_json(...,
-        ...     read_options=pajson.ReadOptions(block_size=block_size))
+        >>> ray.data.read_json(
+        ...     s3://anonymous@ray-example-data/log.json,
+        ...     read_options=pajson.ReadOptions(block_size=block_size)
+        ... )
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
