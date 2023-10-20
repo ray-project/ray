@@ -115,7 +115,7 @@ class LoggingConfig(BaseModel):
         if v not in list(EncodingType):
             raise ValueError(
                 f"Got '{v}' for encoding. Encoding must be one "
-                f"of {set(list(EncodingType))}."
+                f"of {set(EncodingType)}."
             )
 
         return v
