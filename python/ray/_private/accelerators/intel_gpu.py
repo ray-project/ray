@@ -1,9 +1,5 @@
-import re
 import os
-import sys
 import logging
-import subprocess
-import importlib
 from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
@@ -52,7 +48,7 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
             import dpctl
         except ImportError:
             dpctl = None
-        if dpctl != None:
+        if dpctl is not None:
             backend = ONEAPI_DEVICE_BACKEND_TYPE
             device_type = ONEAPI_DEVICE_TYPE
             num_gpus = len(dpctl.get_devices(backend=backend, device_type=device_type))
@@ -63,7 +59,7 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
         """Get the name of first Intel GPU. (supposed only one GPU type on a node)
         Example:
             name: 'Intel(R) Data Center GPU Max 1550'
-            return name: 'Max-1550'
+            return name: 'Intel-GPU-Max-1550'
         Returns:
             A string representing the name of Intel GPU type.
         """
@@ -78,7 +74,8 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
         devices = dpctl.get_devices(backend=backend, device_type=device_type)
         if len(devices) > 0:
             name = devices[0].name
-        return "-".join(name.split(" ")[-2:])
+            return "Intel-GPU" + "-".join(name.split(" ")[-2:])
+        return None
 
     @staticmethod
     def validate_resource_request_quantity(
