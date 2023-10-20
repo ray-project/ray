@@ -1,3 +1,5 @@
+# Copyright (2023 and onwards) Anyscale, Inc.
+
 import io
 from typing import TYPE_CHECKING, Iterator
 

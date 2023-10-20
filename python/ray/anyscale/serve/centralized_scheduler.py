@@ -1,3 +1,5 @@
+# Copyright (2023 and onwards) Anyscale, Inc.
+
 """A centralized scheduler that implements model multiplexing with hard constraints.
 
 Constraints include:

@@ -1,3 +1,5 @@
+# Copyright (2023 and onwards) Anyscale, Inc.
+
 import concurrent.futures
 import itertools
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple

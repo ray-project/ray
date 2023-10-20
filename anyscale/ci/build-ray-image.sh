@@ -230,6 +230,8 @@ mkdir -p "${CONTEXT_TMP}/.whl"
 cp "${BUILD_TMP}/runtime-whl/${WHEEL_FILE}" "${CONTEXT_TMP}/.whl/${WHEEL_FILE}"
 cp anyscale/docker/Dockerfile.ray "${CONTEXT_TMP}/Dockerfile"
 cp python/requirements_compiled.txt "${CONTEXT_TMP}/."
+cp anyscale/docker/NOTICE "${CONTEXT_TMP}/."
+cp LICENSE.runtime "${CONTEXT_TMP}/LICENSE"
 
 # TODO(aslonnie): replace this with ray-oss.tgz when Anyscale has support
 # to inject ray-opt.tgz into the image.

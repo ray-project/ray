@@ -1,3 +1,5 @@
+# Copyright (2023 and onwards) Anyscale, Inc.
+
 import copy
 import sys
 from collections import defaultdict

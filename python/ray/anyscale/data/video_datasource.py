@@ -1,3 +1,5 @@
+# Copyright (2023 and onwards) Anyscale, Inc.
+
 from typing import TYPE_CHECKING, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder

@@ -1,0 +1,22 @@
+Anyscale Ray Optimized
+
+Copyright (2023 and onwards) Anyscale, Inc.
+
+This Software includes software developed at Anyscale (anyscale.com) and its
+use is subject to the included LICENSE file.
+
+Additionally, this Software contains code from the following open source
+projects:
+
+- Ray, github.com/ray-project/ray , Apache License
+- github.com/openai , MIT License
+- github.com/deepmind/scalable_agent , Apache License
+- github.com/modestyachts/ARS, https://github.com/modestyachts/ARS/blob/4c8e24e0a99cf811030e90680fc29eb94fae8cdd/LICENSE
+- github.com/census-instrumentation/opencensus-python , Apache License
+- github.com/modin-project/modin , Apache License
+- github.com/google/glog , https://github.com/google/glog/blob/931323df212c46e3a01b743d761c6ab8dc9f0d09/COPYING
+- github.com/mlflow/mlflow , Apache License
+- github.com/edwardgeorge/virtualenv-clone , https://github.com/edwardgeorge/virtualenv-clone/blob/91cf8999f3c59e67bc5fcc084dacb9e2fe2241b6/LICENSE
+- github.com/astanin/python-tabulate , MIT License
+- github.com/konradhalas/dacite , MIT License
+- github.com/kubernetes-client/python , Apache License

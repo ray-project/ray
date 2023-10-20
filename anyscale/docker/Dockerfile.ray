@@ -41,3 +41,6 @@ tar -xzf "$RAY_SITE_PKG_TGZ" -C "${SITE_PKG_DIR}"
 python -c "import ray; print(ray.__version__)"
 
 EOF
+
+COPY LICENSE /LICENSE
+COPY NOTICE /NOTICE
