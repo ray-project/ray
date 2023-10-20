@@ -36,7 +36,7 @@ class BackpressurePolicy(ABC):
     def __init__(self, topology: "Topology"):
         ...
 
-    def calcuate_max_blocks_to_read_per_op(
+    def calculate_max_blocks_to_read_per_op(
         self, topology: "Topology"
     ) -> Dict["OpState", int]:
         """Determine how many blocks of data we can read from each operator.
@@ -143,12 +143,15 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
     - At the Ray Core level, we use
       `MAX_BLOCKS_IN_GENERATOR_BUFFER` to limit the number of blocks buffered in
       the streaming generator of each OpDataTask. When it's reached, the task will
-      be blocked at `yield`.
+      be blocked at `yield` until the caller reads another `ObjectRef.
     - At the Ray Data level, we use
       `MAX_BLOCKS_IN_GENERATOR_BUFFER` to limit the number of blocks buffered in the
       output queue of each operator. When it's reached, we'll stop reading from the
       streaming generators of the op's tasks, and thus trigger backpressure at the
       Ray Core level.
+
+    Thus, total number of buffered blocks for each operator can be
+    `MAX_BLOCKS_IN_GENERATOR_BUFFER * num_running_tasks + MAX_BLOCKS_IN_OP_OUTPUT_QUEUE`.
     """
 
     # The max number of blocks that can be buffered at the streaming generator
@@ -182,7 +185,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             self.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE,
         )
 
-    def calcuate_max_blocks_to_read_per_op(
+    def calculate_max_blocks_to_read_per_op(
         self, topology: "Topology"
     ) -> Dict["OpState", int]:
         max_blocks_to_read_per_op: Dict["OpState", int] = {}
@@ -195,6 +198,12 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
                 # If all downstream operators are idle, it could be because no resources
                 # are available. In this case, we'll make sure to read at least one
                 # block to avoid deadlock.
+                # TODO(hchen): `downstream_num_active_tasks == 0` doesn't necessarily
+                # mean no enough resources. One false positive case is when the upstream
+                # op hasn't produced any blocks for the downstream op to consume.
+                # In this case, at least reading one block is fine.
+                # If there are other false positive cases, we may want to make this
+                # deadlock check more accurate by directly checking resources.
                 max_blocks_to_read_per_op[state] = max(
                     max_blocks_to_read_per_op[state],
                     1,
