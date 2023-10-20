@@ -229,6 +229,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     reply->mutable_resource_usage_data()->CopyFrom(batch);
   }
 
+  // This can happen if a node is unresponsive and does not report usage
+  // within the time limit. Could be transient.
   if (static_cast<size_t>(reply->resource_usage_data().batch().size()) ==
       num_alive_nodes_) {
     RAY_LOG(DEBUG) << "Number of alive nodes " << num_alive_nodes_
