@@ -98,7 +98,6 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
-  // TODO(vitsai): State API RPCs should use the same source of truth as autoscaler.
   for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
     if (node_resources_entry.first == local_scheduling_node_id) {
       continue;
@@ -229,15 +228,11 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     reply->mutable_resource_usage_data()->CopyFrom(batch);
   }
 
-  // This can happen if a node is unresponsive and does not report usage
-  // within the time limit. Could be transient.
-  if (static_cast<size_t>(reply->resource_usage_data().batch().size()) ==
-      num_alive_nodes_) {
-    RAY_LOG(DEBUG) << "Number of alive nodes " << num_alive_nodes_
-                   << " is not equal to number of usage reports "
-                   << reply->resource_usage_data().batch().size()
-                   << " in the autoscaler report.";
-  }
+  RAY_DCHECK(static_cast<size_t>(reply->resource_usage_data().batch().size()) ==
+             num_alive_nodes_)
+      << "Number of alive nodes " << num_alive_nodes_
+      << " is not equal to number of usage reports "
+      << reply->resource_usage_data().batch().size() << " in the autoscaler report.";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
