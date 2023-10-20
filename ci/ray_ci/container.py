@@ -72,7 +72,11 @@ class Container:
             stderr=sys.stderr,
         )
 
-    def _get_run_command(self, script: List[str]) -> List[str]:
+    def _get_run_command(
+        self,
+        script: List[str],
+        gpu_ids: Optional[List[int]] = None,
+    ) -> List[str]:
         command = [
             "docker",
             "run",
@@ -87,6 +91,8 @@ class Container:
             command += ["--env", env]
         for cap in _DOCKER_CAP_ADD:
             command += ["--cap-add", cap]
+        if gpu_ids:
+            command += ["--gpus", f'"device={",".join(map(str, gpu_ids))}"']
         command += [
             "--workdir",
             "/rayci",
