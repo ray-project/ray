@@ -127,7 +127,7 @@ python-dotenv==1.0.0
 pytz==2022.7.1
 PyWavelets==1.4.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=817c9218d57cb6101cdcbcd209aa7b17960a55626fb48763c7077ed36508d3eb
+ray @ file:///home/ray/ray-2.8.0-cp39-cp39-manylinux2014_x86_64.whl#sha256=817c9218d57cb6101cdcbcd209aa7b17960a55626fb48763c7077ed36508d3eb
 redis==3.5.3
 referencing==0.30.2
 requests @ file:///croot/requests_1690400202158/work
