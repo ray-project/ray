@@ -130,7 +130,7 @@ class RayActor:
 
 ray_actor = RayActor.remote()
 
-# Actor/task process will run with :
+# The Actor or Task process runs with :
 # "nsys profile -t cuda,cudnn,cublas --cuda-memory-usage=True --cuda-graph-trace=graph ..."
 ray.get(ray_actor.run.remote())
 ```
