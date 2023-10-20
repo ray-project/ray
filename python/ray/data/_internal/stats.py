@@ -185,6 +185,47 @@ class _StatsActor:
             tag_keys=tags_keys,
         )
 
+        self.iter_wait_s = Gauge(
+            "data_iter_wait_seconds",
+            description="Seconds spent in ray.wait()",
+            tag_keys=tags_keys,
+        )
+        self.iter_get_s = Gauge(
+            "data_iter_get_seconds",
+            description="Seconds spent in ray.get()",
+            tag_keys=tags_keys,
+        )
+        self.iter_next_batch_s = Gauge(
+            "data_iter_next_seconds",
+            description="Seconds spent in next_batch()",
+            tag_keys=tags_keys,
+        )
+        self.iter_format_batch_s = Gauge(
+            "data_iter_format_batch_seconds",
+            description="Seconds spent in format_batch()",
+            tag_keys=tags_keys,
+        )
+        self.iter_collate_batch_s = Gauge(
+            "data_iter_collate_batch_seconds",
+            description="Seconds spent in collate_fn()",
+            tag_keys=tags_keys,
+        )
+        self.iter_finalize_batch_s = Gauge(
+            "data_iter_finalize_batch_seconds",
+            description="Seconds spent in finalize_fn()",
+            tag_keys=tags_keys,
+        )
+        self.iter_total_blocked_s = Gauge(
+            "data_iter_total_blocked_seconds",
+            description="Seconds user thread is blocked by iter_batches",
+            tag_keys=tags_keys,
+        )
+        self.iter_user_s = Gauge(
+            "data_iter_user_seconds",
+            description="Seconds spent in user code",
+            tag_keys=tags_keys,
+        )
+
     def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
         self.fifo_queue.append(stats_uuid)
@@ -229,6 +270,16 @@ class _StatsActor:
         self.cpu_usage.set(stats["cpu_usage"], tags)
         self.gpu_usage.set(stats["gpu_usage"], tags)
 
+    def update_iter_metrics(self, stats: "DatasetStats", tags):
+        self.iter_wait_s.set(stats.iter_wait_s.get(), tags)
+        self.iter_get_s.set(stats.iter_get_s.get(), tags)
+        self.iter_next_batch_s.set(stats.iter_next_batch_s.get(), tags)
+        self.iter_format_batch_s.set(stats.iter_format_batch_s.get(), tags)
+        self.iter_collate_batch_s.set(stats.iter_collate_batch_s.get(), tags)
+        self.iter_finalize_batch_s.set(stats.iter_finalize_batch_s.get(), tags)
+        self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.iter_user_s.set(stats.iter_user_s.get(), tags)
+
     def clear_metrics(self, tags: Dict[str, str]):
         self.bytes_spilled.set(0, tags)
         self.bytes_allocated.set(0, tags)
@@ -237,6 +288,16 @@ class _StatsActor:
         self.bytes_outputted.set(0, tags)
         self.cpu_usage.set(0, tags)
         self.gpu_usage.set(0, tags)
+
+    def clear_iter_metrics(self, tags: Dict[str, str]):
+        self.iter_wait_s.set(0, tags)
+        self.iter_get_s.set(0, tags)
+        self.iter_next_batch_s.set(0, tags)
+        self.iter_format_batch_s.set(0, tags)
+        self.iter_collate_batch_s.set(0, tags)
+        self.iter_finalize_batch_s.set(0, tags)
+        self.iter_total_blocked_s.set(0, tags)
+        self.iter_user_s.set(0, tags)
 
 
 def _get_or_create_stats_actor():
@@ -291,10 +352,25 @@ def update_stats_actor_metrics(
     _stats_actor.update_metrics.remote(stats, tags)
 
 
+def update_stats_actor_iter_metrics(stats: "DatasetStats", tags: Dict[str, str]):
+    global _stats_actor
+    _check_cluster_stats_actor()
+
+    _stats_actor.update_iter_metrics.remote(stats, tags)
+
+
 def clear_stats_actor_metrics(tags: Dict[str, str]):
     global _stats_actor
     _check_cluster_stats_actor()
+
     _stats_actor.clear_metrics.remote(tags)
+
+
+def clear_stats_actor_iter_metrics(tags: Dict[str, str]):
+    global _stats_actor
+    _check_cluster_stats_actor()
+
+    _stats_actor.clear_iter_metrics.remote(tags)
 
 
 class DatasetStats:

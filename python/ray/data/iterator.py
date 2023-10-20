@@ -176,6 +176,7 @@ class DataIterator(abc.ABC):
                     shuffle_buffer_min_size=local_shuffle_buffer_size,
                     shuffle_seed=local_shuffle_seed,
                     prefetch_batches=prefetch_batches,
+                    metrics_tags=self._get_dataset_tag(),
                 )
             )
 
@@ -186,6 +187,9 @@ class DataIterator(abc.ABC):
                 stats.iter_total_s.add(time.perf_counter() - time_start)
 
         return _IterableFromIterator(_create_iterator)
+
+    def _get_dataset_tag(self) -> str:
+        return "unknown_dataset"
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.
