@@ -90,7 +90,7 @@ class LoggingConfig(BaseModel):
     log_level: Union[int, str] = Field(
         default=logging.INFO,
         description=(
-            "Log level for the serve logs. Default to INFO. You can set it to "
+            "Log level for the serve logs. Defaults to INFO. You can set it to "
             "'DEBUG' to get more detailed debug logs."
         ),
     )
@@ -105,8 +105,7 @@ class LoggingConfig(BaseModel):
     enable_access_log: bool = Field(
         default=True,
         description=(
-            "Whether to write serve log to the file. Default to True."
-            " When set to False, the serve logs are not written to files."
+            "Whether to enable access logs for each request. Default to True."
         ),
     )
 
@@ -115,7 +114,7 @@ class LoggingConfig(BaseModel):
 
         if v not in list(EncodingType):
             raise ValueError(
-                f'Got "{v}" for encoding. Encoding must be one of "TEXT" or "JSON".'
+                f'Got "{v}" for encoding. Encoding must be one of {set(list(EncodingType))}.'
             )
 
         return v
