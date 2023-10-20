@@ -11,8 +11,21 @@ S3_TEMP="s3://bk-premerge-first-jawfish-artifacts/tmp/runtime/${RAYCI_BUILD_ID}"
 RUNTIME_ECR="830883877497.dkr.ecr.us-west-2.amazonaws.com"
 IMAGE_PREFIX="${RAYCI_BUILD_ID}"
 
-# TODO(aslonnie): update with sync point's wheel URL prefix.
-OSS_WHEEL_URL_PREFIX=https://ray-wheels.s3.us-west-2.amazonaws.com/master/ad7e1fc2ee565755dd9a77cb4bd836aa8c2aa355/
+UPSTREAM_COMMIT="$(cat .UPSTREAM)"
+if [[ "${UPSTREAM_COMMIT}" == "" ]]; then
+    echo "No upstream commit found" >/dev/stderr
+    exit 1
+fi
+
+UPSTREAM_BRANCH="master"
+if [[ "${RAY_VERSION}" != "3.0.0.dev0" ]]; then
+    UPSTREAM_BRANCH="releases/${RAY_VERSION}"
+fi
+
+# TODO(aslonnie): add some graceful wait for the wheel from upstream to be built.
+# Normally at thist point, the wheel should have already been built, but there
+# is no hard guarantee.
+OSS_WHEEL_URL_PREFIX="https://ray-wheels.s3.us-west-2.amazonaws.com/${UPSTREAM_BRANCH}/${UPSTREAM_COMMIT}/"
 
 # Default cuda is also tagged as "gpu".
 readonly ML_CUDA_VERSION="cu118"
