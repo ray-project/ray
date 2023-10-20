@@ -10,10 +10,6 @@ export type ViewMeasures = {
   distribution_bucket_counts?: number[];
 };
 
-type LabelMap = {
-  [key: string]: string;
-};
-
 export type Raylet = {
   numWorkers: number;
   pid: number;
@@ -26,5 +22,4 @@ export type Raylet = {
   objectStoreAvailableMemory: number;
   objectStoreUsedMemory: number;
   isHeadNode: boolean;
-  labels: LabelMap;
 };

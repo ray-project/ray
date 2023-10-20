@@ -108,9 +108,7 @@ export const CodeDialogButtonWithPreview = ({
   const classes = useCodeDialogButtonWithPreviewStyles();
 
   const codeText =
-    typeof code === "string"
-      ? code
-      : yaml.dump(code, { indent: 2, sortKeys: true });
+    typeof code === "string" ? code : yaml.dump(code, { indent: 2 });
 
   const buttonTextToPass = buttonText ?? "Expand";
 

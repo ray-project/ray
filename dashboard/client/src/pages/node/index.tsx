@@ -117,7 +117,6 @@ const columns = [
       </Typography>
     ),
   },
-  { label: "Labels" },
 ];
 
 export const brpcLinkChanger = (href: string) => {
