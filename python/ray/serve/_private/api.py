@@ -330,7 +330,7 @@ def call_app_builder_with_args_if_necessary(
     # that model. This will perform standard pydantic validation (e.g., raise an
     # exception if required fields are missing).
     param = signature.parameters[list(signature.parameters.keys())[0]]
-    if issubclass(param.annotation, BaseModel):
+    if inspect.isclass(param.annotation) and issubclass(param.annotation, BaseModel):
         args = param.annotation.parse_obj(args)
 
     app = builder(args)

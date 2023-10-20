@@ -157,6 +157,7 @@ SQL Databases
    :toctree: doc/
 
    read_sql
+   Dataset.write_sql
 
 Databricks
 ----------
