@@ -140,7 +140,7 @@ ray.get(ray_actor.run.remote())
 
 #### Profiling result
 
-Profiling results can be found under the `/tmp/ray/session_*/logs/{profiler_name}` directory (subject to change). Users can download the profiling reports from the {ref}`Ray Dashboard <dash-logs-view>`.
+Find profiling results under the `/tmp/ray/session_*/logs/{profiler_name}` directory. This specific directory location may change in the future. You can download the profiling reports from the {ref}`Ray Dashboard <dash-logs-view>`.
 
 ![Nsight profiler folder](../images/nsight-profiler-folder.png)
 
