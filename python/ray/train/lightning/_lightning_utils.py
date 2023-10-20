@@ -31,12 +31,15 @@ _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
 _TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_available()
 
-if _LIGHTNING_GREATER_EQUAL_2_0:
+try:
     from lightning.pytorch.plugins.environments import LightningEnvironment
-    from lightning.pytorch.strategies import FSDPStrategy
-else:
+except ModuleNotFoundError:
     from pytorch_lightning.plugins.environments import LightningEnvironment
-    from pytorch_lightning.strategies import DDPFullyShardedStrategy as FSDPStrategy
+
+if _LIGHTNING_GREATER_EQUAL_2_0:
+    FSDPStrategy = pl.strategies.FSDPStrategy
+else:
+    FSDPStrategy = pl.strategies.DDPFullyShardedStrategy
 
 if _TORCH_FSDP_AVAILABLE:
     from torch.distributed.fsdp import (
@@ -66,6 +69,9 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
     For a full list of initialization arguments, please refer to:
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
+
+    Note that `process_group_backend`, `timeout`, and `start_method` are disabled here,
+    please specify these arguments in :class:`~ray.train.torch.TorchConfig` instead.
     """
 
     def __init__(self, *args, **kwargs):
@@ -85,7 +91,7 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
 
 @PublicAPI(stability="beta")
-class RayFSDPStrategy(FSDPStrategy):
+class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
     """Subclass of FSDPStrategy to ensure compatibility with Ray orchestration.
 
     For a full list of initialization arguments, please refer to:
@@ -152,7 +158,7 @@ class RayDeepSpeedStrategy(pl.strategies.DeepSpeedStrategy):
 
 
 @PublicAPI(stability="beta")
-class RayLightningEnvironment(LightningEnvironment):
+class RayLightningEnvironment(LightningEnvironment):  # noqa: F821
     """Setup Lightning DDP training environment for Ray cluster."""
 
     def __init__(self, *args, **kwargs):
@@ -215,7 +221,23 @@ def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
 
 @PublicAPI(stability="beta")
 class RayTrainReportCallback(pl.callbacks.Callback):
-    """A simple callback that reports checkpoints to Ray on train epoch end."""
+    """A simple callback that reports checkpoints to Ray on train epoch end.
+
+    This callback is a subclass of `lightning.pytorch.callbacks.Callback
+    <https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.Callback.html#lightning.pytorch.callbacks.Callback>`_.
+
+    It fetches the latest `trainer.callback_metrics` and reports together with
+    the checkpoint on each training epoch end.
+
+    Checkpoints will be saved in the following structure::
+
+        checkpoint_00000*/      Ray Train Checkpoint
+        └─ checkpoint.ckpt      PyTorch Lightning Checkpoint
+
+    For customized reporting and checkpointing logic, implement your own
+    `lightning.pytorch.callbacks.Callback` following this user
+    guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
+    """
 
     def __init__(self) -> None:
         super().__init__()

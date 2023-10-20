@@ -72,6 +72,9 @@ const useStyles = makeStyles((theme) =>
     logicalResources: {
       maxWidth: 200,
     },
+    labels: {
+      maxWidth: 200,
+    },
   }),
 );
 
@@ -206,6 +209,13 @@ export const NodeRow = ({
           "-"
         )}
       </TableCell>
+      <TableCell align="center">
+        <CodeDialogButtonWithPreview
+          className={classes.labels}
+          title="Labels"
+          code={raylet.labels}
+        />
+      </TableCell>
     </TableRow>
   );
 };
@@ -294,6 +304,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>

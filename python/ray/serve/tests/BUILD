@@ -30,7 +30,6 @@ py_test_module_list(
     "test_persistence.py",
     "test_cluster_node_info_cache.py",
     "test_long_poll.py",
-    "test_schema.py",
     "test_util.py",
     "test_cross_language.py",
     "test_proxy.py",
@@ -50,7 +49,6 @@ py_test_module_list(
 # Medium tests.
 py_test_module_list(
   files = [
-    "test_get_deployment.py",
     "test_healthcheck.py",
     "test_http_routes.py",
     "test_logging.py",
@@ -66,7 +64,6 @@ py_test_module_list(
     "test_cluster.py",
     "test_autoscaling_policy.py",
     "test_fastapi.py",
-    "test_deployment_graph.py",
     "test_deployment_graph_autoscaling.py",
     "test_cancellation.py",
     "test_streaming_response.py",
@@ -90,7 +87,6 @@ py_test_module_list(
 # Large tests.
 py_test_module_list(
   files = [
-    "test_api.py",
     "test_deploy.py",
     "test_deploy_2.py",
     "test_metrics.py",
@@ -103,6 +99,17 @@ py_test_module_list(
   ],
   size = "large",
   tags = ["exclusive", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+)
+
+# Minimal tests
+py_test_module_list(
+  files = [
+    "test_api.py",
+    "test_deployment_graph.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "team:serve", "minimal"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 

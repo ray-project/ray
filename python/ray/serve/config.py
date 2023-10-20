@@ -3,8 +3,7 @@ import warnings
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import pydantic
-from pydantic import (
+from ray._private.pydantic_compat import (
     BaseModel,
     Field,
     NonNegativeFloat,
@@ -344,7 +343,7 @@ class BaseDeploymentModel(BaseModel, allow_population_by_field_name=True):
 
 
 @PublicAPI(stability="stable")
-class HTTPOptions(pydantic.BaseModel):
+class HTTPOptions(BaseModel):
     """HTTP options for the proxies. Supported fields:
 
     - host: Host that the proxies listens for HTTP on. Defaults to
