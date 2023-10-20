@@ -9,6 +9,7 @@ flaky_tests:
   - //rllib:learning_tests_pendulum_cql
   # algorithm, model and other tests
   - //rllib:test_bc 
+  - //rllib:test_a3c
   - //rllib:policy/tests/test_policy
   - //rllib:env/tests/test_local_inference_cartpole
   - //rllib:evaluation/tests/test_envs_that_crash
@@ -31,3 +32,5 @@ flaky_tests:
   - //rllib:test_memory_leak_ddpg
   # tests/ dir
   - //rllib:tests/test_io
+  # multi-gpu
+  - //rllib:TestLearnerGroupAsyncUpdate
