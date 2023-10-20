@@ -1,12 +1,11 @@
 import torch
 import torch.nn as nn
-from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.optim as optim
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.xla_backend  # noqa: F401
 
 from ray.train import ScalingConfig
-from ray.train.torch import TorchTrainer
+from ray.train.torch import TorchTrainer, prepare_model
 from ray.train.torch.xla import TorchXLAConfig
 
 
@@ -27,7 +26,11 @@ def train_func():
 
     # Create the model and move to device
     model = Model().to(device)
-    ddp_model = DDP(model, gradient_as_bucket_view=True)
+    ddp_model = prepare_model(
+        model,
+        move_to_device=False,
+        parallel_strategy_kwargs={"gradient_as_bucket_view": True},
+    )
 
     loss_fn = nn.MSELoss()
     optimizer = optim.SGD(ddp_model.parameters(), lr=0.001)
