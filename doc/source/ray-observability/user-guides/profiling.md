@@ -102,7 +102,7 @@ ray.get(ray_actor.run.remote())
 
 The `"default"` config can be found in [nsight.py](https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20).
 
-#### Custom Options
+#### Custom options
 
 You can also add [custom options](https://docs.nvidia.com/nsight-systems/UserGuide/index.html#cli-profile-command-switch-options) for Nsight profiler by specfying a dictionary of option values which will overwrite the `default` config (except for the `--output` option of the default config is preserved).
 
