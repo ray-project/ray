@@ -288,7 +288,7 @@ class _ActorClassMethodMetadata(object):
         self.decorators = {}
         self.signatures = {}
         self.num_returns = {}
-        self.generator_backpressure_num_objects = -1
+        self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
 
         for method_name, method in actor_methods:
@@ -1033,6 +1033,7 @@ class ActorClass:
                 meta.actor_creation_function_descriptor, resources, scheduling_strategy
             )
 
+        print("=== 0", meta.method_meta.generator_backpressure_num_objects)
         actor_handle = ActorHandle(
             meta.language,
             actor_id,
@@ -1280,7 +1281,7 @@ class ActorHandle:
             ray_constants.
             # Currently, we use default num returns
             DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,
-            self._ray_method_generator_backpressure_num_objects,
+            self._ray_method_generator_backpressure_num_objects.get(item, 0),
             # Currently, cross-lang actor method not support decorator
             decorator=None,
         )
