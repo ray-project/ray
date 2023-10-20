@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 import time
 from typing import Dict, List
@@ -16,6 +17,7 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
+    LoggingConfig,
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -720,6 +722,48 @@ class TestServeStatusSchema:
                 deployment_statuses=[],
                 fake_field=None,
             )
+
+
+class TestLoggingConfig:
+    def test_parse_dict(self):
+        schema = LoggingConfig.parse_obj(
+            {
+                "log_level": logging.DEBUG,
+                "encoding": "JSON",
+                "logs_dir": "/my_dir",
+                "enable_access_log": True,
+            }
+        )
+        assert schema.log_level == logging.DEBUG
+        assert schema.encoding == "JSON"
+        assert schema.logs_dir == "/my_dir"
+        assert schema.enable_access_log is True
+
+        # Test string values for log_level.
+        schema = LoggingConfig.parse_obj(
+            {
+                "log_level": "DEBUG",
+            }
+        )
+        assert schema.log_level == logging.DEBUG
+
+    def test_wrong_encoding_type(self):
+        with pytest.raises(ValidationError):
+            LoggingConfig.parse_obj(
+                {
+                    "logging_level": logging.INFO,
+                    "encoding": "NOT_EXIST",
+                    "logs_dir": "/my_dir",
+                    "enable_access_log": True,
+                }
+            )
+
+    def test_default_values(self):
+        schema = LoggingConfig.parse_obj({})
+        assert schema.log_level == logging.INFO
+        assert schema.encoding == "TEXT"
+        assert schema.logs_dir is None
+        assert schema.enable_access_log
 
 
 # This function is defined globally to be accessible via import path

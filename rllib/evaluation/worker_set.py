@@ -113,7 +113,7 @@ class WorkerSet:
                 in the returned set as well (default: True). If `num_workers`
                 is 0, always create a local worker.
             logdir: Optional logging directory for workers.
-            _setup: Whether to setup workers. This is only for testing.
+            _setup: Whether to actually set up workers. This is only for testing.
         """
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
@@ -635,9 +635,9 @@ class WorkerSet:
         self,
         func: Callable[[RolloutWorker], T],
         *,
-        local_worker=True,
+        local_worker: bool = True,
         # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only=False,
+        healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
         return_obj_refs: bool = False,
@@ -647,10 +647,9 @@ class WorkerSet:
 
         Args:
             func: The function to call for each worker (as only arg).
-            local_worker: Whether apply func on local worker too. Default is True.
-            healthy_only: Apply func on known active workers only. By default
-                this will apply func on all workers regardless of their states.
-            remote_worker_ids: Apply func on a selected set of remote workers.
+            local_worker: Whether apply `func` on local worker too. Default is True.
+            healthy_only: Apply `func` on known-to-be healthy workers only.
+            remote_worker_ids: Apply `func` on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
@@ -689,9 +688,9 @@ class WorkerSet:
         self,
         func: Callable[[int, RolloutWorker], T],
         *,
-        local_worker=True,
+        local_worker: bool = True,
         # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only=False,
+        healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
     ) -> List[T]:
@@ -699,10 +698,9 @@ class WorkerSet:
 
         Args:
             func: The function to call for each worker (as only arg).
-            local_worker: Whether apply func on local worker too. Default is True.
-            healthy_only: Apply func on known active workers only. By default
-                this will apply func on all workers regardless of their states.
-            remote_worker_ids: Apply func on a selected set of remote workers.
+            local_worker: Whether apply `func` on local worker too. Default is True.
+            healthy_only: Apply `func` on known-to-be healthy workers only.
+            remote_worker_ids: Apply `func` on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
 
         Returns:
@@ -736,7 +734,7 @@ class WorkerSet:
         func: Callable[[RolloutWorker], T],
         *,
         # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only=False,
+        healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
     ) -> int:
         """Calls the given function asynchronously with each worker as the argument.
@@ -747,9 +745,8 @@ class WorkerSet:
 
         Args:
             func: The function to call for each worker (as only arg).
-            healthy_only: Apply func on known active workers only. By default
-                this will apply func on all workers regardless of their states.
-            remote_worker_ids: Apply func on a selected set of remote workers.
+            healthy_only: Apply `func` on known-to-be healthy workers only.
+            remote_worker_ids: Apply `func` on a selected set of remote workers.
 
         Returns:
              The number of async requests that are currently in-flight.
@@ -773,6 +770,7 @@ class WorkerSet:
         Args:
             timeout_seconds: Time to wait for results. Default is 0, meaning
                 those requests that are already ready.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
             mark_healthy: Whether to mark the worker as healthy based on call results.
 
         Returns:
@@ -888,15 +886,16 @@ class WorkerSet:
 
     @DeveloperAPI
     def probe_unhealthy_workers(self) -> List[int]:
-        """Checks the unhealth workers, and try restoring their states.
+        """Checks for unhealthy workers and tries restoring their states.
 
         Returns:
-            IDs of the workers that were restored.
+            List of IDs of the workers that were restored.
         """
         return self.__worker_manager.probe_unhealthy_actors(
             timeout_seconds=self._remote_config.worker_health_probe_timeout_s
         )
 
+    # TODO (sven): Deprecate once ARS/ES have been moved to `rllib_contrib`.
     @staticmethod
     def _from_existing(
         local_worker: RolloutWorker, remote_workers: List[ActorHandle] = None

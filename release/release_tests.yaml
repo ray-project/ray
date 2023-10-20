@@ -6568,7 +6568,7 @@
 
   run:
     timeout: 3600
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
 
 - name: gcp_cluster_launcher_nightly_image
   group: cluster-launcher-test
@@ -6586,7 +6586,7 @@
 
   run:
     timeout: 3600
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
 
 
 - name: gcp_cluster_launcher_release_image
