@@ -151,13 +151,14 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
       Ray Core level.
 
     Thus, total number of buffered blocks for each operator can be
-    `MAX_BLOCKS_IN_GENERATOR_BUFFER * num_running_tasks + MAX_BLOCKS_IN_OP_OUTPUT_QUEUE`.
+    `MAX_BLOCKS_IN_GENERATOR_BUFFER * num_running_tasks +
+    MAX_BLOCKS_IN_OP_OUTPUT_QUEUE`.
     """
 
     # The max number of blocks that can be buffered at the streaming generator
     # of each `DataOpTask`.
     MAX_BLOCKS_IN_GENERATOR_BUFFER = 10
-    MAX_BLOCKS_IN_GENERATOR_BUFFER_BUFFER_CONFIG_KEY = (
+    MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY = (
         "backpressure_policies.streaming_output.max_blocks_in_generator_buffer"
     )
     # The max number of blocks that can be buffered at the operator output queue
@@ -170,9 +171,10 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
     def __init__(self, topology: "Topology"):
         data_context = ray.data.DataContext.get_current()
         self._max_num_blocks_in_streaming_gen_buffer = data_context.get_config(
-            self.MAX_BLOCKS_IN_GENERATOR_BUFFER_BUFFER_CONFIG_KEY,
+            self.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY,
             self.MAX_BLOCKS_IN_GENERATOR_BUFFER,
         )
+        assert self._max_num_blocks_in_streaming_gen_buffer > 0
         # The `_generator_backpressure_num_objects` parameter should be
         # `2 * self._max_num_blocks_in_streaming_gen_buffer` because we yield
         # 2 objects for each block: the block and the block metadata.
@@ -184,6 +186,7 @@ class StreamingOutputBackpressurePolicy(BackpressurePolicy):
             self.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY,
             self.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE,
         )
+        assert self._max_num_blocks_in_op_output_queue > 0
 
     def calculate_max_blocks_to_read_per_op(
         self, topology: "Topology"

@@ -182,7 +182,7 @@ class TestStreamOutputBackpressurePolicy(unittest.TestCase):
         cls._configs = {
             ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY: [policy_cls],
             policy_cls.MAX_BLOCKS_IN_OP_OUTPUT_QUEUE_CONFIG_KEY: 1,
-            policy_cls.MAX_BLOCKS_IN_GENERATOR_BUFFER_BUFFER_CONFIG_KEY: 1,
+            policy_cls.MAX_BLOCKS_IN_GENERATOR_BUFFER_CONFIG_KEY: 1,
         }
         for k, v in cls._configs.items():
             data_context.set_config(k, v)
