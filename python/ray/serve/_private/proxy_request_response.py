@@ -168,7 +168,7 @@ class gRPCProxyRequest(ProxyRequest):
         )
 
 
-@dataclass
+@dataclass(frozen=True)
 class ResponseStatus:
     code: Any  # Must be convertible to a string.
     is_error: bool = False
@@ -179,7 +179,7 @@ class ResponseStatus:
 ResponseGenerator = AsyncIterator[Union[Any, ResponseStatus]]
 
 
-@dataclass
+@dataclass(frozen=True)
 class ResponseHandlerInfo:
     response_generator: ResponseGenerator
     application_name: str
