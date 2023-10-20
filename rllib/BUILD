@@ -4478,7 +4478,7 @@ py_test(
 # --------------------------------------------------------------------
 py_test_module_list(
   files = [
-    "algorithms/a3c/tests/test_a3c.py"
+    "algorithms/a3c/tests/test_a3c.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
