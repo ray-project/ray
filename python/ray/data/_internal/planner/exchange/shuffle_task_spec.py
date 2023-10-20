@@ -22,14 +22,14 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
 
     def __init__(
         self,
-        target_max_block_size: int,
+        target_shuffle_max_block_size: int,
         random_shuffle: bool = False,
         random_seed: Optional[int] = None,
         upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]] = None,
     ):
         super().__init__(
             map_args=[
-                target_max_block_size,
+                target_shuffle_max_block_size,
                 upstream_map_fn,
                 random_shuffle,
                 random_seed,
@@ -42,7 +42,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         idx: int,
         block: Block,
         output_num_blocks: int,
-        target_max_block_size: int,
+        target_shuffle_max_block_size: int,
         upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]],
         random_shuffle: bool,
         random_seed: Optional[int],
@@ -62,12 +62,12 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             del mapped_block
             block = builder.build()
         block = BlockAccessor.for_block(block)
-        if block.size_bytes() > target_max_block_size:
+        if block.size_bytes() >= 2 * target_shuffle_max_block_size:
             logger.get_logger().warn(
                 "Input block to map task has size "
                 f"{block.size_bytes() // (1024 * 1024)}MiB, which exceeds "
                 "DataContext.get_current().target_shuffle_max_block_size="
-                f"{target_max_block_size // (1024 * 1024)}MiB. "
+                f"{target_shuffle_max_block_size // (1024 * 1024)}MiB. "
                 "This can lead to out-of-memory errors and can happen "
                 "when map tasks are fused to the shuffle operation. "
                 "To prevent fusion, call Dataset.materialize() on the "
