@@ -2,6 +2,7 @@ import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List, Optional, Set, Union
 
 from ray._private.pydantic_compat import (
@@ -65,7 +66,15 @@ def _route_prefix_format(cls, v):
 
 
 @PublicAPI(stability="alpha")
-class LoggingConfigSchema(BaseModel):
+class EncodingType(str, Enum):
+    """Encoding type for the serve logs."""
+
+    TEXT = "TEXT"
+    JSON = "JSON"
+
+
+@PublicAPI(stability="alpha")
+class LoggingConfig(BaseModel):
     """Logging config schema for configuring serve components logs."""
 
     encoding: str = Field(
@@ -75,11 +84,11 @@ class LoggingConfigSchema(BaseModel):
             "supported to format all serve logs into json structure."
         ),
     )
-    log_level: int = Field(
+    log_level: Union[int, str] = Field(
         default=logging.INFO,
         description=(
-            "Log level for the serve logs. Default to logging.INFO. You can set it to "
-            "'logging.DEBUG' to get more detailed logs."
+            "Log level for the serve logs. Default to INFO. You can set it to "
+            "'DEBUG' to get more detailed debug logs."
         ),
     )
     logs_dir: Union[str, None] = Field(
@@ -101,12 +110,24 @@ class LoggingConfigSchema(BaseModel):
     @validator("encoding")
     def valid_encoding_format(cls, v):
 
-        if v not in ["TEXT", "JSON"]:
+        if v not in list(EncodingType):
             raise ValueError(
                 f'Got "{v}" for encoding. Encoding must be one of "TEXT" or "JSON".'
             )
 
         return v
+
+    @validator("log_level")
+    def valid_log_level(cls, v):
+        if isinstance(v, int):
+            return v
+
+        if v not in logging._nameToLevel:
+            raise ValueError(
+                f'Got "{v}" for log_level. log_level must be one of '
+                f"{list(logging._nameToLevel.keys())}."
+            )
+        return logging._nameToLevel[v]
 
 
 @PublicAPI(stability="stable")
@@ -310,7 +331,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             "Defaults to no limitation."
         ),
     )
-    logging_config: LoggingConfigSchema = Field(
+    logging_config: LoggingConfig = Field(
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
     )
@@ -439,7 +460,7 @@ class ServeApplicationSchema(BaseModel):
         default={},
         description="Arguments that will be passed to the application builder.",
     )
-    logging_config: LoggingConfigSchema = Field(
+    logging_config: LoggingConfig = Field(
         default=None,
         description="Logging config for configuring serve application logs.",
     )
@@ -658,7 +679,7 @@ class ServeDeploySchema(BaseModel):
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
     )
-    logging_config: LoggingConfigSchema = Field(
+    logging_config: LoggingConfig = Field(
         default=None,
         description="Logging config for configuring serve components logs.",
     )

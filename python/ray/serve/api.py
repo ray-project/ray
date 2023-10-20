@@ -37,7 +37,6 @@ from ray.serve.config import (
     AutoscalingConfig,
     DeploymentMode,
     HTTPOptions,
-    LoggingConfig,
     ProxyLocation,
     gRPCOptions,
 )
@@ -271,7 +270,6 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-    logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -330,16 +328,9 @@ def deployment(
             run on a single node. Valid values are None (no limitation)
             or an integer in the range of [1, 100].
             Defaults to no limitation.
-        logging_config: Logging config options for the deployment.
-
     Returns:
         `Deployment`
     """
-
-    if logging_config is not DEFAULT.VALUE:
-        warnings.warn(
-            "Specifying logging_config in `serve.deployment` is under development"
-        )
 
     # NOTE: The user_configured_option_names should be the first thing that's
     # defined in this function. It depends on the locals() dictionary storing
@@ -453,7 +444,6 @@ def run(
     port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
-    logging_config: Union[None, dict, LoggingConfig] = None,
 ) -> Optional[RayServeSyncHandle]:
     """Run an application and return a handle to its ingress deployment.
 
@@ -478,7 +468,6 @@ def run(
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
             route_prefix of the ingress deployment. If specified neither as an argument
             nor in the ingress deployment, the route prefix will default to '/'.
-        logging_config: Logging config options for the application.
 
     Returns:
         RayServeSyncHandle: A handle that can be used to call the application.
@@ -492,9 +481,6 @@ def run(
             "removed in a future version. To specify custom HTTP options, use "
             "`serve.start`."
         )
-
-    if logging_config is not None:
-        warnings.warn("Specifying logging_config in `serve.run` is under development")
 
     client = _private_api.serve_start(
         http_options={"host": host, "port": port, "location": "EveryNode"},

@@ -20,7 +20,7 @@ from ray.serve.context import _get_global_client
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
-    LoggingConfigSchema,
+    LoggingConfig,
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -727,21 +727,32 @@ class TestServeStatusSchema:
             )
 
 
-class TestLoggingConfigSchema:
+class TestLoggingConfig:
     def test_parse_dict(self):
-        schema = LoggingConfigSchema.parse_obj(
+        schema = LoggingConfig.parse_obj(
             {
-                "logging_level": logging.INFO,
+                "log_level": logging.DEBUG,
                 "encoding": "JSON",
                 "logs_dir": "/my_dir",
                 "enable_access_log": True,
             }
         )
-        assert schema.log_level == logging.INFO
+        assert schema.log_level == logging.DEBUG
+        assert schema.encoding == "JSON"
+        assert schema.logs_dir == "/my_dir"
+        assert schema.enable_access_log is True
+
+        # Test string values for logging
+        schema = LoggingConfig.parse_obj(
+            {
+                "log_level": "DEBUG",
+            }
+        )
+        assert schema.log_level == logging.DEBUG
 
     def test_wrong_encoding_type(self):
         with pytest.raises(ValidationError):
-            LoggingConfigSchema.parse_obj(
+            LoggingConfig.parse_obj(
                 {
                     "logging_level": logging.INFO,
                     "encoding": "NOT_EXIST",
@@ -751,7 +762,7 @@ class TestLoggingConfigSchema:
             )
 
     def test_default_values(self):
-        schema = LoggingConfigSchema.parse_obj({})
+        schema = LoggingConfig.parse_obj({})
         assert schema.log_level == logging.INFO
 
 

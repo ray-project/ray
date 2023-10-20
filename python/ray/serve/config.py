@@ -254,33 +254,3 @@ class gRPCOptions(BaseModel):
                 raise ModuleNotFoundError(message) from e
 
         return callables
-
-
-@PublicAPI(stability="alpha")
-class EncodingType(str, Enum):
-    """Encoding type for the serve logs."""
-
-    TEXT = "TEXT"
-    JSON = "JSON"
-
-
-@PublicAPI(stability="alpha")
-class LoggingConfig(BaseModel):
-    """Logging config for configuring serve components logs.
-
-    Args:
-        encoding: Encoding type for the logs. Default to 'TEXT'. 'JSON' is
-            also supported to format all serve logs into json structure.
-        log_level: Log level for the serve logs. Default to logging.INFO.
-            You can set it to 'logging.DEBUG' to get more detailed logs.
-        logs_dir: Directory to store the logs. Default to None, which means
-            logs will be stored in the default directory
-            ("/tmp/ray/session_latest/logs/serve/...").
-        enable_access_log: Whether to write serve log to the file. Default to True.
-            When set to False, the serve logs are not written to files.
-    """
-
-    encoding: Optional[EncodingType] = EncodingType.TEXT
-    log_level: Optional[int] = logging.INFO
-    logs_dir: Optional[str] = None
-    enable_access_log: Optional[bool] = True
