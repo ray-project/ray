@@ -153,10 +153,11 @@ class BackendExecutor:
         self.worker_group.group_workers_by_ip(trial_driver_ip)
 
         worker_locs = [
-            f"{w.metadata.pid} ({w.metadata.node_ip})"
-            for w in self.worker_group.workers
+            f"rank {i}: {w.metadata.pid} ({w.metadata.node_ip})"
+            for i, w in enumerate(self.worker_group.workers)
         ]
-        logger.info(f"Starting distributed worker processes: {worker_locs}")
+        worker_locs_repr = "\n".join(worker_locs)
+        logger.info(f"Starting distributed worker processes: \n{worker_locs_repr}")
 
         try:
             if initialization_hook:
