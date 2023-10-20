@@ -62,7 +62,7 @@ class StreamingExecutor(Executor, threading.Thread):
     a way that maximizes throughput under resource constraints.
     """
 
-    def __init__(self, options: ExecutionOptions, dataset_uuid: str = "unknown_uuid"):
+    def __init__(self, options: ExecutionOptions, dataset_tag: str = "unknown_dataset"):
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
@@ -82,7 +82,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[OpState] = None
         self._backpressure_policies: Optional[List[BackpressurePolicy]] = None
 
-        self._dataset_uuid = dataset_uuid
+        self._dataset_tag = dataset_tag
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -208,7 +208,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._output_node.outqueue.append(None)
             # Clears metrics for this dataset so that they do
             # not persist in the grafana dashboard after execution
-            clear_stats_actor_metrics({"dataset": self._dataset_uuid})
+            clear_stats_actor_metrics({"dataset": self._dataset_tag})
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -290,7 +290,7 @@ class StreamingExecutor(Executor, threading.Thread):
             op_state.refresh_progress_bar()
 
         update_stats_actor_metrics(
-            [op.metrics for op in self._topology], {"dataset": self._dataset_uuid}
+            [op.metrics for op in self._topology], {"dataset": self._dataset_tag}
         )
 
         # Keep going until all operators run to completion.

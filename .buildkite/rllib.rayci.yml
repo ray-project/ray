@@ -150,24 +150,10 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
         --parallelism-per-worker 2
+        --gpus 4
         --build-name rllibgpubuild
         --only-tags multi_gpu
     depends_on: rllibgpubuild
-    job_env: forge
-
-  - label: ":brain: rllib: flaky multi-gpu tests"
-    tags: 
-      - rllib
-      - gpu
-    instance_type: gpu-large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
-        --run-flaky-tests
-        --parallelism-per-worker 2
-        --build-name rllibgpubuild
-        --only-tags multi_gpu
-    depends_on: rllibgpubuild
-    soft_fail: true
     job_env: forge
 
   - label: ":brain: rllib: flaky tests"

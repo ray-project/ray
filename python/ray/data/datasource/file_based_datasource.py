@@ -1,4 +1,3 @@
-import itertools
 import os
 import pathlib
 import sys
@@ -14,7 +13,6 @@ from typing import (
     Literal,
     Optional,
     Tuple,
-    TypeVar,
     Union,
 )
 
@@ -24,8 +22,6 @@ from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _resolve_custom_scheme,
@@ -842,34 +838,6 @@ def _resolve_kwargs(
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)
     return kwargs
-
-
-Uri = TypeVar("Uri")
-Meta = TypeVar("Meta")
-
-
-def _fetch_metadata_parallel(
-    uris: List[Uri],
-    fetch_func: Callable[[List[Uri]], List[Meta]],
-    desired_uris_per_task: int,
-    **ray_remote_args,
-) -> Iterator[Meta]:
-    """Fetch file metadata in parallel using Ray tasks."""
-    remote_fetch_func = cached_remote_fn(fetch_func, num_cpus=0.5)
-    if ray_remote_args:
-        remote_fetch_func = remote_fetch_func.options(**ray_remote_args)
-    # Choose a parallelism that results in a # of metadata fetches per task that
-    # dominates the Ray task overhead while ensuring good parallelism.
-    # Always launch at least 2 parallel fetch tasks.
-    parallelism = max(len(uris) // desired_uris_per_task, 2)
-    metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
-    fetch_tasks = []
-    for uri_chunk in np.array_split(uris, parallelism):
-        if len(uri_chunk) == 0:
-            continue
-        fetch_tasks.append(remote_fetch_func.remote(uri_chunk))
-    results = metadata_fetch_bar.fetch_until_complete(fetch_tasks)
-    yield from itertools.chain.from_iterable(results)
 
 
 def _open_file_with_retry(
