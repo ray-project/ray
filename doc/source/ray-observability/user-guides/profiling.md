@@ -152,7 +152,7 @@ To visualize the result, you need to install the [Nsight System GUI](https://dev
 
 --output /Users/Desktop/job_name/ray_worker -> /Users/Desktop/job_name/ray_worker
 ```
-As a best practice, only specify the filename in output option.
+The best practice is to only specify the filename in output option.
 
 
 (profiling-timeline)=
