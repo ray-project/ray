@@ -1854,6 +1854,8 @@ cdef execute_task_with_cancellation_handler(
 
     # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
     # runtime_ids to restrict availability to this task.
+    # Once actor is created, users can change the visible accelerator ids within
+    # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
         ray._private.utils.set_visible_accelerator_ids()
 
