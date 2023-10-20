@@ -11,7 +11,7 @@ CPU_TMP="$(mktemp -d)"
 
 mkdir -p "${CPU_TMP}/.whl"
 
-cp .whl/"$WHEEL_NAME" "${CPU_TMP}/.whl/${WHEEL_NAME}"
+cp .whl "${CPU_TMP}/.whl
 cp docker/ray/Dockerfile "${CPU_TMP}/Dockerfile"
 cp python/requirements_compiled.txt "${CPU_TMP}/."
 
