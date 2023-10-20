@@ -36,3 +36,5 @@ skip_tags:
   # The efforts are also deprioritized.
   - rllib
   - rllib_directly
+docker_plugin:
+  allow_mount_buildkite_agent: true

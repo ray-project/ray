@@ -76,11 +76,15 @@ function docker_push_as {
     local DEST_IMG="$2"
     docker tag "${SRC_IMG}" "${DEST_IMG}"
     docker push "${DEST_IMG}"
+    buildkite-agent annotate --style=info \
+        --context="${PY_VERSION_CODE}-images" --append "${DEST_IMG}<br/>"
 }
 
 function docker_push {
     local IMG="$1"
     docker push "${IMG}"
+    buildkite-agent annotate --style=info \
+        --context="${PY_VERSION_CODE}-images" --append "${IMG}<br/>"
 }
 
 if [[ "${PUSH_COMMIT_TAGS:-}" == "" ]]; then

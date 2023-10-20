@@ -25,6 +25,7 @@ steps:
       - raycpubase
       - raycudabase
     job_env: forge
+    mount_buildkite_agent: true
     matrix:
       setup:
         py:
@@ -47,6 +48,7 @@ steps:
       - raycpubase
       - raycudabase
     job_env: forge
+    mount_buildkite_agent: true
     matrix:
       setup:
         py:
@@ -68,6 +70,7 @@ steps:
       - ray-mlcpubase
       - ray-mlcudabase
     job_env: forge
+    mount_buildkite_agent: true
     matrix:
       setup:
         py:
