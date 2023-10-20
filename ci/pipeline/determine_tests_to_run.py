@@ -243,8 +243,7 @@ if __name__ == "__main__":
                         RAY_CI_COMPILED_PYTHON_AFFECTED = 1
                         break
             elif (
-                changed_file.startswith("ci/ray_ci")
-                or changed_file == ".buildkite/core.rayci.yml"
+                changed_file == ".buildkite/core.rayci.yml"
                 or changed_file == ".buildkite/_forge.rayci.yml"
                 or changed_file == "ci/docker/min.build.Dockerfile"
                 or changed_file == "ci/docker/min.build.wanda.yaml"
@@ -284,7 +283,9 @@ if __name__ == "__main__":
             elif changed_file.startswith("ci/lint"):
                 # Linter will always be run
                 RAY_CI_TOOLS_AFFECTED = 1
-            elif changed_file.startswith("ci/pipeline"):
+            elif changed_file.startswith("ci/pipeline") or changed_file.startswith(
+                "ci/ray_ci"
+            ):
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.endswith("build-docker-images.py"):
