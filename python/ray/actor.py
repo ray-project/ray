@@ -1033,7 +1033,6 @@ class ActorClass:
                 meta.actor_creation_function_descriptor, resources, scheduling_strategy
             )
 
-        print("=== 0", meta.method_meta.generator_backpressure_num_objects)
         actor_handle = ActorHandle(
             meta.language,
             actor_id,
