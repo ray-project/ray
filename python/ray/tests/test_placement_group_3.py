@@ -7,7 +7,11 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS,
+)
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,
@@ -630,6 +634,8 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
         return demand_output["usage"] != ""
 
     wait_for_condition(is_usage_updated)
+
+    time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
     demand_output = get_ray_status_output(cluster.address)
     cpu_usage = demand_output["usage"].split("\n")[0]
     expected = "0.0/4.0 CPU (0.0 used of 1.0 reserved in placement groups)"
