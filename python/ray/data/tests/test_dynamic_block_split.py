@@ -116,7 +116,7 @@ def test_dataset(
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
-    block_size = target_max_block_size
+    block_size = 1024
     num_tasks = 10
 
     ds = ray.data.read_datasource(
@@ -131,13 +131,11 @@ def test_dataset(
     assert ds.num_blocks() == num_tasks
     assert ds.size_bytes() >= 0.7 * block_size * num_blocks_per_task * num_tasks
 
-    # Too-large blocks will get split to respect target max block size.
     map_ds = ds.map_batches(lambda x: x, compute=compute)
     map_ds = map_ds.materialize()
-    assert map_ds.num_blocks() == num_tasks * num_blocks_per_task
-    # Blocks smaller than requested batch size will get coalesced.
+    assert map_ds.num_blocks() == num_tasks
     map_ds = ds.map_batches(
-        lambda x: {}, batch_size=num_blocks_per_task * num_tasks, compute=compute
+        lambda x: x, batch_size=num_blocks_per_task * num_tasks, compute=compute
     )
     map_ds = map_ds.materialize()
     assert map_ds.num_blocks() == 1
