@@ -157,3 +157,7 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
       IMAGE_TO: mlgpubuild
       RAYCI_IS_GPU_BUILD: "true"
+
+  - name: docgpubuild
+    wanda: ci/docker/docgpu.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
