@@ -15,7 +15,11 @@ It offers 3 custom resource definitions (CRDs):
 
 ## Which CRD should you choose?
 
-Use [RayService](kuberay-rayservice-quickstart) to serve models and [RayCluster](kuberay-raycluster-quickstart) to prototype Ray applications as recommended practices.
+Use [RayService](kuberay-rayservice-quickstart) to serve models.  
+
+Use [RayCluster](kuberay-raycluster-quickstart) to prototype Ray applications.
+
+If you aren't serving models or prototyping an application, the CRD recommendation depends on the answers to the following questions.
 However, if the use case isn't model serving or prototyping, how do you choose between [RayCluster](kuberay-raycluster-quickstart) and [RayJob](kuberay-rayjob-quickstart)?
 
 ### Q: Is downtime acceptable during a cluster upgrade (e.g. Upgrade Ray version)?
