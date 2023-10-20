@@ -739,7 +739,7 @@ class TestLoggingConfig:
         assert schema.logs_dir == "/my_dir"
         assert schema.enable_access_log is True
 
-        # Test string values for logging
+        # Test string values for log_level.
         schema = LoggingConfig.parse_obj(
             {
                 "log_level": "DEBUG",
@@ -761,6 +761,9 @@ class TestLoggingConfig:
     def test_default_values(self):
         schema = LoggingConfig.parse_obj({})
         assert schema.log_level == logging.INFO
+        assert schema.encoding == "TEXT"
+        assert schema.logs_dir is None
+        assert schema.enable_access_log
 
 
 # This function is defined globally to be accessible via import path
