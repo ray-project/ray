@@ -5,7 +5,9 @@ from ray import workflow
 from ray.workflow.http_event_provider import HTTPListener
 from ray.tests.conftest import *  # noqa
 from ray.workflow.tests import utils
-from ray.serve._private import api as _private_api
+from ray import serve
+from ray.workflow import common
+from ray._private.test_utils import wait_for_condition
 
 import requests
 
@@ -52,8 +54,12 @@ def test_checkpoint_success_by_http(workflow_start_regular_shared_serve):
     )
 
     # wait until HTTPEventProvider is ready
-    while len(_private_api.list_deployments().keys()) < 1:
-        sleep(0.1)
+    def check_app_running():
+        status = serve.status().applications[common.HTTP_EVENT_PROVIDER_NAME]
+        assert status.status == "RUNNING"
+        return True
+
+    wait_for_condition(check_app_running)
 
     test_msg = "new_event_message"
 
@@ -109,8 +115,12 @@ def test_checkpoint_failed_by_http(workflow_start_regular_shared_serve):
     )
 
     # wait until HTTPEventProvider is ready
-    while len(_private_api.list_deployments().keys()) < 1:
-        sleep(0.1)
+    def check_app_running():
+        status = serve.status().applications[common.HTTP_EVENT_PROVIDER_NAME]
+        assert status.status == "RUNNING"
+        return True
+
+    wait_for_condition(check_app_running)
 
     test_msg = "new_event_message"
 
