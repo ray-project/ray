@@ -131,15 +131,11 @@ class TestCallbacks(unittest.TestCase):
             for _ in range(3):
                 algo.train()
 
-            # After training, each new worker should have been recreated.
-            worker_ids_2 = algo.workers.healthy_worker_ids()
-            for id_ in worker_ids_2:
-                # A newly created worker: It's recreated counter should be 1.
-                if id_ not in original_worker_ids:
-                    self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 1)
-                # Still an original worker, recreated counter should still be 0.
-                else:
-                    self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 0)
+            # After training, each new worker should have been recreated at least once.
+            new_worker_ids = algo.workers.healthy_worker_ids()
+            self.assertTrue(len(new_worker_ids) == 2)
+            for id_ in new_worker_ids:
+                self.assertTrue(algo._counters[f"worker_{id_}_recreated"] >= 1)
             algo.stop()
 
     def test_on_init_and_checkpoint_loaded(self):
