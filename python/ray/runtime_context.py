@@ -356,10 +356,16 @@ class RuntimeContext(object):
             for res, mapping in resource_id_map.items()
         }
         # kBundle_ResourceLabel should be invisible to the user.
-        BUNDLE_RESOURCE_LABEL = "bundle"
-        if BUNDLE_RESOURCE_LABEL in resource_map:
-            resource_map.pop(BUNDLE_RESOURCE_LABEL)
-        return pasre_pg_formatted_resources_to_original(resource_map)
+        # BUNDLE_RESOURCE_LABEL = "bundle"
+        # if BUNDLE_RESOURCE_LABEL in resource_map:
+            # resource_map.pop(BUNDLE_RESOURCE_LABEL)
+            #pass
+        for a in resource_map:
+            print(f"vct {a}")
+        x = pasre_pg_formatted_resources_to_original(resource_map)
+        for a in x:
+            print(f"vct new {a}")
+        return x
 
     def get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.
