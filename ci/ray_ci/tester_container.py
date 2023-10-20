@@ -88,7 +88,9 @@ class TesterContainer(Container):
                     "trap cleanup EXIT",
                 ]
             )
-        test_cmd = "bazel test --config=ci $(./ci/run/bazel_export_options) "
+        # note that we run tests serially within each docker, since we already use
+        # multiple dockers to shard tests
+        test_cmd = "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
         if self.build_type == "debug":
             test_cmd += "--config=ci-debug "
         if self.build_type == "asan":
