@@ -78,7 +78,7 @@ $ nsys --version
 
 #### Run Nsight on Ray
 
-To enable GPU profiling, you can specify the config in `runtime_env` as follows:
+To enable GPU profiling, specify the config in the `runtime_env` as follows:
 
 ```python
 import torch
