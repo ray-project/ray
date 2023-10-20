@@ -10,7 +10,6 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
