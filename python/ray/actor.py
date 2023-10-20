@@ -288,7 +288,7 @@ class _ActorClassMethodMetadata(object):
         self.decorators = {}
         self.signatures = {}
         self.num_returns = {}
-        self.generator_backpressure_num_objects = {}
+        self.generator_backpressure_num_objects = -1
         self.concurrency_group_for_methods = {}
 
         for method_name, method in actor_methods:
