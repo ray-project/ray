@@ -1,0 +1,8 @@
+# Copyright (2023 and onwards) Anyscale, Inc.
+
+import os
+
+ANYSCALE_RAY_SERVE_ENABLE_PROPRIETARY_DEPLOYMENT_SCHEDULER = (
+    os.environ.get("ANYSCALE_RAY_SERVE_ENABLE_PROPRIETARY_DEPLOYMENT_SCHEDULER", "1")
+    == "1"
+)
