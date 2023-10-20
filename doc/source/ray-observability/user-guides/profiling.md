@@ -96,7 +96,7 @@ class RayActor:
     print("Result on GPU:", c)
 
 ray_actor = RayActor.remote()
-# Actor/task process will run with : "nsys profile [default options] ..."
+# The Actor or Task process runs with : "nsys profile [default options] ..."
 ray.get(ray_actor.run.remote())
 ```
 
