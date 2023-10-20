@@ -20,6 +20,76 @@ def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
     return False
 
 
+def test_autoscaler_no_churn():
+    num_cpus_per_node = 4
+    expected_nodes = 6
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": num_cpus_per_node},
+        worker_node_types={
+            "type-1": {
+                "resources": {"CPU": num_cpus_per_node},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2 * expected_nodes,
+            },
+        },
+    )
+
+    driver_script = f"""
+import time
+import ray
+@ray.remote(num_cpus=1)
+def foo():
+  time.sleep(60)
+  return True
+
+ray.init("auto")
+
+print("start")
+assert(ray.get([foo.remote() for _ in range({num_cpus_per_node * expected_nodes})]))
+print("end")
+"""
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+
+        def tasks_run():
+            tasks = list_tasks()
+            # Waiting til the driver in the run_string_as_driver_nonblocking is running
+            assert len(tasks) > 0
+            return True
+
+        run_string_as_driver_nonblocking(driver_script)
+        wait_for_condition(tasks_run)
+
+        reached_threshold = False
+        for _ in range(30):
+            # verify no pending task + with resource used.
+            status = get_cluster_status(gcs_address)
+            has_task_demand = len(status.resource_demands.ray_task_actor_demand) > 0
+
+            # Check that we don't overscale
+            assert len(status.active_nodes) <= expected_nodes
+
+            # Check there's no demand if we've reached the expected number of nodes
+            if reached_threshold:
+                assert not has_task_demand
+
+            # Load disappears in the next cycle after we've fully scaled up.
+            if len(status.active_nodes) == expected_nodes:
+                reached_threshold = True
+
+            time.sleep(1)
+
+        assert reached_threshold
+    finally:
+        # TODO(rickyx): refactor into a fixture for autoscaling cluster.
+        ray.shutdown()
+        cluster.shutdown()
+
+
 # TODO(rickyx): We are NOT able to counter multi-node inconsistency yet. The problem is
 # right now, when node A (head node) has an infeasible task,
 # node B just finished running previous task.
@@ -31,8 +101,7 @@ def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
 #  node A: 1 pending task (infeasible)
 #  node B: 0 pending task, but **CPU used = 1**
 #
-# @pytest.mark.parametrize("mode", (["single_node", "multi_node"]))
-@pytest.mark.parametrize("mode", (["single_node"]))
+@pytest.mark.parametrize("mode", (["single_node", "multi_node"]))
 def test_scheduled_task_no_pending_demand(mode):
 
     # So that head node will need to dispatch tasks to worker node.
