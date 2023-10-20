@@ -636,7 +636,8 @@ class WorkerSet:
         func: Callable[[RolloutWorker], T],
         *,
         local_worker: bool = True,
-        healthy_only: bool = True,
+        # TODO(jungong) : switch to True once Algorithm is migrated.
+        healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
         return_obj_refs: bool = False,
@@ -688,7 +689,8 @@ class WorkerSet:
         func: Callable[[int, RolloutWorker], T],
         *,
         local_worker: bool = True,
-        healthy_only: bool = True,
+        # TODO(jungong) : switch to True once Algorithm is migrated.
+        healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
     ) -> List[T]:
@@ -731,7 +733,8 @@ class WorkerSet:
         self,
         func: Callable[[RolloutWorker], T],
         *,
-        healthy_only: bool = True,
+        # TODO(jungong) : switch to True once Algorithm is migrated.
+        healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
     ) -> int:
         """Calls the given function asynchronously with each worker as the argument.
