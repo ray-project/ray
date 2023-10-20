@@ -91,7 +91,7 @@ def test_disallow_non_unique_operators():
     o3 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]), o1
     )
-    o4 = PhysicalOperator("test_combine", [o2, o3], target_max_block_size=None)
+    o4 = PhysicalOperator("test_combine", [o2, o3])
     with pytest.raises(ValueError):
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
 

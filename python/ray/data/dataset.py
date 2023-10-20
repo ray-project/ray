@@ -350,9 +350,7 @@ class Dataset:
         """  # noqa: E501
         validate_compute(fn, compute, fn_constructor_args)
 
-        transform_fn = generate_map_rows_fn(
-            DataContext.get_current().target_max_block_size
-        )
+        transform_fn = generate_map_rows_fn()
 
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
@@ -540,12 +538,12 @@ class Dataset:
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
-        min_rows_per_block = None
+        target_block_size = None
         if batch_size is not None and batch_size != "default":
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
             # Enable blocks bundling when batch_size is specified by caller.
-            min_rows_per_block = batch_size
+            target_block_size = batch_size
 
         batch_size = _apply_strict_mode_batch_size(
             batch_size, use_gpu="num_gpus" in ray_remote_args
@@ -573,9 +571,7 @@ class Dataset:
                     f"CallableClass instance for fn, but got: {fn}"
                 )
 
-        ctx = DataContext.get_current()
         transform_fn = generate_map_batches_fn(
-            target_max_block_size=ctx.target_max_block_size,
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
@@ -595,7 +591,7 @@ class Dataset:
             compute,
             ray_remote_args,
             # TODO(Clark): Add a strict cap here.
-            min_rows_per_block=min_rows_per_block,
+            target_block_size=target_block_size,
             fn=fn,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
@@ -612,7 +608,7 @@ class Dataset:
                 batch_size=batch_size,
                 batch_format=batch_format,
                 zero_copy_batch=zero_copy_batch,
-                min_rows_per_block=min_rows_per_block,
+                target_block_size=target_block_size,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
@@ -869,9 +865,7 @@ class Dataset:
         """
         validate_compute(fn, compute, fn_constructor_args)
 
-        transform_fn = generate_flat_map_fn(
-            DataContext.get_current().target_max_block_size
-        )
+        transform_fn = generate_flat_map_fn()
 
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
@@ -944,9 +938,7 @@ class Dataset:
         """
         validate_compute(fn, compute)
 
-        transform_fn = generate_filter_fn(
-            DataContext.get_current().target_max_block_size
-        )
+        transform_fn = generate_filter_fn()
 
         plan = self._plan.with_stage(
             OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)
@@ -4669,7 +4661,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=1,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4752,7 +4744,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=1,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
