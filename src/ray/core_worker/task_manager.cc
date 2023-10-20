@@ -639,8 +639,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto total_generated = stream_it->second.TotalNumObjectWritten();
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
 
-  // If the object is already consumed, signal
-  // the caller.
   if (stream_it->second.IsObjectConsumed(item_index)) {
     execution_signal_callback(Status::OK(), total_consumed);
     return false;
@@ -648,7 +646,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
   // Otherwise, follow the regular backpressure logic.
   auto total_unconsumed = total_generated - total_consumed;
-  if (backpressure_threshold != -1 && total_unconsumed >= backpressure_threshold) {
+  if (backpressure_threshold != -1 &&
+      total_unconsumed >= backpressure_threshold
+      // We can only backpressure the last generated item.
+      && item_index >= total_generated - 1) {
     RAY_LOG(DEBUG) << "Stream " << generator_id
                    << " is backpressured. total_generated: " << total_generated
                    << ". total_consumed: " << total_consumed

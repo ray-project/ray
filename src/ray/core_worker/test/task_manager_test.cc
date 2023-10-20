@@ -1953,6 +1953,117 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBackpressure) {
   /// No need to test out of order case. It won't be different.
 }
 
+TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
+  // Consumed objects should be signaled immediately.
+  // Unconsumed objects should not be.
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 2);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 1);
+
+  /// 1 generate, 0 consumed, 2 threshold -> should signal immediately.
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  bool signal_called = false;
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status status,
+                                                     int64_t num_objects_consumed) {
+        signal_called = true;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 0);
+      }));
+  ASSERT_TRUE(signal_called);
+
+  /// 2 generate, 0 consumed, 2 threshold -> backpressured
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  signal_called = false;
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status status,
+                                                     int64_t num_objects_consumed) {
+        signal_called = true;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 1);
+      }));
+  ASSERT_FALSE(signal_called);
+
+  // Worker failure. New worker should start reporting the task.
+  auto error = rpc::ErrorType::WORKER_DIED;
+  ASSERT_TRUE(manager_.FailOrRetryPendingTask(spec.TaskId(), error));
+
+  // Two report will come again. The first one should reply immediately (because)
+  // it is already replied and the second one should be backpressured.
+  /// 1 generate, 0 consumed, 2 threshold -> should signal immediately.
+  RAY_LOG(ERROR) << "SANG-TODO second trial";
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  bool retry_signal_called = false;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&retry_signal_called](Status status,
+                                                           int64_t num_objects_consumed) {
+        retry_signal_called = true;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 0);
+      }));
+  ASSERT_TRUE(retry_signal_called);
+
+  /// 2 generate, 0 consumed, 2 threshold -> backpressured
+  dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  retry_signal_called = false;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&retry_signal_called](Status status,
+                                                           int64_t num_objects_consumed) {
+        retry_signal_called = true;
+        ASSERT_TRUE(status.ok());
+        ASSERT_EQ(num_objects_consumed, 1);
+      }));
+  // Backpressured.
+  ASSERT_FALSE(retry_signal_called);
+
+  ObjectID obj_id;
+  // Read should signal both executor.
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(signal_called);
+  ASSERT_TRUE(retry_signal_called);
+  CompletePendingStreamingTask(spec, caller_address, 2);
+}
+
 // SANG-TODO reconstruction test
 
 }  // namespace core

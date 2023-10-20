@@ -94,6 +94,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
     builder.AddArg(*invocation.args[i]);
   }
   auto task_specification = builder.Build();
+
   ObjectID return_object_id = task_specification.ReturnId(0);
 
   std::shared_ptr<msgpack::sbuffer> actor;

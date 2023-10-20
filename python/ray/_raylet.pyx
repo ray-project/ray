@@ -966,7 +966,7 @@ cdef class StreamingGeneratorExecutionContext:
             application error.
         generator_backpressure_num_objects: The backpressure threshold
             for streaming generator. The stremaing generator pauses if
-            total size of unconsumed objects exceed this threshold.
+            total number of unconsumed objects exceed this threshold.
     """
 
     cdef:

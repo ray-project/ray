@@ -200,7 +200,7 @@ _task_only_options = {
             "_generator_backpressure_num_objects=0 is not allowed. "
             "Use a value > 0. If the value is equal to 1, the behavior "
             "is identical to Python generator (generator 1 object "
-            "whenever `next` is called). Use -1 to disable a feature. "
+            "whenever `next` is called). Use -1 to disable this feature. "
         ),
     ),
 }

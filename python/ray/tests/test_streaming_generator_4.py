@@ -31,17 +31,26 @@ def assert_no_leak():
 
 
 @pytest.mark.parametrize("backpressure", [False, True])
-def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster, backpressure):
+@pytest.mark.parametrize("delay_latency", [0.1, 1])
+@pytest.mark.parametrize("threshold", [1, 3])
+def test_ray_datasetlike_mini_stress_test(
+    monkeypatch, ray_start_cluster, backpressure, delay_latency, threshold
+):
     """
     Test a workload that's like ray dataset + lineage reconstruction.
     """
+    if not backpressure:
+        if delay_latency == 0.1 and threshold == 1:
+            return
+        elif delay_latency == 1:
+            return
+
     with monkeypatch.context() as m:
         m.setenv(
             "RAY_testing_asio_delay_us",
             "CoreWorkerService.grpc_server." "ReportGeneratorItemReturns=10000:1000000",
         )
         cluster = ray_start_cluster
-        # Head node with no resources.
         cluster.add_node(
             num_cpus=1,
             resources={"head": 1},
@@ -70,6 +79,8 @@ def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster, backpr
             unready = [dynamic_generator.remote(10) for _ in range(5)]
             ready = []
             while unready:
+                for a in unready:
+                    print(a._generator_ref)
                 ready, unready = ray.wait(
                     unready, num_returns=len(unready), timeout=0.1
                 )
@@ -102,6 +113,26 @@ def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster, backpr
         del ref
 
         assert_no_leak()
+
+
+def test_local_gc_not_hang(shutdown_only, monkeypatch):
+    """Verify the generator doesn't deadlock when a local GC is triggered."""
+    with monkeypatch.context() as m:
+        m.setenv("RAY_local_gc_interval_s", 1)
+
+        ray.init()
+
+        @ray.remote(num_returns="streaming", _generator_backpressure_num_objects=1)
+        def f():
+            for _ in range(5):
+                yield 1
+
+        gen = f.remote()
+        time.sleep(5)
+
+        # It should not hang.
+        for ref in gen:
+            ray.get(gen)
 
 
 if __name__ == "__main__":

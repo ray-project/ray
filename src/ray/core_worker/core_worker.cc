@@ -2928,9 +2928,10 @@ Status CoreWorker::ReportGeneratorItemReturns(
   waiter->IncrementObjectGenerated();
   client->ReportGeneratorItemReturns(
       request,
-      [waiter, generator_id](const Status &status,
-                             const rpc::ReportGeneratorItemReturnsReply &reply) {
+      [waiter, generator_id, item_index](
+          const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
+                       << "index: " << item_index
                        << ". Total object consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated()
                        << ". total_consumed_reported: "

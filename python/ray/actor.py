@@ -115,7 +115,8 @@ class ActorMethod:
         _num_returns: The default number of return values that the method
             invocation should return.
         _generator_backpressure_num_objects: Generator-only config.
-            The backpressure size for a generator.
+            If a number of unconsumed objects reach this threshold,
+            a actor task stop pausing.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
             invoking the method. The decorator must return a function that

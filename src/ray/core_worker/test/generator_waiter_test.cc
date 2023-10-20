@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2023 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,22 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <thread>
 #include "ray/core_worker/generator_waiter.h"
-#include "ray/core_worker/common.h"
+
+#include <thread>
 
 #include "gtest/gtest.h"
+#include "ray/core_worker/common.h"
 
 namespace ray {
 namespace core {
 
 TEST(GeneratorWaiterTest, TestBasic) {
-  std::shared_ptr<GeneratorBackpressureWaiter> waiter = std::make_shared<GeneratorBackpressureWaiter>(1);
+  std::shared_ptr<GeneratorBackpressureWaiter> waiter =
+      std::make_shared<GeneratorBackpressureWaiter>(1);
 
   auto wait = [waiter]() {
-    auto status = waiter->WaitUntilObjectConsumed(/*check_signals*/[]() {
-      return Status::OK();
-    });
+    auto status =
+        waiter->WaitUntilObjectConsumed(/*check_signals*/ []() { return Status::OK(); });
     ASSERT_TRUE(status.ok());
   };
 
@@ -55,12 +56,12 @@ TEST(GeneratorWaiterTest, TestBasic) {
 }
 
 TEST(GeneratorWaiterTest, TestLargerThreshold) {
-  std::shared_ptr<GeneratorBackpressureWaiter> waiter = std::make_shared<GeneratorBackpressureWaiter>(3);
+  std::shared_ptr<GeneratorBackpressureWaiter> waiter =
+      std::make_shared<GeneratorBackpressureWaiter>(3);
 
   auto wait = [waiter]() {
-    auto status = waiter->WaitUntilObjectConsumed(/*check_signals*/[]() {
-      return Status::OK();
-    });
+    auto status =
+        waiter->WaitUntilObjectConsumed(/*check_signals*/ []() { return Status::OK(); });
     ASSERT_TRUE(status.ok());
   };
 
@@ -77,12 +78,14 @@ TEST(GeneratorWaiterTest, TestLargerThreshold) {
 }
 
 TEST(GeneratorWaiterTest, TestSignalFailure) {
-  std::shared_ptr<GeneratorBackpressureWaiter> waiter = std::make_shared<GeneratorBackpressureWaiter>(1);
-  std::shared_ptr<std::atomic<bool>> signal_failed = std::make_shared<std::atomic<bool>>(false);
+  std::shared_ptr<GeneratorBackpressureWaiter> waiter =
+      std::make_shared<GeneratorBackpressureWaiter>(1);
+  std::shared_ptr<std::atomic<bool>> signal_failed =
+      std::make_shared<std::atomic<bool>>(false);
   waiter->IncrementObjectGenerated();
 
   auto wait = [signal_failed, waiter]() {
-    auto status = waiter->WaitUntilObjectConsumed(/*check_signals*/[signal_failed]() {
+    auto status = waiter->WaitUntilObjectConsumed(/*check_signals*/ [signal_failed]() {
       if (*signal_failed) {
         return Status::NotFound("");
       } else {

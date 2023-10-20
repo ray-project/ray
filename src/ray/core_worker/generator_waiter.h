@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2023 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,7 +40,8 @@ class GeneratorBackpressureWaiter {
  private:
   absl::Mutex mutex_;
   absl::CondVar cond_var_;
-  // The minimal number of unconsumed objects to wait.
+  // If total_objects_generated_ - total_objects_consumed_ < this
+  // the task will stop.
   int64_t backpressure_threshold_;
   // Total number of objects generated from a generator.
   int64_t total_objects_generated_;

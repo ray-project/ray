@@ -487,7 +487,8 @@ message TaskSpec {
   // Number of return values from a completed streaming generator return.
   // The value is set only when a task is completed once.
   optional uint64 num_streaming_generator_returns = 37;
-  // The size threshold in bytes where the streaming generator pauses until the caller
+  // The number of unconsumed objects where the streaming
+  // generator pauses until the caller
   // reads object ref stream.
   // -1 means there's no backpressure enabled.
   // TODO(sang): Maybe we should consolidate all streaming generator related config
