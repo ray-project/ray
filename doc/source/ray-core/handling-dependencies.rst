@@ -419,6 +419,13 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Non-existant variable example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}`` -> ``ENV_VAR_NOT_EXIST=":/home/admin/my_lib"``.
 
+- ``nsight`` (Union[str, Dict[str, str]]): Nsight profiler config which either (1) "default" value refering to the `default config <https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20>`_, (2) a dict representing Nsight profiler options and its' value.
+  More detailed setup and usage can be found :ref:`here <profiling-nsight-profiler>`.
+
+  - Example: ``"default"``
+
+  - Example: ``{"stop-on-exit": "true", "t": "cuda,cublas,cudnn", "ftrace": ""}``
+
 - ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
   The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
   The `run_options` list spec is `here <https://docs.docker.com/engine/reference/run/>`__.
