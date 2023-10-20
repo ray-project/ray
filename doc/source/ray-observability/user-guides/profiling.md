@@ -68,7 +68,7 @@ Here are the {ref}`steps to use PyTorch Profiler with Ray Train or Ray Data <per
 
 First, install the Nsight System CLI by following the [Nsight User Guide](https://docs.nvidia.com/nsight-systems/InstallationGuide/index.html). 
 
-Confirm Nsight is installed correctly:
+Confirm that you installed Nsight correctly:
 
 ```bash
 $ nsys --version
