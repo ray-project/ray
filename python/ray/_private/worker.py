@@ -2087,6 +2087,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 process_tqdm(line)
             else:
                 hide_tqdm()
+<<<<<<< HEAD
                 print(
                     "{}({}{}){} {}".format(
                         color_for(data, line),
@@ -2097,12 +2098,36 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     ),
                     file=print_file,
                 )
+=======
+                if ray_constants.DISABLE_COLOR_LOG:
+                    print(
+                        "({}{}) {}".format(
+                            prefix_for(data),
+                            pid,
+                            message_for(data, line),
+                        ),
+                        file=print_file,
+                    )
+                else:
+                    print(
+                        "{}{}({}{}){} {}".format(
+                            colorama.Style.DIM,
+                            color_for(data, line),
+                            prefix_for(data),
+                            pid,
+                            colorama.Style.RESET_ALL,
+                            message_for(data, line),
+                        ),
+                        file=print_file,
+                    )
+>>>>>>> eb3ccfbb8b ([#15812136]Support disable log color format.)
     else:
         for line in lines:
             if RAY_TQDM_MAGIC in line:
                 process_tqdm(line)
             else:
                 hide_tqdm()
+<<<<<<< HEAD
                 print(
                     "{}({}{}, ip={}){} {}".format(
                         color_for(data, line),
@@ -2114,6 +2139,31 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                     ),
                     file=print_file,
                 )
+=======
+                if ray_constants.DISABLE_COLOR_LOG:
+                    print(
+                        "({}{}, ip={}) {}".format(
+                            prefix_for(data),
+                            pid,
+                            data.get("ip"),
+                            message_for(data, line),
+                        ),
+                        file=print_file,
+                    )
+                else:
+                    print(
+                        "{}{}({}{}, ip={}){} {}".format(
+                            colorama.Style.DIM,
+                            color_for(data, line),
+                            prefix_for(data),
+                            pid,
+                            data.get("ip"),
+                            colorama.Style.RESET_ALL,
+                            message_for(data, line),
+                        ),
+                        file=print_file,
+                    )
+>>>>>>> eb3ccfbb8b ([#15812136]Support disable log color format.)
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
     restore_tqdm()
 
