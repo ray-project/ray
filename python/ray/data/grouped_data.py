@@ -198,8 +198,6 @@ class GroupedData:
             logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
-            self._dataset._epoch,
-            self._dataset._lazy,
             logical_plan,
         )
 

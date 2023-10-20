@@ -16,7 +16,6 @@ from typing import (
 
 import numpy as np
 
-from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import (
@@ -26,7 +25,6 @@ from ray.data.block import (
     DataBatch,
     _apply_strict_mode_batch_format,
 )
-from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
@@ -60,13 +58,10 @@ class _IterableFromIterator(Iterable[T]):
 
 @PublicAPI(stability="beta")
 class DataIterator(abc.ABC):
-    """An iterator for reading records from a :class:`~Dataset` or
-    :class:`~DatasetPipeline`.
+    """An iterator for reading records from a :class:`~Dataset`.
 
     For Datasets, each iteration call represents a complete read of all items in the
-    Dataset. For DatasetPipelines, each iteration call represents one pass (epoch)
-    over the base Dataset. Note that for DatasetPipelines, each pass iterates over
-    the original Dataset, instead of a window (if ``.window()`` was used).
+    Dataset.
 
     If using Ray Train, each trainer actor should get its own iterator by calling
     :meth:`ray.train.get_dataset_shard("train")
@@ -129,9 +124,7 @@ class DataIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DataContext.
+                the collate_fn. Defaults to 1.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -150,24 +143,14 @@ class DataIterator(abc.ABC):
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over record batches.
+            An iterable over record batches.
         """
 
-        context = DataContext.get_current()
-        if not context.use_streaming_executor:
-            # Always use legacy iter_batches for bulk executor.
-            use_legacy = True
-        else:
-            use_legacy = context.use_legacy_iter_batches
-
-        if prefetch_blocks > 0 and not use_legacy:
+        if prefetch_blocks > 0:
             raise DeprecationWarning(
                 "`prefetch_blocks` arg is deprecated in Ray 2.4. Use "
                 "the `prefetch_batches` arg instead to specify the amount of "
-                "prefetching in terms of batches instead of blocks. If you "
-                "would like to use the legacy `iter_batches` codepath, "
-                "you can enable it by setting `use_legacy_iter_batches` "
-                "to True in the DataContext."
+                "prefetching in terms of batches instead of blocks."
             )
 
         batch_format = _apply_strict_mode_batch_format(batch_format)
@@ -180,51 +163,21 @@ class DataIterator(abc.ABC):
             # needing to explicitly call `iter_batches()` multiple times.
             block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
 
-            if use_legacy:
-                # Legacy iter_batches does not use metadata.
-                def drop_metadata(block_iterator):
-                    for block_ref, metadata in block_iterator:
-                        yield block_ref
-
-                # Legacy iter_batches does not have a distinction between
-                # collate_fn and finalize_fn since batches are not prefetched.
-                def collate_and_finalize(batch):
-                    if _collate_fn is not None:
-                        batch = _collate_fn(batch)
-                    if _finalize_fn is not None:
-                        batch = _finalize_fn(batch)
-                    return batch
-
-                iterator = iter(
-                    batch_block_refs(
-                        drop_metadata(block_iterator),
-                        stats=stats,
-                        prefetch_blocks=prefetch_blocks,
-                        clear_block_after_read=blocks_owned_by_consumer,
-                        batch_size=batch_size,
-                        batch_format=batch_format,
-                        drop_last=drop_last,
-                        collate_fn=collate_and_finalize,
-                        shuffle_buffer_min_size=local_shuffle_buffer_size,
-                        shuffle_seed=local_shuffle_seed,
-                    )
+            iterator = iter(
+                iter_batches(
+                    block_iterator,
+                    stats=stats,
+                    clear_block_after_read=blocks_owned_by_consumer,
+                    batch_size=batch_size,
+                    batch_format=batch_format,
+                    drop_last=drop_last,
+                    collate_fn=_collate_fn,
+                    finalize_fn=_finalize_fn,
+                    shuffle_buffer_min_size=local_shuffle_buffer_size,
+                    shuffle_seed=local_shuffle_seed,
+                    prefetch_batches=prefetch_batches,
                 )
-            else:
-                iterator = iter(
-                    iter_batches(
-                        block_iterator,
-                        stats=stats,
-                        clear_block_after_read=blocks_owned_by_consumer,
-                        batch_size=batch_size,
-                        batch_format=batch_format,
-                        drop_last=drop_last,
-                        collate_fn=_collate_fn,
-                        finalize_fn=_finalize_fn,
-                        shuffle_buffer_min_size=local_shuffle_buffer_size,
-                        shuffle_seed=local_shuffle_seed,
-                        prefetch_batches=prefetch_batches,
-                    )
-                )
+            )
 
             for batch in iterator:
                 yield batch
@@ -254,16 +207,11 @@ class DataIterator(abc.ABC):
                 current block during the scan.
 
         Returns:
-            An iterator over rows of the dataset.
+            An iterable over rows of the dataset.
         """
         iter_batch_args = {"batch_size": None, "batch_format": None}
 
-        context = DataContext.get_current()
-        if context.use_legacy_iter_batches:
-            iter_batch_args["prefetch_blocks"] = prefetch_blocks
-        else:
-            # Since batch_size is None, 1 block is exactly 1 batch.
-            iter_batch_args["prefetch_batches"] = prefetch_blocks
+        iter_batch_args["prefetch_batches"] = prefetch_blocks
 
         batch_iterable = self.iter_batches(**iter_batch_args)
 
@@ -301,7 +249,7 @@ class DataIterator(abc.ABC):
     ) -> Iterable["TorchBatchType"]:
         """Return a batched iterable of Torch Tensors over the dataset.
 
-        This iterator yields a dictionary of column-tensors. If you are looking for
+        This iterable yields a dictionary of column-tensors. If you are looking for
         more flexibility in the tensor conversion (e.g. casting dtypes) or the batch
         format, try using :meth:`~ray.data.iterator.DataIterator.iter_batches` directly.
 
@@ -340,9 +288,7 @@ class DataIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DataContext.
+                the collate_fn. Defaults to 1.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -378,7 +324,7 @@ class DataIterator(abc.ABC):
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            An iterator over Torch Tensor batches.
+            An iterable over Torch Tensor batches.
         """
 
         from ray.air._internal.torch_utils import (
@@ -449,7 +395,7 @@ class DataIterator(abc.ABC):
     ) -> Iterable["TensorFlowTensorBatchType"]:
         """Return a batched iterable of TensorFlow Tensors over the dataset.
 
-        This iterator will yield single-tensor batches of the underlying dataset
+        This iterable will yield single-tensor batches of the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
         column-tensors.
 
@@ -474,9 +420,7 @@ class DataIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DataContext.
+                the collate_fn. Defaults to 1.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -601,9 +545,7 @@ class DataIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DataContext.
+                the collate_fn. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
@@ -794,9 +736,7 @@ class DataIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DataContext.
+                the collate_fn. Defaults to 1.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If

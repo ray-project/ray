@@ -1,14 +1,15 @@
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import File, Request
-from pydantic import BaseModel, Field
 import numpy as np
 import starlette.requests
+from fastapi import File, Request
 
-from ray.util.annotations import PublicAPI
+from ray._private.pydantic_compat import BaseModel, Field
+from ray.serve._private.constants import DAG_DEPRECATION_MESSAGE
+from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.utils import require_packages
-
+from ray.util.annotations import Deprecated
 
 _1DArray = List[float]
 _2DArray = List[List[float]]
@@ -41,7 +42,7 @@ class NdArray(BaseModel):
     )
 
 
-@PublicAPI(stability="beta")
+@Deprecated(DAG_DEPRECATION_MESSAGE)
 def json_to_ndarray(payload: NdArray) -> np.ndarray:
     """Accepts an NdArray JSON from an HTTP body and converts it to a numpy array.
 
@@ -55,28 +56,34 @@ def json_to_ndarray(payload: NdArray) -> np.ndarray:
     return arr
 
 
-@PublicAPI(stability="beta")
+@Deprecated(DAG_DEPRECATION_MESSAGE)
 def json_to_multi_ndarray(payload: Dict[str, NdArray]) -> Dict[str, np.ndarray]:
     """Accepts a JSON of shape {str_key: NdArray} and converts it to dict of arrays."""
     return {key: json_to_ndarray(arr_obj) for key, arr_obj in payload.items()}
 
 
-@PublicAPI(stability="beta")
-def starlette_request(
+@Deprecated(DAG_DEPRECATION_MESSAGE)
+async def starlette_request(
     request: starlette.requests.Request,
 ) -> starlette.requests.Request:
-    """Returns the raw request object."""
+    """Returns a buffered (serializable) version of the Starlette Request."""
+
+    async def empty_send():
+        pass
+
+    request._send = empty_send
+    request._receive = make_buffered_asgi_receive(await request.body())
     return request
 
 
-@PublicAPI(stability="beta")
+@Deprecated(DAG_DEPRECATION_MESSAGE)
 async def json_request(request: starlette.requests.Request) -> Dict[str, Any]:
     """Return the JSON object from request body."""
     return await request.json()
 
 
 @require_packages(["PIL"])
-@PublicAPI(stability="beta")
+@Deprecated(DAG_DEPRECATION_MESSAGE)
 def image_to_ndarray(img: bytes = File(...)) -> np.ndarray:
     """Accepts a PIL-readable file from an HTTP form and convert it to a numpy array."""
     from PIL import Image
@@ -86,7 +93,7 @@ def image_to_ndarray(img: bytes = File(...)) -> np.ndarray:
 
 
 @require_packages(["pandas"])
-@PublicAPI(stability="beta")
+@Deprecated(DAG_DEPRECATION_MESSAGE)
 async def pandas_read_json(raw_request: Request):
     """Accept JSON body and converts into pandas DataFrame.
 

@@ -1,18 +1,17 @@
 import logging
+import warnings
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
-import warnings
 
-import pydantic
-from pydantic import (
+from ray._private.pydantic_compat import (
     BaseModel,
     NonNegativeFloat,
-    PositiveFloat,
     NonNegativeInt,
+    PositiveFloat,
     PositiveInt,
     validator,
 )
-
+from ray._private.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -20,7 +19,6 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
-from ray._private.utils import import_attr
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -28,6 +26,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
+    """Config for the Serve Autoscaler."""
+
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
 
@@ -104,7 +104,6 @@ class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
     EveryNode = "EveryNode"
-    FixedNumber = "FixedNumber"
 
 
 @PublicAPI(stability="stable")
@@ -139,7 +138,7 @@ class ProxyLocation(str, Enum):
 
 
 @PublicAPI(stability="stable")
-class HTTPOptions(pydantic.BaseModel):
+class HTTPOptions(BaseModel):
     """HTTP options for the proxies. Supported fields:
 
     - host: Host that the proxies listens for HTTP on. Defaults to
@@ -173,8 +172,6 @@ class HTTPOptions(pydantic.BaseModel):
     num_cpus: int = 0
     root_url: str = ""
     root_path: str = ""
-    fixed_number_replicas: Optional[int] = None
-    fixed_number_selection_seed: int = 0
     request_timeout_s: Optional[float] = None
     keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S
 
@@ -182,12 +179,6 @@ class HTTPOptions(pydantic.BaseModel):
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
-
-        if v == DeploymentMode.FixedNumber:
-            warnings.warn(
-                "`DeploymentMode.FixedNumber` is deprecated and will be removed in a "
-                "future version."
-            )
 
         return v
 
@@ -208,15 +199,6 @@ class HTTPOptions(pydantic.BaseModel):
             warnings.warn(
                 "Passing `num_cpus` to HTTPOptions is deprecated and will be "
                 "removed in a future version."
-            )
-        return v
-
-    @validator("fixed_number_replicas", always=True)
-    def fixed_number_replicas_should_exist(cls, v, values):
-        if values.get("location") == DeploymentMode.FixedNumber and v is None:
-            raise ValueError(
-                "When location='FixedNumber', you must specify "
-                "the `fixed_number_replicas` parameter."
             )
         return v
 
@@ -258,15 +240,17 @@ class gRPCOptions(BaseModel):
                 if callable(imported_func):
                     callables.append(imported_func)
                 else:
-                    logger.warning(
+                    message = (
                         f"{func} is not a callable function! Please make sure "
                         "the function is imported correctly."
                     )
-            except ModuleNotFoundError:
-                logger.warning(
+                    raise ValueError(message)
+            except ModuleNotFoundError as e:
+                message = (
                     f"{func} can't be imported! Please make sure there are no typo "
                     "in those functions. Or you might want to rebuild service "
                     "definitions if .proto file is changed."
                 )
+                raise ModuleNotFoundError(message) from e
 
         return callables

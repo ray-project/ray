@@ -3,7 +3,7 @@
 Ray Train Examples
 ==================
 
-.. Example .rst files should be organized in the same manner as the
+.. Organize example .rst files in the same manner as the
    .py files in ray/python/ray/train/examples.
 
 Below are examples for using Ray Train with a variety of frameworks and use cases.
@@ -18,19 +18,19 @@ Beginner
   * - Framework
     - Example
   * - PyTorch
-    - :ref:`Training an Fashion MNIST Image Classifier with PyTorch <torch_fashion_mnist_ex>`
+    - :ref:`Train a Fashion MNIST Image Classifier with PyTorch <torch_fashion_mnist_ex>`
   * - Lightning
-    - :ref:`Training an MNIST Image Classifier with Lightning <lightning_mnist_example>`
+    - :ref:`Train an MNIST Image Classifier with Lightning <lightning_mnist_example>`
   * - Transformers
-    - :ref:`Fine-tuning a Text Classifier on Yelp Reviews Dataset with HF Transformers <transformers_torch_trainer_basic_example>`
+    - :ref:`Fine-tune a Text Classifier on the Yelp Reviews Dataset with Hugging Face Transformers <transformers_torch_trainer_basic_example>`
   * - Accelerate
-    - :ref:`Distributed Data Parallel Training with HF Accelerate <accelerate_example>`
+    - :ref:`Distributed Data Parallel Training with Hugging Face Accelerate <accelerate_example>`
   * - DeepSpeed
-    - :ref:`Distributed Training with DeepSpeed ZeRO-3 <deepspeed_example>`
+    - :ref:`Train with DeepSpeed ZeRO-3 <deepspeed_example>`
   * - TensorFlow
-    - :ref:`TensorFlow MNIST Training Example <tensorflow_mnist_example>`
+    - :ref:`Train an MNIST Image Classifier with TensorFlow <tensorflow_mnist_example>`
   * - Horovod
-    - :ref:`End-to-end Horovod Training Example <horovod_example>`
+    - :ref:`Train with Horovod and PyTorch <horovod_example>`
 
 Intermediate
 ------------
@@ -42,11 +42,11 @@ Intermediate
   * - Framework
     - Example
   * - PyTorch
-    - `DreamBooth fine-tuning of Stable Diffusion with Ray Train <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning>`_
+    - :ref:`Fine-tune of Stable Diffusion with DreamBooth and Ray Train <torch_finetune_dreambooth_ex>`
   * - Lightning
-    - :ref:`Model Training with PyTorch Lightning and Ray Data <lightning_advanced_example>`
-  * - Accelerate
-    - :ref:`Fine-tuning a Text Classifier on GLUE Benchmark with HF Accelerate. <train_transformers_accelerate_example>`
+    - :ref:`Train with PyTorch Lightning and Ray Data <lightning_advanced_example>`
+  * - Transformers
+    - :ref:`Fine-tune a Text Classifier on GLUE Benchmark with Hugging Face Accelerate <train_transformers_glue_example>`
 
 
 Advanced
@@ -59,10 +59,10 @@ Advanced
   * - Framework
     - Example
   * - Accelerate, DeepSpeed
-    - `Fine-tuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
+    - `Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
   * - Transformers, DeepSpeed
-    - :ref:`Fine-tuning GPT-J-6B with Ray Train and DeepSpeed <gptj_deepspeed_finetune>`
+    - :ref:`Fine-tune GPT-J-6B with Ray Train and DeepSpeed <gptj_deepspeed_finetune>`
   * - Lightning, DeepSpeed
-    - :ref:`Fine-tuning vicuna-13b with PyTorch Lightning and DeepSpeed <vicuna_lightning_deepspeed_finetuning>`
+    - :ref:`Fine-tune vicuna-13b with PyTorch Lightning and DeepSpeed <vicuna_lightning_deepspeed_finetuning>`
   * - Lightning
-    - :ref:`Fine-tuning dolly-v2-7b with PyTorch Lightning and FSDP <dolly_lightning_fsdp_finetuning>`
+    - :ref:`Fine-tune dolly-v2-7b with PyTorch Lightning and FSDP <dolly_lightning_fsdp_finetuning>`

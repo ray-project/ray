@@ -6,11 +6,12 @@ https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 Fine-tune a BERT model with Hugging Face Accelerate and Ray Train and Ray Data
 """
 
+from tempfile import TemporaryDirectory
+
 import evaluate
 import torch
 from accelerate import Accelerator
 from datasets import load_dataset
-from tempfile import TemporaryDirectory
 from torch.optim import AdamW
 from transformers import (
     AutoModelForSequenceClassification,
@@ -19,8 +20,9 @@ from transformers import (
     set_seed,
 )
 
+import ray
 import ray.train
-from ray.train import DataConfig, ScalingConfig, Checkpoint
+from ray.train import Checkpoint, DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 

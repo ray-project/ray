@@ -205,7 +205,7 @@ class MyLightningModule(pl.LightningModule):
         self.log("mean_accuracy", mean_acc, sync_dist=True)
 
 
-def train_func_per_worker():
+def train_func():
     ...
     model = MyLightningModule(...)
     datamodule = MyLightningDataModule(...)
@@ -218,7 +218,7 @@ def train_func_per_worker():
 
 
 ray_trainer = TorchTrainer(
-    train_func_per_worker,
+    train_func,
     scaling_config=train.ScalingConfig(num_workers=2),
     run_config=train.RunConfig(
         checkpoint_config=train.CheckpointConfig(
@@ -279,7 +279,7 @@ from ray.train.torch import TorchTrainer
 from ray.train.lightning import RayTrainReportCallback
 
 
-def train_func_per_worker():
+def train_func():
     model = MyLightningModule(...)
     datamodule = MyLightningDataModule(...)
     trainer = pl.Trainer(..., callbacks=[RayTrainReportCallback()])
@@ -299,7 +299,7 @@ checkpoint = Checkpoint("s3://bucket/ckpt_dir")
 
 # Resume training from checkpoint file
 ray_trainer = TorchTrainer(
-    train_func_per_worker,
+    train_func,
     scaling_config=train.ScalingConfig(num_workers=2),
     resume_from_checkpoint=checkpoint,
 )
@@ -427,3 +427,17 @@ with checkpoint.as_directory() as checkpoint_dir:
 checkpoint_dir = checkpoint.to_directory()
 assert Path(checkpoint_dir).joinpath("model.pt").exists()
 # __inspect_checkpoint_example_end__
+
+# __inspect_transformers_checkpoint_example_start__
+# After training finished
+checkpoint = result.checkpoint
+with checkpoint.as_directory() as checkpoint_dir:
+    hf_checkpoint_path = f"{checkpoint_dir}/checkpoint/"
+# __inspect_transformers_checkpoint_example_end__
+
+# __inspect_lightning_checkpoint_example_start__
+# After training finished
+checkpoint = result.checkpoint
+with checkpoint.as_directory() as checkpoint_dir:
+    lightning_checkpoint_path = f"{checkpoint_dir}/checkpoint.ckpt"
+# __inspect_lightning_checkpoint_example_end__
