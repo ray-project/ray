@@ -264,12 +264,17 @@ docker_push "${RAY_IMG}"
 docker_push "${ANYSCALE_IMG}"
 
 if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
-    COMMIT_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
+    COMMIT_TAG_PREFIX="${SHORT_COMMIT}"
+    if [[ "${RAY_VERSION}" != "3.0.0.dev0" ]]; then
+        COMMIT_TAG_PREFIX="${RAY_VERSION}.${COMMIT_TAG_PREFIX}"
+    fi
+
+    COMMIT_TAG="${COMMIT_TAG_PREFIX}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
     docker_push_as "${RAY_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}"
     docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}-as"
     
     if [[ "${IMG_TYPE_CODE}" == "${ML_CUDA_VERSION}" ]]; then
-        COMMIT_GPU_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-gpu${IMG_SUFFIX}"
+        COMMIT_GPU_TAG="${COMMIT_TAG_PREFIX}-${PY_VERSION_CODE}-gpu${IMG_SUFFIX}"
         docker_push_as "${RAY_IMG}" "${RUNTIME_REPO}:${COMMIT_GPU_TAG}"
         docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_GPU_TAG}-as"
     fi
