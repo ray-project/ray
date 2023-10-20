@@ -1,29 +1,51 @@
 import atexit
 import ssl
 
-from pyVim.connect import Disconnect, SmartConnect
+from pyVim.connect import Disconnect, SmartStubAdapter, VimSessionOrientedStub
+from pyVmomi import vim
 
 from ray.autoscaler._private.vsphere.utils import Constants
 
 
 class PyvmomiSdkProvider:
-    def __init__(self, server, user, password, session_type: Constants.SessionType):
+    def __init__(
+        self,
+        server,
+        user,
+        password,
+        session_type: Constants.SessionType,
+        port: int = 443,
+    ):
+        # Instance variables
         self.server = server
         self.user = user
         self.password = password
         self.session_type = session_type
+        self.port = port
 
+        # Instance parameters
         if self.session_type == Constants.SessionType.UNVERIFIED:
             context_obj = ssl._create_unverified_context()
+        self.timeout = 0
 
-        smart_connect_obj = SmartConnect(
+        # Connect using a session oriented connection
+        # Ref. https://github.com/vmware/pyvmomi/issues/347
+        self.pyvmomi_sdk_client = None
+        credentials = VimSessionOrientedStub.makeUserLoginMethod(user, password)
+        smart_stub = SmartStubAdapter(
             host=server,
-            user=user,
-            pwd=password,
+            port=port,
             sslContext=context_obj,
+            connectionPoolTimeout=self.timeout,
         )
-        atexit.register(Disconnect, smart_connect_obj)
-        self.pyvmomi_sdk_client = smart_connect_obj.content
+        self.session_stub = VimSessionOrientedStub(smart_stub, credentials)
+        self.pyvmomi_sdk_client = vim.ServiceInstance(
+            "ServiceInstance", self.session_stub
+        )
+
+        if not self.pyvmomi_sdk_client:
+            raise ValueError("Could not connect to the specified host")
+        atexit.register(Disconnect, self.pyvmomi_sdk_client)
 
     def get_pyvmomi_obj_by_moid(self, vimtype, moid):
         """
@@ -37,22 +59,18 @@ class PyvmomiSdkProvider:
         if self.pyvmomi_sdk_client is None:
             raise ValueError("Must init pyvmomi_sdk_client first.")
 
-        container = self.pyvmomi_sdk_client.viewManager.CreateContainerView(
-            self.pyvmomi_sdk_client.rootFolder, vimtype, True
+        if not moid:
+            raise ValueError("Invalid argument for moid")
+
+        container = self.pyvmomi_sdk_client.content.viewManager.CreateContainerView(
+            self.pyvmomi_sdk_client.content.rootFolder, vimtype, True
         )
 
         for c in container.view:
-            if moid:
-                if moid in str(c):
-                    obj = c
-                    break
-            else:
+            if moid in str(c):
                 obj = c
                 break
-        if not obj:
-            raise RuntimeError(
-                f"Unexpected: cannot find vSphere object {vimtype} with moid: {moid}"
-            )
+
         return obj
 
     def get_pyvmomi_obj_by_name(self, vimtype, name):
@@ -67,20 +85,16 @@ class PyvmomiSdkProvider:
         if self.pyvmomi_sdk_client is None:
             raise ValueError("Must init pyvmomi_sdk_client first.")
 
-        container = self.pyvmomi_sdk_client.viewManager.CreateContainerView(
-            self.pyvmomi_sdk_client.rootFolder, vimtype, True
+        if not name:
+            raise ValueError("Invalid argument for name")
+
+        container = self.pyvmomi_sdk_client.content.viewManager.CreateContainerView(
+            self.pyvmomi_sdk_client.content.rootFolder, vimtype, True
         )
 
         for c in container.view:
-            if name:
-                if c.name == name:
-                    obj = c
-                    break
-            else:
+            if c.name == name:
                 obj = c
                 break
-        if not obj:
-            raise RuntimeError(
-                f"Unexpected: cannot find vSphere object {vimtype} with name: {name}"
-            )
+
         return obj
