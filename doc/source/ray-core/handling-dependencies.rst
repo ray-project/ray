@@ -419,7 +419,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Non-existant variable example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}`` -> ``ENV_VAR_NOT_EXIST=":/home/admin/my_lib"``.
 
-- ``nsight`` (Union[str, Dict[str, str]]): Nsight profiler config which either (1) "default" value refering to the `default config <https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20>`_, (2) a dict representing Nsight profiler options and its' value.
+- ``nsight`` (Union[str, Dict[str, str]]): specifies the config for the Nsight profiler. The value is either (1) "default", which refers to the `default config <https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20>`_, or (2) a dict of Nsight profiler options and their values.
   More detailed setup and usage can be found :ref:`here <profiling-nsight-profiler>`.
 
   - Example: ``"default"``
