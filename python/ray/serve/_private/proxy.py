@@ -48,6 +48,7 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
+    HandlerMetadata,
     ProxyRequest,
     ResponseGenerator,
     ResponseHandlerInfo,
@@ -342,9 +343,7 @@ class GenericProxy(ABC):
             if self._is_draining():
                 return ResponseHandlerInfo(
                     response_generator=self.draining_response(proxy_request),
-                    application_name="",
-                    deployment_name="",
-                    route=proxy_request.route_path,
+                    metadata=HandlerMetadata(),
                     should_record_access_log=False,
                     should_record_request_metrics=False,
                     should_increment_ongoing_requests=False,
@@ -352,9 +351,11 @@ class GenericProxy(ABC):
             else:
                 return ResponseHandlerInfo(
                     response_generator=self.routes_response(proxy_request),
-                    application_name="",
-                    deployment_name="",
-                    route=proxy_request.route_path,
+                    metadata=HandlerMetadata(
+                        application_name="",
+                        deployment_name="",
+                        route=proxy_request.route_path,
+                    ),
                     should_record_access_log=False,
                     # TODO(edoakes): should we be recording metrics for routes?
                     should_record_request_metrics=True,
@@ -364,9 +365,7 @@ class GenericProxy(ABC):
             if self._is_draining():
                 return ResponseHandlerInfo(
                     response_generator=self.draining_response(proxy_request),
-                    application_name="",
-                    deployment_name="",
-                    route=proxy_request.route_path,
+                    metadata=HandlerMetadata(),
                     should_record_access_log=False,
                     should_record_request_metrics=False,
                     should_increment_ongoing_requests=False,
@@ -374,9 +373,11 @@ class GenericProxy(ABC):
             else:
                 return ResponseHandlerInfo(
                     response_generator=self.health_response(proxy_request),
-                    application_name="",
-                    deployment_name="",
-                    route=proxy_request.route_path,
+                    metadata=HandlerMetadata(
+                        application_name="",
+                        deployment_name="",
+                        route=proxy_request.route_path,
+                    ),
                     should_record_access_log=False,
                     # TODO(edoakes): should we be recording metrics for health check?
                     should_record_request_metrics=True,
@@ -394,9 +395,11 @@ class GenericProxy(ABC):
             if matched_route is None:
                 return ResponseHandlerInfo(
                     response_generator=self.not_found(proxy_request),
-                    application_name="",
-                    deployment_name="",
-                    route=proxy_request.route_path,
+                    metadata=HandlerMetadata(
+                        application_name="",
+                        deployment_name="",
+                        route=proxy_request.route_path,
+                    ),
                     should_record_access_log=True,
                     should_record_request_metrics=True,
                     should_increment_ongoing_requests=False,
@@ -428,9 +431,11 @@ class GenericProxy(ABC):
 
                 return ResponseHandlerInfo(
                     response_generator=response_generator,
-                    application_name=handle.deployment_id.app,
-                    deployment_name=handle.deployment_id.name,
-                    route=route_path,
+                    metadata=HandlerMetadata(
+                        application_name=handle.deployment_id.app,
+                        deployment_name=handle.deployment_id.name,
+                        route=route_path,
+                    ),
                     should_record_access_log=True,
                     should_record_request_metrics=True,
                     should_increment_ongoing_requests=True,
@@ -481,9 +486,9 @@ class GenericProxy(ABC):
         if response_handler_info.should_record_request_metrics:
             self.request_counter.inc(
                 tags={
-                    "route": response_handler_info.route,
+                    "route": response_handler_info.metadata.route,
                     "method": proxy_request.method,
-                    "application": response_handler_info.application_name,
+                    "application": response_handler_info.metadata.application_name,
                     "status_code": str(status.code),
                 }
             )
@@ -492,27 +497,27 @@ class GenericProxy(ABC):
                 latency_ms,
                 tags={
                     "method": proxy_request.method,
-                    "route": response_handler_info.route,
-                    "application": response_handler_info.application_name,
+                    "route": response_handler_info.metadata.route,
+                    "application": response_handler_info.metadata.application_name,
                     "status_code": str(status.code),
                 },
             )
             if status.is_error:
                 self.request_error_counter.inc(
                     tags={
-                        "route": response_handler_info.route,
+                        "route": response_handler_info.metadata.route,
                         "error_code": str(status.code),
                         "method": proxy_request.method,
-                        "application": response_handler_info.application_name,
+                        "application": response_handler_info.metadata.application_name,
                     }
                 )
                 self.deployment_request_error_counter.inc(
                     tags={
-                        "deployment": response_handler_info.deployment_name,
+                        "deployment": response_handler_info.metadata.deployment_name,
                         "error_code": str(status.code),
                         "method": proxy_request.method,
-                        "route": response_handler_info.route,
-                        "application": response_handler_info.application_name,
+                        "route": response_handler_info.metadata.route,
+                        "application": response_handler_info.metadata.application_name,
                     }
                 )
 

@@ -170,7 +170,7 @@ class gRPCProxyRequest(ProxyRequest):
 
 @dataclass(frozen=True)
 class ResponseStatus:
-    code: Any  # Must be convertible to a string.
+    code: Union[str, grpc.StatusCode]  # Must be convertible to a string.
     is_error: bool = False
     message: str = ""
 
@@ -180,11 +180,16 @@ ResponseGenerator = AsyncIterator[Union[Any, ResponseStatus]]
 
 
 @dataclass(frozen=True)
+class HandlerMetadata:
+    application_name: str = ""
+    deployment_name: str = ""
+    route: str = ""
+
+
+@dataclass(frozen=True)
 class ResponseHandlerInfo:
     response_generator: ResponseGenerator
-    application_name: str
-    deployment_name: str
-    route: str
+    metadata: HandlerMetadata
     should_record_access_log: bool
     should_record_request_metrics: bool
     should_increment_ongoing_requests: bool
