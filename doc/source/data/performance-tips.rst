@@ -193,7 +193,7 @@ The metrics recorded are:
 
 * Bytes spilled by objects from object store to disk
 * Bytes of objects allocated in object store
-* Bytes of objecst freed in object store
+* Bytes of objects freed in object store
 * Current total bytes of objects in object store
 * Logical CPUs allocated to dataset operators
 * Logical GPUs allocated to dataset operators
