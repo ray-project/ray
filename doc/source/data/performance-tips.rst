@@ -187,7 +187,7 @@ To enable deterministic execution, set the preceding to True. This setting may d
 Monitoring your application
 ---------------------------
 
-View the Ray Data dashboard located in the Metrics tab of the Ray Dashboard to monitor your application and troubleshoot issues. Ray Data emits Prometheus metrics in real-time while a Dataset is executing, and the Ray Data dashboard displays these metrics grouped by Dataset. Datasets can also be assigned a name, which prefixes the dataset id for a more identifiable label.
+View the Ray Data dashboard located in the Metrics tab of the Ray Dashboard to monitor your application and troubleshoot issues. Ray Data emits Prometheus metrics in real-time while a Dataset is executing, and the Ray Data dashboard displays these metrics grouped by Dataset. Datasets can also be assigned a name using :meth:`~ray.data.Dataset._set_name`, which prefixes the dataset id for a more identifiable label.
 
 The metrics recorded are:
 
