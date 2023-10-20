@@ -25,8 +25,8 @@ def test_run_tests_in_docker() -> None:
     def _mock_popen(input: List[str]) -> None:
         input_str = " ".join(input)
         assert (
-            "bazel test --config=ci $(./ci/run/bazel_export_options) --config=ci-debug "
-            "--test_env v=k --test_arg flag t1 t2" in input_str
+            "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
+            "--config=ci-debug --test_env v=k --test_arg flag t1 t2" in input_str
         )
 
     with mock.patch("subprocess.Popen", side_effect=_mock_popen), mock.patch(
