@@ -100,7 +100,7 @@ ray_actor = RayActor.remote()
 ray.get(ray_actor.run.remote())
 ```
 
-The `"default"` config can be found in [nsight.py](https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20).
+You can find the `"default"` config in [nsight.py](https://github.com/ray-project/ray/blob/master/python/ray/_private/runtime_env/nsight.py#L20).
 
 #### Custom options
 
