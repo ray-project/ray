@@ -99,7 +99,7 @@ py_test(
 
 py_test(
     name = "test_auto_parallelism",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_auto_parallelism.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -122,9 +122,9 @@ py_test(
 )
 
 py_test(
-    name = "test_bulk_executor",
+    name = "test_block_sizing",
     size = "small",
-    srcs = ["tests/test_bulk_executor.py"],
+    srcs = ["tests/test_block_sizing.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -486,6 +486,14 @@ py_test(
     name = "test_webdataset",
     size = "medium",
     srcs = ["tests/test_webdataset.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_backpressure_policies",
+    size = "small",
+    srcs = ["tests/test_backpressure_policies.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
