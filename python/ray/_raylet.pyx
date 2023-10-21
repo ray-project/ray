@@ -3935,7 +3935,7 @@ cdef class CoreWorker:
                                          {},  # method decorators
                                          {},  # method signatures
                                          {},  # method num_returns
-                                         method_meta.generator_backpressure_num_objects, # noqa
+                                         {},  # generator_backpressure_num_objects
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)

@@ -1084,7 +1084,8 @@ class ActorHandle:
         _ray_method_num_returns: The default number of return values for
             each method.
         _ray_method_generator_backpressure_num_objects: Generator-only
-            config. The backpressure size in bytes for the generator.
+            config. The max number of objects to generate before it
+            starts pausing a generator.
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
@@ -1100,9 +1101,9 @@ class ActorHandle:
         actor_id,
         method_decorators,
         method_signatures,
-        method_num_returns,
-        method_generator_backpressure_num_objects,
-        actor_method_cpus,
+        method_num_returns: Dict[str, int],
+        method_generator_backpressure_num_objects: Dict[str, int],
+        actor_method_cpus: int,
         actor_creation_function_descriptor,
         session_and_job,
         original_handle=False,
