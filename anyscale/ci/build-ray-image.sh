@@ -135,7 +135,7 @@ if [[ "${DATAPLANE_TGZ_GOT}" != "${DATAPLANE_TGZ_WANT}" ]]; then
     exit 1
 fi
 
-BASE_IMG="${RAYCI_WORK_REPO}:${IMAGE_PREFIX}-ray-py${PY_VERSION}-${IMG_TYPE}-base"
+BASE_IMG="${RAYCI_WORK_REPO}:${IMAGE_PREFIX}-${BASE_TYPE}-py${PY_VERSION}-${IMG_TYPE}-base"
 
 aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin "${RUNTIME_ECR}"
 
