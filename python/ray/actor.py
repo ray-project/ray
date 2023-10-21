@@ -1226,6 +1226,7 @@ class ActorHandle:
         if generator_backpressure_num_objects is None:
             generator_backpressure_num_objects = -1
 
+        print("=== 0", generator_backpressure_num_objects)
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
             self._ray_actor_id,
@@ -1280,7 +1281,7 @@ class ActorHandle:
             ray_constants.
             # Currently, we use default num returns
             DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,
-            self._ray_method_generator_backpressure_num_objects.get(item, 0),
+            self._ray_method_generator_backpressure_num_objects.get(item, -1),
             # Currently, cross-lang actor method not support decorator
             decorator=None,
         )
