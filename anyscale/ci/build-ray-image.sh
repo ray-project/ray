@@ -38,7 +38,7 @@ if [[ "${BASE_TYPE}" == "ray" ]]; then
 elif [[ "${BASE_TYPE}" == "ray-ml" ]]; then
     RUNTIME_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ml"
 else
-    echo "Unknown base type: ${BASE_TYPE}" > /dev/stderr
+    echo "Unknown base type: ${BASE_TYPE}" >/dev/stderr
     exit 1
 fi
 
@@ -114,11 +114,6 @@ mkdir -p "${BUILD_TMP}/oss-whl"
 mkdir -p "${BUILD_TMP}/runtime-whl"
 
 FULL_COMMIT="$(git rev-parse HEAD)"
-SHORT_COMMIT="${FULL_COMMIT:0:6}"  # Use 6 chars to be consistent with Ray upstream
-# During branch cut, do not modify ray version in this script
-if [[ ! "${RAY_VERSION:-}" =~ dev ]]; then
-    SHORT_COMMIT="${RAY_VERSION}.${SHORT_COMMIT}"
-fi
 
 
 ####
@@ -264,17 +259,18 @@ docker_push "${RAY_IMG}"
 docker_push "${ANYSCALE_IMG}"
 
 if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
-    COMMIT_TAG_PREFIX="${SHORT_COMMIT}"
-    if [[ "${RAY_VERSION}" != "3.0.0.dev0" ]]; then
-        COMMIT_TAG_PREFIX="${RAY_VERSION}.${COMMIT_TAG_PREFIX}"
+    SHORT_COMMIT="${FULL_COMMIT:0:6}"  # Use 6 chars to be consistent with Ray upstream
+    # During branch cut, do not modify ray version in this script
+    if [[ ! "${RAY_VERSION:-}" =~ dev ]]; then
+        SHORT_COMMIT="${RAY_VERSION}.${SHORT_COMMIT}"
     fi
 
-    COMMIT_TAG="${COMMIT_TAG_PREFIX}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
+    COMMIT_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
     docker_push_as "${RAY_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}"
     docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}-as"
     
     if [[ "${IMG_TYPE_CODE}" == "${ML_CUDA_VERSION}" ]]; then
-        COMMIT_GPU_TAG="${COMMIT_TAG_PREFIX}-${PY_VERSION_CODE}-gpu${IMG_SUFFIX}"
+        COMMIT_GPU_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-gpu${IMG_SUFFIX}"
         docker_push_as "${RAY_IMG}" "${RUNTIME_REPO}:${COMMIT_GPU_TAG}"
         docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_GPU_TAG}-as"
     fi
