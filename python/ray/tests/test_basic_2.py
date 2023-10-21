@@ -79,7 +79,7 @@ def test_defining_remote_functions(shutdown_only):
         (1, 2, "a"),
         [0.0, 1.0, 1 << 62],
         1 << 60,
-        {"a": bytearray(3)},
+        {"a": bytes(3)},
     ]
 
     @ray.remote
@@ -185,7 +185,7 @@ def test_call_matrix(shutdown_only):
             return 0
 
         def large_value(self):
-            return bytearray(80 * 1024 * 1024)
+            return bytes(80 * 1024 * 1024)
 
         def echo(self, x):
             if isinstance(x, list):
@@ -198,7 +198,7 @@ def test_call_matrix(shutdown_only):
 
     @ray.remote
     def large_value():
-        return bytearray(80 * 1024 * 1024)
+        return bytes(80 * 1024 * 1024)
 
     @ray.remote
     def echo(x):
@@ -234,7 +234,7 @@ def test_call_matrix(shutdown_only):
         else:
             x = ray.get(echo.remote(x_id))
         if is_large:
-            assert isinstance(x, bytearray)
+            assert isinstance(x, bytes)
         else:
             assert isinstance(x, int)
 
@@ -345,10 +345,10 @@ def test_system_config_when_connecting(ray_start_cluster):
 
     # Check that the config was picked up (object pinning is disabled).
     ray.init(address=cluster.address)
-    obj_ref = ray.put(bytearray(40 * 1024 * 1024))
+    obj_ref = ray.put(bytes(40 * 1024 * 1024))
 
     for _ in range(5):
-        put_ref = ray.put(bytearray(40 * 1024 * 1024))
+        put_ref = ray.put(bytes(40 * 1024 * 1024))
     del put_ref
 
     ray.get(obj_ref)
@@ -428,7 +428,7 @@ def test_call_actors_indirect_through_tasks(ray_start_regular_shared):
 def test_inline_arg_memory_corruption(ray_start_regular_shared):
     @ray.remote
     def f():
-        return bytearray(1000)
+        return bytes(1000)
 
     @ray.remote
     class Actor:
@@ -471,7 +471,7 @@ def test_actor_large_objects(ray_start_regular_shared):
 
         def f(self):
             time.sleep(1)
-            return bytearray(80000000)
+            return bytes(80000000)
 
     a = Actor.remote()
     obj_ref = a.f.remote()
@@ -479,7 +479,7 @@ def test_actor_large_objects(ray_start_regular_shared):
     done, _ = ray.wait([obj_ref])
     assert len(done) == 1
     assert ray._private.worker.global_worker.core_worker.object_exists(obj_ref)
-    assert isinstance(ray.get(obj_ref), bytearray)
+    assert isinstance(ray.get(obj_ref), bytes)
 
 
 def test_actor_pass_by_ref(ray_start_regular_shared):
