@@ -282,10 +282,10 @@ class Algorithm(Trainable, AlgorithmBase):
                 or an AIR Checkpoint instance to restore from.
             config: The config to use for recovering the Algorithm. Note that `config`
                 must be provided, if `checkpoint` is in msgpack format. However, `config`
-                might be slightly altered (wrt to the original config used to create
-                `checkpoint`), depending on the user's needs. For example example a user
-                might want to reinstane the same Algorithm, but only with 1 remote
-                workers instead of 32.
+                might be slightly altered (wrt. to the original config used to create
+                `checkpoint`), depending on the user's needs. For example, a user
+                might want to reinstate the same Algorithm, but only with a single
+                remote workers instead of 32.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
@@ -325,8 +325,9 @@ class Algorithm(Trainable, AlgorithmBase):
             if config is None:
                 raise ValueError(
                     "When using `Algorithm.from_checkpoint()` with a msgpack checkpoint,"
-                    " you must provide the (original) `config` object or dict b/c "
-                    "msgpack checkpoints do NOT contain this information!"
+                    " you must provide the (original) `AlgorithmConfig` object or dict "
+                    "via the `config` arg, b/c msgpack checkpoints do NOT contain "
+                    "this information!"
                 )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
@@ -2678,7 +2679,12 @@ class Algorithm(Trainable, AlgorithmBase):
             checkpoint_info: A checkpoint info dict as returned by
                 `ray.rllib.utils.checkpoints.get_checkpoint_info(
                 [checkpoint dir or AIR Checkpoint])`.
-            config: TODO
+            config: The config to use for recovering the Algorithm state. Note that
+                `config` must be provided, if `checkpoint` is in msgpack format.
+                However, `config` might be slightly altered (wrt. to the original config
+                used to create `checkpoint`), depending on the user's needs. For
+                example, a user might want to reinstate the same Algorithm, but only
+                with a single remote workers instead of 32.
             policy_ids: Optional list/set of PolicyIDs. If not None, only those policies
                 listed here will be included in the returned state. Note that
                 state items such as filters, the `is_policy_to_train` function, as
@@ -2748,7 +2754,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # `config` is provided AND an AlgorithmConfig object -> Use it as-is.
             if isinstance(config, AlgorithmConfig):
                 new_config = config
-            # `config` is None or a dict.
+            # `config` is None or a config dict.
             else:
                 assert config is None or isinstance(config, dict)
                 default_config = state["algorithm_class"].get_default_config()
@@ -2812,7 +2818,7 @@ class Algorithm(Trainable, AlgorithmBase):
                         worker_state["policy_states"][pid] = pickle.load(f)
 
             # These two functions are never serialized in a msgpack checkpoint (which
-            # does not store code, unlike a cloudpickle checkpoint). Hence the user has
+            # does not store code, unlike a cloudpickle checkpoint). Hence, the user has
             # to provide them with the `Algorithm.from_checkpoint()` call.
             if msgpack is not None:
                 worker_state["policy_mapping_fn"] = (
@@ -2832,7 +2838,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 or worker_state["is_policy_to_train"] == NOT_SERIALIZABLE
             ):
                 worker_state["is_policy_to_train"] = policies_to_train
-    
+
         return state
 
     @DeveloperAPI

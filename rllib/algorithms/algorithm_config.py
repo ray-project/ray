@@ -3528,7 +3528,9 @@ class AlgorithmConfig(_Config):
 
     @staticmethod
     def _serialize_dict(config: Dict):
-        # Serialize all found spaces to their serialized structs:
+        # Serialize all found spaces to their serialized structs.
+        # Note: We cannot use `tree.map_structure` here b/c it doesn't play
+        # nice with gym Dicts or Tuples (crashes).
         config = deep_transform(
             lambda s: gym_space_to_dict(s) if isinstance(s, gym.Space) else s, config
         )
