@@ -367,9 +367,9 @@ def test_pass_handle_to_multiple(serve_instance):
 
 def test_run_non_json_serializable_args(serve_instance):
     # Test that we can capture and bind non-json-serializable arguments.
-    arr1 = array.array('d', [1.0, 2.0, 3.0])
-    arr2 = array.array('d', [2.0, 3.0, 4.0])
-    arr3 = array.array('d', [3.0, 4.0, 5.0])
+    arr1 = array.array("d", [1.0, 2.0, 3.0])
+    arr2 = array.array("d", [2.0, 3.0, 4.0])
+    arr3 = array.array("d", [3.0, 4.0, 5.0])
 
     @serve.deployment
     class A:

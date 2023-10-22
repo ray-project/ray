@@ -91,9 +91,9 @@ def test_defining_remote_functions(shutdown_only):
     # Test that we can close over modules.
     @ray.remote
     def h():
-        return array.array('d', [1.0, 2.0, 3.0])
+        return array.array("d", [1.0, 2.0, 3.0])
 
-    assert ray.get(h.remote()) == array.array('d', [1.0, 2.0, 3.0])
+    assert ray.get(h.remote()) == array.array("d", [1.0, 2.0, 3.0])
 
     @ray.remote
     def j():
