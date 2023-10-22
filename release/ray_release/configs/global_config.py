@@ -1,7 +1,7 @@
 import os
 
 import yaml
-from typing import TypedDict
+from typing_extensions import TypedDict
 
 
 class GlobalConfig(TypedDict):

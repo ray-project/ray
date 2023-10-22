@@ -2,12 +2,16 @@ import os
 import threading
 import time
 import uuid
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional
 
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
+)
+from ray.data._internal.execution.backpressure_policy import (
+    BackpressurePolicy,
+    get_backpressure_policies,
 )
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -58,7 +62,7 @@ class StreamingExecutor(Executor, threading.Thread):
     a way that maximizes throughput under resource constraints.
     """
 
-    def __init__(self, options: ExecutionOptions, dataset_uuid: str = "unknown_uuid"):
+    def __init__(self, options: ExecutionOptions, dataset_tag: str = "unknown_dataset"):
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
@@ -76,8 +80,9 @@ class StreamingExecutor(Executor, threading.Thread):
         # generator `yield`s.
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
+        self._backpressure_policies: Optional[List[BackpressurePolicy]] = None
 
-        self._dataset_uuid = dataset_uuid
+        self._dataset_tag = dataset_tag
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -107,6 +112,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
+        self._backpressure_policies = get_backpressure_policies(self._topology)
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
@@ -202,7 +208,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._output_node.outqueue.append(None)
             # Clears metrics for this dataset so that they do
             # not persist in the grafana dashboard after execution
-            clear_stats_actor_metrics({"dataset": self._dataset_uuid})
+            clear_stats_actor_metrics({"dataset": self._dataset_tag})
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -253,6 +259,7 @@ class StreamingExecutor(Executor, threading.Thread):
             topology,
             cur_usage,
             limits,
+            self._backpressure_policies,
             ensure_at_least_one_running=self._consumer_idling(),
             execution_id=self._execution_id,
             autoscaling_state=self._autoscaling_state,
@@ -270,6 +277,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 topology,
                 cur_usage,
                 limits,
+                self._backpressure_policies,
                 ensure_at_least_one_running=self._consumer_idling(),
                 execution_id=self._execution_id,
                 autoscaling_state=self._autoscaling_state,
@@ -282,7 +290,7 @@ class StreamingExecutor(Executor, threading.Thread):
             op_state.refresh_progress_bar()
 
         update_stats_actor_metrics(
-            [op.metrics for op in self._topology], {"dataset": self._dataset_uuid}
+            [op.metrics for op in self._topology], {"dataset": self._dataset_tag}
         )
 
         # Keep going until all operators run to completion.
