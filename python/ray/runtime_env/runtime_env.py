@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import base64
 from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
@@ -18,6 +19,45 @@ from ray.core.generated.runtime_env_common_pb2 import (
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
+CHAR_ENCODING = "utf-8"
+
+
+def encode_secret_env_vars(secret_env_vars: dict) -> dict:
+    """Encode secret env vars (values in the dict) to base64.
+    This encoding can be used as a mild safety mechanism to avoid printing or logging secrets in plain text.
+    
+    NOTE: base64 encoding is not a security mechanism and secrets should just not be printed to be secure.
+    But the encoding avoids a common mistake of printing secrets in plain text.
+    
+    Args:
+        secret_env_vars: a dict of secret env vars (str -> str).
+    
+    Returns:
+        A dict of encoded secret env vars (str -> str). The keys are the same as the input dict.
+        The values are base64 encoded.
+    """
+    encoded_dict = {}
+    for key, value in secret_env_vars.items():
+        encoded_value = base64.b64encode(value.encode(CHAR_ENCODING)).decode(CHAR_ENCODING)
+        encoded_dict[key] = encoded_value
+    return encoded_dict
+
+
+def decode_secret_env_vars(encoded_env_vars: dict) -> dict:
+    """Decode secret env vars (values in the dict) from base64.
+    
+    Args:
+        encoded_env_vars: a dict of encoded secret env vars (str -> str). The values are base64 encoded.
+
+    Returns:
+        A dict of decoded secret env vars (str -> str). The keys are the same as the input dict.
+        The values are base64 decoded.
+    """
+    decoded_dict = {}
+    for key, encoded_value in encoded_env_vars.items():
+        decoded_value = base64.b64decode(encoded_value.encode(CHAR_ENCODING)).decode(CHAR_ENCODING)
+        decoded_dict[key] = decoded_value
+    return decoded_dict
 
 
 @PublicAPI(stability="stable")
@@ -244,6 +284,7 @@ class RuntimeEnv(dict):
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
+        secret_env_vars: Secrets to set as environment variables.
     """
 
     known_fields: Set[str] = {
@@ -255,6 +296,7 @@ class RuntimeEnv(dict):
         "container",
         "excludes",
         "env_vars",
+        "secret_env_vars",
         "_ray_release",
         "_ray_commit",
         "_inject_current_ray",
@@ -287,6 +329,7 @@ class RuntimeEnv(dict):
         nsight: Optional[Union[str, Dict[str, str]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
+        secret_env_vars: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
         super().__init__()
@@ -306,6 +349,11 @@ class RuntimeEnv(dict):
             runtime_env["container"] = container
         if env_vars is not None:
             runtime_env["env_vars"] = env_vars
+        if secret_env_vars is not None:
+            # We encode the secret values before storing them in the runtime env.
+            # This helps avoiding accidental logging of secrets in plain text.
+            # This is not an encryption mechasim, however.
+            runtime_env["secret_env_vars"] = encode_secret_env_vars(secret_env_vars)
         if config is not None:
             runtime_env["config"] = config
         if worker_process_setup_hook is not None:
@@ -450,6 +498,9 @@ class RuntimeEnv(dict):
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})
 
+    def secret_env_vars(self) -> Dict:
+        return self.get("secret_env_vars", {})
+
     def has_conda(self) -> str:
         if self.get("conda"):
             return True
@@ -529,7 +580,7 @@ def _merge_runtime_env(
     runtime env in the event of a conflict.
 
     Merging happens per key (i.e., "conda", "pip", ...), but
-    "env_vars" are merged per env var key.
+    "env_vars" and "secret_env_vars" are merged per env var key.
 
     It returns None if Ray fails to merge runtime environments because
     of a conflict and `override = False`.
@@ -553,16 +604,23 @@ def _merge_runtime_env(
     child = deepcopy(child)
     parent_env_vars = parent.pop("env_vars", {})
     child_env_vars = child.pop("env_vars", {})
+    parent_secret_env_vars = parent.pop("secret_env_vars", {})
+    child_secret_env_vars = child.pop("secret_env_vars", {})
 
     if not override:
         if set(parent.keys()).intersection(set(child.keys())):
             return None
         if set(parent_env_vars.keys()).intersection(set(child_env_vars.keys())):  # noqa
             return None
+        if set(parent_secret_env_vars.keys()).intersection(set(child_secret_env_vars.keys())):  # noqa
+            return None
 
     parent.update(child)
     parent_env_vars.update(child_env_vars)
     if parent_env_vars:
         parent["env_vars"] = parent_env_vars
+    parent_secret_env_vars.update(child_secret_env_vars)
+    if parent_secret_env_vars:
+        parent["secret_env_vars"] = parent_secret_env_vars
 
     return parent
