@@ -11,7 +11,6 @@ _PLUGIN_NAME = "secret_env_vars"
 
 
 class SecretEnvVarsPlugin(RuntimeEnvPlugin):
-
     @staticmethod
     def validate(runtime_env_dict: dict) -> None:
         """Validate user entry for this plugin.
@@ -22,10 +21,10 @@ class SecretEnvVarsPlugin(RuntimeEnvPlugin):
         Raises:
             ValueError: if the validation fails.
         """
-        
+
         if not _PLUGIN_NAME in runtime_env_dict.keys():
             return
-        
+
         secret_env_vars = runtime_env_dict[_PLUGIN_NAME]
         # Validate the secret_env_vars is ad dict.
         if not isinstance(secret_env_vars, dict):
@@ -41,7 +40,9 @@ class SecretEnvVarsPlugin(RuntimeEnvPlugin):
                 violations.append(f"value {value} is of type {type(value)}.")
         if violations:
             raise ValueError(
-                "All keys and values in secret_env_vars must be of type str. " + " ".join(violations))
+                "All keys and values in secret_env_vars must be of type str. "
+                + " ".join(violations)
+            )
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger

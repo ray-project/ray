@@ -1,7 +1,7 @@
+import base64
 import json
 import logging
 import os
-import base64
 from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
@@ -25,27 +25,29 @@ CHAR_ENCODING = "utf-8"
 def encode_secret_env_vars(secret_env_vars: dict) -> dict:
     """Encode secret env vars (values in the dict) to base64.
     This encoding can be used as a mild safety mechanism to avoid printing or logging secrets in plain text.
-    
+
     NOTE: base64 encoding is not a security mechanism and secrets should just not be printed to be secure.
     But the encoding avoids a common mistake of printing secrets in plain text.
-    
+
     Args:
         secret_env_vars: a dict of secret env vars (str -> str).
-    
+
     Returns:
         A dict of encoded secret env vars (str -> str). The keys are the same as the input dict.
         The values are base64 encoded.
     """
     encoded_dict = {}
     for key, value in secret_env_vars.items():
-        encoded_value = base64.b64encode(value.encode(CHAR_ENCODING)).decode(CHAR_ENCODING)
+        encoded_value = base64.b64encode(value.encode(CHAR_ENCODING)).decode(
+            CHAR_ENCODING
+        )
         encoded_dict[key] = encoded_value
     return encoded_dict
 
 
 def decode_secret_env_vars(encoded_env_vars: dict) -> dict:
     """Decode secret env vars (values in the dict) from base64.
-    
+
     Args:
         encoded_env_vars: a dict of encoded secret env vars (str -> str). The values are base64 encoded.
 
@@ -55,7 +57,9 @@ def decode_secret_env_vars(encoded_env_vars: dict) -> dict:
     """
     decoded_dict = {}
     for key, encoded_value in encoded_env_vars.items():
-        decoded_value = base64.b64decode(encoded_value.encode(CHAR_ENCODING)).decode(CHAR_ENCODING)
+        decoded_value = base64.b64decode(encoded_value.encode(CHAR_ENCODING)).decode(
+            CHAR_ENCODING
+        )
         decoded_dict[key] = decoded_value
     return decoded_dict
 
@@ -612,7 +616,9 @@ def _merge_runtime_env(
             return None
         if set(parent_env_vars.keys()).intersection(set(child_env_vars.keys())):  # noqa
             return None
-        if set(parent_secret_env_vars.keys()).intersection(set(child_secret_env_vars.keys())):  # noqa
+        if set(parent_secret_env_vars.keys()).intersection(
+            set(child_secret_env_vars.keys())
+        ):  # noqa
             return None
 
     parent.update(child)
