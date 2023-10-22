@@ -895,6 +895,26 @@ msg_app = MessageDeployment.bind("Hello {message}!")
     assert ping_endpoint("") == CONNECTION_ERROR_MSG
 
 
+def test_run_route_prefix(ray_start_stop):
+    """Test `serve run --route-prefix="/api"`."""
+
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            "--route-prefix=/api",
+            "ray.serve.tests.test_cli_2.molly_macaw",
+        ]
+    )
+    wait_for_condition(
+        lambda: ping_endpoint("api/Macaw") == "Molly is green!", timeout=10
+    )
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("Macaw") == CONNECTION_ERROR_MSG
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_serving_request_through_grpc_proxy(ray_start_stop):
     """Test serving request through gRPC proxy
