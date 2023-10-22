@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 CHAR_ENCODING = "utf-8"
 
 
+@PublicAPI(stability="alpha")
 def encode_secret_env_vars(secret_env_vars: dict) -> dict:
     """Encode secret env vars (values in the dict) to base64.
     This encoding can be used as a mild safety mechanism to avoid printing or logging secrets in plain text.
@@ -45,6 +46,7 @@ def encode_secret_env_vars(secret_env_vars: dict) -> dict:
     return encoded_dict
 
 
+@PublicAPI(stability="alpha")
 def decode_secret_env_vars(encoded_env_vars: dict) -> dict:
     """Decode secret env vars (values in the dict) from base64.
 
