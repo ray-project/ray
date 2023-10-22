@@ -238,7 +238,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        return self._table.memory_usage(index=True, deep=True).sum()
+        return int(self._table.memory_usage(index=True, deep=True).sum())
 
     def _zip(self, acc: BlockAccessor) -> "pandas.DataFrame":
         r = self.to_pandas().copy(deep=False)

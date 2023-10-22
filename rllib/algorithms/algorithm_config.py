@@ -772,6 +772,17 @@ class AlgorithmConfig(_Config):
         else:
             _torch, _ = try_import_torch()
 
+        # Can not use "tf" with learner API.
+        if self.framework_str == "tf" and (
+            self._enable_rl_module_api or self._enable_learner_api
+        ):
+            raise ValueError(
+                "Cannot use `framework=tf` with new API stack! Either do "
+                "`config.framework('tf2')` OR set both `config.rl_module("
+                "_enable_rl_module_api=False)` and `config.training("
+                "_enable_learner_api=False)`."
+            )
+
         # Check if torch framework supports torch.compile.
         if (
             _torch is not None

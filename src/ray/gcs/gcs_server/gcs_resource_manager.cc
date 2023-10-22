@@ -181,40 +181,6 @@ void GcsResourceManager::HandleReportResourceUsage(
   ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
-// TODO(rickyx): We could update the cluster resource manager when we update the load
-// so that we will no longer need node_resource_usages_.
-std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-GcsResourceManager::GetAggregatedResourceLoad() const {
-  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-      aggregate_load;
-  if (node_resource_usages_.empty()) {
-    return aggregate_load;
-  }
-  for (const auto &usage : node_resource_usages_) {
-    // Aggregate the load reported by each raylet.
-    FillAggregateLoad(usage.second, &aggregate_load);
-  }
-  return aggregate_load;
-}
-
-void GcsResourceManager::FillAggregateLoad(
-    const rpc::ResourcesData &resources_data,
-    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-        *aggregate_load) const {
-  auto load = resources_data.resource_load_by_shape();
-  for (const auto &demand : load.resource_demands()) {
-    auto &aggregate_demand = (*aggregate_load)[demand.shape()];
-    aggregate_demand.set_num_ready_requests_queued(
-        aggregate_demand.num_ready_requests_queued() +
-        demand.num_ready_requests_queued());
-    aggregate_demand.set_num_infeasible_requests_queued(
-        aggregate_demand.num_infeasible_requests_queued() +
-        demand.num_infeasible_requests_queued());
-    aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                      demand.backlog_size());
-  }
-}
-
 void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::GetAllResourceUsageRequest request,
     rpc::GetAllResourceUsageReply *reply,
@@ -263,7 +229,10 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   }
 
   RAY_DCHECK(static_cast<size_t>(reply->resource_usage_data().batch().size()) ==
-             num_alive_nodes_);
+             num_alive_nodes_)
+      << "Number of alive nodes " << num_alive_nodes_
+      << " is not equal to number of usage reports "
+      << reply->resource_usage_data().batch().size() << " in the autoscaler report.";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
@@ -283,6 +252,8 @@ void GcsResourceManager::UpdateFromResourceCommand(const rpc::ResourcesData &dat
 
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
+  // Note: This may be inconsistent with autoscaler state, which is
+  // not reported as often as a Ray Syncer message.
   if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
       maybe_node_info != absl::nullopt) {
     auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
