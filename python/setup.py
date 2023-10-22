@@ -272,6 +272,8 @@ if setup_spec.type == SetupType.RAY:
             "fastapi",
             "aiorwlock",
             "watchfiles",
+            "numpy >= 1.16; python_version < '3.9'",
+            "numpy >= 1.19.3; python_version >= '3.9'",
         ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
         "observability": [
