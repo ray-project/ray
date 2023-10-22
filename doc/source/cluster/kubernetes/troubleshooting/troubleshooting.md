@@ -7,11 +7,17 @@ If you don't find an answer to your question here, please don't hesitate to conn
 
 # Contents
 
+- [Upgrade KubeRay](#upgrade-kuberay)
 - [Worker init container](#worker-init-container)
 - [Cluster domain](#cluster-domain)
 - [RayService](#rayservice)
 - [GPU multi-tenancy](#gpu-multitenancy)
 - [Other questions](#questions)
+
+## Upgrade KubeRay
+
+If you have any issues with upgrading KubeRay, refer to the [upgrade guide](#kuberay-upgrade-guide).
+Most issues are about the CRD version.
 
 ## Worker init container
 
