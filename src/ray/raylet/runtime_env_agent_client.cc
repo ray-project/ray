@@ -16,10 +16,12 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/http.hpp>
+#include <chrono>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <queue>
 #include <string>
 
 #include "absl/strings/str_format.h"
@@ -41,90 +43,172 @@ namespace {
 
 //------------------------------------------------------------------------------
 // Simple class to make a async POST call.
-// Will call callback exactly once with pair{non-ok, any} or pair{ok, reply body}.
+// Will call either succ_callback or fail_callback exactly once.
+//
+// Keep-alive and reuses TCP connection, but only handle 1 request at a time (no
+// multiplexing or queueing).
+//
+// Do not directly use it. Instead use SessionPool.
 //
 // Hard coded behavior:
+// - retries forever.
 // - content type is "application/octet-stream".
 // - connection has no timeout (i.e. waits forever. This is because runtime env agent can
 // work for a long time.)
-// - on_resolve and on_connect failures return NotFound. This allows retry on the
-// server not (yet) started up.
 // - on_read and on_write failures return IOError.
+// - if a connection failure happens, reconnects and retries indefinitely.
 //
-// Spirit from
-// https://www.boost.org/doc/libs/develop/libs/beast/example/http/client/async/http_client_async.cpp
+// States:
+// - kNotConnected (idle, pending_resolve, pending_connect),
+//    - There is no established connection. Maybe one is being made, or maybe we are
+//    waiting in the retry cycle. May or may not holding a pending request.
+// - kConnected (idle),
+//    - Connection is established. May or may not holding a pending request.
+// - kRequestSent (pending_write, pending_read),
+//    - Request is sent. There should be a pending request.
+// - kDead.
+//    - connection failed after `connection_timeout_ms`. Invoking suicide...
+//
+//
+// Note: the states are actually not used for control flows, only used for sanity checks.
+// If we remove all States it should still work. After this class is battle tested maybe
+// we can remove it for the extreme performance.
+//
+// TODO: make it possible to stop the loop
+//
 class Session : public std::enable_shared_from_this<Session> {
-  tcp::resolver resolver_;
-  beast::tcp_stream stream_;
-  std::string host_;
-  std::string port_;
-  std::function<void(std::string)> succ_callback_;
-  std::function<void(ray::Status)> fail_callback_;
-  beast::flat_buffer buffer_;  // (Must persist between reads)
-  http::request<http::string_body> req_;
-  http::response<http::string_body> res_;
-
  public:
+  enum class State { kNotConnected, kConnected, kRequestSent, kDead };
+
+  struct Work {
+    http::request<http::string_body> request;
+    std::function<void(http::response<http::string_body>)> succ_callback;
+    std::function<void(ray::Status)> fail_callback;
+  };
   // Factory method.
-  // Not exposing ctor because it's expected to always be in a shared_ptr.
+  // Not exposing ctor because it'snet::io_context &ioc, expected to always be in a
+  // shared_ptr.
+  //
+  // connection_timeout_ms: if connection fails this long, invokes death_callback.
+  // connection_retry_interval_ms: if connection fails, wait this much and retry.
+  // session_available_callback: if this Session is ready to accept another work, it
+  // invokes this callback to get one.
+  // death_callback: invoked when `connection_timeout_ms` is timed out.
   static std::shared_ptr<Session> Create(net::io_context &ioc,
                                          std::string_view host,
                                          std::string_view port,
-                                         std::string_view target,
-                                         std::string body,
-                                         std::function<void(std::string)> succ_callback,
-                                         std::function<void(ray::Status)> fail_callback) {
+                                         uint32_t connection_timeout_ms,
+                                         uint32_t connection_retry_interval_ms,
+                                         std::function<void()> session_available_callback,
+                                         std::function<void()> death_callback) {
     // C++ limitations: make_shared can't be used because std::shared_ptr can't invoke
     // private ctor.
     return std::shared_ptr<Session>(new Session(ioc,
                                                 host,
                                                 port,
-                                                target,
-                                                std::move(body),
-                                                std::move(succ_callback),
-                                                std::move(fail_callback)));
+                                                connection_timeout_ms,
+                                                connection_retry_interval_ms,
+                                                session_available_callback,
+                                                death_callback));
   }
 
-  // Runs the session asynchrounously. Immediately returns.
-  // It's ok to release a shared_ptr to `this` because the io context will hold a
-  // shared_ptr that holds a reference to `this`.
-  void run() {
-    // Starts the state machine by looking up the domain name.
+  // Post the request.
+  // Precondition: the Session is Connected and idle.
+  // state_ == State::kConnected, and current_work_ == nullptr.
+  void post_request_on_available(std::unique_ptr<Work> work) {
+    RAY_CHECK(!current_work_);
+    // asio completion handlers have to be copy constructible [1]. This means we cannot
+    // directly move our unique ptr into the lambda. To circumvent this let's pass raw
+    // pointers across the boundary.
+    // [1]
+    // https://stackoverflow.com/questions/37709819/why-must-a-boost-asio-handler-be-copy-constructible
+    Work *raw = work.release();
+    strand_.post([this, raw]() {
+      RAY_CHECK(state_ == State::kConnected);
+      RAY_CHECK(!current_work_);
+      current_work_.reset(raw);
+      do_work_or_poll();
+    });
+  }
+
+  // State Change handlers
+ private:
+  explicit Session(net::io_context &ioc,
+                   std::string_view host,
+                   std::string_view port,
+                   uint32_t connection_timeout_ms,
+                   uint32_t connection_retry_interval_ms,
+                   std::function<void()> session_available_callback,
+                   std::function<void()> death_callback)
+      : strand_(ioc),
+        resolver_(ioc),
+        stream_(ioc),
+        reconnect_timer_(ioc),
+        host_(std::string(host)),
+        port_(std::string(port)),
+        connection_timeout_ms_(connection_timeout_ms),
+        connection_retry_interval_ms_(connection_retry_interval_ms),
+        session_available_callback_(session_available_callback),
+        death_callback_(death_callback),
+        connect_attempt_start_time_(std::nullopt) {
+    stream_.expires_never();
+    strand_.post([this]() { connect(); });
+  }
+
+  // kNotConnected -> (pending_resolve) | kDead
+  void connect() {
+    RAY_CHECK(state_ == State::kNotConnected);
+    if (connect_attempt_start_time_ == std::nullopt) {
+      connect_attempt_start_time_ = std::chrono::steady_clock::now();
+    } else if (std::chrono::steady_clock::now() - connect_attempt_start_time_.value() >
+               std::chrono::milliseconds(connection_timeout_ms_)) {
+      state_ = State::kDead;
+      on_dead();
+      return;
+    }
+
+    RAY_LOG(INFO) << "connecting to " << host_ << ", port " << port_;
     resolver_.async_resolve(
         host_,
         port_,
         beast::bind_front_handler(&Session::on_resolve, shared_from_this()));
   }
 
- private:
-  explicit Session(net::io_context &ioc,
-                   std::string_view host,
-                   std::string_view port,
-                   std::string_view target,
-                   std::string body,
-                   std::function<void(std::string)> succ_callback,
-                   std::function<void(ray::Status)> fail_callback)
-      : resolver_(ioc),
-        stream_(ioc),
-        host_(std::string(host)),
-        port_(std::string(port)),
-        succ_callback_(std::move(succ_callback)),
-        fail_callback_(std::move(fail_callback)) {
-    stream_.expires_never();
-    req_.method(http::verb::post);
-    req_.target(target);
-    req_.body() = std::move(body);
-    req_.set(http::field::host, host);
-    req_.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-    req_.set(http::field::content_type, "application/octet-stream");
-    // aiohttp has a bug that, if you don't set this value, it returns 400.
-    // https://github.com/aio-libs/aiohttp/issues/7208
-    req_.content_length(req_.body().size());
+  // kNotConnected -> kNotConnected
+  void reconnect() {
+    RAY_CHECK(state_ == State::kNotConnected);
+
+    RAY_LOG(INFO) << "Cannot connect to " << host_ << ", port " << port_
+                  << ", scheduling a retry in " << connection_retry_interval_ms_
+                  << "ms...";
+
+    reconnect_timer_.expires_from_now(
+        boost::posix_time::milliseconds(connection_retry_interval_ms_));
+    reconnect_timer_.async_wait([this](const boost::system::error_code &ec) {
+      RAY_CHECK(!ec);  // we don't abort.
+      connect();
+    });
   }
 
+  // fails the current request, and invoke death callback.
+  void on_dead() {
+    RAY_CHECK(state_ == State::kDead);
+    RAY_LOG(WARNING) << "session is dead, failing pending request...";
+    if (current_work_) {
+      current_work_->fail_callback(ray::Status::IOError("session already dead"));
+      current_work_.reset();
+    }
+    RAY_LOG(WARNING) << "session is dead, calling death_callback...";
+    death_callback_();
+  }
+
+  // (pending_resolve) -> (pending_connect) | kNotConnected
   void on_resolve(beast::error_code ec, tcp::resolver::results_type results) {
+    RAY_CHECK(state_ == State::kNotConnected);
     if (ec) {
-      fail_callback_(ray::Status::NotFound("on_resolve " + ec.message()));
+      RAY_LOG(INFO) << "failed to resolve " << host_ << ", port " << port_ << ": "
+                    << ec.what();
+      reconnect();
       return;
     }
 
@@ -133,57 +217,238 @@ class Session : public std::enable_shared_from_this<Session> {
         results, beast::bind_front_handler(&Session::on_connect, shared_from_this()));
   }
 
+  // (pending_connect) -> kConnected | kNotConnected
   void on_connect(beast::error_code ec, tcp::resolver::results_type::endpoint_type) {
+    RAY_CHECK(state_ == State::kNotConnected);
+
     if (ec) {
-      fail_callback_(ray::Status::NotFound("on_connect " + ec.message()));
+      RAY_LOG(INFO) << "failed to connect " << host_ << ", port " << port_ << ": "
+                    << ec.what();
+      reconnect();
       return;
     }
 
-    // Send the HTTP request to the remote host
-    http::async_write(
-        stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
+    state_ = State::kConnected;
+    connect_attempt_start_time_ = std::nullopt;
+
+    do_work_or_poll();
   }
 
-  void on_write(beast::error_code ec, std::size_t bytes_transferred) {
-    boost::ignore_unused(bytes_transferred);
+  // kConnected -> kConnected (idle) | kRequestSent
+  // prerequesite: queue is not empty.
+  void do_work_or_poll() {
+    RAY_CHECK(state_ == State::kConnected);
 
-    if (ec) {
-      fail_callback_(ray::Status::IOError("on_write " + ec.message()));
+    if (!current_work_) {
+      session_available_callback_();
       return;
     }
+    do_work();
+  }
+
+  void do_work() {
+    RAY_CHECK(state_ == State::kConnected);
+    RAY_CHECK(current_work_);
+    // Send the HTTP request to the remote host
+    http::async_write(stream_,
+                      current_work_->request,
+                      beast::bind_front_handler(&Session::on_write, shared_from_this()));
+    state_ = State::kRequestSent;
+  }
+
+  // (pending write) ->
+  //  kNotConnected (fail), failing the active callback |
+  // kRequestSent (pending read)
+  void on_write(beast::error_code ec, std::size_t bytes_transferred) {
+    boost::ignore_unused(bytes_transferred);
+    RAY_CHECK(state_ == State::kRequestSent);
+
+    if (ec) {
+      current_work_->fail_callback(ray::Status::IOError("on_write " + ec.what()));
+      current_work_ = nullptr;
+      state_ = State::kNotConnected;
+
+      RAY_LOG(INFO) << "failed to write: " << ec.what();
+      reconnect();
+      return;
+    }
+
+    buffer_.clear();
+    resp_.clear();
 
     // Receive the HTTP response
     http::async_read(stream_,
                      buffer_,
-                     res_,
+                     resp_,
                      beast::bind_front_handler(&Session::on_read, shared_from_this()));
   }
 
+  // (pending read) ->
+  // conn failure -> kNotConnected, reconnect (= wait and connect)
+  // conn success, keep-alive = false -> kNotConencted, connect
+  // conn success, keep-alive = true  -> kConnected
   void on_read(beast::error_code ec, std::size_t bytes_transferred) {
     boost::ignore_unused(bytes_transferred);
+    RAY_CHECK(state_ == State::kRequestSent);
 
     if (ec) {
-      fail_callback_(ray::Status::IOError("on_read " + ec.message()));
+      current_work_->fail_callback(ray::Status::IOError("on_read " + ec.what()));
+      current_work_ = nullptr;
+      state_ = State::kNotConnected;
+      stream_.close();
+
+      RAY_LOG(INFO) << "failed to read: " << ec.what();
+      reconnect();
+
       return;
     }
-    if (http::to_status_class(res_.result()) == http::status_class::successful) {
-      succ_callback_(std::move(res_).body());
-    } else {
-      fail_callback_(ray::Status::IOError(absl::StrCat("POST result non-ok status code ",
-                                                       res_.result_int(),
-                                                       ", body",
-                                                       std::move(res_).body())));
-    }
 
-    // Gracefully close the socket
-    stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
-    // not_connected happens sometimes so don't bother reporting it.
-    if (ec && ec != beast::errc::not_connected) {
-      RAY_LOG(INFO) << "on_read error after response body received: " << ec.message();
+    bool keep_alive = resp_.keep_alive();
+
+    // TCP layer succeeded. HTTP layer may fail but that's not affecting the connection
+    // itself.
+    if (http::to_status_class(resp_.result()) != http::status_class::successful) {
+      current_work_->fail_callback(
+          ray::Status::IOError(absl::StrCat("POST result non-ok status code ",
+                                            resp_.result_int(),
+                                            ", body",
+                                            std::move(resp_).body())));
+    } else {
+      current_work_->succ_callback(std::move(resp_));
+    }
+    current_work_ = nullptr;
+
+    if (keep_alive) {
+      state_ = State::kConnected;
+      do_work_or_poll();
+    } else {
+      state_ = State::kNotConnected;
+      stream_.close();
+      RAY_LOG(DEBUG) << "closed stream";
+      // This close is requested by server so there's no need to wait and reconnect.
+      connect();
     }
   }
+
+  net::io_service::strand strand_;
+  tcp::resolver resolver_;
+  beast::tcp_stream stream_;
+  boost::asio::deadline_timer reconnect_timer_;
+
+  std::string host_;
+  std::string port_;
+
+  uint32_t connection_timeout_ms_;
+  uint32_t connection_retry_interval_ms_;
+  std::function<void()> session_available_callback_;
+  std::function<void()> death_callback_;
+
+  std::optional<std::chrono::steady_clock::time_point> connect_attempt_start_time_;
+  beast::flat_buffer buffer_;               // Must clear before async_read()
+  http::response<http::string_body> resp_;  // Must clear before async_read()
+
+  State state_ = State::kNotConnected;
+
+  // The scheduled work. May be empty.
+  std::unique_ptr<Work> current_work_;
 };
 
+// A pool of sessions. Each session can handle 1 concurrent request.
+// Upon post request, if there's a available session, use it. Otherwise, add it to a queue
+// and wait for the next available session.
+class SessionPool {
+ public:
+  explicit SessionPool(net::io_context &ioc,
+                       size_t num_of_connections,
+                       std::string_view host,
+                       std::string_view port,
+                       uint32_t connection_timeout_ms,
+                       uint32_t connection_retry_interval_ms,
+                       std::function<void()> death_callback)
+      : ioc_(ioc),
+        strand_(ioc_),
+        sessions_(),
+        sessions_availability_(),
+        work_queue_(),
+        host_(host) {
+    sessions_.reserve(num_of_connections);
+    sessions_availability_.reserve(num_of_connections);
+    for (size_t i = 0; i < num_of_connections; ++i) {
+      sessions_.push_back(Session::Create(
+          ioc,
+          host,
+          port,
+          connection_timeout_ms,
+          connection_retry_interval_ms,
+          /*session_available_callback=*/[this, i]() { session_is_available(i); },
+          death_callback));
+      sessions_availability_.push_back(false);
+    }
+  }
+
+  void post_request(std::string_view target,
+                    std::string body,
+                    std::function<void(http::response<http::string_body>)> succ_callback,
+                    std::function<void(ray::Status)> fail_callback) {
+    auto work = std::make_unique<Session::Work>();
+    work->request.method(http::verb::post);
+    work->request.target(target);
+    work->request.body() = std::move(body);
+    work->request.keep_alive(true);
+    work->request.set(http::field::host, host_);
+    work->request.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+    work->request.set(http::field::content_type, "application/octet-stream");
+    // aiohttp has a bug that, if you don't set this value, it returns 400.
+    // https://github.com/aio-libs/aiohttp/issues/7208
+    work->request.content_length(work->request.body().size());
+
+    work->succ_callback = succ_callback;
+    work->fail_callback = fail_callback;
+
+    // asio completion handlers have to be copy constructible [1]. This means we cannot
+    // directly move our unique ptr into the lambda. To circumvent this let's pass raw
+    // pointers across the boundary.
+    // [1]
+    // https://stackoverflow.com/questions/37709819/why-must-a-boost-asio-handler-be-copy-constructible
+    Session::Work *raw = work.release();
+    strand_.post([this, raw]() {
+      std::unique_ptr<Session::Work> work(raw);
+      for (size_t i = 0; i < sessions_availability_.size(); ++i) {
+        if (sessions_availability_[i]) {
+          sessions_[i]->post_request_on_available(std::move(work));
+          sessions_availability_[i] = false;
+          return;
+        }
+      }
+      // If all sessions are busy...
+      work_queue_.push(std::move(work));
+      RAY_LOG(INFO) << "All sessions are busy! " << work_queue_.size()
+                    << " requests in the queue...";
+    });
+  }
+
+ private:
+  // Invoked by the Session to inform it's available.
+  // If there's waiting work, pop one and execute it.
+  // Otherwise, put the callbacks
+  void session_is_available(int i) {
+    strand_.post([this, i]() {
+      if (!work_queue_.empty()) {
+        std::unique_ptr<Session::Work> work = std::move(work_queue_.front());
+        work_queue_.pop();
+        sessions_[i]->post_request_on_available(std::move(work));
+      } else {
+        sessions_availability_[i] = true;
+      }
+    });
+  }
+  net::io_context &ioc_;
+  net::io_service::strand strand_;
+  std::vector<std::shared_ptr<Session>> sessions_;
+  std::vector<bool> sessions_availability_;
+  std::queue<std::unique_ptr<Session::Work>> work_queue_;
+  std::string host_;
+};
 inline constexpr std::string_view HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV =
     "/get_or_create_runtime_env";
 inline constexpr std::string_view HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE =
@@ -198,12 +463,17 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                                 std::function<void()>, uint32_t delay_ms)> delay_executor,
                             uint32_t agent_register_timeout_ms,
                             uint32_t agent_manager_retry_interval_ms)
-      : io_context_(io_context),
-        address_(address),
-        port_str_(std::to_string(port)),
-        delay_executor_(delay_executor),
-        agent_register_timeout_ms_(agent_register_timeout_ms),
-        agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
+      :
+
+        session_pool_(io_context,
+                      // TODO(ryw) make this configurable.
+                      /*num_of_connections=*/5,
+                      address,
+                      std::to_string(port),
+                      agent_register_timeout_ms,
+                      agent_manager_retry_interval_ms,
+                      /*death_callback=*/[this]() { this->Suicide(); }),
+        delay_executor_(delay_executor) {}
   ~HttpRuntimeEnvAgentClient() = default;
 
   template <typename T>
@@ -226,53 +496,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
   }
 
-  /// @brief Invokes `try_invoke_once`. If it fails with a ray::Status::NotFound error,
-  /// retries every after `agent_manager_retry_interval_ms` up until `deadline` passed.
-  /// After which, fail_callback is called with the NotFound error from `try_invoke_once`.
-  ///
-  /// Note that retry only happens on network errors. Application errors returned by the
-  /// server are not retried.
-  ///
-  /// If the retries took so long and exceeded deadline, Raylet suicides. Note the check
-  /// happens after `try_invoke_once` returns. This means if you have a successful but
-  /// very long connection (e.g. runtime env agent is busy downloading from s3), you are
-  /// safe.
-  ///
-  /// @tparam T the return type on success.
-  /// @param try_invoke_once
-  /// @param succ_callback
-  /// @param fail_callback
-  /// @param deadline
-  template <typename T>
-  void RetryInvokeOnNotFoundWithDeadline(TryInvokeOnce<T> try_invoke_once,
-                                         SuccCallback<T> succ_callback,
-                                         FailCallback fail_callback,
-                                         int64_t deadline_ms) {
-    try_invoke_once(succ_callback, [=](ray::Status status) {
-      if (!status.IsNotFound()) {
-        // Non retryable errors, invoke fail_callback
-        fail_callback(status);
-      } else if (current_time_ms() > deadline_ms) {
-        RAY_LOG(ERROR) << "Runtime Env Agent timed out as NotFound in "
-                       << agent_register_timeout_ms_ << "ms. Status: " << status
-                       << ", address: " << this->address_ << ", port: " << this->port_str_
-                       << ", Suiciding...";
-        Suicide();
-      } else {
-        RAY_LOG(INFO) << "Runtime Env Agent network error: " << status
-                      << ", the server may be still starting or is already failed. "
-                         "Scheduling a retry in "
-                      << agent_manager_retry_interval_ms_ << "ms...";
-        this->delay_executor_(
-            [=]() {
-              RetryInvokeOnNotFoundWithDeadline(
-                  try_invoke_once, succ_callback, fail_callback, deadline_ms);
-            },
-            agent_manager_retry_interval_ms_);
-      }
-    });
-  }
-
   // Making HTTP call.
   // POST /get_or_create_runtime_env
   // Body = proto rpc::GetOrCreateRuntimeEnvRequest
@@ -281,61 +504,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              const std::string &serialized_allocated_resource_instances,
                              GetOrCreateRuntimeEnvCallback callback) override {
-    RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
-        [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
-            FailCallback fail_callback) {
-          return TryGetOrCreateRuntimeEnv(job_id,
-                                          serialized_runtime_env,
-                                          runtime_env_config,
-                                          serialized_allocated_resource_instances,
-                                          succ_callback,
-                                          fail_callback);
-        },
-        /*succ_callback=*/
-        [=](rpc::GetOrCreateRuntimeEnvReply reply) {
-          // HTTP request & protobuf parsing succeeded, but we got a non-OK from the
-          // remote server.
-          if (reply.status() != rpc::AGENT_RPC_STATUS_OK) {
-            RAY_LOG(INFO) << "Failed to create runtime env for job " << job_id
-                          << ", error message: " << reply.error_message();
-            RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
-                           << serialized_runtime_env;
-            callback(false,
-                     reply.serialized_runtime_env_context(),
-                     /*setup_error_message*/ reply.error_message());
-          } else {
-            RAY_LOG(INFO) << "Create runtime env for job " << job_id;
-            callback(true,
-                     reply.serialized_runtime_env_context(),
-                     /*setup_error_message*/ "");
-          }
-        },
-        /*fail_callback=*/
-        [=](ray::Status status) {
-          std::string error_message = absl::StrCat(
-              "Failed to create runtime env for job ",
-              job_id.Hex(),
-              ", status = ",
-              status.ToString(),
-              ", maybe there are some network problems, will fail the request.");
-          RAY_LOG(INFO) << error_message;
-          RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
-                         << serialized_runtime_env;
-          callback(false, "", error_message);
-        },
-        current_time_ms() + agent_register_timeout_ms_);
-  }
-
-  // Does the real work of calling HTTP.
-  // Invokes `succ_callback` with server reply (which may be OK or application errors),
-  // or invokes `fail_callback` on network error or protobuf deserialization error.
-  void TryGetOrCreateRuntimeEnv(
-      const JobID &job_id,
-      const std::string &serialized_runtime_env,
-      const rpc::RuntimeEnvConfig &runtime_env_config,
-      const std::string &serialized_allocated_resource_instances,
-      std::function<void(rpc::GetOrCreateRuntimeEnvReply)> succ_callback,
-      std::function<void(ray::Status)> fail_callback) {
     rpc::GetOrCreateRuntimeEnvRequest request;
     request.set_job_id(job_id.Hex());
     request.set_serialized_runtime_env(serialized_runtime_env);
@@ -344,23 +512,46 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         serialized_allocated_resource_instances);
     std::string payload = request.SerializeAsString();
 
-    auto session = Session::Create(
-        io_context_,
-        address_,
-        port_str_,
-        HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV,
-        std::move(payload),
-        /*succ_callback=*/
-        [succ_callback, fail_callback](std::string body) {
+    std::function<void(ray::Status)> fail_callback = [=](ray::Status status) {
+      std::string error_message =
+          absl::StrCat("Failed to create runtime env for job ",
+                       job_id.Hex(),
+                       ", status = ",
+                       status.ToString(),
+                       ", maybe there are some network problems, will fail the request.");
+      RAY_LOG(INFO) << error_message;
+      RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
+                     << serialized_runtime_env;
+      callback(false, "", error_message);
+    };
+
+    std::function<void(http::response<http::string_body>)> succ_callback =
+        [=](http::response<http::string_body> response) {
           rpc::GetOrCreateRuntimeEnvReply reply;
-          if (!reply.ParseFromString(body)) {
+          if (!reply.ParseFromString(std::move(response).body())) {
             fail_callback(Status::IOError("protobuf parse error"));
-          } else {
-            succ_callback(std::move(reply));
+            return;
           }
-        },
-        fail_callback);
-    session->run();
+          if (reply.status() != rpc::AGENT_RPC_STATUS_OK) {
+            RAY_LOG(INFO) << "Failed to create runtime env for job " << job_id
+                          << ", error message: " << reply.error_message();
+            RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
+                           << serialized_runtime_env;
+            callback(false,
+                     reply.serialized_runtime_env_context(),
+                     /*setup_error_message*/ reply.error_message());
+            return;
+          }
+          RAY_LOG(INFO) << "Created runtime env for job " << job_id;
+          callback(true,
+                   reply.serialized_runtime_env_context(),
+                   /*setup_error_message*/ "");
+        };
+
+    session_pool_.post_request(HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV,
+                               std::move(payload),
+                               succ_callback,
+                               fail_callback);
   }
 
   // Making HTTP call.
@@ -368,14 +559,26 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // Body = proto rpc::DeleteRuntimeEnvIfPossibleRequest
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
                                   DeleteRuntimeEnvIfPossibleCallback callback) override {
-    RetryInvokeOnNotFoundWithDeadline<rpc::DeleteRuntimeEnvIfPossibleReply>(
-        [=](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
-            FailCallback fail_callback) {
-          return TryDeleteRuntimeEnvIfPossible(
-              serialized_runtime_env, succ_callback, fail_callback);
-        },
-        /*succ_callback=*/
-        [=](rpc::DeleteRuntimeEnvIfPossibleReply reply) {
+    rpc::DeleteRuntimeEnvIfPossibleRequest request;
+    request.set_serialized_runtime_env(serialized_runtime_env);
+    request.set_source_process("raylet");
+    std::string payload = request.SerializeAsString();
+
+    std::function<void(ray::Status)> fail_callback = [=](ray::Status status) {
+      RAY_LOG(WARNING)
+          << "Failed to delete runtime env reference, status = " << status
+          << ", maybe there are some network problems, will fail the request.";
+      RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
+      callback(false);
+    };
+
+    std::function<void(http::response<http::string_body>)> succ_callback =
+        [=](http::response<http::string_body> response) {
+          rpc::DeleteRuntimeEnvIfPossibleReply reply;
+          if (!reply.ParseFromString(std::move(response).body())) {
+            fail_callback(Status::IOError("protobuf parse error"));
+            return;
+          }
           if (reply.status() != rpc::AGENT_RPC_STATUS_OK) {
             // HTTP request & protobuf parsing succeeded, but we got a non-OK from the
             // remote server.
@@ -387,58 +590,19 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           } else {
             callback(true);
           }
-        },
-        /*fail_callback=*/
-        [=](ray::Status status) {
-          RAY_LOG(WARNING)
-              << "Failed to delete runtime env reference, status = " << status
-              << ", maybe there are some network problems, will fail the request.";
-          RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
-          callback(false);
-        },
-        current_time_ms() + agent_register_timeout_ms_);
-  }
+        };
 
-  // Invokes `succ_callback` with server reply (which may be OK or application errors),
-  // or invokes `fail_callback` on network error or protobuf deserialization error.
-  void TryDeleteRuntimeEnvIfPossible(
-      const std::string &serialized_runtime_env,
-      std::function<void(rpc::DeleteRuntimeEnvIfPossibleReply)> succ_callback,
-      std::function<void(ray::Status)> fail_callback) {
-    rpc::DeleteRuntimeEnvIfPossibleRequest request;
-    request.set_serialized_runtime_env(serialized_runtime_env);
-    request.set_source_process("raylet");
-    std::string payload = request.SerializeAsString();
-
-    auto session = Session::Create(
-        io_context_,
-        address_,
-        port_str_,
-        HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE,
-        std::move(payload),
-        /*succ_callback=*/
-        [succ_callback, fail_callback](std::string body) {
-          rpc::DeleteRuntimeEnvIfPossibleReply reply;
-          if (!reply.ParseFromString(body)) {
-            fail_callback(Status::IOError("protobuf parse error"));
-          } else {
-            succ_callback(std::move(reply));
-          }
-        },
-        fail_callback);
-    session->run();
+    session_pool_.post_request(HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE,
+                               std::move(payload),
+                               succ_callback,
+                               fail_callback);
   }
 
  private:
-  boost::asio::io_context &io_context_;
-
-  const std::string address_;
-  const std::string port_str_;
+  SessionPool session_pool_;
   std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
                                                              uint32_t delay_ms)>
       delay_executor_;
-  const uint32_t agent_register_timeout_ms_;
-  const uint32_t agent_manager_retry_interval_ms_;
 };
 }  // namespace
 

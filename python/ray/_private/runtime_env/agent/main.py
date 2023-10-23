@@ -214,6 +214,7 @@ if __name__ == "__main__":
             host=runtime_env_agent_ip,
             port=args.runtime_env_agent_port,
             loop=loop,
+            keepalive_timeout=None,  # we want to always keep alive.
         )
     except SystemExit as e:
         agent._logger.info(f"SystemExit! {e}")
