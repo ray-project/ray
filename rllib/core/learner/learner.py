@@ -23,7 +23,7 @@ from typing import (
 )
 
 import ray
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
+from ray.rllib.core.learner.reduce_result_dict_fn import reduce_results
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
@@ -1234,7 +1234,7 @@ class Learner:
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
-            _reduce_mean_results
+            reduce_results
         ),
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Do `num_iters` minibatch updates given the original batch.

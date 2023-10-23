@@ -41,7 +41,9 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
     ALL_MODULES,
@@ -450,7 +452,12 @@ class PPO(Algorithm):
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
             )
+            # TODO (sven, simon): Introduce simpler API for updating Algorithm counters,
+            #  timers, and other metrics.
+            self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
+            self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
+        # TODO (sven, simon): Deprecate PPO w/o learner API.
         elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:

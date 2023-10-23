@@ -130,18 +130,18 @@ if __name__ == "__main__":
     }
 
     if args.no_tune:
-        # manual training with train loop using PPO and fixed learning rate
+        # Manual training with train loop using PPO and fixed learning rate.
         if args.run != "PPO":
             raise ValueError("Only support --run PPO with --no-tune.")
         print("Running manual train loop without Ray Tune.")
-        # use fixed learning rate instead of grid search (needs tune)
+        # Use fixed learning rate instead of grid search (needs tune).
         config.lr = 1e-3
         algo = config.build()
-        # run manual training loop and print results after each iteration
+        # Run manual training loop and print results after each iteration.
         for _ in range(args.stop_iters):
             result = algo.train()
             print(pretty_print(result))
-            # stop training of the target train steps or reward are reached
+            # Stop training of the target train steps or reward are reached.
             if (
                 result["timesteps_total"] >= args.stop_timesteps
                 or result["episode_reward_mean"] >= args.stop_reward
@@ -149,7 +149,7 @@ if __name__ == "__main__":
                 break
         algo.stop()
     else:
-        # automated run with Tune and grid search and TensorBoard
+        # Automated run with Tune and grid search and TensorBoard.
         print("Training automatically with Ray Tune")
         tuner = tune.Tuner(
             args.run,

@@ -15,7 +15,7 @@ from typing import (
 import uuid
 
 import ray
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
+from ray.rllib.core.learner.reduce_result_dict_fn import reduce_results
 from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
@@ -149,7 +149,7 @@ class LearnerGroup:
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
-            _reduce_mean_results
+            reduce_results
         ),
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Do one or more gradient based updates to the Learner(s) based on given data.
@@ -220,7 +220,7 @@ class LearnerGroup:
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
-            _reduce_mean_results
+            reduce_results
         ),
     ) -> Union[List[Mapping[str, Any]], List[List[Mapping[str, Any]]]]:
         """Asnychronously do gradient based updates to the Learner(s) with `batch`.
@@ -359,7 +359,7 @@ class LearnerGroup:
     def additional_update(
         self,
         *,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        reduce_fn: Callable[[ResultDict], ResultDict] = reduce_results,
         **kwargs,
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Apply additional non-gradient based updates to the Learners.
