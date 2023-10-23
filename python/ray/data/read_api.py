@@ -1046,7 +1046,7 @@ def read_json(
         >>> import pyarrow.json as pajson
         >>> block_size = 10 << 20 # Set block size to 10MB
         >>> ray.data.read_json(
-        ...     s3://anonymous@ray-example-data/log.json,
+        ...     "s3://anonymous@ray-example-data/log.json",
         ...     read_options=pajson.ReadOptions(block_size=block_size)
         ... )
 
