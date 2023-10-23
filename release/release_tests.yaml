@@ -1072,11 +1072,11 @@
 
   variations:
       - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
+#      - __suffix__: gce
+#        env: gce
+#        frequency: manual
+#        cluster:
+#          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 
 #######################
