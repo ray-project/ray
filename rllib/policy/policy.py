@@ -57,6 +57,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import (
     deserialize_type,
+    serialize_type,
     space_from_dict,
     space_to_dict,
 )
@@ -134,22 +135,20 @@ class PolicySpec:
         # Try to figure out a durable name for this policy.
         cls = get_policy_class_name(self.policy_class)
         if cls is None:
-            logger.warning(
-                f"Can not figure out a durable policy name for {self.policy_class}. "
-                f"You are probably trying to checkpoint a custom policy. "
-                f"Raw policy class may cause problems when the checkpoint needs to "
-                "be loaded in the future. To fix this, make sure you add your "
-                "custom policy in rllib.algorithms.registry.POLICIES."
-            )
-            cls = self.policy_class
+            cls = serialize_type(self.policy_class)
+
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+        if isinstance(self.config, AlgorithmConfig):
+            config = self.config.serialize()
+        else:
+            config = AlgorithmConfig._serialize_dict(self.config)
 
         return {
             "policy_class": cls,
             "observation_space": space_to_dict(self.observation_space),
             "action_space": space_to_dict(self.action_space),
-            # TODO(jungong) : try making the config dict durable by maybe
-            #  getting rid of all the fields that are not JSON serializable.
-            "config": self.config,
+            "config": config,
         }
 
     @classmethod
@@ -159,6 +158,8 @@ class PolicySpec:
             from ray.rllib.algorithms.registry import get_policy_class
 
             policy_class = get_policy_class(spec["policy_class"])
+            if policy_class is None:
+                policy_class = deserialize_type(spec["policy_class"])
         elif isinstance(spec["policy_class"], type):
             # Policy spec is already a class type. Simply use it.
             policy_class = spec["policy_class"]

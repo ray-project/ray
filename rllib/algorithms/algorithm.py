@@ -62,7 +62,7 @@ from ray.rllib.offline.estimators import (
     DoublyRobust,
 )
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
@@ -102,7 +102,11 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
-from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
+from ray.rllib.utils.serialization import (
+    deserialize_type,
+    gym_space_from_dict,
+    NOT_SERIALIZABLE,
+)
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
@@ -2770,17 +2774,22 @@ class Algorithm(Trainable, AlgorithmBase):
             # Remove policies from multiagent dict that are not in `policy_ids`.
             new_policies = new_config.policies
             if isinstance(new_policies, (set, list, tuple)):
-                new_policies = {pid for pid in new_policies if pid in policy_ids}
+                new_policies = {
+                    pid: PolicySpec() for pid in new_policies if pid in policy_ids
+                }
             else:
                 new_policies = {
                     pid: spec for pid, spec in new_policies.items() if pid in policy_ids
                 }
             new_config.multi_agent(
                 policies=new_policies,
-                policies_to_train=policies_to_train,
                 **(
                     {"policy_mapping_fn": policy_mapping_fn}
                     if policy_mapping_fn is not None
+                    else {}
+                    |
+                    {"policies_to_train": policies_to_train}
+                    if policies_to_train is not None
                     else {}
                 ),
             )
@@ -2807,9 +2816,12 @@ class Algorithm(Trainable, AlgorithmBase):
                 with open(policy_state_file, "rb") as f:
                     if msgpack is not None:
                         worker_state["policy_states"][pid] = msgpack.load(f)
+                        spec = worker_state["policy_states"][pid]["policy_spec"]
+                        spec = PolicySpec.deserialize(spec)
+                        # Since msgpack checkpoint do not store spaces
                         # Replace PolicySpec's config with given one (msgpack does NOT
                         # store config information).
-                        worker_state["policy_states"][pid]["policy_spec"]["config"] = (
+                        spec.config = (
                             new_config.copy(copy_frozen=False).update_from_dict(
                                 new_config.policies[pid].config or {}
                             )

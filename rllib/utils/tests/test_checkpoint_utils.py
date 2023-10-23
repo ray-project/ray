@@ -107,6 +107,7 @@ class TestCheckpointUtils(unittest.TestCase):
                 "some_non_serializable_setting": gym.spaces.Discrete(4),
             })
             .callbacks(DummyCallbacks)
+
         )
         # Build algorithm object.
         algo1 = config.build()
@@ -146,13 +147,6 @@ class TestCheckpointUtils(unittest.TestCase):
         check(pickle_w["policy_ids"], msgpack_w["policy_ids"])
         check(pickle_w["filters"], msgpack_w["filters"])
 
-        # Make sure the (serialized) configs match 100%. Our `check` utility
-        # cannot handle comparing types/classes.
-        pickle_w["policy_states"]["default_policy"]["policy_spec"][
-            "config"
-        ] = AlgorithmConfig._serialize_dict(
-            pickle_w["policy_states"]["default_policy"]["policy_spec"]["config"]
-        )
         check(pickle_w["policy_states"], msgpack_w["policy_states"])
         check(pickle_state["config"].serialize(), msgpack_state["config"].serialize())
 
@@ -174,12 +168,19 @@ class TestCheckpointUtils(unittest.TestCase):
 
         config = (
             DQNConfig()
-            .environment("ma")
+            .environment("ma", env_config={
+                "some_strange_key": gym.spaces.Discrete(2),
+                "some_other_strange_key": gym.spaces.Dict({
+                    "a": gym.spaces.Discrete(3),
+                    "b": gym.spaces.Box(-1.0, 1.0, (2,)),
+                }),
+            })
             .multi_agent(
                 policies=["pol0", "pol1", "pol2"],
                 policy_mapping_fn=mapping_fn,
                 policies_to_train={"pol0", "pol1"},
             )
+            .callbacks(DummyCallbacks)
         )
         # Build algorithm object.
         algo1 = config.build()
@@ -196,14 +197,12 @@ class TestCheckpointUtils(unittest.TestCase):
             with tempfile.TemporaryDirectory() as msgpack_cp_dir:
                 convert_to_msgpack_checkpoint(pickle_cp_dir, msgpack_cp_dir)
                 msgpack_cp_info = get_checkpoint_info(msgpack_cp_dir)
+
                 # Try recreating a new algorithm object from the msgpack checkpoint.
-                algo2 = Algorithm.from_checkpoint(
-                    msgpack_cp_dir,
-                    # Since we have a multi-agent setup, we must provide the current
-                    # policy mapping fn and list of policies to train.
-                    policy_mapping_fn=mapping_fn,
-                    policies_to_train=["pol0", "pol1"],
-                )
+                # We must provide the original config here for this to work as msgpack
+                # checkpoints don't carry this information.
+                algo2 = Algorithm.from_checkpoint(msgpack_cp_dir, config=config)
+
         # Get the state of the algorithm recovered from msgpack.
         msgpack_state = algo2.__getstate__()
 
