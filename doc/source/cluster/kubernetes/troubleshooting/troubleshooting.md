@@ -16,12 +16,12 @@ If you don't find an answer to your question here, please don't hesitate to conn
 
 ## Upgrade KubeRay
 
-If you have any issues with upgrading KubeRay, refer to the [upgrade guide](#kuberay-upgrade-guide).
+If you have issues upgrading KubeRay, refer to the [upgrade guide](#kuberay-upgrade-guide).
 Most issues are about the CRD version.
 
 ## Worker init container
 
-The KubeRay operator will inject a default [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) into every worker Pod. 
+The KubeRay operator injects a default [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) into every worker Pod. 
 This init container is responsible for waiting until the Global Control Service (GCS) on the head Pod is ready before establishing a connection to the head.
 The init container will use `ray health-check` to check the GCS server status continuously.
 
