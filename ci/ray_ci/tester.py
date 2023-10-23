@@ -100,7 +100,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 )
 @click.option(
     "--build-type",
-    type=click.Choice(["optimized", "debug", "asan"]),
+    type=click.Choice(["optimized", "debug", "asan", "java"]),
     default="optimized",
 )
 def main(
