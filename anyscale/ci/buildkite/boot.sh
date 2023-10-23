@@ -2,6 +2,5 @@
 
 set -euo pipefail
 
-PIPELINE_YAML="${1:-anyscale/ci/buildkite/premerge.yaml}"
-
-buildkite-agent pipeline upload "${PIPELINE_YAML}"
+curl -sfL "https://raw.githubusercontent.com/ray-project/rayci/stable/run_rayci.sh" > /tmp/run_rayci.sh
+/bin/bash /tmp/run_rayci.sh -upload -config anyscale/ci/config.yaml
