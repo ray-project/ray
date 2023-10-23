@@ -30,7 +30,7 @@ py_test(
     args = ["--dir=tuned_examples/"]
 )
 
-Compilation Tests
+# Compilation Tests
 
 py_test(
     name = "test_a2c",
