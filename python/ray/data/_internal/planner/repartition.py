@@ -65,7 +65,7 @@ def generate_repartition_fn(
         refs: List[RefBundle],
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
-        shuffle_spec = ShuffleTaskSpec(random_shuffle=False)
+        shuffle_spec = ShuffleTaskSpec(ctx.target_max_block_size, random_shuffle=False)
         scheduler = SplitRepartitionTaskScheduler(shuffle_spec)
         return scheduler.execute(refs, num_outputs, ctx)
 
