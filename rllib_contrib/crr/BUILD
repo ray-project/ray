@@ -1,0 +1,25 @@
+# Learning Tests
+
+py_test(
+   name = "learning_tests_pendulum_crr",
+   main = "tests/run_regression_tests.py",
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
+   size = "enormous",
+   srcs = ["tests/run_regression_tests.py"],
+   # Include an offline json data file as well.
+   data = [
+       "tuned_examples/pendulum-v1-crr.yaml",
+       "tuned_examples/pendulum_replay_v1.1.0.zip",
+   ],
+   args = ["--dir=tuned_examples/"]
+)
+
+
+# Compilation Tests
+
+py_test(
+    name = "test_crr",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["tests/test_crr.py"]
+)
