@@ -26,7 +26,7 @@ MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ci/env/install-dependencies.sh
 rm -rf python/ray/thirdparty_files
 
 # install test requirements
-python -m pip install -U pytest==7.0.1 numpy
+python -m pip install -U pytest==7.0.1
 
 # install extra dependencies
 if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
