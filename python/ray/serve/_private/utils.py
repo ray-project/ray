@@ -15,7 +15,6 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import numpy as np
 import requests
 
 import ray
@@ -34,6 +33,11 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 MESSAGE_PACK_OFFSET = 9
 
@@ -93,10 +97,12 @@ class _ServeCustomEncoders:
 
 
 serve_encoders = {
-    np.ndarray: _ServeCustomEncoders.encode_np_array,
-    np.generic: _ServeCustomEncoders.encode_np_scaler,
     Exception: _ServeCustomEncoders.encode_exception,
 }
+
+if np is not None:
+    serve_encoders[np.ndarray] = _ServeCustomEncoders.encode_np_array,
+    serve_encoders[np.generic] = _ServeCustomEncoders.encode_np_scaler,
 
 if pd is not None:
     serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
