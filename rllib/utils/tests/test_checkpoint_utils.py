@@ -294,8 +294,8 @@ class TestCheckpointUtils(unittest.TestCase):
         msgpack_state = pol2.get_state()
         # The following args get changed/added inside the config dict when a policy is
         # a) constructed and b) within a rollout worker, so we take them out here.
-        # Note: We will not fix this any longer as we are moving away from the Policy
-        # API (and their config dicts) anyways.
+        # Note: We will not fix this as we are moving away from the Policy API (and
+        # their config dicts) anyways.
         for key in [
             "tf_session_args",
             "simple_optimizer",
