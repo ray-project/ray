@@ -118,6 +118,18 @@ steps:
     depends_on: mlgpubuild
     job_env: forge
 
+  - label: ":train: ml: flaky tests"
+    tags: 
+      - train
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+        --run-flaky-tests
+        --except-tags soft_imports,gpu_only,rllib,multinode
+    depends_on: mlbuild
+    soft_fail: true
+    job_env: forge
+
   - name: minbuild-ml
     label: "wanda: minbuild-ml-py38"
     wanda: ci/docker/min.build.wanda.yaml
