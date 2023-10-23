@@ -1355,11 +1355,13 @@ class Algorithm(Trainable, AlgorithmBase):
 
     @OverrideToImplementCustomLogic
     @DeveloperAPI
-    def restore_workers(self, workers: WorkerSet):
-        """Try to restore failed workers if necessary.
+    def restore_workers(self, workers: WorkerSet) -> None:
+        """Try syncing previously failed and restarted workers with local, if necessary.
 
         Algorithms that use custom RolloutWorkers may override this method to
-        disable default, and create custom restoration logics.
+        disable default, and create custom restoration logics. Note that "restoring"
+        does not include the actual restarting process, but merely what should happen
+        after such a restart of a (previously failed) worker.
 
         Args:
             workers: The WorkerSet to restore. This may be Rollout or Evaluation
@@ -1395,6 +1397,14 @@ class Algorithm(Trainable, AlgorithmBase):
                 timeout_seconds=self.config.worker_restore_timeout_s,
                 # Bring back actor after successful state syncing.
                 mark_healthy=True,
+            )
+
+            # Fire the callback for re-created workers.
+            self.callbacks.on_workers_recreated(
+                algorithm=self,
+                worker_set=workers,
+                worker_ids=restored,
+                is_evaluation=workers.local_worker().config.in_evaluation,
             )
 
     @OverrideToImplementCustomLogic
