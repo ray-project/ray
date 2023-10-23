@@ -22,6 +22,7 @@ from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
     STATUS_UP_TO_DATE,
+    TAG_RAY_NODE_INSTANCE_ID,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
@@ -234,6 +235,8 @@ def create_node_spec(
     return node_spec
 
 
+# TODO: make an alternative mode where the provider doesn't start ray (thus
+# requires ray installer)
 class FakeMultiNodeProvider(NodeProvider):
     """A node provider that implements multi-node on a single machine.
 
@@ -309,6 +312,7 @@ class FakeMultiNodeProvider(NodeProvider):
         with self.lock:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             next_id = self._next_hex_node_id()
+            tags[TAG_RAY_NODE_INSTANCE_ID] = next_id
             ray_params = ray._private.parameter.RayParams(
                 min_worker_port=0,
                 max_worker_port=0,
@@ -328,18 +332,17 @@ class FakeMultiNodeProvider(NodeProvider):
                     "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
                     ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(resources),
                     ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
+                    "RAY_HEAD_IP": ray._private.services.get_node_ip_address(),
+                    "RAY_CLOUD_INSTANCE_ID": tags[TAG_RAY_NODE_INSTANCE_ID],
+                    "RAY_NODE_TYPE_NAME": node_type,
+                    "RAY_CLOUD_INSTANCE_TYPE_NAME": "fake-cloud-instance-type",
                 },
             )
             node = ray._private.node.Node(
                 ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
             )
             self._nodes[next_id] = {
-                "tags": {
-                    TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                    TAG_RAY_USER_NODE_TYPE: node_type,
-                    TAG_RAY_NODE_NAME: next_id,
-                    TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-                },
+                "tags": tags,
                 "node": node,
             }
 
@@ -349,7 +352,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 node = self._nodes.pop(node_id)
             except Exception as e:
                 raise e
-
+            print(node)
             self._terminate_node(node)
 
     def _terminate_node(self, node):

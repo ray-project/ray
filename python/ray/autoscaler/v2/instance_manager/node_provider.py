@@ -1,14 +1,36 @@
+from collections import defaultdict
+from dataclasses import dataclass
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import Dict, List, Set
+import time
+from typing import Dict, List, Optional, Set
+from ray.autoscaler.v2.schema import CloudInstanceId
+from ray.autoscaler._private.constants import (
+    DISABLE_NODE_UPDATERS_KEY,
+)
 
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
-from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
+from ray.autoscaler.tags import (
+    TAG_RAY_NODE_INSTANCE_ID,
+    TAG_RAY_USER_NODE_TYPE,
+)
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
 from ray.core.generated.instance_manager_pb2 import Instance
 
+
 logger = logging.getLogger(__name__)
+
+
+# TODO: should we make the cloud instance id into a strongly type?
+# so that it could be easily differentiate from instance id.
+@dataclass
+class CloudProviderNode:
+    cloud_instance_id: str
+    internal_ip: str
+    external_ip: str
+    instance_type: str
+    node_tags: Dict[str, str]
 
 
 class NodeProvider(metaclass=ABCMeta):
@@ -32,21 +54,22 @@ class NodeProvider(metaclass=ABCMeta):
     @abstractmethod
     def get_non_terminated_nodes(
         self,
-    ) -> Dict[str, Instance]:
+    ) -> List[CloudInstanceId]:
         """Get all non-terminated nodes in the cluster"""
-        pass
-
-    @abstractmethod
-    def get_nodes_by_cloud_instance_id(
-        self,
-        cloud_instance_ids: List[str],
-    ) -> Dict[str, Instance]:
-        """Get nodes by node ids, including terminated nodes"""
         pass
 
     @abstractmethod
     def is_readonly(self) -> bool:
         return False
+
+    @abstractmethod
+    def disable_ray_installer(self) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_node_info_by_id(self, cloud_instance_id: str) -> CloudProviderNode:
+        """Get a node by its cloud instance id"""
+        pass
 
 
 class NodeProviderAdapter(NodeProvider):
@@ -66,51 +89,40 @@ class NodeProviderAdapter(NodeProvider):
         self._config = instance_config_provider
 
     def create_nodes(self, instance_type_name: str, count: int) -> List[Instance]:
-        created_nodes = self._node_launcher.launch_node(
-            self._config.get_raw_config_mutable(),
-            count,
-            instance_type_name,
+        logger.info(
+            f"create_nodes: creating {count} nodes of type {instance_type_name}"
         )
-        # TODO: we should handle failures where the instance type is
-        # not available
-        if created_nodes:
-            return [
-                self._get_instance(cloud_instance_id)
-                for cloud_instance_id in created_nodes.keys()
-            ]
-        return []
+        try:
+            self._node_launcher.pending.inc(instance_type_name, count)
+            self._node_launcher.launch_node(
+                self._config.get_raw_config_mutable(),
+                count,
+                instance_type_name,
+            )
+        except Exception as e:
+            # TODO: error handling
+            logger.error(f"create_nodes: failed to launch nodes: {e}")
+            raise e
 
-    def terminate_node(self, clould_instance_id: str) -> None:
-        self._provider.terminate_node(clould_instance_id)
+    def terminate_node(self, cloud_instance_id: str) -> None:
+        self._provider.terminate_node(cloud_instance_id)
 
     def is_readonly(self) -> bool:
         return self._provider.is_readonly()
 
-    def get_non_terminated_nodes(self) -> Dict[str, Instance]:
-        clould_instance_ids = self._provider.non_terminated_nodes({})
-        return self.get_nodes_by_cloud_instance_id(clould_instance_ids)
+    def get_non_terminated_nodes(self) -> Set[CloudInstanceId]:
+        return self._provider.non_terminated_nodes({})
 
-    def get_nodes_by_cloud_instance_id(
-        self,
-        cloud_instance_ids: List[str],
-    ) -> Dict[str, Instance]:
-        instances = {}
-        for cloud_instance_id in cloud_instance_ids:
-            instances[cloud_instance_id] = self._get_instance(cloud_instance_id)
-        return instances
+    def get_node_info_by_id(self, cloud_instance_id: str) -> CloudProviderNode:
+        return CloudProviderNode(
+            cloud_instance_id=cloud_instance_id,
+            internal_ip=self._provider.internal_ip(cloud_instance_id),
+            external_ip=self._provider.external_ip(cloud_instance_id),
+            instance_type=self._provider.node_tags(cloud_instance_id)[
+                TAG_RAY_USER_NODE_TYPE
+            ],
+            node_tags=self._provider.node_tags(cloud_instance_id),
+        )
 
-    def _get_instance(self, cloud_instance_id: str) -> Instance:
-        instance = Instance()
-        instance.cloud_instance_id = cloud_instance_id
-        if self._provider.is_running(cloud_instance_id):
-            instance.status = Instance.ALLOCATED
-        elif self._provider.is_terminated(cloud_instance_id):
-            instance.status = Instance.STOPPED
-        else:
-            instance.status = Instance.UNKNOWN
-        instance.internal_ip = self._provider.internal_ip(cloud_instance_id)
-        instance.external_ip = self._provider.external_ip(cloud_instance_id)
-        instance.instance_type = self._provider.node_tags(cloud_instance_id)[
-            TAG_RAY_USER_NODE_TYPE
-        ]
-        return instance
+    def disable_ray_installer(self) -> bool:
+        return self._config.provider_config.get(DISABLE_NODE_UPDATERS_KEY, False)

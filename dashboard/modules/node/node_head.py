@@ -248,7 +248,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     async def get_nodes_logical_resources(self) -> dict:
 
-        from ray.autoscaler.v2.utils import is_autoscaler_v2
+        from ray.autoscaler.v2 import is_autoscaler_v2
 
         if is_autoscaler_v2():
             from ray.autoscaler.v2.sdk import get_cluster_status

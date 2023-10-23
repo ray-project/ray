@@ -33,6 +33,9 @@ TAG_RAY_CLUSTER_NAME = "ray-cluster-name"
 # Hash of the node launch config, used to identify out-of-date nodes
 TAG_RAY_LAUNCH_CONFIG = "ray-launch-config"
 
+# Tag for the autoscaler instance id.
+TAG_RAY_NODE_INSTANCE_ID = "ray-node-instance-id"
+
 # Hash of the node runtime config, used to determine if updates are needed
 TAG_RAY_RUNTIME_CONFIG = "ray-runtime-config"
 # Hash of the contents of the directories specified by the file_mounts config

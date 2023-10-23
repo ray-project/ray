@@ -164,7 +164,7 @@ class LogMonitor:
         if not ray.experimental.internal_kv._internal_kv_initialized():
             gcs_client = GcsClient(address=gcs_address)
             ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-        from ray.autoscaler.v2.utils import is_autoscaler_v2
+        from ray.autoscaler.v2 import is_autoscaler_v2
 
         return is_autoscaler_v2()
 

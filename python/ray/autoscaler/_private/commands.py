@@ -125,7 +125,7 @@ def debug_status(status, error, verbose: bool = False, address: str = None) -> s
     Returns:
         str: A debug string for the cluster's status.
     """
-    from ray.autoscaler.v2.utils import is_autoscaler_v2
+    from ray.autoscaler.v2 import is_autoscaler_v2
 
     if is_autoscaler_v2():
         from ray.autoscaler.v2.sdk import get_cluster_status
@@ -207,7 +207,7 @@ def request_resources(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True
     )
 
-    from ray.autoscaler.v2.utils import is_autoscaler_v2
+    from ray.autoscaler.v2 import is_autoscaler_v2
 
     if is_autoscaler_v2():
         from ray.autoscaler.v2.sdk import request_cluster_resources

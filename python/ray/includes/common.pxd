@@ -360,6 +360,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
 
+cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
+
+    cdef cppclass CAutoscalingState "ray::rpc::autoscaler::AutoscalingState":
+        void ParseFromString(const c_string &serialized)
+        const c_string &SerializeAsString()
+
+
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
@@ -415,6 +422,9 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus GetClusterStatus(
             int64_t timeout_ms,
             c_string &serialized_reply)
+        CRayStatus ReportAutoscalingState(
+            int64_t timeout_ms,
+            CAutoscalingState &state)
         CClusterID GetClusterId()
         CRayStatus DrainNode(
             const c_string &node_id,

@@ -88,7 +88,16 @@ class AutoscalingCluster:
                 )
             )
         env = os.environ.copy()
-        env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
+        # Set for the autoscaler envs
+        env.update(
+            {
+                "AUTOSCALER_UPDATE_INTERVAL_S": "1", 
+                "RAY_FAKE_CLUSTER": "1",
+                "RAY_CLOUD_INSTANCE_ID": "fake_instance_id",
+                "RAY_NODE_TYPE_NAME": "ray.head.default",
+                "RAY_CLOUD_INSTANCE_TYPE_NAME": "fake_instance_type",
+            }
+        )
         if override_env:
             env.update(override_env)
         subprocess.check_call(cmd, env=env)

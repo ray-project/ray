@@ -5,15 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from ray.autoscaler._private.autoscaler import AutoscalerSummary
-from ray.autoscaler.v2.instance_manager.node_provider import NodeProvider
 from ray.core.generated.autoscaler_pb2 import (
-    AutoscalingState,
-    ClusterResourceState,
-    GetClusterStatusReply,
-    NodeState,
     NodeStatus,
-    ResourceRequest,
 )
 
 # TODO(rickyx): once we have graceful shutdown, we could populate
@@ -23,6 +16,15 @@ from ray.core.generated.autoscaler_pb2 import (
 NODE_DEATH_CAUSE_RAYLET_DIED = "NodeTerminated"
 
 DEFAULT_UPSCALING_SPEED = 1.0
+
+DEFAULT_RECONCILE_INTERVAL_S = 2
+
+# To be tuned, and maybe a large value.
+DEFAULT_INSTANCE_REQUEST_TIMEOUT_S = 10
+
+InstanceId = str
+
+CloudInstanceId = str
 
 
 @dataclass
@@ -158,6 +160,15 @@ class ResourceRequestByCount:
     # Number of bundles with the same shape.
     count: int
 
+    # TODO
+    # The anti-affinity constraint of all the bundles in the request.
+    # NOTE: this is assuming bundles in a single resource request shared
+    # the same (anti-) affinity constraints.
+    anti_affinity: Optional[Dict[str, str]] = None
+
+    # Affinity constraints of all the bundles in the request.
+    affinity: Optional[Dict[str, str]] = None
+
     def __str__(self) -> str:
         return f"[{self.count} {self.bundle}]"
 
@@ -274,6 +285,9 @@ class Stats:
     request_ts_s: Optional[int] = None
 
 
+# TODO(rickyx):
+# I think we should just use the proto directly.
+# Maybe not a very good idea to have this class in the first place. :(
 @dataclass
 class ClusterStatus:
     # Healthy nodes information (alive)
@@ -292,6 +306,10 @@ class ClusterStatus:
     resource_demands: ResourceDemandSummary = field(
         default_factory=ResourceDemandSummary
     )
+    # Infeasible resource requests.
+    infeasible_resource_demands: ResourceDemandSummary = field(
+        default_factory=ResourceDemandSummary
+    )
     # Query metics
     stats: Stats = field(default_factory=Stats)
 
@@ -305,21 +323,21 @@ class IAutoscaler(metaclass=ABCMeta):
     def update(self) -> None:
         pass
 
-    @abstractmethod
-    def get_provider(self) -> NodeProvider:
-        pass
+    # @abstractmethod
+    # def get_provider(self) -> NodeProvider:
+    #     pass
 
-    @abstractmethod
-    def get_config(self) -> Dict[str, Any]:
-        pass
+    # @abstractmethod
+    # def get_config(self) -> Dict[str, Any]:
+    #     pass
 
-    @abstractmethod
-    def _summary(self) -> AutoscalerSummary:
-        """
-        TODO: this is just for v1 compatibility
-        """
-        pass
+    # @abstractmethod
+    # def _summary(self) -> AutoscalerSummary:
+    #     """
+    #     TODO: this is just for v1 compatibility
+    #     """
+    #     pass
 
-    @abstractmethod
-    def _kill_workers(self) -> None:
-        pass
+    # @abstractmethod
+    # def _kill_workers(self) -> None:
+    #     pass

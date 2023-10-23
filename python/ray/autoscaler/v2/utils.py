@@ -3,8 +3,6 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
-import ray
-from ray._private.ray_constants import AUTOSCALER_NAMESPACE, AUTOSCALER_V2_ENABLED_KEY
 from ray._private.utils import binary_to_hex
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.node_provider_availability_tracker import (
@@ -36,7 +34,83 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeStatus,
     ResourceRequest,
 )
-from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_initialized
+
+import ray.core.generated.autoscaler_pb2 as autoscaler_pb2 
+
+
+def flatten_requests_by_count(
+    requests_by_count: List[autoscaler_pb2.ResourceRequestByCount],
+) -> List[ResourceRequest]:
+    """
+    Flatten the resource requests by count to resource requests.
+
+    Args:
+        requests_by_count: the resource requests by count
+    Returns:
+        requests: the flattened resource requests
+    """
+    reqs = []
+    for r in requests_by_count:
+        reqs += [r.request] * r.count
+
+    return reqs
+
+
+def resource_requests_by_count(
+    requests: List[ResourceRequest],
+) -> List[autoscaler_pb2.ResourceRequestByCount]:
+    """
+    Aggregate resource requests by shape.
+    Args:
+        requests: the list of resource requests
+    Returns:
+        resource_requests_by_count: the aggregated resource requests by count
+    """
+    resource_requests_by_count = defaultdict(int)
+    for request in requests:
+        serialized_request = request.SerializeToString()
+        resource_requests_by_count[serialized_request] += 1
+
+    results = []
+    for serialized_request, count in resource_requests_by_count.items():
+        request = ResourceRequest()
+        request.ParseFromString(serialized_request)
+        results.append(autoscaler_pb2.ResourceRequestByCount(request=request, count=count))
+
+    return results
+
+
+def to_map(rs: List[ResourceRequest]) -> List[Dict]:
+    """
+    Convert the list of resource requests to a list of dict.
+    Args:
+        rs: the list of resource requests
+    Returns:
+        rs_map: the list of resource requests in dict format
+    """
+    rs_map = []
+    for r in rs:
+        rs_map.append(dict(r.resources_bundle.items()))
+
+    return rs_map
+
+
+def to_resource_requests(rs: List[Dict]) -> List[ResourceRequest]:
+    """
+    Convert the list of resource requests in dict format to a list of resource requests.
+    Args:
+        rs: the list of resource requests in dict format
+    Returns:
+        rs: the list of resource requests
+    """
+    requests = []
+    for r in rs:
+        request = ResourceRequest()
+        for k, v in r.items():
+            request.resources_bundle[k] = v
+        requests.append(request)
+
+    return requests
 
 
 def _count_by(data: Any, key: str) -> Dict[str, int]:
@@ -283,9 +357,7 @@ class ClusterStatusParser:
 
         for gang_request in state.pending_gang_resource_requests:
             demand = PlacementGroupResourceDemand(
-                bundles_by_count=cls._aggregate_resource_requests_by_shape(
-                    gang_request.requests
-                ),
+                bundles_by_count=resource_requests_by_count(gang_request.requests),
                 details=gang_request.details,
             )
             pg_demand.append(demand)
@@ -306,29 +378,6 @@ class ClusterStatusParser:
             placement_group_demand=pg_demand,
             cluster_constraint_demand=constraint_demand,
         )
-
-    @classmethod
-    def _aggregate_resource_requests_by_shape(
-        cls,
-        requests: List[ResourceRequest],
-    ) -> List[ResourceRequestByCount]:
-        """
-        Aggregate resource requests by shape.
-        Args:
-            requests: the list of resource requests
-        Returns:
-            resource_requests_by_count: the aggregated resource requests by count
-        """
-
-        resource_requests_by_count = defaultdict(int)
-        for request in requests:
-            bundle = frozenset(request.resources_bundle.items())
-            resource_requests_by_count[bundle] += 1
-
-        return [
-            ResourceRequestByCount(dict(bundle), count)
-            for bundle, count in resource_requests_by_count.items()
-        ]
 
     @classmethod
     def _parse_node_resource_usage(
@@ -513,47 +562,3 @@ class ClusterStatusParser:
             )
 
         return pending_nodes
-
-
-cached_is_autoscaler_v2 = None
-
-
-def is_autoscaler_v2() -> bool:
-    """
-    Check if the autoscaler is v2 from reading GCS internal KV.
-
-    If the method is called multiple times, the result will be cached in the module.
-
-    Returns:
-        is_v2: True if the autoscaler is v2, False otherwise.
-
-    Raises:
-        Exception: if GCS address could not be resolved (e.g. ray.init() not called)
-    """
-
-    # If env var is set to enable autoscaler v2, we should always return True.
-    if ray._config.enable_autoscaler_v2():
-        # TODO(rickyx): Once we migrate completely to v2, we should remove this.
-        # While this short-circuit may allow client-server inconsistency
-        # (e.g. client running v1, while server running v2), it's currently
-        # not possible with existing use-cases.
-        return True
-
-    global cached_is_autoscaler_v2
-    if cached_is_autoscaler_v2 is not None:
-        return cached_is_autoscaler_v2
-
-    if not _internal_kv_initialized():
-        raise Exception(
-            "GCS address could not be resolved (e.g. ray.init() not called)"
-        )
-
-    # See src/ray/common/constants.h for the definition of this key.
-    cached_is_autoscaler_v2 = (
-        _internal_kv_get(
-            AUTOSCALER_V2_ENABLED_KEY.encode(), namespace=AUTOSCALER_NAMESPACE.encode()
-        )
-        == b"1"
-    )
-
-    return cached_is_autoscaler_v2

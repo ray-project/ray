@@ -190,6 +190,7 @@ _PROVIDER_PRETTY_NAMES = {
 _DEFAULT_CONFIGS = {
     "fake_multinode_docker": _load_fake_multinode_docker_defaults_config,
     "local": _load_local_defaults_config,
+    "fake_multinode": _load_local_defaults_config,
     "aws": _load_aws_defaults_config,
     "gcp": _load_gcp_defaults_config,
     "azure": _load_azure_defaults_config,

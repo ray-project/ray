@@ -527,6 +527,25 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::ReportAutoscalingState(
+    int64_t timeout_ms, const rpc::autoscaler::AutoscalingState &state) {
+  rpc::autoscaler::ReportAutoscalingStateRequest request;
+  rpc::autoscaler::ReportAutoscalingStateReply reply;
+  *request.mutable_autoscaling_state() = state;
+
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
+
+  grpc::Status status =
+      autoscaler_stub_->ReportAutoscalingState(&context, request, &reply);
+
+  if (status.ok()) {
+    return Status::OK();
+  }
+
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::DrainNode(const std::string &node_id,
                                   int32_t reason,
                                   const std::string &reason_message,

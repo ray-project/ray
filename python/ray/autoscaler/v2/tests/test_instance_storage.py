@@ -8,14 +8,13 @@ import pytest  # noqa
 
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
-    InstanceUpdatedSuscriber,
-    InstanceUpdateEvent,
+    InstanceUpdatedSubscriber,
 )
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 
-class DummySubscriber(InstanceUpdatedSuscriber):
+class DummySubscriber(InstanceUpdatedSubscriber):
     def __init__(self):
         self.events = []
 
@@ -28,18 +27,30 @@ def create_instance(instance_id, status=Instance.UNKNOWN, version=0):
         instance_id=instance_id,
         status=status,
         version=version,
-        timestamp_since_last_modified=1,
+        last_modified_timestamp_at_storage_ms=1,
     )
 
 
-@mock.patch("time.time", mock.MagicMock(return_value=1))
+def make_instance_update_event(
+    instance_id,
+    status: Instance.InstanceStatus,
+    ray_status: Instance.RayStatus = Instance.RAY_STATUS_UNKNOWN,
+):
+    return InstanceUpdateEvent(
+        instance_id=instance_id,
+        new_instance_status=status,
+        new_ray_status=ray_status,
+    )
+
+
+@mock.patch("time.time_ns", mock.MagicMock(return_value=1 * 1000000))
 def test_upsert():
     subscriber = DummySubscriber()
 
     storage = InstanceStorage(
         cluster_id="test_cluster",
         storage=InMemoryStorage(),
-        status_change_subscriber=subscriber,
+        status_change_subscribers=[subscriber],
     )
     instance1 = create_instance("instance1")
     instance2 = create_instance("instance2")
@@ -51,8 +62,8 @@ def test_upsert():
     )
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
     ]
 
     instance1.version = 1
@@ -71,8 +82,8 @@ def test_upsert():
     )
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
     ]
 
     instance2.status = Instance.ALLOCATED
@@ -94,34 +105,34 @@ def test_upsert():
     }
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance3", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.ALLOCATED),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance3", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.ALLOCATED),
     ]
 
 
-@mock.patch("time.time", mock.MagicMock(return_value=1))
+@mock.patch("time.time_ns", mock.MagicMock(return_value=1000000))
 def test_update():
     subscriber = DummySubscriber()
 
     storage = InstanceStorage(
         cluster_id="test_cluster",
         storage=InMemoryStorage(),
-        status_change_subscriber=subscriber,
+        status_change_subscribers=[subscriber],
     )
     instance1 = create_instance("instance1")
     instance2 = create_instance("instance2")
 
     assert (True, 1) == storage.upsert_instance(instance=instance1)
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
     ]
     assert (True, 2) == storage.upsert_instance(instance=instance2)
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
     ]
 
     assert (
@@ -145,8 +156,8 @@ def test_update():
     )
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
     ]
 
     assert (True, 3) == storage.upsert_instance(
@@ -163,9 +174,9 @@ def test_update():
     ) == storage.get_instances()
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
     ]
 
     assert (True, 4) == storage.upsert_instance(
@@ -182,21 +193,21 @@ def test_update():
     ) == storage.get_instances()
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
     ]
 
 
-@mock.patch("time.time", mock.MagicMock(return_value=1))
+@mock.patch("time.time_ns", mock.MagicMock(return_value=1000000))
 def test_delete():
     subscriber = DummySubscriber()
 
     storage = InstanceStorage(
         cluster_id="test_cluster",
         storage=InMemoryStorage(),
-        status_change_subscriber=subscriber,
+        status_change_subscribers=[subscriber],
     )
     instance1 = create_instance("instance1")
     instance2 = create_instance("instance2")
@@ -213,10 +224,10 @@ def test_delete():
     assert (True, 2) == storage.batch_delete_instances(instance_ids=["instance1"])
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance3", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance1", Instance.GARBAGE_COLLECTED),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance3", Instance.UNKNOWN),
+        make_instance_update_event("instance1", Instance.GARBAGE_COLLECTED),
     ]
 
     assert (
@@ -239,15 +250,15 @@ def test_delete():
     ) == storage.get_instances()
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance3", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance1", Instance.GARBAGE_COLLECTED),
-        InstanceUpdateEvent("instance2", Instance.GARBAGE_COLLECTED),
+        make_instance_update_event("instance1", Instance.UNKNOWN),
+        make_instance_update_event("instance2", Instance.UNKNOWN),
+        make_instance_update_event("instance3", Instance.UNKNOWN),
+        make_instance_update_event("instance1", Instance.GARBAGE_COLLECTED),
+        make_instance_update_event("instance2", Instance.GARBAGE_COLLECTED),
     ]
 
 
-@mock.patch("time.time", mock.MagicMock(return_value=1))
+@mock.patch("time.time_ns", mock.MagicMock(return_value=1000000))
 def test_get_instances():
     storage = InstanceStorage(
         cluster_id="test_cluster",

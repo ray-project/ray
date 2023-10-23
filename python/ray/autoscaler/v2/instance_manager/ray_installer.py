@@ -36,7 +36,7 @@ class RayInstaller(object):
 
         logger.info(
             f"Creating new (spawn_updater) updater thread for node"
-            f" {instance.cloud_instance_id}."
+            f" {instance.cloud_instance_id} of type {instance.instance_type}."
         )
         provider_instance_type_name = self._config.get_provider_instance_type(
             instance.instance_type

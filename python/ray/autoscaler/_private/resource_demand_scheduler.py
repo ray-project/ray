@@ -220,6 +220,7 @@ class ResourceDemandScheduler:
             node_resources,
             node_type_counts,
             adjusted_min_workers,
+            _,
         ) = _add_min_workers_nodes(
             node_resources,
             node_type_counts,
@@ -634,7 +635,7 @@ def _add_min_workers_nodes(
     utilization_scorer: Callable[
         [NodeResources, ResourceDemands, str], Optional[UtilizationScore]
     ],
-) -> (List[ResourceDict], Dict[NodeType, int], Dict[NodeType, int]):
+) -> (List[ResourceDict], Dict[NodeType, int], Dict[NodeType, int], List[ResourceDict]):
     """Updates resource demands to respect the min_workers and
     request_resources() constraints.
 
@@ -655,6 +656,8 @@ def _add_min_workers_nodes(
             and request_resources() constraints per node type.
         total_nodes_to_add_dict: The nodes to add to respect min_workers and
             request_resources() constraints.
+        unfulfilled_constraints: Teh resources requests that still cannot be fulfilled
+            after adding min_workers for request_resources() constraints.
     """
     total_nodes_to_add_dict = {}
     for node_type, config in node_types.items():
@@ -689,7 +692,7 @@ def _add_min_workers_nodes(
             max_node_resources, ensure_min_cluster_size
         )
         # Get the nodes to meet the unfulfilled.
-        nodes_to_add_request_resources, _ = get_nodes_for(
+        nodes_to_add_request_resources, unfulfilled_constraints = get_nodes_for(
             node_types,
             node_type_counts,
             head_node_type,
@@ -713,7 +716,12 @@ def _add_min_workers_nodes(
                 total_nodes_to_add_dict[
                     node_type
                 ] = nodes_to_add + total_nodes_to_add_dict.get(node_type, 0)
-    return node_resources, node_type_counts, total_nodes_to_add_dict
+    return (
+        node_resources,
+        node_type_counts,
+        total_nodes_to_add_dict,
+        unfulfilled_constraints,
+    )
 
 
 def get_nodes_for(

@@ -51,6 +51,9 @@ proto_library(
 proto_library(
     name = "instance_manager_proto",
     srcs = ["experimental/instance_manager.proto"],
+    deps = [
+        ":autoscaler_proto",
+    ]
 )
 
 python_grpc_compile(

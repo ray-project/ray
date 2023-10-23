@@ -77,6 +77,7 @@ from ray.includes.common cimport (
     CRayObject,
     CRayStatus,
     CActorTableData,
+    CAutoscalingState,
     CErrorTableData,
     CGcsClientOptions,
     CGcsNodeInfo,
@@ -191,6 +192,7 @@ import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray.core.generated.gcs_pb2 import JobTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
+from ray.core.generated.autoscaler_pb2 import AutoscalingState 
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
@@ -2624,6 +2626,22 @@ cdef class GcsClient:
                          serialized_reply))
 
         return serialized_reply
+
+    @_auto_reconnect
+    def report_autoscaling_state(
+        self,
+        state=AutoscalingState,
+        timeout_s=None
+    ):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            CAutoscalingState c_state
+
+        c_state.ParseFromString(state.SerializeToString())
+        with nogil:
+            check_status(self.inner.get().ReportAutoscalingState(
+                timeout_ms, c_state))
+
 
     @_auto_reconnect
     def drain_node(

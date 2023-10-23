@@ -97,6 +97,15 @@ enum NodeStatus {
   DRAINING = 4;
 }
 
+enum RayNodeKind {
+  // Unknown node kind.
+  UNKNOWN = 0;
+  // Ray head node.
+  HEAD = 1;
+  // Worker node
+  WORKER = 2;
+}
+
 message NodeState {
   // The node id internal to Ray in binary format.
   bytes node_id = 1;
@@ -104,6 +113,7 @@ message NodeState {
   // The instance id that the node is running on.
   // This is passed in when the node is registered.
   // Set by ray from ENV at src/ray/common/constants.h::kNodeCloudInstanceIdEnv
+  // TODO: rename this to cloud instance id? 
   string instance_id = 2;
 
   // The node type name, e.g. ray-head-node, matching `available_node_types`
@@ -138,6 +148,9 @@ message NodeState {
 
   // The instance type name, e.g. p3.2xlarge
   string instance_type_name = 11;
+
+  // Ray node kind.
+  RayNodeKind ray_node_kind = 12;
 }
 
 // ============= Autoscaling State Service API =======================

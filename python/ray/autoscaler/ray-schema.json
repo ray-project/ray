@@ -1,10 +1,10 @@
 {
-	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "http://github.com/ray-project/ray/python/ray/autoscaler/ray-schema.json",
-	"title": "Ray AutoScaler",
-	"description": "Ray autoscaler schema",
-	"type": "object",
-	"definitions": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "http://github.com/ray-project/ray/python/ray/autoscaler/ray-schema.json",
+    "title": "Ray AutoScaler",
+    "description": "Ray autoscaler schema",
+    "type": "object",
+    "definitions": {
         "commands": {
             "type": "array",
             "items": {
@@ -18,7 +18,7 @@
         "provider"
     ],
     "additionalProperties": false,
-	"properties": {
+    "properties": {
         "cluster_name": {
             "description": "A unique identifier for the head node and workers of this cluster.",
             "type": "string"
@@ -41,7 +41,9 @@
         "provider": {
             "type": "object",
             "description": "Cloud-provider specific configuration.",
-            "required": [ "type" ],
+            "required": [
+                "type"
+            ],
             "additionalProperties": true,
             "properties": {
                 "type": {
@@ -121,7 +123,10 @@
                     "description": "GCP availability zone"
                 },
                 "project_id": {
-                    "type": ["string", "null"],
+                    "type": [
+                        "string",
+                        "null"
+                    ],
                     "description": "GCP globally unique project id"
                 },
                 "security_group": {
@@ -129,29 +134,34 @@
                     "description": "AWS security group",
                     "additionalProperties": false,
                     "properties": {
-                      "GroupName": {
-                        "type": "string",
-                        "description": "Security group name"
-                      },
-                      "IpPermissions": {
-                        "type": "array",
-                        "description": "Security group in bound rules"
-                      }
+                        "GroupName": {
+                            "type": "string",
+                            "description": "Security group name"
+                        },
+                        "IpPermissions": {
+                            "type": "array",
+                            "description": "Security group in bound rules"
+                        }
                     }
                 },
-				"disable_node_updaters": {
-					"type": "boolean",
-					"description": "Disables node updaters if set to True. Default is False. (For Kubernetes operator usage.)"
-				},
+                "disable_node_updaters": {
+                    "type": "boolean",
+                    "description": "Disables node updaters if set to True. Default is False. (For Kubernetes operator usage.)"
+                },
                 "gcp_credentials": {
                     "type": "object",
                     "description": "Credentials for authenticating with the GCP client",
-                    "required": [ "type" ],
+                    "required": [
+                        "type"
+                    ],
                     "additionalProperties": false,
                     "properties": {
                         "type": {
                             "type": "string",
-                            "enum": ["credentials_token", "service_account"],
+                            "enum": [
+                                "credentials_token",
+                                "service_account"
+                            ],
                             "description": "Credentials type: either temporary OAuth 2.0 token or permanent service account credentials blob."
                         },
                         "credentials": {
@@ -163,37 +173,57 @@
                 "cloudwatch": {
                     "agent": {
                         "CLOUDWATCH_AGENT_INSTALLED_AMI_TAG": {
-                            "type": ["string"],
+                            "type": [
+                                "string"
+                            ],
                             "description": "Tag to be added to cloudwatch agent pre-installed AMI name."
                         },
                         "config": {
-                            "type": ["string", "null"],
+                            "type": [
+                                "string",
+                                "null"
+                            ],
                             "description": "Path to Unified CloudWatch Agent config file. See https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Agent-Configuration-File-Details.html for additional details."
                         },
                         "retryer": {
                             "max_attempts": {
-                                "type": ["integer", "null"],
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
                                 "description": "Max allowed Unified CloudWatch Agent installation attempts on any host."
                             },
                             "delay_seconds": {
-                                "type": ["integer", "null"],
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
                                 "description": "Seconds to wait between each Unified CloudWatch Agent installation attempt."
                             }
                         }
                     },
                     "dashboard": {
                         "name": {
-                            "type": ["string", "null"],
+                            "type": [
+                                "string",
+                                "null"
+                            ],
                             "description": "User defined CloudWatch Dashboard name."
                         },
                         "config": {
-                            "type": ["string", "null"],
+                            "type": [
+                                "string",
+                                "null"
+                            ],
                             "description": "Path to CloudWatch Dashboard config file. See https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/CloudWatch-Dashboard-Body-Structure.html for additional details."
                         }
                     },
                     "alarm": {
                         "config": {
-                            "type": ["string", "null"],
+                            "type": [
+                                "string",
+                                "null"
+                            ],
                             "description": "Path to CloudWatch Alarm config file. See https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_PutMetricAlarm.html for additional details."
                         }
                     }
@@ -259,20 +289,20 @@
                     "type": "array",
                     "description": "analogous to head_run_options"
                 },
-                "disable_automatic_runtime_detection" : {
+                "disable_automatic_runtime_detection": {
                     "type": "boolean",
                     "description": "disable Ray from automatically using the NVIDIA runtime if available",
                     "default": false
                 },
-                "disable_shm_size_detection" : {
+                "disable_shm_size_detection": {
                     "type": "boolean",
                     "description": "disable Ray from automatically detecting /dev/shm size for the container",
                     "default": false
                 },
-              "use_podman"  :  {
-                "type": "boolean",
-                "description": "Use 'podman' command in place of 'docker'",
-                "default": false
+                "use_podman": {
+                    "type": "boolean",
+                    "description": "Use 'podman' command in place of 'docker'",
+                    "default": false
                 }
             }
         },
@@ -337,58 +367,65 @@
             "patternProperties": {
                 ".*": {
                     "type": "object",
-                    "required": [ "resources", "node_config" ],
+                    "required": [
+                        "resources",
+                        "node_config"
+                    ],
                     "properties": {
-                       "node_config": {
-                           "type": "object",
-                           "description": "Provider-specific config for the node, e.g. instance type."
-                       },
-                       "min_workers": {"type": "integer"},
-                       "max_workers": {"type": "integer"},
-                       "resources": {
-						   "type": "object",
-						   "patternProperties": {
-							   ".*":{
-								   "type": "integer",
-								   "minimum": 0
-							   }
-						   }
-                       },
-                       "labels": {
-						   "type": "object",
-						   "patternProperties": {
-							   ".*":{
-								   "type": "string"
-							   }
-						   }
-                       },
-                       "initialization_commands": {
-                           "$ref": "#/definitions/commands",
-                           "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."
-                       },
-                       "worker_setup_commands": {
-                           "$ref": "#/definitions/commands",
-                           "description": "List of common shell commands to run to setup nodes. This node specfic list will override the global setup_commands and worker_setup_commands."
-                       },
-                       "docker": {
-                        "description": "Configuration of Worker nodes.",
-                        "type": "object",
-                        "properties": {
-                            "pull_before_run": {
-                                "type": "boolean",
-                                "description": "run `docker pull` first"
-                            },
-                            "worker_image": {
-                                "type": "string",
-                                "description": "analogous to head_image"
-                            },
-                            "worker_run_options": {
-                                "type": "array",
-                                "description": "analogous to head_run_options, merged with the global docker run_options."
+                        "node_config": {
+                            "type": "object",
+                            "description": "Provider-specific config for the node, e.g. instance type."
+                        },
+                        "min_workers": {
+                            "type": "integer"
+                        },
+                        "max_workers": {
+                            "type": "integer"
+                        },
+                        "resources": {
+                            "type": "object",
+                            "patternProperties": {
+                                ".*": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
                             }
                         },
-                        "additionalProperties": false
-                    }
+                        "labels": {
+                            "type": "object",
+                            "patternProperties": {
+                                ".*": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "initialization_commands": {
+                            "$ref": "#/definitions/commands",
+                            "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."
+                        },
+                        "worker_setup_commands": {
+                            "$ref": "#/definitions/commands",
+                            "description": "List of common shell commands to run to setup nodes. This node specfic list will override the global setup_commands and worker_setup_commands."
+                        },
+                        "docker": {
+                            "description": "Configuration of Worker nodes.",
+                            "type": "object",
+                            "properties": {
+                                "pull_before_run": {
+                                    "type": "boolean",
+                                    "description": "run `docker pull` first"
+                                },
+                                "worker_image": {
+                                    "type": "string",
+                                    "description": "analogous to head_image"
+                                },
+                                "worker_run_options": {
+                                    "type": "array",
+                                    "description": "analogous to head_run_options, merged with the global docker run_options."
+                                }
+                            },
+                            "additionalProperties": false
+                        }
                     },
                     "additionalProperties": false
                 }

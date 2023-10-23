@@ -6,21 +6,12 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray.autoscaler.v2.instance_manager.storage import Storage, StoreStatus
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class InstanceUpdateEvent:
-    """Notifies the status change of an instance."""
-
-    instance_id: str
-    new_status: int
-    new_ray_status: int = Instance.RAY_STATUS_UNKOWN
-
-
-class InstanceUpdatedSuscriber(metaclass=ABCMeta):
+class InstanceUpdatedSubscriber(metaclass=ABCMeta):
     """Subscribers to instance status changes."""
 
     @abstractmethod
@@ -37,17 +28,19 @@ class InstanceStorage:
         self,
         cluster_id: str,
         storage: Storage,
-        status_change_subscriber: Optional[InstanceUpdatedSuscriber] = None,
+        status_change_subscribers: Optional[List[InstanceUpdatedSubscriber]] = None,
     ) -> None:
         self._storage = storage
         self._cluster_id = cluster_id
         self._table_name = f"instance_table@{cluster_id}"
         self._status_change_subscribers = []
-        if status_change_subscriber:
-            self._status_change_subscribers.append(status_change_subscriber)
+        if status_change_subscribers:
+            self._status_change_subscribers.extend(status_change_subscribers)
 
-    def add_status_change_subscriber(self, subscriber: InstanceUpdatedSuscriber):
-        self._status_change_subscribers.append(subscriber)
+    def add_status_change_subscribers(
+        self, subscribers: List[InstanceUpdatedSubscriber]
+    ):
+        self._status_change_subscribers.extend(subscribers)
 
     def batch_upsert_instances(
         self,
@@ -78,9 +71,9 @@ class InstanceStorage:
         for instance in updates:
             instance = copy.deepcopy(instance)
             # the instance version is set to 0, it will be
-            # populated by the storage entry's verion on read
+            # populated by the storage entry's version on read
             instance.version = 0
-            instance.timestamp_since_last_modified = int(time.time())
+            instance.last_modified_timestamp_at_storage_ms = time.time_ns() // 1000000
             mutations[instance.instance_id] = instance.SerializeToString()
 
         result, version = self._storage.batch_update(
@@ -93,7 +86,7 @@ class InstanceStorage:
                     [
                         InstanceUpdateEvent(
                             instance_id=instance.instance_id,
-                            new_status=instance.status,
+                            new_instance_status=instance.status,
                             new_ray_status=instance.ray_status,
                         )
                         for instance in updates
@@ -106,7 +99,7 @@ class InstanceStorage:
         self,
         instance: Instance,
         expected_instance_version: Optional[int] = None,
-        expected_storage_verison: Optional[int] = None,
+        expected_storage_version: Optional[int] = None,
     ) -> StoreStatus:
         """Upsert an instance in the storage.
         If the expected_instance_version is specified, the update will fail
@@ -126,17 +119,18 @@ class InstanceStorage:
         Returns:
             StoreStatus: A tuple of (success, storage_version).
         """
+
         instance = copy.deepcopy(instance)
         # the instance version is set to 0, it will be
-        # populated by the storage entry's verion on read
+        # populated by the storage entry's version on read
         instance.version = 0
-        instance.timestamp_since_last_modified = int(time.time())
+        instance.last_modified_timestamp_at_storage_ms = time.time_ns() // 1000000
         result, version = self._storage.update(
             self._table_name,
             key=instance.instance_id,
             value=instance.SerializeToString(),
             expected_entry_version=expected_instance_version,
-            expected_storage_version=expected_storage_verison,
+            expected_storage_version=expected_storage_version,
             insert_only=False,
         )
 
@@ -146,7 +140,7 @@ class InstanceStorage:
                     [
                         InstanceUpdateEvent(
                             instance_id=instance.instance_id,
-                            new_status=instance.status,
+                            new_instance_status=instance.status,
                             new_ray_status=instance.ray_status,
                         )
                     ],
@@ -163,6 +157,7 @@ class InstanceStorage:
         """Get instances from the storage.
 
         Args:
+            TODO(rickyx): hmmm this default behaviour is a bit weird...
             instance_ids: A list of instance ids to be retrieved. If empty, all
                 instances will be retrieved.
             status_filter: Only instances with the specified status will be returned.
@@ -216,8 +211,8 @@ class InstanceStorage:
                     [
                         InstanceUpdateEvent(
                             instance_id=instance_id,
-                            new_status=Instance.GARBAGE_COLLECTED,
-                            new_ray_status=Instance.RAY_STATUS_UNKOWN,
+                            new_instance_status=Instance.GARBAGE_COLLECTED,
+                            new_ray_status=Instance.RAY_STATUS_UNKNOWN,
                         )
                         for instance_id in instance_ids
                     ],

@@ -42,6 +42,7 @@ RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RAY_PRIVATE_DIR = "_private"
 AUTOSCALER_PRIVATE_DIR = os.path.join("autoscaler", "_private")
+AUTOSCALER_V2_DIR = os.path.join("autoscaler", "v2")
 
 # Location of the raylet executables.
 RAYLET_EXECUTABLE = os.path.join(
@@ -1974,6 +1975,8 @@ def start_monitor(
     max_bytes: int = 0,
     backup_count: int = 0,
     monitor_ip: Optional[str] = None,
+    autoscaler_v2: bool = False,
+    session_name: Optional[str] = None,
 ):
     """Run a process to monitor the other processes.
 
@@ -1994,16 +1997,23 @@ def start_monitor(
     Returns:
         ProcessInfo for the process that was started.
     """
-    monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
+    if autoscaler_v2:
+        entrypoint = os.path.join(RAY_PATH, AUTOSCALER_V2_DIR, "monitor.py")
+    else:
+        entrypoint = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
 
     command = [
         sys.executable,
         "-u",
-        monitor_path,
+        entrypoint,
         f"--logs-dir={logs_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
+
+    if session_name:
+        command.append(f"--session-name={session_name}")
+
     assert gcs_address is not None
     command.append(f"--gcs-address={gcs_address}")
 

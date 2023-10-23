@@ -15,6 +15,8 @@ class Provider(Enum):
     LOCAL = 6
 
 
+# TODO:
+# This is actually autoscaler config
 class NodeProviderConfig(object):
     """
     NodeProviderConfig is the helper class to provide instance
@@ -36,6 +38,7 @@ class NodeProviderConfig(object):
     def update_configs(
         self, node_configs: Dict[str, Any], skip_content_hash: bool
     ) -> None:
+        # TODO: This should actually be done at the autoscaler.
         self._node_configs = prepare_config(node_configs)
         if skip_content_hash:
             return
@@ -97,12 +100,15 @@ class NodeProviderConfig(object):
     def get_node_type_specific_config(
         self, instance_type_name: str, config_name: str
     ) -> Any:
-        config = self.get_config(config_name)
         node_specific_config = self._node_configs["available_node_types"].get(
             instance_type_name, {}
         )
-        if config_name in node_specific_config:
-            config = node_specific_config[config_name]
+        if config_name not in node_specific_config:
+            raise ValueError(
+                f"Unknown config {config_name} for node config of {instance_type_name}: {node_specific_config}"
+            )
+
+        config = node_specific_config[config_name]
         return config
 
     def get_node_resources(self, instance_type_name: str) -> Dict[str, float]:
@@ -156,6 +162,10 @@ class NodeProviderConfig(object):
     @property
     def file_mounts_contents_hash(self) -> str:
         return self._file_mounts_contents_hash
+
+    @property
+    def provider_config(self) -> Dict:
+        return self._node_configs.get("provider", {})
 
     @property
     def provider(self) -> Provider:
