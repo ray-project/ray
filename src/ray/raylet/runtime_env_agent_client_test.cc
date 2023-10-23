@@ -53,22 +53,27 @@ port_type GetFreePort() {
   return port;
 }
 
-// Handler function that reads from a request and writes to a response.
-using HttpConnectionHandler = std::function<void(const http::request<http::string_body> &,
-                                                 http::response<http::string_body> &)>;
+// Handler functions that reads from a request and writes to a response.
+// It can take a sync form or an async form. Under the hood it's always async as we will
+// call the user provided sync one in our async impl.
+class HttpConnection;
+using AsyncHandler = std::function<void(std::shared_ptr<class HttpConnection>)>;
+using SyncHandler = std::function<void(const http::request<http::string_body> &,
+                                       http::response<http::string_body> &)>;
 
 // Accepts 1 HTTP connection and handles it.
 class HttpConnection : public std::enable_shared_from_this<HttpConnection> {
  public:
   // `handler` must out live this HttpConnection.
-  HttpConnection(net::io_context &ioc_, const HttpConnectionHandler &handler)
-      : socket_(ioc_), handler_(handler) {}
+  HttpConnection(net::io_context &ioc, const AsyncHandler &handler)
+      : ioc_(ioc), socket_(ioc), handler_(handler) {}
 
   // Initiate the asynchronous operations associated with the connection.
   void start() { read_request(); }
 
+  net::io_context &ioc_;
   tcp::socket socket_;
-  const HttpConnectionHandler &handler_;
+  AsyncHandler handler_;
   beast::flat_buffer buffer_{8192};
   http::request<http::string_body> request_;
   http::response<http::string_body> response_;
@@ -95,8 +100,7 @@ class HttpConnection : public std::enable_shared_from_this<HttpConnection> {
   void process_request() {
     response_.version(request_.version());
     response_.keep_alive(false);
-    handler_(request_, response_);
-    write_response();
+    handler_(shared_from_this());
   }
 
   // Asynchronously transmit the response message.
@@ -115,9 +119,17 @@ class HttpConnection : public std::enable_shared_from_this<HttpConnection> {
 // RAII: On dtor, stops the thread and cancels all requests.
 class HttpServerThread {
  public:
-  HttpServerThread(HttpConnectionHandler handler, std::string address, port_type port)
+  HttpServerThread(SyncHandler sync_handler, std::string address, port_type port)
       : ioc_(),
-        handler_(std::move(handler)),
+        handler_([sync_handler](std::shared_ptr<HttpConnection> conn) {
+          sync_handler(conn->request_, conn->response_);
+          conn->write_response();
+        }),
+        acceptor_(ioc_),
+        endpoint_(net::ip::make_address(address), port) {}
+  HttpServerThread(AsyncHandler async_handler, std::string address, port_type port)
+      : ioc_(),
+        handler_(std::move(async_handler)),
         acceptor_(ioc_),
         endpoint_(net::ip::make_address(address), port) {}
 
@@ -154,7 +166,7 @@ class HttpServerThread {
     }
   }
   net::io_context ioc_;
-  HttpConnectionHandler handler_;
+  AsyncHandler handler_;
   tcp::acceptor acceptor_;
   tcp::endpoint endpoint_;
   std::thread thread_;
@@ -490,6 +502,79 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
+}
+
+TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
+  int port = GetFreePort();
+
+  // Async HTTP server that completes the request after sleeping 1 sec.
+  std::mutex server_mutex;
+  size_t concurrency = 0;
+  size_t max_concurrency = 0;
+  // sync_handler(conn->request_, conn->response_);
+  //   conn->write_response();
+  HttpServerThread http_server_thread(
+      [&](std::shared_ptr<HttpConnection> conn) {
+        {
+          std::lock_guard lock(server_mutex);
+          concurrency += 1;
+        }
+
+        auto timer = std::make_shared<boost::asio::steady_timer>(conn->ioc_,
+                                                                 std::chrono::seconds(1));
+        timer->async_wait([timer, conn, &server_mutex, &max_concurrency, &concurrency](
+                              const boost::system::error_code &ec) {
+          const http::request<http::string_body> &request = conn->request_;
+          http::response<http::string_body> &response = conn->response_;
+
+          rpc::DeleteRuntimeEnvIfPossibleRequest req;
+          ASSERT_TRUE(req.ParseFromString(request.body()));
+          ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
+          ASSERT_EQ(req.source_process(), "raylet");
+
+          rpc::DeleteRuntimeEnvIfPossibleReply reply;
+          reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+          response.body() = reply.SerializeAsString();
+          response.content_length(response.body().size());
+          response.result(http::status::ok);
+          {
+            std::lock_guard lock(server_mutex);
+            RAY_LOG(INFO) << "server sending " << concurrency
+                          << " concurrent results, max = " << max_concurrency;
+            max_concurrency = std::max(max_concurrency, concurrency);
+            concurrency -= 1;
+          }
+          conn->write_response();
+        });
+      },
+      "127.0.0.1",
+      port);
+  http_server_thread.start();
+
+  instrumented_io_context ioc;
+
+  auto client =
+      raylet::RuntimeEnvAgentClient::Create(ioc,
+                                            "127.0.0.1",
+                                            port,
+                                            delay_after(ioc),
+                                            /*agent_register_timeout_ms=*/10000,
+                                            /*agent_manager_retry_interval_ms=*/100);
+
+  size_t called_times = 0;
+  auto callback = [&](bool successful) {
+    ASSERT_TRUE(successful);
+    called_times += 1;
+  };
+
+  for (int i = 0; i < 100; ++i) {
+    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback);
+  }
+
+  ioc.run();
+  ASSERT_EQ(called_times, 100);
+  ASSERT_EQ(concurrency, 0);
+  ASSERT_EQ(max_concurrency, 10);
 }
 
 }  // namespace ray
