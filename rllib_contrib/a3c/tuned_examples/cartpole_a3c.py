@@ -3,7 +3,6 @@
 #     --stop="{'timesteps_total': 20000, 'episode_reward_mean': 150}"
 from ray.rllib.algorithms.a3c import A3CConfig
 
-
 config = (
     A3CConfig()
     .training(gamma=0.95)

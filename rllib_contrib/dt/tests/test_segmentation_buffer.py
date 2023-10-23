@@ -1,18 +1,18 @@
 import unittest
-from typing import Union, List
+from typing import List, Union
 
 import numpy as np
 from rllib_dt.dt.segmentation_buffer import (
-    SegmentationBuffer,
     MultiAgentSegmentationBuffer,
+    SegmentationBuffer,
 )
 
 import ray
 from ray.rllib.policy.sample_batch import (
-    SampleBatch,
-    MultiAgentBatch,
-    concat_samples,
     DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+    SampleBatch,
+    concat_samples,
 )
 from ray.rllib.utils import test_utils
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -414,7 +414,8 @@ class TestSegmentationBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

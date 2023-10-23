@@ -3,7 +3,6 @@
 #     --stop={'timesteps_total': 50000, 'episode_reward_mean': 200}"
 from ray.rllib.algorithms.a2c import A2CConfig
 
-
 config = (
     A2CConfig()
     .environment("CartPole-v1")
