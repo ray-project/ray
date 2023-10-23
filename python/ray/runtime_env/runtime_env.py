@@ -16,13 +16,13 @@ from ray._private.thirdparty.dacite import from_dict
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvConfig as ProtoRuntimeEnvConfig,
 )
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 CHAR_ENCODING = "utf-8"
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def encode_secret_env_vars(secret_env_vars: dict) -> dict:
     """Encode secret env vars (values in the dict) to base64.
     This encoding can be used as a mild safety mechanism to avoid printing or logging secrets in plain text.
@@ -46,7 +46,7 @@ def encode_secret_env_vars(secret_env_vars: dict) -> dict:
     return encoded_dict
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def decode_secret_env_vars(encoded_env_vars: dict) -> dict:
     """Decode secret env vars (values in the dict) from base64.
 
@@ -241,8 +241,11 @@ class RuntimeEnv(dict):
             "worker_path": "/root/python/ray/_private/workers/default_worker.py",
             "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
 
-        # Example for set env_vars
+        # Example for setting env_vars
         RuntimeEnv(env_vars={"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"})
+
+        # Example for setting secret_env_vars
+        RuntimeEnv(secret_env_vars={"AUTH_TOKEN": "<my-auth-bearer-token>"})
 
         # Example for set pip
         RuntimeEnv(
@@ -291,6 +294,7 @@ class RuntimeEnv(dict):
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
         secret_env_vars: Secrets to set as environment variables.
+            These secrets are stored in memory as encoded strings, to protect from unintentional logging.
     """
 
     known_fields: Set[str] = {
