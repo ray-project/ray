@@ -224,6 +224,7 @@ mkdir -p "${CONTEXT_TMP}/.whl"
 
 cp "${BUILD_TMP}/runtime-whl/${WHEEL_FILE}" "${CONTEXT_TMP}/.whl/${WHEEL_FILE}"
 cp anyscale/docker/Dockerfile.ray "${CONTEXT_TMP}/Dockerfile"
+cp anyscale/docker/runtime-requirements.txt "${CONTEXT_TMP}/runtime-requirements.txt"
 cp python/requirements_compiled.txt "${CONTEXT_TMP}/."
 cp anyscale/docker/NOTICE "${CONTEXT_TMP}/."
 cp LICENSE.runtime "${CONTEXT_TMP}/LICENSE"

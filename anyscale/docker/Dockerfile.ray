@@ -20,12 +20,18 @@ COPY requirements_compiled.txt ./
 
 RUN \
     --mount=type=bind,source=$WHEEL_PATH,target=$WHEEL_PATH \
+    --mount=type=bind,source=runtime-requirements.txt,target=runtime-requirements.txt \
     --mount=type=bind,source=$RAY_SITE_PKG_TGZ,target=$RAY_SITE_PKG_TGZ \
 <<EOF
 #!/bin/bash
 
 set -euo pipefail
 
+# Installs extra runtime requirements.
+$HOME/anaconda3/bin/pip --no-cache-dir \
+    install -c requirements_compiled.txt -r runtime-requirements.txt
+
+# Installs the runtime wheel.
 $HOME/anaconda3/bin/pip --no-cache-dir \
     install -c requirements_compiled.txt $WHEEL_PATH[all]
 
