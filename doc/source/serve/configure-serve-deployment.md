@@ -19,7 +19,9 @@ This guide walks through the parameters that are configurable for a Ray Serve de
 
 ## How to configure a deployment
 
-There are 3 ways to specify the parameters mentioned above. Two ways are through your application code, and the third way is through the Serve Config file that is recommended for production.
+There are 2 ways to specify the parameters mentioned above. First, you can specify them through your application code. Second, you can specify them through the Serve Config file that is recommended for production.
+
+### Specify parameters through application code
 
   - In the `@serve.deployment` decorator -
 
@@ -37,45 +39,60 @@ There are 3 ways to specify the parameters mentioned above. Two ways are through
 :language: python
 ```
 
-  - Lastly, you can configure deployments through the Serve config file. The recommended way to deploy and update your applications in production is through the Serve Config file. Learn more about how to use the Serve Config in the [production guide](https://docs.ray.io/en/latest/serve/production-guide/config.html).
+### Specify parameters through Serve config file
 
-## Overriding deployment settings
+Lastly, you can configure individual deployments in each application through the Serve config file. The recommended way to deploy and update your applications in production is through the Serve Config file. Learn more about how to use the Serve Config in the [production guide](https://docs.ray.io/en/latest/serve/production-guide/config.html).
 
-The order of priority is (from highest to lowest):
+```yaml
+applications:
+- name: app1
+  import_path: configure_serve:translator_app
+  deployments:
+  - name: Translator
+    num_replicas: 2
+    max_concurrent_queries: 100
+    graceful_shutdown_wait_loop_s: 2.0
+    graceful_shutdown_timeout_s: 20.0
+    health_check_period_s: 10.0
+    health_check_timeout_s: 30.0
+    ray_actor_options:
+      num_cpus: 0.2
+      num_gpus: 0.0
+```
+
+### Overriding deployment settings
+
+For each individual parameter, the order of priority is (from highest to lowest):
 
 1. Serve Config file
 2. `.options()` call in python code referenced above
 3. `@serve.deployment` decorator in python code
 4. Serve defaults
 
-For example, if a deployment's `num_replicas` is specified in the config file and their graph code, Serve will use the config file's value. If it's only specified in the code, Serve will use the code value. If the user doesn't specify it anywhere, Serve will use a default (which is `num_replicas=1`).
+In other words, if a parameter for a deployment is specified in the config file and the application code, Serve will use the config file's value. If it's only specified in the code, Serve will use the value specified in the code. If the parameter is specified anywhere, Serve will use the default for that parameter.
 
-Keep in mind that this override order is applied separately to each individual parameter.
-For example, if a user has a deployment `ExampleDeployment` with the following decorator:
+For example, if you have the following application code which contains a single deployment `ExampleDeployment`:
 
 ```python
-@serve.deployment(
-    num_replicas=2,
-    max_concurrent_queries=15,
-)
+@serve.deployment(num_replicas=2, graceful_shutdown_timeout_s=6)
 class ExampleDeployment:
     ...
+
+example_app = ExampleDeployment.bind()
 ```
 
-and the following config file:
+Then suppose you deploy your application with the following config file:
 
 ```yaml
-...
-
-deployments:
-
-    - name: ExampleDeployment
-      num_replicas: 5
-
-...
+applications:
+  - name: default
+    import_path: models:example_app 
+    deployments:
+      - name: ExampleDeployment
+        num_replicas: 5
 ```
 
-Serve sets `num_replicas=5`, using the config file value, and `max_concurrent_queries=15`, using the code value (because `max_concurrent_queries` wasn't specified in the config file). All other deployment settings use Serve defaults because the user didn't specify them in the code or the config.
+Serve uses `num_replicas=5` from the value set in the config file and `graceful_shutdown_timeout_s=6` from the value set in the application code. All other deployment settings use Serve defaults because the user didn't specify them in the code or the config. For instance, `health_check_period_s=10` since by default Serve health checks deployments once every 10 seconds.
 
 :::{tip}
 Remember that `ray_actor_options` counts as a single setting. The entire `ray_actor_options` dictionary in the config file overrides the entire `ray_actor_options` dictionary from the graph code. If there are individual options within `ray_actor_options` (e.g. `runtime_env`, `num_gpus`, `memory`) that are set in the code but not in the config, Serve still won't use the code settings if the config has a `ray_actor_options` dictionary. It treats these missing options as though the user never set them and uses defaults instead. This dictionary overriding behavior also applies to `user_config` and `autoscaling_config`.
