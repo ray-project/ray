@@ -428,6 +428,7 @@ def test_update_vsphere_configs():
                 "node_config": {"resource_pool": "ray", "datastore": "vsan"},
             },
             "worker": {"resources": {}, "node_config": {}},
+            "worker1": {"resources": {}, "node_config": {}},
         },
         "head_node_type": "ray.head.default",
     }
@@ -438,6 +439,13 @@ def test_update_vsphere_configs():
         in input_config["available_node_types"]["ray.head.default"]["node_config"]
     )
     assert "frozen_vm" in input_config["available_node_types"]["worker"]["node_config"]
+    assert "frozen_vm" in input_config["available_node_types"]["worker1"]["node_config"]
+    assert (
+        input_config["available_node_types"]["worker"]["node_config"]["frozen_vm"][
+            "name"
+        ]
+        == "frozen"
+    )
 
 
 def test_validate_frozen_vm_configs():
