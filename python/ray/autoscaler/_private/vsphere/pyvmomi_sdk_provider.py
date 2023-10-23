@@ -57,7 +57,7 @@ class PyvmomiSdkProvider:
         """
         obj = None
         if self.pyvmomi_sdk_client is None:
-            raise ValueError("Must init pyvmomi_sdk_client first.")
+            raise RuntimeError("Must init pyvmomi_sdk_client first.")
 
         if not moid:
             raise ValueError("Invalid argument for moid")
@@ -73,28 +73,33 @@ class PyvmomiSdkProvider:
 
         return obj
 
-    def get_pyvmomi_obj_by_name(self, vimtype, name):
+    def get_pyvmomi_obj(self, vimtype, name=None, obj_id=None):
         """
-        This function finds the vSphere object by the object name and the object type.
-        The object type can be "VM", "Host", "Datastore", etc.
-        The object name is a unique name under the vCenter server.
+        This function will return the vSphere object.
+        The argument for `vimtype` can be "vim.VM", "vim.Host", "vim.Datastore", etc.
+        Then either the name or the object id need to be provided.
         To check all such object information, you can go to the managed object board
         page of your vCenter Server, such as: https://<your_vc_ip/mob
         """
-        obj = None
+        if not name and not obj_id:
+            # Raise runtime error because this is not user fault
+            raise RuntimeError("Either name or obj id must be provided")
         if self.pyvmomi_sdk_client is None:
-            raise ValueError("Must init pyvmomi_sdk_client first.")
-
-        if not name:
-            raise ValueError("Invalid argument for name")
+            raise RuntimeError("Must init pyvmomi_sdk_client first")
 
         container = self.pyvmomi_sdk_client.content.viewManager.CreateContainerView(
             self.pyvmomi_sdk_client.content.rootFolder, vimtype, True
         )
-
-        for c in container.view:
-            if c.name == name:
-                obj = c
-                break
-
-        return obj
+        # If both name and moid are provided we will prioritize name.
+        if name:
+            for c in container.view:
+                if c.name == name:
+                    return c
+        elif obj_id:
+            for c in container.view:
+                if str(c) == obj_id:
+                    return c
+        raise ValueError(
+            f"Cannot find the object with type {vimtype} on vSphere with"
+            f"name={name} and obj_id={obj_id}"
+        )
