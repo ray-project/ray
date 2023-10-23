@@ -208,6 +208,10 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Iteration Blocked Time",
         pathParams: "orgId=1&theme=light&panelId=8",
       },
+      {
+        title: "Iteration User Time",
+        pathParams: "orgId=1&theme=light&panelId=9",
+      },
     ],
   },
 ];

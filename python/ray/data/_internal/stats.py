@@ -189,6 +189,11 @@ class _StatsActor:
             description="Seconds user thread is blocked by iter_batches()",
             tag_keys=tags_keys,
         )
+        self.iter_user_s = Gauge(
+            "data_iter_user_seconds",
+            description="Seconds spent in user code",
+            tag_keys=tags_keys,
+        )
 
     def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
@@ -236,6 +241,7 @@ class _StatsActor:
 
     def update_iter_metrics(self, stats: "DatasetStats", tags):
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.iter_user_s.set(stats.iter_user_s.get(), tags)
 
     def clear_metrics(self, tags: Dict[str, str]):
         self.bytes_spilled.set(0, tags)
@@ -248,6 +254,7 @@ class _StatsActor:
 
     def clear_iter_metrics(self, tags: Dict[str, str]):
         self.iter_total_blocked_s.set(0, tags)
+        self.iter_user_s.set(0, tags)
 
 
 def _get_or_create_stats_actor():

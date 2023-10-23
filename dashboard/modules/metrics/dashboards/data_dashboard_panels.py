@@ -103,6 +103,18 @@ DATA_GRAFANA_PANELS = [
             )
         ],
     ),
+    Panel(
+        id=9,
+        title="Iteration User Time",
+        description="Seconds spent in user code",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_iter_user_seconds{{{global_filters}}}) by (dataset)",
+                legend="Seconds: {{dataset}}",
+            )
+        ],
+    ),
 ]
 
 ids = []
