@@ -41,7 +41,9 @@ class TfRLModule(tf.keras.Model, RLModule):
 
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
+        print(f"Module: weights before update: {self.weights[0][0][0]}")
         self.set_weights(state_dict)
+        print(f"Module: weights after update: {self.weights[0][0][0]}")
 
     @override(RLModule)
     def _module_state_file_name(self) -> pathlib.Path:

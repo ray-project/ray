@@ -488,12 +488,15 @@ class PPO(Algorithm):
 
             # is_module_trainable = self.workers.local_worker().is_policy_to_train
             # self.learner_group.set_is_module_trainable(is_module_trainable)
+            weights = self.learner_group.get_weights()["default_policy"]
+            print(f"LearnerGroup: Weights before update {weights[0][0][0]}")
             train_results = self.learner_group.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
             )
-
+            weights = self.learner_group.get_weights()["default_policy"]
+            print(f"LearnerGroup: Weights after update {weights[0][0][0]}")
         elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
@@ -525,6 +528,11 @@ class PPO(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
+        weights_remote = self.workers.foreach_worker(lambda w: w.module.weights[0][0][0])
+        print("Remote worker weigths before update:")
+        for i, weight in enumerate(weights_remote):
+            print(f"{i}: {weight}")
+
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
                 from_worker_or_learner_group = None
@@ -540,6 +548,10 @@ class PPO(Algorithm):
                 weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
+        weights_remote = self.workers.foreach_worker(lambda w: w.module.weights[0][0][0])
+        print("Remote worker weigths after update:")
+        for i, weight in enumerate(weights_remote):
+            print(f"{i}: {weight}")
         if self.config._enable_learner_api:
             kl_dict = {}
             if self.config.use_kl_loss:

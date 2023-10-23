@@ -208,12 +208,17 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Loop through env in enumerate.(self._episodes):
         ts = 0
-        pbar = tqdm(total=num_timesteps, desc=f"Sampling {num_timesteps} timesteps ...")
+        pbar = tqdm(
+            total=num_timesteps,
+            desc=f"EnvRunner {self.worker_index}: Sampling {num_timesteps} timesteps ...",
+        )
 
+        print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
                 actions = self.env.action_space.sample()
+                # TODO (simon): Add action_logp for smapled actions.
             # Compute an action using the RLModule.
             else:
                 # Note, RLModule `forward()` methods expect `NestedDict`s.
@@ -224,6 +229,8 @@ class SingleAgentEnvRunner(EnvRunner):
                     ),
                     SampleBatch.OBS: self._convert_from_numpy(obs),
                 }
+                from ray.rllib.utils.nested_dict import NestedDict
+                batch = NestedDict(batch)
 
                 # Explore or not.
                 if explore:
@@ -234,6 +241,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions, action_logp = self._sample_actions_if_necessary(
                     fwd_out, explore
                 )
+                #print(actions)
 
                 fwd_out = convert_to_numpy(fwd_out)
 
@@ -261,7 +269,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     if SampleBatch.ACTIONS != k:
                         extra_model_output[k] = v[i]
                 # TODO (simon, sven): Some algos do not have logps.
-                extra_model_output[SampleBatch.ACTION_LOGP] = action_logp
+                extra_model_output[SampleBatch.ACTION_LOGP] = action_logp[i]
 
                 # In inference we have only the action logits.
                 if terminateds[i] or truncateds[i]:
@@ -360,7 +368,10 @@ class SingleAgentEnvRunner(EnvRunner):
             )
 
         eps = 0
-        pbar = tqdm(total=num_episodes, desc=f"Sampling {num_episodes} episodes ...")
+        pbar = tqdm(
+            total=num_episodes,
+            desc=f"EnvRunner {self.worker_index}: Sampling {num_episodes} episodes ...",
+        )
         while eps < num_episodes:
             if random_actions:
                 actions = self.env.action_space.sample()
@@ -405,7 +416,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     if SampleBatch.ACTIONS not in k:
                         extra_model_output[k] = v[i]
                 # TODO (simon, sven): Some algos do not have logps.
-                extra_model_output[SampleBatch.ACTION_LOGP] = action_logp
+                extra_model_output[SampleBatch.ACTION_LOGP] = action_logp[i]
 
                 if terminateds[i] or truncateds[i]:
                     eps += 1
@@ -497,22 +508,29 @@ class SingleAgentEnvRunner(EnvRunner):
     def set_weights(self, weights, global_vars=None, weights_seq_no: int = 0):
         """Writes the weights of our (single-agent) RLModule."""
 
+        if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
+            weights = weights[DEFAULT_POLICY_ID]
+        weights = self._convert_to_tensor(weights)
+        self.module.set_state(weights)
+        print(f"EnvRunner {self.worker_index}: updated")
+        print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
+        
         # Check, if an update happened since the last call. See
         # `Algorithm._evaluate_async_with_env_runner`.
-        if self._weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-            # In case of a `StateDict` we have to extract the `
-            # default_policy`.
-            # TODO (sven): Handle this probably in `RLModule` as the latter
-            # does not need a 'StateDict' in its `set_state()` method
-            # as the `keras.Model.base_layer` has weights as `List[TensorType]`.
-            self._weights_seq_no = weights_seq_no
-            if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
-                weights = weights[DEFAULT_POLICY_ID]
-            weights = self._convert_to_tensor(weights)
-            self.module.set_state(weights)
-        # Otherwise ignore.
-        else:
-            pass
+        # if self._weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+        #     # In case of a `StateDict` we have to extract the `
+        #     # default_policy`.
+        #     # TODO (sven): Handle this probably in `RLModule` as the latter
+        #     # does not need a 'StateDict' in its `set_state()` method
+        #     # as the `keras.Model.base_layer` has weights as `List[TensorType]`.
+        #     self._weights_seq_no = weights_seq_no
+        #     if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
+        #         weights = weights[DEFAULT_POLICY_ID]
+        #     weights = self._convert_to_tensor(weights)
+        #     self.module.set_state(weights)
+        # # Otherwise ignore.
+        # else:
+        #     pass
 
     def get_weights(self, modules=None):
         """Returns the weights of our (single-agent) RLModule."""

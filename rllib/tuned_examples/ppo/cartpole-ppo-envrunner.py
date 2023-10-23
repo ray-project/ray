@@ -27,7 +27,7 @@ config = (
     )
     .evaluation(
         evaluation_interval=1,
-        evaluation_num_workers=1,
+        evaluation_num_workers=0,
         enable_async_evaluation=True,
     )
     .training(
@@ -48,3 +48,17 @@ stop = {
     "timesteps_total": 100000,
     "evaluation/sampler_results/episode_reward_mean": 150.0,
 }
+
+import ray
+ray.init(local_mode=True)
+from ray import air, tune
+
+tuner = tune.Tuner(
+    "PPO",
+    param_space=config,
+    run_config=air.RunConfig(
+        stop=stop,
+        name="test_tuned_exmaple_envrunner",
+    )
+)
+tuner.fit()
