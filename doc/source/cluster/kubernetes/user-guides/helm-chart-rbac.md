@@ -9,15 +9,20 @@ for a better understanding of this document.
 
 
 
-### Related parameters:
+## Related parameters:
+These parameters are in the [value.yaml](https://github.com/ray-project/kuberay/blob/ac56e33354c80221815efba7cf6d1d8760ca3701/helm-chart/kuberay-operator/values.yaml) 
+file of helm-chart/ kuberay-operator. 
+In addition to modifying the original file, you can also install the kuberay-operator with custom settings.
+For more information, please refer to the 
+[Helm official documentation](https://helm.sh/docs/chart_best_practices/values/#consider-how-users-will-use-your-values).
 
-`rbacEnable` : Enables KubeRay's RBAC. If set to false, no RBAC resources will be created.
+`rbacEnable` (default = `true`): Enables KubeRay's RBAC. If set to false, no RBAC resources will be created.
 
-`singleNamespaceInstall` : Determines the creation of Role or ClusterRole. When set to true, it creates a Role instead of a ClusterRole.
+`singleNamespaceInstall` (default = `false`): Determines the creation of Role or ClusterRole. When set to true, it creates a Role instead of a ClusterRole.
 
 `watchNamespace` :  A list of namespaces that the KubeRay operator will watch.
 
-`crNamespacedRbacEnable` : By default, it's set to true and handles Role creation for RayCluster preparation.
+`crNamespacedRbacEnable` (default = `true`): By default, it's set to true and handles Role creation for RayCluster preparation.
 You typically don't need to change this unless you're using GitOps tools like ArgoCD. In that case,
 configure it as needed to avoid potential errors. 
 For additional details, refer to [PR#1162](https://github.com/ray-project/kuberay/pull/1162).
@@ -36,8 +41,8 @@ Role 1a only monitor N1 namespace and N2 namespace respectively.
 ![helm_chart_RBAC](../images/helm_chart_rbac.png)
 
 
-## Case 1
-#### Watching all custom resources in the Kubernetes cluster
+# Case 1
+## Watching all custom resources in the Kubernetes cluster
 This is default setting, which installs cluster-scoped RBAC resources (i.e., ClusterRole and ClusterRoleBinding). The 
 following example shows that the operator can monitor and create resources across the cluster scope.
 
@@ -75,8 +80,8 @@ kubectl get raycluster -A
 #n2          raycluster-kuberay   1                 1                   ready    52s
 ```
 
-## Case 2
-#### Watching only the namespace where the operator is deployed
+# Case 2
+## Watching only the namespace where the operator is deployed
 
 Set `singleNamespaceInstall` to true and don't set `watchNamespace`, KubeRay installs namespace RBAC resources (i.e., Role and RoleBinding) in the 
 namespace the operator is deployed .
@@ -121,8 +126,8 @@ kubectl get raycluster -A
 #n2          raycluster-kuberay                                                  44s
 ```
 
-## Case 3
-#### Watching multiple namespaces with Role
+# Case 3
+## Watching multiple namespaces with Role
 For users who only have namespaced access, you would need to deploy one KubeRay Operator for each namespace. This can increase the maintenance overhead, such as upgrading the version for each deployed instance.
 For this, KubeRay provides `watchNamespace` this parameter to support you to monitor multiple namespaces.
 
@@ -174,7 +179,7 @@ kubectl get raycluster -A
 #n2          raycluster-kuberay   1                 1                   ready    67s
 ```
 
-## Disable RBAC resources
+# Disable RBAC resources
 If you want to disable the creation of any RBAC resources, you can set both serviceAccount.create and rbacEnable 
 to false to prevent the creation of any RBAC resources.
 
