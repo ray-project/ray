@@ -541,6 +541,23 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     )
 
 
+def normalize_blocks(blocks: Iterable["Block"]) -> Iterable["Block"]:
+    """Normalize blocks checking if input blocks have more than one type.
+    If only one type exist return blocks as-is, otherwise convert blocks to
+    arrow blocks.
+    """
+    seen_types = set()
+    # Check if blocks types are homogeneous
+    if all(seen_types.add(type(block)) or len(seen_types) == 1 for block in blocks):
+        # All blocks have the same type, return as-is
+        return blocks
+
+    from ray.data.block import BlockAccessor
+
+    # Convert any heterogeneous block types to arrow blocks
+    return [BlockAccessor.for_block(block).to_arrow() for block in blocks]
+
+
 def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 

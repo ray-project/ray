@@ -27,6 +27,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data._internal.util import normalize_blocks
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -117,8 +118,9 @@ class _SortOp(ShuffleOp):
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
-        return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
-            mapper_outputs, sort_key
+        normalized_blocks = normalize_blocks(mapper_outputs)
+        return BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
+            normalized_blocks, sort_key
         )
 
 
@@ -165,7 +167,7 @@ def sample_boundaries(
     if should_close_bar:
         sample_bar.close()
     del sample_results
-    samples = [s for s in samples if len(s) > 0]
+    samples = normalize_blocks([s for s in samples if len(s) > 0])
     # The dataset is empty
     if len(samples) == 0:
         return [None] * (num_reducers - 1)

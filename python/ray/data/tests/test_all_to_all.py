@@ -48,6 +48,20 @@ def test_zip_different_num_blocks_combinations(
     )
 
 
+def test_zip_different_types(ray_start_regular_shared):
+    # Reproducing issue #31550
+    df = pd.DataFrame({"spam": [0]})
+    ds1 = ray.data.from_pandas(df)
+    ds2 = ray.data.from_items([{"ham": [0]}])
+
+    zipped_ds = ds1.zip(ds2)
+    assert zipped_ds.schema().names == ["spam", "ham"]
+    assert zipped_ds.take() == named_values(["spam", "ham"], [(0, [0])])
+    zipped_ds = ds2.zip(ds1)
+    assert zipped_ds.schema().names == ["ham", "spam"]
+    assert zipped_ds.take() == named_values(["ham", "spam"], [([0], 0)])
+
+
 @pytest.mark.parametrize(
     "num_cols1,num_cols2,should_invert",
     [
@@ -1223,6 +1237,29 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
         # We don't check this for push-based shuffle since it will try to
         # colocate reduce tasks to improve locality.
         assert set(locations) == {node1_id, node2_id}
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+def test_inconsistent_batch_formats(ray_start_regular_shared, num_parts):
+    def identity(batch):
+        return batch
+
+    xs = list(range(100))
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+        num_parts
+    )
+    grouped_ds = (
+        ds.groupby("A")
+        .map_groups(identity)
+        .map_batches(identity, batch_format="pandas")  # Reproducing issue #39206
+    )
+    agg_ds = grouped_ds.groupby("A").max("B")
+    assert agg_ds.count() == 3
+    assert list(agg_ds.sort("A").iter_rows()) == [
+        {"A": 0, "max(B)": 99},
+        {"A": 1, "max(B)": 97},
+        {"A": 2, "max(B)": 98},
+    ]
 
 
 if __name__ == "__main__":

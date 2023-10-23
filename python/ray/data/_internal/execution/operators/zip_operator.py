@@ -7,6 +7,7 @@ from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import normalize_blocks
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -237,6 +238,11 @@ def _zip_one_block(
     if inverted:
         # Swap blocks if ordering was inverted during block alignment splitting.
         block, other_block = other_block, block
+
+    # Normalize blocks if they're not of the same type
+    if not isinstance(other_block, type(block)):
+        block, other_block = normalize_blocks([block, other_block])
+
     # Zip block and other blocks.
     result = BlockAccessor.for_block(block).zip(other_block)
     br = BlockAccessor.for_block(result)

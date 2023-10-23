@@ -7,6 +7,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data._internal.util import normalize_blocks
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 
 
@@ -39,7 +40,7 @@ class _ShufflePartitionOp(ShuffleOp):
         if block_udf:
             ctx = TaskContext(task_idx=idx)
             # TODO(ekl) note that this effectively disables block splitting.
-            blocks = list(block_udf([block], ctx))
+            blocks = normalize_blocks(list(block_udf([block], ctx)))
             if len(blocks) > 1:
                 builder = BlockAccessor.for_block(blocks[0]).builder()
                 for b in blocks:
@@ -80,7 +81,7 @@ class _ShufflePartitionOp(ShuffleOp):
     ) -> (Block, BlockMetadata):
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
-        for block in mapper_outputs:
+        for block in normalize_blocks(mapper_outputs):
             builder.add_block(block)
         new_block = builder.build()
         accessor = BlockAccessor.for_block(new_block)

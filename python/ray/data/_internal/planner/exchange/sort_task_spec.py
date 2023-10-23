@@ -7,6 +7,7 @@ from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
+from ray.data._internal.util import normalize_blocks
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
 
@@ -68,8 +69,9 @@ class SortTaskSpec(ExchangeTaskSpec):
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
-        return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
-            mapper_outputs, sort_key
+        normalized_blocks = normalize_blocks(mapper_outputs)
+        return BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
+            normalized_blocks, sort_key
         )
 
     @staticmethod
@@ -95,7 +97,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples = sample_bar.fetch_until_complete(sample_results)
         sample_bar.close()
         del sample_results
-        samples = [s for s in samples if len(s) > 0]
+        samples = normalize_blocks([s for s in samples if len(s) > 0])
         # The dataset is empty
         if len(samples) == 0:
             return [None] * (num_reducers - 1)
