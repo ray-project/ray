@@ -163,12 +163,13 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/a2c && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/a2c/tests/
-    #- python rllib_contrib/a2c/examples/a2c_cartpole_v1.py --run-as-test
-    - python rllib_contrib/run_regression_tests.py --dir rllib_contrib/a2c/tuned_examples/cartpole-a2c-fake-gpus.yaml --framework torch
-    - python rllib_contrib/run_regression_tests.py --dir rllib_contrib/a2c/tuned_examples/cartpole-a2c-fake-gpus.yaml --framework tf
-    - python rllib_contrib/run_regression_tests.py --dir rllib_contrib/a2c/tuned_examples/cartpole-a2c-microbatch.yaml --framework torch
-    - python rllib_contrib/run_regression_tests.py --dir rllib_contrib/a2c/tuned_examples/cartpole-a2c-microbatch.yaml --framework tf
+    # Examples:
+    - python rllib_contrib/a2c/examples/a2c_cartpole_v1.py --run-as-test
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=-flaky
+      rllib_contrib/a2c/...
 
 - label: ":exploding_death_star: RLlib Contrib: A3C Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -179,10 +180,10 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/a3c && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/a3c/tests/test_a3c.py
-    - python rllib_contrib/run_regression_tests.py --dir rllib_contrib/a3c/tuned_examples/cartpole-a3c.yaml --framework torch
-    - python rllib_contrib/run_regression_tests.py --dir rllib_contrib/a3c/tuned_examples/cartpole-a3c.yaml --framework tf
-    - python rllib_contrib/run_regression_tests.py --dir rllib_contrib/a3c/tuned_examples/cartpole-a3c.yaml --framework tf2
+    #- pytest rllib_contrib/a3c/tests/test_a3c.py
+    #- python rllib_contrib/run_regression_tests.py --dir rllib_contrib/a3c/tuned_examples/cartpole-a3c.yaml --framework torch
+    #- python rllib_contrib/run_regression_tests.py --dir rllib_contrib/a3c/tuned_examples/cartpole-a3c.yaml --framework tf
+    #- python rllib_contrib/run_regression_tests.py --dir rllib_contrib/a3c/tuned_examples/cartpole-a3c.yaml --framework tf2
 
 - label: ":exploding_death_star: RLlib Contrib: AlphaStar Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]

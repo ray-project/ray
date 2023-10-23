@@ -653,6 +653,13 @@ py_test(
     srcs = ["algorithms/sac/tests/test_sac.py"]
 )
 
+# RNNSAC
+py_test(
+    name = "test_rnnsac",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "small",
+    srcs = ["algorithms/sac/tests/test_rnnsac.py"]
+)
 
 # --------------------------------------------------------------------
 # Memory leak tests
