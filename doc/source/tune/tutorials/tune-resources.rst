@@ -21,7 +21,7 @@ of CPUs (cores) on your machine.
 You can override this per trial resources with :func:`tune.with_resources <ray.tune.with_resources>`. Here you can
 specify your resource requests using either a dictionary, a :class:`~ray.train.ScalingConfig`, or a
 :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
-object. In any case, Ray Tune will try to start a placement group for each trial.
+object. In any case, Ray Tune will try to start a :ref:`Placement Group <ray-placement-group-doc-ref>` for each trial.
 
 .. code-block:: python
 
