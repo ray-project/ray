@@ -98,7 +98,7 @@ class Client : public ray::ClientConnection, public ClientInterface {
   // Only tracks fallback-allocated fds. This means the main memory is not tracked, and we
   // won't tell client to unmap the main memory. Incremented by `Get`, Decremented by
   // `Release`. If an FD is emptied out, the fd can be unmapped on the client side.
-  absl::flat_hash_map<MEMFD_TYPE, size_t> fds_ref_count_;
+  absl::flat_hash_map<MEMFD_TYPE, size_t> fallback_allocated_fds_ref_count_;
   absl::flat_hash_map<ray::ObjectID, MEMFD_TYPE> object_ids_to_fds_;
 };
 
