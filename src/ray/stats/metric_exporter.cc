@@ -161,13 +161,19 @@ void OpenCensusProtoExporter::ExportViewData(
   rpc::ReportOCMetricsRequest request_proto;
   request_proto.set_worker_id(worker_id_.Binary());
   size_t data_batched = 0;
+  // To make sure we're not overflowing Agent's set gRPC max message size, we will be tracking
+  // target payload binary size and make sure it stays w/in 95% of the threshold
+  // TODO define AGENT_GRPC_MAX_MESSAGE_LENGTH to keep it consistent b/w cpp/python
+  size_t binary_size_payload_threshold = (size_t) (AGENT_GRPC_MAX_MESSAGE_LENGTH * .95f);
 
   for (const auto &datum : data) {
     UpdateMetricsData(datum, request_proto);
     data_batched += 1;
-
+    // NOTE: Because each payload size check is linear in the number of fields w/in the payload
+    //       we intentionally sample it to happen only every 25 iterations to avoid affecting performance
+    bool should_check_payload_size = data_batched % 25 == 0
     /// If it exceeds the batch size, send data.
-    if (data_batched >= report_batch_size_) {
+    if (data_batched >= report_batch_size_ || (should_check_payload_size && request_proto.ByteSizeLong() >= binary_size_payload_threshold)) {
       SendData(request_proto);
       request_proto = rpc::ReportOCMetricsRequest();
       request_proto.set_worker_id(worker_id_.Binary());
