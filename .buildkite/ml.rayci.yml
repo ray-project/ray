@@ -1,5 +1,35 @@
 group: ml tests
 steps:
+  # builds
+  - name: minbuild-ml
+    label: "wanda: minbuild-ml-py38"
+    wanda: ci/docker/min.build.wanda.yaml
+    depends_on: oss-ci-base_build
+    env:
+      PYTHON_VERSION: "3.8"
+      EXTRA_DEPENDENCY: ml
+
+  - name: mlbuild
+    wanda: ci/docker/ml.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
+      IMAGE_TO: mlbuild
+      RAYCI_IS_GPU_BUILD: "false"
+
+  - name: mllightning2gpubuild
+    wanda: ci/docker/mllightning2gpu.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
+
+  - name: mlgpubuild
+    wanda: ci/docker/ml.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
+      IMAGE_TO: mlgpubuild
+      RAYCI_IS_GPU_BUILD: "true"
+
+  # tests
   - label: ":train: ml: train tests"
     tags: train
     instance_type: large
@@ -117,6 +147,18 @@ steps:
     depends_on: mlgpubuild
     job_env: forge
 
+  - label: ":train: ml: train gpu lightning 2.0 tests"
+    tags: 
+      - train
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
+        --build-name mllightning2gpubuild
+        --only-tags ptl_v2
+    depends_on: mllightning2gpubuild
+    job_env: forge
+
   - label: ":train: ml: flaky tests"
     tags: 
       - train
@@ -126,13 +168,5 @@ steps:
         --run-flaky-tests
         --except-tags soft_imports,gpu_only,rllib,multinode
     depends_on: mlbuild
-    soft_fail: true
     job_env: forge
-
-  - name: minbuild-ml
-    label: "wanda: minbuild-ml-py38"
-    wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_build
-    env:
-      PYTHON_VERSION: "3.8"
-      EXTRA_DEPENDENCY: ml
+    soft_fail: true
