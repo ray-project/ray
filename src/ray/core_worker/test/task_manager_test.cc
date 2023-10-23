@@ -2014,7 +2014,6 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   // Two report will come again. The first one should reply immediately (because)
   // it is already replied and the second one should be backpressured.
   /// 1 generate, 0 consumed, 2 threshold -> should signal immediately.
-  RAY_LOG(ERROR) << "SANG-TODO second trial";
   dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
   req = GetIntermediateTaskReturn(
       /*idx*/ 0,
@@ -2063,8 +2062,6 @@ TEST_F(TaskManagerTest, TestBackpressureAfterReconstruction) {
   ASSERT_TRUE(retry_signal_called);
   CompletePendingStreamingTask(spec, caller_address, 2);
 }
-
-// SANG-TODO reconstruction test
 
 }  // namespace core
 }  // namespace ray
