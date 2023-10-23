@@ -513,6 +513,12 @@ def _configure_key_pair(config, compute):
         # directory doesn't already exist.
         os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
 
+        if not key_found:
+            logging.warning("Key not found in GCP.")
+
+        if not os.path.exists(private_key_path):
+            logging.warning(f"Local private key not found at: {private_key_path}")
+
         # Create a key since it doesn't exist locally or in GCP
         if not key_found and not os.path.exists(private_key_path):
             logger.info(
@@ -749,17 +755,18 @@ def _add_iam_policy_binding(service_account, roles, crm):
 
 
 def _create_project_ssh_key_pair(project, public_key, ssh_user, compute):
-    """Inserts an ssh-key into project commonInstanceMetadata"""
+    logging.info("Entering _create_project_ssh_key_pair...")
 
     key_parts = public_key.split(" ")
 
-    # Sanity checks to make sure that the generated key matches expectation
     assert len(key_parts) == 2, key_parts
     assert key_parts[0] == "ssh-rsa", key_parts
 
     new_ssh_meta = "{ssh_user}:ssh-rsa {key_value} {ssh_user}".format(
         ssh_user=ssh_user, key_value=key_parts[1]
     )
+
+    logging.info(f"Generated new SSH meta: {new_ssh_meta}")
 
     common_instance_metadata = project["commonInstanceMetadata"]
     items = common_instance_metadata.get("items", [])
@@ -769,13 +776,24 @@ def _create_project_ssh_key_pair(project, public_key, ssh_user, compute):
     )
 
     if ssh_keys_i is None:
+        logging.info("No existing ssh-keys in items. Appending new ssh meta.")
         items.append({"key": "ssh-keys", "value": new_ssh_meta})
     else:
-        ssh_keys = items[ssh_keys_i]
-        ssh_keys["value"] += "\n" + new_ssh_meta
-        items[ssh_keys_i] = ssh_keys
+        current_size = len(items[ssh_keys_i]["value"])
+        new_size = current_size + len(new_ssh_meta) + 1  # +1 for the newline character
+        logging.info(
+            f"Existing ssh-keys size: {current_size}. "
+            "New size after addition: {new_size}."
+        )
+
+        if new_size < 262144:
+            items[ssh_keys_i]["value"] += "\n" + new_ssh_meta
+        else:
+            logging.info("Appending the new SSH key would exceed the limit.")
+            raise ValueError("Appending the new SSH key would exceed the limit.")
 
     common_instance_metadata["items"] = items
+    logging.info("Attempting to set common instance metadata...")
 
     operation = (
         compute.projects()
@@ -786,5 +804,5 @@ def _create_project_ssh_key_pair(project, public_key, ssh_user, compute):
     )
 
     response = wait_for_compute_global_operation(project["name"], operation, compute)
-
+    logging.debug(f"SetCommonInstanceMetadata response: {response}")
     return response
