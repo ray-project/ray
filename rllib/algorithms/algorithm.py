@@ -102,11 +102,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
-from ray.rllib.utils.serialization import (
-    deserialize_type,
-    gym_space_from_dict,
-    NOT_SERIALIZABLE,
-)
+from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
@@ -285,9 +281,9 @@ class Algorithm(Trainable, AlgorithmBase):
             checkpoint: The path (str) to the checkpoint directory to use
                 or an AIR Checkpoint instance to restore from.
             config: The config to use for recovering the Algorithm. Note that `config`
-                must be provided, if `checkpoint` is in msgpack format. However, `config`
-                might be slightly altered (wrt. to the original config used to create
-                `checkpoint`), depending on the user's needs. For example, a user
+                must be provided, if `checkpoint` is in msgpack format. However,
+                `config` might be slightly altered (wrt. to the original config used to
+                create `checkpoint`), depending on the user's needs. For example, a user
                 might want to reinstate the same Algorithm, but only with a single
                 remote workers instead of 32.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
@@ -328,10 +324,10 @@ class Algorithm(Trainable, AlgorithmBase):
         if checkpoint_info["format"] == "msgpack":
             if config is None:
                 raise ValueError(
-                    "When using `Algorithm.from_checkpoint()` with a msgpack checkpoint,"
-                    " you must provide the (original) `AlgorithmConfig` object or dict "
-                    "via the `config` arg, b/c msgpack checkpoints do NOT contain "
-                    "this information!"
+                    "When using `Algorithm.from_checkpoint()` with a msgpack "
+                    "checkpoint, you must provide the (original) `AlgorithmConfig` "
+                    "object or dict via the `config` arg, b/c msgpack checkpoints do "
+                    "NOT contain this information!"
                 )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
@@ -2786,9 +2782,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 **(
                     {"policy_mapping_fn": policy_mapping_fn}
                     if policy_mapping_fn is not None
-                    else {}
-                    |
-                    {"policies_to_train": policies_to_train}
+                    else {} | {"policies_to_train": policies_to_train}
                     if policies_to_train is not None
                     else {}
                 ),
@@ -2821,11 +2815,9 @@ class Algorithm(Trainable, AlgorithmBase):
                         # Since msgpack checkpoint do not store spaces
                         # Replace PolicySpec's config with given one (msgpack does NOT
                         # store config information).
-                        spec.config = (
-                            new_config.copy(copy_frozen=False).update_from_dict(
-                                new_config.policies[pid].config or {}
-                            )
-                        )
+                        spec.config = new_config.copy(
+                            copy_frozen=False
+                        ).update_from_dict(new_config.policies[pid].config or {})
                     else:
                         worker_state["policy_states"][pid] = pickle.load(f)
 

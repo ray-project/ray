@@ -75,8 +75,8 @@ def deep_transform(
     Args:
         transform: Transformation lambda/function to apply to each leaf.
         struct: Input structure (a dict or list).
-        include_tuples: If True, tuples are also traversed, otherwise, tuples are treated
-            as leafs.
+        include_tuples: If True, tuples are also traversed, otherwise, tuples are
+            treated as leafs.
 
     Returns:
         The transformed struct.

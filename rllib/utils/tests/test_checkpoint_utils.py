@@ -102,12 +102,14 @@ class TestCheckpointUtils(unittest.TestCase):
         # Base config used for both pickle-based checkpoint and msgpack-based one.
         config = (
             SimpleQConfig()
-            .environment(RandomEnv, env_config={
-                "observation_space": gym.spaces.Dict({"a": gym.spaces.Discrete(2)}),
-                "some_non_serializable_setting": gym.spaces.Discrete(4),
-            })
+            .environment(
+                RandomEnv,
+                env_config={
+                    "observation_space": gym.spaces.Dict({"a": gym.spaces.Discrete(2)}),
+                    "some_non_serializable_setting": gym.spaces.Discrete(4),
+                },
+            )
             .callbacks(DummyCallbacks)
-
         )
         # Build algorithm object.
         algo1 = config.build()
@@ -168,13 +170,18 @@ class TestCheckpointUtils(unittest.TestCase):
 
         config = (
             DQNConfig()
-            .environment("ma", env_config={
-                "some_strange_key": gym.spaces.Discrete(2),
-                "some_other_strange_key": gym.spaces.Dict({
-                    "a": gym.spaces.Discrete(3),
-                    "b": gym.spaces.Box(-1.0, 1.0, (2,)),
-                }),
-            })
+            .environment(
+                "ma",
+                env_config={
+                    "some_strange_key": gym.spaces.Discrete(2),
+                    "some_other_strange_key": gym.spaces.Dict(
+                        {
+                            "a": gym.spaces.Discrete(3),
+                            "b": gym.spaces.Box(-1.0, 1.0, (2,)),
+                        }
+                    ),
+                },
+            )
             .multi_agent(
                 policies=["pol0", "pol1", "pol2"],
                 policy_mapping_fn=mapping_fn,
