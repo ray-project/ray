@@ -1249,12 +1249,7 @@ def test_op_metrics_logging():
             "Operator InputDataBuffer[Input] -> "
             "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
             "Operator Metrics:\n"
-        ) + gen_expected_metrics(
-            is_map=True,
-            extra_metrics=[
-                "'ray_remote_args': " "{'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
-            ],
-        )
+        ) + STANDARD_EXTRA_METRICS
 
         # Check that these strings are logged exactly once.
         assert sum([log == input_str for log in logs]) == 1
