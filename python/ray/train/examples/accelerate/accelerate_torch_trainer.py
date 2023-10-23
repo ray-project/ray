@@ -1,6 +1,6 @@
 # __accelerate_torch_basic_example_start__
 """
-Minimal Ray Train + Accelerate example adapted from
+Minimal Ray Train and Accelerate example adapted from
 https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 
 Fine-tune a BERT model with Hugging Face Accelerate and Ray Train and Ray Data
@@ -27,7 +27,7 @@ from ray.train.torch import TorchTrainer
 
 
 def train_func(config):
-    """Your training function that will be launched on each worker."""
+    """Your training function that launches on each worker."""
 
     # Unpack training configs
     lr = config["lr"]
@@ -118,7 +118,7 @@ def train_func(config):
         eval_metric = metric.compute()
         accelerator.print(f"epoch {epoch}:", eval_metric)
 
-        # Report Checkpoint and metrics to Ray Train
+        # Report checkpoint and metrics to Ray Train
         # ==========================================
         with TemporaryDirectory() as tmpdir:
             if accelerator.is_main_process:
