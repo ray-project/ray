@@ -1037,7 +1037,7 @@
   team: ml
   cluster:
     byod:
-      type: cu118
+      type: gpu
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
@@ -1062,7 +1062,7 @@
   team: ml
   cluster:
     byod:
-      type: cu118
+      type: gpu
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
