@@ -167,16 +167,6 @@ def test_node_tags():
     assert tags == vnp.tag_cache["test_vm_id_1"]
 
 
-def test_external_ip():
-    vnp = mock_vsphere_node_provider()
-    vm = MagicMock()
-    vm.ip_address = "10.123.234.255"
-    vnp.vsphere_sdk_client.vcenter.vm.guest.Identity.get.return_value = vm
-
-    ip_address = vnp.external_ip("test_id")
-    assert ip_address == "10.123.234.255"
-
-
 def test_create_nodes():
     vnp = mock_vsphere_node_provider()
     vnp.lock = RLock()

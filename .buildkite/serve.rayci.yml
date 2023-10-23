@@ -37,6 +37,42 @@ steps:
     depends_on: servebuild
     job_env: forge
 
+  - label: ":ray-serve: serve: default minimal"
+    tags: python
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dashboard/... serve 
+        --parallelism-per-worker 2
+        --build-name minbuild-default-py3.8
+        --test-env=RAY_DEFAULT=1
+        --only-tags minimal
+    depends_on: minbuild-serve
+    job_env: forge
+
+  - label: ":ray-serve: serve: serve minimal"
+    tags: python
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve 
+        --parallelism-per-worker 2
+        --build-name minbuild-serve-py3.8
+        --test-env=RAY_DEFAULT=1
+        --only-tags minimal
+    depends_on: minbuild-serve
+    job_env: forge
+
+  - label: ":ray-serve: serve: doc gpu tests"
+    tags: 
+      - serve
+      - ci_doc
+    instance_type: gpu
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... serve 
+        --build-name docgpubuild
+        --only-tags gpu
+    depends_on: docgpubuild
+    job_env: forge
+  
   - label: ":ray-serve: serve: flaky tests"
     tags: 
       - serve
@@ -47,3 +83,14 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
     depends_on: servebuild
     job_env: forge
+
+  - name: minbuild-serve
+    label: "wanda: minbuild-{{matrix}}-py38"
+    wanda: ci/docker/min.build.wanda.yaml
+    depends_on: oss-ci-base_build
+    matrix:
+      - serve
+      - default
+    env:
+      PYTHON_VERSION: "3.8"
+      EXTRA_DEPENDENCY: "{{matrix}}"
