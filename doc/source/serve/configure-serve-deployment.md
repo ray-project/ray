@@ -2,9 +2,9 @@
 
 # Configure Ray Serve deployments
 
-These parameters are configurable on a Ray Serve deployment. Documentation is also in the [API reference](../serve/api/doc/ray.serve.deployment_decorator.rst).
+This guide walks through the parameters that are configurable for a Ray Serve deployment, as well as the different locations where you can specify the parameters. You can also refer to the [API reference](../serve/api/doc/ray.serve.deployment_decorator.rst) for the `@serve.deployment` decorator.
 
-Configure the following parameters either in the Serve config file, or on the `@serve.deployment` decorator:
+## Configurable parameters
 
 - `name` - Name uniquely identifying this deployment within the application. If not provided, the name of the class or function is used.
 - `num_replicas` - Number of replicas to run that handle requests to this deployment. Defaults to 1.
@@ -16,9 +16,10 @@ Configure the following parameters either in the Serve config file, or on the `@
 - `health_check_timeout_s` - Duration in seconds, that replicas wait for a health check method to return before considering it as failed. Defaults to 30s.
 - `graceful_shutdown_wait_loop_s` - Duration that replicas wait until there is no more work to be done before shutting down. Defaults to 2s.
 - `graceful_shutdown_timeout_s` - Duration to wait for a replica to gracefully shut down before being forcefully killed. Defaults to 20s.
-- `is_driver_deployment` - [EXPERIMENTAL] when set, exactly one replica of this deployment runs on every node (like a daemon set).
 
-There are 3 ways of specifying parameters:
+## How to configure a deployment
+
+There are 3 ways to specify the parameters mentioned above. Two ways are through your application code, and the third way is through the Serve Config file that is recommended for production.
 
   - In the `@serve.deployment` decorator -
 
@@ -36,34 +37,7 @@ There are 3 ways of specifying parameters:
 :language: python
 ```
 
-  - Using the YAML [Serve Config file](serve-in-production-config-file) -
-
-```yaml
-proxy_location: EveryNode
-
-http_options:
-  host: 0.0.0.0
-  port: 8000
-
-applications:
-
-- name: app1
-  route_prefix: /
-  import_path: configure_serve:translator_app
-  runtime_env: {}
-  deployments:
-  - name: Translator
-    num_replicas: 2
-    max_concurrent_queries: 100
-    graceful_shutdown_wait_loop_s: 2.0
-    graceful_shutdown_timeout_s: 20.0
-    health_check_period_s: 10.0
-    health_check_timeout_s: 30.0
-    ray_actor_options:
-      num_cpus: 0.2
-      num_gpus: 0.0
-
-```
+  - Lastly, you can configure deployments through the Serve config file. The recommended way to deploy and update your applications in production is through the Serve Config file. Learn more about how to use the Serve Config in the [production guide](https://docs.ray.io/en/latest/serve/production-guide/config.html).
 
 ## Overriding deployment settings
 
@@ -106,35 +80,4 @@ Serve sets `num_replicas=5`, using the config file value, and `max_concurrent_qu
 :::{tip}
 Remember that `ray_actor_options` counts as a single setting. The entire `ray_actor_options` dictionary in the config file overrides the entire `ray_actor_options` dictionary from the graph code. If there are individual options within `ray_actor_options` (e.g. `runtime_env`, `num_gpus`, `memory`) that are set in the code but not in the config, Serve still won't use the code settings if the config has a `ray_actor_options` dictionary. It treats these missing options as though the user never set them and uses defaults instead. This dictionary overriding behavior also applies to `user_config` and `autoscaling_config`.
 :::
-
-(serve-user-config)=
-## Dynamically changing parameters without restarting your replicas (`user_config`)
-
-You can use the `user_config` field to supply structured configuration for your deployment. You can pass arbitrary JSON serializable objects to the YAML configuration. Serve then applies it to all running and future deployment replicas. The application of user configuration *does not* restart the replica. This means you can use this field to dynamically:
-- adjust model weights and versions without restarting the cluster.
-- adjust traffic splitting percentage for your model composition graph.
-- configure any feature flag, A/B tests, and hyper-parameters for your deployments.
-
-To enable the `user_config` feature, you need to implement a `reconfigure` method that takes a JSON-serializable object (e.g., a Dictionary, List or String) as its only argument:
-
-```python
-@serve.deployment
-class Model:
-    def reconfigure(self, config: Dict[str, Any]):
-        self.threshold = config["threshold"]
-```
-
-If the `user_config` is set when the deployment is created (e.g., in the decorator or the Serve config file), this `reconfigure` method is called right after the deployment's `__init__` method, and the `user_config` is passed in as an argument. You can also trigger the `reconfigure` method by updating your Serve config file with a new `user_config` and reapplying it to your Ray cluster. See [In-place Updates](serve-inplace-updates) for more information.
-
-The corresponding YAML snippet is:
-
-```yaml
-...
-deployments:
-    - name: Model
-      user_config:
-        threshold: 1.5
-```
-
-
 
