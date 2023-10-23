@@ -10,9 +10,9 @@ cd python
 # Fix the numpy version because this will be the oldest numpy version we can
 # support.
 /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.32
-# Set the commit SHA in __init__.py.
+# Set the commit SHA in _version.py.
 if [[ -n "$TRAVIS_COMMIT" ]]; then
-  sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
+  sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
 else
   echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
   exit 1
