@@ -25,9 +25,16 @@ with tempfile.TemporaryDirectory() as pickle_cp_dir:
 
         # Try recreating a new algorithm object from the msgpack checkpoint.
         # Note: `Algorithm.from_checkpoint` now works with both pickle AND msgpack
-        # type checkpoints.
-        algo2 = Algorithm.from_checkpoint(msgpack_cp_dir)
+        # type checkpoints. However, when recovering from a msgpack-based checkpoint,
+        # you will have to provide the original config object (or dict) via the `config`
+        # arg, b/c msgpack cannot store any non-serializable information such as custom
+        # classes, gym Spaces, or lambdas.
+        algo2 = Algorithm.from_checkpoint(msgpack_cp_dir, config=config)
 
 # algo1 and algo2 are now identical.
 
 # __rllib-convert-pickle-to-msgpack-checkpoint-end__
+
+
+# __rllib-convert-pickle-to-msgpack-policy-checkpoint-begin__
+# __rllib-convert-pickle-to-msgpack-policy-checkpoint-end__

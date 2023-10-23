@@ -260,7 +260,17 @@ class TestCheckpointUtils(unittest.TestCase):
         pickle-checkpoint-recovered Policy (given same initial config).
         """
         # Base config used for both pickle-based checkpoint and msgpack-based one.
-        config = SimpleQConfig().environment("CartPole-v1")
+        config = (
+            SimpleQConfig()
+            .environment(
+                RandomEnv,
+                env_config={
+                    "observation_space": gym.spaces.Dict({"a": gym.spaces.Discrete(3)}),
+                    "some_non_serializable_setting": gym.spaces.Discrete(8),
+                },
+            )
+            .callbacks(DummyCallbacks)
+        )
         # Build algorithm/policy objects.
         algo1 = config.build()
         pol1 = algo1.get_policy()
@@ -279,16 +289,22 @@ class TestCheckpointUtils(unittest.TestCase):
                 self.assertTrue(msgpack_cp_info["format"] == "msgpack")
                 self.assertTrue(msgpack_cp_info["policy_ids"] is None)
                 # Try recreating a new policy object from the msgpack checkpoint.
-                pol2 = Policy.from_checkpoint(msgpack_cp_dir)
+                pol2 = Policy.from_checkpoint(msgpack_cp_dir, config=config)
         # Get the state of the policy recovered from msgpack.
         msgpack_state = pol2.get_state()
-
-        # Make sure the states? match 100%. Our `check` utility
-        # cannot handle comparing types/classes, so we'll have to serialize the
-        # pickle'd config (which contains types, rather than class strings).
-        pickle_state["policy_spec"]["config"] = AlgorithmConfig._serialize_dict(
-            pickle_state["policy_spec"]["config"]
-        )
+        # The following args get changed/added inside the config dict when a policy is
+        # a) constructed and b) within a rollout worker, so we take them out here.
+        # Note: We will not fix this any longer as we are moving away from the Policy
+        # API (and their config dicts) anyways.
+        for key in [
+            "tf_session_args",
+            "simple_optimizer",
+            "replay_buffer_config",
+            "worker_index",
+            "__policy_id",
+        ]:
+            pickle_state["policy_spec"]["config"].pop(key, None)
+            msgpack_state["policy_spec"]["config"].pop(key, None)
         check(pickle_state, msgpack_state)
 
 

@@ -85,6 +85,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.evaluation import Episode
     from ray.rllib.core.rl_module import RLModule
 
@@ -267,6 +268,8 @@ class Policy(metaclass=ABCMeta):
     @staticmethod
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
+        *,
+        config: Optional["AlgorithmConfig"] = None,
         policy_ids: Optional[Container[PolicyID]] = None,
     ) -> Union["Policy", Dict[PolicyID, "Policy"]]:
         """Creates new Policy instance(s) from a given Policy or Algorithm checkpoint.
@@ -350,6 +353,13 @@ class Policy(metaclass=ABCMeta):
                     state = msgpack.load(f)
                 else:
                     state = pickle.load(f)
+
+            # If config is explicitly provided, use it instead of stored config.
+            if config is not None and state.get("policy_spec"):
+                state["policy_spec"]["config"] = (
+                    config if isinstance(config, dict) else config.to_dict()
+                )
+
             return Policy.from_state(state)
 
     @staticmethod
@@ -387,7 +397,7 @@ class Policy(metaclass=ABCMeta):
 
         # Create the new policy.
         new_policy = actual_class(
-            # Note(jungong) : we are intentionally not using keyward arguments here
+            # Note: We are intentionally not using keyward arguments here
             # because some policies name the observation space parameter obs_space,
             # and some others name it observation_space.
             pol_spec.observation_space,
