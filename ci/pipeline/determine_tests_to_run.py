@@ -154,7 +154,12 @@ if __name__ == "__main__":
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("python/ray/data"):
+            elif (
+                changed_file.startswith("python/ray/data")
+                or changed_file == ".buildkite/data.rayci.yml"
+                or changed_file == "ci/docker/data.build.Dockerfile"
+                or changed_file == "ci/docker/data.build.wanda.yaml"
+            ):
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -180,6 +185,9 @@ if __name__ == "__main__":
             elif (
                 changed_file == ".buildkite/ml.rayci.yml"
                 or changed_file == ".buildkite/pipeline.ml.yml"
+                or changed_file == "ci/docker/ml.build.Dockerfile"
+                or changed_file == ".buildkite/pipeline.gpu.yml"
+                or changed_file == ".buildkite/pipeline.gpu_large.yml"
             ):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -188,8 +196,6 @@ if __name__ == "__main__":
                 re.match("^(python/ray/)?rllib/", changed_file)
                 or changed_file == "ray_ci/rllib.tests.yml"
                 or changed_file == ".buildkite/rllib.rayci.yml"
-                or changed_file == ".buildkite/pipeline.gpu.yml"
-                or changed_file == ".buildkite/pipeline.gpu_large.yml"
             ):
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1

@@ -114,8 +114,19 @@ steps:
         --parallelism-per-worker 2
         --build-name mlgpubuild
         --only-tags gpu,gpu_only
-        --except-tags doctest
     depends_on: mlgpubuild
+    job_env: forge
+
+  - label: ":train: ml: flaky tests"
+    tags: 
+      - train
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+        --run-flaky-tests
+        --except-tags soft_imports,gpu_only,rllib,multinode
+    depends_on: mlbuild
+    soft_fail: true
     job_env: forge
 
   - name: minbuild-ml

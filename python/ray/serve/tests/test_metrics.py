@@ -166,7 +166,7 @@ def test_http_replica_gauge_metrics(serve_start_shutdown):
     wait_for_condition(ensure_request_processing, timeout=5)
 
 
-def test_proxy_metrics(serve_start_shutdown):
+def test_proxy_metrics_not_found(serve_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
@@ -174,7 +174,11 @@ def test_proxy_metrics(serve_start_shutdown):
         "serve_num_http_requests",
         "serve_num_grpc_requests",
         "serve_num_http_error_requests",
-        # "serve_num_grpc_error_requests",
+        "serve_num_grpc_error_requests",
+        "serve_num_deployment_http_error_requests",
+        "serve_http_request_latency_ms",
+        "serve_num_deployment_grpc_error_requests",
+        "serve_grpc_request_latency_ms",
     ]
 
     def verify_metrics(_expected_metrics, do_assert=False):
@@ -199,39 +203,7 @@ def test_proxy_metrics(serve_start_shutdown):
     wait_for_condition(ping_grpc_list_applications, channel=channel, app_names=[])
     ping_grpc_call_method(channel=channel, app_name="foo", test_not_found=True)
 
-    try:
-        wait_for_condition(
-            verify_metrics,
-            retry_interval_ms=1000,
-            timeout=10,
-            expected_metrics=expected_metrics,
-        )
-    except RuntimeError:
-        verify_metrics(expected_metrics, True)
-
-    # NOTE: This metric should be documented at
-    # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
-    # Any updates here should be reflected there too.
-    expected_metrics.append("serve_num_deployment_http_error_requests")
-    expected_metrics.append("serve_http_request_latency_ms")
-    # expected_metrics.append("serve_num_deployment_grpc_error_requests")
-    expected_metrics.append("serve_grpc_request_latency_ms")
-
-    @serve.deployment(name="A")
-    class A:
-        async def __init__(self):
-            pass
-
-        async def __call__(self, *args):
-            # Trigger RayActorError
-            os._exit(0)
-
-    app_name = "app"
-    serve.run(A.bind(), name=app_name)
-    requests.get("http://127.0.0.1:8000/A/")
-    requests.get("http://127.0.0.1:8000/A/")
-    with pytest.raises(grpc.RpcError):
-        ping_grpc_call_method(channel=channel, app_name=app_name)
+    # Ensure all expected metrics are present.
     try:
         wait_for_condition(
             verify_metrics,
@@ -249,7 +221,108 @@ def test_proxy_metrics(serve_start_shutdown):
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
             if "serve_num_http_error_requests" in metrics:
-                # both route "/A/" and "/B/" should have error count 2
+                # route "/B/" should have error count 2
+                if do_assert:
+                    assert "2.0" in metrics
+                if "2.0" not in metrics:
+                    return False
+            elif "serve_num_deployment_http_error_requests" in metrics:
+                # deployment B should have error count 2
+                if do_assert:
+                    assert 'error_code="404"' in metrics and "2.0" in metrics
+                if 'error_code="404"' not in metrics or "2.0" not in metrics:
+                    return False
+            elif "serve_num_grpc_error_requests" in metrics:
+                # gRPC pinged "B" once
+                if do_assert:
+                    assert "1.0" in metrics
+                if "1.0" not in metrics:
+                    return False
+            elif "serve_num_deployment_grpc_error_requests" in metrics:
+                # gRPC pinged "B" once
+                if do_assert:
+                    assert (
+                        'error_code="StatusCode.NOT_FOUND"' in metrics
+                        and "1.0" in metrics
+                    )
+                if (
+                    'error_code="StatusCode.NOT_FOUND"' not in metrics
+                    or "1.0" not in metrics
+                ):
+                    return False
+        return True
+
+    # There is a latency in updating the counter
+    try:
+        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=10)
+    except RuntimeError:
+        verify_error_count(do_assert=True)
+
+
+def test_proxy_metrics_internal_error(serve_start_shutdown):
+    # NOTE: These metrics should be documented at
+    # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
+    # Any updates here should be reflected there too.
+    expected_metrics = [
+        "serve_num_http_requests",
+        "serve_num_grpc_requests",
+        "serve_num_http_error_requests",
+        "serve_num_grpc_error_requests",
+        "serve_num_deployment_http_error_requests",
+        "serve_http_request_latency_ms",
+        "serve_num_deployment_grpc_error_requests",
+        "serve_grpc_request_latency_ms",
+    ]
+
+    def verify_metrics(_expected_metrics, do_assert=False):
+        try:
+            resp = requests.get("http://127.0.0.1:9999").text
+        # Requests will fail if we are crashing the controller
+        except requests.ConnectionError:
+            return False
+        for metric in _expected_metrics:
+            if do_assert:
+                assert metric in resp
+            if metric not in resp:
+                return False
+        return True
+
+    @serve.deployment(name="A")
+    class A:
+        async def __init__(self):
+            pass
+
+        async def __call__(self, *args):
+            # Trigger RayActorError
+            os._exit(0)
+
+    app_name = "app"
+    serve.run(A.bind(), name=app_name)
+    requests.get("http://127.0.0.1:8000/A/")
+    requests.get("http://127.0.0.1:8000/A/")
+    channel = grpc.insecure_channel("localhost:9000")
+    with pytest.raises(grpc.RpcError):
+        ping_grpc_call_method(channel=channel, app_name=app_name)
+
+    # Ensure all expected metrics are present.
+    try:
+        wait_for_condition(
+            verify_metrics,
+            retry_interval_ms=1000,
+            timeout=10,
+            expected_metrics=expected_metrics,
+        )
+    except RuntimeError:
+        verify_metrics(expected_metrics, True)
+
+    def verify_error_count(do_assert=False):
+        resp = requests.get("http://127.0.0.1:9999").text
+        resp = resp.split("\n")
+        for metrics in resp:
+            if "# HELP" in metrics or "# TYPE" in metrics:
+                continue
+            if "serve_num_http_error_requests" in metrics:
+                # route "/A/" should have error count 2
                 if do_assert:
                     assert "2.0" in metrics
                 if "2.0" not in metrics:
@@ -260,19 +333,18 @@ def test_proxy_metrics(serve_start_shutdown):
                     assert 'deployment="A"' in metrics and "2.0" in metrics
                 if 'deployment="A"' not in metrics or "2.0" not in metrics:
                     return False
-            # TODO(edoakes): re-enable these once metrics are fixed.
-            # elif "serve_num_grpc_error_requests" in metrics:
-            # gRPC pinged "A" once
-            # if do_assert:
-            # assert "1.0" in metrics
-            # if "1.0" not in metrics:
-            # return False
-            # elif "serve_num_deployment_grpc_error_requests" in metrics:
-            # gRPC pinged "A" once
-            # if do_assert:
-            # assert 'deployment="A"' in metrics and "1.0" in metrics
-            # if 'deployment="A"' not in metrics or "1.0" not in metrics:
-            # return False
+            elif "serve_num_grpc_error_requests" in metrics:
+                # gRPC pinged "A" once
+                if do_assert:
+                    assert "1.0" in metrics
+                if "1.0" not in metrics:
+                    return False
+            elif "serve_num_deployment_grpc_error_requests" in metrics:
+                # gRPC pinged "A" once
+                if do_assert:
+                    assert 'deployment="A"' in metrics and "1.0" in metrics
+                if 'deployment="A"' not in metrics or "1.0" not in metrics:
+                    return False
         return True
 
     # There is a latency in updating the counter
@@ -282,17 +354,8 @@ def test_proxy_metrics(serve_start_shutdown):
         verify_error_count(do_assert=True)
 
 
-def test_proxy_metrics_fields(serve_start_shutdown):
-    """Tests the proxy metrics' fields' behavior."""
-
-    @serve.deployment()
-    def f(*args):
-        return 1 / 0
-
-    real_app_name = "app"
-    real_app_name2 = "app2"
-    serve.run(f.bind(), name=real_app_name, route_prefix="/real_route")
-    serve.run(f.bind(), name=real_app_name2, route_prefix="/real_route2")
+def test_proxy_metrics_fields_not_found(serve_start_shutdown):
+    """Tests the proxy metrics' fields' behavior for not found."""
 
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
@@ -327,13 +390,25 @@ def test_proxy_metrics_fields(serve_start_shutdown):
     assert num_errors[0]["method"] == "GET"
     print("serve_num_http_error_requests working as expected.")
 
-    # TODO(edoakes): re-enable these once metrics are fixed.
-    # num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
-    # assert len(num_errors) == 1
-    # assert num_errors[0]["route"] == fake_app_name
-    # assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
-    # assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
-    # print("serve_num_grpc_error_requests working as expected.")
+    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == fake_app_name
+    assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
+    assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
+    print("serve_num_grpc_error_requests working as expected.")
+
+
+def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
+    """Tests the proxy metrics' fields' behavior for internal error."""
+
+    @serve.deployment()
+    def f(*args):
+        return 1 / 0
+
+    real_app_name = "app"
+    real_app_name2 = "app2"
+    serve.run(f.bind(), name=real_app_name, route_prefix="/real_route")
+    serve.run(f.bind(), name=real_app_name2, route_prefix="/real_route2")
 
     # Deployment should generate divide-by-zero errors
     correct_url = "http://127.0.0.1:8000/real_route"
@@ -341,6 +416,7 @@ def test_proxy_metrics_fields(serve_start_shutdown):
     print("Sent requests to correct URL.")
 
     # Ping gPRC proxy for broken app
+    channel = grpc.insecure_channel("localhost:9000")
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=real_app_name)
 
@@ -354,18 +430,17 @@ def test_proxy_metrics_fields(serve_start_shutdown):
     assert num_deployment_errors[0]["application"] == "app"
     print("serve_num_deployment_http_error_requests working as expected.")
 
-    # TODO(edoakes): re-enable these once metrics are fixed.
-    # num_deployment_errors = get_metric_dictionaries(
-    # "serve_num_deployment_grpc_error_requests"
-    # )
-    # assert len(num_deployment_errors) == 1
-    # assert num_deployment_errors[0]["deployment"] == "f"
-    # assert num_deployment_errors[0]["error_code"] == str(grpc.StatusCode.INTERNAL)
-    # assert (
-    # num_deployment_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
-    # )
-    # assert num_deployment_errors[0]["application"] == real_app_name
-    # print("serve_num_deployment_grpc_error_requests working as expected.")
+    num_deployment_errors = get_metric_dictionaries(
+        "serve_num_deployment_grpc_error_requests"
+    )
+    assert len(num_deployment_errors) == 1
+    assert num_deployment_errors[0]["deployment"] == "f"
+    assert num_deployment_errors[0]["error_code"] == str(grpc.StatusCode.INTERNAL)
+    assert (
+        num_deployment_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
+    )
+    assert num_deployment_errors[0]["application"] == real_app_name
+    print("serve_num_deployment_grpc_error_requests working as expected.")
 
     latency_metrics = get_metric_dictionaries("serve_http_request_latency_ms_sum")
     assert len(latency_metrics) == 1
@@ -380,8 +455,7 @@ def test_proxy_metrics_fields(serve_start_shutdown):
     assert latency_metrics[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert latency_metrics[0]["route"] == real_app_name
     assert latency_metrics[0]["application"] == real_app_name
-    # TODO(edoakes): re-enable these once metrics are fixed.
-    # assert latency_metrics[0]["status_code"] == str(grpc.StatusCode.INTERNAL)
+    assert latency_metrics[0]["status_code"] == str(grpc.StatusCode.INTERNAL)
     print("serve_grpc_request_latency_ms_sum working as expected.")
 
 
