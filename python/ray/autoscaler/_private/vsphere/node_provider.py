@@ -1,5 +1,4 @@
 import copy
-import ipaddress
 import logging
 import threading
 import time
@@ -23,7 +22,7 @@ from pyVmomi import vim
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.vsphere.config import bootstrap_vsphere
 from ray.autoscaler._private.vsphere.sdk_provider import VmwSdkProviderFactory
-from ray.autoscaler._private.vsphere.utils import Constants
+from ray.autoscaler._private.vsphere.utils import Constants, is_ipv4
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
@@ -93,12 +92,6 @@ class VsphereNodeProvider(NodeProvider):
         vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.VirtualMachine], frozen_vm_name
         )
-        if vm is None:
-            raise ValueError(
-                "The frozen VM {} doesn't exist on vSphere, please contact the VI "
-                "admin".format(frozen_vm_name)
-            )
-        logger.info(f"Found frozen VM with name: {vm._moId}")
 
         if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
             logger.debug(f"Frozen VM {vm._moId} is off. Powering it ON")
@@ -188,18 +181,16 @@ class VsphereNodeProvider(NodeProvider):
 
     def external_ip(self, node_id):
         # Return the external IP of the VM
-
-        vm = self.vsphere_sdk_client.vcenter.vm.guest.Identity.get(node_id)
-        try:
-            _ = ipaddress.IPv4Address(vm.ip_address)
-            logger.debug("Fetch IP {} for VM {}".format(vm.ip_address, vm))
-        except ipaddress.AddressValueError:
-            # vSphere SDK could return IPv6 address when the VM is just booted. We
-            # just return None in this case because the Ray doesn't support IPv6
-            # address yet When the next time external_ip is called, we could return
-            # the IPv4 address
-            return None
-        return vm.ip_address
+        # Fetch vSphere VM object
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.VirtualMachine], obj_id=node_id
+        )
+        # Get the external IP address of this VM
+        for ipaddr in vm.guest.net[0].ipAddress:
+            if is_ipv4(ipaddr):
+                logger.debug("Fetch IP {} for VM {}".format(ipaddr, vm))
+                return ipaddr
+        return None
 
     def internal_ip(self, node_id):
         # Currently vSphere VMs do not show an internal IP. So we just return the
@@ -512,10 +503,6 @@ class VsphereNodeProvider(NodeProvider):
         datastore_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.Datastore], datastore_name
         )
-        if not datastore_mo:
-            raise ValueError(
-                f"Cannot find the vSphere datastore by name {datastore_name}"
-            )
         datastore_id = datastore_mo._moId
         if node_config.get("frozen_vm").get("resource_pool"):
             rp_filter_spec = ResourcePool.FilterSpec(
@@ -540,10 +527,6 @@ class VsphereNodeProvider(NodeProvider):
             cluster_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
                 [vim.ClusterComputeResource], cluster_name
             )
-            if not cluster_mo:
-                raise ValueError(
-                    f"Cannot find the vSphere cluster by name {cluster_name}"
-                )
             node_config["host_id"] = cluster_mo.host[0]._moId
             resource_pool_id = cluster_mo.resourcePool._moId
 
@@ -673,12 +656,6 @@ class VsphereNodeProvider(NodeProvider):
         self.frozen_vms_resource_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.ResourcePool], self.frozen_vm_resource_pool_name
         )
-
-        if self.frozen_vms_resource_pool is None:
-            raise RuntimeError(
-                f"Resource Pool {self.frozen_vm_resource_pool_name} could not be found."
-            )
-
         # Make all frozen vms on resource pool are power on and frozen
         self.check_frozen_vms_status(self.frozen_vms_resource_pool)
 

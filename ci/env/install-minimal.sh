@@ -36,8 +36,7 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \
-  pytest==7.0.1 \
-  numpy
+  pytest==7.0.1
 
 # Train requirements.
 # TODO: make this dynamic

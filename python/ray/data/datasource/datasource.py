@@ -1,6 +1,6 @@
 import builtins
 from copy import copy
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Iterable, List, Optional, Tuple
 
 import numpy as np
 
@@ -74,30 +74,6 @@ class Datasource:
 
         Returns:
             The output of the write task.
-        """
-        raise NotImplementedError
-
-    @Deprecated(
-        message="do_write() is deprecated in Ray 2.4. Use write() instead", warning=True
-    )
-    def do_write(
-        self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        ray_remote_args: Dict[str, Any],
-        **write_args,
-    ) -> List[ObjectRef[WriteResult]]:
-        """Launch Ray tasks for writing blocks out to the datasource.
-
-        Args:
-            blocks: List of data block references. It is recommended that one
-                write task be generated per block.
-            metadata: List of block metadata.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-            write_args: Additional kwargs to pass to the datasource impl.
-
-        Returns:
-            A list of the output of the write tasks.
         """
         raise NotImplementedError
 
