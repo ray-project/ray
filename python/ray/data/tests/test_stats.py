@@ -483,7 +483,7 @@ def test_dataset__repr__(ray_start_regular_shared):
 
     expected_stats = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=None,\n"
         "   number=N,\n"
         "   extra_metrics={},\n"
@@ -539,7 +539,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     assert len(ds2.take_all()) == n
     expected_stats2 = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
         "   extra_metrics={\n"
@@ -596,7 +596,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   dataset_bytes_spilled=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
-        "         dataset_uuid=U,\n"
+        "         dataset_uuid=N,\n"
         "         base_name=None,\n"
         "         number=N,\n"
         "         extra_metrics={},\n"

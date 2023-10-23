@@ -2,7 +2,7 @@ import collections
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Union
 
 import numpy as np
 
@@ -15,6 +15,9 @@ from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
@@ -143,6 +146,10 @@ class _StatsActor:
         self.max_stats = max_stats
         self.fifo_queue = []
 
+        # Assign dataset uuids with a global counter.
+        self.dataset_id: Dict["Dataset", str] = {}
+        self.next_id = 0
+
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
         # a dataset's metrics to 0 after each finishes execution.
@@ -220,6 +227,12 @@ class _StatsActor:
     def _get_stats_dict_size(self):
         return len(self.start_time), len(self.last_time), len(self.metadata)
 
+    def register_dataset(self, dataset):
+        if dataset not in self.dataset_id:
+            self.dataset_id[dataset] = str(self.next_id)
+            self.next_id += 1
+        return self.dataset_id[dataset]
+
     def update_metrics(self, stats: Dict[str, Union[int, float]], tags: Dict[str, str]):
         self.bytes_spilled.set(stats["obj_store_mem_spilled"], tags)
         self.bytes_allocated.set(stats["obj_store_mem_alloc"], tags)
@@ -295,6 +308,12 @@ def clear_stats_actor_metrics(tags: Dict[str, str]):
     global _stats_actor
     _check_cluster_stats_actor()
     _stats_actor.clear_metrics.remote(tags)
+
+
+def register_dataset_to_stats_actor(dataset: "Dataset") -> str:
+    global _stats_actor
+    _check_cluster_stats_actor()
+    return ray.get(_stats_actor.register_dataset.remote(dataset))
 
 
 class DatasetStats:
