@@ -99,7 +99,7 @@ class Client : public ray::ClientConnection, public ClientInterface {
   // won't tell client to unmap the main memory. Incremented by `Get`, Decremented by
   // `Release`. If an FD is emptied out, the fd can be unmapped on the client side.
   absl::flat_hash_map<MEMFD_TYPE, size_t> fallback_allocated_fds_ref_count_;
-  absl::flat_hash_map<ray::ObjectID, MEMFD_TYPE> object_ids_to_fds_;
+  absl::flat_hash_map<ray::ObjectID, MEMFD_TYPE> object_ids_to_fallback_allocated_fds_;
 };
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client);
