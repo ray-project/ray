@@ -321,6 +321,27 @@ Here is how you can do this:
     :end-before: __restore-policy-end__
 
 
+Policy checkpoints are py-version specific, but can be converted to be version independent
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Similar to how you can "bring along" an Algorithm checkpoints from one python version to another
+using RLlib's msgpack conversion function (:py:func:`~ray.rllib.utils.checkpoints.convert_to_msgpack_checkpoint`),
+you can do the same for individual Policy checkpoints as well (:py:func:`~ray.rllib.utils.checkpoints.convert_to_msgpack_policy_checkpoint`).
+
+Take a look at this code here for how to use this utility function on individual Policy
+checkpoints:
+
+.. literalinclude:: doc_code/checkpoints.py
+    :language: python
+    :start-after: __rllib-convert-pickle-to-msgpack-policy-checkpoint-begin__
+    :end-before: __rllib-convert-pickle-to-msgpack-policy-checkpoint-end__
+
+Thus, once you need to migrate your checkpointed policies to a higher (or lower)
+python version, use the ``convert_to_msgpack_policy_checkpoint()`` utility,
+create a msgpack-based Policy checkpoint and hand that to ``Policy.from_checkpoint()``
+RLlib is able to recreate Policy objects from both these formats now.
+
+
 How do I restore a multi-agent Algorithm with a subset of the original policies?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
