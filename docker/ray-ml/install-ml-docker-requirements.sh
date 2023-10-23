@@ -30,6 +30,7 @@ pip --no-cache-dir install -U \
            -c requirements_compiled.txt \
            -r core-requirements.txt \
            -r data-requirements.txt \
+           -r data-test-requirements.txt \
            -r rllib-requirements.txt \
            -r rllib-test-requirements.txt \
            -r train-requirements.txt \

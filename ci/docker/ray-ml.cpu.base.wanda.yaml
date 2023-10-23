@@ -8,6 +8,7 @@ srcs:
   - python/requirements/ml/dl-gpu-requirements.txt
   - python/requirements/ml/core-requirements.txt
   - python/requirements/ml/data-requirements.txt
+  - python/requirements/ml/data-test-requirements.txt
   - python/requirements/ml/rllib-requirements.txt
   - python/requirements/ml/rllib-test-requirements.txt
   - python/requirements/ml/train-requirements.txt

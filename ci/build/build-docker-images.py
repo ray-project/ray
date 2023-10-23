@@ -456,6 +456,7 @@ def prep_ray_ml():
         "python/requirements/docker/ray-docker-requirements.txt",
         "python/requirements/ml/core-requirements.txt",
         "python/requirements/ml/data-requirements.txt",
+        "python/requirements/ml/data-test-requirements.txt",
         "python/requirements/ml/dl-gpu-requirements.txt",
         "python/requirements/ml/dl-cpu-requirements.txt",
         "python/requirements/ml/tune-requirements.txt",
@@ -468,7 +469,6 @@ def prep_ray_ml():
     # We don't need these in the ml docker image (or they are installed elsewhere)
     ignore_requirements = [
         "python/requirements/compat/requirements_legacy_compat.txt",
-        "python/requirements/ml/data-test-requirements.txt",
     ]
 
     files_on_disk = glob.glob(
