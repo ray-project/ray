@@ -808,15 +808,12 @@ def get_deployment_handle(
     Examples:
         >>> import ray
         >>> from ray import serve
-
         >>> @serve.deployment
         >>> def f(val: int) -> int:
         ...     return val * 2
-
         >>> serve.run(f.bind(), name="my_app")
         >>> handle = serve.get_deployment_handle("f", app_name="my_app")
-        >>> handle.remote(3).result()
-        7
+        >>> assert(handle.remote(3).result() == 7)
 
     The following example demonstrates how you can use this API to get
     the handle to a non-ingress deployment in an application.
@@ -848,7 +845,7 @@ def get_deployment_handle(
             # The app calculates 2 * x + 3
             serve.run(Adder.bind(Multiplier.bind(2), 3), name="math_app")
             handle = serve.get_app_handle("math_app")
-            assert handle.remote(5).result() == 13
+            assert handle.remote(5).result() == 14
 
             # Get handle to Multiplier only
             handle = serve.get_deployment_handle("Multiplier", app_name="math_app")
