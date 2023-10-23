@@ -176,7 +176,7 @@ class DataIterator(abc.ABC):
                     shuffle_buffer_min_size=local_shuffle_buffer_size,
                     shuffle_seed=local_shuffle_seed,
                     prefetch_batches=prefetch_batches,
-                    metrics_tags=self._get_dataset_tag(),
+                    dataset_tag=self._get_dataset_tag(),
                 )
             )
 

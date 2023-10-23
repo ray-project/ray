@@ -185,6 +185,7 @@ class _StatsActor:
             tag_keys=tags_keys,
         )
 
+        # Iteration timer metrics
         self.iter_wait_s = Gauge(
             "data_iter_wait_seconds",
             description="Seconds spent in ray.wait()",
@@ -217,7 +218,7 @@ class _StatsActor:
         )
         self.iter_total_blocked_s = Gauge(
             "data_iter_total_blocked_seconds",
-            description="Seconds user thread is blocked by iter_batches",
+            description="Seconds user thread is blocked by iter_batches()",
             tag_keys=tags_keys,
         )
         self.iter_user_s = Gauge(

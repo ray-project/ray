@@ -135,6 +135,7 @@ def iter_batches(
             num_batches_to_prefetch=prefetch_batches,
             batch_size=batch_size,
             eager_free=eager_free,
+            stats=stats,
         )
 
         # Step 2: Resolve the blocks.
@@ -242,6 +243,7 @@ def prefetch_batches_locally(
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
     eager_free: bool = False,
+    stats: Optional[DatasetStats] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched block references, returns an iterator over the same
     block references while prefetching `num_batches_to_prefetch` batches in advance.
@@ -282,7 +284,8 @@ def prefetch_batches_locally(
         sliding_window.append(next_block_ref_and_metadata)
         current_window_size += next_block_ref_and_metadata[1].num_rows
 
-    prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
+    with stats.iter_wait_s.timer() if stats else nullcontext():
+        prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
 
     while sliding_window:
         block_ref, metadata = sliding_window.popleft()
@@ -290,9 +293,10 @@ def prefetch_batches_locally(
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
                 sliding_window.append(next(block_ref_iter))
-                prefetcher.prefetch_blocks(
-                    [block_ref for block_ref, _ in list(sliding_window)]
-                )
+                with stats.iter_wait_s.timer() if stats else nullcontext():
+                    prefetcher.prefetch_blocks(
+                        [block_ref for block_ref, _ in list(sliding_window)]
+                    )
             except StopIteration:
                 pass
         yield block_ref

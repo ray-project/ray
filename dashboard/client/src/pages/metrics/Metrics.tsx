@@ -204,6 +204,38 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Bytes Outputted",
         pathParams: "orgId=1&theme=light&panelId=7",
       },
+      {
+        title: "Iteration Wait Time",
+        pathParams: "orgId=1&theme=light&panelId=8",
+      },
+      {
+        title: "Iteration Get Time",
+        pathParams: "orgId=1&theme=light&panelId=9",
+      },
+      {
+        title: "Iteration Next Batch Time",
+        pathParams: "orgId=1&theme=light&panelId=10",
+      },
+      {
+        title: "Iteration Format Batch Time",
+        pathParams: "orgId=1&theme=light&panelId=11",
+      },
+      {
+        title: "Iteration Collate Batch Time",
+        pathParams: "orgId=1&theme=light&panelId=12",
+      },
+      {
+        title: "Iteration Finalize Batch Time",
+        pathParams: "orgId=1&theme=light&panelId=13",
+      },
+      {
+        title: "Iteration Blocked Time",
+        pathParams: "orgId=1&theme=light&panelId=14",
+      },
+      {
+        title: "Iteration User Time",
+        pathParams: "orgId=1&theme=light&panelId=15",
+      },
     ],
   },
 ];
