@@ -23,7 +23,7 @@ There are 2 ways to specify the parameters mentioned above. First, you can speci
 
 ### Specify parameters through application code
 
-  - In the `@serve.deployment` decorator -
+In most cases where you want to specify deployment parameters through your application code, you can use the `@serve.deployment` decorator:
 
 ```{literalinclude} ../serve/doc_code/configure_serve_deployment/model_deployment.py
 :start-after: __deployment_start__
@@ -31,7 +31,7 @@ There are 2 ways to specify the parameters mentioned above. First, you can speci
 :language: python
 ```
 
-  - Through `options()` -
+Sometimes, you might want to reuse an already-defined deployment but deploy it with different configurations; or you might want to dynamically set the parameters at runtime. In such cases, you can use `.options()` on a deployment to set or override parameters specified in the `@serve.deployment` decorator:
 
 ```{literalinclude} ../serve/doc_code/configure_serve_deployment/model_deployment.py
 :start-after: __deployment_end__
@@ -65,9 +65,8 @@ applications:
 For each individual parameter, the order of priority is (from highest to lowest):
 
 1. Serve Config file
-2. `.options()` call in python code referenced above
-3. `@serve.deployment` decorator in python code
-4. Serve defaults
+2. Application code (either through the `@serve.deployment` decorator or through `.options()`)
+3. Serve defaults
 
 In other words, if a parameter for a deployment is specified in the config file and the application code, Serve will use the config file's value. If it's only specified in the code, Serve will use the value specified in the code. If the parameter is specified anywhere, Serve will use the default for that parameter.
 
