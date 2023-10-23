@@ -106,7 +106,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- 
         //python/ray/tests/xgboost/... python/ray/tests/horovod/... ml 
-        --parallelism-per-worker 3
+        --parallelism-per-worker 2
     depends_on: mlbuild
     job_env: forge
 
@@ -128,7 +128,7 @@ steps:
     commands:
       - python ./ci/env/check_minimal_install.py
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
-        --parallelism-per-worker 3
+        --parallelism-per-worker 2
         --build-name minbuild-ml-py3.8
         --only-tags minimal
     depends_on: minbuild-ml
