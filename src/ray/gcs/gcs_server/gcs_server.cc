@@ -370,9 +370,20 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
             RAY_LOG(ERROR) << "Failed to connect to node: " << alive_node.first
                            << ". Skip this round of pulling for resource load";
           } else {
-            raylet_client->GetResourceLoad([this](auto &status, auto &load) {
+            // GetResourceLoad will also get usage. Historically it didn't.
+            raylet_client->GetResourceLoad([this](auto &status, auto &load_and_usage) {
               if (status.ok()) {
-                gcs_resource_manager_->UpdateResourceLoads(load.resources());
+                // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
+                // after verifying that non-autoscaler paths are taken care of.
+                // Currently, GcsResourceManager aggregates reporting from different
+                // sources at different intervals, leading to an obviously inconsistent
+                // view.
+                //
+                // Once autoscaler is completely moved to the new mode of consistent
+                // per-node reporting, remove this if it is not needed anymore.
+                gcs_resource_manager_->UpdateResourceLoads(load_and_usage.resources());
+                gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(
+                    load_and_usage.resources());
               } else {
                 RAY_LOG_EVERY_N(WARNING, 10)
                     << "Failed to get the resource load: " << status.ToString();
@@ -664,13 +675,11 @@ void GcsServer::InitGcsAutoscalerStateManager() {
         }
       });
 
-  gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
-      config_.session_name,
-      cluster_resource_scheduler_->GetClusterResourceManager(),
-      *gcs_resource_manager_,
-      *gcs_node_manager_,
-      *gcs_placement_group_manager_,
-      raylet_client_pool_);
+  gcs_autoscaler_state_manager_ =
+      std::make_unique<GcsAutoscalerStateManager>(config_.session_name,
+                                                  *gcs_node_manager_,
+                                                  *gcs_placement_group_manager_,
+                                                  raylet_client_pool_);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
       main_service_, *gcs_autoscaler_state_manager_));
@@ -706,6 +715,7 @@ void GcsServer::InstallEventListeners() {
     gcs_resource_manager_->OnNodeAdd(*node);
     gcs_placement_group_manager_->OnNodeAdd(node_id);
     gcs_actor_manager_->SchedulePendingActors();
+    gcs_autoscaler_state_manager_->OnNodeAdd(*node);
     rpc::Address address;
     address.set_raylet_id(node->node_id());
     address.set_ip_address(node->node_manager_address());
@@ -733,6 +743,7 @@ void GcsServer::InstallEventListeners() {
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
         pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
+        gcs_autoscaler_state_manager_->OnNodeDead(node_id);
       });
 
   // Install worker event listener.

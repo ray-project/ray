@@ -16,7 +16,6 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-#include "ray/gcs/pb_util.h"
 
 namespace ray {
 namespace gcs {
@@ -31,90 +30,57 @@ void GcsTaskManager::Stop() {
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents()
     const {
   std::vector<rpc::TaskEvents> ret;
-  // NOTE(rickyx): This could be done better if we expose an iterator - which we
-  // probably have to do if we are supporting pagination in the future.
-  // As for now, this will make sure data is returned w.r.t insertion order, so we could
-  // return the more recent entries when limit applies.
-  RAY_CHECK(next_idx_to_overwrite_ == 0 || next_idx_to_overwrite_ < task_events_.size())
-      << "next_idx_to_overwrite=" << next_idx_to_overwrite_
-      << " should be in bound. (size=" << task_events_.size() << ")";
-  // Copy from the least recently generated data, where `next_idx_to_overwrite_` points to
-  // the least recently added data.
-  std::copy(task_events_.begin() + next_idx_to_overwrite_,
-            task_events_.end(),
-            std::back_inserter(ret));
-  // Copy the wrapped around if any
-  if (next_idx_to_overwrite_ > 0) {
-    std::copy(task_events_.begin(),
-              task_events_.begin() + next_idx_to_overwrite_,
-              std::back_inserter(ret));
+  // From the higher priority to the lower priority list.
+  for (int i = gc_policy_->MaxPriority() - 1; i >= 0; --i) {
+    // Reverse iterate the list to get the latest task events.
+    for (auto itr = task_events_list_[i].rbegin(); itr != task_events_list_[i].rend();
+         ++itr) {
+      ret.push_back(*itr);
+    }
   }
+
   return ret;
 }
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
     JobID job_id) const {
-  auto task_attempts_itr = job_to_task_attempt_index_.find(job_id);
-  if (task_attempts_itr == job_to_task_attempt_index_.end()) {
+  auto task_locators_itr = job_index_.find(job_id);
+  if (task_locators_itr == job_index_.end()) {
     // Not found any tasks related to this job.
     return {};
   }
-  return GetTaskEvents(task_attempts_itr->second);
+  return GetTaskEvents(task_locators_itr->second);
 }
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
     const absl::flat_hash_set<TaskID> &task_ids) const {
-  absl::flat_hash_set<TaskAttempt> select_task_attempts;
+  absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> select_task_locators;
   for (const auto &task_id : task_ids) {
-    auto task_attempts_itr = task_to_task_attempt_index_.find(task_id);
-    if (task_attempts_itr != task_to_task_attempt_index_.end()) {
-      select_task_attempts.insert(task_attempts_itr->second.begin(),
-                                  task_attempts_itr->second.end());
+    auto task_locator_itr = task_index_.find(task_id);
+    if (task_locator_itr != task_index_.end()) {
+      select_task_locators.insert(task_locator_itr->second.begin(),
+                                  task_locator_itr->second.end());
     }
   }
 
-  return GetTaskEvents(select_task_attempts);
+  return GetTaskEvents(select_task_locators);
 }
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
-    const absl::flat_hash_set<TaskAttempt> &task_attempts) const {
+    const absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> &task_locators) const {
   std::vector<rpc::TaskEvents> result;
-  for (const auto &task_attempt : task_attempts) {
-    auto idx_itr = task_attempt_index_.find(task_attempt);
-    if (idx_itr != task_attempt_index_.end()) {
-      result.push_back(task_events_.at(idx_itr->second));
-    }
+  for (const auto &task_attempt_loc : task_locators) {
+    // Copy the task event to the output.
+    result.push_back(task_attempt_loc->GetTaskEventsMutable());
   }
 
   return result;
 }
 
-absl::optional<TaskAttempt> GcsTaskManager::GcsTaskManagerStorage::GetLatestTaskAttempt(
-    const TaskID &task_id) const {
-  RAY_CHECK(!task_id.IsNil());
-  auto task_attempts_itr = task_to_task_attempt_index_.find(task_id);
-  if (task_attempts_itr == task_to_task_attempt_index_.end()) {
-    // No task attempt for the task yet. This could happen if a task has not been stored
-    // or already evicted (when there are many tasks).
-    return absl::nullopt;
-  }
-  const auto &task_attempts = task_attempts_itr->second;
-  int32_t highest_attempt_number = static_cast<int32_t>(task_attempts.size()) - 1;
-  TaskAttempt latest_task_attempt = std::make_pair<>(task_id, highest_attempt_number);
-  if (highest_attempt_number < 0 || !task_attempts.count(latest_task_attempt)) {
-    // Missing data as the highest task attempt not found as data has been dropped on the
-    // worker. In this case, it's not possible to tell if the latest task attempt is
-    // correctly stored due to data loss. We simply treat it as non-failure and users will
-    // be notified of the data loss from the drop count.
-    return absl::nullopt;
-  }
-  return latest_task_attempt;
-}
-
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
     const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
-  auto task_attempts_itr = worker_to_task_attempt_index_.find(worker_id);
-  if (task_attempts_itr == worker_to_task_attempt_index_.end()) {
+  auto task_attempts_itr = worker_index_.find(worker_id);
+  if (task_attempts_itr == worker_index_.end()) {
     // No tasks by the worker.
     return;
   }
@@ -127,53 +93,33 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
                 << " with error_message: " << worker_failure_data.exit_detail();
   error_info.set_error_message(error_message.str());
 
-  for (const auto &task_attempt : task_attempts_itr->second) {
+  for (const auto &task_locator : task_attempts_itr->second) {
     MarkTaskAttemptFailedIfNeeded(
-        task_attempt, worker_failure_data.end_time_ms() * 1000, error_info);
+        task_locator, worker_failure_data.end_time_ms() * 1000, error_info);
   }
 }
 
-rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
-    const TaskAttempt &task_attempt) {
-  auto idx_itr = task_attempt_index_.find(task_attempt);
-  RAY_CHECK(idx_itr != task_attempt_index_.end())
-      << "Task attempt of task: " << task_attempt.first
-      << ", attempt_number: " << task_attempt.second
-      << " should have task events in the buffer but missing.";
-  return task_events_.at(idx_itr->second);
-}
-
-const rpc::TaskEvents &GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent(
-    const TaskAttempt &task_attempt) const {
-  auto idx_itr = task_attempt_index_.find(task_attempt);
-  RAY_CHECK(idx_itr != task_attempt_index_.end())
-      << "Task attempt of task: " << task_attempt.first
-      << ", attempt_number: " << task_attempt.second
-      << " should have task events in the buffer but missing.";
-  return task_events_.at(idx_itr->second);
-}
-
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
-    const TaskAttempt &task_attempt,
+    const std::shared_ptr<TaskEventLocator> &locator,
     int64_t failed_ts,
     const rpc::RayErrorInfo &error_info) {
-  auto &task_event = GetTaskEvent(task_attempt);
+  auto &task_events = locator->GetTaskEventsMutable();
   // We don't mark tasks as failed if they are already terminated.
-  if (IsTaskTerminated(task_event)) {
+  if (IsTaskTerminated(task_events)) {
     return;
   }
 
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
-  auto state_updates = task_event.mutable_state_updates();
+  auto state_updates = task_events.mutable_state_updates();
   state_updates->set_failed_ts(failed_ts);
   state_updates->mutable_error_info()->CopyFrom(error_info);
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
     const JobID &job_id, int64_t job_finish_time_ns) {
-  auto task_attempts_itr = job_to_task_attempt_index_.find(job_id);
-  if (task_attempts_itr == job_to_task_attempt_index_.end()) {
+  auto task_attempts_itr = job_index_.find(job_id);
+  if (task_attempts_itr == job_index_.end()) {
     // No tasks in the job.
     return;
   }
@@ -186,126 +132,223 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnJobEnds(
   error_info.set_error_message(error_message.str());
 
   // Iterate all task attempts from the job.
-  for (const auto &task_attempt : task_attempts_itr->second) {
-    MarkTaskAttemptFailedIfNeeded(task_attempt, job_finish_time_ns, error_info);
+  for (const auto &task_locator : task_attempts_itr->second) {
+    MarkTaskAttemptFailedIfNeeded(task_locator, job_finish_time_ns, error_info);
   }
 }
 
-absl::optional<rpc::TaskEvents>
-GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
+void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
+    const std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator> &loc,
+    const rpc::TaskEvents &task_events) {
+  auto &existing_task = loc->GetTaskEventsMutable();
+  // Update the tracking
+  if (task_events.has_task_info() && !existing_task.has_task_info()) {
+    stats_counter_.Increment(kTaskTypeToCounterType.at(task_events.task_info().type()));
+  }
+
+  // Update the task event.
+  stats_counter_.Decrement(kNumTaskEventsBytesStored, existing_task.ByteSizeLong());
+  existing_task.MergeFrom(task_events);
+  stats_counter_.Increment(kNumTaskEventsBytesStored, existing_task.ByteSizeLong());
+
+  // Move the task events around different gc priority list.
+  auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
+  auto cur_list_index = loc->GetCurrentListIndex();
+  if (target_list_index != cur_list_index) {
+    // Need to add to the new list first.
+    task_events_list_[target_list_index].push_front(std::move(existing_task));
+
+    task_events_list_[cur_list_index].erase(loc->GetCurrentListIterator());
+    loc->SetCurrentList(target_list_index, task_events_list_[target_list_index].begin());
+  }
+
+  // Update the index if needed. Adding to index is idempotent so it is safe to call it
+  // multiple times.
+  UpdateIndex(loc);
+}
+
+std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator>
+GcsTaskManager::GcsTaskManagerStorage::AddNewTaskEvent(rpc::TaskEvents &&task_events) {
+  // Create a new locator.
+  auto target_list_index = gc_policy_->GetTaskListPriority(task_events);
+  task_events_list_.at(target_list_index).push_front(std::move(task_events));
+  auto list_itr = task_events_list_.at(target_list_index).begin();
+
+  auto loc = std::make_shared<TaskEventLocator>(list_itr, target_list_index);
+
+  // Add to index.
+  UpdateIndex(loc);
+
+  const auto &added_task_events = loc->GetTaskEventsMutable();
+
+  // Stats tracking
+  stats_counter_.Increment(kNumTaskEventsBytesStored, added_task_events.ByteSizeLong());
+  stats_counter_.Increment(kNumTaskEventsStored);
+  // Bump the task counters by type.
+  if (added_task_events.has_task_info() && added_task_events.attempt_number() == 0) {
+    stats_counter_.Increment(
+        kTaskTypeToCounterType.at(added_task_events.task_info().type()));
+  }
+
+  return loc;
+}
+
+void GcsTaskManager::GcsTaskManagerStorage::UpdateIndex(
+    const std::shared_ptr<TaskEventLocator> &loc) {
+  const auto &task_events = loc->GetTaskEventsMutable();
+  const auto task_attempt = GetTaskAttempt(task_events);
+  const auto job_id = JobID::FromBinary(task_events.job_id());
+  const auto task_id = TaskID::FromBinary(task_events.task_id());
+  const auto worker_id = GetWorkerID(task_events);
+
+  primary_index_.insert({task_attempt, loc});
+  RAY_CHECK(!job_id.IsNil());
+  RAY_CHECK(!task_id.IsNil());
+
+  task_index_[task_id].insert(loc);
+  job_index_[job_id].insert(loc);
+  if (!worker_id.IsNil()) {
+    worker_index_[worker_id].insert(loc);
+  }
+}
+
+void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
+    const std::shared_ptr<TaskEventLocator> &loc) {
+  const auto &task_events = loc->GetTaskEventsMutable();
+  const auto task_attempt = GetTaskAttempt(task_events);
+  const auto job_id = JobID::FromBinary(task_events.job_id());
+  const auto task_id = TaskID::FromBinary(task_events.task_id());
+  const auto worker_id = GetWorkerID(task_events);
+
+  // Remove from secondary indices.
+  RAY_CHECK(!job_id.IsNil());
+  auto job_attempts_iter = job_index_.find(job_id);
+  RAY_CHECK(job_attempts_iter != job_index_.end());
+  RAY_CHECK(job_attempts_iter->second.erase(loc) == 1);
+  if (job_attempts_iter->second.empty()) {
+    job_index_.erase(job_attempts_iter);
+  }
+
+  RAY_CHECK(!task_id.IsNil());
+  auto task_attempts_iter = task_index_.find(task_id);
+  RAY_CHECK(task_attempts_iter != task_index_.end());
+  RAY_CHECK(task_attempts_iter->second.erase(loc) == 1);
+  if (task_attempts_iter->second.empty()) {
+    task_index_.erase(task_attempts_iter);
+  }
+
+  if (!worker_id.IsNil()) {
+    auto worker_attempts_iter = worker_index_.find(worker_id);
+    RAY_CHECK(worker_attempts_iter != worker_index_.end());
+    RAY_CHECK(worker_attempts_iter->second.erase(loc) == 1);
+    if (worker_attempts_iter->second.empty()) {
+      worker_index_.erase(worker_attempts_iter);
+    }
+  }
+
+  // Remove from primary index.
+  primary_index_.erase(task_attempt);
+}
+
+std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator>
+GcsTaskManager::GcsTaskManagerStorage::UpdateOrInitTaskEventLocator(
     rpc::TaskEvents &&events_by_task) {
   const TaskID task_id = TaskID::FromBinary(events_by_task.task_id());
-  const JobID job_id = JobID::FromBinary(events_by_task.job_id());
   int32_t attempt_number = events_by_task.attempt_number();
   TaskAttempt task_attempt = std::make_pair<>(task_id, attempt_number);
 
-  // Add the worker index if it's available.
-  const WorkerID worker_id = GetWorkerID(events_by_task);
-  if (!worker_id.IsNil()) {
-    worker_to_task_attempt_index_[worker_id].insert(task_attempt);
+  auto loc_itr = primary_index_.find(task_attempt);
+  if (loc_itr != primary_index_.end()) {
+    // Merge with an existing entry.
+    UpdateExistingTaskAttempt(loc_itr->second, events_by_task);
+    return loc_itr->second;
   }
-  // GCS perform merging of events/updates for a single task attempt from multiple
-  // reports.
-  auto itr = task_attempt_index_.find(task_attempt);
-  if (itr != task_attempt_index_.end()) {
-    // Existing task attempt entry, merge.
-    auto idx = itr->second;
-    auto &existing_events = task_events_.at(idx);
 
-    // Update the events.
-    if (events_by_task.has_task_info() && !existing_events.has_task_info()) {
-      stats_counter_.Increment(
-          kTaskTypeToCounterType.at(events_by_task.task_info().type()));
+  // A new task attempt
+  auto loc = AddNewTaskEvent(std::move(events_by_task));
+
+  return loc;
+}
+
+void GcsTaskManager::GcsTaskManagerStorage::RemoveTaskAttempt(
+    std::shared_ptr<TaskEventLocator> loc) {
+  const auto &to_remove = loc->GetTaskEventsMutable();
+
+  const auto job_id = JobID::FromBinary(to_remove.job_id());
+
+  // Update the tracking
+  job_task_summary_[job_id].RecordProfileEventsDropped(NumProfileEvents(to_remove));
+  job_task_summary_[job_id].RecordTaskAttemptDropped(GetTaskAttempt(to_remove));
+  stats_counter_.Decrement(kNumTaskEventsBytesStored, to_remove.ByteSizeLong());
+  stats_counter_.Decrement(kNumTaskEventsStored);
+  stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
+  stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
+                           NumProfileEvents(to_remove));
+
+  // Remove from the index.
+  RemoveFromIndex(loc);
+
+  // Lastly, remove from the underlying list.
+  task_events_list_[loc->GetCurrentListIndex()].erase(loc->GetCurrentListIterator());
+}
+
+void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
+  // Choose one task event to evict
+  size_t list_index = 0;
+  for (; list_index < gc_policy_->MaxPriority(); ++list_index) {
+    // Find the lowest priority list to gc.
+    if (!task_events_list_[list_index].empty()) {
+      break;
     }
+  }
+  RAY_CHECK(list_index < gc_policy_->MaxPriority());
 
-    stats_counter_.Decrement(kNumTaskEventsBytesStored, existing_events.ByteSizeLong());
-    existing_events.MergeFrom(events_by_task);
-    stats_counter_.Increment(kNumTaskEventsBytesStored, existing_events.ByteSizeLong());
+  // Evict from the end.
+  const auto &to_evict = task_events_list_[list_index].back();
+  const auto &loc_iter = primary_index_.find(GetTaskAttempt(to_evict));
+  RAY_CHECK(loc_iter != primary_index_.end());
 
-    return absl::nullopt;
+  RemoveTaskAttempt(loc_iter->second);
+}
+
+void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
+    rpc::TaskEvents &&events_by_task) {
+  auto job_id = JobID::FromBinary(events_by_task.job_id());
+  auto task_id = TaskID::FromBinary(events_by_task.task_id());
+
+  if (job_id.IsNil() || task_id.IsNil()) {
+    // Skip invalid task events.
+    RAY_LOG(DEBUG)
+        << "Skip invalid task event with missing job id or task id. This "
+           "could happen when profiling events are created without a task id : "
+        << events_by_task.DebugString();
+    return;
   }
 
-  // A new task event, add to storage and index.
-
-  // Bump the task counters by type.
-  if (events_by_task.has_task_info() && events_by_task.attempt_number() == 0) {
-    stats_counter_.Increment(
-        kTaskTypeToCounterType.at(events_by_task.task_info().type()));
+  // We are dropping this task.
+  if (job_task_summary_[job_id].ShouldDropTaskAttempt(GetTaskAttempt(events_by_task))) {
+    // This task attempt has been dropped.
+    RAY_LOG(DEBUG) << "already dropping task "
+                   << TaskID::FromBinary(events_by_task.task_id()) << " attempt "
+                   << events_by_task.attempt_number() << " of job " << job_id;
+    return;
   }
+
+  // Get or init a task locator: if the task event is not stored, a new entry
+  // will be added to the storage.
+  std::shared_ptr<TaskEventLocator> loc =
+      UpdateOrInitTaskEventLocator(std::move(events_by_task));
 
   // If limit enforced, replace one.
-  // TODO(rickyx): Optimize this to per job limit with bounded FIFO map.
-  // https://github.com/ray-project/ray/issues/31071
-  if (max_num_task_events_ > 0 && task_events_.size() >= max_num_task_events_) {
+  if (max_num_task_events_ > 0 && static_cast<size_t>(stats_counter_.Get(
+                                      kNumTaskEventsStored)) > max_num_task_events_) {
     RAY_LOG_EVERY_MS(WARNING, 10000)
         << "Max number of tasks event (" << max_num_task_events_
         << ") allowed is reached. Old task events will be overwritten. Set "
            "`RAY_task_events_max_num_task_in_gcs` to a higher value to "
            "store more.";
-
-    stats_counter_.Decrement(kNumTaskEventsBytesStored,
-                             task_events_[next_idx_to_overwrite_].ByteSizeLong());
-    stats_counter_.Increment(kNumTaskEventsBytesStored, events_by_task.ByteSizeLong());
-
-    // Change the underlying storage.
-    auto &to_replaced = task_events_.at(next_idx_to_overwrite_);
-    std::swap(to_replaced, events_by_task);
-    auto replaced = std::move(events_by_task);
-
-    // Update task_attempt -> buffer index mapping.
-    TaskAttempt replaced_attempt = std::make_pair<>(
-        TaskID::FromBinary(replaced.task_id()), replaced.attempt_number());
-
-    // Update task attempt -> idx mapping.
-    task_attempt_index_.erase(replaced_attempt);
-    task_attempt_index_[task_attempt] = next_idx_to_overwrite_;
-
-    // Update the job -> task attempt mapping.
-    auto replaced_job_id = JobID::FromBinary(replaced.job_id());
-    job_to_task_attempt_index_[replaced_job_id].erase(replaced_attempt);
-    if (job_to_task_attempt_index_[replaced_job_id].empty()) {
-      job_to_task_attempt_index_.erase(replaced_job_id);
-    }
-    job_to_task_attempt_index_[job_id].insert(task_attempt);
-
-    // Update the worker -> task attempt mapping.
-    auto replaced_worker_id = GetWorkerID(replaced);
-    if (!replaced_worker_id.IsNil()) {
-      worker_to_task_attempt_index_[replaced_worker_id].erase(replaced_attempt);
-      if (worker_to_task_attempt_index_[replaced_worker_id].empty()) {
-        worker_to_task_attempt_index_.erase(replaced_worker_id);
-      }
-    }
-    // Add the worker mapping.
-    if (!worker_id.IsNil()) {
-      worker_to_task_attempt_index_[worker_id].insert(task_attempt);
-    }
-
-    // Update the task -> task attempt mapping.
-    auto replaced_task_id = TaskID::FromBinary(replaced.task_id());
-    task_to_task_attempt_index_[replaced_task_id].erase(replaced_attempt);
-    if (task_to_task_attempt_index_[replaced_task_id].empty()) {
-      task_to_task_attempt_index_.erase(replaced_task_id);
-    }
-    task_to_task_attempt_index_[task_id].insert(task_attempt);
-
-    // Update iter.
-    next_idx_to_overwrite_ = (next_idx_to_overwrite_ + 1) % max_num_task_events_;
-
-    return replaced;
+    EvictTaskEvent();
   }
-
-  // Add to index.
-  task_attempt_index_[task_attempt] = task_events_.size();
-  job_to_task_attempt_index_[job_id].insert(task_attempt);
-  task_to_task_attempt_index_[task_id].insert(task_attempt);
-  // Add a new task events.
-  stats_counter_.Increment(kNumTaskEventsBytesStored, events_by_task.ByteSizeLong());
-  stats_counter_.Increment(kNumTaskEventsStored);
-
-  task_events_.push_back(std::move(events_by_task));
-
-  return absl::nullopt;
 }
 
 void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
@@ -323,17 +366,30 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     }
     task_events = task_event_storage_->GetTaskEvents(task_ids);
   } else if (filters.has_job_id()) {
-    task_events = task_event_storage_->GetTaskEvents(JobID::FromBinary(filters.job_id()));
+    const auto job_id = JobID::FromBinary(filters.job_id());
+    task_events = task_event_storage_->GetTaskEvents(job_id);
+    // Populate per-job data loss.
+    if (task_event_storage_->HasJob(job_id)) {
+      const auto &job_summary = task_event_storage_->GetJobTaskSummary(job_id);
+      reply->set_num_profile_task_events_dropped(job_summary.NumProfileEventsDropped());
+      reply->set_num_status_task_events_dropped(job_summary.NumTaskAttemptsDropped());
+    }
   } else {
     task_events = task_event_storage_->GetTaskEvents();
+    // Populate all jobs data loss
+    reply->set_num_profile_task_events_dropped(
+        task_event_storage_->NumProfileEventsDropped());
+    reply->set_num_status_task_events_dropped(
+        task_event_storage_->NumTaskAttemptsDropped());
   }
 
   // Populate reply.
   auto limit = request.has_limit() ? request.limit() : -1;
   // Simple limit.
   auto count = 0;
-  int32_t num_profile_event_limit = 0;
-  int32_t num_status_event_limit = 0;
+  int64_t num_profile_event_limit = 0;
+  int64_t num_status_event_limit = 0;
+  int64_t num_limit_truncated = 0;
 
   // A lambda filter fn, where it returns true for task events to be included in the
   // result. Task ids and job ids are already filtered by the storage with indexing above.
@@ -360,9 +416,11 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     return true;
   };
 
+  int64_t num_filtered = 0;
   for (auto itr = task_events.rbegin(); itr != task_events.rend(); ++itr) {
     auto &task_event = *itr;
     if (!filter_fn(task_event)) {
+      num_filtered++;
       continue;
     }
 
@@ -373,29 +431,45 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       num_profile_event_limit +=
           task_event.has_profile_events() ? task_event.profile_events().events_size() : 0;
       num_status_event_limit += task_event.has_state_updates() ? 1 : 0;
+      num_limit_truncated++;
     }
   }
-  // TODO(rickyx): We will need to revisit the data loss semantics, to report data loss
-  // on a single task retry(attempt) rather than the actual events.
-  // https://github.com/ray-project/ray/issues/31280
-  reply->set_num_profile_task_events_dropped(
-      stats_counter_.Get(kTotalNumProfileTaskEventsDropped) + num_profile_event_limit);
-  reply->set_num_status_task_events_dropped(
-      stats_counter_.Get(kTotalNumStatusTaskEventsDropped) + num_status_event_limit);
+
+  // Take into account truncation.
+  reply->set_num_profile_task_events_dropped(reply->num_profile_task_events_dropped() +
+                                             num_profile_event_limit);
+  reply->set_num_status_task_events_dropped(reply->num_status_task_events_dropped() +
+                                            num_status_event_limit);
+
+  reply->set_num_total_stored(task_events.size());
+  reply->set_num_truncated(num_limit_truncated);
+  reply->set_num_filtered_on_gcs(num_filtered);
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   return;
 }
 
-void GcsTaskManager::RecordDataLossFromWorker(const rpc::TaskEventData &data) {
-  // TODO(rickyx): GCS side GC will be changed in another PR. This is a temporary
-  // routine for supporting legacy behaviour with worker side changes.
-  if (data.dropped_task_attempts_size() > 0) {
-    stats_counter_.Increment(kTotalNumStatusTaskEventsDropped,
-                             data.dropped_task_attempts_size());
+void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
+    const rpc::TaskEventData &data) {
+  for (const auto &dropped_attempt : data.dropped_task_attempts()) {
+    const auto task_id = TaskID::FromBinary(dropped_attempt.task_id());
+    auto attempt_number = dropped_attempt.attempt_number();
+    auto job_id = task_id.JobId();
+    job_task_summary_[job_id].RecordTaskAttemptDropped(
+        std::make_pair<>(task_id, attempt_number));
+    stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
+
+    // We will also remove any existing task events for this task attempt from the storage
+    // since we want to make data loss at task attempt granularity.
+    const auto &loc_iter = primary_index_.find(std::make_pair<>(task_id, attempt_number));
+    if (loc_iter != primary_index_.end()) {
+      RemoveTaskAttempt(loc_iter->second);
+    }
   }
 
   if (data.num_profile_events_dropped() > 0) {
+    job_task_summary_[JobID::FromBinary(data.job_id())].RecordProfileEventsDropped(
+        data.num_profile_events_dropped());
     stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
                              data.num_profile_events_dropped());
   }
@@ -405,28 +479,11 @@ void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   auto data = std::move(request.data());
-  RecordDataLossFromWorker(data);
+  task_event_storage_->RecordDataLossFromWorker(data);
 
   for (auto events_by_task : *data.mutable_events_by_task()) {
     stats_counter_.Increment(kTotalNumTaskEventsReported);
-    // TODO(rickyx): add logic to handle too many profile events for a single task
-    // attempt.  https://github.com/ray-project/ray/issues/31279
-
-    auto replaced_task_events =
-        task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
-
-    if (replaced_task_events) {
-      if (replaced_task_events->has_state_updates()) {
-        // TODO(rickyx): should we un-flatten the status updates into a list of
-        // StatusEvents? so that we could get an accurate number of status change
-        // events being dropped like profile events.
-        stats_counter_.Increment(kTotalNumStatusTaskEventsDropped);
-      }
-      if (replaced_task_events->has_profile_events()) {
-        stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
-                                 replaced_task_events->profile_events().events_size());
-      }
-    }
+    task_event_storage_->AddOrReplaceTaskEvent(std::move(events_by_task));
   }
 
   // Processed all the task events
@@ -439,8 +496,7 @@ std::string GcsTaskManager::DebugString() {
   ss << "GcsTaskManager: "
      << "\n-Total num task events reported: " << counters[kTotalNumTaskEventsReported]
      << "\n-Total num status task events dropped: "
-     << counters[kTotalNumStatusTaskEventsDropped]
-     << "\n-Total num profile events dropped: "
+     << counters[kTotalNumTaskAttemptsDropped] << "\n-Total num profile events dropped: "
      << counters[kTotalNumProfileTaskEventsDropped]
      << "\n-Total num bytes of task event stored: "
      << 1.0 * counters[kNumTaskEventsBytesStored] / 1024 / 1024 << "MiB"
@@ -459,7 +515,7 @@ void GcsTaskManager::RecordMetrics() {
       counters[kTotalNumTaskEventsReported]);
 
   ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
-      counters[kTotalNumStatusTaskEventsDropped], ray::stats::kGcsTaskStatusEventDropped);
+      counters[kTotalNumTaskAttemptsDropped], ray::stats::kGcsTaskStatusEventDropped);
   ray::stats::STATS_gcs_task_manager_task_events_dropped.Record(
       counters[kTotalNumProfileTaskEventsDropped], ray::stats::kGcsProfileEventDropped);
 
@@ -529,6 +585,9 @@ void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_
         // workers associated with the job will be killed.
         task_event_storage_->MarkTasksFailedOnJobEnds(job_id,
                                                       job_finish_time_ms * 1000 * 1000);
+
+        // Clear and summarize the job summary info (since it's now finalized).
+        task_event_storage_->UpdateJobSummaryOnJobDone(job_id);
       });
 }
 

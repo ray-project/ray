@@ -693,6 +693,13 @@ message GetTaskEventsReply {
   int32 num_profile_task_events_dropped = 3;
   // Number of status events dropped at GCS and worker for the queried events.
   int32 num_status_task_events_dropped = 4;
+  // Total number of task events in the storage before truncation and source side
+  // filtering.
+  int64 num_total_stored = 5;
+  // Number of task events filtered on the source.
+  int64 num_filtered_on_gcs = 6;
+  // Number of task events truncated due to the limit.
+  int64 num_truncated = 7;
 }
 
 // Service for task info access.
