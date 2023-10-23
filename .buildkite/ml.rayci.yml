@@ -114,7 +114,6 @@ steps:
         --parallelism-per-worker 2
         --build-name mlgpubuild
         --only-tags gpu,gpu_only
-        --except-tags doctest
     depends_on: mlgpubuild
     job_env: forge
 
