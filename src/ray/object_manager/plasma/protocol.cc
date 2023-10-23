@@ -395,11 +395,11 @@ Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id) {
 
 Status SendReleaseReply(const std::shared_ptr<Client> &client,
                         ObjectID object_id,
-                        bool should_reply,
+                        bool should_unmap,
                         PlasmaError error) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = fb::CreatePlasmaReleaseReply(
-      fbb, fbb.CreateString(object_id.Binary()), should_reply, error);
+      fbb, fbb.CreateString(object_id.Binary()), should_unmap, error);
   return PlasmaSend(client, MessageType::PlasmaReleaseReply, &fbb, message);
 }
 

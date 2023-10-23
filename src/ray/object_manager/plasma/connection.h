@@ -50,8 +50,8 @@ class Client : public ray::ClientConnection, public ClientInterface {
     const auto [_, inserted] = object_ids.insert(object_id);
     if (fallback_allocated_fd.has_value() && inserted) {
       MEMFD_TYPE fd = fallback_allocated_fd.value();
-      object_ids_to_fds_[object_id] = fd;
-      fds_ref_count_[fd] += 1;
+      object_ids_to_fallback_allocated_fds_[object_id] = fd;
+      fallback_allocated_fds_ref_count_[fd] += 1;
     }
   }
 
@@ -65,17 +65,21 @@ class Client : public ray::ClientConnection, public ClientInterface {
     if (erased == 0) {
       return false;
     }
-    auto iter = object_ids_to_fds_.find(object_id);
-    if (iter == object_ids_to_fds_.end()) {
+    auto fd_iter = object_ids_to_fallback_allocated_fds_.find(object_id);
+    if (fd_iter == object_ids_to_fallback_allocated_fds_.end()) {
       return false;
     }
-    MEMFD_TYPE fd = iter->second;
-    object_ids_to_fds_.erase(iter);
+    MEMFD_TYPE fd = fd_iter->second;
+    object_ids_to_fallback_allocated_fds_.erase(fd_iter);
 
-    size_t &ref_count = fds_ref_count_[iter->second];
-    ref_count -= 1;
-    if (ref_count == 0) {
-      fds_ref_count_.erase(fd);
+    auto ref_cnt_iter = fallback_allocated_fds_ref_count_.find(fd);
+    // If fd existed before from object_ids_to_fds_ the ref count should have been > 0
+    RAY_CHECK(ref_cnt_iter != fallback_allocated_fds_ref_count_.end());
+    size_t &ref_cnt = ref_cnt_iter->second;
+    RAY_CHECK(ref_cnt > 0);
+    ref_cnt -= 1;
+    if (ref_cnt == 0) {
+      fallback_allocated_fds_ref_count_.erase(ref_cnt_iter);
       used_fds_.erase(fd);  // Next SendFd call will send this fd again.
       return true;
     }
@@ -91,7 +95,6 @@ class Client : public ray::ClientConnection, public ClientInterface {
   absl::flat_hash_set<MEMFD_TYPE> used_fds_;
 
   /// Object ids that are used by this client.
-  /// TODO: remove this as we can always count on object_ids_to_fds_.
   std::unordered_set<ray::ObjectID> object_ids;
 
   // Records each fd sent to the client and which object IDs are in this fd.
