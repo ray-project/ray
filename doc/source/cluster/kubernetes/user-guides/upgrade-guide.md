@@ -4,7 +4,7 @@
 
 ## KubeRay / Ray compatibility
 
-KubeRay CI tests the nightly KubeRay against the three most recent minor releases of Ray, as well as against the nightly Ray.
+KubeRay CI tests the nightly KubeRay against the three most recent major or minor releases of Ray, as well as against the nightly Ray build.
 For example, if the latest Ray release is 2.7.0, KubeRay CI tests the nightly KubeRay against Ray 2.7.0, 2.6.0, 2.5.0, and the nightly Ray build.
 
 * KubeRay v0.6.0: Supports all Ray versions > Ray 2.0.0
