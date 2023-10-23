@@ -6,7 +6,7 @@ steps:
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags learning_tests,memory_leak_tests,examples,tests_dir,documentation,multi_gpu,no_cpu,torch_2.x_only_benchmark,manual
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
     depends_on: rllibbuild
@@ -70,7 +70,7 @@ steps:
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --only-tags tests_dir
         --except-tags multi_gpu,manual
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
@@ -154,6 +154,21 @@ steps:
         --build-name rllibgpubuild
         --only-tags multi_gpu
     depends_on: rllibgpubuild
+    job_env: forge
+
+  - label: ":brain: rllib: flaky multi-gpu tests"
+    tags: 
+      - rllib
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests
+        --parallelism-per-worker 2
+        --gpus 4
+        --build-name rllibgpubuild
+        --only-tags multi_gpu
+    depends_on: rllibgpubuild
+    soft_fail: true
     job_env: forge
 
   - label: ":brain: rllib: flaky tests"
