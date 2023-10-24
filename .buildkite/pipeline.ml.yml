@@ -166,6 +166,7 @@
     # Examples:
     - python rllib_contrib/a2c/examples/a2c_cartpole_v1.py --run-as-test
     # BAZEL (learning and compilation) tests:
+    - cp rllib/tests/run_regression_tests.py rllib_contrib/.
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/a2c/...
 
 - label: ":exploding_death_star: RLlib Contrib: A3C Tests"
@@ -178,6 +179,7 @@
     - (cd rllib_contrib/a3c && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     # BAZEL (learning and compilation) tests:
+    - cp rllib/tests/run_regression_tests.py rllib_contrib/.
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/a3c/...
 
 - label: ":exploding_death_star: RLlib Contrib: AlphaStar Tests"
@@ -192,6 +194,7 @@
     # Examples:
     - python rllib_contrib/alpha_star/examples/multi-agent-cartpole-alpha-star.py --run-as-test
     # BAZEL (learning and compilation) tests:
+    - cp rllib/tests/run_regression_tests.py rllib_contrib/.
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/alpha_star/...
 
 - label: ":exploding_death_star: RLlib Contrib: AlphaZero Tests"
@@ -206,6 +209,7 @@
     # Examples:
     - python rllib_contrib/alpha_zero/examples/alpha_zero_cartpole_sparse_rewards.py --run-as-test
     # BAZEL (learning and compilation) tests:
+    - cp rllib/tests/run_regression_tests.py rllib_contrib/.
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/alpha_zero/...
 
 - label: ":exploding_death_star: RLlib Contrib: APEX DDPG Tests"
@@ -220,6 +224,7 @@
     # Examples:
     - python rllib_contrib/apex_ddpg/examples/apex_ddpg_pendulum_v1.py --run-as-test
     # BAZEL (learning and compilation) tests:
+    - cp rllib/tests/run_regression_tests.py rllib_contrib/.
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/apex_ddpg/...
 
 - label: ":exploding_death_star: RLlib Contrib: APEX DQN Tests"
@@ -234,6 +239,7 @@
     # Examples:
     - python rllib_contrib/apex_dqn/examples/apex_dqn_cartpole_v1.py --run-as-test
     # BAZEL (learning and compilation) tests:
+    - cp rllib/tests/run_regression_tests.py rllib_contrib/.
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/apex_dqn/...
 
 - label: ":exploding_death_star: RLlib Contrib: ARS Tests"
@@ -248,6 +254,7 @@
     # Examples:
     - python rllib_contrib/ars/examples/ars_cartpole_v1.py --run-as-test
     # BAZEL (learning and compilation) tests:
+    - cp rllib/tests/run_regression_tests.py rllib_contrib/.
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/ars/...
 
 - label: ":exploding_death_star: RLlib Contrib: Bandit Tests"
@@ -262,6 +269,7 @@
     # Examples:
     - python rllib_contrib/bandit/examples/bandit_linucb_interest_evolution_recsim.py --run-as-test
     # BAZEL (learning and compilation) tests:
+    - cp rllib/tests/run_regression_tests.py rllib_contrib/.
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/bandit/...
 
 - label: ":exploding_death_star: RLlib Contrib: CRR Tests"
@@ -276,6 +284,7 @@
     # Examples:
     - python rllib_contrib/crr/examples/crr_cartpole_v1.py --run-as-test
     # BAZEL (learning and compilation) tests:
+    - cp rllib/tests/run_regression_tests.py rllib_contrib/.
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/crr/...
 
 - label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
