@@ -65,6 +65,7 @@ steps:
     tags: 
       - serve
       - ci_doc
+      - gpu
     instance_type: gpu
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... serve 
