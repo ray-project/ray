@@ -10,14 +10,12 @@ import string
 import threading
 import time
 import traceback
+from abc import ABC, abstractmethod
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import fastapi.encoders
 import numpy as np
-import pydantic
-import pydantic.json
 import requests
 
 import ray
@@ -102,18 +100,6 @@ serve_encoders = {
 
 if pd is not None:
     serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
-
-
-def install_serve_encoders_to_fastapi():
-    """Inject Serve's encoders so FastAPI's jsonable_encoder can pick it up."""
-    # https://stackoverflow.com/questions/62311401/override-default-encoders-for-jsonable-encoder-in-fastapi # noqa
-    pydantic.json.ENCODERS_BY_TYPE.update(serve_encoders)
-    # FastAPI cache these encoders at import time, so we also needs to refresh it.
-    fastapi.encoders.encoders_by_class_tuples = (
-        fastapi.encoders.generate_encoders_by_class_tuples(
-            pydantic.json.ENCODERS_BY_TYPE
-        )
-    )
 
 
 @ray.remote(num_cpus=0)
@@ -634,3 +620,15 @@ def is_running_in_asyncio_loop() -> bool:
         return True
     except RuntimeError:
         return False
+
+
+class TimerBase(ABC):
+    @abstractmethod
+    def time(self) -> float:
+        """Return the current time."""
+        raise NotImplementedError
+
+
+class Timer(TimerBase):
+    def time(self) -> float:
+        return time.time()

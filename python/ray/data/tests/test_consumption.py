@@ -17,7 +17,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
-from ray.data.dataset import Dataset, MaterializedDataset, _sliding_window
+from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
@@ -54,7 +54,6 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.map(column_udf("id", lambda x: x + 1))
     ds = ds.random_shuffle()
-    epoch = ds._get_epoch()
     uuid = ds._get_uuid()
     plan_uuid = ds._plan._dataset_uuid
 
@@ -71,7 +70,6 @@ def test_dataset_lineage_serialization(shutdown_only):
 
     ds = Dataset.deserialize_lineage(serialized_ds)
     # Check Dataset state.
-    assert ds._get_epoch() == epoch
     assert ds._get_uuid() == uuid
     assert ds._plan._dataset_uuid == plan_uuid
     # Check Dataset content.
@@ -192,12 +190,10 @@ def test_cache_dataset(ray_start_regular_shared):
 
     ds = ray.data.range(1)
     ds = ds.map(inc)
-    assert not ds.is_fully_executed()
     assert not isinstance(ds, MaterializedDataset)
     ds2 = ds.materialize()
-    assert ds2.is_fully_executed()
     assert isinstance(ds2, MaterializedDataset)
-    assert not ds.is_fully_executed()
+    assert not isinstance(ds, MaterializedDataset)
 
     # Tests standard iteration uses the materialized blocks.
     for _ in range(10):
@@ -228,7 +224,7 @@ def test_schema(ray_start_regular_shared):
     )
 
 
-def test_schema_lazy(ray_start_regular_shared):
+def test_schema_no_execution(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=10)
     # We do not kick off the read task by default.
     assert ds._plan._in_blocks._num_computed() == 0
@@ -289,7 +285,7 @@ def test_schema_repr(ray_start_regular_shared):
     assert repr(ds.schema()) == expected_repr
 
 
-def test_count_lazy(ray_start_regular_shared):
+def test_count(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=10)
     # We do not kick off the read task by default.
     assert ds._plan._in_blocks._num_computed() == 0
@@ -542,25 +538,6 @@ def test_take_all(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         assert ray.data.range(5).take_all(4)
-
-
-def test_sliding_window():
-    arr = list(range(10))
-
-    # Test all windows over this iterable.
-    window_sizes = list(range(1, len(arr) + 1))
-    for window_size in window_sizes:
-        windows = list(_sliding_window(arr, window_size))
-        assert len(windows) == len(arr) - window_size + 1
-        assert all(len(window) == window_size for window in windows)
-        assert all(
-            list(window) == arr[i : i + window_size] for i, window in enumerate(windows)
-        )
-
-    # Test window size larger than iterable length.
-    windows = list(_sliding_window(arr, 15))
-    assert len(windows) == 1
-    assert list(windows[0]) == arr
 
 
 def test_iter_rows(ray_start_regular_shared):
@@ -1369,7 +1346,7 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
     ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
 
     # Test Arrow-native creation APIs.
-    # Test range_table.
+    # Test range.
     with pytest.raises(ImportError):
         ray.data.range(10).take_all()
 
@@ -1401,7 +1378,7 @@ def test_unsupported_pyarrow_versions_check_disabled(
     )
 
     # Test Arrow-native creation APIs.
-    # Test range_table.
+    # Test range.
     try:
         ray.data.range(10).take_all()
     except ImportError as e:

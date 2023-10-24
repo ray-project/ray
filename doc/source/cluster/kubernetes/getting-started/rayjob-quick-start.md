@@ -54,7 +54,7 @@ Please note that the YAML file in this example uses `serveConfigV2` to specify a
 
 ```sh
 # Step 3.1: Download `ray_v1alpha1_rayjob.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0-rc.0/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml
 
 # Step 3.2: Create a RayJob
 kubectl apply -f ray_v1alpha1_rayjob.yaml
@@ -147,3 +147,9 @@ helm uninstall kuberay-operator
 # Step 6.3: Delete the Kubernetes cluster
 kind delete cluster
 ```
+
+## Advanced Usage
+
+The Pod template for the Kubernetes Job that runs `ray job submit` can be customized by setting the `submitterPodTemplate` field in the RayJob custom resource.  See <https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml> for an example (commented out in this file).
+
+If `submitterPodTemplate` is unspecified, the Pod will consist of a container named `ray-job-submitter` with image matching that of the Ray head, resource requests of 500m CPU and 200MiB memory, and limits of 1 CPU and 1GiB memory.

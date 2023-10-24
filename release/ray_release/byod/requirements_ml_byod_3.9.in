@@ -25,4 +25,5 @@ torchmetrics
 torchtext
 torchvision
 transformers>=4.31.0
+typepy>=1.3.2
 wandb

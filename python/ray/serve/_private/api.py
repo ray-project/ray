@@ -3,9 +3,8 @@ import logging
 from types import FunctionType
 from typing import Any, Dict, Tuple, Union
 
-from pydantic.main import ModelMetaclass
-
 import ray
+from ray._private.pydantic_compat import BaseModel
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.usage import usage_lib
 from ray.actor import ActorHandle
@@ -110,7 +109,6 @@ def _check_http_options(
 
 def _start_controller(
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, str]:
@@ -130,7 +128,7 @@ def _start_controller(
         ray.init(namespace=SERVE_NAMESPACE)
 
     controller_actor_options = {
-        "num_cpus": 1 if dedicated_cpu else 0,
+        "num_cpus": 0,
         "name": SERVE_CONTROLLER_NAME,
         "lifetime": "detached",
         "max_restarts": -1,
@@ -179,7 +177,6 @@ def _start_controller(
 
 async def serve_start_async(
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
@@ -210,7 +207,7 @@ async def serve_start_async(
     controller, controller_name = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(http_options, dedicated_cpu, grpc_options, **kwargs)
+        .remote(http_options, grpc_options, **kwargs)
     )
 
     client = ServeControllerClient(
@@ -224,7 +221,6 @@ async def serve_start_async(
 
 def serve_start(
     http_options: Union[None, dict, HTTPOptions] = None,
-    dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
@@ -259,8 +255,6 @@ def serve_start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        dedicated_cpu: Whether to reserve a CPU core for the internal
-          Serve controller actor.  Defaults to False.
         grpc_options: [Experimental] Configuration options for gRPC proxy.
           You can pass in a gRPCOptions object with fields:
 
@@ -285,7 +279,7 @@ def serve_start(
         pass
 
     controller, controller_name = _start_controller(
-        http_options, dedicated_cpu, grpc_options, **kwargs
+        http_options, grpc_options, **kwargs
     )
 
     client = ServeControllerClient(
@@ -336,7 +330,7 @@ def call_app_builder_with_args_if_necessary(
     # that model. This will perform standard pydantic validation (e.g., raise an
     # exception if required fields are missing).
     param = signature.parameters[list(signature.parameters.keys())[0]]
-    if issubclass(type(param.annotation), ModelMetaclass):
+    if inspect.isclass(param.annotation) and issubclass(param.annotation, BaseModel):
         args = param.annotation.parse_obj(args)
 
     app = builder(args)

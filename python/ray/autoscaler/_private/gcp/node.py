@@ -455,7 +455,7 @@ class GCPCompute(GCPResource):
     ) -> Dict[str, Any]:
         """Ensures that resources are in their full URL form.
 
-        GCP expects machineType and accleratorType to be a full URL (e.g.
+        GCP expects machineType and acceleratorType to be a full URL (e.g.
         `zones/us-west1/machineTypes/n1-standard-2`) instead of just the
         type (`n1-standard-2`)
 

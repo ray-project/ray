@@ -1,5 +1,5 @@
-# Dockerfile used to create the docker image for `03_serving_stable_diffusion`.
-FROM anyscale/ray:2.6.1-py39-cu117
+# Dockerfile used to create the docker image for `04_finetuning_llms_with_deepspeed`.
+FROM anyscale/ray:2.7.1-py310-cu121
 
 COPY requirements.txt ./
 
