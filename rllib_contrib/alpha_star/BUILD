@@ -2,10 +2,10 @@
 
 py_test(
     name = "learning_tests_cartpole_alpha_star",
-    main = "tests/run_regression_tests.py",
+    main = "run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
+    srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/multi-agent-cartpole-alpha-star.yaml"],
     args = ["--dir=tuned_examples/", "--num-cpus=10"]
 )
