@@ -2,7 +2,7 @@ import collections
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 import numpy as np
 
@@ -15,9 +15,6 @@ from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-if TYPE_CHECKING:
-    from ray.data import Dataset
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
@@ -147,8 +144,7 @@ class _StatsActor:
         self.fifo_queue = []
 
         # Assign dataset uuids with a global counter.
-        self.dataset_id: Dict["Dataset", str] = {}
-        self.next_id = 0
+        self.next_dataset_id = 0
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
@@ -227,11 +223,10 @@ class _StatsActor:
     def _get_stats_dict_size(self):
         return len(self.start_time), len(self.last_time), len(self.metadata)
 
-    def register_dataset(self, dataset):
-        if dataset not in self.dataset_id:
-            self.dataset_id[dataset] = str(self.next_id)
-            self.next_id += 1
-        return self.dataset_id[dataset]
+    def get_dataset_id(self):
+        dataset_id = self.next_dataset_id
+        self.next_dataset_id += 1
+        return dataset_id
 
     def update_metrics(self, stats: Dict[str, Union[int, float]], tags: Dict[str, str]):
         self.bytes_spilled.set(stats["obj_store_mem_spilled"], tags)
@@ -282,6 +277,8 @@ def _check_cluster_stats_actor():
     # Checks if global _stats_actor belongs to current cluster,
     # if not, creates a new one on the current cluster.
     global _stats_actor, _stats_actor_cluster_id
+    if ray._private.worker._global_node is None:
+        raise RuntimeError("Global node is not initialized.")
     current_cluster_id = ray._private.worker._global_node.cluster_id
     if _stats_actor is None or _stats_actor_cluster_id != current_cluster_id:
         _stats_actor = _get_or_create_stats_actor()
@@ -310,10 +307,10 @@ def clear_stats_actor_metrics(tags: Dict[str, str]):
     _stats_actor.clear_metrics.remote(tags)
 
 
-def register_dataset_to_stats_actor(dataset: "Dataset") -> str:
-    global _stats_actor
+def get_dataset_id_from_stats_actor() -> str:
+    # global _stats_actor
     _check_cluster_stats_actor()
-    return ray.get(_stats_actor.register_dataset.remote(dataset))
+    return ray.get(_stats_actor.get_dataset_id.remote())
 
 
 class DatasetStats:

@@ -85,7 +85,7 @@ from ray.data._internal.stage_impl import (
 from ray.data._internal.stats import (
     DatasetStats,
     DatasetStatsSummary,
-    register_dataset_to_stats_actor,
+    get_dataset_id_from_stats_actor,
 )
 from ray.data._internal.util import ConsumptionAPI, _is_local_scheme, validate_compute
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
@@ -247,7 +247,7 @@ class Dataset:
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
         self._uuid = None
-        self._set_uuid(register_dataset_to_stats_actor(self))
+        self._set_uuid(get_dataset_id_from_stats_actor())
 
     @staticmethod
     def copy(
