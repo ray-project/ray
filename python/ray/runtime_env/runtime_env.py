@@ -25,16 +25,19 @@ ENCODING_SHIFT = 1
 @DeveloperAPI
 def encode_secret_env_vars(secret_env_vars: dict) -> dict:
     """Encode secret env vars (values in the dict) to base64.
-    This encoding can be used as a mild safety mechanism to avoid printing or logging secrets in plain text.
+    This encoding can be used as a mild safety mechanism to avoid printing or
+    logging secrets in plain text.
 
-    NOTE: base64 encoding is not a security mechanism and secrets should just not be printed to be secure.
+    NOTE: base64 encoding is not a security mechanism and secrets should just
+    not be printed to be secure.
     But the encoding avoids a common mistake of printing secrets in plain text.
 
     Args:
         secret_env_vars: a dict of secret env vars (str -> str).
 
     Returns:
-        A dict of encoded secret env vars (str -> str). The keys are the same as the input dict.
+        A dict of encoded secret env vars (str -> str).
+        The keys are the same as the input dict.
         The values are base64 encoded.
     """
     return {key: _encode_with_shift(value) for key, value in secret_env_vars.items()}
@@ -45,10 +48,12 @@ def decode_secret_env_vars(encoded_env_vars: dict) -> dict:
     """Decode secret env vars (values in the dict) from base64.
 
     Args:
-        encoded_env_vars: a dict of encoded secret env vars (str -> str). The values are base64 encoded.
+        encoded_env_vars: a dict of encoded secret env vars (str -> str).
+        The values are base64 encoded.
 
     Returns:
-        A dict of decoded secret env vars (str -> str). The keys are the same as the input dict.
+        A dict of decoded secret env vars (str -> str).
+        The keys are the same as the input dict.
         The values are base64 decoded.
     """
     return {
@@ -285,7 +290,8 @@ class RuntimeEnv(dict):
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
         secret_env_vars: Secrets to set as environment variables.
-            These secrets are stored in memory as encoded strings, to protect from unintentional logging.
+            These secrets are stored in memory as encoded bytes,
+            to protect from unintentional logging.
     """
 
     known_fields: Set[str] = {

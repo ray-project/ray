@@ -31,7 +31,8 @@ class SecretEnvVarsPlugin(RuntimeEnvPlugin):
             raise ValueError(
                 f"secret_env_vars must be a dict, got {type(secret_env_vars)}."
             )
-        # Validate each key and value is str. Collect all violations and raise in the end.
+        # Validate each key and value is str.
+        # Collect all violations and raise in the end.
         violations = []
         for key, value in secret_env_vars.items():
             if not isinstance(key, str):
@@ -74,7 +75,8 @@ class SecretEnvVarsPlugin(RuntimeEnvPlugin):
 
         # Add secrets to context env vars.
         encoded_secret_env_vars = runtime_env_dict.get(_PLUGIN_NAME, {})
-        # The secrets are base64 encoded for safety. We decode them before adding to the context.
+        # The secrets are base64 encoded for safety.
+        # We decode them before adding to the context.
         secret_env_vars = decode_secret_env_vars(encoded_secret_env_vars)
         for key, value in secret_env_vars.items():
             context.env_vars[key] = value
