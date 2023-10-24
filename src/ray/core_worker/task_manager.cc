@@ -645,11 +645,11 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // Otherwise, follow the regular backpressure logic.
-  auto total_unconsumed = total_generated - total_consumed;
+  // NOTE, here we check `item_index - last_consumed_index >= backpressure_threshold`,
+  // instead of the number of unconsumed items, because we may receive the
+  // `HandleReportGeneratorItemReturns` requests out of order.
   if (backpressure_threshold != -1 &&
-      total_unconsumed >= backpressure_threshold
-      // We can only backpressure the last generated item.
-      && item_index >= total_generated - 1) {
+      (item_index - stream_it->second.LastConsumedIndex()) >= backpressure_threshold) {
     RAY_LOG(DEBUG) << "Stream " << generator_id
                    << " is backpressured. total_generated: " << total_generated
                    << ". total_consumed: " << total_consumed

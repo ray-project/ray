@@ -2012,14 +2012,14 @@ class Algorithm(Trainable, AlgorithmBase):
                 value of this parameter set the ONNX OpSet version to use.
                 If None, the output format will be DL framework specific.
 
-        Example:
-            >>> from ray.rllib.algorithms.ppo import PPO
-            >>> # Use an Algorithm from RLlib or define your own.
-            >>> algo = PPO(...) # doctest: +SKIP
-            >>> for _ in range(10): # doctest: +SKIP
-            >>>     algo.train() # doctest: +SKIP
-            >>> algo.export_policy_model("/tmp/dir") # doctest: +SKIP
-            >>> algo.export_policy_model("/tmp/dir/onnx", onnx=1) # doctest: +SKIP
+        .. testcode::
+
+            from ray.rllib.algorithms.ppo import PPO, PPOConfig
+            config = PPOConfig().environment("CartPole-v1")
+            algo = PPO(config=config)
+            algo.train()
+            algo.export_policy_checkpoint("/tmp/export_dir")
+            algo.export_policy_model("/tmp/dir")
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
@@ -2041,13 +2041,13 @@ class Algorithm(Trainable, AlgorithmBase):
         Raises:
             KeyError if `policy_id` cannot be found in this Algorithm.
 
-        Example:
-            >>> from ray.rllib.algorithms.ppo import PPO
-            >>> # Use an Algorithm from RLlib or define your own.
-            >>> algo = PPO(...) # doctest: +SKIP
-            >>> for _ in range(10): # doctest: +SKIP
-            >>>     algo.train() # doctest: +SKIP
-            >>> algo.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
+        .. testcode::
+
+            from ray.rllib.algorithms.ppo import PPO, PPOConfig
+            config = PPOConfig().environment("CartPole-v1")
+            algo = PPO(config=config)
+            algo.train()
+            algo.export_policy_checkpoint("/tmp/export_dir")
         """
         policy = self.get_policy(policy_id)
         if policy is None:
@@ -2066,12 +2066,6 @@ class Algorithm(Trainable, AlgorithmBase):
             import_file: The h5 file to import from.
             policy_id: Optional policy id to import into.
 
-        Example:
-            >>> from ray.rllib.algorithms.ppo import PPO
-            >>> algo = PPO(...) # doctest: +SKIP
-            >>> algo.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
-            >>> for _ in range(10): # doctest: +SKIP
-            >>>     algo.train() # doctest: +SKIP
         """
         self.get_policy(policy_id).import_model_from_h5(import_file)
         # Sync new weights to remote workers.
