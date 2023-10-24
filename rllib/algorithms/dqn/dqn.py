@@ -51,65 +51,48 @@ logger = logging.getLogger(__name__)
 class DQNConfig(SimpleQConfig):
     r"""Defines a configuration class from which a DQN Algorithm can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        >>> config = DQNConfig()
-        >>> print(config.replay_buffer_config)  # doctest: +SKIP
-        >>> replay_config = config.replay_buffer_config.update( # doctest: +SKIP
-        ...     {
-        ...         "capacity": 60000,
-        ...         "prioritized_replay_alpha": 0.5,
-        ...         "prioritized_replay_beta": 0.5,
-        ...         "prioritized_replay_eps": 3e-6,
-        ...     }
-        ... )
-        >>> config = config.training(replay_buffer_config=replay_config)# doctest: +SKIP
-        >>> config = config.resources(num_gpus=1)  # doctest: +SKIP
-        >>> config = config.rollouts(num_rollout_workers=3)  # doctest: +SKIP
-        >>> config = config.environment("CartPole-v1")  # doctest: +SKIP
-        >>> algo = DQN(config=config)  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = DQNConfig()
-        >>> config = config.training( # doctest: +SKIP
-        ...     num_atoms=tune.grid_search(list(range(1,11))))
-        >>> config = config.environment(env="CartPole-v1") # doctest: +SKIP
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "DQN",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
-        ...     param_space=config.to_dict()
-        ... ).fit()
+        from ray.rllib.algorithms.dqn.dqn import DQNConfig
+        config = DQNConfig()
 
-    Example:
-        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        >>> config = DQNConfig()
-        >>> print(config.exploration_config)  # doctest: +SKIP
-        >>> explore_config = config.exploration_config.update( # doctest: +SKIP
-        ...     {
-        ...         "initial_epsilon": 1.5,
-        ...         "final_epsilon": 0.01,
-        ...         "epsilone_timesteps": 5000,
-        ...     }
-        ... )
-        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\ # doctest: +SKIP
-        ...       .exploration(exploration_config=explore_config)
+        replay_config = {
+                "type": "MultiAgentPrioritizedReplayBuffer",
+                "capacity": 60000,
+                "prioritized_replay_alpha": 0.5,
+                "prioritized_replay_beta": 0.5,
+                "prioritized_replay_eps": 3e-6,
+            }
 
-    Example:
-        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        >>> config = DQNConfig()
-        >>> print(config.exploration_config)  # doctest: +SKIP
-        >>> explore_config = config.exploration_config.update( # doctest: +SKIP
-        ...     {
-        ...         "type": "softq",
-        ...         "temperature": [1.0],
-        ...     }
-        ... )
-        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\ # doctest: +SKIP
-        ...       .exploration(exploration_config=explore_config)
+        config = config.training(replay_buffer_config=replay_config)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+        config = config.environment("CartPole-v1")
+        algo = DQN(config=config)
+        algo.train()
+        del algo
+
+    .. testcode::
+
+        from ray.rllib.algorithms.dqn.dqn import DQNConfig
+        from ray import air
+        from ray import tune
+        config = DQNConfig()
+        config = config.training(
+            num_atoms=tune.grid_search([1,]))
+        config = config.environment(env="CartPole-v1")
+        tune.Tuner(
+            "DQN",
+            run_config=air.RunConfig(stop={"training_iteration":1}),
+            param_space=config.to_dict()
+        ).fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
+
+
     """
 
     def __init__(self, algo_class=None):

@@ -535,6 +535,16 @@ def make_multi_callbacks(
     The resulting DefaultCallbacks will call all the sub-callbacks' callbacks
     when called.
 
+    .. testcode::
+        :skipif: True
+
+        config.callbacks(make_multi_callbacks([
+            MyCustomStatsCallbacks,
+            MyCustomVideoCallbacks,
+            MyCustomTraceCallbacks,
+            ....
+        ]))
+
     Args:
         callback_class_list: The list of sub-classes of DefaultCallbacks to
             be baked into the to-be-returned class. All of these sub-classes'
