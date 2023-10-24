@@ -37,6 +37,8 @@ def test_get_current_node_num_accelerators():
     sys.modules["dpctl"] = __import__("mock_dpctl_2")
     assert Accelerator.get_current_node_num_accelerators() == 4
 
+    del sys.modules["dpctl"]
+
 
 def test_get_current_node_accelerator_type():
     sys.modules["dpctl"] = __import__("mock_dpctl_1")
@@ -44,6 +46,8 @@ def test_get_current_node_accelerator_type():
 
     sys.modules["dpctl"] = __import__("mock_dpctl_2")
     assert Accelerator.get_current_node_accelerator_type() == INTEL_MAX_1100
+
+    del sys.modules["dpctl"]
 
 
 def test_intel_gpu_accelerator_manager_api():
@@ -65,6 +69,8 @@ def test_get_current_process_visible_accelerator_ids():
     os.environ["ONEAPI_DEVICE_SELECTOR"] = "NoDevFiles"
     assert Accelerator.get_current_process_visible_accelerator_ids() == []
 
+    del os.environ["ONEAPI_DEVICE_SELECTOR"]
+
 
 def test_set_current_process_visible_accelerator_ids():
     Accelerator.set_current_process_visible_accelerator_ids(["0"])
@@ -75,6 +81,8 @@ def test_set_current_process_visible_accelerator_ids():
 
     Accelerator.set_current_process_visible_accelerator_ids(["0", "1", "2"])
     assert os.environ["ONEAPI_DEVICE_SELECTOR"] == "level_zero:0,1,2"
+
+    del os.environ["ONEAPI_DEVICE_SELECTOR"]
 
 
 if __name__ == "__main__":
