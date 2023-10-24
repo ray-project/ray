@@ -7,7 +7,7 @@ config = (
     .environment("Pendulum-v1")
     .rollouts(
         num_rollout_workers=0,
-        num_envs_per_worker=20,
+        #num_envs_per_worker=20,
         env_runner_cls=SingleAgentEnvRunner,
     )
     .training(
