@@ -166,48 +166,58 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     This class supports vectorized and multi-agent policy evaluation (e.g.,
     VectorEnv, MultiAgentEnv, etc.)
 
-    Examples:
-        >>> # Create a rollout worker and using it to collect experiences.
-        >>> import gymnasium as gym
-        >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-        >>> worker = RolloutWorker( # doctest: +SKIP
-        ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-        ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
-        >>> print(worker.sample()) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        # Create a rollout worker and using it to collect experiences.
+        import gymnasium as gym
+        from ray.rllib.evaluation.rollout_worker import RolloutWorker
+        from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+        worker = RolloutWorker(
+          env_creator=lambda _: gym.make("CartPole-v1"),
+          default_policy_class=PGTF1Policy)
+        print(worker.sample())
+
+        # Creating a multi-agent rollout worker
+        from gymnasium.spaces import Discrete, Box
+        import random
+        MultiAgentTrafficGrid = ...
+        worker = RolloutWorker(
+          env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
+          config=AlgorithmConfig().multi_agent(
+            policies={
+              # Use an ensemble of two policies for car agents
+              "car_policy1":
+                (PGTFPolicy, Box(...), Discrete(...),
+                 AlgorithmConfig.overrides(gamma=0.99)),
+              "car_policy2":
+                (PGTFPolicy, Box(...), Discrete(...),
+                 AlgorithmConfig.overrides(gamma=0.95)),
+              # Use a single shared policy for all traffic lights
+              "traffic_light_policy":
+                (PGTFPolicy, Box(...), Discrete(...), {}),
+            },
+            policy_mapping_fn=(
+              lambda agent_id, episode, **kwargs:
+              random.choice(["car_policy1", "car_policy2"])
+              if agent_id.startswith("car_") else "traffic_light_policy"),
+            ),
+        )
+        print(worker.sample())
+
+    .. testoutput::
+
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
-            "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]})
-        >>> # Creating a multi-agent rollout worker
-        >>> from gymnasium.spaces import Discrete, Box
-        >>> import random
-        >>> MultiAgentTrafficGrid = ... # doctest: +SKIP
-        >>> worker = RolloutWorker( # doctest: +SKIP
-        ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
-        ...   config=AlgorithmConfig().multi_agent(
-        ...     policies={ # doctest: +SKIP
-        ...       # Use an ensemble of two policies for car agents
-        ...       "car_policy1": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...),
-        ...          AlgorithmConfig.overrides(gamma=0.99)),
-        ...       "car_policy2": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...),
-        ...          AlgorithmConfig.overrides(gamma=0.95)),
-        ...       # Use a single shared policy for all traffic lights
-        ...       "traffic_light_policy":
-        ...         (PGTFPolicy, Box(...), Discrete(...), {}),
-        ...     },
-        ...     policy_mapping_fn=(
-        ...       lambda agent_id, episode, **kwargs:
-        ...       random.choice(["car_policy1", "car_policy2"])
-        ...       if agent_id.startswith("car_") else "traffic_light_policy"),
-        ...     ),
-        ..  )
-        >>> print(worker.sample()) # doctest: +SKIP
+            "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]}
+        )
+
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
             "car_policy2": SampleBatch(...),
-            "traffic_light_policy": SampleBatch(...)})
+            "traffic_light_policy": SampleBatch(...)}
+        )
+
     """
 
     def __init__(
@@ -665,16 +675,21 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             A columnar batch of experiences (e.g., tensors) or a MultiAgentBatch.
 
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTF1Policy, # doctest: +SKIP
-            ...   config=AlgorithmConfig(), # doctest: +SKIP
-            ... )
-            >>> print(worker.sample()) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import gymnasium as gym
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            worker = RolloutWorker(
+              env_creator=lambda _: gym.make("CartPole-v1"),
+              default_policy_class=PGTF1Policy,
+              config=AlgorithmConfig(),
+            )
+            print(worker.sample())
+
+        .. testoutput::
+
             SampleBatch({"obs": [...], "action": [...], ...})
         """
         if self.config.fake_sampler and self.last_batch is not None:
@@ -747,14 +762,19 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             A columnar batch of experiences (e.g., tensors) and the
                 size of the collected batch.
 
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTFPolicy) # doctest: +SKIP
-            >>> print(worker.sample_with_count()) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import gymnasium as gym
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            worker = RolloutWorker(
+              env_creator=lambda _: gym.make("CartPole-v1"),
+              default_policy_class=PGTFPolicy)
+            print(worker.sample_with_count())
+
+        .. testoutput::
+
             (SampleBatch({"obs": [...], "action": [...], ...}), 3)
         """
         batch = self.sample()
@@ -772,15 +792,17 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             Dictionary of extra metadata from compute_gradients().
 
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
-            >>> batch = worker.sample() # doctest: +SKIP
-            >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import gymnasium as gym
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            worker = RolloutWorker(
+              env_creator=lambda _: gym.make("CartPole-v1"),
+              default_policy_class=PGTF1Policy)
+            batch = worker.sample()
+            info = worker.learn_on_batch(samples)
         """
         if log_once("learn_on_batch"):
             logger.info(
@@ -894,15 +916,17 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             Note that the first return value (grads) can be applied as is to a
             compatible worker using the worker's `apply_gradients()` method.
 
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
-            >>> batch = worker.sample() # doctest: +SKIP
-            >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import gymnasium as gym
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            worker = RolloutWorker(
+              env_creator=lambda _: gym.make("CartPole-v1"),
+              default_policy_class=PGTF1Policy)
+            batch = worker.sample()
+            grads, info = worker.compute_gradients(samples)
         """
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
@@ -963,16 +987,18 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 mapping PolicyIDs to the respective model gradients
                 structs.
 
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
-            >>> samples = worker.sample() # doctest: +SKIP
-            >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
-            >>> worker.apply_gradients(grads) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import gymnasium as gym
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            worker = RolloutWorker(
+              env_creator=lambda _: gym.make("CartPole-v1"),
+              default_policy_class=PGTF1Policy)
+            samples = worker.sample()
+            grads, info = worker.compute_gradients(samples)
+            worker.apply_gradients(grads)
         """
         if log_once("apply_gradients"):
             logger.info("Apply gradients:\n\n{}\n".format(summarize(grads)))
@@ -1472,12 +1498,17 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             Dict mapping PolicyIDs to ModelWeights.
 
-        Examples:
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> # Create a RolloutWorker.
-            >>> worker = ... # doctest: +SKIP
-            >>> weights = worker.get_weights() # doctest: +SKIP
-            >>> print(weights) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            # Create a RolloutWorker.
+            worker = ...
+            weights = worker.get_weights()
+            print(weights)
+
+        .. testoutput::
+
             {"default_policy": {"layer1": array(...), "layer2": ...}}
         """
         if policies is None:
@@ -1513,13 +1544,15 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 (in self.weights_seq_no) and in future calls - if the seq no did not
                 change wrt. the last call - will ignore the call to save on performance.
 
-        Examples:
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> # Create a RolloutWorker.
-            >>> worker = ... # doctest: +SKIP
-            >>> weights = worker.get_weights() # doctest: +SKIP
-            >>> # Set `global_vars` (timestep) as well.
-            >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            # Create a RolloutWorker.
+            worker = ...
+            weights = worker.get_weights()
+            # Set `global_vars` (timestep) as well.
+            worker.set_weights(weights, {"timestep": 42})
         """
         # Only update our weights, if no seq no given OR given seq no is different
         # from ours.
@@ -1545,12 +1578,17 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             The current `self.global_vars` dict of this RolloutWorker.
 
-        Examples:
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> # Create a RolloutWorker.
-            >>> worker = ... # doctest: +SKIP
-            >>> global_vars = worker.get_global_vars() # doctest: +SKIP
-            >>> print(global_vars) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            # Create a RolloutWorker.
+            worker = ...
+            global_vars = worker.get_global_vars()
+            print(global_vars)
+
+        .. testoutput::
+
             {"timestep": 424242}
         """
         return self.global_vars
@@ -1570,9 +1608,11 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             policy_ids: Optional list of Policy IDs to update. If None, will update all
                 policies on the to-be-updated workers.
 
-        Examples:
-            >>> worker = ... # doctest: +SKIP
-            >>> global_vars = worker.set_global_vars( # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            worker = ...
+            global_vars = worker.set_global_vars(
             ...     {"timestep": 4242})
         """
         # Handle per-policy values.
