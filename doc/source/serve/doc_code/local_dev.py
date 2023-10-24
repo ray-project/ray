@@ -14,8 +14,8 @@ class Doubler:
 
 @serve.deployment
 class HelloDeployment:
-    def __init__(self, doubler):
-        self.doubler: DeploymentHandle = doubler.options(use_new_handle_api=True)
+    def __init__(self, doubler: DeploymentHandle):
+        self.doubler = doubler
 
     async def say_hello_twice(self, name: str):
         return await self.doubler.double.remote(f"Hello, {name}!")
@@ -28,7 +28,7 @@ app = HelloDeployment.bind(Doubler.bind())
 # __local_dev_end__
 
 # __local_dev_handle_start__
-handle: DeploymentHandle = serve.run(app).options(use_new_handle_api=True)
+handle: DeploymentHandle = serve.run(app)
 response: DeploymentResponse = handle.say_hello_twice.remote(name="Ray")
 assert response.result() == "Hello, Ray! Hello, Ray!"
 # __local_dev_handle_end__

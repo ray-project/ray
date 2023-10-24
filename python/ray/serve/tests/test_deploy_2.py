@@ -96,13 +96,15 @@ def test_json_serialization_user_config(serve_instance):
     assert handle.get_value.remote().result() == "Success!"
     assert handle.get_nested_value.remote().result() == "Success!"
 
-    handle = serve.run(SimpleDeployment.options(
-        user_config={
-            "value": "Failure!",
-            "another-value": "Failure!",
-            "nested": {"value": "Success!"},
-        }
-    ).bind())
+    handle = serve.run(
+        SimpleDeployment.options(
+            user_config={
+                "value": "Failure!",
+                "another-value": "Failure!",
+                "nested": {"value": "Success!"},
+            }
+        ).bind()
+    )
 
     assert handle.get_value.remote().result() == "Failure!"
     assert handle.get_nested_value.remote().result() == "Success!"

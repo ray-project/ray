@@ -4,7 +4,6 @@ import pytest
 import requests
 import starlette.requests
 
-import ray
 from ray import serve
 from ray.serve.dag import InputNode
 from ray.serve.drivers import DAGDriver

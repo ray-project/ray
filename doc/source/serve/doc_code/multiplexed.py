@@ -57,7 +57,7 @@ class Downstream:
 @serve.deployment
 class Upstream:
     def __init__(self, downstream: DeploymentHandle):
-        self._h: DeploymentHandle = downstream.options(use_new_handle_api=True)
+        self._h = downstream
 
     async def __call__(self, request: starlette.requests.Request):
         return await self._h.options(multiplexed_model_id="bar").remote()

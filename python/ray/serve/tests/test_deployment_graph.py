@@ -259,7 +259,7 @@ class Echo:
 def test_single_node_deploy_success(serve_instance):
     m1 = Adder.bind(1)
     handle = serve.run(m1)
-    assert handle.remote(41)) == 42
+    assert handle.remote(41).result() == 42
 
 
 @pytest.mark.parametrize("use_build", [False, True])
@@ -323,8 +323,8 @@ def test_passing_handle_in_obj(serve_instance):
     parent = DictParent.bind({"child1": child1, "child2": child2})
 
     handle = serve.run(parent)
-    assert handle.remote("child1")) == "ed"
-    assert handle.remote("child2")) == "simon"
+    assert handle.remote("child1").result() == "ed"
+    assert handle.remote("child2").result() == "simon"
 
 
 @serve.deployment

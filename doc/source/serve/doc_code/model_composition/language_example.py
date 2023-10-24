@@ -45,13 +45,11 @@ from ray.serve.handle import DeploymentHandle
 
 @serve.deployment
 class LanguageClassifer:
-    def __init__(self, spanish_responder, french_responder):
-        self.spanish_responder: DeploymentHandle = spanish_responder.options(
-            use_new_handle_api=True,
-        )
-        self.french_responder = french_responder.options(
-            use_new_handle_api=True,
-        )
+    def __init__(
+        self, spanish_responder: DeploymentHandle, french_responder: DeploymentHandle
+    ):
+        self.spanish_responder = spanish_responder
+        self.french_responder = french_responder
 
     async def __call__(self, http_request):
         request = await http_request.json()
