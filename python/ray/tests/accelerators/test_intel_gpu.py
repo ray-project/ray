@@ -1,43 +1,32 @@
 import os
 import sys
 import pytest
-from unittest.mock import patch
+from unittest.mock import Mock
 
 import ray
 from ray._private.accelerators import IntelGPUAcceleratorManager
-from ray._private.accelerators import NvidiaGPUAcceleratorManager
+from ray.util.accelerators import INTEL_MAX_1550
 
 
-@patch(
-    "ray._private.accelerators.NvidiaGPUAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
-    return_value=4,
-)
-def test_auto_detected_more_than_visible_nvidia_gpus(
-    mock_get_num_accelerators, monkeypatch, shutdown_only
-):
-    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2")
-    ray.init()
-    mock_get_num_accelerators.called
-    print(NvidiaGPUAcceleratorManager.get_current_node_num_accelerators())
-    print(ray._private.accelerators.get_accelerator_manager_for_resource("GPU"))
-    print(ray.get_gpu_ids())
-    assert ray.available_resources()["GPU"] == 3
-
-
-@patch(
-    "ray._private.accelerators.IntelGPUAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
-    return_value=4,
-)
-def test_auto_detected_more_than_visible_intel_gpus(
-    mock_get_num_accelerators, monkeypatch, shutdown_only
-):
+def test_visible_intel_gpu_ids(monkeypatch, shutdown_only):
+    IntelGPUAcceleratorManager.get_current_node_num_accelerators = Mock(return_value=4)
     monkeypatch.setenv("ONEAPI_DEVICE_SELECTOR", "level_zero:0,1,2")
     ray.init()
-    mock_get_num_accelerators.called
-    print(IntelGPUAcceleratorManager.get_current_node_num_accelerators())
-    print(ray._private.accelerators.get_accelerator_manager_for_resource("GPU"))
-    print(ray.get_gpu_ids())
+    manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
+    assert manager.get_current_node_num_accelerators() == 4
+    assert manager.__name__ == "IntelGPUAcceleratorManager"
     assert ray.available_resources()["GPU"] == 3
+
+
+def test_visible_intel_gpu_type(monkeypatch, shutdown_only):
+    IntelGPUAcceleratorManager.get_current_node_num_accelerators = Mock(return_value=4)
+    IntelGPUAcceleratorManager.get_current_node_accelerator_type = Mock(
+        return_value=INTEL_MAX_1550
+    )
+    monkeypatch.setenv("ONEAPI_DEVICE_SELECTOR", "level_zero:0,1,2")
+    ray.init()
+    manager = ray._private.accelerators.get_accelerator_manager_for_resource("GPU")
+    assert manager.get_current_node_accelerator_type() == INTEL_MAX_1550
 
 
 if __name__ == "__main__":
