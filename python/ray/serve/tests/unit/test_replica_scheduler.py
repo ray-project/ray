@@ -1179,8 +1179,10 @@ async def test_get_queue_state_cancelled_on_timeout(pow_2_scheduler, fake_query)
 
 @pytest.mark.asyncio
 async def test_replicas_updated_event_on_correct_loop(pow_2_scheduler):
-    """
-    See https://github.com/ray-project/ray/issues/40631.
+    """See https://github.com/ray-project/ray/issues/40631.
+
+    The `await` statements below would fail with
+    "RuntimeError: ... got Future <Future pending> attached to a different loop."
     """
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(pow_2_scheduler._replicas_updated_event.wait(), timeout=0.001)

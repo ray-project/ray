@@ -350,7 +350,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # determine the loop to attach to. This class can be constructed for the handle
         # from a different loop than it uses for scheduling, so we need to construct it
         # lazily to avoid an error due to the event being attached to the wrong loop.
-        self._lazily_initialied_replicas_updated_event: Optional[asyncio.Event] = None
+        self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
 
         # Colocated replicas (e.g. wrt node, AZ)
         self._colocated_replica_ids: DefaultDict[LocalityScope, Set[str]] = defaultdict(
@@ -420,12 +420,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def _replicas_updated_event(self) -> asyncio.Event:
         """Lazily construct `asyncio.Event`.
 
-        See comment for self._lazily_initialied_replicas_updated_event.
+        See comment for self._lazily_constructed_replicas_updated_event.
         """
-        if self._lazily_initialied_replicas_updated_event is None:
-            self._lazily_initialied_replicas_updated_event = asyncio.Event()
+        if self._lazily_constructed_replicas_updated_event is None:
+            self._lazily_constructed_replicas_updated_event = asyncio.Event()
 
-        return self._lazily_initialied_replicas_updated_event
+        return self._lazily_constructed_replicas_updated_event
 
     @property
     def num_pending_requests(self) -> int:
