@@ -816,7 +816,7 @@ def get_deployment_handle(
 
             serve.run(f.bind(), name="my_app")
             handle = serve.get_deployment_handle("f", app_name="my_app")
-            assert handle.remote(3).result() == 7
+            assert handle.remote(3).result() == 6
 
     The following example demonstrates how you can use this API to get
     the handle to a non-ingress deployment in an application.
