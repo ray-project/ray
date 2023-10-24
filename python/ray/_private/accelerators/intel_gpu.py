@@ -43,15 +43,20 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
-        num_gpus = 0
         try:
             import dpctl
         except ImportError:
             dpctl = None
-        if dpctl is not None:
-            backend = ONEAPI_DEVICE_BACKEND_TYPE
-            device_type = ONEAPI_DEVICE_TYPE
-            num_gpus = len(dpctl.get_devices(backend=backend, device_type=device_type))
+        if dpctl is None:
+            return 0
+
+        num_gpus = 0
+        try:
+            dev_info = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ONEAPI_DEVICE_TYPE
+            context = dpctl.SyclContext(dev_info)
+            num_gpus = context.device_count
+        except Exception:
+            num_gpus = 0
         return num_gpus
 
     @staticmethod
@@ -69,13 +74,15 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
             dpctl = None
         if dpctl is None:
             return None
-        backend = ONEAPI_DEVICE_BACKEND_TYPE
-        device_type = ONEAPI_DEVICE_TYPE
-        devices = dpctl.get_devices(backend=backend, device_type=device_type)
-        if len(devices) > 0:
-            name = devices[0].name
-            return "Intel-GPU" + "-".join(name.split(" ")[-2:])
-        return None
+
+        accelerator_type = None
+        try:
+            dev_info = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ONEAPI_DEVICE_TYPE + ":0"
+            dev = dpctl.SyclDevice(dev_info)
+            accelerator_type = "Intel-GPU-" + "-".join(dev.name.split(" ")[-2:])
+        except Exception:
+            accelerator_type = None
+        return accelerator_type
 
     @staticmethod
     def validate_resource_request_quantity(
