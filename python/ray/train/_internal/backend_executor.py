@@ -426,7 +426,7 @@ class BackendExecutor:
         workers_info = "\n".join(
             [
                 f"- (ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
-                f"rank={i}, local_rank={local_rank_map[i]}, node_rank={node_rank_map[i]}"
+                f"world_rank={i}, local_rank={local_rank_map[i]}, node_rank={node_rank_map[i]}"
                 for i, w in enumerate(self.worker_group.workers)
             ]
         )
