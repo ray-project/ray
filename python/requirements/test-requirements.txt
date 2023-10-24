@@ -32,7 +32,7 @@ websockets==11.0.3
 joblib==1.2.0
 jsonpatch==1.32
 kubernetes==24.2.0
-llvmlite==0.41.1; python_version < '3.11'
+llvmlite==0.41.1
 lxml==4.9.1
 moto[s3,server]==4.0.7
 mypy==0.982
