@@ -91,7 +91,7 @@ applications:
         num_replicas: 5
 ```
 
-Serve uses `num_replicas=5` from the value set in the config file and `graceful_shutdown_timeout_s=6` from the value set in the application code. All other deployment settings use Serve defaults because the user didn't specify them in the code or the config. For instance, `health_check_period_s=10` since by default Serve health checks deployments once every 10 seconds.
+Serve uses `num_replicas=5` from the value set in the config file and `graceful_shutdown_timeout_s=6` from the value set in the application code. All other deployment settings use Serve defaults because they're not specified in the code or the config. For instance, `health_check_period_s=10` since by default Serve health checks deployments once every 10 seconds.
 
 :::{tip}
 Remember that `ray_actor_options` counts as a single setting. The entire `ray_actor_options` dictionary in the config file overrides the entire `ray_actor_options` dictionary from the graph code. If there are individual options within `ray_actor_options` (e.g. `runtime_env`, `num_gpus`, `memory`) that are set in the code but not in the config, Serve still won't use the code settings if the config has a `ray_actor_options` dictionary. It treats these missing options as though the user never set them and uses defaults instead. This dictionary overriding behavior also applies to `user_config` and `autoscaling_config`.
