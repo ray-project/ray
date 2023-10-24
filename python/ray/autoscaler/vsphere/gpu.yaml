@@ -1,5 +1,5 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: vsan-fs
+cluster_name: ray-cluster-with-gpu-on-vsphere
 
 # The maximum number of workers nodes to launch in addition to the head
 # node.
@@ -15,8 +15,8 @@ upscaling_speed: 1.0
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "rayproject/ray-ml:latest"
-    # image: rayproject/ray:latest   # use this one if you don't need ML dependencies, it's faster to pull
+    image: "rayproject/ray-ml:latest-gpu"
+    # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
     container_name: "ray_container"
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
@@ -99,7 +99,7 @@ available_node_types:
         # minimum number. The vSphere node provider will not distinguish the GPU type. It will just count the quantity:
         # mount the first k random available Nvidia GPU to the VM, if the user set {"GPU": k}.
         # resources: {"CPU": 2, "Memory": 4096, "GPU": 1}
-        resources: {}
+        resources: {"CPU": 2, "Memory": 4096, "GPU": 1}
         node_config:
             # The resource pool where the worker node should live, if unset, will be
             # the frozen VM's resource pool.
