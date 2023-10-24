@@ -1185,7 +1185,9 @@ async def test_replicas_updated_event_on_correct_loop(pow_2_scheduler):
     "RuntimeError: ... got Future <Future pending> attached to a different loop."
     """
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(pow_2_scheduler._replicas_updated_event.wait(), timeout=0.001)
+        await asyncio.wait_for(
+            pow_2_scheduler._replicas_updated_event.wait(), timeout=0.001
+        )
 
     pow_2_scheduler._replicas_updated_event.set()
     await pow_2_scheduler._replicas_updated_event.wait()
