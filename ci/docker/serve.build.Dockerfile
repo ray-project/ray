@@ -18,8 +18,7 @@ COPY . .
 RUN if [[ -z $PYTHON_VERSION ]] ; then echo Not installing custom Python version ; else PYTHON=$PYTHON_VERSION ci/env/install-dependencies.sh ; fi
 
 RUN pip install -U torch==2.0.1 torchvision==0.15.2
-RUN pip install -U -c python/requirements_compiled.txt \
-	tensorflow tensorflow-probability
+RUN pip install -U tensorflow==2.14.0 tensorflow-probability==0.22.1
 RUN pip install -U --ignore-installed \
   -c python/requirements_compiled.txt \
   -r python/requirements.txt \
