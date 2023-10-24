@@ -508,11 +508,12 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   int port = GetFreePort();
 
   // Async HTTP server that completes the request after sleeping 1 sec.
+  // The server returns success in the first 42 requests, then all failures.
+  constexpr size_t expected_succs = 42;
   std::mutex server_mutex;
   size_t concurrency = 0;
   size_t max_concurrency = 0;
-  // sync_handler(conn->request_, conn->response_);
-  //   conn->write_response();
+  size_t issued_succs = 0;
   HttpServerThread http_server_thread(
       [&](std::shared_ptr<HttpConnection> conn) {
         {
@@ -522,30 +523,41 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
 
         auto timer = std::make_shared<boost::asio::steady_timer>(conn->ioc_,
                                                                  std::chrono::seconds(1));
-        timer->async_wait([timer, conn, &server_mutex, &max_concurrency, &concurrency](
-                              const boost::system::error_code &ec) {
-          const http::request<http::string_body> &request = conn->request_;
-          http::response<http::string_body> &response = conn->response_;
+        timer->async_wait(
+            [timer, conn, &server_mutex, &max_concurrency, &concurrency, &issued_succs](
+                const boost::system::error_code &ec) {
+              const http::request<http::string_body> &request = conn->request_;
+              http::response<http::string_body> &response = conn->response_;
 
-          rpc::DeleteRuntimeEnvIfPossibleRequest req;
-          ASSERT_TRUE(req.ParseFromString(request.body()));
-          ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
-          ASSERT_EQ(req.source_process(), "raylet");
+              rpc::DeleteRuntimeEnvIfPossibleRequest req;
+              ASSERT_TRUE(req.ParseFromString(request.body()));
+              ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
+              ASSERT_EQ(req.source_process(), "raylet");
 
-          rpc::DeleteRuntimeEnvIfPossibleReply reply;
-          reply.set_status(rpc::AGENT_RPC_STATUS_OK);
-          response.body() = reply.SerializeAsString();
-          response.content_length(response.body().size());
-          response.result(http::status::ok);
-          {
-            std::lock_guard lock(server_mutex);
-            RAY_LOG(INFO) << "server sending " << concurrency
-                          << " concurrent results, max = " << max_concurrency;
-            max_concurrency = std::max(max_concurrency, concurrency);
-            concurrency -= 1;
-          }
-          conn->write_response();
-        });
+              rpc::DeleteRuntimeEnvIfPossibleReply reply;
+              {
+                std::lock_guard lock(server_mutex);
+
+                if (issued_succs < expected_succs) {
+                  reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+                  issued_succs += 1;
+                } else {
+                  reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
+                  reply.set_error_message("the server is not feeling well");
+                }
+              }
+              response.body() = reply.SerializeAsString();
+              response.content_length(response.body().size());
+              response.result(http::status::ok);
+              {
+                std::lock_guard lock(server_mutex);
+                RAY_LOG(INFO) << "server sending " << concurrency
+                              << " concurrent results, max = " << max_concurrency;
+                max_concurrency = std::max(max_concurrency, concurrency);
+                concurrency -= 1;
+              }
+              conn->write_response();
+            });
       },
       "127.0.0.1",
       port);
@@ -561,10 +573,14 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
-  size_t called_times = 0;
+  std::atomic<size_t> seen_succs = 0;
+  std::atomic<size_t> seen_failures = 0;
   auto callback = [&](bool successful) {
-    ASSERT_TRUE(successful);
-    called_times += 1;
+    if (successful) {
+      seen_succs += 1;
+    } else {
+      seen_failures += 1;
+    }
   };
 
   for (int i = 0; i < 100; ++i) {
@@ -572,9 +588,11 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   }
 
   ioc.run();
-  ASSERT_EQ(called_times, 100);
-  ASSERT_EQ(concurrency, 0);
-  ASSERT_EQ(max_concurrency, 10);
+  EXPECT_EQ(issued_succs, expected_succs);
+  EXPECT_EQ(seen_succs, expected_succs);
+  EXPECT_EQ(seen_failures, 100 - expected_succs);
+  EXPECT_EQ(concurrency, 0);
+  EXPECT_EQ(max_concurrency, 10);
 }
 
 }  // namespace ray
