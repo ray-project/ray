@@ -22,7 +22,7 @@ class SecretEnvVarsPlugin(RuntimeEnvPlugin):
             ValueError: if the validation fails.
         """
 
-        if not _PLUGIN_NAME in runtime_env_dict.keys():
+        if _PLUGIN_NAME not in runtime_env_dict.keys():
             return
 
         secret_env_vars = runtime_env_dict[_PLUGIN_NAME]
@@ -45,7 +45,7 @@ class SecretEnvVarsPlugin(RuntimeEnvPlugin):
             )
 
     def delete_uri(
-        self, uri: str, logger: Optional[logging.Logger] = default_logger
+        self, uri: str, logger: Optional[logging.Logger] = default_logger  # noqa: F821
     ) -> int:
         """Delete URI and return the number of bytes deleted. No-op for this plugin."""
         return 0
@@ -55,20 +55,20 @@ class SecretEnvVarsPlugin(RuntimeEnvPlugin):
 
     async def create(
         self,
-        uri: Optional[str],
-        runtime_env: dict,
-        context: RuntimeEnvContext,
-        logger: logging.Logger = default_logger,
+        uri: Optional[str],  # noqa: F821
+        runtime_env: dict,  # noqa: F821
+        context: RuntimeEnvContext,  # noqa: F821
+        logger: logging.Logger = default_logger,  # noqa: F821
     ) -> int:
         """Create URI and return the number of bytes used. No-op for this plugin."""
         return 0
 
     def modify_context(
         self,
-        uris: List[str],
+        uris: List[str],  # noqa: F821
         runtime_env_dict: dict,
         context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
+        logger: Optional[logging.Logger] = default_logger,  # noqa: F821
     ):
         """Modify context to change worker startup behavior."""
 
