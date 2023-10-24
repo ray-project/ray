@@ -23,6 +23,7 @@
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 // clang-format on
 
 using namespace testing;
@@ -74,10 +75,13 @@ class GcsMonitorServerTest : public ::testing::Test {
   GcsMonitorServerTest()
       : mock_node_manager_(gcs::MockGcsNodeManager()),
         cluster_resource_manager_(io_context_),
-        mock_resource_manager_(std::make_shared<gcs::MockGcsResourceManager>(
-            cluster_resource_manager_, mock_node_manager_)),
         mock_placement_group_manager_(
-            std::make_shared<gcs::MockGcsPlacementGroupManager>(*mock_resource_manager_)),
+            std::make_shared<gcs::MockGcsPlacementGroupManager>()),
+        gcs_autoscaler_state_manager_(mock_node_manager_, *mock_placement_group_manager_),
+        mock_resource_manager_(
+            std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_,
+                                                          mock_node_manager_,
+                                                          gcs_autoscaler_state_manager_)),
         monitor_server_(mock_node_manager_,
                         cluster_resource_manager_,
                         mock_resource_manager_,
@@ -106,8 +110,9 @@ class GcsMonitorServerTest : public ::testing::Test {
   instrumented_io_context io_context_;
   gcs::MockGcsNodeManager mock_node_manager_;
   ClusterResourceManager cluster_resource_manager_;
-  std::shared_ptr<gcs::MockGcsResourceManager> mock_resource_manager_;
   std::shared_ptr<gcs::MockGcsPlacementGroupManager> mock_placement_group_manager_;
+  gcs::MockGcsAutoscalerStateManager gcs_autoscaler_state_manager_;
+  std::shared_ptr<gcs::MockGcsResourceManager> mock_resource_manager_;
   gcs::GcsMonitorServer monitor_server_;
 };
 

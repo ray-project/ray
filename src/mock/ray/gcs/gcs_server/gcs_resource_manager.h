@@ -26,17 +26,13 @@ static GcsNodeManager __mock_gcs_node_manager_(nullptr,
 class MockGcsResourceManager : public GcsResourceManager {
  public:
   using GcsResourceManager::GcsResourceManager;
-  explicit MockGcsResourceManager()
-      : GcsResourceManager(__mock_io_context_,
-                           __mock_cluster_resource_manager_,
-                           __mock_gcs_node_manager_,
-                           NodeID::FromRandom(),
-                           nullptr) {}
   explicit MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager,
-                                  GcsNodeManager &gcs_node_manager)
+                                  GcsNodeManager &gcs_node_manager,
+                                  GcsAutoscalerStateManager &gcs_autoscaler_state_manager)
       : GcsResourceManager(__mock_io_context_,
                            cluster_resource_manager,
                            gcs_node_manager,
+                           gcs_autoscaler_state_manager,
                            NodeID::FromRandom(),
                            nullptr) {}
 
