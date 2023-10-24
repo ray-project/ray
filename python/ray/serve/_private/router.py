@@ -418,6 +418,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     @property
     def _replicas_updated_event(self) -> asyncio.Event:
+        """Lazily construct `asyncio.Event`.
+
+        See comment for self._lazily_initialied_replicas_updated_event.
+        """
         if self._lazily_initialied_replicas_updated_event is None:
             self._lazily_initialied_replicas_updated_event = asyncio.Event()
 
