@@ -26,7 +26,6 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -425,7 +424,10 @@ class PPO(Algorithm):
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
-            if self.config.env_runner_cls is RolloutWorker:
+            if (
+                self.config.env_runner_cls is None
+                or self.config.env_runner_cls == "RolloutWorker"
+            ):
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
@@ -472,7 +474,10 @@ class PPO(Algorithm):
             #  but this serves simply as a placeholder until it is decided on
             #  how to replace the functionalities of the policy.
 
-            if self.config.env_runner_cls is RolloutWorker:
+            if (
+                self.config.env_runner_cls is None
+                or self.config.env_runner_cls.__name__ == "RolloutWorker"
+            ):
                 is_module_trainable = self.workers.local_worker().is_policy_to_train
                 self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(

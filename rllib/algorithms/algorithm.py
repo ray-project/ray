@@ -38,6 +38,7 @@ from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORI
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import (
@@ -46,7 +47,6 @@ from ray.rllib.evaluation.metrics import (
     summarize_episodes,
 )
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
     STEPS_TRAINED_THIS_ITER_COUNTER,  # TODO: Backward compatibility.
@@ -590,7 +590,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Create a dict, mapping ActorHandles to sets of open remote
         # requests (object refs). This way, we keep track, of which actors
-        # inside this Algorithm (e.g. a remote RolloutWorker) have
+        # inside this Algorithm (e.g. a remote EnvRunner) have
         # already been sent how many (e.g. `sample()`) requests.
         self.remote_requests_in_flight: DefaultDict[
             ActorHandle, Set[ray.ObjectRef]
@@ -755,7 +755,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 spaces=getattr(local_worker, "spaces", None),
             )
             # TODO (Sven): Unify the inference of the MARLModuleSpec. Right now,
-            #  we get this from the RolloutWorker's `marl_module_spec` property.
+            #  we get this from the EnvRunner's `marl_module_spec` property.
             #  However, this is hacky (information leak) and should not remain this
             #  way. For other EnvRunner classes (that don't have this property),
             #  Algorithm should infer this itself.
@@ -1168,9 +1168,9 @@ class Algorithm(Trainable, AlgorithmBase):
         """Evaluates current policy under `evaluation_config` settings.
 
         Uses the AsyncParallelRequests manager to send frequent `sample.remote()`
-        requests to the evaluation RolloutWorkers and collect the results of these
+        requests to the evaluation EnvRunners and collect the results of these
         calls. Handles worker failures (or slowdowns) gracefully due to the asynch'ness
-        and the fact that other eval RolloutWorkers can thus cover the workload.
+        and the fact that other eval EnvRunners can thus cover the workload.
 
         Important Note: This will replace the current `self.evaluate()` method as the
         default in the future.
@@ -1361,9 +1361,9 @@ class Algorithm(Trainable, AlgorithmBase):
         """Evaluates current MARLModule given `evaluation_config` settings.
 
         Uses the AsyncParallelRequests manager to send frequent `sample.remote()`
-        requests to the evaluation RolloutWorkers and collect the results of these
+        requests to the evaluation EnvRunners and collect the results of these
         calls. Handles worker failures (or slowdowns) gracefully due to the asynch'ness
-        and the fact that other eval RolloutWorkers can thus cover the workload.
+        and the fact that other eval EnvRunners can thus cover the workload.
 
         Important Note: This will replace the current `self.evaluate()` method (as well
         as the experimental `self._evaluate_async()`, which is only for RolloutWorkers)
@@ -1541,7 +1541,7 @@ class Algorithm(Trainable, AlgorithmBase):
     def restore_workers(self, workers: WorkerSet) -> None:
         """Try syncing previously failed and restarted workers with local, if necessary.
 
-        Algorithms that use custom RolloutWorkers may override this method to
+        Algorithms that use custom EnvRunners may override this method to
         disable default, and create custom restoration logics. Note that "restoring"
         does not include the actual restarting process, but merely what should happen
         after such a restart of a (previously failed) worker.
@@ -1596,7 +1596,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """Default single iteration logic of an algorithm.
 
         - Collect on-policy samples (SampleBatches) in parallel using the
-          Algorithm's RolloutWorkers (@ray.remote).
+          Algorithm's EnvRunners (@ray.remote).
         - Concatenate collected SampleBatches into one train batch.
         - Note that we may have more than one policy in the multi-agent case:
           Call the different policies' `learn_on_batch` (simple optimizer) OR
@@ -2559,7 +2559,7 @@ class Algorithm(Trainable, AlgorithmBase):
     def _sync_filters_if_needed(
         self,
         *,
-        central_worker: RolloutWorker,
+        central_worker: EnvRunner,
         workers: WorkerSet,
         config: AlgorithmConfig,
     ) -> None:
@@ -3071,7 +3071,8 @@ class Algorithm(Trainable, AlgorithmBase):
             self._evaluate_async_with_env_runner
             if (
                 self.config.enable_async_evaluation
-                and self.config.env_runner_cls is not RolloutWorker
+                and self.config.env_runner_cls is not None
+                and self.config.env_runner_cls.__name__ != "RolloutWorker"
             )
             else self._evaluate_async
             if self.config.enable_async_evaluation

@@ -31,7 +31,6 @@ from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -313,7 +312,7 @@ class AlgorithmConfig(_Config):
         self._is_atari = None
 
         # `self.rollouts()`
-        self.env_runner_cls = RolloutWorker
+        self.env_runner_cls = None
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
         self.sample_collector = SimpleListCollector
@@ -739,7 +738,7 @@ class AlgorithmConfig(_Config):
         if (
             self.evaluation_interval
             and self.env_runner_cls is not None
-            and self.env_runner_cls is not RolloutWorker
+            and self.env_runner_cls.__name__ != "RolloutWorker"
             and not self.enable_async_evaluation
         ):
             raise ValueError(
@@ -2087,7 +2086,7 @@ class AlgorithmConfig(_Config):
             output_max_file_size: Max output file size (in bytes) before rolling over
                 to a new file.
             offline_sampling: Whether sampling for the Algorithm happens via
-                reading from offline data. If True, RolloutWorkers will NOT limit the
+                reading from offline data. If True, EnvRunners will NOT limit the
                 number of collected batches within the same `sample()` call based on
                 the number of sub-environments within the worker (no sub-environments
                 present).
@@ -2520,7 +2519,7 @@ class AlgorithmConfig(_Config):
                 a vectorized env) throws any error during env stepping, the
                 Sampler will try to restart the faulty sub-environment. This is done
                 without disturbing the other (still intact) sub-environment and without
-                the RolloutWorker crashing.
+                the EnvRunner crashing.
             num_consecutive_worker_failures_tolerance: The number of consecutive times
                 a rollout worker (or evaluation worker) failure is tolerated before
                 finally crashing the Algorithm. Only useful if either
@@ -2838,10 +2837,9 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                EnvRunner (usually a RolloutWorker). If not provided, will try to infer
-                from `env`. Otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be inferred, will
-                raise an error.
+                EnvRunner. If not provided, will try to infer from `env`. Otherwise
+                from `self.observation_space` and `self.action_space`. If no
+                information on spaces can be inferred, will raise an error.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
 
