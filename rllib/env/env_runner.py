@@ -34,7 +34,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """Initializes an EnvRunner instance.
 
         Args:
-            config: The config to use to setup this EnvRunner.
+            config: The AlgorithmConfig to use to setup this EnvRunner.
             **kwargs: Forward compatibility kwargs.
         """
         self.config = config

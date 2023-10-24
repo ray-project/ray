@@ -26,6 +26,7 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -395,10 +396,6 @@ class UpdateKL:
 
 
 class PPO(Algorithm):
-    @override(Algorithm)
-    def setup(self, config: AlgorithmConfig):
-        super().setup(config=config)
-
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
@@ -410,6 +407,7 @@ class PPO(Algorithm):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
+
             from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 
             return PPOTorchPolicy
@@ -427,7 +425,7 @@ class PPO(Algorithm):
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
-            if self.config.env_runner_cls.__name__ == "RolloutWorker":
+            if self.config.env_runner_cls is RolloutWorker:
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
@@ -455,11 +453,6 @@ class PPO(Algorithm):
                     postprocessed_episodes
                 )
 
-                # TODO (simon): Check how this works for cases when infos are
-                # provided. Traditionally, SampleBatches in Training do not carry
-                # infos and conversion also sometimes errors out.
-                # del train_batch[SampleBatch.INFOS]
-
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -474,22 +467,20 @@ class PPO(Algorithm):
             #  this back and forth communication between driver and the remote
             #  learner actors.
             # TODO (sven): What's the plan for multi-agent setups when the
-            # policy is gone?
+            #  policy is gone?
             # TODO (simon): The default method has already this functionality,
-            # but this serves simply as a placeholder until it is decided on
-            # how to replace the functionalities of the policy.
+            #  but this serves simply as a placeholder until it is decided on
+            #  how to replace the functionalities of the policy.
 
-            # is_module_trainable = self.workers.local_worker().is_policy_to_train
-            # self.learner_group.set_is_module_trainable(is_module_trainable)
-            weights = self.learner_group.get_weights()["default_policy"]
-            print(f"LearnerGroup: Weights before update {weights[0][0][0]}")
+            if self.config.env_runner_cls is RolloutWorker:
+                is_module_trainable = self.workers.local_worker().is_policy_to_train
+                self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
             )
-            weights = self.learner_group.get_weights()["default_policy"]
-            print(f"LearnerGroup: Weights after update {weights[0][0][0]}")
+
         elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
@@ -521,13 +512,6 @@ class PPO(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
-        weights_remote = self.workers.foreach_worker(
-            lambda w: w.module.weights[0][0][0]
-        )
-        print("Remote worker weigths before update:")
-        for i, weight in enumerate(weights_remote):
-            print(f"{i}: {weight}")
-
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
                 from_worker_or_learner_group = None
@@ -543,13 +527,8 @@ class PPO(Algorithm):
                 weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
-        weights_remote = self.workers.foreach_worker(
-            lambda w: w.module.weights[0][0][0]
-        )
-        print("Remote worker weigths after update:")
-        for i, weight in enumerate(weights_remote):
-            print(f"{i}: {weight}")
         if self.config._enable_learner_api:
+
             kl_dict = {}
             if self.config.use_kl_loss:
                 for pid in policies_to_update:
@@ -618,8 +597,8 @@ class PPO(Algorithm):
 
         # Update global vars on local worker as well.
         # TODO (simon): At least in RolloutWorker obsolete I guess as called in
-        # `sync_weights()` called above if remote workers. Can we call this
-        # where `set_weights()` is called on the local_worker?
+        #  `sync_weights()` called above if remote workers. Can we call this
+        #  where `set_weights()` is called on the local_worker?
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
@@ -634,7 +613,7 @@ class PPO(Algorithm):
         # episodes = [episode for episode_list in episodes for episode in episode_list]
         for episode in episodes:
             # TODO (sven): Calling 'module' on the 'EnvRunner' only works
-            # for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
+            #  for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
             postprocessed_episodes.append(
                 compute_gae_for_episode(
                     episode, self.config, self.workers.local_worker().module

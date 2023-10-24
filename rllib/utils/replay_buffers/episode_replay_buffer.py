@@ -421,7 +421,8 @@ class _Episode:
         assert np.all(episode_chunk.observations[0] == self.observations[-1])
         # Make sure the timesteps match (our last t should be the same as their first).
         assert self.t == episode_chunk.t_started
-        # Pop out our end.
+        # Pop out our last observations and infos (as these are identical
+        # to the first obs and infos in the next episode).
         self.observations.pop()
         self.infos.pop()
 
@@ -448,7 +449,7 @@ class _Episode:
         self,
         *,
         initial_observation,
-        initial_info,
+        initial_info=None,
         initial_state=None,
         initial_render_image=None,
     ):
@@ -457,6 +458,8 @@ class _Episode:
         # Assume that this episode is completely empty and has not stepped yet.
         # Leave self.t (and self.t_started) at 0.
         assert self.t == self.t_started == 0
+
+        initial_info = initial_info or {}
 
         self.observations.append(initial_observation)
         self.infos.append(initial_info)
@@ -470,8 +473,8 @@ class _Episode:
         observation,
         action,
         reward,
-        info,
         *,
+        info=None,
         state=None,
         is_terminated=False,
         is_truncated=False,
@@ -480,6 +483,8 @@ class _Episode:
     ):
         # Cannot add data to an already done episode.
         assert not self.is_done
+
+        info = info or {}
 
         self.observations.append(observation)
         self.actions.append(action)
@@ -562,11 +567,8 @@ class _Episode:
         )
 
     def to_sample_batch(self):
-        """Converts an episode to a 'SampleBatch'.
+        """Converts an episode to a SampleBatch object."""
 
-        Note that, if the ' SampleBatch API' will be depcrecated
-        this method will be deprecated, too.
-        """
         # If the episode is not done, yet, we need to convert
         # to arrays first.
         if not self.is_done:
@@ -594,7 +596,7 @@ class _Episode:
     @staticmethod
     def from_sample_batch(batch):
         # TODO (simon): This is very ugly, but right now
-        # we can only do it according to the exclusion principle.
+        #  we can only do it according to the exclusion principle.
         extra_model_output_keys = []
         for k in batch.keys():
             if k not in [

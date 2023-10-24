@@ -16,7 +16,6 @@ from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 
-# TODO (simon): Make framework-agnostic.
 _, tf, _ = try_import_tf()
 
 

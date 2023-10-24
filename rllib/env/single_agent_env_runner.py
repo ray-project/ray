@@ -20,15 +20,15 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorStructType, TensorType
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
-_, tf, _ = try_import_tf()
-torch, nn = try_import_torch()
-
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
     # TODO (sven): This gives a tricky circular import that goes
     # deep into the library. We have to see, where to dissolve it.
     from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
+
+_, tf, _ = try_import_tf()
+torch, nn = try_import_torch()
 
 
 @ExperimentalAPI
@@ -214,7 +214,7 @@ class SingleAgentEnvRunner(EnvRunner):
             f"timesteps ...",
         )
 
-        print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
+        #print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
@@ -282,7 +282,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
-                        infos[i]["final_info"],
+                        info=infos[i]["final_info"],
                         state=s,
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
@@ -304,7 +304,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         obs[i],
                         actions[i],
                         rewards[i],
-                        infos[i],
+                        info=infos[i],
                         state=s,
                         extra_model_output=extra_model_output,
                     )
@@ -428,7 +428,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
-                        infos[i]["final_info"],
+                        info=infos[i]["final_info"],
                         state=s,
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
@@ -461,7 +461,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         obs[i],
                         actions[i],
                         rewards[i],
-                        infos[i],
+                        info=infos[i],
                         state=s,
                         render_image=render_images[i],
                         extra_model_output=extra_model_output,
@@ -515,7 +515,7 @@ class SingleAgentEnvRunner(EnvRunner):
         weights = self._convert_to_tensor(weights)
         self.module.set_state(weights)
         print(f"EnvRunner {self.worker_index}: updated")
-        print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
+        #print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
 
         # Check, if an update happened since the last call. See
         # `Algorithm._evaluate_async_with_env_runner`.

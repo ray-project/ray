@@ -31,6 +31,7 @@ from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -312,7 +313,7 @@ class AlgorithmConfig(_Config):
         self._is_atari = None
 
         # `self.rollouts()`
-        self.env_runner_cls = None
+        self.env_runner_cls = RolloutWorker
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
         self.sample_collector = SimpleListCollector
@@ -734,17 +735,11 @@ class AlgorithmConfig(_Config):
     def validate(self) -> None:
         """Validates all values in this config."""
 
-        # Check, if `env_runner_cls` is provided. If not set by
-        # default to traditional `RolloutWorker`.
-        if self.env_runner_cls is None:
-            from ray.rllib.evaluation.rollout_worker import RolloutWorker
-
-            self.env_runner_cls = RolloutWorker
-
         # Validate rollout settings.
         if (
             self.evaluation_interval
-            and self.env_runner_cls.__name__ != "RolloutWorker"
+            and self.env_runner_cls is not None
+            and self.env_runner_cls is not RolloutWorker
             and not self.enable_async_evaluation
         ):
             raise ValueError(
@@ -2459,8 +2454,6 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
-        # deprecated
-        worker_cls=None,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2485,13 +2478,6 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if worker_cls is not None:
-            deprecation_warning(
-                old="AlgorithmConfig.debugging(worker_cls=..)",
-                new="AlgorithmConfig.rollouts(env_runner_cls=...)",
-                error=True,
-            )
-
         if logger_creator is not NotProvided:
             self.logger_creator = logger_creator
         if logger_config is not NotProvided:
