@@ -119,6 +119,8 @@ void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
   GetClusterResourceConstraints(state);
 }
 
+void GcsAutoscalerStateManager::GetPlacementGroupLoad() {}
+
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   // Get the gang resource requests from the placement group load.

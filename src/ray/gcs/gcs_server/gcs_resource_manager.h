@@ -154,13 +154,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \param data The resource report.
   void UpdateFromResourceCommand(const rpc::ResourcesData &data);
 
-  /// Update the placement group load information so that it will be reported through
-  /// heartbeat.
-  ///
-  /// \param placement_group_load placement group load protobuf.
-  void UpdatePlacementGroupLoad(
-      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
-
   /// Update the resource loads.
   ///
   /// \param data The resource loads reported by raylet.
@@ -171,14 +164,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \returns The mapping from node id to latest resource report.
   const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
 
-  /// Get the placement group load info. This is used for autoscaler.
-  const std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const {
-    if (placement_group_load_.has_value()) {
-      return placement_group_load_.value();
-    }
-    return nullptr;
-  }
-
  private:
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.
@@ -187,8 +172,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
 
-  /// Placement group load information that is used for autoscaler.
-  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   /// The resources changed listeners.
   std::vector<std::function<void()>> resources_changed_listeners_;
 

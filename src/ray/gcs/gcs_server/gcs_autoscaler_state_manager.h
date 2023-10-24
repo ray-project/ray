@@ -66,6 +66,10 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   void OnNodeDead(const NodeID &node) { node_resource_info_.erase(node); }
 
+  std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const {
+    return gcs_placement_group_manager_.GetPlacementGroupLoad();
+  }
+
   const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
       &GetNodeResourceInfo() const {
     return node_resource_info_;

@@ -256,10 +256,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
           RAY_LOG_EVERY_MS(INFO, 10000) << "Placement group manager does not exist.";
           return;
         }
-        // TODO(rickyx): We should move this, no other callers other than autoscaler
-        // use this info.
-        gcs_resource_manager_->UpdatePlacementGroupLoad(
-            gcs_placement_group_manager_->GetPlacementGroupLoad());
         // To avoid scheduling exhaution in some race conditions.
         // Note that we don't currently have a known race condition that requires this,
         // but we added as a safety check. https://github.com/ray-project/ray/pull/18419

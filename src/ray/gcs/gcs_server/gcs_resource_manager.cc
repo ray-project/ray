@@ -222,10 +222,11 @@ void GcsResourceManager::HandleGetAllResourceUsage(
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
       }
     }
+
+    auto placement_group_load = gcs_autoscaler_state_manager_.GetPlacementGroupLoad();
     // Update placement group load to heartbeat batch.
     // This is updated only one per second.
-    if (placement_group_load_.has_value()) {
-      auto placement_group_load = placement_group_load_.value();
+    if (placement_group_load) {
       auto placement_group_load_proto = batch.mutable_placement_group_load();
       placement_group_load_proto->CopyFrom(*placement_group_load.get());
     }
@@ -331,12 +332,6 @@ void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   node_resource_usages_.erase(node_id);
   cluster_resource_manager_.RemoveNode(scheduling::NodeID(node_id.Binary()));
   num_alive_nodes_--;
-}
-
-void GcsResourceManager::UpdatePlacementGroupLoad(
-    const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
-  RAY_CHECK(placement_group_load != nullptr);
-  placement_group_load_ = absl::make_optional(placement_group_load);
 }
 
 std::string GcsResourceManager::DebugString() const {
