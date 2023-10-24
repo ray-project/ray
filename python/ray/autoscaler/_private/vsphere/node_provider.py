@@ -89,15 +89,9 @@ class VsphereNodeProvider(NodeProvider):
         existing and in the frozen state. If the frozen VM is existing and off, this
         function will also help to power on the frozen VM and wait until it is frozen.
         """
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.VirtualMachine], frozen_vm_name
         )
-        if vm is None:
-            raise ValueError(
-                "The frozen VM {} doesn't exist on vSphere, please contact the VI "
-                "admin".format(frozen_vm_name)
-            )
-        logger.info(f"Found frozen VM with name: {vm._moId}")
 
         if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
             logger.debug(f"Frozen VM {vm._moId} is off. Powering it ON")
@@ -188,8 +182,8 @@ class VsphereNodeProvider(NodeProvider):
     def external_ip(self, node_id):
         # Return the external IP of the VM
         # Fetch vSphere VM object
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_moid(
-            [vim.VirtualMachine], node_id
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.VirtualMachine], obj_id=node_id
         )
         # Get the external IP address of this VM
         for ipaddr in vm.guest.net[0].ipAddress:
@@ -339,7 +333,7 @@ class VsphereNodeProvider(NodeProvider):
                 break
 
     def get_frozen_vm_obj(self):
-        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.VirtualMachine], self.frozen_vm_name
         )
         return vm
@@ -375,7 +369,7 @@ class VsphereNodeProvider(NodeProvider):
         # If resource pool is not provided in the config yaml, then the resource pool
         # of the frozen VM will also be the resource pool of the new VM.
         resource_pool = (
-            self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+            self.pyvmomi_sdk_provider.get_pyvmomi_obj(
                 [vim.ResourcePool], node_config["resource_pool"]
             )
             if "resource_pool" in node_config and node_config["resource_pool"]
@@ -384,7 +378,7 @@ class VsphereNodeProvider(NodeProvider):
         # If datastore is not provided in the config yaml, then the datastore
         # of the frozen VM will also be the resource pool of the new VM.
         datastore = (
-            self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+            self.pyvmomi_sdk_provider.get_pyvmomi_obj(
                 [vim.Datastore], node_config["datastore"]
             )
             if "datastore" in node_config and node_config["datastore"]
@@ -413,7 +407,7 @@ class VsphereNodeProvider(NodeProvider):
         threading.Thread(target=self.tag_vm, args=(vm_name_target, tags)).start()
         WaitForTask(parent_vm.InstantClone_Task(spec=instant_clone_spec))
 
-        cloned_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+        cloned_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.VirtualMachine], vm_name_target
         )
 
@@ -448,7 +442,7 @@ class VsphereNodeProvider(NodeProvider):
         exception_happened = False
         vm_names = []
 
-        res_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+        res_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.ResourcePool], node_config["frozen_vm"]["resource_pool"]
         )
         # In vSphere, for any user-created resource pool, the cluster object is the
@@ -506,13 +500,9 @@ class VsphereNodeProvider(NodeProvider):
                 "The datastore name must be provided when deploying frozen"
                 "VM from OVF"
             )
-        datastore_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+        datastore_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.Datastore], datastore_name
         )
-        if not datastore_mo:
-            raise ValueError(
-                f"Cannot find the vSphere datastore by name {datastore_name}"
-            )
         datastore_id = datastore_mo._moId
         if node_config.get("frozen_vm").get("resource_pool"):
             rp_filter_spec = ResourcePool.FilterSpec(
@@ -534,13 +524,9 @@ class VsphereNodeProvider(NodeProvider):
                     "The cluster name must be provided when deploying a single frozen"
                     " VM from OVF"
                 )
-            cluster_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+            cluster_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
                 [vim.ClusterComputeResource], cluster_name
             )
-            if not cluster_mo:
-                raise ValueError(
-                    f"Cannot find the vSphere cluster by name {cluster_name}"
-                )
             node_config["host_id"] = cluster_mo.host[0]._moId
             resource_pool_id = cluster_mo.resourcePool._moId
 
@@ -627,9 +613,7 @@ class VsphereNodeProvider(NodeProvider):
 
         # Get the created vm object
         vm = self.get_vm(result.resource_id.id)
-        vm_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
-            [vim.VirtualMachine], vm.name
-        )
+        vm_mo = self.pyvmomi_sdk_provider.get_pyvmomi_obj([vim.VirtualMachine], vm.name)
         if wait_until_frozen:
             self.wait_until_vm_is_frozen(vm_mo)
 
@@ -669,17 +653,9 @@ class VsphereNodeProvider(NodeProvider):
             if "schedule_policy" in self.vsphere_config
             else ""
         )
-        self.frozen_vms_resource_pool = (
-            self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
-                [vim.ResourcePool], self.frozen_vm_resource_pool_name
-            )
+        self.frozen_vms_resource_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.ResourcePool], self.frozen_vm_resource_pool_name
         )
-
-        if self.frozen_vms_resource_pool is None:
-            raise RuntimeError(
-                f"Resource Pool {self.frozen_vm_resource_pool_name} could not be found."
-            )
-
         # Make all frozen vms on resource pool are power on and frozen
         self.check_frozen_vms_status(self.frozen_vms_resource_pool)
 

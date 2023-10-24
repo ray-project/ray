@@ -66,6 +66,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   options.name = call_options.name;
   options.resources = call_options.resources;
   options.serialized_runtime_env_info = call_options.serialized_runtime_env_info;
+  options.generator_backpressure_num_objects = -1;
   std::vector<rpc::ObjectReference> return_refs;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
     auto status = core_worker.SubmitActorTask(invocation.actor_id,

@@ -78,8 +78,9 @@ class BlockOutputBuffer:
             target_num_rows = max(1, target_num_rows)
 
             num_rows = min(target_num_rows, block.num_rows())
-            block_to_yield = block.slice(0, num_rows)
-            block_remainder = block.slice(num_rows, block.num_rows())
+            # Use copy=True to avoid holding the entire block in memory.
+            block_to_yield = block.slice(0, num_rows, copy=True)
+            block_remainder = block.slice(num_rows, block.num_rows(), copy=True)
 
         self._buffer = DelegatingBlockBuilder()
         if block_remainder is not None:
