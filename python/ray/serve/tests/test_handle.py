@@ -91,7 +91,7 @@ async def test_async_handle_serializable(serve_instance):
             return await a.call_handle.remote(self._handle)
 
     app_handle = serve.run(Ingress.bind(f.bind()))
-    assert ray.get(app_handle.remote()) == "hello"
+    assert app_handle.remote().result() == "hello"
 
 
 def test_sync_handle_serializable(serve_instance):
@@ -103,7 +103,7 @@ def test_sync_handle_serializable(serve_instance):
 
     @ray.remote
     def task(handle):
-        return ray.get(handle.remote())
+        return handle.remote().result()
 
     # Test pickling via ray.remote()
     result_ref = task.remote(handle)
@@ -189,14 +189,14 @@ def test_handle_option_chaining(serve_instance):
 
     handle1 = serve.run(MultiMethod.bind())
     metrics = handle1.request_counter
-    assert ray.get(handle1.remote()) == "__call__"
+    assert handle1.remote().result() == "__call__"
 
     handle2 = handle1.options(method_name="method_a")
-    assert ray.get(handle2.remote()) == "method_a"
+    assert handle2.remote().result() == "method_a"
     assert handle2.request_counter == metrics
 
     handle3 = handle1.options(method_name="method_b")
-    assert ray.get(handle3.remote()) == "method_b"
+    assert handle3.remote().result() == "method_b"
     assert handle3.request_counter == metrics
 
 
@@ -340,7 +340,7 @@ def test_call_function_with_argument(serve_instance):
             return await (await self._h.remote(name))
 
     h = serve.run(Ingress.bind(echo.bind()))
-    assert ray.get(h.remote("sned")) == "Hi sned"
+    assert h.remote("sned").result() == "Hi sned"
 
 
 def test_handle_options_with_same_router(serve_instance):

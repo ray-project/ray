@@ -51,7 +51,7 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
             return res
 
     handle = serve.run(Handle.bind())
-    rotation_config = ray.get(handle.remote())
+    rotation_config = handle.remote().result()
     assert rotation_config["max_bytes"] == max_bytes
     assert rotation_config["backup_count"] == backup_count
 
@@ -122,7 +122,7 @@ def test_user_logs(serve_instance):
 
     f = io.StringIO()
     with redirect_stderr(f):
-        replica_tag, log_file_name = ray.get(handle.remote())
+        replica_tag, log_file_name = handle.remote().result()
 
         def check_stderr_log(replica_tag: str):
             s = f.getvalue()
@@ -159,7 +159,7 @@ def test_disable_access_log(serve_instance):
 
     f = io.StringIO()
     with redirect_stderr(f):
-        replica_tag = ray.get(handle.remote())
+        replica_tag = handle.remote().result()
 
         for _ in range(10):
             time.sleep(0.1)

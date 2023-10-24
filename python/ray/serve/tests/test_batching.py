@@ -31,16 +31,11 @@ def test_batching(serve_instance):
 
     handle = serve.run(BatchingExample.bind())
 
-    future_list = []
-    for _ in range(20):
-        f = handle.remote(1)
-        future_list.append(f)
-
-    counter_result = ray.get(future_list)
+    result_list = [handle.remote(1) for _ in range(20)]
     # since count is only updated per batch of queries
     # If there atleast one __call__ fn call with batch size greater than 1
     # counter result will always be less than 20
-    assert max(counter_result) < 20
+    assert max([r.result() for r in result_list]) < 20
 
 
 @pytest.mark.asyncio
@@ -94,7 +89,7 @@ def test_batching_exception(serve_instance):
     handle = serve.run(NoListReturned.bind())
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        assert ray.get(handle.remote(1))
+        assert handle.remote(1).result()
 
 
 @pytest.mark.asyncio

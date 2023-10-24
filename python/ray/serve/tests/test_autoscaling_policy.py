@@ -756,7 +756,7 @@ def test_cold_start_time(serve_instance):
     wait_for_condition(check_running)
 
     start = time.time()
-    result = ray.get(handle.remote())
+    result = handle.remote().result()
     cold_start_time = time.time() - start
     assert cold_start_time < 3
     print(

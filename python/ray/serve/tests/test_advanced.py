@@ -94,7 +94,7 @@ def test_parallel_start(serve_instance):
             return "Ready"
 
     handle = serve.run(LongStartingServable.bind())
-    ray.get(handle.remote(), timeout=10)
+    handle.remote().result(timeout_s=10)
 
 
 if __name__ == "__main__":
