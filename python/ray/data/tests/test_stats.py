@@ -1180,7 +1180,7 @@ def test_stats_actor_metrics():
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
 
-    assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+    assert "dataset" + ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
 
 
 def test_dataset_name():
