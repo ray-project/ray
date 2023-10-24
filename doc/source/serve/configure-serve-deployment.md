@@ -41,7 +41,7 @@ Use the `.options()` method to modify deployment parameters on an already-define
 
 ### Specify parameters through Serve config file
 
-Lastly, you can configure individual deployments in each application through the Serve config file. The recommended way to deploy and update your applications in production is through the Serve Config file. Learn more about how to use the Serve Config in the [production guide](https://docs.ray.io/en/latest/serve/production-guide/config.html).
+In production, we recommend configuring individual deployments through the Serve config file. Learn more about how to use the Serve Config in the [production guide](https://docs.ray.io/en/latest/serve/production-guide/config.html).
 
 ```yaml
 applications:
