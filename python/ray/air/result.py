@@ -1,9 +1,9 @@
 import os
+import io
 import json
 import pandas as pd
 import pyarrow
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import ray
@@ -121,19 +121,31 @@ class Result:
         return self._repr(indent=0)
 
     @staticmethod
-    def _validate_trial_dir(trial_dir: Union[str, os.PathLike]):
-        """Check the validity of the local trial folder."""
+    def _validate_trial_dir(
+        trial_dir: Union[str, os.PathLike], storage_filesystem: pyarrow.fs.FileSystem
+    ):
+        """Check the validity of the local or remote trial folder."""
+        # TODO(ahmed-mahran): Fix circular dependency.
+        from ray.train._internal.storage import _exists_at_fs_path
 
-        # TODO(yunxuanx): Add more checks for cloud storage restoration
-        if not os.path.exists(trial_dir):
-            raise RuntimeError(f"Trial folder {trial_dir} doesn't exists!")
+        if not _exists_at_fs_path(storage_filesystem, trial_dir):
+            raise RuntimeError(f"Trial folder {trial_dir} doesn't exist!")
 
     @classmethod
-    def from_path(cls, path: Union[str, os.PathLike]) -> "Result":
-        """Restore a Result object from local trial directory.
+    def from_path(
+        cls,
+        path: Union[str, os.PathLike],
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+    ) -> "Result":
+        """Restore a Result object from local or remote trial directory.
 
         Args:
-            path: the path to a local trial directory.
+            path: A storage path or URI of the trial directory. (ex: s3://bucket/path
+                or /tmp/ray_results)
+            storage_filesystem: A custom filesystem to use. If not provided,
+                this will be auto-resolved by pyarrow. If provided, the path
+                is assumed to be prefix-stripped already, and must be a valid path
+                on the filesystem.
 
         Returns:
             A :py:class:`Result` object of that trial.
@@ -141,22 +153,23 @@ class Result:
         # TODO(justinvyu): Fix circular dependency.
         from ray.train import Checkpoint
         from ray.train.constants import CHECKPOINT_DIR_NAME
+        from ray.train._internal.storage import get_fs_and_path, _exists_at_fs_path
 
-        cls._validate_trial_dir(path)
-
-        local_path = Path(path)
-        # TODO(yunxuanx): restoration from cloud storage
+        fs, fs_path = get_fs_and_path(path, storage_filesystem)
+        cls._validate_trial_dir(fs_path, fs)
 
         # Restore metrics from result.json
-        result_json_file = local_path / EXPR_RESULT_FILE
-        progress_csv_file = local_path / EXPR_PROGRESS_FILE
-        if result_json_file.exists():
-            with open(result_json_file, "r") as f:
-                json_list = [json.loads(line) for line in f if line]
+        result_json_file = os.path.join(fs_path, EXPR_RESULT_FILE)
+        progress_csv_file = os.path.join(fs_path, EXPR_PROGRESS_FILE)
+        if _exists_at_fs_path(fs, result_json_file):
+            with fs.open_input_stream(result_json_file) as f:
+                lines = f.readall().decode("utf-8").split("\n")
+                json_list = [json.loads(line) for line in lines if line]
                 metrics_df = pd.json_normalize(json_list, sep="/")
         # Fallback to restore from progress.csv
-        elif progress_csv_file.exists():
-            metrics_df = pd.read_csv(progress_csv_file)
+        elif _exists_at_fs_path(fs, progress_csv_file):
+            with fs.open_input_stream(progress_csv_file) as f:
+                metrics_df = pd.read_csv(io.StringIO(f.readall().decode("utf-8")))
         else:
             raise RuntimeError(
                 f"Failed to restore the Result object: Neither {EXPR_RESULT_FILE}"
@@ -166,23 +179,30 @@ class Result:
         latest_metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
 
         # Restore all checkpoints from the checkpoint folders
-        checkpoint_dirs = sorted(local_path.glob("checkpoint_*"))
+        checkpoint_dirs = sorted(
+            [
+                item.base_name
+                for item in fs.get_file_info(pyarrow.fs.FileSelector(fs_path))
+                if item.type == pyarrow.fs.FileType.Directory
+                and item.base_name.startswith("checkpoint_")
+            ]
+        )
 
         if checkpoint_dirs:
             checkpoints = [
-                Checkpoint.from_directory(checkpoint_dir)
+                Checkpoint(os.path.join(fs_path, checkpoint_dir), fs)
                 for checkpoint_dir in checkpoint_dirs
             ]
 
             metrics = []
             for checkpoint_dir in checkpoint_dirs:
                 metrics_corresponding_to_checkpoint = metrics_df[
-                    metrics_df[CHECKPOINT_DIR_NAME] == checkpoint_dir.name
+                    metrics_df[CHECKPOINT_DIR_NAME] == checkpoint_dir
                 ]
                 if metrics_corresponding_to_checkpoint.empty:
                     logger.warning(
                         "Could not find metrics corresponding to "
-                        f"{checkpoint_dir.name}. These will default to an empty dict."
+                        f"{checkpoint_dir}. These will default to an empty dict."
                     )
                 metrics.append(
                     {}
@@ -199,16 +219,17 @@ class Result:
 
         # Restore the trial error if it exists
         error = None
-        error_file_path = local_path / EXPR_ERROR_PICKLE_FILE
-        if error_file_path.exists():
-            error = ray.cloudpickle.load(open(error_file_path, "rb"))
+        error_file_path = os.path.join(fs_path, EXPR_ERROR_PICKLE_FILE)
+        if _exists_at_fs_path(fs, error_file_path):
+            with fs.open_input_stream(error_file_path) as f:
+                error = ray.cloudpickle.load(f)
 
-        return Result(
+        return ray.air.result.Result(
             metrics=latest_metrics,
             checkpoint=latest_checkpoint,
-            _local_path=local_path,
-            _remote_path=None,
-            _storage_filesystem=pyarrow.fs.LocalFileSystem(),
+            _local_path=path if isinstance(fs, pyarrow.fs.LocalFileSystem) else None,
+            _remote_path=fs_path,
+            _storage_filesystem=fs,
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
             error=error,

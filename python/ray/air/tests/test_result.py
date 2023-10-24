@@ -1,4 +1,5 @@
 import os
+import pyarrow
 import pytest
 
 import ray
@@ -11,6 +12,7 @@ from ray.train.base_trainer import TrainingFailedError
 from ray.tune import TuneConfig, Tuner
 
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.air.tests.test_remote_storage_hdfs import setup_hdfs
 
 
 @pytest.fixture
@@ -27,11 +29,14 @@ def build_dummy_trainer(configs):
             # Do some random reports in between checkpoints.
             train.report({"metric_a": -100, "metric_b": -100})
 
-            with create_dict_checkpoint({"iter": i}) as checkpoint:
-                train.report(
-                    metrics={"metric_a": i, "metric_b": -i},
-                    checkpoint=checkpoint,
-                )
+            if ray.train.get_context().get_world_rank() == 0:
+                with create_dict_checkpoint({"iter": i}) as checkpoint:
+                    train.report(
+                        metrics={"metric_a": i, "metric_b": -i},
+                        checkpoint=checkpoint,
+                    )
+            else:
+                train.report(metrics={"metric_a": i, "metric_b": -i})
         raise RuntimeError()
 
     trainer = TorchTrainer(
@@ -56,13 +61,21 @@ def build_dummy_tuner(configs):
     )
 
 
+@pytest.mark.parametrize("storage", ["local", "hdfs"])
 @pytest.mark.parametrize("mode", ["trainer", "tuner"])
-def test_result_restore(ray_start_4_cpus, monkeypatch, tmpdir, mode):
+def test_result_restore(
+    ray_start_4_cpus, setup_hdfs, monkeypatch, tmpdir, storage, mode
+):
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir / "ray_results"))
 
     NUM_ITERATIONS = 5
     NUM_CHECKPOINTS = 3
-    storage_path = str(tmpdir)
+    if storage == "local":
+        storage_path = str(tmpdir)
+    elif storage == "hdfs":
+        hostname, port = setup_hdfs
+        storage_path = f"hdfs://{hostname}:{port}{str(tmpdir)}"
+
     exp_name = "test_result_restore"
 
     configs = {
@@ -82,12 +95,15 @@ def test_result_restore(ray_start_4_cpus, monkeypatch, tmpdir, mode):
 
     # Find the trial directory to restore
     exp_dir = os.path.join(storage_path, exp_name)
-    for dirname in os.listdir(exp_dir):
-        if dirname.startswith("TorchTrainer"):
-            trial_dir = os.path.join(exp_dir, dirname)
+    fs, fs_exp_dir = pyarrow.fs.FileSystem.from_uri(exp_dir)
+    for item in fs.get_file_info(pyarrow.fs.FileSelector(fs_exp_dir)):
+        if item.type == pyarrow.fs.FileType.Directory and item.base_name.startswith(
+            "TorchTrainer"
+        ):
+            trial_dir = os.path.join(exp_dir, item.base_name)
             break
 
-    # [1] Restore from local path
+    # [1] Restore from path
     result = Result.from_path(trial_dir)
 
     # Check if we restored all checkpoints
@@ -115,8 +131,8 @@ def test_result_restore(ray_start_4_cpus, monkeypatch, tmpdir, mode):
     # Check if we properly restored errors
     assert isinstance(result.error, RuntimeError)
 
-    # [2] Restore from local path without result.json
-    os.remove(f"{trial_dir}/{EXPR_RESULT_FILE}")
+    # [2] Restore from path without result.json
+    fs.delete_file(f"{trial_dir}/{EXPR_RESULT_FILE}")
     result = Result.from_path(trial_dir)
 
     # Do the same checks as above
