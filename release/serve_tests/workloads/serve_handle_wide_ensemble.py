@@ -23,7 +23,6 @@ import click
 from typing import List
 from typing import Optional
 
-import ray
 from ray import serve
 from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
 from serve_test_cluster_utils import (
@@ -61,7 +60,7 @@ class CombineNode:
         compute_delay_secs,
     ):
         assert isinstance(input_nodes, list)
-        self.handles = [node.options(use_new_handle_api=True) for node in input_nodes]
+        self.handles = input_nodes
         self.compute_delay_secs = compute_delay_secs
 
     async def predict(self, data):
@@ -123,7 +122,7 @@ def main(
 
     # 0 + 1 + 2 + 3 + 4 + ... + (fanout_degree - 1)
     expected = ((0 + fanout_degree - 1) * fanout_degree) / 2
-    assert ray.get(handle.predict.remote(0)) == expected
+    assert handle.predict.remote(0).result() == expected
 
     throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(
