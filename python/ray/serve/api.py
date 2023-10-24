@@ -818,6 +818,8 @@ def get_deployment_handle(
             handle = serve.get_deployment_handle("f", app_name="my_app")
             assert handle.remote(3).result() == 6
 
+            serve.shutdown()
+
     The following example demonstrates how you can use this API to get
     the handle to a non-ingress deployment in an application.
 
@@ -853,6 +855,8 @@ def get_deployment_handle(
             # Get handle to Multiplier only
             handle = serve.get_deployment_handle("Multiplier", app_name="math_app")
             assert handle.remote(5).result() == 10
+
+            serve.shutdown()
     """
 
     client = _get_global_client()
