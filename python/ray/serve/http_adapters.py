@@ -43,7 +43,7 @@ class NdArray(BaseModel):
 
 @require_packages(["numpy"])
 @Deprecated(DAG_DEPRECATION_MESSAGE)
-def json_to_ndarray(payload: NdArray) -> "numpy.ndarray":
+def json_to_ndarray(payload: NdArray):
     """Accepts an NdArray JSON from an HTTP body and converts it to a numpy array.
 
     .. autopydantic_model:: ray.serve.http_adapters.NdArray
@@ -60,7 +60,7 @@ def json_to_ndarray(payload: NdArray) -> "numpy.ndarray":
 
 @require_packages(["numpy"])
 @Deprecated(DAG_DEPRECATION_MESSAGE)
-def json_to_multi_ndarray(payload: Dict[str, NdArray]) -> Dict[str, "numpy.ndarray"]:
+def json_to_multi_ndarray(payload: Dict[str, NdArray]):
     """Accepts a JSON of shape {str_key: NdArray} and converts it to dict of arrays."""
     return {key: json_to_ndarray(arr_obj) for key, arr_obj in payload.items()}
 
@@ -87,7 +87,7 @@ async def json_request(request: starlette.requests.Request) -> Dict[str, Any]:
 
 @require_packages(["PIL", "numpy"])
 @Deprecated(DAG_DEPRECATION_MESSAGE)
-def image_to_ndarray(img: bytes = File(...)) -> "numpy.ndarray":
+def image_to_ndarray(img: bytes = File(...)):
     """Accepts a PIL-readable file from an HTTP form and convert it to a numpy array."""
     import numpy as np
     from PIL import Image
