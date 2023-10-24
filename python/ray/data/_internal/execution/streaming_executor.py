@@ -331,7 +331,11 @@ class StreamingExecutor(Executor, threading.Thread):
             f"{cur_usage.overall.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object_store_memory"
         )
-        if not cur_usage.overall.satisfies_limit(limits):
+        if (
+            cur_usage.overall.object_store_memory is not None
+            and limits.object_store_memory is not None
+            and cur_usage.overall.object_store_memory > limits.object_store_memory
+        ):
             spilled_obj_memory = (
                 cur_usage.overall.object_store_memory - limits.object_store_memory
             )
