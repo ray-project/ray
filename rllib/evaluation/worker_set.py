@@ -365,9 +365,7 @@ class WorkerSet:
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker_or_learner_group: Optional[
-            Union[EnvRunner, LearnerGroup]
-        ] = None,
+        from_worker_or_learner_group: Optional[Union[EnvRunner, LearnerGroup]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,

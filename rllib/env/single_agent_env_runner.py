@@ -214,7 +214,7 @@ class SingleAgentEnvRunner(EnvRunner):
             f"timesteps ...",
         )
 
-        #print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
+        # print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
@@ -515,7 +515,7 @@ class SingleAgentEnvRunner(EnvRunner):
         weights = self._convert_to_tensor(weights)
         self.module.set_state(weights)
         print(f"EnvRunner {self.worker_index}: updated")
-        #print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
+        # print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
 
         # Check, if an update happened since the last call. See
         # `Algorithm._evaluate_async_with_env_runner`.
@@ -589,7 +589,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # we should not. This might be connected to the way how the
             # `action_space` is defined for the `RLModule` in the
             # `__init__()` of this class here.
-            #if actions.ndim > len(self.env.action_space.shape):
+            # if actions.ndim > len(self.env.action_space.shape):
             #    actions = actions.squeeze(axis=-1)
 
         return actions, action_logp
