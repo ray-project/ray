@@ -1219,7 +1219,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == mds._uuid
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == "dataset" + mds._uuid
 
     ds = ray.data.range(100, parallelism=20)
     ds._set_name("very_loooooooong_name")

@@ -224,7 +224,7 @@ class _StatsActor:
         return len(self.start_time), len(self.last_time), len(self.metadata)
 
     def get_dataset_id(self):
-        dataset_id = self.next_dataset_id
+        dataset_id = str(self.next_dataset_id)
         self.next_dataset_id += 1
         return dataset_id
 
