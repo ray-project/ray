@@ -210,7 +210,8 @@ class SingleAgentEnvRunner(EnvRunner):
         ts = 0
         pbar = tqdm(
             total=num_timesteps,
-            desc=f"EnvRunner {self.worker_index}: Sampling {num_timesteps} timesteps ...",
+            desc=f"EnvRunner {self.worker_index}: Sampling {num_timesteps} "
+            f"timesteps ...",
         )
 
         print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
@@ -230,6 +231,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     SampleBatch.OBS: self._convert_from_numpy(obs),
                 }
                 from ray.rllib.utils.nested_dict import NestedDict
+
                 batch = NestedDict(batch)
 
                 # Explore or not.
@@ -241,7 +243,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions, action_logp = self._sample_actions_if_necessary(
                     fwd_out, explore
                 )
-                #print(actions)
+                # print(actions)
 
                 fwd_out = convert_to_numpy(fwd_out)
 
@@ -514,7 +516,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self.module.set_state(weights)
         print(f"EnvRunner {self.worker_index}: updated")
         print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
-        
+
         # Check, if an update happened since the last call. See
         # `Algorithm._evaluate_async_with_env_runner`.
         # if self._weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:

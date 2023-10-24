@@ -528,7 +528,9 @@ class PPO(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
-        weights_remote = self.workers.foreach_worker(lambda w: w.module.weights[0][0][0])
+        weights_remote = self.workers.foreach_worker(
+            lambda w: w.module.weights[0][0][0]
+        )
         print("Remote worker weigths before update:")
         for i, weight in enumerate(weights_remote):
             print(f"{i}: {weight}")
@@ -548,7 +550,9 @@ class PPO(Algorithm):
                 weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
-        weights_remote = self.workers.foreach_worker(lambda w: w.module.weights[0][0][0])
+        weights_remote = self.workers.foreach_worker(
+            lambda w: w.module.weights[0][0][0]
+        )
         print("Remote worker weigths after update:")
         for i, weight in enumerate(weights_remote):
             print(f"{i}: {weight}")
