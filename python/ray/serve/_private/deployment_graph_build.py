@@ -229,9 +229,9 @@ def transform_ray_dag_to_serve_dag(
         deployment = deployment_shell.options(
             func_or_class=dag_node._body,
             name=deployment_name,
-            init_args=replaced_deployment_init_args,
-            init_kwargs=replaced_deployment_init_kwargs,
             route_prefix=route_prefix,
+            _init_args=replaced_deployment_init_args,
+            _init_kwargs=replaced_deployment_init_kwargs,
             _internal=True,
         )
 
@@ -407,8 +407,8 @@ def generate_executor_dag_driver_deployment(
     )
 
     return original_driver_deployment.options(
-        init_args=replaced_deployment_init_args,
-        init_kwargs=replaced_deployment_init_kwargs,
+        _init_args=replaced_deployment_init_args,
+        _init_kwargs=replaced_deployment_init_kwargs,
         _internal=True,
     )
 

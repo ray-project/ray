@@ -603,7 +603,7 @@ def test_input_validation():
             pass
 
     with pytest.raises(TypeError):
-        Base.options(init_args="hi")
+        Base.options(_init_args="hi")
 
     with pytest.raises(TypeError):
 
