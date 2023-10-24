@@ -1,40 +1,30 @@
 # Learning Tests
 
+# py_test(
+#    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slate_q",
+#    main = "run_regression_tests.py",
+#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+#    size = "large",
+#    srcs = ["run_regression_tests.py"],
+#    data = ["tuned_examples/interest-evolution-10-candidates-recsim-env-slate-q.yaml"],
+#    args = ["--dir=slate_q/tuned_examples/"]
+# )
+
 py_test(
-    name = "learning_tests_cartpole_a2c",
+    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slate_q_fake_gpus",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "fake_gpus"],
     size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/cartpole-a2c.yaml"],
-    args = ["--dir=tuned_examples/"]
-)
-
-py_test(
-    name = "learning_tests_cartpole_a2c_microbatch",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/cartpole-a2c-microbatch.yaml"],
-    args = ["--dir=tuned_examples/"]
-)
-
-py_test(
-    name = "learning_tests_cartpole_a2c_fake_gpus",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/cartpole-a2c-fake-gpus.yaml"],
-    args = ["--dir=tuned_examples/"]
+    srcs = ["run_regression_tests.py"],
+    data = ["tuned_examples/interest-evolution-10-candidates-recsim-env-slate-q.yaml"],
+    args = ["--dir=slate_q/tuned_examples/"]
 )
 
 # Compilation Tests
 
 py_test(
-    name = "test_a2c",
+    name = "test_slate_q",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_a2c.py"]
+    srcs = ["tests/test_slate_q.py"]
 )
