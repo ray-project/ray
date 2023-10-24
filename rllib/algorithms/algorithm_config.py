@@ -117,30 +117,31 @@ def _check_rl_module_spec(module_spec: ModuleSpec) -> None:
 class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
-    Example:
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
-        >>> # Construct a generic config object, specifying values within different
-        >>> # sub-categories, e.g. "training".
-        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
-        ...     .environment(env="CartPole-v1")
-        ...     .resources(num_gpus=0)
-        ...     .rollouts(num_rollout_workers=4)
-        ...     .callbacks(MemoryTrackingCallbacks)
-        >>> # A config object can be used to construct the respective Algorithm.
-        >>> rllib_algo = config.build()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        >>> from ray import tune
-        >>> # In combination with a tune.grid_search:
-        >>> config = AlgorithmConfig()
-        >>> config.training(lr=tune.grid_search([0.01, 0.001])) # doctest: +SKIP
-        >>> # Use `to_dict()` method to get the legacy plain python config dict
-        >>> # for usage with `tune.Tuner().fit()`.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "[registered Algorithm class]", param_space=config.to_dict()
-        ...     ).fit()
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
+        # Construct a generic config object, specifying values within different
+        # sub-categories, e.g. "training".
+        config = (PPOConfig().training(gamma=0.9, lr=0.01)
+                .environment(env="CartPole-v1")
+                .resources(num_gpus=0)
+                .rollouts(num_rollout_workers=0)
+                .callbacks(MemoryTrackingCallbacks)
+            )
+        # A config object can be used to construct the respective Algorithm.
+        rllib_algo = config.build()
+
+    .. testcode::
+
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray import tune
+        # In combination with a tune.grid_search:
+        config = PPOConfig()
+        config.training(lr=tune.grid_search([0.01, 0.001]))
+        # Use `to_dict()` method to get the legacy plain python config dict
+        # for usage with `tune.Tuner().fit()`.
+        tune.Tuner("PPO", param_space=config.to_dict())
     """
 
     @staticmethod
@@ -153,10 +154,12 @@ class AlgorithmConfig(_Config):
     def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
         """Creates an AlgorithmConfig from a legacy python config dict.
 
-        Examples:
-            >>> from ray.rllib.algorithms.ppo.ppo import PPOConfig # doctest: +SKIP
-            >>> ppo_config = PPOConfig.from_dict({...}) # doctest: +SKIP
-            >>> ppo = ppo_config.build(env="Pendulum-v1") # doctest: +SKIP
+        .. testcode::
+
+            from ray.rllib.algorithms.ppo.ppo import PPOConfig
+            # pass a RLlib config dict
+            ppo_config = PPOConfig.from_dict({})
+            ppo = ppo_config.build(env="Pendulum-v1")
 
         Args:
             config_dict: The legacy formatted python config dict for some algorithm.
@@ -187,28 +190,32 @@ class AlgorithmConfig(_Config):
         settings that would change with respect to some main config, e.g. in multi-agent
         setups and evaluation configs.
 
-        Examples:
-            >>> from ray.rllib.algorithms.ppo import PPOConfig
-            >>> from ray.rllib.policy.policy import PolicySpec
-            >>> config = (
-            ...     PPOConfig()
-            ...     .multi_agent(
-            ...         policies={
-            ...             "pol0": PolicySpec(config=PPOConfig.overrides(lambda_=0.95))
-            ...         },
-            ...     )
-            ... )
+        .. testcode::
 
-            >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-            >>> from ray.rllib.algorithms.pg import PGConfig
-            >>> config = (
-            ...     PGConfig()
-            ...     .evaluation(
-            ...         evaluation_num_workers=1,
-            ...         evaluation_interval=1,
-            ...         evaluation_config=AlgorithmConfig.overrides(explore=False),
-            ...     )
-            ... )
+            from ray.rllib.algorithms.ppo import PPOConfig
+            from ray.rllib.policy.policy import PolicySpec
+            config = (
+                PPOConfig()
+                .multi_agent(
+                    policies={
+                        "pol0": PolicySpec(config=PPOConfig.overrides(lambda_=0.95))
+                    },
+                )
+            )
+
+
+        .. testcode::
+
+            from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+            from ray.rllib.algorithms.pg import PGConfig
+            config = (
+                PGConfig()
+                .evaluation(
+                    evaluation_num_workers=1,
+                    evaluation_interval=1,
+                    evaluation_config=AlgorithmConfig.overrides(explore=False),
+                )
+            )
 
         Returns:
             A dict mapping valid config property-names to values.
@@ -3462,10 +3469,15 @@ class AlgorithmConfig(_Config):
         by Ray Tune.
 
         Examples:
-            >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-            >>> config = AlgorithmConfig()
-            >>> print(config["lr"])
-            ... 0.001
+            .. testcode::
+
+                from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+                config = AlgorithmConfig()
+                print(config["lr"])
+
+            .. testoutput::
+
+                0.001
         """
         # TODO: Uncomment this once all algorithms use AlgorithmConfigs under the
         #  hood (as well as Ray Tune).
