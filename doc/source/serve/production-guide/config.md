@@ -100,7 +100,7 @@ Each individual entry in the `deployments` list is optional. In the example conf
 
 ## Auto-generate Serve config using `serve build`
 
-We can also auto-generate this config file from the code. The `serve build` command takes an import path to your deployment graph and it generates a config file containing all the deployments and their parameters from the graph. You can tweak these parameters to manage your deployments in production.
+We can also auto-generate this config file from the code. The `serve build` command takes an import path to your application, and it generates a config file containing all the deployments and their parameters in the application code. Tweak these parameters to manage your deployments in production.
 
 ```console
 $ ls
