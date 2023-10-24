@@ -60,6 +60,18 @@ steps:
         --only-tags minimal
     depends_on: minbuild-serve
     job_env: forge
+
+  - label: ":ray-serve: serve: doc gpu tests"
+    tags: 
+      - serve
+      - ci_doc
+    instance_type: gpu
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... serve 
+        --build-name docgpubuild
+        --only-tags gpu
+    depends_on: docgpubuild
+    job_env: forge
   
   - label: ":ray-serve: serve: flaky tests"
     tags: 
