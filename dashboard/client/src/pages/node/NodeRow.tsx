@@ -72,6 +72,9 @@ const useStyles = makeStyles((theme) =>
     logicalResources: {
       maxWidth: 200,
     },
+    labels: {
+      maxWidth: 200,
+    },
   }),
 );
 
@@ -141,7 +144,12 @@ export const NodeRow = ({
       </TableCell>
       <TableCell>
         {raylet.state !== "DEAD" && (
-          <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
+          <Link
+            to={`/logs/${encodeURIComponent(logUrl)}`}
+            style={{ textDecoration: "none" }}
+          >
+            Log
+          </Link>
         )}
       </TableCell>
       <TableCell>
@@ -201,6 +209,13 @@ export const NodeRow = ({
           "-"
         )}
       </TableCell>
+      <TableCell align="center">
+        <CodeDialogButtonWithPreview
+          className={classes.labels}
+          title="Labels"
+          code={raylet.labels}
+        />
+      </TableCell>
     </TableRow>
   );
 };
@@ -254,11 +269,16 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
-        <Link to={workerLogUrl} target="_blank">
-          Logs
+        <Link
+          to={workerLogUrl}
+          target="_blank"
+          style={{ textDecoration: "none" }}
+        >
+          Log
         </Link>
         <br />
         <CpuStackTraceLink pid={pid} ip={ip} type="" />
+        <br />
         <CpuProfilingLink pid={pid} ip={ip} type="" />
         <br />
       </TableCell>
@@ -284,6 +304,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
+      <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>

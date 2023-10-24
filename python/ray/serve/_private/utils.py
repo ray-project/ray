@@ -10,15 +10,12 @@ import string
 import threading
 import time
 import traceback
+from abc import ABC, abstractmethod
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import __main__
-import fastapi.encoders
 import numpy as np
-import pydantic
-import pydantic.json
 import requests
 
 import ray
@@ -103,18 +100,6 @@ serve_encoders = {
 
 if pd is not None:
     serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
-
-
-def install_serve_encoders_to_fastapi():
-    """Inject Serve's encoders so FastAPI's jsonable_encoder can pick it up."""
-    # https://stackoverflow.com/questions/62311401/override-default-encoders-for-jsonable-encoder-in-fastapi # noqa
-    pydantic.json.ENCODERS_BY_TYPE.update(serve_encoders)
-    # FastAPI cache these encoders at import time, so we also needs to refresh it.
-    fastapi.encoders.encoders_by_class_tuples = (
-        fastapi.encoders.generate_encoders_by_class_tuples(
-            pydantic.json.ENCODERS_BY_TYPE
-        )
-    )
 
 
 @ray.remote(num_cpus=0)
@@ -205,50 +190,6 @@ def merge_dict(dict1, dict2):
     for key in dict1.keys() | dict2.keys():
         result[key] = sum([e.get(key, 0) for e in (dict1, dict2)])
     return result
-
-
-def get_deployment_import_path(
-    deployment, replace_main=False, enforce_importable=False
-):
-    """
-    Gets the import path for deployment's func_or_class.
-
-    deployment: A deployment object whose import path should be returned
-    replace_main: If this is True, the function will try to replace __main__
-        with __main__'s file name if the deployment's module is __main__
-    """
-
-    body = deployment.func_or_class
-
-    if isinstance(body, str):
-        # deployment's func_or_class is already an import path
-        return body
-    elif hasattr(body, "__ray_actor_class__"):
-        # If ActorClass, get the class or function inside
-        body = body.__ray_actor_class__
-
-    import_path = f"{body.__module__}.{body.__qualname__}"
-
-    if enforce_importable and "<locals>" in body.__qualname__:
-        raise RuntimeError(
-            "Deployment definitions must be importable to build the Serve app, "
-            f"but deployment '{deployment.name}' is inline defined or returned "
-            "from another function. Please restructure your code so that "
-            f"'{import_path}' can be imported (i.e., put it in a module)."
-        )
-
-    if replace_main:
-        # Replaces __main__ with its file name. E.g. suppose the import path
-        # is __main__.classname and classname is defined in filename.py.
-        # Its import path becomes filename.classname.
-
-        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
-            file_name = os.path.basename(__main__.__file__)
-            extensionless_file_name = file_name.split(".")[0]
-            attribute_name = import_path.split(".")[-1]
-            import_path = f"{extensionless_file_name}.{attribute_name}"
-
-    return import_path
 
 
 def parse_import_path(import_path: str):
@@ -679,3 +620,15 @@ def is_running_in_asyncio_loop() -> bool:
         return True
     except RuntimeError:
         return False
+
+
+class TimerBase(ABC):
+    @abstractmethod
+    def time(self) -> float:
+        """Return the current time."""
+        raise NotImplementedError
+
+
+class Timer(TimerBase):
+    def time(self) -> float:
+        return time.time()

@@ -24,7 +24,7 @@ STATUS_PATH_V2 = "/api/serve/applications/"
 class ServeSubmissionClient(SubmissionClient):
     def __init__(
         self,
-        dashboard_agent_address: str,
+        dashboard_head_address: str,
         create_cluster_if_needed=False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -38,18 +38,18 @@ class ServeSubmissionClient(SubmissionClient):
 
         invalid_address_message = (
             "Got an unexpected address"
-            f'"{dashboard_agent_address}" while trying '
-            "to connect to the Ray dashboard agent. The Serve SDK/CLI requires the "
-            "Ray dashboard agent's HTTP(S) address (which should start with "
+            f'"{dashboard_head_address}" while trying '
+            "to connect to the Ray dashboard. The Serve SDK/CLI requires the "
+            "Ray dashboard's HTTP(S) address (which should start with "
             '"http://" or "https://". If this address '
-            "wasn't passed explicitly, it may be set in the RAY_AGENT_ADDRESS "
-            "environment variable."
+            "wasn't passed explicitly, it may be set in the "
+            "RAY_DASHBOARD_ADDRESS environment variable."
         )
 
-        if "://" not in dashboard_agent_address:
+        if "://" not in dashboard_head_address:
             raise ValueError(invalid_address_message)
 
-        module_string, _ = split_address(dashboard_agent_address)
+        module_string, _ = split_address(dashboard_head_address)
 
         # If user passes in ray://, raise error. Serve submission should
         # not use a Ray client address.
@@ -57,7 +57,7 @@ class ServeSubmissionClient(SubmissionClient):
             raise ValueError(invalid_address_message)
 
         super().__init__(
-            address=dashboard_agent_address,
+            address=dashboard_head_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,

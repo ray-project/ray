@@ -41,7 +41,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         import aiohttp
         import ray.dashboard.optional_utils
 
-        routes = ray.dashboard.optional_utils.ClassMethodRouteTable
+        routes = ray.dashboard.optional_utils.DashboardHeadRouteTable
 
         @routes.get("/usage_stats_enabled")
         async def get_usage_stats_enabled(self, req) -> aiohttp.web.Response:
