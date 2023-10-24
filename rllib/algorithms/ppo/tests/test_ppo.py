@@ -232,8 +232,8 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, frameworks=["tf2"]):
-            for env in ["CartPole-v1", "FrozenLake-v1", "ALE/MsPacman-v5"]:
+        for fw in framework_iterator(config):
+            for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
