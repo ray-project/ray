@@ -675,7 +675,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_ppo_w_env_runner",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/cartpole-ppo-envrunner.py"],
@@ -685,7 +685,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ppo_w_env_runner",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo-envrunner.py"],
@@ -696,7 +696,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_truncated_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/cartpole-truncated-ppo.py"],
@@ -706,7 +706,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
@@ -716,7 +716,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
@@ -726,7 +726,7 @@ py_test(
 py_test(
     name = "learning_tests_transformed_actions_pendulum_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
@@ -736,7 +736,7 @@ py_test(
 py_test(
     name = "learning_tests_repeat_after_me_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "no_tf_static_graph"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
