@@ -23,7 +23,7 @@ There are 2 ways to specify the parameters mentioned above. First, you can speci
 
 ### Specify parameters through application code
 
-In most cases where you want to specify deployment parameters through your application code, you can use the `@serve.deployment` decorator:
+Use the `@serve.deployment` decorator to specify deployment parameters:
 
 ```{literalinclude} ../serve/doc_code/configure_serve_deployment/model_deployment.py
 :start-after: __deployment_start__
