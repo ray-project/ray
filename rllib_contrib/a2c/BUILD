@@ -7,7 +7,7 @@ py_test(
     size = "large",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/cartpole-a2c.yaml"],
-    args = ["--dir=tuned_examples"]
+    args = ["--dir=a2c/tuned_examples/"]
 )
 
 py_test(
@@ -17,7 +17,7 @@ py_test(
     size = "large",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/cartpole-a2c-microbatch.yaml"],
-    args = ["--dir=tuned_examples"]
+    args = ["--dir=a2c/tuned_examples/"]
 )
 
 py_test(
@@ -27,7 +27,7 @@ py_test(
     size = "medium",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/cartpole-a2c-fake-gpus.yaml"],
-    args = ["--dir=tuned_examples"]
+    args = ["--dir=a2c/tuned_examples/"]
 )
 
 # Compilation Tests
