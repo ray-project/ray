@@ -4,6 +4,7 @@ from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
 from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray._private.accelerators.neuron import NeuronAcceleratorManager
+from ray._private.accelerators.apple_gpu import AppleGPUAcceleratorManager
 
 
 def get_all_accelerator_managers() -> Set[AcceleratorManager]:
@@ -12,6 +13,7 @@ def get_all_accelerator_managers() -> Set[AcceleratorManager]:
         NvidiaGPUAcceleratorManager,
         TPUAcceleratorManager,
         NeuronAcceleratorManager,
+        AppleGPUAcceleratorManager,
     }
 
 
@@ -42,6 +44,7 @@ __all__ = [
     "NvidiaGPUAcceleratorManager",
     "TPUAcceleratorManager",
     "NeuronAcceleratorManager",
+    "AppleGPUAcceleratorManager",
     "get_all_accelerator_managers",
     "get_all_accelerator_resource_names",
     "get_accelerator_manager_for_resource",
