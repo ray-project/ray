@@ -24,13 +24,13 @@ from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.learner_group_config import LearnerGroupConfig, ModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
-from ray.rllib.env.env_context import EnvContext
 from ray.rllib.core.learner.learner import TorchCompileWhatToCompile
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
-from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -101,6 +101,7 @@ path: /tmp/
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.core.learner import Learner
+    from ray.rllib.evaluation.episode import Episode as OldEpisode
 
 logger = logging.getLogger(__name__)
 
@@ -738,14 +739,15 @@ class AlgorithmConfig(_Config):
         if (
             self.evaluation_interval
             and self.env_runner_cls is not None
-            and self.env_runner_cls.__name__ != "RolloutWorker"
+            and not issubclass(self.env_runner_cls, RolloutWorker)
             and not self.enable_async_evaluation
         ):
             raise ValueError(
-                "When using an EnvRunner class that's not `RolloutWorker` (yours is "
-                f"{self.env_runner_cls.__name__}), `config.enable_async_evaluation` "
-                "must be set to True! Call `config.evaluation(enable_async_evaluation="
-                "True) on your config object to fix this problem."
+                "When using an EnvRunner class that's not a subclass of `RolloutWorker`"
+                f"(yours is {self.env_runner_cls.__name__}), "
+                "`config.enable_async_evaluation` must be set to True! Call "
+                "`config.evaluation(enable_async_evaluation=True) on your config "
+                "object to fix this problem."
             )
         if not (
             (
@@ -2164,7 +2166,7 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         policy_map_capacity: Optional[int] = NotProvided,
         policy_mapping_fn: Optional[
-            Callable[[AgentID, "Episode"], PolicyID]
+            Callable[[AgentID, "OldEpisode"], PolicyID]
         ] = NotProvided,
         policies_to_train: Optional[
             Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]

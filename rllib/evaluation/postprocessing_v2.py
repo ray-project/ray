@@ -7,6 +7,7 @@ from typing import List
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
@@ -198,29 +199,3 @@ def compute_advantages(
     ] = episode.extra_model_outputs[Postprocessing.ADVANTAGES].astype(np.float32)
 
     return episode
-
-
-@DeveloperAPI
-def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
-    """Calculates the discounted cumulative sum over a reward sequence `x`.
-
-    y[t] - discount*y[t+1] = x[t]
-    reversed(y)[t] - discount*reversed(y)[t-1] = reversed(x)[t]
-
-    Args:
-        gamma: The discount factor gamma.
-
-    Returns:
-        The sequence containing the discounted cumulative sums
-        for each individual reward in `x` till the end of the trajectory.
-
-    Examples:
-        >>> x = np.array([0.0, 1.0, 2.0, 3.0])
-        >>> gamma = 0.9
-        >>> discount_cumsum(x, gamma)
-        ... array([0.0 + 0.9*1.0 + 0.9^2*2.0 + 0.9^3*3.0,
-        ...        1.0 + 0.9*2.0 + 0.9^2*3.0,
-        ...        2.0 + 0.9*3.0,
-        ...        3.0])
-    """
-    return scipy.signal.lfilter([1], [1, float(-gamma)], x[::-1], axis=0)[::-1]

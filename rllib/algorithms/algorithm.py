@@ -47,6 +47,7 @@ from ray.rllib.evaluation.metrics import (
     summarize_episodes,
 )
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
     STEPS_TRAINED_THIS_ITER_COUNTER,  # TODO: Backward compatibility.
@@ -3072,7 +3073,7 @@ class Algorithm(Trainable, AlgorithmBase):
             if (
                 self.config.enable_async_evaluation
                 and self.config.env_runner_cls is not None
-                and self.config.env_runner_cls.__name__ != "RolloutWorker"
+                and not issubclass(self.config.env_runner_cls, RolloutWorker)
             )
             else self._evaluate_async
             if self.config.enable_async_evaluation

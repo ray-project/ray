@@ -26,6 +26,7 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -426,7 +427,7 @@ class PPO(Algorithm):
             # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
             if (
                 self.config.env_runner_cls is None
-                or self.config.env_runner_cls == "RolloutWorker"
+                or issubclass(self.config.env_runner_cls, RolloutWorker)
             ):
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(
