@@ -85,7 +85,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._dataset_tag = dataset_tag
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
-        self._op_completed: Optional[Dict[PhysicalOperator, bool]] = None
+        self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -117,7 +117,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._topology, _ = build_streaming_topology(dag, self._options)
         self._backpressure_policies = get_backpressure_policies(self._topology)
 
-        self._op_completed = {op: False for op in self._topology}
+        self._has_op_completed = {op: False for op in self._topology}
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
@@ -300,12 +300,13 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Log metrics of newly completed operators.
         for op in topology:
-            if op.completed() and not self._op_completed[op]:
-                log_str = f"Operator {op} completed. Operator Metrics:\n" + str(
-                    op._metrics.as_dict()
+            if op.completed() and not self._has_op_completed[op]:
+                log_str = (
+                    f"Operator {op} completed. "
+                    f"Operator Metrics:\n{op._metrics.as_dict()}"
                 )
                 logger.get_logger(log_to_stdout=False).info(log_str)
-                self._op_completed[op] = True
+                self._has_op_completed[op] = True
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
