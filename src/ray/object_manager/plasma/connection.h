@@ -41,17 +41,31 @@ class Client : public ray::ClientConnection, public ClientInterface {
   // Holds the object ID. If the object ID has a fallback-allocated fd, adds the ref count
   // to that fd. Note: used_fds_ is not updated. rather, it's updated in SendFd().
   //
-  // Idempotency: only increments ref count if the object ID was not held.
-  // TODO(ryw): if this method is called with same object_id but different fd, the latter
-  // fd is ignored. Is this possible? Is it OK?
+  // Idempotency: only increments ref count if the object ID was not held. Note that a
+  // second call for a same `object_id` must come with the same `fallback_allocated_fd`.
   virtual void MarkObjectAsUsed(
       const ray::ObjectID &object_id,
       std::optional<MEMFD_TYPE> fallback_allocated_fd) override {
     const auto [_, inserted] = object_ids.insert(object_id);
-    if (fallback_allocated_fd.has_value() && inserted) {
-      MEMFD_TYPE fd = fallback_allocated_fd.value();
-      object_ids_to_fallback_allocated_fds_[object_id] = fd;
-      fallback_allocated_fds_ref_count_[fd] += 1;
+    if (inserted) {
+      // new insertion
+      RAY_CHECK(!object_ids_to_fallback_allocated_fds_.contains(object_id));
+
+      if (fallback_allocated_fd.has_value()) {
+        MEMFD_TYPE fd = fallback_allocated_fd.value();
+        object_ids_to_fallback_allocated_fds_[object_id] = fd;
+        fallback_allocated_fds_ref_count_[fd] += 1;
+      }
+    } else {
+      // Already inserted, idempotent call.
+      // Assert the fd parameter == the fd used in the last call, or they are both none.
+      const auto iter = object_ids_to_fallback_allocated_fds_.find(object_id);
+      if (fallback_allocated_fd.has_value()) {
+        RAY_CHECK(iter != object_ids_to_fallback_allocated_fds_.end() &&
+                  iter->second == fallback_allocated_fd.value());
+      } else {
+        RAY_CHECK(iter == object_ids_to_fallback_allocated_fds_.end());
+      }
     }
   }
 
@@ -76,7 +90,7 @@ class Client : public ray::ClientConnection, public ClientInterface {
     // If fd existed before from object_ids_to_fds_ the ref count should have been > 0
     RAY_CHECK(ref_cnt_iter != fallback_allocated_fds_ref_count_.end());
     size_t &ref_cnt = ref_cnt_iter->second;
-    RAY_CHECK(ref_cnt > 0);
+    RAY_CHECK_GT(ref_cnt, 0);
     ref_cnt -= 1;
     if (ref_cnt == 0) {
       fallback_allocated_fds_ref_count_.erase(ref_cnt_iter);

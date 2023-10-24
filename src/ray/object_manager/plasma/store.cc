@@ -256,7 +256,7 @@ bool PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
                    << " no longer in use by client, should_unmap = " << should_unmap;
     // Decrease reference count.
     object_lifecycle_mgr_.RemoveReference(object_id);
-    // Return 1 to indicate that the client was removed.
+    // Return true to indicate that the client should unmap the fd for this object_id.
     return should_unmap;
   } else {
     // No mmap sections applicable.
