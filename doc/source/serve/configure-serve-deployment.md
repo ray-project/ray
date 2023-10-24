@@ -2,9 +2,13 @@
 
 # Configure Ray Serve deployments
 
-This guide walks through the parameters that are configurable for a Ray Serve deployment, as well as the different locations where you can specify the parameters. You can also refer to the [API reference](../serve/api/doc/ray.serve.deployment_decorator.rst) for the `@serve.deployment` decorator.
+In this guide, you will learn about:
+- What parameters are configurable for a Ray Serve deployment
+- The different locations where you can specify the parameters.
 
 ## Configurable parameters
+
+You can also refer to the [API reference](../serve/api/doc/ray.serve.deployment_decorator.rst) for the `@serve.deployment` decorator.
 
 - `name` - Name uniquely identifying this deployment within the application. If not provided, the name of the class or function is used.
 - `num_replicas` - Number of replicas to run that handle requests to this deployment. Defaults to 1.
@@ -41,7 +45,7 @@ Use the `.options()` method to modify deployment parameters on an already-define
 
 ### Specify parameters through Serve config file
 
-In production, we recommend configuring individual deployments through the Serve config file. Learn more about how to use the Serve Config in the [production guide](https://docs.ray.io/en/latest/serve/production-guide/config.html).
+In production, we recommend configuring individual deployments through the Serve config file. Learn more about how to use the Serve Config in the [production guide](serve-in-production-config-file).
 
 ```yaml
 applications:

@@ -22,15 +22,15 @@ class Example:
     ...
 
 
-translator_app = Example.bind()
+example_app = Example.bind()
 # __deployment_end__
 
-translator_app = Example.options(
+example_app = Example.options(
     ray_actor_options={"num_cpus": 0.2, "num_gpus": 0.0}
 ).bind()
 
 # __options_end__
-serve.run(translator_app)
+serve.run(example_app)
 
 serve.shutdown()
 ray.shutdown()
