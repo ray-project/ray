@@ -790,7 +790,7 @@ def test_tuner_restore_from_moved_experiment_path(
     restore_path = str(new_storage_path / new_exp_name)
     results = ResultGrid(ExperimentAnalysis(restore_path))
 
-    # TODO(justinvyu): [populate_exception] Exception populating is not working
+    # TODO(justinvyu): [populate_exception] for storage_path != None
     # assert len(results.errors) == 1
     training_iteration = results[0].metrics["training_iteration"]
     assert (
