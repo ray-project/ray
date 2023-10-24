@@ -48,6 +48,19 @@ steps:
     depends_on: datanbuild
     job_env: forge
 
+  - label: ":database: data: doc gpu"
+    tags: 
+      - data
+      - ci_doc
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... data 
+        --build-name docgpubuild
+        --only-tags gpu
+    depends_on: docgpubuild
+    job_env: forge
+
   - label: ":database: data: flaky tests"
     tags: 
       - python

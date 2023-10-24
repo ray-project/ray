@@ -409,7 +409,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
 
     // Add the driver task info.
-    if (task_event_buffer_->Enabled()) {
+    if (task_event_buffer_->Enabled() &&
+        !RayConfig::instance().task_events_skip_driver_for_test()) {
       const auto spec = builder.Build();
       auto task_event = std::make_unique<worker::TaskStatusEvent>(
           task_id,
@@ -706,7 +707,8 @@ void CoreWorker::Disconnect(
   RecordMetrics();
 
   // Driver exiting.
-  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled()) {
+  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled() &&
+      !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         worker_context_.GetCurrentTaskID(),
         worker_context_.GetCurrentJobID(),
@@ -1824,7 +1826,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &serialized_runtime_env_info,
     const TaskID &main_thread_current_task_id,
     const std::string &concurrency_group_name,
-    bool include_job_config) {
+    bool include_job_config,
+    int64_t generator_backpressure_num_objects) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1862,6 +1865,7 @@ void CoreWorker::BuildCommonTaskSpec(
       num_returns,
       returns_dynamic,
       is_streaming_generator,
+      generator_backpressure_num_objects,
       required_resources,
       required_placement_resources,
       debugger_breakpoint,
@@ -1896,7 +1900,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   auto constrained_resources =
       AddPlacementGroupConstraint(task_options.resources, scheduling_strategy);
 
-  const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
@@ -1916,13 +1919,15 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       args,
                       task_options.num_returns,
                       constrained_resources,
-                      required_resources,
+                      constrained_resources,
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
-                      /*include_job_config*/ true);
+                      /*include_job_config*/ true,
+                      /*generator_backpressure_num_objects*/
+                      task_options.generator_backpressure_num_objects);
   builder.SetNormalTaskSpec(max_retries,
                             retry_exceptions,
                             serialized_retry_exception_allowlist,
@@ -2006,7 +2011,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.serialized_runtime_env_info,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
-                      /*include_job_config*/ true);
+                      /*include_job_config*/ true,
+                      /*generator_backpressure_num_objects*/ -1);
 
   // If the namespace is not specified, get it from the job.
   const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -2244,7 +2250,9 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
                       "{}",  /* serialized_runtime_env_info */
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       task_options.concurrency_group_name,
-                      /*include_job_config*/ false);
+                      /*include_job_config*/ false,
+                      /*generator_backpressure_num_objects*/
+                      task_options.generator_backpressure_num_objects);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2707,7 +2715,9 @@ Status CoreWorker::ExecuteTask(
       name_of_concurrency_group_to_execute,
       /*is_reattempt=*/task_spec.AttemptNumber() > 0,
       /*is_streaming_generator*/ task_spec.IsStreamingGenerator(),
-      /*retry_exception*/ task_spec.ShouldRetryExceptions());
+      /*retry_exception*/ task_spec.ShouldRetryExceptions(),
+      /*generator_backpressure_num_objects*/
+      task_spec.GeneratorBackpressureNumObjects());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2890,9 +2900,8 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const ObjectID &generator_id,
     const rpc::Address &caller_address,
     int64_t item_index,
-    uint64_t attempt_number) {
-  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
-                 << ", id: " << dynamic_return_object.first;
+    uint64_t attempt_number,
+    std::shared_ptr<GeneratorBackpressureWaiter> waiter) {
   rpc::ReportGeneratorItemReturnsRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_item_index(item_index);
@@ -2914,24 +2923,70 @@ Status CoreWorker::ReportGeneratorItemReturns(
         {dynamic_return_object.first}, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
   }
+  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
+                 << ", id: " << dynamic_return_object.first;
 
+  waiter->IncrementObjectGenerated();
   client->ReportGeneratorItemReturns(
       request,
-      [](const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
-        if (!status.ok()) {
+      [waiter, generator_id, item_index](
+          const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
+        RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
+                       << "index: " << item_index
+                       << ". Total object consumed: " << waiter->TotalObjectConsumed()
+                       << ". Total object generated: " << waiter->TotalObjectGenerated()
+                       << ". total_consumed_reported: "
+                       << reply.total_num_object_consumed();
+        if (status.ok()) {
+          /// Since unary gRPC requests are not ordered, it is possible the stale
+          /// total value can be replied. Since total object consumed only can
+          /// increment, we always choose the larger value here.
+          waiter->UpdateTotalObjectConsumed(
+              std::max(waiter->TotalObjectConsumed(), reply.total_num_object_consumed()));
+        } else {
           // TODO(sang): Handle network error more gracefully.
-          RAY_LOG(ERROR) << "Failed to send the object ref.";
+          // If the request fails, we should just resume until task finishes without
+          // backpressure.
+          waiter->UpdateTotalObjectConsumed(waiter->TotalObjectGenerated());
+          RAY_LOG(WARNING) << "Failed to send the object ref.";
         }
       });
-  return Status::OK();
+  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
+  // details.
+  return waiter->WaitUntilObjectConsumed(/*check_signals*/ [this]() {
+    if (options_.check_signals) {
+      return options_.check_signals();
+    } else {
+      return Status::OK();
+    }
+  });
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(
     rpc::ReportGeneratorItemReturnsRequest request,
     rpc::ReportGeneratorItemReturnsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  task_manager_->HandleReportGeneratorItemReturns(request);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  auto generator_id = ObjectID::FromBinary(request.generator_id());
+  auto worker_id = WorkerID::FromBinary(request.worker_addr().worker_id());
+  task_manager_->HandleReportGeneratorItemReturns(
+      request,
+      /*execution_signal_callback*/
+      [reply,
+       worker_id = std::move(worker_id),
+       generator_id = std::move(generator_id),
+       send_reply_callback = std::move(send_reply_callback)](
+          Status status, int64_t total_num_object_consumed) {
+        RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
+                          "executor to resume tasks. "
+                       << generator_id << ". Worker ID: " << worker_id
+                       << ". Total consumed: " << total_num_object_consumed;
+        if (!status.ok()) {
+          RAY_CHECK_EQ(total_num_object_consumed, -1);
+        }
+
+        reply->set_total_num_object_consumed(total_num_object_consumed);
+        send_reply_callback(status, nullptr, nullptr);
+      });
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(

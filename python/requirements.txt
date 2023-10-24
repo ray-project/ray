@@ -25,7 +25,6 @@ grpcio == 1.54.2; sys_platform == "darwin"
 grpcio >= 1.54.2; sys_platform != "darwin"
 numpy>=1.16; python_version < '3.9'
 numpy>=1.19.3; python_version >= '3.9'
-typing_extensions; python_version < '3.8'
 
 pyarrow >= 6.0.1; platform_system != "Windows"
 pyarrow >= 6.0.1, < 7.0.0; platform_system == "Windows"

@@ -446,7 +446,6 @@ triton==2.0.0
 tune-sklearn @ git+https://github.com/ray-project/tune-sklearn@6e813e18fb43156d32f0958794881c7c12d14f17
 typeguard==2.13.3
 typer==0.9.0
-typing_extensions==4.5.0
 tzdata==2023.3
 uri-template==1.3.0
 uritemplate==3.0.1

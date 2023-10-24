@@ -14,7 +14,6 @@ from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    MIGRATION_MESSAGE,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_graph_build import build as pipeline_build
@@ -32,8 +31,6 @@ from ray.serve._private.utils import (
     ensure_serialization_context,
     extract_self_if_method_call,
     get_random_letters,
-    guarded_deprecation_warning,
-    install_serve_encoders_to_fastapi,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -233,7 +230,6 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                 cls.__init__(self, *args, **kwargs)
 
                 ServeUsageTag.FASTAPI_USED.record("1")
-                install_serve_encoders_to_fastapi()
                 ASGIAppReplicaWrapper.__init__(self, frozen_app)
 
             async def __del__(self):
@@ -423,40 +419,20 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
-@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-@Deprecated(message=MIGRATION_MESSAGE)
+@Deprecated
 def get_deployment(name: str) -> Deployment:
-    """Dynamically fetch a handle to a Deployment object.
-
-    This can be used to update and redeploy a deployment without access to
-    the original definition. This should only be used to fetch deployments
-    that were deployed using 1.x API.
-
-    Example:
-    >>> from ray import serve
-    >>> MyDeployment = serve.get_deployment("name")  # doctest: +SKIP
-    >>> MyDeployment.options(num_replicas=10).deploy()  # doctest: +SKIP
-
-    Args:
-        name: name of the deployment. This must have already been
-        deployed.
-
-    Returns:
-        Deployment
-    """
-    ServeUsageTag.API_VERSION.record("v1")
-    return _private_api.get_deployment(name)
+    raise ValueError(
+        "serve.get_deployment is fully deprecated. Use serve.get_app_handle() to get a "
+        "handle to a running Serve application."
+    )
 
 
-@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-@Deprecated(message=MIGRATION_MESSAGE)
+@Deprecated
 def list_deployments() -> Dict[str, Deployment]:
-    """Returns a dictionary of all active deployments.
-
-    Dictionary maps deployment name to Deployment objects.
-    """
-    ServeUsageTag.API_VERSION.record("v1")
-    return _private_api.list_deployments()
+    raise ValueError(
+        "serve.list_deployments() is fully deprecated. Use serve.status() to get a "
+        "list of all active applications and deployments."
+    )
 
 
 @PublicAPI(stability="stable")
@@ -495,6 +471,7 @@ def run(
     Returns:
         RayServeSyncHandle: A handle that can be used to call the application.
     """
+
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 

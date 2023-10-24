@@ -25,7 +25,7 @@ py_test(
     name = "datasets_train",
     size = "medium",
     srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "datasets_train"],
+    tags = ["exclusive", "team:ml", "datasets_train", "gpu"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 

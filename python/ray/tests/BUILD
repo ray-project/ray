@@ -39,10 +39,6 @@ py_test_module_list(
     "test_advanced_9.py",
     "test_array.py",
     "test_autoscaling_policy.py",
-    "test_basic.py",
-    "test_basic_2.py",
-    "test_basic_4.py",
-    "test_basic_5.py",
     "test_actor_cancel.py",
     "test_dashboard_profiler.py",
     "test_gcs_fault_tolerance.py",
@@ -123,7 +119,9 @@ py_test_module_list(
   files = [
     "test_actor_bounded_threads.py",
     "test_autoscaler_fake_scaledown.py",
-    "test_accelerator.py",
+    "accelerators/test_neuron.py",
+    "accelerators/test_tpu.py",
+    "accelerators/test_nvidia_gpu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -177,11 +175,64 @@ py_test_module_list(
     "test_streaming_generator.py",
     "test_streaming_generator_2.py",
     "test_streaming_generator_3.py",
+    "test_streaming_generator_4.py",
+    "test_streaming_generator_backpressure.py",
     "test_scheduling_performance.py",
     "test_implicit_resource.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_serve_ray_minimal.py",
+  ],
+  size = "small",
+  tags = ["exclusive", "minimal", "team:serve"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_basic.py",
+    "test_basic_2.py",
+    "test_basic_4.py",
+    "test_basic_5.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "minimal", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_basic_3.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "minimal", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_minimal_install.py",
+    "test_runtime_env_ray_minimal.py",
+    "test_utils.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "minimal", "no_redis", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_output.py",
+    "test_usage_stats.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "minimal", "no_redis", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -206,18 +257,25 @@ py_test_module_list(
     "test_metrics_agent_2.py",
     "test_microbenchmarks.py",
     "test_mini.py",
-    "test_minimal_install.py",
     "test_numba.py",
-    "test_redis_tls.py",
     "test_raylet_output.py",
     "test_top_level_api.py",
     "test_unhandled_error.py",
-    "test_utils.py",
     "test_widgets.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+      "test_redis_tls.py",
+  ],
+  size = "small",
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+  data = glob(["tls/*"]),
 )
 
 py_test_module_list(
@@ -316,7 +374,6 @@ py_test_module_list(
     "test_storage.py",
     "test_reference_counting_2.py",
     "test_exit_observability.py",
-    "test_usage_stats.py",
     "test_placement_group.py",
     "test_placement_group_3.py",
     "test_placement_group_5.py",
@@ -338,8 +395,6 @@ py_test(
 
 py_test_module_list(
   files = [
-    "test_basic_3.py",
-    "test_output.py",
     "test_tqdm.py",
     "test_out_of_disk_space.py",
     "test_failure_4.py",
@@ -369,7 +424,8 @@ py_test_module_list(
     "test_runtime_env_working_dir_2.py",
     "test_runtime_env_working_dir_3.py",
     "test_runtime_env_working_dir_4.py",
-    "test_runtime_env_working_dir_remote_uri.py"
+    "test_runtime_env_working_dir_remote_uri.py",
+    "test_runtime_env_profiler.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_2", "team:core"],
@@ -494,22 +550,6 @@ py_test(
         "test_runtime_env_validation_2_schema.json",
     ],
     tags = ["exclusive", "small_size_python_tests", "team:core"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_runtime_env_ray_minimal",
-    size = "medium",
-    srcs = ["test_runtime_env_ray_minimal.py"],
-    tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "test_serve_ray_minimal",
-    size = "small",
-    srcs = ["test_serve_ray_minimal.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:serve"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
