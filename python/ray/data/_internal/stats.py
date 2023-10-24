@@ -3,6 +3,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Union
+from uuid import uuid4
 
 import numpy as np
 
@@ -308,9 +309,12 @@ def clear_stats_actor_metrics(tags: Dict[str, str]):
 
 
 def get_dataset_id_from_stats_actor() -> str:
-    # global _stats_actor
+    global _stats_actor
     _check_cluster_stats_actor()
-    return ray.get(_stats_actor.get_dataset_id.remote())
+    try:
+        return ray.get(_stats_actor.get_dataset_id.remote())
+    except ray.exceptions.RayError:
+        return uuid4().hex
 
 
 class DatasetStats:

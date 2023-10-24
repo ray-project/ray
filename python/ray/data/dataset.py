@@ -246,7 +246,7 @@ class Dataset:
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
-        self._uuid = None
+
         self._set_uuid(get_dataset_id_from_stats_actor())
 
     @staticmethod
