@@ -124,9 +124,9 @@ sphinx_tabs_disable_tab_closing = True
 # Special mocking of packaging.version.Version is required when using sphinx;
 # we can't just add this to autodoc_mock_imports, as packaging is imported by
 # sphinx even before it can be mocked. Instead, we patch it here.
-import packaging
+import packaging.version as packaging_version
 
-Version = packaging.version.Version
+Version = packaging_version.Version
 
 
 class MockVersion(Version):
@@ -137,7 +137,7 @@ class MockVersion(Version):
             super().__init__("0")
 
 
-packaging.version.Version = MockVersion
+packaging_version.Version = MockVersion
 
 # This is used to suppress warnings about explicit "toctree" directives.
 suppress_warnings = ["etoc.toctree"]
@@ -183,7 +183,7 @@ author = "The Ray Team"
 # mocking of certain external dependencies.
 from setup import find_version
 
-release = find_version("ray", "__init__.py")
+release = find_version("ray", "_version.py")
 
 language = None
 
@@ -282,6 +282,8 @@ html_theme_options = {
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
 html_title = f"Ray {release}"
+
+autodoc_typehints_format = "short"
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 # html_short_title = None
@@ -486,6 +488,18 @@ for mock_target in autodoc_mock_imports:
         "autodoc_mock_imports cannot mock modules that have already"
         "been loaded into sys.modules when the sphinx build starts."
     )
+
+from sphinx.ext import autodoc
+
+
+class MockedClassDocumenter(autodoc.ClassDocumenter):
+    def add_line(self, line: str, source: str, *lineno: int) -> None:
+        if line == "   Bases: :py:class:`object`":
+            return
+        super().add_line(line, source, *lineno)
+
+
+autodoc.ClassDocumenter = MockedClassDocumenter
 
 # Other sphinx docs can be linked to if the appropriate URL to the docs
 # is specified in the `intersphinx_mapping` - for example, types annotations

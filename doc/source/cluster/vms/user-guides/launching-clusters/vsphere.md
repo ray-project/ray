@@ -6,9 +6,9 @@ To start a vSphere Ray cluster, you will use the Ray cluster launcher with the V
 
 ## Prepare the vSphere environment
 
-If you don't already have a vSphere deployment, you can learn more about it by reading the [vSphere documentation](https://docs.vmware.com/en/VMware-vSphere/index.html). The following prerequisites are needed in order to create Ray clusters.
-* [A vSphere cluster](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vcenter-esxi-management/GUID-F7818000-26E3-4E2A-93D2-FCDCE7114508.html) and [resource pools](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-resource-management/GUID-60077B40-66FF-4625-934A-641703ED7601.html) to host VMs composing Ray Clusters.
+If you don't already have a vSphere deployment, you can learn more about it by reading the [vSphere documentation](https://docs.vmware.com/en/VMware-vSphere/index.html). The vSphere Ray cluster launcher requires vSphere version 8.0 or later, along with the following prerequisites for creating Ray clusters.
 
+* [A vSphere cluster](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vcenter-esxi-management/GUID-F7818000-26E3-4E2A-93D2-FCDCE7114508.html) and [resource pools](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-resource-management/GUID-60077B40-66FF-4625-934A-641703ED7601.html) to host VMs composing Ray Clusters.
 * A network port group (either for a [standard switch](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-networking/GUID-E198C88A-F82C-4FF3-96C9-E3DF0056AD0C.html) or [distributed switch](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-networking/GUID-375B45C7-684C-4C51-BA3C-70E48DFABF04.html)) or an [NSX segment](https://docs.vmware.com/en/VMware-NSX/4.1/administration/GUID-316E5027-E588-455C-88AD-A7DA930A4F0B.html). VMs connected to this network should be able to obtain IP address via DHCP.
 * A datastore that can be accessed by all the hosts in the vSphere cluster.
 
@@ -92,12 +92,12 @@ ray down example-full.yaml
 
 Congrats, you have started a Ray cluster on vSphere!
 
-## Configure vSAN File Service as persistent storage for Ray AIR
+## Configure vSAN File Service as persistent storage for Ray AI Libraries
 
-Starting in Ray 2.7, Ray AIR (Train and Tune) will require users to provide a cloud storage or NFS path when running distributed training or tuning jobs. In a vSphere environment with a vSAN datastore, you can utilize the vSAN File Service feature to employ vSAN as a shared persistent storage. You can refer to [this vSAN File Service document](https://docs.vmware.com/en/VMware-vSphere/8.0/vsan-administration/GUID-CA9CF043-9434-454E-86E7-DCA9AD9B0C09.html) to create and configure NFS file shares supported by vSAN. The general steps are as follows:
+Starting in Ray 2.7, Ray AI Libraries (Train and Tune) will require users to provide a cloud storage or NFS path when running distributed training or tuning jobs. In a vSphere environment with a vSAN datastore, you can utilize the vSAN File Service feature to employ vSAN as a shared persistent storage. You can refer to [this vSAN File Service document](https://docs.vmware.com/en/VMware-vSphere/8.0/vsan-administration/GUID-CA9CF043-9434-454E-86E7-DCA9AD9B0C09.html) to create and configure NFS file shares supported by vSAN. The general steps are as follows:
 
 1. Enable vSAN File Service and configure it with domain information and IP address pools.
 2. Create a vSAN file share with NFS as the protocol.
 3. View the file share information to get NFS export path.
 
-Once a file share is created, you can mount it into the head and worker node and use the mount path as the `storage_path` for Ray AIR's `RunConfig` parameter. Please refer to [this example YAML](https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-vsan-file-service.yaml) as a template on how to mount and configure the path. You will need to modify the NFS export path in the `initialization_commands` list and bind the mounted path within the Ray container. In this example, you will need to put `/mnt/shared_storage/experiment_results` as the `storage_path` for `RunConfig`.
+Once a file share is created, you can mount it into the head and worker node and use the mount path as the `storage_path` for the `RunConfig` parameter in Ray Train and Tune. Please refer to [this example YAML](https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/vsphere/example-vsan-file-service.yaml) as a template on how to mount and configure the path. You will need to modify the NFS export path in the `initialization_commands` list and bind the mounted path within the Ray container. In this example, you will need to put `/mnt/shared_storage/experiment_results` as the `storage_path` for `RunConfig`.

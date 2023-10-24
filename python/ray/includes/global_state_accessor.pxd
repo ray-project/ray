@@ -80,10 +80,7 @@ cdef extern from * namespace "ray::gcs" nogil:
 
       auto redis_client = std::make_shared<RedisClient>(options);
       auto status = redis_client->Connect(io_service);
-      if(!status.ok()) {
-        RAY_LOG(ERROR) << "Failed to connect to redis: " << status.ToString();
-        return false;
-      }
+      RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
 
       auto cli = std::make_unique<StoreClientInternalKV>(
         std::make_unique<RedisStoreClient>(std::move(redis_client)));
@@ -152,10 +149,7 @@ cdef extern from * namespace "ray::gcs" nogil:
       });
 
       auto status = cli->Connect(io_service);
-      if(!status.ok()) {
-        RAY_LOG(ERROR) << "Failed to connect to redis: " << status.ToString();
-        return false;
-      }
+      RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
 
       auto context = cli->GetShardContext(key);
       auto cmd = std::vector<std::string>{"DEL", key};

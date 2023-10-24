@@ -167,16 +167,6 @@ def test_node_tags():
     assert tags == vnp.tag_cache["test_vm_id_1"]
 
 
-def test_external_ip():
-    vnp = mock_vsphere_node_provider()
-    vm = MagicMock()
-    vm.ip_address = "10.123.234.255"
-    vnp.vsphere_sdk_client.vcenter.vm.guest.Identity.get.return_value = vm
-
-    ip_address = vnp.external_ip("test_id")
-    assert ip_address == "10.123.234.255"
-
-
 def test_create_nodes():
     vnp = mock_vsphere_node_provider()
     vnp.lock = RLock()
@@ -438,6 +428,7 @@ def test_update_vsphere_configs():
                 "node_config": {"resource_pool": "ray", "datastore": "vsan"},
             },
             "worker": {"resources": {}, "node_config": {}},
+            "worker1": {"resources": {}, "node_config": {}},
         },
         "head_node_type": "ray.head.default",
     }
@@ -448,6 +439,13 @@ def test_update_vsphere_configs():
         in input_config["available_node_types"]["ray.head.default"]["node_config"]
     )
     assert "frozen_vm" in input_config["available_node_types"]["worker"]["node_config"]
+    assert "frozen_vm" in input_config["available_node_types"]["worker1"]["node_config"]
+    assert (
+        input_config["available_node_types"]["worker"]["node_config"]["frozen_vm"][
+            "name"
+        ]
+        == "frozen"
+    )
 
 
 def test_validate_frozen_vm_configs():

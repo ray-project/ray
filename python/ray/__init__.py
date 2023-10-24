@@ -44,19 +44,6 @@ def _configure_system():
                 "previous versions may leak memory."
             )
 
-    # MUST add pickle5 to the import path because it will be imported by some
-    # raylet modules.
-    #
-    # When running Python version < 3.8, Ray needs to use pickle5 instead of
-    # Python's built-in pickle. Add the directory containing pickle5 to the
-    # Python path so that we find the pickle5 version packaged with Ray and
-    # not a pre-existing pickle5.
-    if sys.version_info < (3, 8):
-        pickle5_path = os.path.join(
-            os.path.abspath(os.path.dirname(__file__)), "pickle5_files"
-        )
-        sys.path.insert(0, pickle5_path)
-
     # Importing psutil & setproctitle. Must be before ray._raylet is
     # initialized.
     thirdparty_files = os.path.join(
@@ -89,9 +76,10 @@ _configure_system()
 # Delete configuration function.
 del _configure_system
 
-# Replaced with the current commit when building the wheels.
-__commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "3.0.0.dev0"
+from ray import _version  # noqa: E402
+
+__commit__ = _version.commit
+__version__ = _version.version
 
 import ray._raylet  # noqa: E402
 

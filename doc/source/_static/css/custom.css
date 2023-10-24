@@ -161,7 +161,7 @@ nav.bd-links::-webkit-scrollbar {
 }
 
 dt:target, span.highlighted {
-    background-color: #fbe54e;
+    background-color: white;
 }
 
 div.sphx-glr-bigcontainer {
