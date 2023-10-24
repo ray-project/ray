@@ -115,7 +115,8 @@ doctest(
             "utils/spaces/space_utils.py"
         ]
     ),
-    tags = ["team:rllib"]
+    tags = ["team:rllib"],
+    size = "enormous"
 )
 
 # --------------------------------------------------------------------
@@ -965,12 +966,12 @@ py_test(
 )
 
 # A3C
-py_test(
-    name = "test_a3c",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    srcs = ["algorithms/a3c/tests/test_a3c.py"]
-)
+# py_test(
+#    name = "test_a3c",
+#    tags = ["team:rllib", "algorithms_dir"],
+#    size = "large",
+#    srcs = ["algorithms/a3c/tests/test_a3c.py"]
+# )
 
 # AlphaStar
 py_test(
@@ -4478,14 +4479,15 @@ py_test(
 # --------------------------------------------------------------------
 py_test_module_list(
   files = [
-    "tests/test_dnc.py",
-    "tests/test_perf.py",
+    "algorithms/a3c/tests/test_a3c.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
     "examples/env/tests/test_wrappers.py",
+    "tests/test_dnc.py",
+    "tests/test_perf.py",
     "utils/tests/test_utils.py",
   ],
   size = "large",

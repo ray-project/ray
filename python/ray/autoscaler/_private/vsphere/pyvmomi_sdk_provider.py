@@ -1,56 +1,105 @@
 import atexit
 import ssl
 
-from pyVim.connect import Disconnect, SmartConnect
+from pyVim.connect import Disconnect, SmartStubAdapter, VimSessionOrientedStub
+from pyVmomi import vim
 
 from ray.autoscaler._private.vsphere.utils import Constants
 
 
 class PyvmomiSdkProvider:
-    def __init__(self, server, user, password, session_type: Constants.SessionType):
+    def __init__(
+        self,
+        server,
+        user,
+        password,
+        session_type: Constants.SessionType,
+        port: int = 443,
+    ):
+        # Instance variables
         self.server = server
         self.user = user
         self.password = password
         self.session_type = session_type
+        self.port = port
 
+        # Instance parameters
         if self.session_type == Constants.SessionType.UNVERIFIED:
             context_obj = ssl._create_unverified_context()
+        self.timeout = 0
 
-        smart_connect_obj = SmartConnect(
+        # Connect using a session oriented connection
+        # Ref. https://github.com/vmware/pyvmomi/issues/347
+        self.pyvmomi_sdk_client = None
+        credentials = VimSessionOrientedStub.makeUserLoginMethod(user, password)
+        smart_stub = SmartStubAdapter(
             host=server,
-            user=user,
-            pwd=password,
+            port=port,
             sslContext=context_obj,
+            connectionPoolTimeout=self.timeout,
         )
-        atexit.register(Disconnect, smart_connect_obj)
-        self.pyvmomi_sdk_client = smart_connect_obj.content
+        self.session_stub = VimSessionOrientedStub(smart_stub, credentials)
+        self.pyvmomi_sdk_client = vim.ServiceInstance(
+            "ServiceInstance", self.session_stub
+        )
 
-    def get_pyvmomi_obj(self, vimtype, name):
+        if not self.pyvmomi_sdk_client:
+            raise ValueError("Could not connect to the specified host")
+        atexit.register(Disconnect, self.pyvmomi_sdk_client)
+
+    def get_pyvmomi_obj_by_moid(self, vimtype, moid):
         """
-        This function finds the vSphere object by the object name and the object type.
+        This function finds the vSphere object by the object moid and the object type.
         The object type can be "VM", "Host", "Datastore", etc.
-        The object name is a unique name under the vCenter server.
+        The object moid is a unique id for this object type under the vCenter server.
         To check all such object information, you can go to the managed object board
         page of your vCenter Server, such as: https://<your_vc_ip/mob
         """
         obj = None
         if self.pyvmomi_sdk_client is None:
-            raise ValueError("Must init pyvmomi_sdk_client first.")
+            raise RuntimeError("Must init pyvmomi_sdk_client first.")
 
-        container = self.pyvmomi_sdk_client.viewManager.CreateContainerView(
-            self.pyvmomi_sdk_client.rootFolder, vimtype, True
+        if not moid:
+            raise ValueError("Invalid argument for moid")
+
+        container = self.pyvmomi_sdk_client.content.viewManager.CreateContainerView(
+            self.pyvmomi_sdk_client.content.rootFolder, vimtype, True
         )
 
         for c in container.view:
-            if name:
-                if c.name == name:
-                    obj = c
-                    break
-            else:
+            if moid in str(c):
                 obj = c
                 break
-        if not obj:
-            raise RuntimeError(
-                f"Unexpected: cannot find vSphere object {vimtype} with name: {name}"
-            )
+
         return obj
+
+    def get_pyvmomi_obj(self, vimtype, name=None, obj_id=None):
+        """
+        This function will return the vSphere object.
+        The argument for `vimtype` can be "vim.VM", "vim.Host", "vim.Datastore", etc.
+        Then either the name or the object id need to be provided.
+        To check all such object information, you can go to the managed object board
+        page of your vCenter Server, such as: https://<your_vc_ip/mob
+        """
+        if not name and not obj_id:
+            # Raise runtime error because this is not user fault
+            raise RuntimeError("Either name or obj id must be provided")
+        if self.pyvmomi_sdk_client is None:
+            raise RuntimeError("Must init pyvmomi_sdk_client first")
+
+        container = self.pyvmomi_sdk_client.content.viewManager.CreateContainerView(
+            self.pyvmomi_sdk_client.content.rootFolder, vimtype, True
+        )
+        # If both name and moid are provided we will prioritize name.
+        if name:
+            for c in container.view:
+                if c.name == name:
+                    return c
+        elif obj_id:
+            for c in container.view:
+                if str(c) == obj_id:
+                    return c
+        raise ValueError(
+            f"Cannot find the object with type {vimtype} on vSphere with"
+            f"name={name} and obj_id={obj_id}"
+        )

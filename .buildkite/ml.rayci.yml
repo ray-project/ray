@@ -1,6 +1,36 @@
 group: ml tests
 steps:
-  - label: ":train: ml: train tests and examples"
+  # builds
+  - name: minbuild-ml
+    label: "wanda: minbuild-ml-py38"
+    wanda: ci/docker/min.build.wanda.yaml
+    depends_on: oss-ci-base_build
+    env:
+      PYTHON_VERSION: "3.8"
+      EXTRA_DEPENDENCY: ml
+
+  - name: mlbuild
+    wanda: ci/docker/ml.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
+      IMAGE_TO: mlbuild
+      RAYCI_IS_GPU_BUILD: "false"
+
+  - name: mllightning2gpubuild
+    wanda: ci/docker/mllightning2gpu.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
+
+  - name: mlgpubuild
+    wanda: ci/docker/ml.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
+      IMAGE_TO: mlgpubuild
+      RAYCI_IS_GPU_BUILD: "true"
+
+  # tests
+  - label: ":train: ml: train tests"
     tags: train
     instance_type: large
     parallelism: 2
@@ -10,3 +40,143 @@ steps:
         --except-tags gpu_only,gpu,minimal,tune,doctest,needs_credentials 
     depends_on: mlbuild
     job_env: forge
+
+  - label: ":train: ml: tune tests"
+    tags: tune
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+        --parallelism-per-worker 3
+        --except-tags soft_imports,gpu_only,rllib,multinode
+    depends_on: mlbuild
+    job_env: forge
+
+  - label: ":train: ml: tune new output tests"
+    tags: tune
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+        --parallelism-per-worker 3
+        --except-tags soft_imports,gpu_only,rllib,multinode
+        --test-env=AIR_VERBOSITY=1
+    depends_on: mlbuild
+    job_env: forge
+
+  - label: ":train: ml: tune soft import tests"
+    tags: tune
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
+        --only-tags soft_imports 
+        --build-name oss-ci-base_build
+    depends_on: oss-ci-base_build
+    job_env: forge
+
+  - label: ":train: ml: air tests"
+    tags: ml
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/air/... ml 
+        --parallelism-per-worker 3
+        --except-tags gpu
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... ml 
+        --parallelism-per-worker 3
+        --only-tags ray_air
+        --skip-ray-installation
+    depends_on: mlbuild
+    job_env: forge
+
+  - label: ":train: ml: train+tune tests"
+    tags: train
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
+        --parallelism-per-worker 3
+        --only-tags tune
+        --except-tags gpu_only,ray_air,gpu,doctest,needs_credentials
+    depends_on: mlbuild
+    job_env: forge
+
+  - label: ":train: ml: rllib+tune tests"
+    tags: 
+      - tune
+      - rllib
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+        --parallelism-per-worker 3
+        --only-tags rllib
+        --except-tags gpu_only
+    depends_on: mlbuild
+    job_env: forge
+
+  - label: ":train: ml: library integration tests"
+    tags: tune
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- 
+        //python/ray/tests/xgboost/... python/ray/tests/horovod/... ml 
+        --parallelism-per-worker 2
+    depends_on: mlbuild
+    job_env: forge
+
+  - label: ":train: ml: release tests"
+    tags:
+      - ml
+      - python
+      - release_tests
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //release/... ml 
+        --parallelism-per-worker 3
+    depends_on: mlbuild
+    job_env: forge
+
+  - label: ":train: ml: train minimal"
+    tags: train
+    instance_type: small
+    commands:
+      - python ./ci/env/check_minimal_install.py
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
+        --parallelism-per-worker 2
+        --build-name minbuild-ml-py3.8
+        --only-tags minimal
+    depends_on: minbuild-ml
+    job_env: forge
+
+  - label: ":train: ml: train gpu tests"
+    tags: 
+      - train
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/air/... //doc/... ml
+        --parallelism-per-worker 2
+        --build-name mlgpubuild
+        --only-tags gpu,gpu_only
+    depends_on: mlgpubuild
+    job_env: forge
+
+  - label: ":train: ml: train gpu lightning 2.0 tests"
+    tags: 
+      - train
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
+        --build-name mllightning2gpubuild
+        --only-tags ptl_v2
+    depends_on: mllightning2gpubuild
+    job_env: forge
+
+  - label: ":train: ml: flaky tests"
+    tags: 
+      - train
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
+        --run-flaky-tests
+        --except-tags soft_imports,gpu_only,rllib,multinode
+    depends_on: mlbuild
+    job_env: forge
+    soft_fail: true

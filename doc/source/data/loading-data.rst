@@ -939,8 +939,6 @@ datasource and pass it to :func:`~ray.data.read_datasource`.
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
 
-For an example, see :ref:`Implementing a Custom Datasource <custom_datasources>`.
-
 Performance considerations
 ==========================
 
