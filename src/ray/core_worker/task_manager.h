@@ -153,6 +153,9 @@ class ObjectRefStream {
   /// \return A list of object IDs that are not read yet.
   absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
 
+  /// \return Index of the last consumed item, -1 if nothing is consumed yet.
+  int64_t LastConsumedIndex() const { return next_index_ - 1; }
+
   /// Total number of object that's written to the stream
   int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
   int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
