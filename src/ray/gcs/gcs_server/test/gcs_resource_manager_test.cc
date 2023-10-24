@@ -17,7 +17,9 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "mock/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
@@ -31,8 +33,15 @@ class GcsResourceManagerTest : public ::testing::Test {
   GcsResourceManagerTest()
       : cluster_resource_manager_(io_service_),
         gcs_node_manager_(std::make_unique<gcs::MockGcsNodeManager>()) {
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
+    gcs_placement_group_manager_ = std::make_unique<gcs::MockGcsPlacementGroupManager>();
+    gcs_autoscaler_state_manager_ = std::make_unique<gcs::MockGcsAutoscalerStateManager>(
+        *gcs_node_manager_, *gcs_placement_group_manager_),
+    gcs_resource_manager_ =
+        std::make_shared<gcs::GcsResourceManager>(io_service_,
+                                                  cluster_resource_manager_,
+                                                  *gcs_node_manager_,
+                                                  *gcs_autoscaler_state_manager_,
+                                                  NodeID::FromRandom());
   }
 
   void UpdateFromResourceViewSync(
@@ -54,6 +63,8 @@ class GcsResourceManagerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   ClusterResourceManager cluster_resource_manager_;
   std::unique_ptr<gcs::GcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<gcs::MockGcsPlacementGroupManager> gcs_placement_group_manager_;
+  std::unique_ptr<gcs::MockGcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };
 

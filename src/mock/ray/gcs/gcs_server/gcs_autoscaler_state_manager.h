@@ -20,11 +20,13 @@ namespace gcs {
 
 class MockGcsAutoscalerStateManager : public GcsAutoscalerStateManager {
  public:
-  MockGcsAutoscalerStateManager(const GcsNodeManager &gcs_node_manager, 
-  const GcsPlacementGroupManager &gcs_placement_group_manager,
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool = nullptr) : GcsAutoscalerStateManager("", gcs_node_manager, gcs_placement_group_manager, raylet_client_pool){}
-
+  MockGcsAutoscalerStateManager(
+      const GcsNodeManager &gcs_node_manager,
+      const GcsPlacementGroupManager &gcs_placement_group_manager,
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool = nullptr)
+      : GcsAutoscalerStateManager(
+            "", gcs_node_manager, gcs_placement_group_manager, raylet_client_pool) {}
 };
 
-} // namespace gcs
-} // namespace ray
+}  // namespace gcs
+}  // namespace ray

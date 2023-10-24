@@ -23,6 +23,8 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/util/counter_map.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "mock/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 // clang-format on
 
 namespace ray {
@@ -56,10 +58,14 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         /*is_local_node_with_raylet=*/false);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         gcs_publisher_, gcs_table_storage_, raylet_client_pool_, ClusterID::Nil());
+    gcs_placement_group_manager_ = std::make_unique<gcs::MockGcsPlacementGroupManager>();
+    gcs_autoscaler_state_manager_ = std::make_unique<gcs::MockGcsAutoscalerStateManager>(
+        *gcs_node_manager_, *gcs_placement_group_manager_),
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler_->GetClusterResourceManager(),
         *gcs_node_manager_,
+        *gcs_autoscaler_state_manager_,
         local_node_id);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
@@ -291,6 +297,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<gcs::MockGcsPlacementGroupManager> gcs_placement_group_manager_;
+  std::unique_ptr<gcs::MockGcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsPlacementGroupScheduler> scheduler_;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> success_placement_groups_
       ABSL_GUARDED_BY(placement_group_requests_mutex_);
