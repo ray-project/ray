@@ -161,7 +161,7 @@ public class GlobalStateAccessor {
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
 
   private native List<byte[]> nativeGetAllActorInfo(
-      long nativePtr, byte[] jobId, String actor_state_name);
+      long nativePtr, byte[] jobId, String actorStateName);
 
   private native byte[] nativeGetActorInfo(long nativePtr, byte[] actorId);
 

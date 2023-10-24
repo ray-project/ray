@@ -115,7 +115,8 @@ doctest(
             "utils/spaces/space_utils.py"
         ]
     ),
-    tags = ["team:rllib"]
+    tags = ["team:rllib"],
+    size = "enormous"
 )
 
 # --------------------------------------------------------------------

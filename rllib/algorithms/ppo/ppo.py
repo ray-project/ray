@@ -60,37 +60,46 @@ logger = logging.getLogger(__name__)
 class PPOConfig(PGConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> config = PPOConfig()  # doctest: +SKIP
-        >>> config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3)  # doctest: +SKIP
-        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
-        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = PPOConfig()
-        >>> # Print out some default values.
-        >>> print(config.clip_param)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config.training(  # doctest: +SKIP
-        ... lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2
-        ... )
-        >>> # Set the config object's env.
-        >>> config = config.environment(env="CartPole-v1")   # doctest: +SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "PPO",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.ppo import PPOConfig
+        config = PPOConfig()
+        config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3,
+            train_batch_size=128)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build(env="CartPole-v1")
+        algo.train()
+
+    .. testcode::
+
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray import air
+        from ray import tune
+        config = PPOConfig()
+        # Print out some default values.
+
+        # Update the config object.
+        config.training(
+            lr=tune.grid_search([0.001 ]), clip_param=0.2
+        )
+        # Set the config object's env.
+        config = config.environment(env="CartPole-v1")
+
+        # Use to_dict() to get the old-style python config dict
+        # when running with tune.
+        tune.Tuner(
+            "PPO",
+            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            param_space=config.to_dict(),
+        ).fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
