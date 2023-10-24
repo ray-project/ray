@@ -42,7 +42,7 @@ In addition, these pull requests, [ray-project/kuberay#1106](https://github.com/
 (case1-watch-all-namespaces)=
 ## Case 1: Watch all namespaces in the Kubernetes cluster
 
-[TODO (@evalaiyc98): Add a figure]
+![Watch all namespaces in the Kubernetes cluster](../images/helm_ClusterRole.png)
 
 This is the KubeRay's default setting.
 The informer of the KubeRay operator watches all namespaces in the Kubernetes cluster.
@@ -62,7 +62,7 @@ helm install kuberay-operator .
 
 # Check ClusterRole
 kubectl get clusterrole | grep kuberay
-# kuberay-operator                                                       2023-10-15T04:54:28Z
+# kuberay-operator                  2023-10-15T04:54:28Z
 
 # Check Role 
 kubectl get role
@@ -85,7 +85,7 @@ kubectl get raycluster -A
 (case2-watch-1-namespace)=
 ## Case 2: Watch the namespace where the operator is deployed
 
-[TODO (@evalaiyc98): Add a figure]
+![Watch the namespace where the operator is deployed](../images/helm_RoleOne.png)
 
 The informer of the KubeRay operator watches the namespace where the operator is deployed.
 The operator has Role and RoleBinding in the same namespace.
@@ -133,7 +133,7 @@ kubectl get raycluster -A
 (case3-watch-multiple-namespaces)=
 ## Case 3: Watch multiple namespaces in the Kubernetes cluster
 
-[TODO (@evalaiyc98): Add a figure]
+![Watch multiple namespaces in the Kubernetes cluster](../images/helm_RoleMulti.png)
 
 In Case 2, users with only namespaced access deploy a separate KubeRay operator for each namespace.
 This approach can heighten maintenance overhead, especially when upgrading versions for each deployed instance.
