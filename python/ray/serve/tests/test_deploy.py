@@ -648,7 +648,6 @@ def test_deployment_properties():
 
     D = serve.deployment(
         name="name",
-        init_args=("hello", 123),
         version="version",
         num_replicas=2,
         user_config="hi",
@@ -658,7 +657,6 @@ def test_deployment_properties():
     )(DClass)
 
     assert D.name == "name"
-    assert D.init_args == ("hello", 123)
     assert D.version == "version"
     assert D.num_replicas == 2
     assert D.user_config == "hi"
