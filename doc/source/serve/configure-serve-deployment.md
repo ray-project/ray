@@ -31,7 +31,7 @@ Use the `@serve.deployment` decorator to specify deployment parameters:
 :language: python
 ```
 
-Sometimes, you might want to reuse an already-defined deployment but deploy it with different configurations; or you might want to dynamically set the parameters at runtime. In such cases, you can use `.options()` on a deployment to set or override parameters specified in the `@serve.deployment` decorator:
+Use the `.options()` method to modify deployment parameters on an already-defined deployment. This lets you reuse deployment definitions and dynamically set parameters at runtime.
 
 ```{literalinclude} ../serve/doc_code/configure_serve_deployment/model_deployment.py
 :start-after: __deployment_end__
