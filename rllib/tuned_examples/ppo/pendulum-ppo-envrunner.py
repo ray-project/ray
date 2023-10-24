@@ -6,7 +6,7 @@ config = (
     PPOConfig()
     .environment("Pendulum-v1")
     .rollouts(
-        num_rollout_workers=0,
+        num_rollout_workers=1,
         env_runner_cls=SingleAgentEnvRunner,
     )
     .training(
@@ -20,6 +20,11 @@ config = (
         model={
             "fcnet_activation": "relu",
         },
+    )
+    .evaluation(
+        evaluation_num_workers=1,
+        evaluation_interval=1,
+        enable_async_evaluation=True,
     )
 )
 

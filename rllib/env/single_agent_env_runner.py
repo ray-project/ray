@@ -6,7 +6,6 @@ from collections import defaultdict
 from functools import partial
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
-from ray.experimental.tqdm_ray import tqdm
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_runner import EnvRunner
@@ -208,11 +207,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Loop through env in enumerate.(self._episodes):
         ts = 0
-        pbar = tqdm(
-            total=num_timesteps,
-            desc=f"EnvRunner {self.worker_index}: Sampling {num_timesteps} "
-            f"timesteps ...",
-        )
 
         # print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
         while ts < num_timesteps:
@@ -243,7 +237,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions, action_logp = self._sample_actions_if_necessary(
                     fwd_out, explore
                 )
-                # print(actions)
 
                 fwd_out = convert_to_numpy(fwd_out)
 
@@ -252,11 +245,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
-
-            # Record only every `10 * self.num_envs`` as otherwise
-            # logging is too fast for `tqdm_ray`.
-            if ts % (self.num_envs * 10) == 0:
-                pbar.update(self.num_envs * 10)
 
             for i in range(self.num_envs):
                 # Extract state for vector sub_env.
@@ -370,10 +358,6 @@ class SingleAgentEnvRunner(EnvRunner):
             )
 
         eps = 0
-        pbar = tqdm(
-            total=num_episodes,
-            desc=f"EnvRunner {self.worker_index}: Sampling {num_episodes} episodes ...",
-        )
         while eps < num_episodes:
             if random_actions:
                 actions = self.env.action_space.sample()
@@ -422,7 +406,6 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 if terminateds[i] or truncateds[i]:
                     eps += 1
-                    pbar.update(1)
 
                     episodes[i].add_timestep(
                         infos[i]["final_observation"],
@@ -514,8 +497,6 @@ class SingleAgentEnvRunner(EnvRunner):
             weights = weights[DEFAULT_POLICY_ID]
         weights = self._convert_to_tensor(weights)
         self.module.set_state(weights)
-        print(f"EnvRunner {self.worker_index}: updated")
-        # print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
 
         # Check, if an update happened since the last call. See
         # `Algorithm._evaluate_async_with_env_runner`.
