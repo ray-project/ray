@@ -1,5 +1,4 @@
 import numpy as np
-import scipy.signal
 import tree
 
 from typing import List

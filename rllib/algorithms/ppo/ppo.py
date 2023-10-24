@@ -425,9 +425,8 @@ class PPO(Algorithm):
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
-            if (
-                self.config.env_runner_cls is None
-                or issubclass(self.config.env_runner_cls, RolloutWorker)
+            if self.config.env_runner_cls is None or issubclass(
+                self.config.env_runner_cls, RolloutWorker
             ):
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(

@@ -504,8 +504,8 @@ class SingleAgentEnvRunner(EnvRunner):
         #     # In case of a `StateDict` we have to extract the `
         #     # default_policy`.
         #     # TODO (sven): Handle this probably in `RLModule` as the latter
-        #     # does not need a 'StateDict' in its `set_state()` method
-        #     # as the `keras.Model.base_layer` has weights as `List[TensorType]`.
+        #     #  does not need a 'StateDict' in its `set_state()` method
+        #     #  as the `keras.Model.base_layer` has weights as `List[TensorType]`.
         #     self._weights_seq_no = weights_seq_no
         #     if isinstance(weights, dict) and DEFAULT_POLICY_ID in weights:
         #         weights = weights[DEFAULT_POLICY_ID]
@@ -578,7 +578,7 @@ class SingleAgentEnvRunner(EnvRunner):
     def _convert_from_numpy(self, array: np.array) -> TensorType:
         """Converts a numpy array to a framework-specific tensor."""
 
-        if self.framework_str == "torch":
+        if self.config.framework_str == "torch":
             return torch.from_numpy(array)
         else:
             return tf.convert_to_tensor(array)
@@ -586,11 +586,10 @@ class SingleAgentEnvRunner(EnvRunner):
     def _convert_to_tensor(self, struct) -> TensorType:
         """Converts structs to a framework-specific tensor."""
 
-        if self.framework_str == "torch":
+        if self.config.framework_str == "torch":
             return convert_to_torch_tensor(struct)
         else:
-            # `tf.convert_to_tensor` cannot deal with tensors
-            # as inputs.
+            # `tf.convert_to_tensor` cannot deal with tensors as inputs.
             # if not tf.is_tensor(struct):
             #     return tree.map_structure(tf.convert_to_tensor, struct)
             # else:

@@ -40,13 +40,11 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         self.config = config
         super().__init__(**kwargs)
 
-        # Get the framework string.
-        self.framework_str = self.config.framework_str
         # This eager check is necessary for certain all-framework tests
         # that use tf's eager_mode() context generator.
         if (
             tf1
-            and (self.framework_str == "tf2" or config.enable_tf1_exec_eagerly)
+            and (self.config.framework_str == "tf2" or config.enable_tf1_exec_eagerly)
             and not tf1.executing_eagerly()
         ):
             tf1.enable_eager_execution()
