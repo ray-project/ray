@@ -1,4 +1,4 @@
-class SyclContext():
+class SyclContext:
     def __init__(self, info):
         pass
 
@@ -7,7 +7,7 @@ class SyclContext():
         return 6
 
 
-class SyclDevice():
+class SyclDevice:
     def __init__(self, info):
         pass
 
