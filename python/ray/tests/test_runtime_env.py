@@ -38,7 +38,7 @@ from ray._private.utils import (
     get_wheel_filename,
 )
 from ray.exceptions import RuntimeEnvSetupError
-from ray.runtime_env import RuntimeEnv
+from ray.runtime_env import RuntimeEnv, encode_secret_env_vars, decode_secret_env_vars
 
 import ray._private.ray_constants as ray_constants
 
@@ -922,6 +922,20 @@ def test_secret_env_vars_available(start_cluster, runtime_env_class):
         return os.environ.get("foo")
 
     assert ray.get(f.remote()) == "bar"
+
+
+@pytest.mark.parametrize(
+    "secret",
+    ["foo", "bar", "!@#@$#@#$#@$@#$#", "12345", "bHWtcH:4JIewdnylJR>>"],
+)
+def test_encode_decode_secret_env_vars(secret):
+    secret_env_vars = {"my-secret": secret}
+    encoded = encode_secret_env_vars(secret_env_vars)
+    decoded = decode_secret_env_vars(encoded)
+    assert decoded == secret_env_vars
+    assert decoded["my-secret"] == secret
+    assert encoded != secret_env_vars
+    assert encoded["my-secret"] != secret
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ from ray.core.generated.runtime_env_common_pb2 import (
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
-CHAR_ENCODING = "utf-8"
+ENCODING_SHIFT = 1
 
 
 @DeveloperAPI
@@ -37,13 +37,7 @@ def encode_secret_env_vars(secret_env_vars: dict) -> dict:
         A dict of encoded secret env vars (str -> str). The keys are the same as the input dict.
         The values are base64 encoded.
     """
-    encoded_dict = {}
-    for key, value in secret_env_vars.items():
-        encoded_value = base64.b64encode(value.encode(CHAR_ENCODING)).decode(
-            CHAR_ENCODING
-        )
-        encoded_dict[key] = encoded_value
-    return encoded_dict
+    return {key: _encode_with_shift(value) for key, value in secret_env_vars.items()}
 
 
 @DeveloperAPI
@@ -57,13 +51,10 @@ def decode_secret_env_vars(encoded_env_vars: dict) -> dict:
         A dict of decoded secret env vars (str -> str). The keys are the same as the input dict.
         The values are base64 decoded.
     """
-    decoded_dict = {}
-    for key, encoded_value in encoded_env_vars.items():
-        decoded_value = base64.b64decode(encoded_value.encode(CHAR_ENCODING)).decode(
-            CHAR_ENCODING
-        )
-        decoded_dict[key] = decoded_value
-    return decoded_dict
+    return {
+        key: _decode_with_shift(encoded_value)
+        for key, encoded_value in encoded_env_vars.items()
+    }
 
 
 @PublicAPI(stability="stable")
@@ -636,3 +627,14 @@ def _merge_runtime_env(
         parent["secret_env_vars"] = parent_secret_env_vars
 
     return parent
+
+
+def _encode_with_shift(data, shift=ENCODING_SHIFT):
+    b64_encoded = base64.b64encode(data.encode())
+    shifted = bytearray([b + shift for b in b64_encoded])
+    return shifted
+
+
+def _decode_with_shift(data, shift=ENCODING_SHIFT):
+    unshifted = bytearray([b - shift for b in data])
+    return base64.b64decode(unshifted).decode()
