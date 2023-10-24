@@ -314,6 +314,8 @@ def get_dataset_id_from_stats_actor() -> str:
     try:
         return ray.get(_stats_actor.get_dataset_id.remote())
     except ray.exceptions.RayError:
+        # Getting dataset id from _StatsActor may fail, in this case
+        # fall back to uuid4
         return uuid4().hex
 
 
