@@ -82,11 +82,11 @@ def _deserialize_ndarray(b64_string: str) -> np.ndarray:
 
 
 @DeveloperAPI
-def gym_space_to_dict(space: gym.spaces.Space) -> Optional[Dict]:
+def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
     """Serialize a gym Space into a JSON-serializable dict.
 
     Args:
-        space: gym.spaces.Space.
+        space: gym.spaces.Space
 
     Returns:
         Serialized JSON string.
@@ -175,9 +175,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Optional[Dict]:
             "charset": charset,
         }
 
-    if space is None:
-        return None
-    elif isinstance(space, gym.spaces.Box):
+    if isinstance(space, gym.spaces.Box):
         return _box(space)
     elif isinstance(space, gym.spaces.Discrete):
         return _discrete(space)
@@ -223,7 +221,7 @@ def space_to_dict(space: gym.spaces.Space) -> Dict:
 
 
 @DeveloperAPI
-def gym_space_from_dict(d: Dict) -> Optional[gym.spaces.Space]:
+def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     """De-serialize a dict into gym Space.
 
     Args:
@@ -232,8 +230,6 @@ def gym_space_from_dict(d: Dict) -> Optional[gym.spaces.Space]:
     Returns:
         De-serialized gym space.
     """
-    if d is None or isinstance(d, gym.Space):
-        return d
 
     def __common(d: Dict):
         """Common updates to the dict before we use it to construct spaces"""
@@ -384,7 +380,7 @@ def serialize_type(type_: Union[Type, str]) -> str:
     """
     # TODO (avnishn): find a way to incorporate the tune registry here.
     # Already serialized.
-    if type_ is None or isinstance(type_, str):
+    if isinstance(type_, str):
         return type_
 
     return type_.__module__ + "." + type_.__qualname__

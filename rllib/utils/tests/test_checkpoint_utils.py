@@ -3,14 +3,12 @@ from pathlib import Path
 import tempfile
 import unittest
 
-import gymnasium as gym
-
 import ray
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.simple_q import SimpleQConfig
-from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.checkpoints import (
     get_checkpoint_info,
@@ -155,15 +153,11 @@ class TestCheckpointUtils(unittest.TestCase):
         def mapping_fn(aid, episode, worker, **kwargs):
             return "pol" + str(aid)
 
-        tune.register_env("ma", lambda cfg: RandomMultiAgentEnv(config=cfg))
+        tune.register_env("ma", lambda _: MultiAgentCartPole(config={"num_agents": 3}))
 
         config = (
             DQNConfig()
-            .environment("ma", env_config={
-                "num_agents": 3,
-                "observation_space": gym.spaces.Discrete(3),
-                "action_space": gym.spaces.Discrete(3),
-            })
+            .environment("ma")
             .multi_agent(
                 policies=["pol0", "pol1", "pol2"],
                 policy_mapping_fn=mapping_fn,
@@ -243,10 +237,7 @@ class TestCheckpointUtils(unittest.TestCase):
         pickle-checkpoint-recovered Policy (given same initial config).
         """
         # Base config used for both pickle-based checkpoint and msgpack-based one.
-        config = SimpleQConfig().environment(RandomEnv, env_config={
-            "observation_space": gym.spaces.Discrete(3),
-            "action_space": gym.spaces.Discrete(3),
-        })
+        config = SimpleQConfig().environment("CartPole-v1")
         # Build algorithm/policy objects.
         algo1 = config.build()
         pol1 = algo1.get_policy()
