@@ -7,7 +7,7 @@ py_test(
     size = "large",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/cartpole-a3c.yaml"],
-    args = ["--dir=tuned_examples/"]
+    args = ["--dir=a3c/tuned_examples/"]
 )
 
 # Compilation Tests

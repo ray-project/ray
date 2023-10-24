@@ -7,7 +7,7 @@ py_test(
     size = "medium",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/multi-agent-cartpole-alpha-star.yaml"],
-    args = ["--dir=tuned_examples/", "--num-cpus=10"]
+    args = ["--dir=alpha_star/tuned_examples/", "--num-cpus=10"]
 )
 
 # Compilation Tests

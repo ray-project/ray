@@ -7,7 +7,7 @@ py_test(
     size = "medium",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/cartpole-sparse-rewards-alpha-zero.yaml"],
-    args = ["--dir=tuned_examples/", "--num-cpus=8"]
+    args = ["--dir=alpha_zero/tuned_examples/", "--num-cpus=8"]
 )
 
 # Compilation Tests

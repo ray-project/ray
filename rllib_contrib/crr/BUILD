@@ -11,7 +11,7 @@ py_test(
        "tuned_examples/pendulum-v1-crr.yaml",
        "tuned_examples/pendulum_replay_v1.1.0.zip",
    ],
-   args = ["--dir=tuned_examples/"]
+   args = ["--dir=crr/tuned_examples/"]
 )
 
 

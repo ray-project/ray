@@ -7,7 +7,7 @@ py_test(
     size = "medium",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/cartpole-ars.yaml"],
-    args = ["--dir=tuned_examples/"]
+    args = ["--dir=ars/tuned_examples/"]
 )
 
 # Compilation Tests

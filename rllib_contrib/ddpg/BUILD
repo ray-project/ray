@@ -7,7 +7,7 @@ py_test(
    size = "large",
    srcs = ["run_regression_tests.py"],
    data = ["tuned_examples/pendulum-ddpg-fake-gpus.yaml"],
-   args = ["--dir=tuned_examples/"]
+   args = ["--dir=ddpg/tuned_examples/"]
 )
 
 # Compilation Tests

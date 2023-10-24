@@ -11,7 +11,7 @@ py_test(
        "tuned_examples/pendulum-v1-dt.yaml",
        "tests/data/pendulum/pendulum_expert_sac_50eps.zip",
    ],
-   args = ["--dir=tuned_examples/"]
+   args = ["--dir=dt/tuned_examples/"]
 )
 
 py_test(
@@ -25,7 +25,7 @@ py_test(
         "tuned_examples/cartpole-v1-dt.yaml",
         "tests/data/cartpole/large.json",
     ],
-    args = ["--dir=tuned_examples/"]
+    args = ["--dir=dt/tuned_examples/"]
 )
 
 

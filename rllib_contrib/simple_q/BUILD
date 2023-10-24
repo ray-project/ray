@@ -1,40 +1,40 @@
 # Learning Tests
 
 py_test(
-    name = "learning_tests_cartpole_a2c",
+    name = "learning_tests_cartpole_simpleq",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/cartpole-a2c.yaml"],
-    args = ["--dir=tuned_examples/"]
-)
-
-py_test(
-    name = "learning_tests_cartpole_a2c_microbatch",
-    main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/cartpole-a2c-microbatch.yaml"],
-    args = ["--dir=tuned_examples/"]
+    size = "medium",
+    srcs = ["run_regression_tests.py"],
+    data = [
+        "tuned_examples/simple_q/cartpole-simpleq.yaml",
+    ],
+    args = ["--dir=simple_q/tuned_examples"]
 )
 
 py_test(
-    name = "learning_tests_cartpole_a2c_fake_gpus",
-    main = "tests/run_regression_tests.py",
+    name = "learning_tests_cartpole_simpleq_fake_gpus",
+    main = "run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/cartpole-a2c-fake-gpus.yaml"],
-    args = ["--dir=tuned_examples/"]
+    srcs = ["run_regression_tests.py"],
+    data = ["tuned_examples/simple_q/cartpole-simpleq-fake-gpus.yaml"],
+    args = ["--dir=simple_q/tuned_examples"]
 )
+
 
 # Compilation Tests
 
 py_test(
-    name = "test_a2c",
+    name = "test_simple_q",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["tests/test_a2c.py"]
+    srcs = ["tests/test_simple_q.py"]
+)
+
+py_test(
+    name = "test_repro_simple_q",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["tests/test_repro_simple_q.py"]
 )

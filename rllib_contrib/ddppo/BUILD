@@ -7,7 +7,7 @@ py_test(
     size = "small",
     srcs = ["run_regression_tests.py"],
     data = glob(["tuned_examples/cartpole-ddppo.yaml"]),
-    args = ["--dir=tuned_examples/"]
+    args = ["--dir=ddppo/tuned_examples/"]
 )
 
 py_test(
@@ -17,7 +17,7 @@ py_test(
     size = "enormous",
     srcs = ["run_regression_tests.py"],
     data = glob(["tuned_examples/pendulum-ddppo.yaml"]),
-    args = ["--dir=tuned_examples/"]
+    args = ["--dir=ddppo/tuned_examples/"]
 )
 
 
