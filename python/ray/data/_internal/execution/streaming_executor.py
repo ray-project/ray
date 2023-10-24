@@ -80,7 +80,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # generator `yield`s.
         self._topology: Optional[Topology] = None
         self._output_node: Optional[OpState] = None
-        self._backpressure_policies: Optional[List[BackpressurePolicy]] = None
+        self._backpressure_policies: List[BackpressurePolicy] = []
 
         self._dataset_tag = dataset_tag
 
@@ -249,7 +249,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
-        process_completed_tasks(topology)
+        process_completed_tasks(topology, self._backpressure_policies)
 
         # Dispatch as many operators as we can for completed tasks.
         limits = self._get_or_refresh_resource_limits()
