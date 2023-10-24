@@ -222,7 +222,7 @@ def test_create_instant_clone_node(mock_wait_task, mock_ic_spec, mock_relo_spec)
     VM.InstantCloneSpec = MagicMock(return_value="Clone Spec")
     vnp.vsphere_sdk_client.vcenter.VM.instant_clone.return_value = "test_id_1"
     vnp.vsphere_sdk_client.vcenter.vm.Power.stop.return_value = None
-    vnp.get_pyvmomi_obj_by_name = MagicMock(return_value=MagicMock())
+    vnp.get_pyvmomi_obj = MagicMock(return_value=MagicMock())
     vnp.set_node_tags = MagicMock(return_value=None)
     vnp.vsphere_sdk_client.vcenter.VM.list = MagicMock(
         return_value=[MagicMock(vm="test VM")]
@@ -428,6 +428,7 @@ def test_update_vsphere_configs():
                 "node_config": {"resource_pool": "ray", "datastore": "vsan"},
             },
             "worker": {"resources": {}, "node_config": {}},
+            "worker1": {"resources": {}, "node_config": {}},
         },
         "head_node_type": "ray.head.default",
     }
@@ -438,6 +439,13 @@ def test_update_vsphere_configs():
         in input_config["available_node_types"]["ray.head.default"]["node_config"]
     )
     assert "frozen_vm" in input_config["available_node_types"]["worker"]["node_config"]
+    assert "frozen_vm" in input_config["available_node_types"]["worker1"]["node_config"]
+    assert (
+        input_config["available_node_types"]["worker"]["node_config"]["frozen_vm"][
+            "name"
+        ]
+        == "frozen"
+    )
 
 
 def test_validate_frozen_vm_configs():
