@@ -10,9 +10,8 @@ logger = logging.getLogger(__name__)
 
 def get_gpu_id_if_available(host, gpu):
     """
-    This function checks if a GPU is availble on an ESXi host, if yes,
-    returns the GPU ID of the GPU. Otherwise returns none.
-    Or return None
+    This function checks if a GPU is available on an ESXi host, if yes,
+    returns the GPU ID of the GPU. Otherwise, returns None.
     """
     bindings = host.config.assignableHardwareBinding
     # No VM bind to any GPU card on this host
@@ -28,17 +27,18 @@ def get_gpu_id_if_available(host, gpu):
     return gpu.pciId
 
 
-def get_gpu_ids(host, gpus, desired_gpu_number):
+def get_idle_gpu_ids(host, gpus, desired_gpu_number):
     """
     This function takes the number of desired GPU and all the GPU cards of a host.
-    This function will selected the unused GPU cards' GPU IDs and put them into a list.
-    If the lenght of the list > the number of the desired GPU, return the list,
-    otherwise return None to indicate that this host cannot fulfill the GPU requirement.
+    This function will select the unused GPU cards' GPU IDs and put them into a list.
+    If the length of the list > the number of the desired GPU, returns the list,
+    otherwise returns an empty list to indicate that this host cannot fulfill the GPU
+    requirement.
     """
     gpu_ids = []
 
     for gpu in gpus:
-        # Find one avaialable GPU card on this host
+        # Find one available GPU card on this host
         gpu_id = get_gpu_id_if_available(host, gpu)
         if gpu_id:
             gpu_ids.append(gpu_id)
@@ -74,9 +74,10 @@ def get_supported_gpus(host):
 
 def get_vm_2_gpu_ids_map(pool_name, desired_gpu_number):
     """
-    This function return "vm, gpu_ids" map, the key represents the VM
-    and he value represents the available GPUs this VM can bind.
-    The value will only exist if the length of the value >= desired_gpu_number.
+    This function returns "vm, gpu_ids" map, the key represents the VM
+    and the value lists represents the available GPUs this VM can bind.
+    With this map, we can find which frozen VM we can do instant clone to create the
+    Ray nodes.
     """
     result = {}
     pyvmomi_sdk_provider = get_sdk_provider(ClientType.PYVMOMI_SDK)
@@ -103,8 +104,8 @@ def get_vm_2_gpu_ids_map(pool_name, desired_gpu_number):
             )
             continue
 
-        # Get all available gpu cards to see if it satify the number
-        gpu_ids = get_gpu_ids(host, gpus, desired_gpu_number)
+        # Get all available gpu cards to see if it can fulfill the number
+        gpu_ids = get_idle_gpu_ids(host, gpus, desired_gpu_number)
         if gpu_ids:
             logger.info(f"Got Frozen VM {vm.name}, Host {host.name}, GPU ids {gpu_ids}")
             result[vm.name] = gpu_ids
@@ -117,7 +118,8 @@ def get_vm_2_gpu_ids_map(pool_name, desired_gpu_number):
 def split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number):
     """
     This function split the `vm, all_gpu_ids` map into array of
-    "vm, gpu_ids_with_requested_gpu_num" map.
+    "vm, gpu_ids_with_requested_gpu_num" map. The purpose to split the gpu list is for
+    creating more VMs on one ESXi host, each VM can bind a certain number of GPUs.
 
     Parameters:
         vm_2_gpu_ids_map: It is `vm, all_gpu_ids` map, and you can get it by call
@@ -186,11 +188,11 @@ def get_gpu_ids_from_vm(vm, desired_gpu_number):
     """
     This function will be called when there is only one single frozen VM.
     It returns gpu_ids if enough GPUs are available for this VM,
-    Or return None.
+    Or returns an empty list.
     """
     gpus = get_supported_gpus(vm.runtime.host)
     if len(gpus) < desired_gpu_number:
-        # This is for debug purpose
+        # Below code under this if is for logging purpose
         # To get all supported GPU cards' GPU IDs
         gpu_ids = []
         for gpu in gpus:
@@ -203,7 +205,7 @@ def get_gpu_ids_from_vm(vm, desired_gpu_number):
         )
         return []
 
-    gpu_ids = get_gpu_ids(vm.runtime.host, gpus, desired_gpu_number)
+    gpu_ids = get_idle_gpu_ids(vm.runtime.host, gpus, desired_gpu_number)
     if gpu_ids:
         logger.info(
             f"Got Frozen VM {vm.name}, Host {vm.runtime.host.name}, GPU ids {gpu_ids}"
