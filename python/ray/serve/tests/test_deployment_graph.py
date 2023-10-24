@@ -130,7 +130,7 @@ def test_single_func_deployment_dag(serve_instance, use_build):
         dag = combine.bind(dag_input[0], dag_input[1], kwargs_output=1)
         serve_dag = DAGDriver.bind(dag, http_adapter=json_resolver)
     handle = serve.run(serve_dag)
-    assert ray.get(handle.predict.remote([1, 2])) == 4
+    assert handle.predict.remote([1, 2]).result() == 4
     assert requests.post("http://127.0.0.1:8000/", json=[1, 2]).json() == 4
 
 
@@ -165,7 +165,7 @@ def test_chained_function(serve_instance, use_build):
     serve_dag = DAGDriver.bind(ray_dag, http_adapter=json_resolver)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.predict.remote(2)) == 18  # 2 + 2*2 + (2*2) * 3
+    assert handle.predict.remote(2).result() == 18  # 2 + 2*2 + (2*2) * 3
     assert requests.post("http://127.0.0.1:8000/", json=2).json() == 18
 
 
@@ -176,7 +176,7 @@ def test_simple_class_with_class_method(serve_instance, use_build):
         dag = model.forward.bind(dag_input)
         serve_dag = DAGDriver.bind(dag, http_adapter=json_resolver)
     handle = serve.run(serve_dag)
-    assert ray.get(handle.predict.remote(1)) == 0.6
+    assert handle.predict.remote(1).result() == 0.6
     assert requests.post("http://127.0.0.1:8000/", json=1).json() == 0.6
 
 
@@ -191,7 +191,7 @@ def test_func_class_with_class_method(serve_instance, use_build):
         serve_dag = DAGDriver.bind(combine_output, http_adapter=json_resolver)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.predict.remote([1, 2, 3])) == 8
+    assert handle.predict.remote([1, 2, 3]).result() == 8
     assert requests.post("http://127.0.0.1:8000/", json=[1, 2, 3]).json() == 8
 
 
@@ -205,7 +205,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance, use_b
         serve_dag = DAGDriver.bind(combine_output, http_adapter=json_resolver)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.predict.remote(1)) == 5
+    assert handle.predict.remote(1).result() == 5
     assert requests.post("http://127.0.0.1:8000/", json=1).json() == 5
 
 
@@ -218,7 +218,7 @@ def test_shared_deployment_handle(serve_instance, use_build):
         serve_dag = DAGDriver.bind(combine_output, http_adapter=json_resolver)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.predict.remote(1)) == 4
+    assert handle.predict.remote(1).result() == 4
     assert requests.post("http://127.0.0.1:8000/", json=1).json() == 4
 
 
@@ -232,7 +232,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance, use
         serve_dag = DAGDriver.bind(output, http_adapter=json_resolver)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.predict.remote(1)) == 5
+    assert handle.predict.remote(1).result() == 5
     assert requests.post("http://127.0.0.1:8000/", json=1).json() == 5
 
 
@@ -271,7 +271,7 @@ def test_single_node_driver_sucess(serve_instance, use_build):
         out = m2.forward.bind(out)
     driver = DAGDriver.bind(out, http_adapter=json_resolver)
     handle = serve.run(driver)
-    assert ray.get(handle.predict.remote(39)) == 42
+    assert handle.predict.remote(39).result() == 42
     assert requests.post("http://127.0.0.1:8000/", json=39).json() == 42
 
 
@@ -304,7 +304,7 @@ def test_passing_handle(serve_instance, use_build):
     parent = TakeHandle.bind(child)
     driver = DAGDriver.bind(parent, http_adapter=json_resolver)
     handle = serve.run(driver)
-    assert ray.get(handle.predict.remote(1)) == 2
+    assert handle.predict.remote(1).result() == 2
     assert requests.post("http://127.0.0.1:8000/", json=1).json() == 2
 
 
@@ -464,9 +464,9 @@ def test_suprious_call(serve_instance):
             {"/get": tracker.get.bind(), "/predict": tracker.predict.bind(inp)}
         )
     handle = serve.run(dag)
-    ray.get(handle.predict_with_route.remote("/predict", 1))
+    handle.predict_with_route.remote("/predict", 1).result()
 
-    assert ray.get(handle.predict_with_route.remote("/get", 1)) == ["predict"]
+    assert handle.predict_with_route.remote("/get", 1).result() == ["predict"]
 
 
 def test_sharing_call_for_broadcast(serve_instance):
@@ -497,7 +497,7 @@ def test_sharing_call_for_broadcast(serve_instance):
         dag = combine.bind(adder.bind(out), adder.bind(out))
 
     handle = serve.run(DAGDriver.bind(dag))
-    assert ray.get(handle.predict.remote(1)) == 4
+    assert handle.predict.remote(1).result() == 4
 
 
 if __name__ == "__main__":
