@@ -69,10 +69,10 @@ def test_empty_decorator(serve_instance):
     assert func.name == "func"
     assert Class.name == "Class"
     func_handle = serve.run(func.bind())
-    assert ray.get(func_handle.remote()) == "hi"
+    assert func_handle.remote().result() == "hi"
 
     class_handle = serve.run(Class.bind())
-    assert ray.get(class_handle.ping.remote()) == "pong"
+    assert class_handle.ping.remote().result() == "pong"
 
 
 def test_reconfigure_with_exception(serve_instance):

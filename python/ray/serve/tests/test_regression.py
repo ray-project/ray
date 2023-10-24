@@ -11,7 +11,6 @@ from fastapi.responses import JSONResponse
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor
-from ray.exceptions import GetTimeoutError
 from ray.serve.context import _get_global_client
 from ray.serve.drivers import DAGDriver
 
@@ -103,9 +102,9 @@ def test_replica_memory_growth(serve_instance):
     for _ in range(10):
         assert get_gc_garbage_len_http() == known_num_objects_from_http
 
-    known_num_objects_from_handle = ray.get(handle.remote())
+    known_num_objects_from_handle = handle.remote().result()
     for _ in range(10):
-        assert ray.get(handle.remote()) == known_num_objects_from_handle
+        assert handle.remote().result() == known_num_objects_from_handle
 
 
 def test_ref_in_handle_input(serve_instance):
@@ -124,12 +123,12 @@ def test_ref_in_handle_input(serve_instance):
     worker_result = handle.remote(ref)
 
     # Worker shouldn't execute the request
-    with pytest.raises(GetTimeoutError):
-        ray.get(worker_result, timeout=1)
+    with pytest.raises(TimeoutError):
+        worker_result.result(timeout_s=1)
 
     # Now unblock the worker
     unblock_worker_signal.send.remote()
-    ray.get(worker_result)
+    worker_result.result()
 
 
 def test_nested_actors(serve_instance):
@@ -262,12 +261,12 @@ def test_healthcheck_timeout(serve_instance):
             ray.get(signal.wait.remote())
 
     handle = serve.run(A.bind())
-    ref = handle.remote()
+    result = handle.remote()
     # without the proper fix, the ref will fail with actor died error.
-    with pytest.raises(GetTimeoutError):
-        ray.get(ref, timeout=10)
+    with pytest.raises(TimeoutError):
+        result.result(timeout_s=10)
     signal.send.remote()
-    ray.get(ref)
+    result.result()
 
 
 if __name__ == "__main__":

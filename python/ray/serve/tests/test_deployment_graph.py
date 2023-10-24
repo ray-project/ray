@@ -116,7 +116,7 @@ def test_single_func_no_input(serve_instance):
     serve_dag = NoargDriver.bind(dag)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.remote()) == "hello"
+    assert handle.remote().result() == "hello"
     assert requests.get("http://127.0.0.1:8000/").text == "hello"
 
 
@@ -243,7 +243,7 @@ def test_class_factory(serve_instance):
         serve_dag = NoargDriver.bind(output)
 
     handle = serve.run(serve_dag)
-    assert ray.get(handle.remote()) == 3
+    assert handle.remote().result() == 3
     assert requests.get("http://127.0.0.1:8000/").text == "3"
 
 
@@ -259,7 +259,7 @@ class Echo:
 def test_single_node_deploy_success(serve_instance):
     m1 = Adder.bind(1)
     handle = serve.run(m1)
-    assert ray.get(handle.remote(41)) == 42
+    assert handle.remote(41)) == 42
 
 
 @pytest.mark.parametrize("use_build", [False, True])
@@ -323,8 +323,8 @@ def test_passing_handle_in_obj(serve_instance):
     parent = DictParent.bind({"child1": child1, "child2": child2})
 
     handle = serve.run(parent)
-    assert ray.get(handle.remote("child1")) == "ed"
-    assert ray.get(handle.remote("child2")) == "simon"
+    assert handle.remote("child1")) == "ed"
+    assert handle.remote("child2")) == "simon"
 
 
 @serve.deployment
@@ -362,7 +362,7 @@ def test_pass_handle_to_multiple(serve_instance):
     grandparent = GrandParent.bind(child, parent)
 
     handle = serve.run(grandparent)
-    assert ray.get(handle.remote()) == "ok"
+    assert handle.remote().result() == "ok"
 
 
 def test_run_non_json_serializable_args(serve_instance):
@@ -382,7 +382,7 @@ def test_run_non_json_serializable_args(serve_instance):
             return self.arr1, self.arr2, self.arr3
 
     handle = serve.run(A.bind(arr1, arr2=arr2))
-    ret1, ret2, ret3 = ray.get(handle.remote())
+    ret1, ret2, ret3 = handle.remote().result()
     assert all(
         [
             ret1 == arr1,
@@ -400,7 +400,7 @@ def func():
 def test_single_functional_node_base_case(serve_instance):
     # Base case should work
     handle = serve.run(func.bind())
-    assert ray.get(handle.remote()) == 1
+    assert handle.remote().result() == 1
     assert requests.get("http://127.0.0.1:8000/").text == "1"
 
 

@@ -163,7 +163,7 @@ def test_quickstart_counter(serve_with_client):
     # Query our endpoint in two different ways: from HTTP and from Python.
     assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 1}
     print("query 1 finished")
-    assert ray.get(handle.remote()) == {"count": 2}
+    assert handle.remote().result() == {"count": 2}
     print("query 2 finished")
 
 
@@ -192,7 +192,7 @@ def test_handle_hanging(serve_with_client):
     handle = serve.run(f.bind())
 
     for _ in range(5):
-        assert ray.get(handle.remote()) == 1
+        assert handle.remote().result() == 1
         time.sleep(0.5)
 
     ray.shutdown()

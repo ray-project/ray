@@ -294,7 +294,7 @@ class _DeploymentHandleBase:
     message=(
         "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
         "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
-        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
+        "or setting the environment variable `RAY_SERVE_ENABLE_NEW_HANDLE_API=1`."
     )
 )
 class RayServeHandle(_DeploymentHandleBase):
@@ -404,7 +404,7 @@ class RayServeHandle(_DeploymentHandleBase):
     message=(
         "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
         "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
-        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
+        "or setting the environment variable `RAY_SERVE_ENABLE_NEW_HANDLE_API=1`."
     )
 )
 class RayServeSyncHandle(_DeploymentHandleBase):

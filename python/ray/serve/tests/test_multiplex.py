@@ -318,7 +318,7 @@ def test_multiplexed_replica_info(serve_instance):
             return _get_internal_replica_context().replica_tag
 
     handle = serve.run(MyModel.bind())
-    replica_tag = ray.get(handle.remote("model1"))
+    replica_tag = handle.remote("model1").result()
 
     def check_replica_information(
         model_ids: List[str],
@@ -340,7 +340,7 @@ def test_multiplexed_replica_info(serve_instance):
         },
     )
 
-    ray.get(handle.remote("model2"))
+    handle.remote("model2").result()
     wait_for_condition(
         check_replica_information,
         model_ids={
@@ -350,7 +350,7 @@ def test_multiplexed_replica_info(serve_instance):
     )
 
     # LRU remove the model1
-    ray.get(handle.remote("model3"))
+    handle.remote("model3").result()
     wait_for_condition(
         check_replica_information,
         model_ids={
