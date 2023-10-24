@@ -90,7 +90,7 @@ class Client : public ray::ClientConnection, public ClientInterface {
     // If fd existed before from object_ids_to_fds_ the ref count should have been > 0
     RAY_CHECK(ref_cnt_iter != fallback_allocated_fds_ref_count_.end());
     size_t &ref_cnt = ref_cnt_iter->second;
-    RAY_CHECK_GT(ref_cnt, 0);
+    RAY_CHECK_GT(ref_cnt, static_cast<size_t>(0));
     ref_cnt -= 1;
     if (ref_cnt == 0) {
       fallback_allocated_fds_ref_count_.erase(ref_cnt_iter);
