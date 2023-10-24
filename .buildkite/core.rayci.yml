@@ -23,6 +23,19 @@ steps:
     depends_on: corebuild
     job_env: forge
 
+  - label: ":ray: core: workflow tests"
+    tags: 
+      - python
+      - workflow
+    instance_type: medium
+    parallelism: 2
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --parallelism-per-worker 2
+    depends_on: data12build
+    job_env: forge
+
   - label: ":ray: core: debug test"
     tags: python
     instance_type: medium
@@ -45,17 +58,6 @@ steps:
         --only-tags asan_tests
         --except-tags kubernetes 
     depends_on: corebuild
-    job_env: forge
-
-  - label: ":ray: core: workflow tests"
-    tags: 
-      - python
-      - workflow
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
-        --parallelism-per-worker 2
-    depends_on: data12build
     job_env: forge
 
   - label: ":ray: core: minimal tests {{matrix}}"
