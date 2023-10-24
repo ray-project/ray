@@ -146,7 +146,7 @@ autorom==0.6.1 ; platform_machine != "arm64"
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 autorom-accept-rom-license==0.6.1
     # via autorom
-aws-sam-translator==1.78.0
+aws-sam-translator==1.79.0
     # via cfn-lint
 aws-xray-sdk==2.12.1
     # via moto
@@ -261,7 +261,7 @@ cffi==1.16.0
     #   pymunk
     #   pynacl
     #   soundfile
-cfn-lint==0.82.2
+cfn-lint==0.83.0
     # via moto
 charset-normalizer==3.3.1
     # via
@@ -451,7 +451,7 @@ ecdsa==0.18.0
     #   moto
     #   python-jose
     #   sshpubkeys
-email-validator==2.0.0.post2
+email-validator==2.1.0.post1
     # via fastapi
 entrypoints==0.4
     # via
@@ -480,7 +480,7 @@ fairscale==0.4.6
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
-fastapi==0.104.0
+fastapi==0.99.1
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -729,7 +729,7 @@ httplib2==0.20.4
     #   oauth2client
 httptools==0.6.1
     # via uvicorn
-httpx==0.25.0
+httpx==0.24.1
     # via
     #   fastapi
     #   gradio
@@ -1211,7 +1211,7 @@ numexpr==2.8.4
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   pymars
-numpy==1.26.1 ; python_version < "3.9"
+numpy==1.23.5 ; python_version < "3.9"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   accelerate
@@ -1381,7 +1381,7 @@ orjson==3.9.9
     # via
     #   fastapi
     #   gradio
-packaging==23.2
+packaging==21.3
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   accelerate
@@ -1482,7 +1482,7 @@ pexpect==4.8.0
     #   ipython
 pickleshare==0.7.5
     # via ipython
-pillow==10.1.0 ; platform_system != "Windows"
+pillow==9.2.0 ; platform_system != "Windows"
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
@@ -1618,7 +1618,7 @@ pycodestyle==2.7.0
     # via flake8
 pycparser==2.21
     # via cffi
-pydantic==1.10.13
+pydantic==1.10.12
     # via
     #   -r /ray/ci/../doc/requirements-doc.txt
     #   -r /ray/ci/../python/requirements.txt
@@ -2467,14 +2467,14 @@ urllib3==1.26.18
     #   semgrep
     #   sentry-sdk
     #   torchdata
-uvicorn==0.23.2
+uvicorn==0.22.0
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   fastapi
     #   gradio
-uvloop==0.18.0
+uvloop==0.19.0
     # via
     #   pymars
     #   uvicorn
