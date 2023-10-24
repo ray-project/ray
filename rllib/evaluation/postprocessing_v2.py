@@ -1,7 +1,7 @@
-import numpy as np
-import tree
-
 from typing import List
+
+import numpy as np
+import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN
