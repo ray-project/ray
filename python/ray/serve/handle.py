@@ -230,8 +230,8 @@ class _DeploymentHandleBase:
             warnings.warn(
                 "`DeploymentHandle` is now the default handle API. You can continue "
                 "using the existing `RayServeHandle` and `RayServeSyncHandle` APIs "
-                "by calling `handle.options(use_new_handle_api=True)` or setting the "
-                "global environment variable `RAY_SERVE_ENABLE_NEW_HANDLE_API=1`, "
+                "by calling `handle.options(use_new_handle_api=False)` or setting the "
+                "global environment variable `RAY_SERVE_ENABLE_NEW_HANDLE_API=0`, "
                 "but support for these will be removed in a future release. "
                 "See https://docs.ray.io/en/latest/serve/model_composition.html "
                 "for more details."
