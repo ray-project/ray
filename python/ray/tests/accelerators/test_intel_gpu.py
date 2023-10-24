@@ -31,23 +31,33 @@ def test_visible_intel_gpu_type(shutdown_only):
 
 
 def test_get_current_node_num_accelerators():
+    old_dpctl = None
+    if "dpctl" in sys.modules:
+        old_dpctl = sys.modules["dpctl"]
+
     sys.modules["dpctl"] = __import__("mock_dpctl_1")
     assert Accelerator.get_current_node_num_accelerators() == 6
 
     sys.modules["dpctl"] = __import__("mock_dpctl_2")
     assert Accelerator.get_current_node_num_accelerators() == 4
 
-    del sys.modules["dpctl"]
+    if old_dpctl is not None:
+        sys.modules["dpctl"] = old_dpctl
 
 
 def test_get_current_node_accelerator_type():
+    old_dpctl = None
+    if "dpctl" in sys.modules:
+        old_dpctl = sys.modules["dpctl"]
+
     sys.modules["dpctl"] = __import__("mock_dpctl_1")
     assert Accelerator.get_current_node_accelerator_type() == INTEL_MAX_1550
 
     sys.modules["dpctl"] = __import__("mock_dpctl_2")
     assert Accelerator.get_current_node_accelerator_type() == INTEL_MAX_1100
 
-    del sys.modules["dpctl"]
+    if old_dpctl is not None:
+        sys.modules["dpctl"] = old_dpctl
 
 
 def test_intel_gpu_accelerator_manager_api():
