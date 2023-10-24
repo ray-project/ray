@@ -3,8 +3,22 @@ import logging
 import os
 import pathlib
 import re
-from typing import TYPE_CHECKING, Any, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
+import numpy as np
+
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning
 from ray.util.annotations import DeveloperAPI
@@ -284,6 +298,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         if (
             prefetched_metadata is not None
             and len(prefetched_metadata) == num_fragments
+            and all(m is not None for m in prefetched_metadata)
         ):
             # Fragment metadata was available, construct a normal
             # BlockMetadata.
@@ -314,7 +329,6 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         fragments: List["pyarrow.dataset.ParquetFileFragment"],
         **ray_remote_args,
     ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
-        from ray.data.datasource.file_based_datasource import _fetch_metadata_parallel
         from ray.data.datasource.parquet_datasource import (
             FRAGMENTS_PER_META_FETCH,
             PARALLELIZE_META_FETCH_THRESHOLD,
@@ -476,7 +490,6 @@ def _get_file_infos_parallel(
 ) -> Iterator[Tuple[str, int]]:
     from ray.data.datasource.file_based_datasource import (
         PATHS_PER_FILE_SIZE_FETCH_TASK,
-        _fetch_metadata_parallel,
         _unwrap_s3_serialization_workaround,
         _wrap_s3_serialization_workaround,
     )
@@ -503,6 +516,34 @@ def _get_file_infos_parallel(
     yield from _fetch_metadata_parallel(
         paths, _file_infos_fetcher, PATHS_PER_FILE_SIZE_FETCH_TASK
     )
+
+
+Uri = TypeVar("Uri")
+Meta = TypeVar("Meta")
+
+
+def _fetch_metadata_parallel(
+    uris: List[Uri],
+    fetch_func: Callable[[List[Uri]], List[Meta]],
+    desired_uris_per_task: int,
+    **ray_remote_args,
+) -> Iterator[Meta]:
+    """Fetch file metadata in parallel using Ray tasks."""
+    remote_fetch_func = cached_remote_fn(fetch_func, num_cpus=0.5)
+    if ray_remote_args:
+        remote_fetch_func = remote_fetch_func.options(**ray_remote_args)
+    # Choose a parallelism that results in a # of metadata fetches per task that
+    # dominates the Ray task overhead while ensuring good parallelism.
+    # Always launch at least 2 parallel fetch tasks.
+    parallelism = max(len(uris) // desired_uris_per_task, 2)
+    metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
+    fetch_tasks = []
+    for uri_chunk in np.array_split(uris, parallelism):
+        if len(uri_chunk) == 0:
+            continue
+        fetch_tasks.append(remote_fetch_func.remote(uri_chunk))
+    results = metadata_fetch_bar.fetch_until_complete(fetch_tasks)
+    yield from itertools.chain.from_iterable(results)
 
 
 def _get_file_infos(

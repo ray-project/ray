@@ -23,6 +23,79 @@ steps:
     depends_on: corebuild
     job_env: forge
 
+  - label: ":ray: core: debug test"
+    tags: python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core 
+        --build-type debug
+        --parallelism-per-worker 3
+        --only-tags debug_tests
+        --except-tags kubernetes
+    depends_on: corebuild
+    job_env: forge
+
+  - label: ":ray: core: asan tests"
+    tags: python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core 
+        --build-type asan
+        --parallelism-per-worker 2
+        --only-tags asan_tests
+        --except-tags kubernetes 
+    depends_on: corebuild
+    job_env: forge
+
+  - label: ":ray: core: workflow tests"
+    tags: 
+      - python
+      - workflow
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
+        --parallelism-per-worker 2
+    depends_on: data12build
+    job_env: forge
+
+  - label: ":ray: core: minimal tests {{matrix}}"
+    tags: python
+    instance_type: medium
+    commands:
+      # validate minimal installation
+      - python ./ci/env/check_minimal_install.py
+      # core tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
+        --parallelism-per-worker 3
+        --build-name minbuild-core-py{{matrix}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
+        --only-tags minimal
+      # core redis tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
+        --parallelism-per-worker 3
+        --build-name minbuild-core-py{{matrix}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=TEST_EXTERNAL_REDIS=1
+        --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
+        --only-tags minimal
+        --except-tags no_redis
+        --skip-ray-installation
+      # serve tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve 
+        --parallelism-per-worker 3
+        --build-name minbuild-core-py{{matrix}}
+        --test-env=RAY_MINIMAL=1
+        --only-tags minimal
+        --skip-ray-installation
+    depends_on: minbuild-core
+    job_env: forge
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
   - label: ":ray: core: flaky tests"
     tags: python
     instance_type: large
@@ -31,3 +104,16 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... core --run-flaky-tests --parallelism-per-worker 3
     depends_on: corebuild
     job_env: forge
+
+  - name: minbuild-core
+    label: "wanda: minbuild-core-py{{matrix}}"
+    wanda: ci/docker/min.build.wanda.yaml
+    depends_on: oss-ci-base_build
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      EXTRA_DEPENDENCY: core
