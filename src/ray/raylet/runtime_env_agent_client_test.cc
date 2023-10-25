@@ -504,12 +504,26 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
   ASSERT_EQ(called_times, 1);
 }
 
+// Why do we make a constexpr function instead of a variable? It's compilers' hubris.
+// The number is used in a lambda. Being constexpr, it it *not* required to be captured.
+// Hence If we capture it, in macos and linux we have this error:
+//
+// error: lambda capture 'expected_succs' is not required to be captured for this use
+// [-Werror,-Wunused-lambda-capture]
+//
+// So let's remove it from the capture list! Then in windows we have this:
+//
+// error C3493: 'expected_succs' cannot be implicitly captured because no default capture
+// mode has been specified
+//
+// Good job MSVC for not following the standard!
+constexpr size_t expected_succs() { return 42; }
+
 TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   int port = GetFreePort();
 
   // Async HTTP server that completes the request after sleeping 1 sec.
   // The server returns success in the first 42 requests, then all failures.
-  constexpr size_t expected_succs = 42;
   std::mutex server_mutex;
   size_t concurrency = 0;
   size_t max_concurrency = 0;
@@ -526,6 +540,9 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
         timer->async_wait(
             [timer, conn, &server_mutex, &max_concurrency, &concurrency, &issued_succs](
                 const boost::system::error_code &ec) {
+              // We have to redefine this number again due to compilers being picky &
+              // fool.
+
               const http::request<http::string_body> &request = conn->request_;
               http::response<http::string_body> &response = conn->response_;
 
@@ -538,7 +555,7 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
               {
                 std::lock_guard lock(server_mutex);
 
-                if (issued_succs < expected_succs) {
+                if (issued_succs < expected_succs()) {
                   reply.set_status(rpc::AGENT_RPC_STATUS_OK);
                   issued_succs += 1;
                 } else {
@@ -588,9 +605,9 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   }
 
   ioc.run();
-  EXPECT_EQ(issued_succs, expected_succs);
-  EXPECT_EQ(seen_succs, expected_succs);
-  EXPECT_EQ(seen_failures, 100 - expected_succs);
+  EXPECT_EQ(issued_succs, expected_succs());
+  EXPECT_EQ(seen_succs, expected_succs());
+  EXPECT_EQ(seen_failures, 100 - expected_succs());
   EXPECT_EQ(concurrency, 0);
   EXPECT_EQ(max_concurrency, 10);
 }
