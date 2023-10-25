@@ -294,10 +294,19 @@ def ray_deps_setup():
         ],
     )
 
+    http_archive(
+        name = "com_google_protobuf_rules_proto_grpc",
+        strip_prefix = "protobuf-3.19.4",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
+        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
+    )
     auto_http_archive(
         name = "rules_proto_grpc",
         url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
         sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
+        repo_mapping = {
+            "@com_google_protobuf": "@com_google_protobuf_rules_proto_grpc",
+        },
     )
 
     auto_http_archive(
