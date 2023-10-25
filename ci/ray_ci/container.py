@@ -96,7 +96,7 @@ class Container:
         command += [
             "--workdir",
             "/rayci",
-            "--shm-size=2.5gb",
+            "--shm-size=4.77gb",
             self._get_docker_image(),
             "/bin/bash",
             "-iecuo",
