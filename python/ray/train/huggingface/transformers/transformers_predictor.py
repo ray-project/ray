@@ -7,7 +7,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.train.predictor import Predictor
 from ray.util import log_once
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 try:
     import torch
@@ -51,8 +51,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+TRANSFORMERS_PREDICTOR_DEPRECATION_MESSAGE = (
+    "The TransformersPredictor will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "For batch inference, see https://docs.ray.io/en/master/data/batch_inference.html"
+    "for more details."
+)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated
 class TransformersPredictor(Predictor):
     """A predictor for HuggingFace Transformers PyTorch models.
 
@@ -72,6 +79,7 @@ class TransformersPredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
         use_gpu: bool = False,
     ):
+        raise DeprecationWarning(TRANSFORMERS_PREDICTOR_DEPRECATION_MESSAGE)
 
         if TRANSFORMERS_IMPORT_ERROR is not None:
             raise TRANSFORMERS_IMPORT_ERROR
@@ -235,30 +243,6 @@ class TransformersPredictor(Predictor):
                 columns.
             **pipeline_call_kwargs: additional kwargs to pass to the
                 ``pipeline`` object.
-
-        Examples:
-            >>> import pandas as pd
-            >>> from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-            >>> from transformers.pipelines import pipeline
-            >>> from ray.train.huggingface import TransformersPredictor
-            >>>
-            >>> model_checkpoint = "gpt2"
-            >>> tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
-            >>> tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-            >>>
-            >>> model_config = AutoConfig.from_pretrained(model_checkpoint)
-            >>> model = AutoModelForCausalLM.from_config(model_config)
-            >>> predictor = TransformersPredictor(
-            ...     pipeline=pipeline(
-            ...         task="text-generation", model=model, tokenizer=tokenizer
-            ...     )
-            ... )
-            >>>
-            >>> prompts = pd.DataFrame(
-            ...     ["Complete me", "And me", "Please complete"], columns=["sentences"]
-            ... )
-            >>> predictions = predictor.predict(prompts)
-
 
         Returns:
             Prediction result.

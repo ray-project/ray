@@ -1,19 +1,13 @@
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.utils.ppo_env_runner import PPOEnvRunner
+from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+
 
 config = (
     PPOConfig()
     .environment("CartPole-v1")
-    .framework(framework="tf2")
     .rollouts(
         num_rollout_workers=1,
-        env_runner_cls=PPOEnvRunner,
-        # TODO (simon): Add the "MeanStd' filtering
-        # when available in the EnvRunner stack.
-    )
-    .evaluation(
-        evaluation_interval=1,
-        evaluation_num_workers=1,
+        env_runner_cls=SingleAgentEnvRunner,
     )
     .training(
         gamma=0.99,
@@ -26,9 +20,14 @@ config = (
             "vf_share_layers": True,
         },
     )
+    .evaluation(
+        evaluation_num_workers=1,
+        evaluation_interval=1,
+        enable_async_evaluation=True,
+    )
 )
 
 stop = {
     "timesteps_total": 100000,
-    "evaluation/episode_reward_mean": 150.0,
+    "evaluation/sampler_results/episode_reward_mean": 150.0,
 }

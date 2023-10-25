@@ -157,19 +157,19 @@ class MultiAgentRLModule(RLModule):
         del self._rl_modules[module_id]
 
     def foreach_module(
-        self, func: Callable[[RLModule, ModuleID, Optional[Any]], T], **kwargs
+        self, func: Callable[[ModuleID, RLModule, Optional[Any]], T], **kwargs
     ) -> List[T]:
-        """Calls the given function with each (module, module_id).
+        """Calls the given function with each (module_id, module).
 
         Args:
-            func: The function to call with each (module, module_id) tuple.
+            func: The function to call with each (module_id, module) tuple.
 
         Returns:
             The lsit of return values of all calls to
-            `func([module, module_id, **kwargs])`.
+            `func([module_id, module, **kwargs])`.
         """
         return [
-            func(module, module_id, **kwargs)
+            func(module_id, module, **kwargs)
             for module_id, module in self._rl_modules.items()
         ]
 

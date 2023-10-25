@@ -1212,10 +1212,7 @@ class TorchPolicyV2(Policy):
                 # Create a distribution object.
                 action_dist = None
                 # Maybe the RLModule has already computed actions.
-                if (
-                    SampleBatch.ACTION_DIST_INPUTS in fwd_out
-                    and SampleBatch.ACTION_LOGP not in fwd_out
-                ):
+                if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
                     dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                     action_dist_class = self.model.get_exploration_action_dist_cls()
                     action_dist = action_dist_class.from_logits(dist_inputs)

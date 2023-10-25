@@ -90,7 +90,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     def get_len(b):
                         return len(b)
 
-                # Cycle through the batch until we have enough samples
+                # Cycle through the batch until we have enough samples.
                 while n_steps >= get_len(module_batch) - s:
                     sample = module_batch[s:]
                     samples_to_concat.append(sample)

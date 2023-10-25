@@ -26,8 +26,8 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -68,37 +68,46 @@ logger = logging.getLogger(__name__)
 class PPOConfig(PGConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> config = PPOConfig()  # doctest: +SKIP
-        >>> config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3)  # doctest: +SKIP
-        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
-        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = PPOConfig()
-        >>> # Print out some default values.
-        >>> print(config.clip_param)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config.training(  # doctest: +SKIP
-        ... lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2
-        ... )
-        >>> # Set the config object's env.
-        >>> config = config.environment(env="CartPole-v1")   # doctest: +SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "PPO",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.ppo import PPOConfig
+        config = PPOConfig()
+        config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3,
+            train_batch_size=128)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build(env="CartPole-v1")
+        algo.train()
+
+    .. testcode::
+
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray import air
+        from ray import tune
+        config = PPOConfig()
+        # Print out some default values.
+
+        # Update the config object.
+        config.training(
+            lr=tune.grid_search([0.001 ]), clip_param=0.2
+        )
+        # Set the config object's env.
+        config = config.environment(env="CartPole-v1")
+
+        # Use to_dict() to get the old-style python config dict
+        # when running with tune.
+        tune.Tuner(
+            "PPO",
+            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            param_space=config.to_dict(),
+        ).fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
@@ -146,7 +155,7 @@ class PPOConfig(PGConfig):
             # Add constructor kwargs here (if any).
         }
 
-        # enable the rl module api by default
+        # Enable the rl module api by default.
         self.rl_module(_enable_rl_module_api=True)
         self.training(_enable_learner_api=True)
 
@@ -447,8 +456,22 @@ class PPO(Algorithm):
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
+            # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
+            if self.config.env_runner_cls is None or issubclass(
+                self.config.env_runner_cls, RolloutWorker
+            ):
+                if self.config.count_steps_by == "agent_steps":
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_agent_steps=self.config.train_batch_size,
+                    )
+                else:
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_env_steps=self.config.train_batch_size,
+                    )
             # New Episode-returning EnvRunner API.
-            if self.config.env_runner_cls is not None:
+            else:
                 if self.workers.num_remote_workers() <= 0:
                     episodes = [self.workers.local_worker().sample()]
                 else:
@@ -464,19 +487,6 @@ class PPO(Algorithm):
                     postprocessed_episodes
                 )
 
-            # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
-            else:
-                if self.config.count_steps_by == "agent_steps":
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_agent_steps=self.config.train_batch_size,
-                    )
-                else:
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_env_steps=self.config.train_batch_size,
-                    )
-
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -491,13 +501,17 @@ class PPO(Algorithm):
             #  this back and forth communication between driver and the remote
             #  learner actors.
             # TODO (sven): What's the plan for multi-agent setups when the
-            # policy is gone?
+            #  policy is gone?
             # TODO (simon): The default method has already this functionality,
-            # but this serves simply as a placeholder until it is decided on
-            # how to replace the functionalities of the policy.
+            #  but this serves simply as a placeholder until it is decided on
+            #  how to replace the functionalities of the policy.
 
-            # is_module_trainable = self.workers.local_worker().is_policy_to_train
-            # self.learner_group.set_is_module_trainable(is_module_trainable)
+            if (
+                self.config.env_runner_cls is None
+                or self.config.env_runner_cls.__name__ == "RolloutWorker"
+            ):
+                is_module_trainable = self.workers.local_worker().is_policy_to_train
+                self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
@@ -619,8 +633,8 @@ class PPO(Algorithm):
 
         # Update global vars on local worker as well.
         # TODO (simon): At least in RolloutWorker obsolete I guess as called in
-        # `sync_weights()` called above if remote workers. Can we call this
-        # where `set_weights()` is called on the local_worker?
+        #  `sync_weights()` called above if remote workers. Can we call this
+        #  where `set_weights()` is called on the local_worker?
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
@@ -631,9 +645,11 @@ class PPO(Algorithm):
 
         # Bootstrap values.
         postprocessed_episodes = []
+        # TODO (simon): Remove somehow the double list.
+        # episodes = [episode for episode_list in episodes for episode in episode_list]
         for episode in episodes:
             # TODO (sven): Calling 'module' on the 'EnvRunner' only works
-            # for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
+            #  for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
             postprocessed_episodes.append(
                 compute_gae_for_episode(
                     episode, self.config, self.workers.local_worker().module
