@@ -21,6 +21,10 @@ from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import (
+    CoreExecutionMetrics,
+    assert_core_execution_metrics_equals,
+)
 from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -209,18 +213,52 @@ def test_cache_dataset(ray_start_regular_shared):
 
 
 def test_schema(ray_start_regular_shared):
+    cursor = None
+
     ds2 = ray.data.range(10, parallelism=10)
     ds3 = ds2.repartition(5)
     ds3 = ds3.materialize()
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={
+                "ReadRange": 10,
+                "reduce": 5,
+                "_get_reader": 1,
+            }
+        ),
+        cursor,
+    )
+
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     ds4 = ds4.materialize()
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={
+                "Map(<lambda>)": lambda count: count <= 5,
+                "slice_fn": 1,
+                "reduce": 1,
+            }
+        ),
+        cursor,
+    )
+
     assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(task_count={}), cursor
+    )
+
     assert (
         str(ds3) == "MaterializedDataset(num_blocks=5, num_rows=10, schema={id: int64})"
+    )
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(task_count={}), cursor
     )
     assert (
         str(ds4) == "MaterializedDataset(num_blocks=1, num_rows=5, "
         "schema={a: string, b: double})"
+    )
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(task_count={}), cursor
     )
 
 

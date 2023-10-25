@@ -2,6 +2,7 @@ import copy
 import os
 import posixpath
 import time
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+import ray.util.state
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
@@ -19,7 +21,7 @@ from ray.data.tests.mock_server import *  # noqa
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
-from ray.tests.conftest import _ray_start
+from ray.tests.conftest import _ray_start, wait_for_condition
 
 
 @pytest.fixture(scope="module")
@@ -480,3 +482,93 @@ def stage_two_block():
             )
         )
     return block_params, block_meta_list
+
+
+class CoreExecutionMetrics:
+    def __init__(self, task_count=None):
+        self.task_count = defaultdict(int)
+        if task_count is not None:
+            for name, count in task_count.items():
+                self.task_count[name] = count
+
+    def get_task_count(self):
+        return self.task_count
+
+    def assert_task_metrics(self, expected_metrics):
+        expected_task_count = CoreExecutionMetrics.get_default_task_count()
+        for name, count in expected_metrics.get_task_count().items():
+            expected_task_count[name] = count
+
+        diff = {}
+        actual_task_count = self.get_task_count()
+        for name, count in expected_task_count.items():
+            if isinstance(count, int):
+                if actual_task_count[name] != count:
+                    diff[name] = (actual_task_count[name], count)
+            else:
+                if not count(actual_task_count[name]):
+                    diff[name] = (actual_task_count[name], count)
+        for name, count in actual_task_count.items():
+            if name not in expected_task_count:
+                diff[name] = (count, 0)
+
+        assert len(diff) == 0, "\nTask diff:\n" + "\n".join(
+            f" - {key}: expected {val[1]}, got {val[0]}" for key, val in diff.items()
+        )
+
+    @staticmethod
+    def get_default_task_count():
+        return {
+            "AutoscalingRequester.request_resources": lambda count: count < 100,
+            "AutoscalingRequester:AutoscalingRequester.__init__": lambda count: count
+            <= 1,
+            "_StatsActor.clear_metrics": lambda count: count < 100,
+            "_StatsActor.update_metrics": lambda count: count < 100,
+            "datasets_stats_actor:_StatsActor.__init__": lambda count: count <= 1,
+        }
+
+
+class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
+    """Generated from metrics collected by Ray Core during the physical execution."""
+
+    def __init__(self, core_task_metrics, cursor=None):
+        self.core_task_metrics = core_task_metrics
+        self.cursor = cursor
+
+    def get_task_count(self):
+        task_count = defaultdict(int)
+        tasks = self.core_task_metrics
+        # Filter out previous and dummy tasks.
+        if self.cursor is not None:
+            tasks = [t for t in tasks if t.task_id not in self.cursor]
+        tasks = [t for t in tasks if t.name != "barrier"]
+
+        for task in tasks:
+            task_count[task.name] += 1
+        return task_count
+
+    def get_cursor(self):
+        task_ids = {t.task_id for t in self.core_task_metrics}
+        return task_ids
+
+
+# Dummy task used to make sure that we wait until (most) stats are available.
+@ray.remote
+def barrier():
+    return
+
+
+def assert_core_execution_metrics_equals(
+    expected_metrics: CoreExecutionMetrics, cursor=None
+):
+    ref = barrier.remote()
+    wait_for_condition(
+        lambda: any(
+            ref.hex().startswith(t.task_id) for t in ray.util.state.list_tasks()
+        )
+    )
+
+    tasks = ray.util.state.list_tasks(detail=True)
+    metrics = PhysicalCoreExecutionMetrics(tasks, cursor)
+    metrics.assert_task_metrics(expected_metrics)
+    return metrics.get_cursor()
