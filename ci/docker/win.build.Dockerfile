@@ -15,6 +15,10 @@ RUN <<EOF
 
 set -euo pipefail
 
+git config --global core.symlinks true
+git config --global core.autocrlf false
+git init
+
 powershell ci/pipeline/fix-windows-container-networking.ps1
 powershell ci/pipeline/fix-windows-bazel.ps1
 

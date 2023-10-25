@@ -94,6 +94,9 @@ steps:
   - name: oss-ci-base_gpu
     wanda: ci/docker/base.gpu.wanda.yaml
 
+  - name: winbuild
+    wanda: ci/docker/win.build.wanda.yaml
+
   - name: docbuild
     wanda: ci/docker/doc.build.wanda.yaml
     depends_on: oss-ci-base_build
