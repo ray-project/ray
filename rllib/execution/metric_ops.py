@@ -9,8 +9,6 @@ from ray.rllib.execution.common import (
     _get_shared_metrics,
 )
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
 
 
 class CollectMetrics:

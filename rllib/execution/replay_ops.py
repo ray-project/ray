@@ -3,8 +3,6 @@ import random
 
 from ray.rllib.utils.replay_buffers.replay_buffer import warn_replay_capacity
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
 
 
 # TODO(sven) deprecate this class.

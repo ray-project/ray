@@ -4,8 +4,6 @@ from typing import Tuple, Any, Optional
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -13,7 +11,6 @@ tf1, tf, tfv = try_import_tf()
 # TODO: (sven) obsolete this class.
 @DeveloperAPI
 def normc_initializer(std: float = 1.0) -> Any:
-
     def _initializer(shape, dtype=None, partition_info=None):
         out = np.random.randn(*shape).astype(
             dtype.name if hasattr(dtype, "name") else dtype or np.float32
@@ -81,8 +78,6 @@ def linear(
     initializer: Optional[Any] = None,
     bias_init: float = 0.0,
 ) -> TensorType:
-    if log_once("rllib_models_linear_tf_deprecation"):
-        deprecation_warning(old="ray.rllib.models.tf.misc.linear")
     w = tf1.get_variable(name + "/w", [x.get_shape()[1], size], initializer=initializer)
     b = tf1.get_variable(
         name + "/b", [size], initializer=tf1.constant_initializer(bias_init)

@@ -12,8 +12,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.tf_utils import one_hot
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 

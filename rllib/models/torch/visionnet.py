@@ -13,8 +13,6 @@ from ray.rllib.models.utils import get_activation_fn, get_filter_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
 
 torch, nn = try_import_torch()
 
