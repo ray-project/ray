@@ -23,6 +23,19 @@ steps:
     depends_on: corebuild
     job_env: forge
 
+  - label: ":ray: core: workflow tests"
+    tags: 
+      - python
+      - workflow
+    instance_type: medium
+    parallelism: 2
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --parallelism-per-worker 2
+    depends_on: data12build
+    job_env: forge
+
   - label: ":ray: core: debug test"
     tags: python
     instance_type: medium
@@ -47,17 +60,6 @@ steps:
     depends_on: corebuild
     job_env: forge
 
-  - label: ":ray: core: workflow tests"
-    tags: 
-      - python
-      - workflow
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core 
-        --parallelism-per-worker 2
-    depends_on: data12build
-    job_env: forge
-
   - label: ":ray: core: minimal tests {{matrix}}"
     tags: python
     instance_type: medium
@@ -71,6 +73,15 @@ steps:
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
+        --except-tags basic_test
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
+        --parallelism-per-worker 3
+        --build-name minbuild-core-py{{matrix}}
+        --test-env=RAY_MINIMAL=1
+        --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
+        --only-tags minimal
+        --except-tags no_basic_test
+        --skip-ray-installation
       # core redis tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
         --parallelism-per-worker 3
@@ -79,7 +90,7 @@ steps:
         --test-env=TEST_EXTERNAL_REDIS=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
-        --except-tags no_redis
+        --except-tags no_basic_test
         --skip-ray-installation
       # serve tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve 
