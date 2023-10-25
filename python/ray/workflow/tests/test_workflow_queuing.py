@@ -171,10 +171,14 @@ def test_workflow_queuing_resume_all(shutdown_only, tmp_path):
         # kill all workflows
         ray.shutdown()
 
-    ray.init(storage=str(tmp_path))
-    workflow.init(max_running_workflows=2, max_pending_workflows=2)
+        # FIXME(ryw): for some reason unknown, PR #40370 makes the ray shutdown time
+        # for core workers longer, so we need to hold the lock even after the ray
+        # shutdown. After understanding and fixing (ideal behavior: before the
+        # ray.shutdown() returns, all core workers should be killed), move these 2 init
+        # calls out of the lock.
+        ray.init(storage=str(tmp_path))
+        workflow.init(max_running_workflows=2, max_pending_workflows=2)
 
-    with filelock.FileLock(lock_path):
         workflow_ids, outputs = zip(*sorted(workflow.resume_all()))
         # We should have the same running and pending workflows, because when
         # resume_all(), running workflows have higher priority.
