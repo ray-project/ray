@@ -62,7 +62,7 @@ Upgrading the KubeRay version is the best strategy if you have any issues with K
     # The following instruction uninstalls only KubeRay v0.6.0. It does not uninstall CRD v1alpha1.
     helm uninstall kuberay-operator
 
-    # Delete CRDs
+    # Delete CRDs. Note that deleting the CRD causes a cascading deletion of custom resources.
     kubectl delete crd rayclusters.ray.io
     kubectl delete crd rayjobs.ray.io
     kubectl delete crd rayservices.ray.io
