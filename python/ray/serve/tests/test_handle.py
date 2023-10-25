@@ -161,7 +161,7 @@ def test_handle_in_endpoint(serve_instance):
             self.handle = handle
 
         async def __call__(self, _):
-            return await (await self.handle.remote())
+            return await self.handle.remote()
 
     end_p1 = Endpoint1.bind()
     end_p2 = Endpoint2.bind(end_p1)
@@ -335,7 +335,7 @@ def test_call_function_with_argument(serve_instance):
             self._h = h
 
         async def __call__(self, name: str):
-            return await (await self._h.remote(name))
+            return await self._h.remote(name)
 
     h = serve.run(Ingress.bind(echo.bind()))
     assert h.remote("sned").result() == "Hi sned"
