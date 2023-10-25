@@ -66,9 +66,10 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   void OnNodeDead(const NodeID &node) { node_resource_info_.erase(node); }
 
-  std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const {
-    return gcs_placement_group_manager_.GetPlacementGroupLoad();
-  }
+  /// \brief Get the placement group load from GcsPlacementGroupManager
+  ///
+  /// \return The placement group load, nullptr if there is no placement group load.
+  std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
 
   const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
       &GetNodeResourceInfo() const {
@@ -84,11 +85,6 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// protobuf.
   /// \param state The state to be filled.
   void MakeClusterResourceStateInternal(rpc::autoscaler::ClusterResourceState *state);
-
-  /// \brief Get the placement group load from GcsPlacementGroupManager
-  ///
-  /// \return The placement group load, nullptr if there is no placement group load.
-  std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
 
   /// \brief Increment and get the next cluster resource state version.
   /// \return The incremented cluster resource state version.

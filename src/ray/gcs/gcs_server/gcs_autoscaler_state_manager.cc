@@ -119,7 +119,10 @@ void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
   GetClusterResourceConstraints(state);
 }
 
-void GcsAutoscalerStateManager::GetPlacementGroupLoad() {}
+std::shared_ptr<rpc::PlacementGroupLoad>
+GcsAutoscalerStateManager::GetPlacementGroupLoad() const {
+  return gcs_placement_group_manager_.GetPlacementGroupLoad();
+}
 
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
