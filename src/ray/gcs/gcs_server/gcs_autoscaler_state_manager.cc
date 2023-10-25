@@ -347,8 +347,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   if (!NodeID::ValidateBinary(request.node_id())) {
     RAY_LOG(WARNING) << "Request to drain an invalid node " << request.DebugString();
     reply->set_is_accepted(false);
-    send_reply_callback(ray::Status::OK(), nullptr,
-                        nullptr);
+    send_reply_callback(ray::Status::OK(), nullptr, nullptr);
     return;
   }
 

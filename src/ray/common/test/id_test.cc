@@ -158,6 +158,12 @@ TEST(PlacementGroupIDTest, TestPlacementGroup) {
   }
 }
 
+TEST(TestValidateID, TestIsNil) {
+  std::string valid{28, 'a'};
+  ASSERT_TRUE(NodeID::ValidateBinary(valid));
+  std::string invalid{27, 'a'};
+  ASSERT_FALSE(NodeID::ValidateBinary(invalid));
+}
 }  // namespace ray
 
 int main(int argc, char **argv) {
