@@ -1,16 +1,16 @@
 import asyncio
 import os
 import sys
-from typing import Optional
+from typing import Dict, Optional
 
 import pytest
 import requests
 import starlette.responses
 from fastapi import FastAPI
-from pydantic import BaseModel, ValidationError
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import BaseModel, ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
@@ -67,49 +67,64 @@ def test_e2e(serve_instance):
     assert resp == "POST"
 
 
-def test_starlette_response(serve_instance):
-    @serve.deployment(name="basic")
-    def basic(_):
+def test_starlette_response_basic(serve_instance):
+    @serve.deployment
+    def basic():
         return starlette.responses.Response("Hello, world!", media_type="text/plain")
 
-    basic.deploy()
-    assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
+    serve.run(basic.bind())
+    assert requests.get("http://127.0.0.1:8000/").text == "Hello, world!"
 
-    @serve.deployment(name="html")
-    def html(_):
+
+def test_starlette_response_html(serve_instance):
+    @serve.deployment
+    def html():
         return starlette.responses.HTMLResponse(
             "<html><body><h1>Hello, world!</h1></body></html>"
         )
 
-    html.deploy()
+    serve.run(html.bind())
     assert (
-        requests.get("http://127.0.0.1:8000/html").text
+        requests.get("http://127.0.0.1:8000/").text
         == "<html><body><h1>Hello, world!</h1></body></html>"
     )
 
-    @serve.deployment(name="plain_text")
-    def plain_text(_):
+
+def test_starlette_response_plain_text(serve_instance):
+    @serve.deployment
+    def plain_text():
         return starlette.responses.PlainTextResponse("Hello, world!")
 
-    plain_text.deploy()
-    assert requests.get("http://127.0.0.1:8000/plain_text").text == "Hello, world!"
+    serve.run(plain_text.bind())
+    assert requests.get("http://127.0.0.1:8000/").text == "Hello, world!"
 
-    @serve.deployment(name="json")
-    def json(_):
+
+def test_starlette_response_json(serve_instance):
+    @serve.deployment
+    def json():
         return starlette.responses.JSONResponse({"hello": "world"})
 
-    json.deploy()
+    serve.run(json.bind())
     assert requests.get("http://127.0.0.1:8000/json").json()["hello"] == "world"
 
-    @serve.deployment(name="redirect")
-    def redirect(_):
-        return starlette.responses.RedirectResponse(url="http://127.0.0.1:8000/basic")
 
-    redirect.deploy()
+def test_starlette_response_redirect(serve_instance):
+    @serve.deployment
+    def basic():
+        return starlette.responses.Response("Hello, world!", media_type="text/plain")
+
+    @serve.deployment(name="redirect")
+    def redirect():
+        return starlette.responses.RedirectResponse(url="http://127.0.0.1:8000/")
+
+    serve.run(basic.bind(), name="app1", route_prefix="/")
+    serve.run(redirect.bind(), name="app2", route_prefix="/redirect")
     assert requests.get("http://127.0.0.1:8000/redirect").text == "Hello, world!"
 
-    @serve.deployment(name="streaming")
-    def streaming(_):
+
+def test_starlette_response_streaming(serve_instance):
+    @serve.deployment
+    def streaming():
         async def slow_numbers():
             for number in range(1, 4):
                 yield str(number)
@@ -119,8 +134,8 @@ def test_starlette_response(serve_instance):
             slow_numbers(), media_type="text/plain", status_code=418
         )
 
-    streaming.deploy()
-    resp = requests.get("http://127.0.0.1:8000/streaming")
+    serve.run(streaming.bind())
+    resp = requests.get("http://127.0.0.1:8000/")
     assert resp.text == "123"
     assert resp.status_code == 418
 
@@ -275,69 +290,6 @@ def test_scaling_replicas(serve_instance):
     assert max(counter_result) - min(counter_result) > 6
 
 
-def test_delete_deployment(serve_instance):
-    @serve.deployment(name="delete")
-    def function(_):
-        return "hello"
-
-    function.deploy()
-
-    assert requests.get("http://127.0.0.1:8000/delete").text == "hello"
-
-    function.delete()
-
-    @serve.deployment(name="delete")
-    def function2(_):
-        return "olleh"
-
-    function2.deploy()
-
-    wait_for_condition(
-        lambda: requests.get("http://127.0.0.1:8000/delete").text == "olleh", timeout=6
-    )
-
-
-@pytest.mark.parametrize("blocking", [False, True])
-def test_delete_deployment_group(serve_instance, blocking):
-    @serve.deployment(num_replicas=1)
-    def f(*args):
-        return "got f"
-
-    @serve.deployment(num_replicas=2)
-    def g(*args):
-        return "got g"
-
-    # Check redeploying after deletion
-    for _ in range(2):
-        f.deploy()
-        g.deploy()
-
-        wait_for_condition(
-            lambda: requests.get("http://127.0.0.1:8000/f").text == "got f", timeout=5
-        )
-        wait_for_condition(
-            lambda: requests.get("http://127.0.0.1:8000/g").text == "got g", timeout=5
-        )
-
-        # Check idempotence
-        for _ in range(2):
-            serve_instance.delete_deployments(["f", "g"], blocking=blocking)
-
-            wait_for_condition(
-                lambda: requests.get("http://127.0.0.1:8000/f").status_code == 404,
-                timeout=5,
-            )
-            wait_for_condition(
-                lambda: requests.get("http://127.0.0.1:8000/g").status_code == 404,
-                timeout=5,
-            )
-
-            wait_for_condition(
-                lambda: len(serve_instance.list_deployments_v1()) == 0,
-                timeout=5,
-            )
-
-
 def test_starlette_request(serve_instance):
     @serve.deployment(name="api")
     async def echo_body(starlette_request):
@@ -352,18 +304,6 @@ def test_starlette_request(serve_instance):
 
     resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
     assert resp == long_string
-
-
-def test_start_idempotent(serve_instance):
-    @serve.deployment(name="start")
-    def func(*args):
-        pass
-
-    func.deploy()
-
-    assert "start" in serve.list_deployments()
-    serve.start()
-    assert "start" in serve.list_deployments()
 
 
 def test_shutdown_destructor(serve_instance):
@@ -779,7 +719,40 @@ class TestAppBuilder:
     def test_args_typed(self):
         args_dict = {"message": "hiya", "num_replicas": "3"}
 
+        def build(args):
+            """Builder with no type hint."""
+
+            return self.A.options(num_replicas=args["num_replicas"]).bind(
+                args["message"]
+            )
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
+        def build(args: Dict[str, str]):
+            """Builder with vanilla type hint."""
+
+            return self.A.options(num_replicas=args["num_replicas"]).bind(
+                args["message"]
+            )
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
+        class ForwardRef:
+            def build(args: "ForwardRef"):
+                """Builder with forward reference as type hint."""
+
+                return self.A.options(num_replicas=args["num_replicas"]).bind(
+                    args["message"]
+                )
+
+        app = call_app_builder_with_args_if_necessary(ForwardRef.build, args_dict)
+        assert isinstance(app, Application)
+
         def build(args: self.TypedArgs):
+            """Builder with Pydantic model type hint."""
+
             assert isinstance(args, self.TypedArgs)
             assert args.message == "hiya"
             assert args.num_replicas == 3

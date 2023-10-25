@@ -9,6 +9,22 @@ from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 
+CUDA_COPYRIGHT = """
+==========
+== CUDA ==
+==========
+
+CUDA Version 11.8.0
+
+Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+By pulling and using the container, you accept the terms and conditions of this license:
+https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+
+A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
+"""  # noqa: E501
+
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
@@ -61,6 +77,12 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Skip ray installation."),
 )
 @click.option(
+    "--gpus",
+    default=0,
+    type=int,
+    help=("Number of GPUs to use for the test."),
+)
+@click.option(
     "--test-env",
     multiple=True,
     type=str,
@@ -76,6 +98,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     type=str,
     help="Name of the build used to run tests",
 )
+@click.option(
+    "--build-type",
+    type=click.Choice(["optimized", "debug", "asan"]),
+    default="optimized",
+)
 def main(
     targets: List[str],
     team: str,
@@ -86,9 +113,11 @@ def main(
     only_tags: str,
     run_flaky_tests: bool,
     skip_ray_installation: bool,
+    gpus: int,
     test_env: List[str],
     test_arg: Optional[str],
     build_name: Optional[str],
+    build_type: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -100,7 +129,9 @@ def main(
         workers,
         worker_id,
         parallelism_per_worker,
+        gpus,
         build_name,
+        build_type,
         skip_ray_installation,
     )
     test_targets = _get_test_targets(
@@ -120,7 +151,9 @@ def _get_container(
     workers: int,
     worker_id: int,
     parallelism_per_worker: int,
+    gpus: int,
     build_name: Optional[str] = None,
+    build_type: Optional[str] = None,
     skip_ray_installation: bool = False,
 ) -> TesterContainer:
     shard_count = workers * parallelism_per_worker
@@ -131,8 +164,21 @@ def _get_container(
         build_name or f"{team}build",
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
+        gpus=gpus,
         skip_ray_installation=skip_ray_installation,
+        build_type=build_type,
     )
+
+
+def _get_tag_matcher(tag: str) -> str:
+    """
+    Return a regular expression that matches the given bazel tag. This is required for
+    an exact tag match because bazel query uses regex to match tags.
+
+    The word boundary is escaped twice because it is used in a python string and then
+    used again as a string in bazel query.
+    """
+    return f"\\\\b{tag}\\\\b"
 
 
 def _get_all_test_query(
@@ -146,17 +192,23 @@ def _get_all_test_query(
     have the given tags
     """
     test_query = " union ".join([f"tests({target})" for target in targets])
-    query = f"attr(tags, 'team:{team}\\\\b', {test_query})"
+    query = f"attr(tags, '{_get_tag_matcher(f'team:{team}')}', {test_query})"
 
     if only_tags:
         only_query = " union ".join(
-            [f"attr(tags, {t}, {test_query})" for t in only_tags.split(",")]
+            [
+                f"attr(tags, '{_get_tag_matcher(t)}', {test_query})"
+                for t in only_tags.split(",")
+            ]
         )
         query = f"{query} intersect ({only_query})"
 
     if except_tags:
         except_query = " union ".join(
-            [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
+            [
+                f"attr(tags, '{_get_tag_matcher(t)}', {test_query})"
+                for t in except_tags.split(",")
+            ]
         )
         query = f"{query} except ({except_query})"
 
@@ -183,6 +235,8 @@ def _get_test_targets(
             ]
         )
         .decode("utf-8")
+        # CUDA image comes with a license header that we need to remove
+        .replace(CUDA_COPYRIGHT, "")
         .strip()
         .split("\n")
     )

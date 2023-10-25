@@ -344,7 +344,14 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
-        self._replicas_updated_event = asyncio.Event()
+
+        # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
+        # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
+        # determine the loop to attach to. This class can be constructed for the handle
+        # from a different loop than it uses for scheduling, so we need to construct it
+        # lazily to avoid an error due to the event being attached to the wrong loop.
+        self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
+
         # Colocated replicas (e.g. wrt node, AZ)
         self._colocated_replica_ids: DefaultDict[LocalityScope, Set[str]] = defaultdict(
             set
@@ -408,6 +415,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
         )
+
+    @property
+    def _replicas_updated_event(self) -> asyncio.Event:
+        """Lazily construct `asyncio.Event`.
+
+        See comment for self._lazily_constructed_replicas_updated_event.
+        """
+        if self._lazily_constructed_replicas_updated_event is None:
+            self._lazily_constructed_replicas_updated_event = asyncio.Event()
+
+        return self._lazily_constructed_replicas_updated_event
 
     @property
     def num_pending_requests(self) -> int:

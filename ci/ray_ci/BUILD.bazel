@@ -94,6 +94,21 @@ py_test(
 )
 
 py_test(
+    name = "test_builder_container",
+    size = "small",
+    srcs = ["test_builder_container.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_tester_container",
     size = "small",
     srcs = ["test_tester_container.py"],

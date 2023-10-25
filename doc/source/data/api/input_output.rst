@@ -157,6 +157,16 @@ SQL Databases
    :toctree: doc/
 
    read_sql
+   Dataset.write_sql
+
+Databricks
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_databricks_tables
 
 Dask
 ----

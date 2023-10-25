@@ -1,3 +1,4 @@
+import ipaddress
 from enum import Enum
 
 
@@ -18,3 +19,11 @@ class Constants:
     class SessionType(Enum):
         VERIFIED = "verified"
         UNVERIFIED = "unverified"
+
+
+def is_ipv4(ip):
+    try:
+        ipaddress.IPv4Address(ip)
+        return True
+    except ipaddress.AddressValueError:
+        return False
