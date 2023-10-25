@@ -15,9 +15,9 @@ py_test(
     name = "learning_tests_cartpole_pg",
     main = "run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
+    size = "large",
     srcs = ["run_regression_tests.py"],
-    data = ["tuned_examples/pg/cartpole-pg.yaml"],
+    data = ["tuned_examples/cartpole-pg.yaml"],
     args = ["--dir=pg/tuned_examples"]
 )
 

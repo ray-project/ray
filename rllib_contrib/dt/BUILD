@@ -32,10 +32,7 @@ py_test(
     size = "medium",
     srcs = ["run_regression_tests.py"],
     # Include an offline json data file as well.
-    data = [
-        "tuned_examples/cartpole-v1-dt.yaml",
-        "tests/data/cartpole/large.json",
-    ],
+    data = ["tuned_examples/cartpole-v1-dt.yaml"],
     args = ["--dir=dt/tuned_examples/"]
 )
 

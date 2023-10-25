@@ -153,8 +153,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/a2c && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/a2c/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/a2c/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/a2c/...
 
@@ -166,8 +167,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/a3c && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/a3c/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/a3c/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/a3c/...
 
@@ -179,8 +181,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/alpha_star && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/alpha_star/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/alpha_star/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/alpha_star/...
 
@@ -192,8 +195,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/alpha_zero && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/alpha_zero/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/alpha_zero/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/alpha_zero/...
 
@@ -205,8 +209,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/apex_ddpg && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/apex_ddpg/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/apex_ddpg/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/apex_ddpg/...
 
@@ -218,8 +223,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/apex_dqn && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/apex_dqn/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/apex_dqn/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/apex_dqn/...
 
@@ -231,8 +237,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/ars && pip install -r requirements.txt && pip install -e ".[development"])
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/ars/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/ars/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/ars/...
 
@@ -244,8 +251,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/bandit && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/bandit/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/bandit/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/bandit/...
 
@@ -257,8 +265,11 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/crr && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/crr/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/crr/
+    - wget https://raw.githubusercontent.com/ray-project/ray/master/rllib/tests/data/cartpole/large.json -P rllib_contrib/crr/tuned_examples/
+    - wget https://raw.githubusercontent.com/ray-project/ray/master/rllib/tests/data/pendulum/pendulum_replay_v1.1.0.zip -P rllib_contrib/crr/tuned_examples/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/crr/...
 
@@ -270,8 +281,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/ddpg/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/ddpg/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/ddpg/...
 
@@ -283,8 +295,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/ddppo && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/ddppo/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/ddppo/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/ddppo/...
 
@@ -296,8 +309,10 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/dt && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/dt/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/dt/
+    - wget https://github.com/ray-project/ray/raw/releases/2.5.1/rllib/tests/data/pendulum/pendulum_expert_sac_50eps.zip -P rllib_contrib/dt/tuned_examples/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/dt/...
 
@@ -309,8 +324,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/es && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/es/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/es/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/es/...
 
@@ -322,9 +338,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/leela_chess_zero && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/leela_chess_zero/
     - ./ci/env/env_info.sh
-
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/leela_chess_zero/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/leela_chess_zero/...
 
@@ -336,8 +352,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/maddpg && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/maddpg/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/maddpg/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/maddpg/...
 
@@ -358,9 +375,10 @@
     - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco-2.1.1/bin
 
     - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/maml/
     - ./ci/env/env_info.sh
 
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/maml/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/maml/...
 
@@ -379,8 +397,10 @@
     - source /root/.bashrc
 
     - (cd rllib_contrib/mbmpo && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/mbmpo/
     - ./ci/env/env_info.sh
+
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/mbmpo/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/mbmpo/...
 
@@ -392,8 +412,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/pg && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/pg/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/pg/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/pg/...
 
@@ -405,8 +426,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/qmix && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/qmix/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/qmix/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/qmix/...
 
@@ -418,8 +440,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/r2d2/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/r2d2/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/r2d2/...
 
@@ -431,8 +454,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/simple_q && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/simple_q/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/simple_q/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/simple_q/...
 
@@ -444,8 +468,9 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/slate_q && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/slate_q/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/slate_q/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/slate_q/...
 
@@ -457,7 +482,8 @@
     - conda create -n rllib_contrib python=3.8 -y
     - conda activate rllib_contrib
     - (cd rllib_contrib/td3 && pip install -r requirements.txt && pip install -e ".[development]")
-    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/td3/
     - ./ci/env/env_info.sh
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/td3/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/td3/...

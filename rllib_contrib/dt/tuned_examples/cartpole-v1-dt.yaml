@@ -10,7 +10,7 @@ cartpole_dt:
     config:
         input: dataset
         input_config:         
-            paths: tests/data/cartpole/large.json
+            paths: s3://anonymous@air-example-data/rllib/cartpole/large.json
             format: json
         num_workers: 3
         actions_in_input_normalized: True
