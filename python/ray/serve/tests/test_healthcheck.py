@@ -106,14 +106,20 @@ def test_user_defined_method_hangs(serve_instance):
 
 def test_multiple_replicas(serve_instance):
     h = serve.run(Patient.options(num_replicas=2).bind())
-    actors = {a._actor_id for a in ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])}
+    actors = {
+        a._actor_id
+        for a in ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])
+    }
     assert len(actors) == 2
 
     h.set_should_fail.remote().result()
 
     wait_for_condition(check_new_actor_started, handle=h, original_actors=actors)
 
-    new_actors = {a._actor_id for a in ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])}
+    new_actors = {
+        a._actor_id
+        for a in ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])
+    }
     assert len(new_actors) == 2
     assert len(new_actors.intersection(actors)) == 1
 
