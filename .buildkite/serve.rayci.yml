@@ -1,5 +1,19 @@
 group: serve tests
 steps:
+  # build
+  - name: servebuild
+    wanda: ci/docker/serve.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
+  - name: servepydantic2build
+    wanda: ci/docker/servepydantic2.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
+  - name: servewinbuild
+    wanda: ci/docker/servewin.build.wanda.yaml
+    depends_on: winbuild
+
+  # test
   - label: ":ray-serve: serve: tests"
     parallelism: 2
     tags: 
@@ -25,6 +39,20 @@ steps:
         --except-tags post_wheel_build,gpu,worker-container,xcommit
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
     depends_on: servepydantic2build
+    job_env: forge
+
+  - label: ":ray-serve: serve: window tests"
+    parallelism: 2
+    tags: 
+      - serve
+      - python
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
+        --build-name servewinbuild
+        --except-tags no_window,post_wheel_build,gpu,worker-container,xcommit
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+    depends_on: servewinbuild
     job_env: forge
 
   - label: ":ray-serve: serve: release tests"

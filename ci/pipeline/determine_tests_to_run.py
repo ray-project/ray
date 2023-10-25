@@ -211,6 +211,7 @@ if __name__ == "__main__":
                 changed_file.startswith("python/ray/serve")
                 or changed_file == ".buildkite/serve.rayci.yml"
                 or changed_file == "ci/docker/serve.build.Dockerfile"
+                or changed_file == "ci/docker/servewin.build.Dockerfile"
             ):
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
