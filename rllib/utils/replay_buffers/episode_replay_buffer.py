@@ -473,7 +473,6 @@ class _Episode:
         observation,
         action,
         reward,
-        info,
         *,
         info=None,
         state=None,
