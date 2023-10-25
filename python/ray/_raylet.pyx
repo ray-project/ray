@@ -721,8 +721,6 @@ def raise_sys_exit_with_custom_error_message(
     # sys.exit(0).
     # https://docs.python.org/3/library/exceptions.html#SystemExit
     e = SystemExit(exit_code)
-    # If it is True, exit is considered as intentional.
-    e.is_ray_terminate = exit_code == 0
     e.ray_terminate_msg = ray_terminate_msg
     raise e
 
@@ -2115,16 +2113,16 @@ cdef CRayStatus task_execution_handler(
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
-            if hasattr(e, "is_ray_terminate") and e.is_ray_terminate:
-                return CRayStatus.IntentionalSystemExit(e.ray_terminate_msg)
-            elif hasattr(e, "is_creation_task_error"):
+            if hasattr(e, "is_creation_task_error"):
                 return CRayStatus.CreationTaskError(e.init_error_message)
             elif e.code is not None and e.code == 0:
                 # This means the system exit was
                 # normal based on the python convention.
                 # https://docs.python.org/3/library/sys.html#sys.exit
-                return CRayStatus.IntentionalSystemExit(
-                    f"Worker exits with an exit code {e.code}.")
+                msg = f"Worker exits with an exit code {e.code}."
+                if hasattr(e, "ray_terminate_msg"):
+                    msg += (f" {e.ray_terminate_msg}")
+                return CRayStatus.IntentionalSystemExit(msg)
             else:
                 msg = f"Worker exits with an exit code {e.code}."
                 # In K8s, SIGTERM likely means we hit memory limits, so print

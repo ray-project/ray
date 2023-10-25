@@ -438,7 +438,8 @@ def test_worker_proc_child_no_leak(shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
-def test_sigterm_while_ray_get(shutdown_only):
+@pytest.mark.parametrize("is_get", [False, True])
+def test_sigterm_while_ray_get_and_wait(shutdown_only, is_get):
     """Verify when sigterm is received while running
     ray.get, it will clean up the worker process properly.
     """
@@ -448,27 +449,31 @@ def test_sigterm_while_ray_get(shutdown_only):
         time.sleep(300)
 
     @ray.remote(max_retries=0)
-    def ray_get_task():
-        ray.get(f.remote())
+    def ray_get_wait_task():
+        ref = f.remote()
+        if is_get:
+            ray.get(ref)
+        else:
+            ray.wait([ref])
 
     # TODO(sang): The task failure is not properly propagated.
-    r = ray_get_task.remote()
+    r = ray_get_wait_task.remote()
 
     def wait_for_task():
-        t = list_tasks(filters=[("name", "=", "ray_get_task")])[0]
+        t = list_tasks(filters=[("name", "=", "ray_get_wait_task")])[0]
         return t.state == "RUNNING"
 
     wait_for_condition(wait_for_task)
 
     # Kill a task that's blocked by ray.get
-    t = list_tasks(filters=[("name", "=", "ray_get_task")])[0]
+    t = list_tasks(filters=[("name", "=", "ray_get_wait_task")])[0]
     os.kill(t.worker_pid, signal.SIGTERM)
 
     with pytest.raises(ray.exceptions.WorkerCrashedError):
         ray.get(r)
 
     def verify():
-        t = list_tasks(filters=[("name", "=", "ray_get_task")])[0]
+        t = list_tasks(filters=[("name", "=", "ray_get_wait_task")])[0]
         w = get_worker(t.worker_id)
         assert t.state == "FAILED"
         assert w.exit_type == "SYSTEM_ERROR"
