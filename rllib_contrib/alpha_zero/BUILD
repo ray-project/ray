@@ -4,7 +4,7 @@ py_test(
     name = "example_alpha_zero_cartpole_sparse_rewards",
     main = "alpha_zero_cartpole_sparse_rewards.py",
     tags = ["team:rllib", "example"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/alpha_zero_cartpole_sparse_rewards.py"],
     args = ["--run-as-test"]
 )

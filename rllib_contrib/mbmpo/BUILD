@@ -4,7 +4,7 @@ py_test(
     name = "example_mbmpo_cartpole_v1_model_based",
     main = "mbmpo_cartpole_v1_model_based.py",
     tags = ["team:rllib", "example"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/mbmpo_cartpole_v1_model_based.py"],
     args = ["--run-as-test"]
 )

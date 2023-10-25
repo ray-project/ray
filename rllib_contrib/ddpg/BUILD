@@ -4,7 +4,7 @@ py_test(
     name = "example_ddpg_pendulum_v1",
     main = "ddpg_pendulum_v1.py",
     tags = ["team:rllib", "example"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/ddpg_pendulum_v1.py"],
     args = ["--run-as-test"]
 )

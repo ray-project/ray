@@ -4,7 +4,7 @@ py_test(
     name = "example_pg_cartpole_v1",
     main = "pg_cartpole_v1.py",
     tags = ["team:rllib", "example"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/pg_cartpole_v1.py"],
     args = ["--run-as-test"]
 )

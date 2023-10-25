@@ -4,7 +4,7 @@ py_test(
     name = "example_cartpole_mass_maml",
     main = "cartpole_mass_maml.py",
     tags = ["team:rllib", "example"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_mass_maml.py"],
     args = ["--run-as-test"]
 )

@@ -4,7 +4,7 @@ py_test(
     name = "example_ars_cartpole_v1",
     main = "ars_cartpole_v1.py",
     tags = ["team:rllib", "example"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/ars_cartpole_v1.py"],
     args = ["--run-as-test"]
 )

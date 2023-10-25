@@ -4,7 +4,7 @@ py_test(
     name = "example_two_step_game_maddpg",
     main = "two_step_game.py",
     tags = ["team:rllib", "example"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/two_step_game.py"],
     args = ["--run-as-test"]
 )

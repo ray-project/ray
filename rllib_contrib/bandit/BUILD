@@ -4,7 +4,7 @@ py_test(
     name = "example_bandit_linucb_interest_evolution_recsim",
     main = "bandit_linucb_interest_evolution_recsim.py",
     tags = ["team:rllib", "example"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/bandit_linucb_interest_evolution_recsim.py"],
     args = ["--run-as-test"]
 )

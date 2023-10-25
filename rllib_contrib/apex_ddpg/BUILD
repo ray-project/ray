@@ -4,7 +4,7 @@ py_test(
     name = "example_apex_ddpg_pendulum_v1",
     main = "apex_ddpg_pendulum_v1.py",
     tags = ["team:rllib", "example"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/apex_ddpg_pendulum_v1.py"],
     args = ["--run-as-test"]
 )

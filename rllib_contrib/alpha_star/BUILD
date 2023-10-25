@@ -4,7 +4,7 @@ py_test(
     name = "example_multi_agent_cartpole_alpha_star",
     main = "multi-agent-cartpole-alpha-star.py",
     tags = ["team:rllib", "example"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/multi-agent-cartpole-alpha-star.py"],
     args = ["--run-as-test"]
 )
@@ -24,7 +24,7 @@ py_test(
 # Compilation Tests
 
 py_test(
-    name = "test_a2c",
+    name = "test_alpha_star",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["tests/test_alpha_star.py"]
