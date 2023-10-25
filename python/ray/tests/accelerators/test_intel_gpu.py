@@ -30,6 +30,7 @@ def test_visible_intel_gpu_type(shutdown_only):
         assert manager.get_current_node_accelerator_type() == INTEL_MAX_1550
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
 def test_get_current_node_num_accelerators():
     old_dpctl = None
     if "dpctl" in sys.modules:
@@ -45,6 +46,7 @@ def test_get_current_node_num_accelerators():
         sys.modules["dpctl"] = old_dpctl
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
 def test_get_current_node_accelerator_type():
     old_dpctl = None
     if "dpctl" in sys.modules:
