@@ -661,7 +661,7 @@ graphql-core==3.2.3
     # via moto
 graphviz==0.20.1
     # via catboost
-greenlet==3.0.0
+greenlet==3.0.1
     # via sqlalchemy
 grpcio==1.59.0 ; sys_platform != "darwin"
     # via
@@ -791,7 +791,7 @@ importlib-resources==5.13.0
     #   tensorflow-datasets
 iniconfig==2.0.0
     # via pytest
-ipykernel==6.25.2
+ipykernel==6.26.0
     # via
     #   nbclassic
     #   notebook
@@ -1217,6 +1217,7 @@ numexpr==2.8.4
 numpy==1.23.5 ; python_version < "3.9"
     # via
     #   -r /ray/ci/../python/requirements.txt
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   accelerate
     #   aim
     #   ale-py
@@ -2369,7 +2370,7 @@ tqdm==4.64.1
     #   torch-geometric
     #   torchtext
     #   transformers
-traitlets==5.11.2
+traitlets==5.12.0
     # via
     #   comm
     #   ipykernel
