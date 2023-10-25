@@ -150,12 +150,15 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] addr The address of the worker.
   /// \param[in] task_queue_key The scheduling class of the worker.
   /// \param[in] was_error Whether the task failed to be submitted.
+  /// \param[in] error_detail The reason why it was errored.
+  /// It is unused if was_error is false.
   /// \param[in] worker_exiting Whether the worker is exiting.
   /// \param[in] assigned_resources Resource ids previously assigned to the worker.
   void OnWorkerIdle(
       const rpc::WorkerAddress &addr,
       const SchedulingKey &task_queue_key,
       bool was_error,
+      const std::string &error_detail,
       bool worker_exiting,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -200,9 +203,12 @@ class CoreWorkerDirectTaskSubmitter {
   /// This function takes care of returning a worker to the Raylet.
   /// \param[in] addr The address of the worker.
   /// \param[in] was_error Whether the task failed to be submitted.
+  /// \param[in] error_detail The reason why it was errored.
+  /// it is unused if was_error is false.
   /// \param[in] worker_exiting Whether the worker is exiting.
   void ReturnWorker(const rpc::WorkerAddress addr,
                     bool was_error,
+                    const std::string &error_detail,
                     bool worker_exiting,
                     const SchedulingKey &scheduling_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);

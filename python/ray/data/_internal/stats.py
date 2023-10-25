@@ -3,6 +3,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Union
+from uuid import uuid4
 
 import numpy as np
 
@@ -143,6 +144,9 @@ class _StatsActor:
         self.max_stats = max_stats
         self.fifo_queue = []
 
+        # Assign dataset uuids with a global counter.
+        self.next_dataset_id = 0
+
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
         # a dataset's metrics to 0 after each finishes execution.
@@ -220,6 +224,11 @@ class _StatsActor:
     def _get_stats_dict_size(self):
         return len(self.start_time), len(self.last_time), len(self.metadata)
 
+    def get_dataset_id(self):
+        dataset_id = str(self.next_dataset_id)
+        self.next_dataset_id += 1
+        return dataset_id
+
     def update_metrics(self, stats: Dict[str, Union[int, float]], tags: Dict[str, str]):
         self.bytes_spilled.set(stats["obj_store_mem_spilled"], tags)
         self.bytes_allocated.set(stats["obj_store_mem_alloc"], tags)
@@ -269,6 +278,8 @@ def _check_cluster_stats_actor():
     # Checks if global _stats_actor belongs to current cluster,
     # if not, creates a new one on the current cluster.
     global _stats_actor, _stats_actor_cluster_id
+    if ray._private.worker._global_node is None:
+        raise RuntimeError("Global node is not initialized.")
     current_cluster_id = ray._private.worker._global_node.cluster_id
     if _stats_actor is None or _stats_actor_cluster_id != current_cluster_id:
         _stats_actor = _get_or_create_stats_actor()
@@ -295,6 +306,17 @@ def clear_stats_actor_metrics(tags: Dict[str, str]):
     global _stats_actor
     _check_cluster_stats_actor()
     _stats_actor.clear_metrics.remote(tags)
+
+
+def get_dataset_id_from_stats_actor() -> str:
+    global _stats_actor
+    try:
+        _check_cluster_stats_actor()
+        return ray.get(_stats_actor.get_dataset_id.remote())
+    except Exception:
+        # Getting dataset id from _StatsActor may fail, in this case
+        # fall back to uuid4
+        return uuid4().hex
 
 
 class DatasetStats:
