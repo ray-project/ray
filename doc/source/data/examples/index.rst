@@ -48,7 +48,7 @@ Batch inference
 
         .. button-ref:: xgboost-example-ref
 
-            Tabular Data Batch Inference with XGBoost
+            Tabular Data Training and Batch Inference with XGBoost
 
 Many model training
 -------------------
