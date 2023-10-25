@@ -366,14 +366,17 @@ void raylet::RayletClient::ReportWorkerBacklog(
       });
 }
 
-Status raylet::RayletClient::ReturnWorker(int worker_port,
-                                          const WorkerID &worker_id,
-                                          bool disconnect_worker,
-                                          bool worker_exiting) {
+Status raylet::RayletClient::ReturnWorker(
+    int worker_port,
+    const WorkerID &worker_id,
+    bool disconnect_worker,
+    const std::string &disconnect_worker_error_detail,
+    bool worker_exiting) {
   rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
+  request.set_disconnect_worker_error_detail(disconnect_worker_error_detail);
   request.set_worker_exiting(worker_exiting);
   grpc_client_->ReturnWorker(
       request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {

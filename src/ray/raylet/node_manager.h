@@ -365,6 +365,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Kill a worker.
   ///
+  /// This shouldn't be directly used to kill a worker. If you use this API
+  /// the worker's crash cause is not correctly recorded (it will be either SIGTERM
+  /// or an unexpected failure). Use `DestroyWorker` instead.
+  ///
   /// \param worker The worker to kill.
   /// \param force true to kill immediately, false to give time for the worker to
   /// clean up and exit gracefully.
