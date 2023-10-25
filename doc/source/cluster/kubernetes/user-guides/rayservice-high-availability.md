@@ -6,7 +6,7 @@
 ## Prerequisites
 
 * KubeRay 1.0.0 or later
-* Enable [GCS fault tolerance](kuberay-gcs-ft).
+* Enable [GCS fault tolerance](kuberay-gcs-ft) in the RayService.
 
 ## Quickstart
 
@@ -29,7 +29,7 @@ kubectl apply -f ray-service.high-availability.yaml
 
 The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-service.high-availability.yaml) file has several Kubernetes objects:
 
-* Redis: Redis is for GCS fault tolerance. See the [KubeRay GCS fault tolerance documentation](kuberay-gcs-ft) for more details.
+* Redis: Redis is for GCS fault tolerance.
 * RayService: This RayService custom resource includes a 3-node RayCluster and a simple [Ray Serve application](https://github.com/ray-project/test_dag).
 * Ray Pod: Sends requests to the RayService.
 
@@ -111,7 +111,3 @@ response: 12
 ```sh
 kind delete cluster
 ```
-
-## Next steps
-
-* [RayService](kuberay-rayservice)
