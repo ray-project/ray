@@ -292,7 +292,7 @@ class _ParquetDatasourceReader(Reader):
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
-        # FileBasedDatasource's write side (do_write), however.
+        # FileBasedDatasource's write side, however.
         pq_metadata = self._metadata
         if len(pq_metadata) < len(self._pq_fragments):
             # Pad `pq_metadata` to be same length of `self._pq_fragments`.

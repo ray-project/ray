@@ -1,7 +1,8 @@
 import logging
 import pickle
 from abc import ABC, abstractmethod
-from typing import Any, Generator, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, AsyncIterator, List, Tuple, Union
 
 import grpc
 from starlette.types import Receive, Scope, Send
@@ -160,12 +161,6 @@ class gRPCProxyRequest(ProxyRequest):
     def send_request_id(self, request_id: str):
         self.context.set_trailing_metadata([("request_id", request_id)])
 
-    def send_status_code(self, status_code: grpc.StatusCode):
-        self.context.set_code(status_code)
-
-    def send_details(self, message: str):
-        self.context.set_details(message)
-
     def request_object(self, proxy_handle: ActorHandle) -> gRPCRequest:
         return gRPCRequest(
             grpc_user_request=self.user_request,
@@ -173,15 +168,28 @@ class gRPCProxyRequest(ProxyRequest):
         )
 
 
-class ProxyResponse:
-    """ProxyResponse class to use in the common interface among proxies"""
+@dataclass(frozen=True)
+class ResponseStatus:
+    code: Union[str, grpc.StatusCode]  # Must be convertible to a string.
+    is_error: bool = False
+    message: str = ""
 
-    def __init__(
-        self,
-        status_code: str,
-        response: Optional[bytes] = None,
-        streaming_response: Optional[Generator[bytes, None, None]] = None,
-    ):
-        self.status_code = status_code
-        self.response = response
-        self.streaming_response = streaming_response
+
+# Yields protocol-specific messages followed by a final `ResponseStatus`.
+ResponseGenerator = AsyncIterator[Union[Any, ResponseStatus]]
+
+
+@dataclass(frozen=True)
+class HandlerMetadata:
+    application_name: str = ""
+    deployment_name: str = ""
+    route: str = ""
+
+
+@dataclass(frozen=True)
+class ResponseHandlerInfo:
+    response_generator: ResponseGenerator
+    metadata: HandlerMetadata
+    should_record_access_log: bool
+    should_record_request_metrics: bool
+    should_increment_ongoing_requests: bool

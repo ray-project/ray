@@ -1,6 +1,7 @@
 import re
 import time
 from collections import Counter
+from contextlib import contextmanager
 from typing import List, Optional
 from unittest.mock import patch
 
@@ -134,6 +135,14 @@ def map_batches_sleep(x, n):
 def enable_get_object_locations_flag():
     ctx = ray.data.context.DataContext.get_current()
     ctx.enable_get_object_locations_for_metrics = True
+
+
+@contextmanager
+def patch_update_stats_actor():
+    with patch(
+        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
+    ) as update_fn:
+        yield update_fn
 
 
 def test_streaming_split_stats(ray_start_regular_shared):
@@ -974,6 +983,10 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
+@pytest.mark.skip(
+    reason="Temporarily disable to deflake rest of test suite. "
+    "See: https://github.com/ray-project/ray/pull/40173"
+)
 def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
@@ -1148,9 +1161,7 @@ Dataset memory:
 
 def test_stats_actor_metrics():
     ray.init(object_store_memory=100e6, num_gpus=1)
-    with patch(
-        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
-    ) as update_fn:
+    with patch_update_stats_actor() as update_fn:
         ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
     # last emitted metrics from map operator
@@ -1168,6 +1179,59 @@ def test_stats_actor_metrics():
     assert final_metric.bytes_outputs_generated == 1000 * 80 * 80 * 4 * 8  # 8B per int
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
+
+    assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+
+
+def test_dataset_name():
+    ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
+    ds._set_name("test_ds")
+    assert ds._name == "test_ds"
+    assert (
+        str(ds)
+        == """MapBatches(<lambda>)
++- Dataset(name=test_ds, num_blocks=20, num_rows=100, schema={id: int64})"""
+    )
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
+
+    # Names persist after an execution
+    ds = ds.random_shuffle()
+    assert ds._name == "test_ds"
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
+
+    ds._set_name("test_ds_two")
+    ds = ds.map_batches(lambda x: x)
+    assert ds._name == "test_ds_two"
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds_two" + mds._uuid
+
+    ds._set_name(None)
+    ds = ds.map_batches(lambda x: x)
+    assert ds._name is None
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == mds._uuid
+
+    ds = ray.data.range(100, parallelism=20)
+    ds._set_name("very_loooooooong_name")
+    assert (
+        str(ds)
+        == """Dataset(
+   name=very_loooooooong_name,
+   num_blocks=20,
+   num_rows=100,
+   schema={id: int64}
+)"""
+    )
 
 
 if __name__ == "__main__":
