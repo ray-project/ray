@@ -13,13 +13,13 @@ from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
 )
 from ray.data.datasource.datasource import Reader, ReadTask
-from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.file_meta_provider import (
     DefaultParquetMetadataProvider,
     ParquetMetadataProvider,
     _handle_read_os_error,
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
