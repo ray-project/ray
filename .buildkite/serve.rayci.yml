@@ -27,6 +27,20 @@ steps:
     depends_on: servepydantic2build
     job_env: forge
 
+  - label: ":ray-serve: serve: window tests"
+    parallelism: 2
+    tags: 
+      - serve
+      - python
+    instance_type: windows
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
+        --build-type windows
+        --except-tags no_window,post_wheel_build,gpu,worker-container,xcommit
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+    depends_on: servebuild
+    job_env: forge
+
   - label: ":ray-serve: serve: release tests"
     tags:
       - serve

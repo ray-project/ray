@@ -31,7 +31,6 @@ py_test_module_list(
     "test_cluster_node_info_cache.py",
     "test_long_poll.py",
     "test_util.py",
-    "test_cross_language.py",
     "test_proxy.py",
     "test_http_adapters.py",
     "test_deployment_graph_driver.py",
@@ -46,6 +45,15 @@ py_test_module_list(
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"]
 )
 
+py_test_module_list(
+  files = [
+    "test_cross_language.py",
+  ],
+  size = "small",
+  tags = ["exclusive", "no_window", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"]
+)
+
 # Medium tests.
 py_test_module_list(
   files = [
@@ -55,7 +63,6 @@ py_test_module_list(
     "test_proxy_state.py",
     "test_ray_client.py",
     "test_failure.py",
-    "test_gcs_failure.py",
     "test_handle.py",
     "test_handle_streaming.py",
     "test_new_handle_api.py",
@@ -63,7 +70,6 @@ py_test_module_list(
     "test_request_timeout.py",
     "test_cluster.py",
     "test_autoscaling_policy.py",
-    "test_fastapi.py",
     "test_deployment_graph_autoscaling.py",
     "test_cancellation.py",
     "test_streaming_response.py",
@@ -71,8 +77,6 @@ py_test_module_list(
     "test_replica_placement_group.py",
     "test_max_replicas_per_node.py",
     "test_deployment_graph_build.py",
-    "test_gradio.py",
-    "test_gradio_visualization.py",
     "test_grpc.py",
     "test_multiplex.py",
     "test_callback.py",
@@ -81,6 +85,18 @@ py_test_module_list(
   ],
   size = "medium",
   tags = ["exclusive", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+)
+
+py_test_module_list(
+  files = [
+    "test_gcs_failure.py",
+    "test_gradio.py",
+    "test_gradio_visualization.py",
+    "test_fastapi.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "no_window", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
@@ -93,12 +109,20 @@ py_test_module_list(
     "test_telemetry.py",
     "test_telemetry_2.py",
     "test_standalone.py",
-    "test_standalone_2.py",
     "test_standalone_3.py",
     "test_deploy_app.py",
   ],
   size = "large",
   tags = ["exclusive", "team:serve"],
+  deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
+)
+
+py_test_module_list(
+  files = [
+    "test_standalone_2.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "no_window", "team:serve"],
   deps = ["//python/ray/serve:serve_lib", ":conftest", ":common"],
 )
 
