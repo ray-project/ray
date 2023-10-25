@@ -2,7 +2,9 @@
 
 # Configure Ray Serve deployments
 
-In this guide, you will learn about:
+Ray Serve default values for deployments are a good starting point for exploration. To further tailor scaling behavior, resource management, or performance tuning, you can configure parameters to alter the default behavior of Ray Serve deployments.
+
+Use this guide to learn the essentials of configuring deployments:
 - What parameters you can configure for a Ray Serve deployment
 - The different locations where you can specify the parameters.
 
@@ -25,7 +27,7 @@ You can also refer to the [API reference](../serve/api/doc/ray.serve.deployment_
 
 You can specify the above mentioned parameters in two locations:
 1. In your application code.
-2. In the Serve Config file, the recommended method for production.
+2. In the Serve Config file, which is the recommended method for production.
 
 ### Specify parameters through the application code
 
@@ -51,7 +53,7 @@ Use the [`.options()`](../api/doc/ray.serve.Deployment.rst) method to modify dep
 
 ### Specify parameters through the Serve config file
 
-In production, we recommend configuring individual deployments through the Serve config file. Learn more about how to use the Serve Config in the [production guide](serve-in-production-config-file).
+In production, we recommend configuring individual deployments through the Serve config file. You can change parameter values without modifying your application code. Learn more about how to use the Serve Config in the [production guide](serve-in-production-config-file).
 
 ```yaml
 applications:

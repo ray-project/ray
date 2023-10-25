@@ -8,7 +8,11 @@ This section should help you:
 - Learn how to deploy and update your applications in production using the Serve config.
 - Learn how to generate a config file for a list of Serve applications.
 
-If you are deploying Serve on a VM, you can use the Serve config with the [serve deploy](serve-in-production-deploying) CLI command. If you are deploying Serve on Kubernetes, you can embed the Serve config in a [RayService](serve-in-production-kubernetes) custom resource in Kubernetes to deploy and update your applications in production.
+The Serve config is the recommended way to deploy and update your applications in production. It allows you to fully configure everything related to Serve, including system-level components like the proxy and application-level options like individual deployment parameters (recall how to [configure Serve deployments](serve-configure-deployment)). One major benefit is you can dynamically update individual deployment parameters by modifying the Serve config, without needing to redeploy or restart your application.
+
+:::{tip}
+If you are deploying Serve on a VM, you can use the Serve config with the [serve deploy](serve-in-production-deploying) CLI command. If you are deploying Serve on Kubernetes, you can embed the Serve config in a [RayService](serve-in-production-kubernetes) custom resource in Kubernetes to 
+:::
 
 The Serve config is a YAML file with the following format:
 
