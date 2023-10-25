@@ -598,15 +598,6 @@ def test_input_validation():
 
     with pytest.raises(TypeError):
 
-        @serve.deployment(init_args={1, 2, 3})
-        class BadInitArgs:
-            pass
-
-    with pytest.raises(TypeError):
-        Base.options(_init_args="hi")
-
-    with pytest.raises(TypeError):
-
         @serve.deployment(ray_actor_options=[1, 2, 3])
         class BadActorOpts:
             pass
