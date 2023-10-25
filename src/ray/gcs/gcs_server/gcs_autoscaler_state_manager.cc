@@ -343,6 +343,15 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "HandleDrainNode Request:" << request.DebugString();
+
+  if (!NodeID::ValidateBinary(request.node_id())) {
+    RAY_LOG(WARNING) << "Request to drain an invalid node " << request.DebugString();
+    reply->set_is_accepted(false);
+    send_reply_callback(ray::Status::OK(), nullptr,
+                        nullptr);
+    return;
+  }
+
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
                 << ", reason: " << request.reason_message();

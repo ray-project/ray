@@ -64,6 +64,9 @@ class BaseID {
   static T FromHex(const std::string &hex_str);
   static const T &Nil();
   static constexpr size_t Size() { return T::Size(); }
+  static bool ValidateBinary(const std::string &binary) {
+    return binary.size() == T::Size() || binary.size() == 0;
+  }
 
   size_t Hash() const;
   bool IsNil() const;
