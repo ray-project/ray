@@ -5703,7 +5703,7 @@
 
   run:
     timeout: 1800
-    script: python read_images_benchmark.py
+    script: python read_images_benchmark.py --single-node
 
   variations:
     - __suffix__: aws
@@ -5712,6 +5712,30 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+
+- name: read_images_benchmark_multi_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: multi_node_benchmark_compute.yaml
+
+  run:
+    timeout: 28800
+    script: python read_images_benchmark.py --multi-node
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: multi_node_benchmark_compute_gce.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
   group: data-tests
