@@ -263,32 +263,51 @@ def test_schema(ray_start_regular_shared):
 
 
 def test_schema_no_execution(ray_start_regular_shared):
+    cursor = None
     ds = ray.data.range(100, parallelism=10)
+    cursor = assert_core_execution_metrics_equals(
+            CoreExecutionMetrics(task_count={"_get_reader": 1}), cursor
+    )
     # We do not kick off the read task by default.
     assert ds._plan._in_blocks._num_computed() == 0
     schema = ds.schema()
     assert schema.names == ["id"]
+
     # Fetching the schema does not trigger execution, since
     # the schema is known beforehand for RangeDatasource.
+    cursor = assert_core_execution_metrics_equals(
+            CoreExecutionMetrics(task_count={}), cursor
+    )
     assert ds._plan._in_blocks._num_computed() == 0
     # Fetching the schema should not trigger execution of extra read tasks.
     assert ds._plan.execute()._num_computed() == 0
 
 
 def test_schema_cached(ray_start_regular_shared):
-    def check_schema_cached(ds):
+    def check_schema_cached(ds, expected_task_count, cursor=None):
         schema = ds.schema()
+        cursor = assert_core_execution_metrics_equals(
+            CoreExecutionMetrics(expected_task_count), cursor
+        )
         assert schema.names == ["a"]
         cached_schema = ds.schema(fetch_if_missing=False)
         assert cached_schema is not None
         assert schema == cached_schema
+        cursor = assert_core_execution_metrics_equals(
+            CoreExecutionMetrics({}), cursor
+        )
+        return cursor
 
     ds = ray.data.from_items([{"a": i} for i in range(100)], parallelism=10)
-    check_schema_cached(ds)
+    cursor = check_schema_cached(ds, {})
 
     # Add a map_batches stage so that we are forced to compute the schema.
     ds = ds.map_batches(lambda x: x)
-    check_schema_cached(ds)
+    cursor = check_schema_cached(ds,
+            {
+                "MapBatches(<lambda>)": lambda count: count <= 5,
+                "slice_fn": 1,
+                }, cursor=cursor)
 
 
 def test_columns(ray_start_regular_shared):
