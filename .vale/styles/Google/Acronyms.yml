@@ -24,6 +24,7 @@ exceptions:
   - GCC
   - GCE
   - GCP
+  - GCS
   - GDB
   - GET
   - GPU
