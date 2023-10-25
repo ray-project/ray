@@ -6,7 +6,7 @@
 ## Prerequisites
 
 * KubeRay 1.0.0 or later
-* Enable {ref}`GCS fault tolerance <kuberay-gcs-ft>` in the RayService.
+* Enable GCS fault tolerance in the RayService.
 
 ## Quickstart
 
