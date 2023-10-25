@@ -152,12 +152,6 @@ class BackendExecutor:
         trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
         self.worker_group.group_workers_by_ip(trial_driver_ip)
 
-        worker_locs = [
-            f"{w.metadata.pid} ({w.metadata.node_ip})"
-            for w in self.worker_group.workers
-        ]
-        logger.info(f"Starting distributed worker processes: {worker_locs}")
-
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
@@ -428,6 +422,16 @@ class BackendExecutor:
             worker = self.worker_group.workers[world_rank]
             node_ip = worker.metadata.node_ip
             local_world_size_map[world_rank] = ip_dict[node_ip]
+
+        workers_info = "\n".join(
+            [
+                f"- (ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
+                f"world_rank={i}, local_rank={local_rank_map[i]}, "
+                f"node_rank={node_rank_map[i]}"
+                for i, w in enumerate(self.worker_group.workers)
+            ]
+        )
+        logger.info(f"Started distributed worker processes: \n{workers_info}")
 
         return local_rank_map, local_world_size_map, node_rank_map
 

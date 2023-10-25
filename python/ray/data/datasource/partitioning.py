@@ -114,9 +114,7 @@ class Partitioning:
         base directory is correctly discovered at the root of all partitioned file
         paths.
         """
-        from ray.data.datasource.file_based_datasource import (
-            _resolve_paths_and_filesystem,
-        )
+        from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
         paths, self._resolved_filesystem = _resolve_paths_and_filesystem(
             self.base_dir,
