@@ -3,7 +3,7 @@
 # Configure Ray Serve deployments
 
 In this guide, you will learn about:
-- What parameters are configurable for a Ray Serve deployment
+- What parameters you can configure for a Ray Serve deployment
 - The different locations where you can specify the parameters.
 
 ## Configurable parameters
@@ -21,13 +21,19 @@ You can also refer to the [API reference](../serve/api/doc/ray.serve.deployment_
 - `graceful_shutdown_wait_loop_s` - Duration that replicas wait until there is no more work to be done before shutting down. Defaults to 2s.
 - `graceful_shutdown_timeout_s` - Duration to wait for a replica to gracefully shut down before being forcefully killed. Defaults to 20s.
 
-## How to configure a deployment
+## How to specify parameters
 
-There are 2 ways to specify the parameters mentioned above. First, you can specify them through your application code. Second, you can specify them through the Serve Config file that is recommended for production.
+You can specify the above mentioned parameters in two locations:
+1. In your application code.
+2. In the Serve Config file, the recommended method for production.
 
-### Specify parameters through application code
+### Specify parameters through the application code
 
-Use the `@serve.deployment` decorator to specify deployment parameters:
+You can specify parameters in the application code in two ways:
+- In the `@serve.deployment` decorator when you first define a deployment
+- With the `options()` method when you want to modify a deployment
+
+Use the `@serve.deployment` decorator to specify deployment parameters when you are defining a deployment for the first time:
 
 ```{literalinclude} ../serve/doc_code/configure_serve_deployment/model_deployment.py
 :start-after: __deployment_start__
@@ -35,7 +41,7 @@ Use the `@serve.deployment` decorator to specify deployment parameters:
 :language: python
 ```
 
-Use the `.options()` method to modify deployment parameters on an already-defined deployment. This lets you reuse deployment definitions and dynamically set parameters at runtime.
+Use the [`.options()`](../api/doc/ray.serve.Deployment.rst) method to modify deployment parameters on an already-defined deployment. Modifying an existing deployment lets you reuse deployment definitions and dynamically set parameters at runtime.
 
 ```{literalinclude} ../serve/doc_code/configure_serve_deployment/model_deployment.py
 :start-after: __deployment_end__
@@ -43,7 +49,7 @@ Use the `.options()` method to modify deployment parameters on an already-define
 :language: python
 ```
 
-### Specify parameters through Serve config file
+### Specify parameters through the Serve config file
 
 In production, we recommend configuring individual deployments through the Serve config file. Learn more about how to use the Serve Config in the [production guide](serve-in-production-config-file).
 
@@ -64,17 +70,17 @@ applications:
       num_gpus: 0.0
 ```
 
-### Overriding deployment settings
+### Order of Priority
 
-For each individual parameter, the order of priority is (from highest to lowest):
+You can set parameters to different values in various locations. For each individual parameter, the order of priority is (from highest to lowest):
 
 1. Serve Config file
 2. Application code (either through the `@serve.deployment` decorator or through `.options()`)
 3. Serve defaults
 
-In other words, if a parameter for a deployment is specified in the config file and the application code, Serve will use the config file's value. If it's only specified in the code, Serve will use the value specified in the code. If the parameter is specified anywhere, Serve will use the default for that parameter.
+In other words, if you specify a parameter for a deployment in the config file and the application code, Serve uses the config file's value. If it's only specified in the code, Serve uses the value you specified in the code. If you don't specify the parameter anywhere, Serve uses the default for that parameter.
 
-For example, if you have the following application code which contains a single deployment `ExampleDeployment`:
+For example, the following application code contains a single deployment `ExampleDeployment`:
 
 ```python
 @serve.deployment(num_replicas=2, graceful_shutdown_timeout_s=6)
@@ -84,7 +90,7 @@ class ExampleDeployment:
 example_app = ExampleDeployment.bind()
 ```
 
-Then suppose you deploy your application with the following config file:
+Then you deploy the application with the following config file:
 
 ```yaml
 applications:
@@ -95,9 +101,9 @@ applications:
         num_replicas: 5
 ```
 
-Serve uses `num_replicas=5` from the value set in the config file and `graceful_shutdown_timeout_s=6` from the value set in the application code. All other deployment settings use Serve defaults because they're not specified in the code or the config. For instance, `health_check_period_s=10` since by default Serve health checks deployments once every 10 seconds.
+Serve uses `num_replicas=5` from the value set in the config file and `graceful_shutdown_timeout_s=6` from the value set in the application code. All other deployment settings use Serve defaults because you didn't specify them in the code or the config. For instance, `health_check_period_s=10` because by default Serve health checks deployments once every 10 seconds.
 
 :::{tip}
-Remember that `ray_actor_options` counts as a single setting. The entire `ray_actor_options` dictionary in the config file overrides the entire `ray_actor_options` dictionary from the graph code. If there are individual options within `ray_actor_options` (e.g. `runtime_env`, `num_gpus`, `memory`) that are set in the code but not in the config, Serve still won't use the code settings if the config has a `ray_actor_options` dictionary. It treats these missing options as though the user never set them and uses defaults instead. This dictionary overriding behavior also applies to `user_config` and `autoscaling_config`.
+Remember that `ray_actor_options` counts as a single setting. The entire `ray_actor_options` dictionary in the config file overrides the entire `ray_actor_options` dictionary from the graph code. If you set individual options within `ray_actor_options` (e.g. `runtime_env`, `num_gpus`, `memory`) in the code but not in the config, Serve still won't use the code settings if the config has a `ray_actor_options` dictionary. It treats these missing options as though the user never set them and uses defaults instead. This dictionary overriding behavior also applies to `user_config` and `autoscaling_config`.
 :::
 
