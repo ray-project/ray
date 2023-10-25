@@ -5717,13 +5717,13 @@
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: nightly-3x
   team: data
 
   cluster:
     byod:
       type: gpu
-    cluster_compute: multi_node_benchmark_compute.yaml
+    cluster_compute: data_ingest_benchmark_compute.yaml
 
   run:
     timeout: 28800
@@ -5735,7 +5735,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: multi_node_benchmark_compute_gce.yaml
+        cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
   group: data-tests
