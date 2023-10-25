@@ -16,7 +16,7 @@ def test_expected_python_version():
     actual_major, actual_minor = sys.version_info[:2]
     actual_version = f"{actual_major}.{actual_minor}"
     assert actual_version == expected_python_version, (
-        f"expected_python_version={expected_python_version}"
+        f"expected_python_version={expected_python_version}, "
         f"actual_version={actual_version}"
     )
 

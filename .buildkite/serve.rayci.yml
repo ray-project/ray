@@ -10,7 +10,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
         --except-tags post_wheel_build,gpu,worker-container,xcommit
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --test-env=EXPECTED_PYTHON_VERSION=3.11
+        --test-env=EXPECTED_PYTHON_VERSION=3.8
     depends_on: servebuild
     job_env: forge
 
@@ -25,7 +25,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
         --except-tags post_wheel_build,gpu,worker-container,xcommit
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --test-env=EXPECTED_PYTHON_VERSION=3.11
+        --test-env=EXPECTED_PYTHON_VERSION=3.8
     depends_on: servepydantic2build
     job_env: forge
 
@@ -42,6 +42,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,worker-container,xcommit
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --test-env=EXPECTED_PYTHON_VERSION=3.11
     depends_on: servepython311build
     job_env: forge
 
