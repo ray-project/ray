@@ -249,7 +249,7 @@ TEST_F(GetRequestQueueTest, TestFallbackAllocatedFdArePassed) {
   std::vector<ObjectID> object_ids{object_id1, object_id2};
   MarkObject(object1, ObjectState::PLASMA_SEALED);
   MarkObject(object2, ObjectState::PLASMA_CREATED);
-  MEMFD_TYPE fd{101, 42};
+  MEMFD_TYPE fd{INT2FD(101), 42};
   MarkObjectFallbackAllocated(object2, true, fd);
 
   EXPECT_CALL(object_lifecycle_manager, GetObject(Eq(object_id1)))
