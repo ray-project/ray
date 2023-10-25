@@ -154,16 +154,18 @@ class Result:
             with open(result_json_file, "r") as f:
                 json_list = [json.loads(line) for line in f if line]
                 metrics_df = pd.json_normalize(json_list, sep="/")
+            latest_metrics = json_list[-1] if json_list else {}
         # Fallback to restore from progress.csv
         elif progress_csv_file.exists():
             metrics_df = pd.read_csv(progress_csv_file)
+            latest_metrics = (
+                metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
+            )
         else:
             raise RuntimeError(
                 f"Failed to restore the Result object: Neither {EXPR_RESULT_FILE}"
                 f" nor {EXPR_PROGRESS_FILE} exists in the trial folder!"
             )
-
-        latest_metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
 
         # Restore all checkpoints from the checkpoint folders
         checkpoint_dirs = sorted(local_path.glob("checkpoint_*"))
