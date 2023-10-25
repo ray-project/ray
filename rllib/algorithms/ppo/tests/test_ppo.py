@@ -153,6 +153,11 @@ class TestPPO(unittest.TestCase):
             )
             .callbacks(MyCallbacks)
             .rl_module(_enable_rl_module_api=False)
+            .evaluation(
+                evaluation_duration=2,
+                evaluation_duration_unit="episodes",
+                evaluation_num_workers=1,
+            )
         )  # For checking lr-schedule correctness.
 
         num_iterations = 2
@@ -185,6 +190,8 @@ class TestPPO(unittest.TestCase):
                         results = algo.train()
                         check_train_results(results)
                         print(results)
+
+                    algo.evaluate()
 
                     check_inference_w_connectors(policy, env_name=env)
                     algo.stop()
