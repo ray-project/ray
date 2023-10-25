@@ -433,8 +433,9 @@ class Algorithm(Trainable, AlgorithmBase):
             deprecation_warning(
                 old=f"algo = Algorithm(env='{env}', ...)",
                 new=f"algo = AlgorithmConfig().environment('{env}').build()",
-                error=True,
+                error=False,
             )
+            config.environment(env)
 
         # Validate and freeze our AlgorithmConfig object (no more changes possible).
         config.validate()
