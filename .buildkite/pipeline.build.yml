@@ -17,22 +17,6 @@
     - ./dashboard/tests/run_ui_tests.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) python/ray/dashboard/...
 
-- label: ":serverless: Serve Release Tests"
-  conditions:
-    [
-        "RAY_CI_SERVE_AFFECTED",
-        "RAY_CI_PYTHON_AFFECTED",
-    ]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
-    - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=team:serve
-      release/...
-
 # the bulk of serve tests are now run on civ2 infra, and defined in
 # pipeline.build_serve.yml
 - label: ":serverless: Serve HA Tests"
@@ -58,41 +42,6 @@
       --test_tag_filters=-post_wheel_build,-gpu,xcommit
       python/ray/serve/tests/...
 
-- label: ":python: Minimal install Python {{matrix}}"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/ci.sh test_minimal {{matrix}}
-    - ./ci/ci.sh test_latest_core_dependencies {{matrix}}
-  matrix:
-    - "3.8"
-    - "3.9"
-    - "3.10"
-    - "3.11"
-
-- label: ":python: Default install"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: small
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-default.sh
-    - ./ci/env/env_info.sh
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_DEFAULT=1 $(./ci/run/bazel_export_options)
-      python/ray/dashboard/test_dashboard
-
-- label: ":python: Ray Serve default install"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: small
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-serve.sh
-    - ./ci/env/env_info.sh
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_DEFAULT=1 $(./ci/run/bazel_export_options)
-      python/ray/serve/tests/test_deployment_graph
-    - bazel test --test_output=streamed --config=ci --test_env=RAY_DEFAULT=1 $(./ci/run/bazel_export_options)
-      python/ray/serve/tests/test_api
-
 - label: ":python: civ1 tests"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
@@ -109,36 +58,6 @@
       --test_env=DOCKER_TLS_CERTDIR=/certs
       -- python/ray/tests/...
 
-- label: ":python: Debug Test"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - pip uninstall -y ray
-    - RAY_DEBUG_BUILD=debug ./ci/ci.sh build
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci-debug $(./ci/run/bazel_export_options)
-      --test_tag_filters=-kubernetes,debug_tests
-      python/ray/tests/...
-
-- label: ":python: (ASAN tests)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel build $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:ray_pkg
-    - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
-      --config=asan-buildkite
-      --test_tag_filters=-kubernetes,asan_tests
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      python/ray/tests/...
-
 - label: ":book: Doctest (CPU)"
   instance_size: large
   commands:
@@ -154,22 +73,6 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-gpu
       python/ray/... doc/...
-
-- label: ":python: Ray on Spark Test"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - pip uninstall -y ray
-    - RAY_DEBUG_BUILD=debug ./ci/ci.sh build
-    # Install latest pyspark. We cannot move this to the requirements file as subdependencies conflict
-    - pip install pyspark==3.4.1
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci-debug $(./ci/run/bazel_export_options)
-      --test_env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
-      --test_env=RAY_ON_SPARK_RAY_WORKER_NODE_STARTUP_INTERVAL=5
-      --test_tag_filters=-kubernetes,spark_plugin_tests
-      python/ray/tests/...
 
 - label: ":kubernetes: operator"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -232,26 +135,3 @@
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
-
-- label: ":hadoop: Ray AIR HDFS tests"
-  conditions: ["RAY_CI_ML_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - cat /tmp/hdfs_env
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_tag_filters=hdfs python/ray/air/...
-
-
-# Test to see if Train can be used without torch, tf, etc. installed
-- label: ":steam_locomotive: Train minimal install"
-  conditions: ["RAY_CI_TRAIN_AFFECTED"]
-  instance_size: small
-  commands:
-      - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-      - TRAIN_MINIMAL_INSTALL=1 ./ci/env/install-minimal.sh
-      - ./ci/env/env_info.sh
-      - python ./ci/env/check_minimal_install.py
-      - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal
-        python/ray/train/...

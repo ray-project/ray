@@ -4,7 +4,11 @@ import tempfile
 from contextlib import contextmanager
 
 import ray
-from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.interfaces.physical_operator import (
+    DataOpTask,
+    MetadataOpTask,
+    PhysicalOperator,
+)
 
 
 @ray.remote
@@ -74,7 +78,11 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
             fetch_local=False,
         )
         for task in tasks:
-            task.on_waitable_ready()
+            if isinstance(task, DataOpTask):
+                task.on_data_ready(None)
+            else:
+                assert isinstance(task, MetadataOpTask)
+                task.on_task_finished()
         if only_existing:
             return
         tasks = op.get_active_tasks()
@@ -87,4 +95,9 @@ def run_one_op_task(op):
     ready, _ = ray.wait(
         list(waitable_to_tasks.keys()), num_returns=1, fetch_local=False
     )
-    waitable_to_tasks[ready[0]].on_waitable_ready()
+    task = waitable_to_tasks[ready[0]]
+    if isinstance(task, DataOpTask):
+        task.on_data_ready(None)
+    else:
+        assert isinstance(task, MetadataOpTask)
+        task.on_task_finished()

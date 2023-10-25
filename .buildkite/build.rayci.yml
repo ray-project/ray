@@ -1,7 +1,9 @@
 group: build
 steps:
   - label: ":tapioca: build: wheel {{matrix}}"
-    tags: linux_wheels
+    tags:
+      - linux_wheels
+      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}}
@@ -15,8 +17,22 @@ steps:
       - forge
     job_env: forge
 
+  - label: ":tapioca: build: debug wheel"
+    tags:
+      - linux_wheels
+      - oss
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version 3.8 --build-type debug
+    depends_on:
+      - manylinux
+      - forge
+    job_env: forge
+
   - label: ":tapioca: build: jar"
-    tags: java
+    tags:
+      - java
+      - oss
     instance_type: medium
     commands:
       - ./ci/build/build-manylinux-ray.sh
@@ -37,6 +53,7 @@ steps:
       - python_dependencies
       - docker
       - core_cpp
+      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
@@ -60,6 +77,7 @@ steps:
       - python_dependencies
       - docker
       - core_cpp
+      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}

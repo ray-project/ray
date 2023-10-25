@@ -49,7 +49,7 @@ class Container:
             stderr=sys.stderr,
         )
 
-    def install_ray(self) -> None:
+    def install_ray(self, build_type: Optional[str] = None) -> None:
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
         subprocess.check_call(
@@ -59,6 +59,8 @@ class Container:
                 "--pull",
                 "--build-arg",
                 f"BASE_IMAGE={self._get_docker_image()}",
+                "--build-arg",
+                f"BUILD_TYPE={build_type or ''}",
                 "-t",
                 self._get_docker_image(),
                 "-f",
@@ -70,7 +72,11 @@ class Container:
             stderr=sys.stderr,
         )
 
-    def _get_run_command(self, script: List[str]) -> List[str]:
+    def _get_run_command(
+        self,
+        script: List[str],
+        gpu_ids: Optional[List[int]] = None,
+    ) -> List[str]:
         command = [
             "docker",
             "run",
@@ -85,6 +91,8 @@ class Container:
             command += ["--env", env]
         for cap in _DOCKER_CAP_ADD:
             command += ["--cap-add", cap]
+        if gpu_ids:
+            command += ["--gpus", f'"device={",".join(map(str, gpu_ids))}"']
         command += [
             "--workdir",
             "/rayci",

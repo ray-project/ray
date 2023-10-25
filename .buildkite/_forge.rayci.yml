@@ -91,6 +91,9 @@ steps:
     wanda: ci/docker/base.ml.wanda.yaml
     depends_on: oss-ci-base_test
 
+  - name: oss-ci-base_gpu
+    wanda: ci/docker/base.gpu.wanda.yaml
+
   - name: docbuild
     wanda: ci/docker/doc.build.wanda.yaml
     depends_on: oss-ci-base_build
@@ -115,6 +118,10 @@ steps:
     wanda: ci/docker/serve.build.wanda.yaml
     depends_on: oss-ci-base_build
 
+  - name: servepydantic2build
+    wanda: ci/docker/servepydantic2.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
   - name: serverlessbuild
     wanda: ci/docker/serverless.build.wanda.yaml
     depends_on: oss-ci-base_build
@@ -122,7 +129,19 @@ steps:
   - name: rllibbuild
     wanda: ci/docker/rllib.build.wanda.yaml
     depends_on: oss-ci-base_ml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
+      IMAGE_TO: rllibbuild
+      RAYCI_IS_GPU_BUILD: "false"
 
-  - name: mlbuild
-    wanda: ci/docker/ml.build.wanda.yaml
-    depends_on: oss-ci-base_ml
+  - name: rllibgpubuild
+    wanda: ci/docker/rllib.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
+      IMAGE_TO: rllibgpubuild
+      RAYCI_IS_GPU_BUILD: "true"
+
+  - name: docgpubuild
+    wanda: ci/docker/docgpu.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
