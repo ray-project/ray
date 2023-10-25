@@ -3,12 +3,11 @@ import os
 import random
 import shutil
 import tempfile
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from PIL import Image
 
 import ray
-from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
 
