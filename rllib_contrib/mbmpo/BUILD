@@ -17,7 +17,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_pendulum_mbmpo",
 #    main = "run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
 #    size = "large",
 #    srcs = ["run_regression_tests.py"],
 #    data = ["tuned_examples/pendulum-mbmpo.yaml"],

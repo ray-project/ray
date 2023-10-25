@@ -14,7 +14,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_alpha_star",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "medium",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/multi-agent-cartpole-alpha-star.yaml"],

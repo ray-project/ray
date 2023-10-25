@@ -14,31 +14,31 @@ py_test(
 py_test(
     name = "learning_tests_two_step_game_qmix",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
     size = "large",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/two-step-game-qmix.yaml"],
-    args = ["--dir=qmix/tuned_examples/", "--framework=torch"]
+    args = ["--dir=qmix/tuned_examples/"]
 )
 
 py_test(
     name = "learning_tests_two_step_game_qmix_vdn_mixer",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
     size = "large",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/two-step-game-qmix-vdn-mixer.yaml"],
-    args = ["--dir=qmix/tuned_examples/", "--framework=torch"]
+    args = ["--dir=qmix/tuned_examples/"]
 )
 
 py_test(
     name = "learning_tests_two_step_game_qmix_no_mixer",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
     size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/two-step-game-qmix-no-mixer.yaml"],
-    args = ["--dir=qmix/tuned_examples/", "--framework=torch"]
+    args = ["--dir=qmix/tuned_examples/"]
 )
 
 # Compilation Tests

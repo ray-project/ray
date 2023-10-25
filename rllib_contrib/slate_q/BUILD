@@ -14,7 +14,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slate_q",
 #    main = "run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+#    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
 #    size = "large",
 #    srcs = ["run_regression_tests.py"],
 #    data = ["tuned_examples/interest-evolution-10-candidates-recsim-env-slate-q.yaml"],
@@ -24,7 +24,7 @@ py_test(
 py_test(
     name = "learning_tests_interest_evolution_10_candidates_recsim_env_slate_q_fake_gpus",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "large",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/interest-evolution-10-candidates-recsim-env-slate-q.yaml"],

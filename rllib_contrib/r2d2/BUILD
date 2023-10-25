@@ -14,7 +14,7 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_r2d2",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "stateless_cartpole"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "enormous",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/stateless-cartpole-r2d2.yaml"],
@@ -24,7 +24,7 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_r2d2_fake_gpus",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "stateless_cartpole", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "enormous",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/stateless-cartpole-r2d2-fake-gpus.yaml"],

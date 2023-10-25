@@ -14,7 +14,7 @@ py_test(
 # py_test(
 #    name = "learning_tests_pendulum_td3",
 #    main = "run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+#    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
 #    size = "large",
 #    srcs = ["run_regression_tests.py"],
 #    data = ["tuned_examples/pendulum-td3.yaml"],

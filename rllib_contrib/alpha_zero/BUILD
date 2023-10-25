@@ -13,7 +13,7 @@ py_test(
 
 py_test(
     name = "learning_tests_cartpole_sparse_rewards_alpha_zero",
-    tags = ["team:rllib", "exclusive", "torch_only", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
     main = "run_regression_tests.py",
     size = "medium",
     srcs = ["run_regression_tests.py"],

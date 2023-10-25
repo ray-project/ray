@@ -14,7 +14,7 @@ py_test(
 py_test(
     name = "learning_tests_two_step_game_maddpg",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "tf_only", "no_tf_eager_tracing", "learning_tests", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib", "tf_only"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/two-step-game-maddpg.yaml"],

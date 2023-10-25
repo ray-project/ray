@@ -14,7 +14,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_a2c",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "large",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/cartpole-a2c.yaml"],
@@ -24,7 +24,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_a2c_microbatch",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "large",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/cartpole-a2c-microbatch.yaml"],
@@ -34,7 +34,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_a2c_fake_gpus",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "medium",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/cartpole-a2c-fake-gpus.yaml"],

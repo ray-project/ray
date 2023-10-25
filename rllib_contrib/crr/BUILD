@@ -14,7 +14,7 @@ py_test(
 py_test(
    name = "learning_tests_pendulum_crr",
    main = "run_regression_tests.py",
-   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
    size = "enormous",
    srcs = ["run_regression_tests.py"],
    # Include an offline json data file as well.

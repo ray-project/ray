@@ -14,7 +14,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_pg",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib"],
     size = "large",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/cartpole-pg.yaml"],

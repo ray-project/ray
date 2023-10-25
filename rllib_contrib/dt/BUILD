@@ -12,28 +12,28 @@ py_test(
 # Learning Tests
 
 py_test(
-   name = "learning_tests_pendulum_dt",
-   main = "run_regression_tests.py",
-   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
-   size = "large",
-   srcs = ["run_regression_tests.py"],
-   # Include an offline json data file as well.
-   data = [
-       "tuned_examples/pendulum-v1-dt.yaml",
-       "tests/data/pendulum/pendulum_expert_sac_50eps.zip",
-   ],
-   args = ["--dir=dt/tuned_examples/"]
+    name = "learning_tests_pendulum_dt",
+    main = "run_regression_tests.py",
+    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
+    size = "large",
+    srcs = ["run_regression_tests.py"],
+    # Include an offline json data file as well.
+    data = [
+        "tuned_examples/pendulum-v1-dt.yaml",
+        "tests/data/pendulum/pendulum_expert_sac_50eps.zip",
+    ],
+    args = ["--dir=dt/tuned_examples/"]
 )
 
 py_test(
     name = "learning_tests_cartpole_dt",
     main = "run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_with_ray_data"],
+    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
     size = "medium",
     srcs = ["run_regression_tests.py"],
     # Include an offline json data file as well.
     data = ["tuned_examples/cartpole-v1-dt.yaml"],
-    args = ["--dir=dt/tuned_examples/"]
+    args = ["--dir=dt/tuned_examples/", "--framework=torch"]
 )
 
 
