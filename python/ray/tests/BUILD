@@ -175,6 +175,8 @@ py_test_module_list(
     "test_streaming_generator.py",
     "test_streaming_generator_2.py",
     "test_streaming_generator_3.py",
+    "test_streaming_generator_4.py",
+    "test_streaming_generator_backpressure.py",
     "test_scheduling_performance.py",
     "test_implicit_resource.py",
   ],
@@ -200,7 +202,7 @@ py_test_module_list(
     "test_basic_5.py",
   ],
   size = "medium",
-  tags = ["exclusive", "minimal", "team:core"],
+  tags = ["exclusive", "minimal", "basic_test", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -209,7 +211,7 @@ py_test_module_list(
     "test_basic_3.py",
   ],
   size = "large",
-  tags = ["exclusive", "minimal", "team:core"],
+  tags = ["exclusive", "minimal", "basic_test", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -220,7 +222,7 @@ py_test_module_list(
     "test_utils.py",
   ],
   size = "medium",
-  tags = ["exclusive", "minimal", "no_redis", "team:core"],
+  tags = ["exclusive", "minimal", "no_basic_test", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -230,7 +232,7 @@ py_test_module_list(
     "test_usage_stats.py",
   ],
   size = "large",
-  tags = ["exclusive", "minimal", "no_redis", "team:core"],
+  tags = ["exclusive", "minimal", "no_basic_test", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

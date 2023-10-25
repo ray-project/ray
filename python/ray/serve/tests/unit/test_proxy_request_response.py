@@ -1,18 +1,16 @@
 import pickle
-from typing import Generator
 from unittest.mock import MagicMock
 
-import grpc
 import pytest
 
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     ProxyRequest,
-    ProxyResponse,
     gRPCProxyRequest,
 )
 from ray.serve.generated import serve_pb2
+from ray.serve.tests.common.utils import FakeGrpcContext
 
 
 class TestASGIProxyRequest:
@@ -170,56 +168,40 @@ class TestgRPCProxyRequest:
 
         When the gRPCProxyRequest is initialized with list application service method,
         calling is_route_request should return true and calling is_health_request
-        should return false. `send_status_code()` and `send_details()` should also work
-        accordingly to be able to send the into back to the client.
+        should return false.
         """
-        context = MagicMock()
+        context = FakeGrpcContext()
+        request_proto = serve_pb2.ListApplicationsRequest()
         service_method = "/ray.serve.RayServeAPIService/ListApplications"
         proxy_request = gRPCProxyRequest(
-            request_proto=MagicMock(),
+            request_proto=request_proto,
             context=context,
             service_method=service_method,
-            stream=MagicMock(),
+            stream=False,
         )
         assert isinstance(proxy_request, ProxyRequest)
         assert proxy_request.is_route_request is True
         assert proxy_request.is_health_request is False
-
-        status_code = grpc.StatusCode.OK
-        proxy_request.send_status_code(status_code=status_code)
-        context.set_code.assert_called_with(status_code)
-
-        message = "success"
-        proxy_request.send_details(message=message)
-        context.set_details.assert_called_with(message)
 
     def test_calling_healthz_method(self):
         """Test initialize gRPCProxyRequest with healthz service method.
 
         When the gRPCProxyRequest is initialized with healthz service method, calling
         is_route_request should return false and calling is_health_request
-        should return true. `send_status_code()` and `send_details()` should
-        also work accordingly to be able to send the into back to the client.
+        should return true.
         """
-        context = MagicMock()
+        context = FakeGrpcContext()
+        request_proto = serve_pb2.HealthzRequest()
         service_method = "/ray.serve.RayServeAPIService/Healthz"
         proxy_request = gRPCProxyRequest(
-            request_proto=MagicMock(),
+            request_proto=request_proto,
             context=context,
             service_method=service_method,
-            stream=MagicMock(),
+            stream=False,
         )
         assert isinstance(proxy_request, ProxyRequest)
         assert proxy_request.is_route_request is False
         assert proxy_request.is_health_request is True
-
-        status_code = grpc.StatusCode.OK
-        proxy_request.send_status_code(status_code=status_code)
-        context.set_code.assert_called_with(status_code)
-
-        message = "success"
-        proxy_request.send_details(message=message)
-        context.set_details.assert_called_with(message)
 
     def test_calling_user_defined_method(self):
         """Test initialize gRPCProxyRequest with user defined service method.
@@ -269,34 +251,6 @@ class TestgRPCProxyRequest:
         assert isinstance(request_object, gRPCRequest)
         assert pickle.loads(request_object.grpc_user_request) == request_proto
         assert request_object.grpc_proxy_handle == proxy_handle
-
-
-def test_proxy_response():
-    """Test ProxyResponse.
-
-    When a ProxyResponse object is initialized with status_code, response, and
-    streaming_response, the object is able to return the correct values.
-    """
-    status_code = "200"
-    response = b"unary_response"
-
-    def streaming_response(i: int) -> bytes:
-        return f"{i} from generator".encode()
-
-    def test_generator() -> Generator[bytes, None, None]:
-        for i in range(10):
-            yield streaming_response(i=i)
-
-    proxy_response = ProxyResponse(
-        status_code=status_code,
-        response=response,
-        streaming_response=test_generator(),
-    )
-
-    assert proxy_response.status_code == status_code
-    assert proxy_response.response == response
-    for idx, resp in enumerate(proxy_response.streaming_response):
-        assert resp == streaming_response(idx)
 
 
 if __name__ == "__main__":

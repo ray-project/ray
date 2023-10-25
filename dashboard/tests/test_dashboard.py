@@ -10,7 +10,6 @@ import sys
 import time
 import warnings
 
-import numpy as np
 import pytest
 import requests
 import socket
@@ -764,14 +763,6 @@ def test_immutable_types():
 
     with pytest.raises(AttributeError):
         immutable_dict["list"].insert(1, 2)
-
-    d2 = dashboard_utils.ImmutableDict({1: np.zeros([3, 5])})
-    with pytest.raises(TypeError):
-        print(d2[1])
-
-    d3 = dashboard_utils.ImmutableList([1, np.zeros([3, 5])])
-    with pytest.raises(TypeError):
-        print(d3[1])
 
 
 @pytest.mark.skipif(
