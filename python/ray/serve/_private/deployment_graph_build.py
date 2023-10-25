@@ -173,9 +173,9 @@ def transform_ray_dag_to_serve_dag(
                 node, DeploymentFunctionNode
             ):
                 if RAY_SERVE_ENABLE_NEW_HANDLE_API:
-                    return DeploymentHandle(node._deployment.name, app_name)
+                    return DeploymentHandle(node._deployment.name, app_name, sync=False)
                 else:
-                    return RayServeHandle(node._deployment.name, app_name)
+                    return RayServeHandle(node._deployment.name, app_name, sync=False)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 

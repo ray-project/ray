@@ -510,16 +510,22 @@ class ServeControllerClient:
             handle = DeploymentHandle(
                 deployment_name,
                 app_name,
+                # Only used when users convert this back to deprecated handle types.
+                sync=sync,
             )
         elif sync:
             handle = RayServeSyncHandle(
                 deployment_name,
                 app_name,
+                # Only used when users convert this back to deprecated handle types.
+                sync=sync,
             )
         else:
             handle = RayServeHandle(
                 deployment_name,
                 app_name,
+                # Only used when users convert this back to deprecated handle types.
+                sync=sync,
             )
 
         self.handle_cache[cache_key] = handle

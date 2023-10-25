@@ -68,8 +68,7 @@ def test_handle_options():
     assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
 
-@pytest.mark.asyncio
-async def test_async_handle_serializable(serve_instance):
+def test_async_handle_serializable(serve_instance):
     @serve.deployment
     def f():
         return "hello"
@@ -77,8 +76,7 @@ async def test_async_handle_serializable(serve_instance):
     @ray.remote
     class DelegateActor:
         async def call_handle(self, handle):
-            ref = await handle.remote()
-            return await ref
+            return await handle.remote()
 
     @serve.deployment
     class Ingress:

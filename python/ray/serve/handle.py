@@ -97,6 +97,7 @@ class _DeploymentHandleBase:
         deployment_name: str,
         app_name: str,
         *,
+        sync: bool,
         handle_options: Optional[_HandleOptions] = None,
         _router: Optional[Router] = None,
         _request_counter: Optional[metrics.Counter] = None,
@@ -105,6 +106,7 @@ class _DeploymentHandleBase:
         self.deployment_id = DeploymentID(deployment_name, app_name)
         self.handle_options = handle_options or _HandleOptions()
         self._recorded_telemetry = _recorded_telemetry
+        self._sync = sync
 
         self.request_counter = _request_counter or metrics.Counter(
             "serve_handle_request_counter",
@@ -211,6 +213,11 @@ class _DeploymentHandleBase:
 
         if use_new_handle_api is True:
             cls = DeploymentHandle
+        elif use_new_handle_api is False:
+            if self._sync:
+                cls = RayServeSyncHandle
+            else:
+                cls = RayServeHandle
         else:
             cls = self.__class__
 
@@ -218,6 +225,7 @@ class _DeploymentHandleBase:
             self.deployment_name,
             self.app_name,
             handle_options=new_handle_options,
+            sync=self._sync,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _request_counter=self.request_counter,
             _recorded_telemetry=self._recorded_telemetry,
@@ -285,6 +293,7 @@ class _DeploymentHandleBase:
             "deployment_name": self.deployment_name,
             "app_name": self.app_name,
             "handle_options": self.handle_options,
+            "sync": self._sync,
         }
         return self.__class__._deserialize, (serialized_constructor_args,)
 

@@ -705,7 +705,7 @@ def test_two_fastapi_in_one_application(
         assert "FastAPI" in str(e.value)
     else:
         handle = serve.run(Model.bind(serve.deployment(SubModel).bind()), name="app1")
-        assert ray.get(handle.func.remote(5)) == 6
+        assert handle.func.remote(5).result() == 6
 
 
 @pytest.mark.parametrize(
