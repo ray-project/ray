@@ -704,6 +704,12 @@ class ServeController:
                     "If you are using the REST API, you can submit a single-app config "
                     "to the single-app API endpoint `/api/serve/deployments/`."
                 )
+            logger.warning(
+                "The single-application config format is DEPRECATED and will be "
+                "removed in a future version. Please switch to using the multi-"
+                "application config (see "
+                "https://docs.ray.io/en/latest/serve/multi-app.html)."
+            )
             self.deploy_mode = ServeDeployMode.SINGLE_APP
         else:
             applications = config.applications
@@ -794,30 +800,20 @@ class ServeController:
         return deployment_route.SerializeToString()
 
     def list_deployments_internal(
-        self, include_deleted: Optional[bool] = False
+        self,
     ) -> Dict[DeploymentID, Tuple[DeploymentInfo, str]]:
         """Gets the current information about all deployments.
-
-        Args:
-            include_deleted: Whether to include information about
-                deployments that have been deleted.
 
         Returns:
             Dict(deployment_id, (DeploymentInfo, route))
         """
         return {
             id: (info, self.endpoint_state.get_endpoint_route(id))
-            for id, info in self.deployment_state_manager.get_deployment_infos(
-                include_deleted=include_deleted
-            ).items()
+            for id, info in self.deployment_state_manager.get_deployment_infos().items()
         }
 
-    def list_deployments_v1(self, include_deleted: Optional[bool] = False) -> bytes:
+    def list_deployments_v1(self) -> bytes:
         """Gets the current information about all 1.x deployments.
-
-        Args:
-            include_deleted: Whether to include information about
-                deployments that have been deleted.
 
         Returns:
             DeploymentRouteList's protobuf serialized bytes
@@ -826,7 +822,7 @@ class ServeController:
         for deployment_id, (
             deployment_info,
             route_prefix,
-        ) in self.list_deployments_internal(include_deleted=include_deleted).items():
+        ) in self.list_deployments_internal().items():
             # Only list 1.x deployments, which should have app=""
             if deployment_id.app:
                 continue

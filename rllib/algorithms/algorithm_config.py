@@ -74,7 +74,6 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
-from ray.util import log_once
 
 gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
@@ -118,30 +117,31 @@ def _check_rl_module_spec(module_spec: ModuleSpec) -> None:
 class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
-    Example:
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
-        >>> # Construct a generic config object, specifying values within different
-        >>> # sub-categories, e.g. "training".
-        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
-        ...     .environment(env="CartPole-v1")
-        ...     .resources(num_gpus=0)
-        ...     .rollouts(num_rollout_workers=4)
-        ...     .callbacks(MemoryTrackingCallbacks)
-        >>> # A config object can be used to construct the respective Algorithm.
-        >>> rllib_algo = config.build()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        >>> from ray import tune
-        >>> # In combination with a tune.grid_search:
-        >>> config = AlgorithmConfig()
-        >>> config.training(lr=tune.grid_search([0.01, 0.001])) # doctest: +SKIP
-        >>> # Use `to_dict()` method to get the legacy plain python config dict
-        >>> # for usage with `tune.Tuner().fit()`.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "[registered Algorithm class]", param_space=config.to_dict()
-        ...     ).fit()
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
+        # Construct a generic config object, specifying values within different
+        # sub-categories, e.g. "training".
+        config = (PPOConfig().training(gamma=0.9, lr=0.01)
+                .environment(env="CartPole-v1")
+                .resources(num_gpus=0)
+                .rollouts(num_rollout_workers=0)
+                .callbacks(MemoryTrackingCallbacks)
+            )
+        # A config object can be used to construct the respective Algorithm.
+        rllib_algo = config.build()
+
+    .. testcode::
+
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray import tune
+        # In combination with a tune.grid_search:
+        config = PPOConfig()
+        config.training(lr=tune.grid_search([0.01, 0.001]))
+        # Use `to_dict()` method to get the legacy plain python config dict
+        # for usage with `tune.Tuner().fit()`.
+        tune.Tuner("PPO", param_space=config.to_dict())
     """
 
     @staticmethod
@@ -154,10 +154,12 @@ class AlgorithmConfig(_Config):
     def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
         """Creates an AlgorithmConfig from a legacy python config dict.
 
-        Examples:
-            >>> from ray.rllib.algorithms.ppo.ppo import PPOConfig # doctest: +SKIP
-            >>> ppo_config = PPOConfig.from_dict({...}) # doctest: +SKIP
-            >>> ppo = ppo_config.build(env="Pendulum-v1") # doctest: +SKIP
+        .. testcode::
+
+            from ray.rllib.algorithms.ppo.ppo import PPOConfig
+            # pass a RLlib config dict
+            ppo_config = PPOConfig.from_dict({})
+            ppo = ppo_config.build(env="Pendulum-v1")
 
         Args:
             config_dict: The legacy formatted python config dict for some algorithm.
@@ -188,28 +190,32 @@ class AlgorithmConfig(_Config):
         settings that would change with respect to some main config, e.g. in multi-agent
         setups and evaluation configs.
 
-        Examples:
-            >>> from ray.rllib.algorithms.ppo import PPOConfig
-            >>> from ray.rllib.policy.policy import PolicySpec
-            >>> config = (
-            ...     PPOConfig()
-            ...     .multi_agent(
-            ...         policies={
-            ...             "pol0": PolicySpec(config=PPOConfig.overrides(lambda_=0.95))
-            ...         },
-            ...     )
-            ... )
+        .. testcode::
 
-            >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-            >>> from ray.rllib.algorithms.pg import PGConfig
-            >>> config = (
-            ...     PGConfig()
-            ...     .evaluation(
-            ...         evaluation_num_workers=1,
-            ...         evaluation_interval=1,
-            ...         evaluation_config=AlgorithmConfig.overrides(explore=False),
-            ...     )
-            ... )
+            from ray.rllib.algorithms.ppo import PPOConfig
+            from ray.rllib.policy.policy import PolicySpec
+            config = (
+                PPOConfig()
+                .multi_agent(
+                    policies={
+                        "pol0": PolicySpec(config=PPOConfig.overrides(lambda_=0.95))
+                    },
+                )
+            )
+
+
+        .. testcode::
+
+            from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+            from ray.rllib.algorithms.pg import PGConfig
+            config = (
+                PGConfig()
+                .evaluation(
+                    evaluation_num_workers=1,
+                    evaluation_interval=1,
+                    evaluation_config=AlgorithmConfig.overrides(explore=False),
+                )
+            )
 
         Returns:
             A dict mapping valid config property-names to values.
@@ -664,15 +670,8 @@ class AlgorithmConfig(_Config):
                 # Resolve possible classpath.
                 value = deserialize_type(value)
                 self.rollouts(sample_collector=value)
-            # If config key matches a property, just set it, otherwise, warn and set.
+            # Set the property named `key` to `value`.
             else:
-                if not hasattr(self, key) and log_once(
-                    "unknown_property_in_algo_config"
-                ):
-                    logger.warning(
-                        f"Cannot create {type(self).__name__} from given "
-                        f"`config_dict`! Property {key} not supported."
-                    )
                 setattr(self, key, value)
 
         self.evaluation(**eval_call)
@@ -776,6 +775,17 @@ class AlgorithmConfig(_Config):
             _tf1, _tf, _tfv = try_import_tf()
         else:
             _torch, _ = try_import_torch()
+
+        # Can not use "tf" with learner API.
+        if self.framework_str == "tf" and (
+            self._enable_rl_module_api or self._enable_learner_api
+        ):
+            raise ValueError(
+                "Cannot use `framework=tf` with new API stack! Either do "
+                "`config.framework('tf2')` OR set both `config.rl_module("
+                "_enable_rl_module_api=False)` and `config.training("
+                "_enable_learner_api=False)`."
+            )
 
         # Check if torch framework supports torch.compile.
         if (
@@ -2571,29 +2581,10 @@ class AlgorithmConfig(_Config):
         if _enable_rl_module_api is not NotProvided:
             self._enable_rl_module_api = _enable_rl_module_api
             if _enable_rl_module_api is True and self.exploration_config:
-                logger.warning(
-                    "Setting `exploration_config={}` because you set "
-                    "`_enable_rl_module_api=True`. When RLModule API are "
-                    "enabled, exploration_config can not be "
-                    "set. If you want to implement custom exploration behaviour, "
-                    "please modify the `forward_exploration` method of the "
-                    "RLModule at hand. On configs that have a default exploration "
-                    "config, this must be done with "
-                    "`config.exploration_config={}`."
-                )
                 self.__prior_exploration_config = self.exploration_config
                 self.exploration_config = {}
             elif _enable_rl_module_api is False and not self.exploration_config:
                 if self.__prior_exploration_config is not None:
-                    logger.warning(
-                        "Setting `exploration_config="
-                        f"{self.__prior_exploration_config}` because you set "
-                        "`_enable_rl_module_api=False`. This exploration config was "
-                        "restored from a prior exploration config that was overriden "
-                        "when setting `_enable_rl_module_api=True`. This occurs "
-                        "because when RLModule API are enabled, exploration_config "
-                        "can not be set."
-                    )
                     self.exploration_config = self.__prior_exploration_config
                     self.__prior_exploration_config = None
                 else:
@@ -2602,7 +2593,7 @@ class AlgorithmConfig(_Config):
                         "exploration config was found to be restored."
                     )
         else:
-            # throw a warning if the user has used this API but not enabled it.
+            # Throw a warning if the user has used this API but not enabled it.
             logger.warning(
                 "You have called `config.rl_module(...)` but "
                 "have not enabled the RLModule API. To enable it, call "
@@ -3478,10 +3469,15 @@ class AlgorithmConfig(_Config):
         by Ray Tune.
 
         Examples:
-            >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-            >>> config = AlgorithmConfig()
-            >>> print(config["lr"])
-            ... 0.001
+            .. testcode::
+
+                from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+                config = AlgorithmConfig()
+                print(config["lr"])
+
+            .. testoutput::
+
+                0.001
         """
         # TODO: Uncomment this once all algorithms use AlgorithmConfigs under the
         #  hood (as well as Ray Tune).
