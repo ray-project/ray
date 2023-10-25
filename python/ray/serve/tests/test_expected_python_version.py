@@ -11,7 +11,7 @@ def test_expected_python_version():
     expected_python_version = os.environ.get("EXPECTED_PYTHON_VERSION", "").strip()
     assert (
         expected_python_version
-    ), f"EXPECTED_PYTHON_VERSION is {expected_python_version}"
+    ), "EXPECTED_PYTHON_VERSION environment variable not set."
 
     actual_major, actual_minor = sys.version_info[:2]
     actual_version = f"{actual_major}.{actual_minor}"
