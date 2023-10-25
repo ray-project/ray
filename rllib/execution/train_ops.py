@@ -28,12 +28,17 @@ logger = logging.getLogger(__name__)
 def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     """Function that improves the all policies in `train_batch` on the local worker.
 
-    Examples:
-        >>> from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-        >>> algo = [...] # doctest: +SKIP
-        >>> train_batch = synchronous_parallel_sample(algo.workers) # doctest: +SKIP
-        >>> # This trains the policy on one batch.
-        >>> results = train_one_step(algo, train_batch)) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+        algo = [...]
+        train_batch = synchronous_parallel_sample(algo.workers)
+        # This trains the policy on one batch.
+        print(train_one_step(algo, train_batch)))
+
+    .. testoutput::
+
         {"default_policy": ...}
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
@@ -91,12 +96,17 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     passes through a train batch (e.g. for PPO) using `config.num_sgd_iter`, the
     actual train batch is only split once and loaded once into the GPU(s).
 
-    Examples:
-        >>> from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-        >>> algo = [...] # doctest: +SKIP
-        >>> train_batch = synchronous_parallel_sample(algo.workers) # doctest: +SKIP
-        >>> # This trains the policy on one batch.
-        >>> results = multi_gpu_train_one_step(algo, train_batch)) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+        algo = [...]
+        train_batch = synchronous_parallel_sample(algo.workers)
+        # This trains the policy on one batch.
+        print(multi_gpu_train_one_step(algo, train_batch)))
+
+    .. testoutput::
+
         {"default_policy": ...}
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as

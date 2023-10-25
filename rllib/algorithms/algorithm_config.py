@@ -24,13 +24,13 @@ from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.learner_group_config import LearnerGroupConfig, ModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
-from ray.rllib.env.env_context import EnvContext
 from ray.rllib.core.learner.learner import TorchCompileWhatToCompile
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
-from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -102,6 +102,7 @@ path: /tmp/
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.core.learner import Learner
+    from ray.rllib.evaluation.episode import Episode as OldEpisode
 
 logger = logging.getLogger(__name__)
 
@@ -118,30 +119,31 @@ def _check_rl_module_spec(module_spec: ModuleSpec) -> None:
 class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
-    Example:
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        >>> from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
-        >>> # Construct a generic config object, specifying values within different
-        >>> # sub-categories, e.g. "training".
-        >>> config = AlgorithmConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
-        ...     .environment(env="CartPole-v1")
-        ...     .resources(num_gpus=0)
-        ...     .rollouts(num_rollout_workers=4)
-        ...     .callbacks(MemoryTrackingCallbacks)
-        >>> # A config object can be used to construct the respective Algorithm.
-        >>> rllib_algo = config.build()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        >>> from ray import tune
-        >>> # In combination with a tune.grid_search:
-        >>> config = AlgorithmConfig()
-        >>> config.training(lr=tune.grid_search([0.01, 0.001])) # doctest: +SKIP
-        >>> # Use `to_dict()` method to get the legacy plain python config dict
-        >>> # for usage with `tune.Tuner().fit()`.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "[registered Algorithm class]", param_space=config.to_dict()
-        ...     ).fit()
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
+        # Construct a generic config object, specifying values within different
+        # sub-categories, e.g. "training".
+        config = (PPOConfig().training(gamma=0.9, lr=0.01)
+                .environment(env="CartPole-v1")
+                .resources(num_gpus=0)
+                .rollouts(num_rollout_workers=0)
+                .callbacks(MemoryTrackingCallbacks)
+            )
+        # A config object can be used to construct the respective Algorithm.
+        rllib_algo = config.build()
+
+    .. testcode::
+
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray import tune
+        # In combination with a tune.grid_search:
+        config = PPOConfig()
+        config.training(lr=tune.grid_search([0.01, 0.001]))
+        # Use `to_dict()` method to get the legacy plain python config dict
+        # for usage with `tune.Tuner().fit()`.
+        tune.Tuner("PPO", param_space=config.to_dict())
     """
 
     @staticmethod
@@ -154,10 +156,12 @@ class AlgorithmConfig(_Config):
     def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
         """Creates an AlgorithmConfig from a legacy python config dict.
 
-        Examples:
-            >>> from ray.rllib.algorithms.ppo.ppo import PPOConfig # doctest: +SKIP
-            >>> ppo_config = PPOConfig.from_dict({...}) # doctest: +SKIP
-            >>> ppo = ppo_config.build(env="Pendulum-v1") # doctest: +SKIP
+        .. testcode::
+
+            from ray.rllib.algorithms.ppo.ppo import PPOConfig
+            # pass a RLlib config dict
+            ppo_config = PPOConfig.from_dict({})
+            ppo = ppo_config.build(env="Pendulum-v1")
 
         Args:
             config_dict: The legacy formatted python config dict for some algorithm.
@@ -188,28 +192,32 @@ class AlgorithmConfig(_Config):
         settings that would change with respect to some main config, e.g. in multi-agent
         setups and evaluation configs.
 
-        Examples:
-            >>> from ray.rllib.algorithms.ppo import PPOConfig
-            >>> from ray.rllib.policy.policy import PolicySpec
-            >>> config = (
-            ...     PPOConfig()
-            ...     .multi_agent(
-            ...         policies={
-            ...             "pol0": PolicySpec(config=PPOConfig.overrides(lambda_=0.95))
-            ...         },
-            ...     )
-            ... )
+        .. testcode::
 
-            >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-            >>> from ray.rllib.algorithms.pg import PGConfig
-            >>> config = (
-            ...     PGConfig()
-            ...     .evaluation(
-            ...         evaluation_num_workers=1,
-            ...         evaluation_interval=1,
-            ...         evaluation_config=AlgorithmConfig.overrides(explore=False),
-            ...     )
-            ... )
+            from ray.rllib.algorithms.ppo import PPOConfig
+            from ray.rllib.policy.policy import PolicySpec
+            config = (
+                PPOConfig()
+                .multi_agent(
+                    policies={
+                        "pol0": PolicySpec(config=PPOConfig.overrides(lambda_=0.95))
+                    },
+                )
+            )
+
+
+        .. testcode::
+
+            from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+            from ray.rllib.algorithms.pg import PGConfig
+            config = (
+                PGConfig()
+                .evaluation(
+                    evaluation_num_workers=1,
+                    evaluation_interval=1,
+                    evaluation_config=AlgorithmConfig.overrides(explore=False),
+                )
+            )
 
         Returns:
             A dict mapping valid config property-names to values.
@@ -739,6 +747,19 @@ class AlgorithmConfig(_Config):
         """Validates all values in this config."""
 
         # Validate rollout settings.
+        if (
+            self.evaluation_interval
+            and self.env_runner_cls is not None
+            and not issubclass(self.env_runner_cls, RolloutWorker)
+            and not self.enable_async_evaluation
+        ):
+            raise ValueError(
+                "When using an EnvRunner class that's not a subclass of `RolloutWorker`"
+                f"(yours is {self.env_runner_cls.__name__}), "
+                "`config.enable_async_evaluation` must be set to True! Call "
+                "`config.evaluation(enable_async_evaluation=True) on your config "
+                "object to fix this problem."
+            )
         if not (
             (
                 isinstance(self.rollout_fragment_length, int)
@@ -805,6 +826,13 @@ class AlgorithmConfig(_Config):
                         f"policy ID ({pid}) that was not defined in "
                         f"`config.multi_agent(policies=..)`!"
                     )
+
+        # If async evaluation is enabled, custom_eval_functions are not allowed.
+        if self.enable_async_evaluation and self.custom_evaluation_function:
+            raise ValueError(
+                "`config.custom_evaluation_function` not supported in combination "
+                "with `enable_async_evaluation=True` config setting!"
+            )
 
         # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
         # None.
@@ -2071,7 +2099,7 @@ class AlgorithmConfig(_Config):
             output_max_file_size: Max output file size (in bytes) before rolling over
                 to a new file.
             offline_sampling: Whether sampling for the Algorithm happens via
-                reading from offline data. If True, RolloutWorkers will NOT limit the
+                reading from offline data. If True, EnvRunners will NOT limit the
                 number of collected batches within the same `sample()` call based on
                 the number of sub-environments within the worker (no sub-environments
                 present).
@@ -2149,7 +2177,7 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         policy_map_capacity: Optional[int] = NotProvided,
         policy_mapping_fn: Optional[
-            Callable[[AgentID, "Episode"], PolicyID]
+            Callable[[AgentID, "OldEpisode"], PolicyID]
         ] = NotProvided,
         policies_to_train: Optional[
             Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
@@ -2438,8 +2466,6 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
-        # deprecated
-        worker_cls=None,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2464,13 +2490,6 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if worker_cls is not None:
-            deprecation_warning(
-                old="AlgorithmConfig.debugging(worker_cls=..)",
-                new="AlgorithmConfig.rollouts(env_runner_cls=...)",
-                error=True,
-            )
-
         if logger_creator is not NotProvided:
             self.logger_creator = logger_creator
         if logger_config is not NotProvided:
@@ -2513,7 +2532,7 @@ class AlgorithmConfig(_Config):
                 a vectorized env) throws any error during env stepping, the
                 Sampler will try to restart the faulty sub-environment. This is done
                 without disturbing the other (still intact) sub-environment and without
-                the RolloutWorker crashing.
+                the EnvRunner crashing.
             num_consecutive_worker_failures_tolerance: The number of consecutive times
                 a rollout worker (or evaluation worker) failure is tolerated before
                 finally crashing the Algorithm. Only useful if either
@@ -2831,10 +2850,9 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                EnvRunner (usually a RolloutWorker). If not provided, will try to infer
-                from `env`. Otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be inferred, will
-                raise an error.
+                EnvRunner. If not provided, will try to infer from `env`. Otherwise
+                from `self.observation_space` and `self.action_space`. If no
+                information on spaces can be inferred, will raise an error.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
 
@@ -3466,10 +3484,15 @@ class AlgorithmConfig(_Config):
         by Ray Tune.
 
         Examples:
-            >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-            >>> config = AlgorithmConfig()
-            >>> print(config["lr"])
-            ... 0.001
+            .. testcode::
+
+                from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+                config = AlgorithmConfig()
+                print(config["lr"])
+
+            .. testoutput::
+
+                0.001
         """
         # TODO: Uncomment this once all algorithms use AlgorithmConfigs under the
         #  hood (as well as Ray Tune).
