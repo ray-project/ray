@@ -90,16 +90,16 @@ def test_handle_access_log(serve_instance):
                 ]
             )
 
-        replica_tag = ray.get(h.remote())
+        replica_tag = h.remote().result()
         wait_for_condition(check_log, replica_tag=replica_tag, method_name="__call__")
 
-        ray.get(h.other_method.remote())
+        h.other_method.remote().result()
         wait_for_condition(
             check_log, replica_tag=replica_tag, method_name="other_method"
         )
 
         with pytest.raises(RuntimeError, match="blah blah blah"):
-            ray.get(h.throw.remote())
+            h.throw.remote().result()
 
         wait_for_condition(
             check_log, replica_tag=replica_tag, method_name="throw", fail=True

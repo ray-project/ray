@@ -3,7 +3,6 @@ from typing import AsyncGenerator, Generator
 
 import pytest
 
-import ray
 from ray import serve
 from ray.serve import Deployment
 from ray.serve.handle import RayServeHandle
@@ -147,22 +146,22 @@ class TestDeploymentHandleStreaming:
                 h = self._h.options(stream=True)
 
                 # Test calling __call__ generator.
-                gen = await h.remote(5)
+                gen = h.remote(5)
                 assert [result async for result in gen] == list(range(5))
 
                 # Test calling another method name.
-                gen = await h.other_method.remote(5)
+                gen = h.other_method.remote(5)
                 assert [result async for result in gen] == list(range(5))
 
                 # Test calling another method name via `.options`.
-                gen = await h.options(method_name="other_method").remote(5)
+                gen = h.options(method_name="other_method").remote(5)
                 assert [result async for result in gen] == list(range(5))
 
                 # Test calling a unary method on the same deployment.
                 assert await h.options(stream=False).unary.remote(5) == 5
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        ray.get(h.remote())
+        h.remote().result()
 
     def test_call_gen_without_stream_flag(self, serve_instance, deployment: Deployment):
         @serve.deployment
@@ -192,7 +191,7 @@ class TestDeploymentHandleStreaming:
                     await self._h.call_inner_generator.remote(5)
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        ray.get(h.remote())
+        h.remote().result()
 
     def test_call_no_gen_with_stream_flag(self, serve_instance, deployment: Deployment):
         @serve.deployment
@@ -210,7 +209,7 @@ class TestDeploymentHandleStreaming:
                     await gen.__anext__()
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        ray.get(h.remote())
+        h.remote().result()
 
     def test_generator_yields_no_results(self, serve_instance, deployment: Deployment):
         @serve.deployment
@@ -226,7 +225,7 @@ class TestDeploymentHandleStreaming:
                     await gen.__anext__()
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        ray.get(h.remote())
+        h.remote().result()
 
     def test_exception_raised_in_gen(self, serve_instance, deployment: Deployment):
         @serve.deployment
@@ -242,7 +241,7 @@ class TestDeploymentHandleStreaming:
                     await gen.__anext__()
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        ray.get(h.remote())
+        h.remote().result()
 
     def test_call_multiple_downstreams(self, serve_instance, deployment: Deployment):
         @serve.deployment
@@ -268,7 +267,7 @@ class TestDeploymentHandleStreaming:
                     assert await gen2.__anext__()
 
         h = serve.run(Delegate.bind(deployment.bind(), deployment.bind()))
-        ray.get(h.remote())
+        h.remote().result()
 
 
 @pytest.mark.parametrize("deployment", [sync_gen_function, async_gen_function])
@@ -289,7 +288,7 @@ class TestGeneratorFunctionDeployment:
                 assert [result async for result in gen] == list(range(5))
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        ray.get(h.remote())
+        h.remote().result()
 
 
 if __name__ == "__main__":
