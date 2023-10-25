@@ -17,9 +17,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
     srcs = ["run_regression_tests.py"],
-    data = [
-        "tuned_examples/simple_q/cartpole-simpleq.yaml",
-    ],
+    data = ["tuned_examples/cartpole-simpleq.yaml"],
     args = ["--dir=simple_q/tuned_examples"]
 )
 
@@ -29,7 +27,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "medium",
     srcs = ["run_regression_tests.py"],
-    data = ["tuned_examples/simple_q/cartpole-simpleq-fake-gpus.yaml"],
+    data = ["tuned_examples/cartpole-simpleq-fake-gpus.yaml"],
     args = ["--dir=simple_q/tuned_examples"]
 )
 
