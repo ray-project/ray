@@ -70,8 +70,9 @@ async def test_batching_magic_attributes():
     for batch_size in range(1, 7):
         future_list = []
         for _ in range(batch_size):
-            f = batching_example.handle_batch(1)
+            f = get_or_create_event_loop().create_task(batching_example.handle_batch(1))
             future_list.append(f)
+
         done, _ = await asyncio.wait(future_list, return_when="ALL_COMPLETED")
         assert set({task.result() for task in done}) == {batch_size}
         time.sleep(0.05)
