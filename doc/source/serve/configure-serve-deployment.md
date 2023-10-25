@@ -43,7 +43,7 @@ Use the `@serve.deployment` decorator to specify deployment parameters when you 
 :language: python
 ```
 
-Use the [`.options()`](../api/doc/ray.serve.Deployment.rst) method to modify deployment parameters on an already-defined deployment. Modifying an existing deployment lets you reuse deployment definitions and dynamically set parameters at runtime.
+Use the [`.options()`](../serve/api/doc/ray.serve.Deployment.rst) method to modify deployment parameters on an already-defined deployment. Modifying an existing deployment lets you reuse deployment definitions and dynamically set parameters at runtime.
 
 ```{literalinclude} ../serve/doc_code/configure_serve_deployment/model_deployment.py
 :start-after: __deployment_end__
