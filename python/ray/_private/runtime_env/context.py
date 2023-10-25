@@ -76,6 +76,8 @@ class RuntimeEnvContext:
             passthrough_args[0] = default_worker_path
 
         passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
+        logger.info(f"Original passthrough args: {passthrough_args}")
+        #passthrough_args = ["ls"]
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " ".join(self.command_prefix + [exec_command])
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
@@ -91,6 +93,8 @@ class RuntimeEnvContext:
                 + command_str
             )
         logger.info(f"Exec'ing worker with command: {command_str}")
+        logger.info(f"Ray job id: {os.environ.get('RAY_JOB_ID')}")
+        logger.info(f"Envs: {os.environ}")
         if sys.platform == "win32":
             cmd = [*self.command_prefix, executable, *passthrough_args]
             subprocess.Popen(cmd, shell=True).wait()

@@ -25,17 +25,20 @@ class ContainerManager:
 
         context.container = runtime_env["container"]
 
-        container_driver = "docker"
+        container_driver = "sudo nerdctl"
+        #container_driver = "podman"
         container_command = [
             container_driver,
             "run",
             "-v",
             self._ray_tmp_dir + ":" + self._ray_tmp_dir,
-            # "--cgroup-manager=cgroupfs",
+            #"--cgroup-manager=cgroupfs",
             "--network=host",
             "--pid=host",
-            "--ipc=host",
-            "--user=root",
+            #"--ipc=host",
+            #"--uts=host",
+            #"--cgroupns=host",
+            #"--user=root",
         ]
         container_command.append("--env")
         container_command.append("RAY_RAYLET_PID=" + os.getenv("RAY_RAYLET_PID"))
