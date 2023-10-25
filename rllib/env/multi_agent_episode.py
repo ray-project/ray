@@ -16,14 +16,15 @@ from ray.rllib.utils.typing import MultiAgentDict
 # episode are shrinking or growing during the episode itself.
 class MultiAgentEpisode:
     """Stores multi-agent episode data.
-    
-    The central attribute of the class is the timestep mapping 
-    `global_t_to_local_t` that maps the global (environment) 
-    timestep to the local (agent) timesteps. 
+
+    The central attribute of the class is the timestep mapping
+    `global_t_to_local_t` that maps the global (environment)
+    timestep to the local (agent) timesteps.
 
     The `MultiAgentEpisode` is based on the `SingleAgentEpisode`s
     for each agent, stored in `MultiAgentEpisode.agent_episodes`.
     """
+
     def __init__(
         self,
         id_: Optional[str] = None,
@@ -41,45 +42,45 @@ class MultiAgentEpisode:
         # TODO (simon): Also allow to receive `extra_model_outputs`.
         # TODO (simon): Validate terminated/truncated for env/agents.
     ) -> "MultiAgentEpisode":
-        """Initializes a `MultiAgentEpisode`. 
+        """Initializes a `MultiAgentEpisode`.
 
-            Args:
-                id_: Optional. Either a string to identify an episode or None.
-                    If None, a hexadecimal id is created. In case of providing
-                    a string, make sure that it is unique, as episodes get
-                    concatenated via this string.
-                agent_episode_ids: Optional. Either a dictionary mapping agent ids
-                    corresponding `SingleAgentEpisode` or None. If None, each
-                    `SingleAgentEpisode` in `MultiAgentEpisode.agent_episodes`
-                    will generate a hexadecimal code. If a dictionary is provided
-                    make sure that ids are unique as agents'  `SingleAgentEpisode`s
-                    get concatenated or recreated by it.
-                observations: A dictionary mapping from agent ids to observations.
-                    Can be None. If provided, it should be provided together with
-                    all other episode data (actions, rewards, etc.)
-                actions: A dictionary mapping from agent ids to corresponding actions.
-                    Can be None. If provided, it should be provided together with
-                    all other episode data (observations, rewards, etc.).
-                rewards: A dictionary mapping from agent ids to corresponding rewards.
-                    Can be None. If provided, it should be provided together with
-                    all other episode data (observations, rewards, etc.).
-                states: A dictionary mapping from agent ids to their corresponding
-                    modules' hidden states. These will be stored into the
-                    `SingleAgentEpisode`s in `MultiAgentEpisode.agent_episodes`.
-                    Can be None.
-                t_started: Optional. An unsigned int that defines the starting point
-                    of the episode. This is only different from zero, if an ongoing
-                    episode is created.
-                is_terminazted: Optional. A boolean defining, if an environment has
-                    terminated. The default is `False`, i.e. the episode is ongoing.
-                is_truncated: Optional. A boolean, defining, if an environment is
-                    truncated. The default is `False`, i.e. the episode is ongoing.
-                render_images: Optional. A list of RGB uint8 images from rendering
-                    the env; the images include the corresponding rewards.
-                agent_ids: Obligatory. A list of strings containing the agent ids.
-                    These have to be provided at initialization.
+        Args:
+            id_: Optional. Either a string to identify an episode or None.
+                If None, a hexadecimal id is created. In case of providing
+                a string, make sure that it is unique, as episodes get
+                concatenated via this string.
+            agent_episode_ids: Optional. Either a dictionary mapping agent ids
+                corresponding `SingleAgentEpisode` or None. If None, each
+                `SingleAgentEpisode` in `MultiAgentEpisode.agent_episodes`
+                will generate a hexadecimal code. If a dictionary is provided
+                make sure that ids are unique as agents'  `SingleAgentEpisode`s
+                get concatenated or recreated by it.
+            observations: A dictionary mapping from agent ids to observations.
+                Can be None. If provided, it should be provided together with
+                all other episode data (actions, rewards, etc.)
+            actions: A dictionary mapping from agent ids to corresponding actions.
+                Can be None. If provided, it should be provided together with
+                all other episode data (observations, rewards, etc.).
+            rewards: A dictionary mapping from agent ids to corresponding rewards.
+                Can be None. If provided, it should be provided together with
+                all other episode data (observations, rewards, etc.).
+            states: A dictionary mapping from agent ids to their corresponding
+                modules' hidden states. These will be stored into the
+                `SingleAgentEpisode`s in `MultiAgentEpisode.agent_episodes`.
+                Can be None.
+            t_started: Optional. An unsigned int that defines the starting point
+                of the episode. This is only different from zero, if an ongoing
+                episode is created.
+            is_terminazted: Optional. A boolean defining, if an environment has
+                terminated. The default is `False`, i.e. the episode is ongoing.
+            is_truncated: Optional. A boolean, defining, if an environment is
+                truncated. The default is `False`, i.e. the episode is ongoing.
+            render_images: Optional. A list of RGB uint8 images from rendering
+                the env; the images include the corresponding rewards.
+            agent_ids: Obligatory. A list of strings containing the agent ids.
+                These have to be provided at initialization.
 
-            Returns: A `MultiAgentEpisode` instance.
+        Returns: A `MultiAgentEpisode` instance.
         """
 
         self.id_: str = id_ or uuid.uuid4().hex
@@ -637,7 +638,7 @@ class MultiAgentEpisode:
                 states: Optional. A dicitionary mapping each agent to it's
                     module's hidden model state (if the model is stateful).
 
-            Returns: An instance of `SingleAgentEpisode` containing the agent's 
+            Returns: An instance of `SingleAgentEpisode` containing the agent's
                 extracted episode data.
         """
 
@@ -697,24 +698,24 @@ class MultiAgentEpisode:
         shift: int = 0,
     ) -> List[Any]:
         """Returns single agent data from multi-agent data.
-        
-            Args:
-                agent_id: A string identifying the agent for which the 
-                    data should be extracted. 
-                ma_data: A List of dictionaries, each containing multi-agent
-                    data, i.e. mapping from agent ids to timestep data. 
-                start_index: An integer defining the start point of the 
-                    extration window. The default starts at the beginning of the
-                    the `ma_data` list.
-                end_index: Optional. An integer defining the end point of the 
-                    extraction window. If `None`, the extraction window will be
-                    until the end of the `ma_data` list.g
-                shift: An integer that defines by which amount to shift the 
-                    running index for extraction. This is for example needed
-                    when we extract data that started at index 1.
-            
-            Returns: A list containing single-agent data from the multi-agent 
-                data provided.
+
+        Args:
+            agent_id: A string identifying the agent for which the
+                data should be extracted.
+            ma_data: A List of dictionaries, each containing multi-agent
+                data, i.e. mapping from agent ids to timestep data.
+            start_index: An integer defining the start point of the
+                extration window. The default starts at the beginning of the
+                the `ma_data` list.
+            end_index: Optional. An integer defining the end point of the
+                extraction window. If `None`, the extraction window will be
+                until the end of the `ma_data` list.g
+            shift: An integer that defines by which amount to shift the
+                running index for extraction. This is for example needed
+                when we extract data that started at index 1.
+
+        Returns: A list containing single-agent data from the multi-agent
+            data provided.
         """
         # Return all single agent data along the global timestep.
         return [
@@ -735,11 +736,11 @@ class MultiAgentEpisode:
 
     def __len__(self):
         """Returns the length of an `MultiAgentEpisode`.
-        
-        Note that the length of an episode is defined by the difference 
+
+        Note that the length of an episode is defined by the difference
         between its actual timestep and the starting point.
 
-            Returns: An integer defining the length of the episode or an 
+            Returns: An integer defining the length of the episode or an
                 error if the episode has not yet started.
         """
         assert self.t_started < self.t, (
@@ -752,29 +753,29 @@ class MultiAgentEpisode:
 
 class IndexMapping(list):
     """Provides lists with a method to find multiple elements.
-    
-    This class is used for the timestep mapping which is central to
-    the multi-agent episode. For each agent the timestep mapping is 
-    implemented with an `IndexMapping`. 
 
-    The `IndexMapping.find_indices` method simplifies the search for 
-    multiple environment timesteps at which some agents have stepped. 
+    This class is used for the timestep mapping which is central to
+    the multi-agent episode. For each agent the timestep mapping is
+    implemented with an `IndexMapping`.
+
+    The `IndexMapping.find_indices` method simplifies the search for
+    multiple environment timesteps at which some agents have stepped.
     See for example `MultiAgentEpisode.get_observations()`.
     """
 
     def find_indices(self, indices_to_find: List[int]):
         """Returns global timesteps at which an agent stepped.
-        
-        The function returns for a given list of indices the ones 
+
+        The function returns for a given list of indices the ones
         that are stored in the `IndexMapping`.
 
             Args:
-                indices_to_find: A list of indices that should be 
+                indices_to_find: A list of indices that should be
                     found in the `IndexMapping`.
-            
+
             Returns:
-                A list of indices at which to find the `indices_to_find` 
-                in `self`. This could be empty if none of the given 
+                A list of indices at which to find the `indices_to_find`
+                in `self`. This could be empty if none of the given
                 indices are in `IndexMapping`.
         """
         indices = []

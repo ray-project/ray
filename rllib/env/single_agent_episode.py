@@ -36,9 +36,9 @@ class SingleAgentEpisode:
         self.states = states
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
-        # TODO (simon): Check again what are the consequences of this decision for 
-        # the methods of this class. For example the `validate()` method or 
-        # `create_successor`. Write a test. 
+        # TODO (simon): Check again what are the consequences of this decision for
+        # the methods of this class. For example the `validate()` method or
+        # `create_successor`. Write a test.
         # Note, the case `t_started > len(observations) - 1` can occur, if a user
         # wants to have an episode that is ongoing but does not want to carry the
         # stale data from the last rollout in it.
