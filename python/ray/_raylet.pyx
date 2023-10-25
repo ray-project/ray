@@ -1145,13 +1145,13 @@ cdef report_streaming_generator_output(
                 is_plasma_object(return_obj.second)))
 
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+            check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 return_obj,
                 context.generator_id,
                 context.caller_address,
                 generator_index,
                 context.attempt_number,
-                context.waiter)
+                context.waiter))
         context.generator_index += 1
         return True
     else:
@@ -1179,13 +1179,13 @@ cdef report_streaming_generator_output(
             "Writes to a ObjectRefStream of an "
             "index {}".format(context.generator_index))
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+            check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 return_obj,
                 context.generator_id,
                 context.caller_address,
                 generator_index,
                 context.attempt_number,
-                context.waiter)
+                context.waiter))
         context.generator_index += 1
         return False
 

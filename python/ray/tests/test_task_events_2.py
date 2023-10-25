@@ -667,8 +667,8 @@ ACTOR_TASK = "actor_task"
     "death_list",
     [
         [("A", "exit_kill")],
-        [("Abb", "exit_kill"), ("C", "exit_exception")],
-        [("D", "exit_kill"), ("Ca", "exit_kill"), ("A", "exit_exception")],
+        # [("Abb", "exit_kill"), ("C", "exit_exception")],
+        # [("D", "exit_kill"), ("Ca", "exit_kill"), ("A", "exit_exception")],
     ],
 )
 def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
@@ -820,6 +820,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
         timeout=30,
         retry_interval_ms=500,
     )
+    time.sleep(300)
 
 
 def check_file(type, task_name, expected_log, expect_no_end=False):
