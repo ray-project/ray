@@ -1,3 +1,14 @@
+# Examples
+
+py_test(
+    name = "example_td3_pendulum_v1",
+    main = "td3_pendulum_v1.py",
+    tags = ["team:rllib", "example"],
+    size = "medium",
+    srcs = ["examples/td3_pendulum_v1.py"],
+    args = ["--run-as-test"]
+)
+
 # Learning Tests
 
 # py_test(

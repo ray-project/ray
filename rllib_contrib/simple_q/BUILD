@@ -1,3 +1,14 @@
+# Examples
+
+py_test(
+    name = "example_simple_q_cartpole_v1",
+    main = "simple_q_cartpole_v1.py",
+    tags = ["team:rllib", "example"],
+    size = "medium",
+    srcs = ["examples/simple_q_cartpole_v1.py"],
+    args = ["--run-as-test"]
+)
+
 # Learning Tests
 
 py_test(

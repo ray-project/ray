@@ -1,3 +1,14 @@
+# Examples
+
+py_test(
+    name = "example_qmix_two_step_game",
+    main = "qmix_two_step_game.py",
+    tags = ["team:rllib", "example"],
+    size = "medium",
+    srcs = ["examples/qmix_two_step_game.py"],
+    args = ["--run-as-test"]
+)
+
 # Learning Tests
 
 py_test(

@@ -1,3 +1,14 @@
+# Examples
+
+py_test(
+    name = "example_alpha_zero_cartpole_sparse_rewards",
+    main = "alpha_zero_cartpole_sparse_rewards.py",
+    tags = ["team:rllib", "example"],
+    size = "medium",
+    srcs = ["examples/alpha_zero_cartpole_sparse_rewards.py"],
+    args = ["--run-as-test"]
+)
+
 # Learning Tests
 
 py_test(

@@ -1,3 +1,14 @@
+# Examples
+
+py_test(
+    name = "example_r2d2_stateless_cartpole",
+    main = "r2d2_stateless_cartpole.py",
+    tags = ["team:rllib", "example"],
+    size = "medium",
+    srcs = ["examples/r2d2_stateless_cartpole.py"],
+    args = ["--run-as-test"]
+)
+
 # Learning Tests
 
 py_test(

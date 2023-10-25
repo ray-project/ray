@@ -1,3 +1,14 @@
+# Examples
+
+py_test(
+    name = "example_crr_cartpole_v1",
+    main = "crr_cartpole_v1.py",
+    tags = ["team:rllib", "example"],
+    size = "medium",
+    srcs = ["examples/crr_cartpole_v1.py"],
+    args = ["--run-as-test"]
+)
+
 # Learning Tests
 
 py_test(

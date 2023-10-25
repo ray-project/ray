@@ -1,3 +1,14 @@
+# Examples
+
+py_test(
+    name = "example_apex_dqn_cartpole_v1",
+    main = "apex_dqn_cartpole_v1.py",
+    tags = ["team:rllib", "example"],
+    size = "medium",
+    srcs = ["examples/apex_dqn_cartpole_v1.py"],
+    args = ["--run-as-test"]
+)
+
 # Learning Tests
 
 # Compilation Tests

@@ -1,3 +1,14 @@
+# Examples
+
+py_test(
+    name = "example_dt_cartpole_v1",
+    main = "dt_cartpole_v1.py",
+    tags = ["team:rllib", "example"],
+    size = "medium",
+    srcs = ["examples/dt_cartpole_v1.py"],
+    args = ["--run-as-test"]
+)
+
 # Learning Tests
 
 py_test(
