@@ -310,10 +310,10 @@ def clear_stats_actor_metrics(tags: Dict[str, str]):
 
 def get_dataset_id_from_stats_actor() -> str:
     global _stats_actor
-    _check_cluster_stats_actor()
     try:
+        _check_cluster_stats_actor()
         return ray.get(_stats_actor.get_dataset_id.remote())
-    except ray.exceptions.RayError:
+    except Exception:
         # Getting dataset id from _StatsActor may fail, in this case
         # fall back to uuid4
         return uuid4().hex

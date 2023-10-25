@@ -1415,8 +1415,9 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
     ray.init(address)
     with pytest.raises(ValueError):
         ray.data.read_parquet("local://" + path).materialize()
-    with pytest.raises(RuntimeError):
-        ray.data.from_pandas(df).write_parquet("local://" + data_path).materialize()
+    ds = ray.data.from_pandas(df)
+    with pytest.raises(ValueError):
+        ds.write_parquet("local://" + data_path).materialize()
 
 
 def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
