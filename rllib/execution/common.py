@@ -47,7 +47,5 @@ def _get_shared_metrics() -> MetricsContext:
     """Return shared metrics for the training workflow.
 
     This only applies if this algorithm has an execution plan."""
-    if log_once("shared-metrics-deprecation-warning"):
-        deprecation_warning(old="ray.rllib.execution.common._get_shared_metrics")
 
     return LocalIterator.get_metrics()

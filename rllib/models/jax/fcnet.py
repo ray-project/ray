@@ -19,9 +19,6 @@ class FullyConnectedNetwork(JAXModelV2):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
         super().__init__(obs_space, action_space, num_outputs, model_config, name)
-        if log_once("jax_fc_net_deprecation_warning"):
-            deprecation_warning(old="ray.rllib.models.jax.fcnet.FullyConnectedNetwork")
-
         self.key = jax.random.PRNGKey(int(time.time()))
 
         activation = model_config.get("fcnet_activation")

@@ -10,10 +10,9 @@ from ray.util import log_once
 tf1, tf, tfv = try_import_tf()
 
 
+# TODO: (sven) obsolete this class.
 @DeveloperAPI
 def normc_initializer(std: float = 1.0) -> Any:
-    if log_once("rllib_models_normc_initializer_tf_deprecation"):
-        deprecation_warning(old="ray.rllib.models.tf.misc.normc_initializer")
 
     def _initializer(shape, dtype=None, partition_info=None):
         out = np.random.randn(*shape).astype(
@@ -36,8 +35,6 @@ def conv2d(
     dtype: Optional[Any] = None,
     collections: Optional[Any] = None,
 ) -> TensorType:
-    if log_once("rllib_models_conv2d_tf_deprecation"):
-        deprecation_warning(old="ray.rllib.models.tf.misc.conv2d")
 
     if dtype is None:
         dtype = tf.float32
@@ -95,6 +92,4 @@ def linear(
 
 @DeveloperAPI
 def flatten(x: TensorType) -> TensorType:
-    if log_once("rllib_models_flatten_tf_deprecation"):
-        deprecation_warning(old="ray.rllib.models.tf.misc.flatten")
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])

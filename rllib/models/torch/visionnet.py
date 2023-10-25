@@ -30,9 +30,6 @@ class VisionNetwork(TorchModelV2, nn.Module):
         model_config: ModelConfigDict,
         name: str,
     ):
-        if log_once("torch_visionnet_deprecation"):
-            deprecation_warning(old="ray.rllib.models.torch.visionnet.VisionNetwork")
-
         if not model_config.get("conv_filters"):
             model_config["conv_filters"] = get_filter_config(obs_space.shape)
 

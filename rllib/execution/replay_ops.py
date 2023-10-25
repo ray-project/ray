@@ -20,8 +20,6 @@ class SimpleReplayBuffer:
         self.num_slots = num_slots
         self.replay_batches = []
         self.replay_index = 0
-        if log_once("simple_replay_buffer_deprecation_warning"):
-            deprecation_warning(old="ray.rllib.execution.replay_ops.SimpleReplayBuffer")
 
     def add_batch(self, sample_batch: SampleBatchType) -> None:
         warn_replay_capacity(item=sample_batch, num_items=self.num_slots)

@@ -34,8 +34,6 @@ class ComplexInputNetwork(TFModelV2):
     """
 
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
-        if log_once("rllib_tf_complex_input_net_deprecation"):
-            deprecation_warning(old="rllib.models.tf.ComplexInputNetwork")
 
         self.original_space = (
             obs_space.original_space
