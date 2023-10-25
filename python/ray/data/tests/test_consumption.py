@@ -1414,7 +1414,7 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
     # Read/write from Ray Client will result in error.
     ray.init(address)
     with pytest.raises(ValueError):
-        ray.data.read_parquet("local://" + path).materialize()
+        ds = ray.data.read_parquet("local://" + path).materialize()
     ds = ray.data.from_pandas(df)
     with pytest.raises(ValueError):
         ds.write_parquet("local://" + data_path).materialize()
