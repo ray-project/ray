@@ -15,10 +15,6 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import fastapi.encoders
-import numpy as np
-import pydantic
-import pydantic.json
 import requests
 
 import ray
@@ -37,6 +33,11 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 MESSAGE_PACK_OFFSET = 9
 
@@ -95,26 +96,14 @@ class _ServeCustomEncoders:
         return obj.to_dict(orient="records")
 
 
-serve_encoders = {
-    np.ndarray: _ServeCustomEncoders.encode_np_array,
-    np.generic: _ServeCustomEncoders.encode_np_scaler,
-    Exception: _ServeCustomEncoders.encode_exception,
-}
+serve_encoders = {Exception: _ServeCustomEncoders.encode_exception}
+
+if np is not None:
+    serve_encoders[np.ndarray] = _ServeCustomEncoders.encode_np_array
+    serve_encoders[np.generic] = _ServeCustomEncoders.encode_np_scaler
 
 if pd is not None:
     serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
-
-
-def install_serve_encoders_to_fastapi():
-    """Inject Serve's encoders so FastAPI's jsonable_encoder can pick it up."""
-    # https://stackoverflow.com/questions/62311401/override-default-encoders-for-jsonable-encoder-in-fastapi # noqa
-    pydantic.json.ENCODERS_BY_TYPE.update(serve_encoders)
-    # FastAPI cache these encoders at import time, so we also needs to refresh it.
-    fastapi.encoders.encoders_by_class_tuples = (
-        fastapi.encoders.generate_encoders_by_class_tuples(
-            pydantic.json.ENCODERS_BY_TYPE
-        )
-    )
 
 
 @ray.remote(num_cpus=0)

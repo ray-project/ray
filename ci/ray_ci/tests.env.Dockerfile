@@ -3,6 +3,8 @@
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
+ARG BUILD_TYPE
+
 ENV CC=clang
 ENV CXX=clang++-12
 
@@ -11,7 +13,9 @@ WORKDIR /rayci
 COPY . .
 
 RUN <<EOF
-#!/bin/bash
+#!/bin/bash -i
+
+set -euo pipefail
 
 (
   cd dashboard/client 
@@ -19,6 +23,13 @@ RUN <<EOF
   npm run build
 )
 
-pip install -v -e python/
+if [[ "$BUILD_TYPE" == "debug" ]]; then
+  RAY_DEBUG_BUILD=debug pip install -v -e python/
+elif [[ "$BUILD_TYPE" == "asan" ]]; then
+  pip install -v -e python/
+  bazel build $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:ray_pkg
+else
+  pip install -v -e python/
+fi
 
 EOF

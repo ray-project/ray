@@ -7,11 +7,14 @@ flaky_tests:
   - //rllib:learning_tests_cartpole_ddppo
   - //rllib:learning_tests_two_step_game_qmix
   - //rllib:learning_tests_pendulum_cql
+  - //rllib:learning_tests_two_step_game_qmix_no_mixer
   # algorithm, model and other tests
   - //rllib:test_bc 
+  - //rllib:test_a3c
   - //rllib:policy/tests/test_policy
   - //rllib:env/tests/test_local_inference_cartpole
   - //rllib:evaluation/tests/test_envs_that_crash
+  - //rllib:test_actor_manager 
   - //rllib:test_apex_ddpg
   - //rllib:test_algorithm_export_checkpoint
   - //rllib:test_dataset_reader
@@ -21,6 +24,7 @@ flaky_tests:
   - //rllib:examples/action_masking_torch
   - //rllib:examples/action_masking_tf2
   - //rllib:examples/learner/train_w_bc_finetune_w_ppo
+  - //rllib:examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_torch
   # memory leak tf2-eager-tracing
   - //rllib:test_memory_leak_ppo
   - //rllib:test_memory_leak_sac
@@ -30,3 +34,5 @@ flaky_tests:
   - //rllib:test_memory_leak_ddpg
   # tests/ dir
   - //rllib:tests/test_io
+  # multi-gpu
+  - //rllib:TestLearnerGroupAsyncUpdate

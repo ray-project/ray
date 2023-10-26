@@ -312,22 +312,28 @@ def chop_into_sequences(
             [NUM_SEQUENCES, ...].
         seq_lens: List of sequence lengths, of shape [NUM_SEQUENCES].
 
-    Examples:
-        >>> from ray.rllib.policy.rnn_sequencing import chop_into_sequences
-        >>> f_pad, s_init, seq_lens = chop_into_sequences( # doctest: +SKIP
-        ...     episode_ids=[1, 1, 5, 5, 5, 5],
-        ...     unroll_ids=[4, 4, 4, 4, 4, 4],
-        ...     agent_indices=[0, 0, 0, 0, 0, 0],
-        ...     feature_columns=[[4, 4, 8, 8, 8, 8],
-        ...                      [1, 1, 0, 1, 1, 0]],
-        ...     state_columns=[[4, 5, 4, 5, 5, 5]],
-        ...     max_seq_len=3)
-        >>> print(f_pad) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+        f_pad, s_init, seq_lens = chop_into_sequences(
+            episode_ids=[1, 1, 5, 5, 5, 5],
+            unroll_ids=[4, 4, 4, 4, 4, 4],
+            agent_indices=[0, 0, 0, 0, 0, 0],
+            feature_columns=[[4, 4, 8, 8, 8, 8],
+                             [1, 1, 0, 1, 1, 0]],
+            state_columns=[[4, 5, 4, 5, 5, 5]],
+            max_seq_len=3)
+        print(f_pad)
+        print(s_init)
+        print(seq_lens)
+
+
+    .. testoutput::
+
         [[4, 4, 0, 8, 8, 8, 8, 0, 0],
          [1, 1, 0, 0, 1, 1, 0, 0, 0]]
-        >>> print(s_init) # doctest: +SKIP
         [[4, 4, 5]]
-        >>> print(seq_lens)
         [2, 3, 1]
     """
 
