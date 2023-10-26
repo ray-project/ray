@@ -132,12 +132,11 @@ class TestSingelAgentEpisode(unittest.TestCase):
         dara. Here it is tested if adding to the internal data lists
         works as intended and the timestep is increased during each step.
         """
-        # Set the random seed (otherwise the episode will terminate at
-        # different points in each test run).
-        # np.random.seed(0)
         # Create an empty episode and add initial observations.
         episode = SingleAgentEpisode()
         env = gym.make("CartPole-v1")
+        # Set the random seed (otherwise the episode will terminate at
+        # different points in each test run).
         obs, info = env.reset(seed=0)
         episode.add_initial_observation(initial_observation=obs, initial_info=info)
 
@@ -154,7 +153,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
                 is_truncated=is_truncated,
                 extra_model_output={"extra": np.random.random(1)},
             )
-            if is_terminated:
+            if is_terminated or is_truncated:
                 break
 
         # Assert that the episode timestep is at 100.
@@ -220,6 +219,21 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertTrue(episode_1.observations[-1] == episode_2.observations[0])
         # Assert that the last info of `episode_1` is the first of episode_2`.
         self.assertTrue(episode_1.infos[-1] == episode_2.infos[0])
+
+        # Test immutability.
+        action = 100
+        obs, reward, is_terminated, is_truncated, info = env.step(action)
+        episode_2.add_timestep(
+            observation=obs,
+            action=action,
+            reward=reward,
+            info=info,
+            is_terminated=is_terminated,
+            is_truncated=is_truncated,
+            extra_model_output={"extra": np.random.random(1)},
+        )
+        # Assert that this does not change also the predecessor's data.
+        self.assertFalse(len(episode_1.observations) == len(episode_2.observations))
 
     def test_concat_episode(self):
         """Tests if concatenation of two `SingleAgentEpisode`s works.
@@ -310,6 +324,12 @@ class TestSingelAgentEpisode(unittest.TestCase):
             == len(episode_1.infos) - 1
             == 200
         )
+        # Assert that specific observations in the two episodes match.
+        self.assertEqual(episode_2.observations[5], episode_1.observations[105])
+        # Assert that they are not the same object.
+        # TODO (sven): Do we really need a deepcopy here?
+        # self.assertNotEqual(id(episode_2.observations[5]),
+        # id(episode_1.observations[105]))
 
     def test_get_and_from_state(self):
         """Tests, if a `SingleAgentEpisode` can be reconstructed form state.

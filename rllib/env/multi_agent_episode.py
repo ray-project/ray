@@ -8,10 +8,6 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.typing import MultiAgentDict
 
 
-# TODO (sven, simon): This is still the old _Episode, i.e. without
-# extra_model_outputs, etc. Change the episode here when the other
-# one is merged.
-# TODO (simon): Also include render_images.
 # TODO (simon): Include cases in which the number of agents in an
 # episode are shrinking or growing during the episode itself.
 class MultiAgentEpisode:
@@ -183,18 +179,18 @@ class MultiAgentEpisode:
         Note that observations are only returned for agents that stepped
         during the given index range.
 
-            Args:
-                indices: Either a single index or a list of indices. The indices
-                    can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
-                    This defines the time indices for which the observations
-                    should be returned.
-                global_ts: Boolean that defines, if the indices should be considered
-                    environment (`True`) or agent (`False`) steps.
+        Args:
+            indices: Either a single index or a list of indices. The indices
+                can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
+                This defines the time indices for which the observations
+                should be returned.
+            global_ts: Boolean that defines, if the indices should be considered
+                environment (`True`) or agent (`False`) steps.
 
-            Returns: A dicitonary mapping agent ids to observations (of different
-                timesteps). Only for agents that have stepped (were ready) at a
-                timestep, observations are returned (i.e. not all agent ids are
-                necessarily in the keys).
+        Returns: A dicitonary mapping agent ids to observations (of different
+            timesteps). Only for agents that have stepped (were ready) at a
+            timestep, observations are returned (i.e. not all agent ids are
+            necessarily in the keys).
         """
 
         # First for global_ts = True:
@@ -240,18 +236,18 @@ class MultiAgentEpisode:
         Note that actions are only returned for agents that stepped
         during the given index range.
 
-            Args:
-                indices: Either a single index or a list of indices. The indices
-                    can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
-                    This defines the time indices for which the actions
-                    should be returned.
-                global_ts: Boolean that defines, if the indices should be considered
-                    environment (`True`) or agent (`False`) steps.
+        Args:
+            indices: Either a single index or a list of indices. The indices
+                can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
+                This defines the time indices for which the actions
+                should be returned.
+            global_ts: Boolean that defines, if the indices should be considered
+                environment (`True`) or agent (`False`) steps.
 
-            Returns: A dicitonary mapping agent ids to actions (of different
-                timesteps). Only for agents that have stepped (were ready) at a
-                timestep, actions are returned (i.e. not all agent ids are
-                necessarily in the keys).
+        Returns: A dicitonary mapping agent ids to actions (of different
+            timesteps). Only for agents that have stepped (were ready) at a
+            timestep, actions are returned (i.e. not all agent ids are
+            necessarily in the keys).
         """
 
         # First for global_ts = True:
@@ -297,18 +293,18 @@ class MultiAgentEpisode:
         Note that rewards are only returned for agents that stepped
         during the given index range.
 
-            Args:
-                indices: Either a single index or a list of indices. The indices
-                    can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
-                    This defines the time indices for which the rewards
-                    should be returned.
-                global_ts: Boolean that defines, if the indices should be considered
-                    environment (`True`) or agent (`False`) steps.
+        Args:
+            indices: Either a single index or a list of indices. The indices
+                can be reversed (e.g. [-1, -2]) or absolute (e.g. [98, 99]).
+                This defines the time indices for which the rewards
+                should be returned.
+            global_ts: Boolean that defines, if the indices should be considered
+                environment (`True`) or agent (`False`) steps.
 
-            Returns: A dicitonary mapping agent ids to actions (of different
-                timesteps). Only for agents that have stepped (were ready) at a
-                timestep, rewards are returned (i.e. not all agent ids are
-                necessarily in the keys).
+        Returns: A dicitonary mapping agent ids to actions (of different
+            timesteps). Only for agents that have stepped (were ready) at a
+            timestep, rewards are returned (i.e. not all agent ids are
+            necessarily in the keys).
         """
         # TODO (simon): Refactor into helper functions.
         # First for global_ts = True:
@@ -358,9 +354,7 @@ class MultiAgentEpisode:
         Args:
             initial_observation: Obligatory. A dictionary, mapping agent ids
                 to initial observations. Note that not all agents must have
-                an initial observation.
-
-        Returns: None.
+                an initial observation..
         """
         assert not self.is_done
         # Assume that this episode is completely empty and has not stepped yet.
@@ -444,8 +438,8 @@ class MultiAgentEpisode:
         Note that in a multi-agent environment this does not necessarily
         correspond to single agents having terminated or being truncated.
 
-            Returns:
-                Boolean defining if an episode has either terminated or truncated.
+        Returns:
+            Boolean defining if an episode has either terminated or truncated.
         """
         return self.is_terminated or self.is_truncated
 
@@ -464,8 +458,8 @@ class MultiAgentEpisode:
         had been collected in the last rollout when rolling out the new
         policy in the next iteration (rollout).
 
-            Returns: A MultiAgentEpisode starting at the timepoint where
-                its predecessor stopped.
+        Returns: A MultiAgentEpisode starting at the timepoint where
+            its predecessor stopped.
         """
         assert not self.is_done
 
@@ -489,8 +483,8 @@ class MultiAgentEpisode:
         Note that from an episode's state the episode itself can
         be recreated.
 
-            Returns: A dicitonary containing pickable data fro a
-                `MultiAgentEpisode`.
+        Returns: A dicitonary containing pickable data fro a
+            `MultiAgentEpisode`.
         """
         return list(
             {
@@ -518,8 +512,6 @@ class MultiAgentEpisode:
         a `MultiAgentEpisode` pickable state. For recreating a
         `MultiAgentEpisode` from a state, this state has to be complete,
         i.e. all data must have been stored in the state.
-
-            Returns: None.
         """
         eps = MultiAgentEpisode(id=state[0][1])
         eps._agent_ids = state[1][1]
@@ -542,7 +534,7 @@ class MultiAgentEpisode:
         a `SampleBatch` and the environment timestep will be passed
         towards the `MultiAgentBatch`'s `count`.
 
-            Returns: A `MultiAgentBatch` instance.
+        Returns: A `MultiAgentBatch` instance.
         """
         # TODO (simon): Check, if timesteps should be converted into global
         # timesteps instead of agent steps.
@@ -573,17 +565,17 @@ class MultiAgentEpisode:
         Note that the local (agent) timestep is given by the index
         of the list for each agent.
 
-            Args:
-                observations: A list of observations.Each observations maps agent
-                    ids to their corresponding observation.
+        Args:
+            observations: A list of observations.Each observations maps agent
+                ids to their corresponding observation.
 
-            Returns: A dictionary mapping agents to time index lists. The latter
-                contain the global (environment) timesteps at which the agent
-                stepped (was ready).
+        Returns: A dictionary mapping agents to time index lists. The latter
+            contain the global (environment) timesteps at which the agent
+            stepped (was ready).
         """
         # Only if agent ids have been provided we can build the timestep mapping.
         if len(self._agent_ids) > 0:
-            global_t_to_local_t = {agent: IndexMapping() for agent in self._agent_ids}
+            global_t_to_local_t = {agent: _IndexMapping() for agent in self._agent_ids}
 
             # We need the observations to create the timestep mapping.
             if len(observations) > 0:
@@ -617,29 +609,29 @@ class MultiAgentEpisode:
         Note, if no data is provided an empty `SingleAgentEpiosde`
         will be returned that starts at `SIngleAgentEpisode.t_started=0`.
 
-            Args:
-                agent_id: String, idnetifying the agent for which the data should
-                    be extracted.
-                agent_episode_ids: Optional. A dictionary mapping agents to
-                    corresponding episode ids. If `None` the `SingleAgentEpisode`
-                    creates a hexadecimal code.
-                observations: Optional. A list of dictionaries, each mapping
-                    from agent ids to observations. When data is provided
-                    it should be complete, i.e. observations, actions, rewards,
-                    etc. should be provided.
-                actions: Optional. A list of dictionaries, each mapping
-                    from agent ids to actions. When data is provided
-                    it should be complete, i.e. observations, actions, rewards,
-                    etc. should be provided.
-                rewards: Optional. A list of dictionaries, each mapping
-                    from agent ids to rewards. When data is provided
-                    it should be complete, i.e. observations, actions, rewards,
-                    etc. should be provided.
-                states: Optional. A dicitionary mapping each agent to it's
-                    module's hidden model state (if the model is stateful).
+        Args:
+            agent_id: String, idnetifying the agent for which the data should
+                be extracted.
+            agent_episode_ids: Optional. A dictionary mapping agents to
+                corresponding episode ids. If `None` the `SingleAgentEpisode`
+                creates a hexadecimal code.
+            observations: Optional. A list of dictionaries, each mapping
+                from agent ids to observations. When data is provided
+                it should be complete, i.e. observations, actions, rewards,
+                etc. should be provided.
+            actions: Optional. A list of dictionaries, each mapping
+                from agent ids to actions. When data is provided
+                it should be complete, i.e. observations, actions, rewards,
+                etc. should be provided.
+            rewards: Optional. A list of dictionaries, each mapping
+                from agent ids to rewards. When data is provided
+                it should be complete, i.e. observations, actions, rewards,
+                etc. should be provided.
+            states: Optional. A dicitionary mapping each agent to it's
+                module's hidden model state (if the model is stateful).
 
-            Returns: An instance of `SingleAgentEpisode` containing the agent's
-                extracted episode data.
+        Returns: An instance of `SingleAgentEpisode` containing the agent's
+            extracted episode data.
         """
 
         # If an episode id for an agent episode was provided assign it.
@@ -740,8 +732,8 @@ class MultiAgentEpisode:
         Note that the length of an episode is defined by the difference
         between its actual timestep and the starting point.
 
-            Returns: An integer defining the length of the episode or an
-                error if the episode has not yet started.
+        Returns: An integer defining the length of the episode or an
+            error if the episode has not yet started.
         """
         assert self.t_started < self.t, (
             "ERROR: Cannot determine length of episode that hasn't started, yet!"
@@ -751,7 +743,7 @@ class MultiAgentEpisode:
         return self.t - self.t_started
 
 
-class IndexMapping(list):
+class _IndexMapping(list):
     """Provides lists with a method to find multiple elements.
 
     This class is used for the timestep mapping which is central to
@@ -769,14 +761,14 @@ class IndexMapping(list):
         The function returns for a given list of indices the ones
         that are stored in the `IndexMapping`.
 
-            Args:
-                indices_to_find: A list of indices that should be
-                    found in the `IndexMapping`.
+        Args:
+            indices_to_find: A list of indices that should be
+                found in the `IndexMapping`.
 
-            Returns:
-                A list of indices at which to find the `indices_to_find`
-                in `self`. This could be empty if none of the given
-                indices are in `IndexMapping`.
+        Returns:
+            A list of indices at which to find the `indices_to_find`
+            in `self`. This could be empty if none of the given
+            indices are in `IndexMapping`.
         """
         indices = []
         for num in indices_to_find:
