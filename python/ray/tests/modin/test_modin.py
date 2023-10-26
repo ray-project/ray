@@ -45,7 +45,7 @@ if not skip:
 
 
 @pytest.fixture(autouse=True)
-def run_ray_client(ray_start_regular_shared):  # noqa F811
+def connect_to_ray_cluster(ray_start_regular_shared):  # noqa F811
     yield
 
 
