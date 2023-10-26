@@ -11,8 +11,8 @@ pendulum_crr:
     config:
         input: dataset
         input_config:         
-            # Get this from: https://github.com/ray-project/ray/raw/releases/2.5.1/rllib/tests/data/pendulum/pendulum_replay_v1.1.0.zip
-            paths: tuned_examples/pendulum_replay_v1.1.0.zip
+            ## Get this from: https://github.com/ray-project/ray/raw/releases/2.5.1/rllib/tests/data/pendulum/pendulum_replay_v1.1.0.zip
+            paths: tests/data/pendulum/pendulum_replay_v1.1.0.zip
             format: json
         framework: torch
         num_workers: 3
