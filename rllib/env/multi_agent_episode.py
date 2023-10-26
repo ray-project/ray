@@ -76,7 +76,7 @@ class MultiAgentEpisode:
             is_truncated: Optional. A boolean, defining, if an environment is
                 truncated. The default is `False`, i.e. the episode is ongoing.
             render_images: Optional. A list of RGB uint8 images from rendering
-                the env; the images include the corresponding rewards.
+                the environment; the images include the corresponding rewards.
             agent_ids: Obligatory. A list of strings containing the agent ids.
                 These have to be provided at initialization.
 
