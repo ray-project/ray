@@ -31,11 +31,12 @@ def test_batching(serve_instance):
 
     handle = serve.run(BatchingExample.bind())
 
-    object_refs = []
+    future_list = []
     for _ in range(20):
-        object_refs.append(handle.remote(1))
+        f = handle.remote(1)
+        future_list.append(f)
 
-    counter_result = ray.get(object_refs)
+    counter_result = ray.get(future_list)
     # since count is only updated per batch of queries
     # If there atleast one __call__ fn call with batch size greater than 1
     # counter result will always be less than 20
@@ -67,12 +68,11 @@ async def test_batching_magic_attributes():
     batching_example = BatchingExample()
 
     for batch_size in range(1, 7):
-        tasks = [
-            get_or_create_event_loop().create_task(batching_example.handle_batch(1))
-            for _ in range(batch_size)
-        ]
-
-        done, _ = await asyncio.wait(tasks, return_when="ALL_COMPLETED")
+        future_list = []
+        for _ in range(batch_size):
+            f = batching_example.handle_batch(1)
+            future_list.append(f)
+        done, _ = await asyncio.wait(future_list, return_when="ALL_COMPLETED")
         assert set({task.result() for task in done}) == {batch_size}
         time.sleep(0.05)
 
@@ -388,11 +388,8 @@ async def test_batch_setters(use_class):
     assert func._get_batch_wait_timeout_s() == 1000
 
     # @serve.batch should create batches of size 2
-    tasks = [
-        get_or_create_event_loop().create_task(func("hi1", "hi2")),
-        get_or_create_event_loop().create_task(func("hi3", "hi4")),
-    ]
-    done, pending = await asyncio.wait(tasks, timeout=0.1)
+    coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+    done, pending = await asyncio.wait(coros, timeout=0.1)
     assert len(pending) == 0
     assert {task.result() for task in done} == {("hi1", "hi2"), ("hi3", "hi4")}
 
@@ -404,12 +401,8 @@ async def test_batch_setters(use_class):
     assert func._get_batch_wait_timeout_s() == 15000
 
     # @serve.batch should create batches of size 3
-    tasks = [
-        get_or_create_event_loop().create_task(func("hi1", "hi2")),
-        get_or_create_event_loop().create_task(func("hi3", "hi4")),
-        get_or_create_event_loop().create_task(func("hi5", "hi6")),
-    ]
-    done, pending = await asyncio.wait(tasks, timeout=0.1)
+    coros = [func("hi1", "hi2"), func("hi3", "hi4"), func("hi5", "hi6")]
+    done, pending = await asyncio.wait(coros, timeout=0.1)
     assert len(pending) == 0
     assert {task.result() for task in done} == {
         ("hi1", "hi2"),
@@ -444,13 +437,10 @@ async def test_batch_use_earliest_setters():
 
     # Should create batches of size 3, even if setters are called while
     # batch is accumulated
-    tasks = [
-        get_or_create_event_loop().create_task(func("hi1", "hi2")),
-        get_or_create_event_loop().create_task(func("hi3", "hi4")),
-    ]
+    coros = [func("hi1", "hi2"), func("hi3", "hi4")]
 
     # Batch should be waiting for last request
-    done, pending = await asyncio.wait(tasks, timeout=0.1)
+    done, pending = await asyncio.wait(coros, timeout=0.1)
     assert len(done) == 0 and len(pending) == 2
 
     func.set_max_batch_size(1)
@@ -474,8 +464,8 @@ async def test_batch_use_earliest_setters():
     }
 
     # Next batch should use updated values
-    tasks = [get_or_create_event_loop().create_task(func("hi1", "hi2"))]
-    done, pending = await asyncio.wait(tasks, timeout=0.1)
+    coros = [func("hi1", "hi2")]
+    done, pending = await asyncio.wait(coros, timeout=0.1)
     assert len(done) == 1 and len(pending) == 0
     assert done.pop().result() == ("hi1", "hi2")
 
