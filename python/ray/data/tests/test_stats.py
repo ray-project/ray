@@ -491,7 +491,7 @@ def test_dataset__repr__(ray_start_regular_shared):
 
     expected_stats = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=None,\n"
         "   number=N,\n"
         "   extra_metrics={},\n"
@@ -547,7 +547,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     assert len(ds2.take_all()) == n
     expected_stats2 = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
         "   extra_metrics={\n"
@@ -604,7 +604,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   dataset_bytes_spilled=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
-        "         dataset_uuid=U,\n"
+        "         dataset_uuid=N,\n"
         "         base_name=None,\n"
         "         number=N,\n"
         "         extra_metrics={},\n"
@@ -1188,7 +1188,7 @@ def test_stats_actor_metrics():
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
 
-    assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+    assert "dataset" + ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
 
 
 def test_stats_actor_iter_metrics():
@@ -1239,7 +1239,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == mds._uuid
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == "dataset" + mds._uuid
 
     ds = ray.data.range(100, parallelism=20)
     ds._set_name("very_loooooooong_name")
