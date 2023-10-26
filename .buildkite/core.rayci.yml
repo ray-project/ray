@@ -7,7 +7,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit
+        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit,manual
     depends_on: corebuild
     job_env: forge
 
@@ -19,7 +19,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit
+        --except-tags debug_tests,asan_tests,post_wheel_build,xcommit,manual
     depends_on: corebuild
     job_env: forge
 
@@ -54,7 +54,7 @@ steps:
         --build-type debug
         --parallelism-per-worker 3
         --only-tags debug_tests
-        --except-tags kubernetes
+        --except-tags kubernetes,manual
     depends_on: corebuild
     job_env: forge
 
@@ -66,7 +66,7 @@ steps:
         --build-type asan
         --parallelism-per-worker 2
         --only-tags asan_tests
-        --except-tags kubernetes 
+        --except-tags kubernetes,manual
     depends_on: corebuild
     job_env: forge
 
@@ -83,14 +83,14 @@ steps:
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
-        --except-tags basic_test
+        --except-tags basic_test,manual
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
         --parallelism-per-worker 3
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
-        --except-tags no_basic_test
+        --except-tags no_basic_test,manual
         --skip-ray-installation
       # core redis tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
@@ -100,7 +100,7 @@ steps:
         --test-env=TEST_EXTERNAL_REDIS=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
-        --except-tags no_basic_test
+        --except-tags no_basic_test,manual
         --skip-ray-installation
       # serve tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve 
@@ -122,7 +122,7 @@ steps:
     instance_type: large
     soft_fail: true
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //... core --run-flaky-tests --parallelism-per-worker 3
+      - bazel run //ci/ray_ci:test_in_docker -- //... core --run-flaky-tests --parallelism-per-worker 3 --except-tags manual
     depends_on: corebuild
     job_env: forge
 
