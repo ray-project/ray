@@ -152,7 +152,6 @@ class Connector(abc.ABC):
         action_space: Optional[gym.spaces.Space] = None,
         input_type: INPUT_OUTPUT_TYPE = INPUT_OUTPUT_TYPE.DATA,
         output_type: INPUT_OUTPUT_TYPE = INPUT_OUTPUT_TYPE.DATA,
-        
     ):
         self.config = config
         self.observation_space = observation_space

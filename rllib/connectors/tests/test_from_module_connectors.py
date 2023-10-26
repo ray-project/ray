@@ -32,11 +32,11 @@ class TestFromModuleConnectors(unittest.TestCase):
             action_space=gym.spaces.Box(low=0.0, high=6.0, shape=(1,))
         )
 
-        #name, params = connector.serialize()
-        #self.assertEqual(name, "ClipActions")
+        # name, params = connector.serialize()
+        # self.assertEqual(name, "ClipActions")
 
-        #restored = get_connector(name, ctx, params)
-        #self.assertTrue(isinstance(restored, ClipActionsConnector))
+        # restored = get_connector(name, ctx, params)
+        # self.assertTrue(isinstance(restored, ClipActionsConnector))
 
         for action in [8.8, 6.0, -0.2, 0.0, 5.9999, 3.2, 6.1]:
             output = connector(
@@ -46,10 +46,12 @@ class TestFromModuleConnectors(unittest.TestCase):
             check(output[SampleBatch.ACTIONS], np.clip(action, 0.0, 6.0))
 
         connector = ClipActions(
-            action_space=gym.spaces.Dict({
-                "a": gym.spaces.Box(low=-1.0, high=1.0, shape=(2,)),
-                "b": gym.spaces.Discrete(3),
-            })
+            action_space=gym.spaces.Dict(
+                {
+                    "a": gym.spaces.Box(low=-1.0, high=1.0, shape=(2,)),
+                    "b": gym.spaces.Discrete(3),
+                }
+            )
         )
         for action in [
             {"a": np.array([8.8, 8.9]), "b": 1},
@@ -72,11 +74,11 @@ class TestFromModuleConnectors(unittest.TestCase):
             action_space=gym.spaces.Box(low=-2.0, high=6.0, shape=(2,))
         )
 
-        #name, params = connector.serialize()
-        #self.assertEqual(name, "UnsquashActions")
+        # name, params = connector.serialize()
+        # self.assertEqual(name, "UnsquashActions")
 
-        #restored = get_connector(name, ctx, params)
-        #self.assertTrue(isinstance(restored, NormalizeActionsConnector))
+        # restored = get_connector(name, ctx, params)
+        # self.assertTrue(isinstance(restored, NormalizeActionsConnector))
 
         for action in [
             [1.8, 1.8],

@@ -16,7 +16,12 @@ from ray.rllib.utils.typing import (
 from ray.util.annotations import PublicAPI
 
 
-def connector_from_lambda(name: str, fn: Callable[[], ]):
+def connector_from_lambda(
+    name: str,
+    fn: Callable[
+        [],
+    ],
+):
     """A util to register any function transforming PolicyOutputType as an ActionConnector.
 
     The only requirement is that fn should take actions, states, and fetches as input,
@@ -51,6 +56,6 @@ def connector_from_lambda(name: str, fn: Callable[[], ]):
     LambdaActionConnector.__name__ = name
     LambdaActionConnector.__qualname__ = name
 
-    #register_connector(name, LambdaActionConnector)
+    # register_connector(name, LambdaActionConnector)
 
     return LambdaConnector

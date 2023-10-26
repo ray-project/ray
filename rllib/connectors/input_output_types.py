@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class INPUT_OUTPUT_TYPE(Enum):
     """Definitions of possible datatypes being processed by individual connectors.
 
@@ -47,6 +48,7 @@ class INPUT_OUTPUT_TYPE(Enum):
 
         env.step(List[Data]) ... repeats
     """
+
     # Normally, after `env.step()`, we have a list (vector env) of MultiAgentEpisodes
     # as a starting point.
     LIST_OF_MULTI_AGENT_EPISODES = 0
@@ -54,14 +56,13 @@ class INPUT_OUTPUT_TYPE(Enum):
     LIST_OF_SINGLE_AGENT_EPISODES = 1
 
     # From each MultiAgentEpisode, we might extract a dict, mapping agent IDs to data.
-    LIST_OF_DICTS_OF_AGENT_TO_DATA = 10
+    LIST_OF_DICTS_MAPPING_AGENT_IDS_TO_DATA = 10
     # Eventually boiling down to simply one dict mapping agent IDs to data.
     #
-    DICT_OF_AGENT_TO_DATA = 11
+    DICT_MAPPING_AGENT_IDS_TO_DATA = 11
 
     # Right after the module's forward pass, we usually have a single dict mapping
     # Module IDs to data (model outputs).
-    DICT_OF_MODULE_TO_DATA = 12
+    DICT_MAPPING_MODULE_IDS_TO_DATA = 12
 
     DATA = 11
-
