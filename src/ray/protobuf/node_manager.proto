@@ -131,6 +131,8 @@ message ReturnWorkerRequest {
   bool disconnect_worker = 3;
   // Whether the worker is exiting and cannot be reused.
   bool worker_exiting = 4;
+  // The error message for disconnect_worker.
+  string disconnect_worker_error_detail = 5;
 }
 
 message ReturnWorkerReply {
