@@ -122,6 +122,12 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
     // Event-specific execution stats.
     stats->stats.cum_execution_time += execution_time_ns;
     stats->stats.cum_queue_time += queue_time_ns;
+    if (stats->stats.min_queue_time > queue_time_ns) {
+      stats->stats.min_queue_time = queue_time_ns;
+    }
+    if (stats->stats.max_queue_time < queue_time_ns) {
+      stats->stats.max_queue_time = queue_time_ns;
+    }
     // Event-specific current count.
     curr_count = --stats->stats.curr_count;
     // Event-specific running count.
@@ -239,6 +245,8 @@ std::string EventTracker::StatsString() const {
                        << ", Queueing time: mean = "
                        << to_human_readable(entry.second.cum_queue_time /
                                             static_cast<double>(entry.second.cum_count))
+                       << ", max = " << to_human_readable(entry.second.max_queue_time)
+                       << ", min = " << to_human_readable(entry.second.min_queue_time)
                        << ", total = " << to_human_readable(entry.second.cum_queue_time);
   }
   const auto global_stats = get_global_stats();

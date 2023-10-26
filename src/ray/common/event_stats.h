@@ -30,6 +30,8 @@ struct EventStats {
   // Execution stats.
   int64_t cum_execution_time = 0;
   int64_t cum_queue_time = 0;
+  int64_t min_queue_time = std::numeric_limits<int64_t>::max();
+  int64_t max_queue_time = -1;
   int64_t running_count = 0;
 };
 
@@ -101,7 +103,7 @@ class EventTracker {
   /// returns an opaque handle for these stats. This is used in conjunction with
   /// RecordExecution() or RecordEnd() to manually instrument an event.
   ///
-  /// The returned opaque stats handle should be given to a subsequent
+  /// The returned opaque stats handle MUST be given to a subsequent
   /// RecordExecution() or RecordEnd() call.
   ///
   /// \param name A human-readable name to which collected stats will be associated.
