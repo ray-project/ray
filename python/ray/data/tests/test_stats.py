@@ -1234,6 +1234,28 @@ def test_dataset_name():
     )
 
 
+def test_op_metrics_logging():
+    logger = DatasetLogger(
+        "ray.data._internal.execution.streaming_executor"
+    ).get_logger()
+    with patch.object(logger, "info") as mock_logger:
+        ray.data.range(100).map_batches(lambda x: x).materialize()
+        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
+        input_str = (
+            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
+            + gen_expected_metrics(is_map=False)
+        )
+        map_str = (
+            "Operator InputDataBuffer[Input] -> "
+            "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
+            "Operator Metrics:\n"
+        ) + STANDARD_EXTRA_METRICS
+
+        # Check that these strings are logged exactly once.
+        assert sum([log == input_str for log in logs]) == 1
+        assert sum([log == map_str for log in logs]) == 1
+
+
 if __name__ == "__main__":
     import sys
 
