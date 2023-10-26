@@ -6,7 +6,7 @@ from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
-from ray.data.datasource.datasource import _open_file_with_retry
+from ray.data.datasource.file_based_datasource import _open_file_with_retry
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
     _DefaultFilenameProvider,
