@@ -166,6 +166,7 @@ class DataIterator(abc.ABC):
             iterator = iter(
                 iter_batches(
                     block_iterator,
+                    dataset_tag=self._get_dataset_tag(),
                     stats=stats,
                     clear_block_after_read=blocks_owned_by_consumer,
                     batch_size=batch_size,
@@ -176,7 +177,6 @@ class DataIterator(abc.ABC):
                     shuffle_buffer_min_size=local_shuffle_buffer_size,
                     shuffle_seed=local_shuffle_seed,
                     prefetch_batches=prefetch_batches,
-                    dataset_tag=self._get_dataset_tag(),
                 )
             )
 
