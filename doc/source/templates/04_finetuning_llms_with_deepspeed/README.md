@@ -66,7 +66,7 @@ aws s3 ls s3://<bucket_path>/checkpoint_00000
 └── tokenizer_config.json
 ```
 
-After training we can use [Aviary](https://github.com/ray-project/aviary) to deploy our fine-tuned LLM by providing the checkpoint path stored on cloud directly.
+After training we can use [RayLLM](https://github.com/ray-project/aviary) to deploy our fine-tuned LLM by providing the checkpoint path stored on cloud directly.
 
 ### Creating the dataset
 
