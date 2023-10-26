@@ -37,7 +37,7 @@ class FilenameProvider:
         """Generate a filename for a block of data.
 
         .. note::
-            Filenames must be unique and idempotent for a given file index. This means
+            Filenames must be unique and deterministic for a given file index. This means
             your filenames can't be random, and if you call this method twice with the
             same arguments, you should get the same filename both times.
 
