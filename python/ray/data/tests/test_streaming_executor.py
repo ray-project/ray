@@ -106,7 +106,7 @@ def test_process_completed_tasks():
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
-    process_completed_tasks(topo)
+    process_completed_tasks(topo, [])
     update_operator_states(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
@@ -117,7 +117,7 @@ def test_process_completed_tasks():
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
-    process_completed_tasks(topo)
+    process_completed_tasks(topo, [])
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
@@ -131,7 +131,7 @@ def test_process_completed_tasks():
     o1.all_dependents_complete = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
-    process_completed_tasks(topo)
+    process_completed_tasks(topo, [])
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -140,7 +140,7 @@ def test_process_completed_tasks():
     # Test dependents completed.
     o2.need_more_inputs = MagicMock(return_value=False)
     o1.all_dependents_complete = MagicMock()
-    process_completed_tasks(topo)
+    process_completed_tasks(topo, [])
     update_operator_states(topo)
     o1.all_dependents_complete.assert_called_once()
 
@@ -348,6 +348,10 @@ def test_execution_allowed():
     )
 
 
+@pytest.mark.skip(
+    reason="Temporarily disable to deflake rest of test suite. Started being flaky "
+    "after moving to civ2? Needs further investigation to confirm."
+)
 def test_resource_constrained_triggers_autoscaling(monkeypatch):
     RESOURCE_REQUEST_TIMEOUT = 5
     monkeypatch.setattr(

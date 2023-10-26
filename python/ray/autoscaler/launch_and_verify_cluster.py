@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from pathlib import Path
 
 import boto3
@@ -187,7 +188,15 @@ def cleanup_cluster(cluster_config):
             return
         except subprocess.CalledProcessError as e:
             print(f"ray down fails[{i+1}/{num_tries}]: ")
-            print(e.output)
+            print(e.output.decode("utf-8"))
+
+            # Print full traceback
+            traceback.print_exc()
+
+            # Print stdout and stderr from ray down
+            print(f"stdout:\n{e.stdout.decode('utf-8')}")
+            print(f"stderr:\n{e.stderr.decode('utf-8')}")
+
             last_error = e
 
     raise last_error
@@ -220,6 +229,9 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
         subprocess.run(cmd, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         print(e.output)
+        # print stdout and stderr
+        print(f"stdout:\n{e.stdout.decode('utf-8')}")
+        print(f"stderr:\n{e.stderr.decode('utf-8')}")
         raise e
 
     print("======================================")

@@ -115,7 +115,8 @@ doctest(
             "utils/spaces/space_utils.py"
         ]
     ),
-    tags = ["team:rllib"]
+    tags = ["team:rllib"],
+    size = "enormous"
 )
 
 # --------------------------------------------------------------------
@@ -671,10 +672,33 @@ py_test(
 )
 
 # PPO
+# w/ new EnvRunner
+py_test(
+    name = "learning_tests_cartpole_ppo_w_env_runner",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/cartpole-ppo-envrunner.py"],
+    args = ["--dir=tuned_examples/ppo"]
+)
+
+# TODO (sven): Remove the torch only flag for this test (tf2 is still very slow for EnvRunner and we need to debug this further).
+py_test(
+    name = "learning_tests_pendulum_ppo_w_env_runner",
+    main = "tests/run_regression_tests.py",
+    tags = ["torch_only", "team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/pendulum-ppo-envrunner.py"],
+    args = ["--dir=tuned_examples/ppo"]
+)
+
+# w/o EnvRunner (using RolloutWorker)
 py_test(
     name = "learning_tests_cartpole_truncated_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/cartpole-truncated-ppo.py"],
@@ -684,7 +708,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
@@ -692,19 +716,9 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_pendulum_ppo_with_rl_module",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-
-py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
@@ -714,7 +728,7 @@ py_test(
 py_test(
     name = "learning_tests_transformed_actions_pendulum_ppo",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
@@ -722,22 +736,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_repeat_after_me_ppo",
+    name = "learning_tests_repeat_after_me_ppo_wo_rl_module",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-
-py_test(
-    name = "learning_tests_repeat_after_me_ppo_with_rl_module",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "torch_only"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/repeatafterme-ppo-lstm-with-rl-module.yaml"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -965,12 +969,12 @@ py_test(
 )
 
 # A3C
-py_test(
-    name = "test_a3c",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    srcs = ["algorithms/a3c/tests/test_a3c.py"]
-)
+# py_test(
+#    name = "test_a3c",
+#    tags = ["team:rllib", "algorithms_dir"],
+#    size = "large",
+#    srcs = ["algorithms/a3c/tests/test_a3c.py"]
+# )
 
 # AlphaStar
 py_test(
@@ -1232,6 +1236,13 @@ py_test(
 )
 
 # PPO
+py_test(
+    name = "test_ppo_with_env_runner",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/ppo/tests/test_ppo_with_env_runner.py"]
+)
+
 py_test(
     name = "test_ppo",
     tags = ["team:rllib", "algorithms_dir"],
@@ -4478,14 +4489,15 @@ py_test(
 # --------------------------------------------------------------------
 py_test_module_list(
   files = [
-    "tests/test_dnc.py",
-    "tests/test_perf.py",
+    "algorithms/a3c/tests/test_a3c.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
     "examples/env/tests/test_wrappers.py",
+    "tests/test_dnc.py",
+    "tests/test_perf.py",
     "utils/tests/test_utils.py",
   ],
   size = "large",

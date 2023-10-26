@@ -69,6 +69,9 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
     For a full list of initialization arguments, please refer to:
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
+
+    Note that `process_group_backend`, `timeout`, and `start_method` are disabled here,
+    please specify these arguments in :class:`~ray.train.torch.TorchConfig` instead.
     """
 
     def __init__(self, *args, **kwargs):
