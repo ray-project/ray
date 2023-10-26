@@ -96,7 +96,7 @@ py_test_module_list(
     "test_client_library_integration.py",
   ],
   size = "medium",
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:serverless", "xcommit"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -584,7 +584,7 @@ py_test_module_list(
   size = "large",
   name_suffix = "_client_mode",
   env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:serverless", "xcommit"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
