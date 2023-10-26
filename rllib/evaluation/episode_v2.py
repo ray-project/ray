@@ -193,7 +193,7 @@ class EpisodeV2:
             ),
             is_policy_recurrent=policy.is_recurrent(),
             intial_states=policy.get_initial_state(),
-            _enable_rl_module_api=policy.config["_enable_rl_module_api"],
+            _enable_new_api_stack=policy.config["_enable_new_api_stack"],
         )
         self._agent_collectors[agent_id].add_init_obs(
             episode_id=self.episode_id,

@@ -345,7 +345,7 @@ def check_compute_single_action(
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
             if state_in:
-                if what.config.get("_enable_rl_module_api", False):
+                if what.config.get("_enable_new_api_stack", False):
                     input_dict["state_in"] = state_in
                 else:
                     for i, s in enumerate(state_in):
@@ -1140,7 +1140,7 @@ def check_reproducibilty(
             # iterations).
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
-            if algo_config._enable_learner_api:
+            if algo_config._enable_new_api_stack:
                 check(
                     results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
                     results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
@@ -1506,7 +1506,7 @@ def check_supported_spaces(
         config_copy = config.copy()
         config_copy.validate()
         # If RLModules are enabled, we need to skip a few tests for now:
-        if config_copy._enable_rl_module_api:
+        if config_copy._enable_new_api_stack:
             # Skip PPO cases in which RLModules don't support the given spaces yet.
             if o_name not in rlmodule_supported_observation_spaces:
                 logger.warning(
@@ -1585,7 +1585,7 @@ def check_supported_spaces(
     if not frameworks:
         frameworks = ("tf2", "tf", "torch")
 
-    if config._enable_rl_module_api:
+    if config._enable_new_api_stack:
         # Only test the frameworks that are supported by RLModules.
         frameworks = tuple(
             fw for fw in frameworks if fw in rlmodule_supported_frameworks

@@ -171,11 +171,10 @@ class TestAlgorithmConfig(unittest.TestCase):
     def test_rl_module_api(self):
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
             .framework("torch")
             .rollouts(enable_connectors=True)
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True)
         )
 
         config.validate()
@@ -234,10 +233,9 @@ class TestAlgorithmConfig(unittest.TestCase):
     def test_learner_api(self):
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
             .rollouts(enable_connectors=True)
-            .training(_enable_learner_api=True)
-            .rl_module(_enable_rl_module_api=True)
             .framework("tf2")
         )
 
@@ -367,8 +365,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # the default specs only.
         config = (
             SingleAgentAlgoConfig()
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True)
+            .experimental(_enable_new_api_stack=True)
         )
         config.validate()
 
@@ -386,8 +383,8 @@ class TestAlgorithmConfig(unittest.TestCase):
         # algorithm to assign a specific type of RLModule class to certain module_ids.
         config = (
             SingleAgentAlgoConfig()
+            .experimental(_enable_new_api_stack=True)
             .rl_module(
-                _enable_rl_module_api=True,
                 rl_module_spec=MultiAgentRLModuleSpec(
                     module_specs={
                         "p1": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
@@ -395,7 +392,6 @@ class TestAlgorithmConfig(unittest.TestCase):
                     },
                 ),
             )
-            .training(_enable_learner_api=True)
         )
         config.validate()
 
@@ -407,11 +403,10 @@ class TestAlgorithmConfig(unittest.TestCase):
         # RLModule class to ALL module_ids.
         config = (
             SingleAgentAlgoConfig()
+            .experimental(_enable_new_api_stack=True)
             .rl_module(
-                _enable_rl_module_api=True,
                 rl_module_spec=SingleAgentRLModuleSpec(module_class=CustomRLModule1),
             )
-            .training(_enable_learner_api=True)
         )
         config.validate()
 
@@ -428,13 +423,12 @@ class TestAlgorithmConfig(unittest.TestCase):
         # RLModule class to ALL module_ids.
         config = (
             SingleAgentAlgoConfig()
+            .experimental(_enable_new_api_stack=True)
             .rl_module(
-                _enable_rl_module_api=True,
                 rl_module_spec=MultiAgentRLModuleSpec(
                     module_specs=SingleAgentRLModuleSpec(module_class=CustomRLModule1)
                 ),
             )
-            .training(_enable_learner_api=True)
         )
         config.validate()
 
@@ -453,8 +447,8 @@ class TestAlgorithmConfig(unittest.TestCase):
         # in the multi-agent scenario.
         config = (
             SingleAgentAlgoConfig()
+            .experimental(_enable_new_api_stack=True)
             .rl_module(
-                _enable_rl_module_api=True,
                 rl_module_spec=MultiAgentRLModuleSpec(
                     marl_module_class=CustomMARLModule1,
                     module_specs={
@@ -463,7 +457,6 @@ class TestAlgorithmConfig(unittest.TestCase):
                     },
                 ),
             )
-            .training(_enable_learner_api=True)
         )
         config.validate()
 
@@ -494,8 +487,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # SingleAgentRLmoduleSpecs.
         config = (
             MultiAgentAlgoConfigWithNoSingleAgentSpec()
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True)
+            .experimental(_enable_new_api_stack=True)
         )
 
         self.assertRaisesRegex(
@@ -510,8 +502,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # SingleAgentRLmoduleSpecs.
         config = (
             MultiAgentAlgoConfig()
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True)
+            .experimental(_enable_new_api_stack=True)
         )
         config.validate()
 

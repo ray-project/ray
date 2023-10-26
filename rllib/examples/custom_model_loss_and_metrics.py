@@ -65,10 +65,11 @@ if __name__ == "__main__":
         TorchCustomLossModel if args.framework == "torch" else CustomLossModel,
     )
 
-    # TODO (Kourosh): This example needs to be migrated to the new RLModule / Learner
-    # API. Users should just inherit the Learner and extend the loss_fn.
     config = (
         get_trainable_cls(args.run)
+        # TODO (Kourosh): This example needs to be migrated to the new RLModule/Learner
+        #  API. Users should just inherit the Learner and extend the loss_fn.
+        .experimental(_enable_new_api_stack=False)
         .get_default_config()
         .environment("CartPole-v1")
         .framework(args.framework)
@@ -80,11 +81,9 @@ if __name__ == "__main__":
                     "input_files": args.input_files,
                 },
             },
-            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

@@ -169,7 +169,7 @@ class TestCuriosity(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             # TODO (Kourosh): We need to provide examples on how we do curiosity with
             # RLModule API
-            .training(lr=0.001, _enable_learner_api=False)
+            .training(lr=0.001)
             .exploration(
                 exploration_config={
                     "type": "Curiosity",
@@ -185,7 +185,6 @@ class TestCuriosity(unittest.TestCase):
                     },
                 }
             )
-            .rl_module(_enable_rl_module_api=False)
         )
 
         num_iterations = 10
@@ -240,9 +239,6 @@ class TestCuriosity(unittest.TestCase):
                     "fcnet_activation": "relu",
                 },
                 num_sgd_iter=8,
-                # TODO (Kourosh): We need to provide examples on how we do curiosity
-                # with RLModule API
-                _enable_learner_api=False,
             )
             .exploration(
                 exploration_config={
@@ -263,7 +259,6 @@ class TestCuriosity(unittest.TestCase):
                     },
                 }
             )
-            .rl_module(_enable_rl_module_api=False)
         )
 
         min_reward = 0.001
