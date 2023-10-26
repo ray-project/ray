@@ -1,10 +1,13 @@
 import posixpath
+import warnings
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.util import _is_local_scheme
 from ray.data.block import Block, BlockAccessor
+from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.file_based_datasource import _open_file_with_retry
 from ray.data.datasource.filename_provider import (
@@ -31,25 +34,37 @@ class _FileDatasink(Datasink):
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
     ):
+        if open_stream_args is None:
+            open_stream_args = {}
+
+        if block_path_provider is not None:
+            warnings.warn(
+                "`block_path_provider` has been deprecated in favor of "
+                "`filename_provider`. For more information, see "
+                "https://docs.ray.io/en/master/data/api/doc/ray.data.datasource.FilenameProvider.html",  # noqa: E501
+                DeprecationWarning,
+            )
+
+        if filename_provider is None and block_path_provider is None:
+            filename_provider = _DefaultFilenameProvider(
+                dataset_uuid=dataset_uuid, file_format=file_format
+            )
+
+        self.unresolved_path = path
         paths, self.filesystem = _resolve_paths_and_filesystem(path, filesystem)
         assert len(paths) == 1, len(paths)
         self.path = paths[0]
 
         self.try_create_dir = try_create_dir
-
         self.open_stream_args = open_stream_args
-        if self.open_stream_args is None:
-            self.open_stream_args = {}
-
         self.filename_provider = filename_provider
+        self.block_path_provider = block_path_provider
         self.dataset_uuid = dataset_uuid
-        if filename_provider is None:
-            self.filename_provider = _DefaultFilenameProvider(
-                dataset_uuid=self.dataset_uuid, file_format=file_format
-            )
+        self.file_format = file_format
 
         self.has_created_dir = False
 
@@ -107,6 +122,10 @@ class _FileDatasink(Datasink):
         if all(write_results == "skip" for write_results in write_results):
             self.filesystem.delete_dir(self.path)
 
+    @property
+    def supports_distributed_writes(self) -> bool:
+        return _is_local_scheme(self.unresolved_path)
+
 
 @DeveloperAPI
 class RowBasedFileDatasink(_FileDatasink):
@@ -115,12 +134,19 @@ class RowBasedFileDatasink(_FileDatasink):
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         for row_index, row in enumerate(block.iter_rows(public_row_format=False)):
-            filename = self.filename_provider.get_filename_for_row(
-                row, ctx.task_idx, block_index, row_index
-            )
+            if self.filename_provider is not None:
+                filename = self.filename_provider.get_filename_for_row(
+                    row, ctx.task_idx, block_index, row_index
+                )
+            else:
+                # TODO: Remove this code path once we remove `BlockWritePathProvider`.
+                filename = (
+                    f"{self.dataset_uuid}_{ctx.task_idx:06}_{block_index:06}_"
+                    f"{row_index:06}.{self.file_format}"
+                )
             write_path = posixpath.join(self.path, filename)
-            logger.get_logger().debug(f"Writing {write_path} file.")
 
+            logger.get_logger().debug(f"Writing {write_path} file.")
             with _open_file_with_retry(
                 write_path,
                 lambda: self.filesystem.open_output_stream(
@@ -136,12 +162,23 @@ class BlockBasedFileDatasink(_FileDatasink):
         raise NotImplementedError
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
-        filename = self.filename_provider.get_filename_for_block(
-            block, ctx.task_idx, block_index
-        )
-        write_path = posixpath.join(self.path, filename)
-        logger.get_logger().debug(f"Writing {write_path} file.")
+        if self.filename_provider is not None:
+            filename = self.filename_provider.get_filename_for_block(
+                block, ctx.task_idx, block_index
+            )
+            write_path = posixpath.join(self.path, filename)
+        else:
+            # TODO: Remove this code path once we remove `BlockWritePathProvider`.
+            write_path = self.block_path_provider(
+                self.path,
+                filesystem=self.filesystem,
+                dataset_uuid=self.dataset_uuid,
+                task_index=ctx.task_idx,
+                block_index=block_index,
+                file_format=self.file_format,
+            )
 
+        logger.get_logger().debug(f"Writing {write_path} file.")
         with _open_file_with_retry(
             write_path,
             lambda: self.filesystem.open_output_stream(
