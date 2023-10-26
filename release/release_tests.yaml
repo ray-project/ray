@@ -5026,10 +5026,6 @@
   frequency: nightly
   team: core
 
-  # Marking unstable because it's not working right now beyond ~3000 runtime envs.
-  # Tracking issue: https://github.com/ray-project/ray/issues/38662
-  stable: false
-
   cluster:
     byod: {}
     cluster_compute: stress_tests/smoke_test_compute.yaml
@@ -5038,7 +5034,7 @@
     timeout: 14400
     wait_for_nodes:
       num_nodes: 5
-    script: python stress_tests/test_many_runtime_envs_runner.py --num_runtime_envs=10000
+    script: python stress_tests/test_many_runtime_envs.py --num_runtime_envs=100 --num_tasks=10000
 
   variations:
     - __suffix__: aws

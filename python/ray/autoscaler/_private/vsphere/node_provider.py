@@ -176,12 +176,16 @@ class VsphereNodeProvider(NodeProvider):
             return nodes
 
     def is_running(self, node_id):
-        node = self._get_cached_node(node_id)
-        return node.power_state in {HardPower.State.POWERED_ON}
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.VirtualMachine], obj_id=node_id
+        )
+        return vm.runtime.powerState != vim.VirtualMachinePowerState.poweredOn
 
     def is_terminated(self, node_id):
-        node = self._get_cached_node(node_id)
-        return node.power_state not in {HardPower.State.POWERED_ON}
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.VirtualMachine], obj_id=node_id
+        )
+        return vm.runtime.powerState != vim.VirtualMachinePowerState.poweredOn
 
     def node_tags(self, node_id):
         with self.tag_cache_lock:
