@@ -431,9 +431,8 @@ class PPO(Algorithm):
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
-        use_rollout_worker = (
-            self.config.env_runner_cls is None
-            or issubclass(self.config.env_runner_cls, RolloutWorker)
+        use_rollout_worker = self.config.env_runner_cls is None or issubclass(
+            self.config.env_runner_cls, RolloutWorker
         )
 
         # Collect SampleBatches from sample workers until we have a full batch.
