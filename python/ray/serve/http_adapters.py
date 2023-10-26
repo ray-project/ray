@@ -1,7 +1,6 @@
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
 import starlette.requests
 from fastapi import File, Request
 
@@ -42,12 +41,15 @@ class NdArray(BaseModel):
     )
 
 
+@require_packages(["numpy"])
 @Deprecated(DAG_DEPRECATION_MESSAGE)
-def json_to_ndarray(payload: NdArray) -> np.ndarray:
+def json_to_ndarray(payload: NdArray):
     """Accepts an NdArray JSON from an HTTP body and converts it to a numpy array.
 
     .. autopydantic_model:: ray.serve.http_adapters.NdArray
     """
+    import numpy as np
+
     arr = np.array(payload.array)
     if payload.shape:
         arr = arr.reshape(*payload.shape)
@@ -56,8 +58,9 @@ def json_to_ndarray(payload: NdArray) -> np.ndarray:
     return arr
 
 
+@require_packages(["numpy"])
 @Deprecated(DAG_DEPRECATION_MESSAGE)
-def json_to_multi_ndarray(payload: Dict[str, NdArray]) -> Dict[str, np.ndarray]:
+def json_to_multi_ndarray(payload: Dict[str, NdArray]):
     """Accepts a JSON of shape {str_key: NdArray} and converts it to dict of arrays."""
     return {key: json_to_ndarray(arr_obj) for key, arr_obj in payload.items()}
 
@@ -82,10 +85,11 @@ async def json_request(request: starlette.requests.Request) -> Dict[str, Any]:
     return await request.json()
 
 
-@require_packages(["PIL"])
+@require_packages(["PIL", "numpy"])
 @Deprecated(DAG_DEPRECATION_MESSAGE)
-def image_to_ndarray(img: bytes = File(...)) -> np.ndarray:
+def image_to_ndarray(img: bytes = File(...)):
     """Accepts a PIL-readable file from an HTTP form and convert it to a numpy array."""
+    import numpy as np
     from PIL import Image
 
     image = Image.open(BytesIO(img))

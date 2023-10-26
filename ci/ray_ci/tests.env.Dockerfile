@@ -13,7 +13,9 @@ WORKDIR /rayci
 COPY . .
 
 RUN <<EOF
-#!/bin/bash
+#!/bin/bash -i
+
+set -euo pipefail
 
 (
   cd dashboard/client 
