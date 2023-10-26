@@ -44,7 +44,7 @@ In addition, these pull requests, [ray-project/kuberay#1106](https://github.com/
 
 ![Watch all namespaces in the Kubernetes cluster](../images/rbac-clusterrole.svg)
 
-This is the KubeRay's default setting.
+This is KubeRay's default setting.
 The informer of the KubeRay operator watches all namespaces in the Kubernetes cluster.
 The operator has cluster-scoped access to create and manage resources, using ClusterRole and ClusterRoleBinding.
 
