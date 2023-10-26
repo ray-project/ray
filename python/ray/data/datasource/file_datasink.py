@@ -1,6 +1,5 @@
-import os
 import posixpath
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.dataset_logger import DatasetLogger
