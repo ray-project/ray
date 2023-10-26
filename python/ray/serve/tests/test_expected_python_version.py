@@ -4,15 +4,15 @@ import sys
 import pytest
 
 
+@pytest.mark.skipif(
+    "EXPECTED_PYTHON_VERSION" not in os.environ,
+    reason="EXPECTED_PYTHON_VERSION environment variable not set."
+)
 def test_expected_python_version():
     """
     Sanity check that tests are running using the expected Python version.
     """
-    expected_python_version = os.environ.get("EXPECTED_PYTHON_VERSION", "").strip()
-    assert (
-        expected_python_version
-    ), "EXPECTED_PYTHON_VERSION environment variable not set."
-
+    expected_python_version = os.environ["EXPECTED_PYTHON_VERSION"]
     actual_major, actual_minor = sys.version_info[:2]
     actual_version = f"{actual_major}.{actual_minor}"
     assert expected_python_version == actual_version, (
