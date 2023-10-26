@@ -314,7 +314,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
         RAY_LOG(DEBUG) << "Marking job: " << data.first << " as finished";
         MarkJobAsFinished(data.second, [data](Status status) {
           if (!status.ok()) {
-            RAY_LOG(WARNING) << "Failed to mark job as finished";
+            RAY_LOG(WARNING) << "Failed to mark job as finished. Status: " << status;
           }
         });
       }

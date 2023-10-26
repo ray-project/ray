@@ -609,7 +609,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
   auto node_id = NodeID::FromBinary(address.raylet_id());
   gcs_job_manager.OnNodeDead(node_id);
 
-  // Test get all jobs with limit larger than the number of jobs.
+  // Test get all jobs and check if killed node jobs marked as finished
   auto condition = [&gcs_job_manager, node_id]() -> bool {
     rpc::GetAllJobInfoRequest all_job_info_request2;
     rpc::GetAllJobInfoReply all_job_info_reply2;
@@ -621,9 +621,6 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
           all_job_info_promise2.set_value(true);
         });
     all_job_info_promise2.get_future().get();
-
-    auto job_info1 = all_job_info_reply2.job_info_list().Get(0);
-    auto job_info2 = all_job_info_reply2.job_info_list().Get(1);
 
     bool job_condition = true;
     // job1 from the current node should dead, while job2 is still alive

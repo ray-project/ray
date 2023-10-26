@@ -18,7 +18,7 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     run_string_as_driver,
 )
-from ray.job_submission import JobSubmissionClient
+from ray.job_submission import JobSubmissionClient, JobStatus
 
 import psutil
 
@@ -977,32 +977,48 @@ def test_redis_logs(external_redis):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
+    "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
             gcs_failover_worker_reconnect_timeout=20,
-            gcs_rpc_server_reconnect_timeout_s=60,
+            gcs_rpc_server_reconnect_timeout_s=2,
         )
     ],
     indirect=True,
 )
-def test_job_finished_after_gcs_server_restart(ray_start_regular_with_external_redis):
-    gcs_address = ray._private.worker.global_worker.gcs_client.address
-    client = JobSubmissionClient(gcs_address)
+def test_job_finished_after_head_node_restart(
+    ray_start_cluster_head_with_external_redis,
+):
+    cluster = ray_start_cluster_head_with_external_redis
+    head_node = cluster.head_node
+
+    client = JobSubmissionClient(head_node.address)
 
     # submit job
     job_id = client.submit_job(
-        entrypoint="python -c 'import ray; ray.init(); print(ray.cluster_resources());'"
+        entrypoint="python -c 'import ray; ray.init(); print(ray.cluster_resources()); \
+            import time; time.sleep(100)'"
     )
-    # restart the gcs server
-    ray._private.worker._global_node.kill_gcs_server()
-    ray._private.worker._global_node.start_gcs_server()
 
-    gcs_address = ray._private.worker.global_worker.gcs_client.address
+    def _check_job_status(client, job_status):
+        return client.get_job_info(job_id).status == job_status
+
+    wait_for_condition(_check_job_status, client=client, job_status=JobStatus.RUNNING)
+
+    # kill and restart head node
+    head_node.kill_raylet()
+    wait_for_condition(
+        lambda: not cluster.global_state.node_table()[0]["Alive"], timeout=30
+    )
+
+    wait_for_condition(_check_job_status, client=client, job_status=JobStatus.FAILED)
+
+    new_head_node = cluster.head_node
+    new_gcs_address = new_head_node.address
 
     async def async_get_all_job_info():
         gcs_aio_client = gcs_utils.GcsAioClient(
-            address=gcs_address, nums_reconnect_retry=20
+            address=new_gcs_address, nums_reconnect_retry=20
         )
         return await gcs_aio_client.get_all_job_info()
 
@@ -1013,6 +1029,7 @@ def test_job_finished_after_gcs_server_restart(ray_start_regular_with_external_r
         all_job_info = get_or_create_event_loop().run_until_complete(
             async_get_all_job_info()
         )
+
         return list(
             filter(
                 lambda job_info: "job_submission_id" in job_info.config.metadata
