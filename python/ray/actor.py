@@ -27,6 +27,7 @@ from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
     PythonFunctionDescriptor,
     StreamingObjectRefGenerator,
+    raise_sys_exit_with_custom_error_message,
 )
 from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -1462,10 +1463,7 @@ def exit_actor():
 
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.
-        exit = SystemExit(0)
-        exit.is_ray_terminate = True
-        exit.ray_terminate_msg = "exit_actor() is called."
-        raise exit
+        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
     else:
         raise TypeError(
             "exit_actor API is called on a non-actor worker, "
