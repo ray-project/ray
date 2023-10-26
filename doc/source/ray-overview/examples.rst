@@ -1318,14 +1318,14 @@ Ray Examples
         :link-type: doc
 
         Fine-tune vicuna-13b-v1.3 with DeepSpeed, PyTorch Lightning and Ray Train
-    
+
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training llm pytorch nlp
         :link: deepspeed_example
         :link-type: ref
 
         Distributed Training with DeepSpeed ZeRO-3 and TorchTrainer
-    
+
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training llm pytorch huggingface nlp
         :link: deepspeed_example
@@ -1339,3 +1339,9 @@ Ray Examples
         :link-type: ref
 
         RayJob Batch Inference Example on Kubernetes with Ray
+
+    .. grid-item-card:: :bdg-primary:`Blog`
+        :class-item: gallery-item train
+        :link: https://www.uber.com/blog/elastic-xgboost-ray/
+
+        Elastic Distributed Training with XGBoost on Ray
