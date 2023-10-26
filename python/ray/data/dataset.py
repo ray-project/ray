@@ -3526,9 +3526,7 @@ class Dataset:
 
             datasink.on_write_start()
 
-            self._write_ds = Dataset(
-                plan, self._epoch, self._lazy, logical_plan
-            ).materialize()
+            self._write_ds = Dataset(plan, logical_plan).materialize()
             blocks = ray.get(self._write_ds._plan.execute().get_blocks())
             assert all(
                 isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
