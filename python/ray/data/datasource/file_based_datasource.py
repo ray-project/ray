@@ -345,9 +345,10 @@ class FileBasedDatasource(Datasource):
         if block_path_provider is not None:
             warnings.warn(
                 "`block_path_provider` has been deprecated in favor of "
-                "`filename_provider`. For more information, see ",
+                "`filename_provider`. For more information, see "
+                "https://docs.ray.io/en/latest/data/api/doc/ray.data.datasource.FilenameProvider.html"  # noqa: E501
                 DeprecationWarning,
-            )
+            )  
 
         if filename_provider is None and block_path_provider is None:
             filename_provider = _DefaultFilenameProvider(

@@ -9,7 +9,7 @@ def filename_provider(request):
     yield _DefaultFilenameProvider(dataset_uuid="", file_format=request.param)
 
 
-def test_default_filename_for_row_is_idempotent(filename_provider):
+def test_default_filename_for_row_is_deterministic(filename_provider):
     row = {}
 
     first_filename = filename_provider.get_filename_for_row(row, file_index=0)
@@ -18,7 +18,7 @@ def test_default_filename_for_row_is_idempotent(filename_provider):
     assert first_filename == second_filename
 
 
-def test_default_filename_for_block_is_idempotent(filename_provider):
+def test_default_filename_for_block_is_deterministic(filename_provider):
     block = pd.DataFrame()
 
     first_filename = filename_provider.get_filename_for_block(block, file_index=0)

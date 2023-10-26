@@ -13,7 +13,7 @@ class FilenameProvider:
     Some methods write each row to a separate file, while others write each block to a
     separate file. For example, :meth:`ray.data.Dataset.write_images` writes individual
     rows, and :func:`ray.data.Dataset.write_parquet` writes blocks of data. For more
-    information about blocks, see :ref:`Data internals <_datasets_scheduling>`.
+    information about blocks, see :ref:`Data internals <datasets_scheduling>`.
 
     If you're writing each row to a separate file, implement
     :meth:`~FilenameProvider.get_filename_for_row`. Otherwise, implement
@@ -34,7 +34,10 @@ class FilenameProvider:
                     self.file_format = file_format
 
                 def get_filename_for_row(self, row, task_index, block_index, row_index):
-                    return f"{row['label']}_{task_index:06}_{block_index:06}_{row_index:06}.png"
+                    return (
+                        f"{row['label']}_{task_index:06}_{block_index:06}"
+                        f"_{row_index:06}.{self.file_format}"
+                    )
     """  # noqa: E501
 
     def get_filename_for_block(
