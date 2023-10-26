@@ -238,7 +238,7 @@ import ray
 import numpy as np
 import tensorflow
 
-@ray.remote
+@ray.remote(max_retries=0)
 def leak_repro(obj):
     tensorflow
     return []
