@@ -1,5 +1,6 @@
-import os
 import pathlib
+import posixpath
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -22,7 +23,6 @@ from ray.data._internal.util import _check_pyarrow_version, make_async_gen
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.block_path_provider import BlockWritePathProvider
-
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
@@ -239,9 +239,9 @@ class FileBasedDatasource(Datasource):
             warnings.warn(
                 "`block_path_provider` has been deprecated in favor of "
                 "`filename_provider`. For more information, see "
-                "https://docs.ray.io/en/latest/data/api/doc/ray.data.datasource.FilenameProvider.html"  # noqa: E501
+                "https://docs.ray.io/en/latest/data/api/doc/ray.data.datasource.FilenameProvider.html",  # noqa: E501
                 DeprecationWarning,
-            )  
+            )
 
         if filename_provider is None and block_path_provider is None:
             filename_provider = _DefaultFilenameProvider(
