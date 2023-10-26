@@ -59,6 +59,8 @@ class ObjectStatsCollector {
 
   int64_t GetNumBytesInUse() const;
 
+  int64_t GetNumObjectsCreatedTotal() const;
+
   int64_t GetNumBytesCreatedTotal() const;
 
   int64_t GetNumBytesUnsealed() const;
@@ -88,6 +90,7 @@ class ObjectStatsCollector {
   int64_t num_bytes_received_ = 0;
   int64_t num_objects_errored_ = 0;
   int64_t num_bytes_errored_ = 0;
+  int64_t num_objects_created_total_ = 0;
   int64_t num_bytes_created_total_ = 0;
 };
 

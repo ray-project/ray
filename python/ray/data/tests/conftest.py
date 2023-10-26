@@ -11,6 +11,7 @@ import pytest
 
 import ray
 import ray.util.state
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
@@ -484,37 +485,101 @@ def stage_two_block():
     return block_params, block_meta_list
 
 
+def equals_or_true(count, expected_count):
+    if isinstance(expected_count, int):
+        if count != expected_count:
+            return False
+    else:
+        if not expected_count(count):
+            return False
+    return True
+
+
 class CoreExecutionMetrics:
-    def __init__(self, task_count=None):
-        self.task_count = defaultdict(int)
-        if task_count is not None:
-            for name, count in task_count.items():
-                self.task_count[name] = count
+    def __init__(self, task_count=None, object_store_stats=None, actor_count=None):
+        self.task_count = task_count
+        self.object_store_stats = object_store_stats
+        self.actor_count = actor_count
 
     def get_task_count(self):
         return self.task_count
 
-    def assert_task_metrics(self, expected_metrics):
-        expected_task_count = CoreExecutionMetrics.get_default_task_count()
-        for name, count in expected_metrics.get_task_count().items():
-            expected_task_count[name] = count
+    def get_object_store_stats(self):
+        return self.object_store_stats
 
+    def get_actor_count(self):
+        return self.actor_count
+
+    def _assert_count_equals(self, actual_count, expected_count):
         diff = {}
-        actual_task_count = self.get_task_count()
-        for name, count in expected_task_count.items():
-            if isinstance(count, int):
-                if actual_task_count[name] != count:
-                    diff[name] = (actual_task_count[name], count)
-            else:
-                if not count(actual_task_count[name]):
-                    diff[name] = (actual_task_count[name], count)
-        for name, count in actual_task_count.items():
-            if name not in expected_task_count:
+        # Check that all tasks in expected tasks match those in actual task
+        # count.
+        for name, count in expected_count.items():
+            if not equals_or_true(actual_count[name], count):
+                diff[name] = (actual_count[name], count)
+        # Check that the actual task count does not have any additional tasks.
+        for name, count in actual_count.items():
+            if name not in expected_count and count != 0:
                 diff[name] = (count, 0)
 
         assert len(diff) == 0, "\nTask diff:\n" + "\n".join(
             f" - {key}: expected {val[1]}, got {val[0]}" for key, val in diff.items()
         )
+
+    def assert_task_metrics(self, expected_metrics):
+        """
+        Assert equality to the given { <task name>: <task count> }.
+        A lambda that takes in the count and returns a bool to assert can also
+        be given instead of an integer task count.
+
+        An empty dict means that we expected no tasks to run. Pass None to skip
+        the check.
+
+        Default values in get_default_task_count() are also asserted.
+        """
+        if expected_metrics.get_task_count() is None:
+            return
+
+        expected_task_count = CoreExecutionMetrics.get_default_task_count()
+        for name, count in expected_metrics.get_task_count().items():
+            expected_task_count[name] = count
+
+        actual_task_count = self.get_task_count()
+        self._assert_count_equals(actual_task_count, expected_task_count)
+
+    def assert_object_store_metrics(self, expected_metrics):
+        """
+        By default this checks that no objects were spilled or restored.
+        Collected stats only apply to plasma store objects and exclude inlined
+        or in-memory objects.
+
+        Caller can also override the following fields with a value or lambda to assert.
+        - spilled_bytes_total
+        - restored_bytes_total
+        - cumulative_created_plasma_bytes
+        - cumulative_created_plasma_objects
+        """
+        expected_object_store_stats = (
+            CoreExecutionMetrics.get_default_object_store_stats()
+        )
+        if expected_metrics.get_object_store_stats() is not None:
+            for key, val in expected_metrics.get_object_store_stats().items():
+                expected_object_store_stats[key] = val
+
+        actual_object_store_stats = self.get_object_store_stats()
+        for key, val in expected_object_store_stats.items():
+            assert equals_or_true(
+                actual_object_store_stats[key], val
+            ), f"{key}: expected {val} got {actual_object_store_stats[key]}"
+
+    def assert_actor_metrics(self, expected_metrics):
+        expected_actor_count = CoreExecutionMetrics.get_default_actor_count()
+        if expected_metrics.get_actor_count() is not None:
+            for key, val in expected_metrics.get_actor_count().items():
+                expected_actor_count[key] = val
+
+        actual_actor_count = self.get_actor_count()
+        self._assert_count_equals(actual_actor_count, expected_actor_count)
 
     @staticmethod
     def get_default_task_count():
@@ -527,29 +592,80 @@ class CoreExecutionMetrics:
             "datasets_stats_actor:_StatsActor.__init__": lambda count: count <= 1,
         }
 
+    @staticmethod
+    def get_default_object_store_stats():
+        return {
+            "spilled_bytes_total": 0,
+            "restored_bytes_total": 0,
+        }
+
+    @staticmethod
+    def get_default_actor_count():
+        return {
+            "_StatsActor": lambda count: count <= 1,
+            "AutoscalingRequester": lambda count: count <= 1,
+        }
+
 
 class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
-    """Generated from metrics collected by Ray Core during the physical execution."""
+    """Generated from a snapshot of the metrics collected by Ray Core during
+    the physical execution."""
 
-    def __init__(self, core_task_metrics, cursor=None):
-        self.core_task_metrics = core_task_metrics
+    def __init__(self, cursor=None):
+        self.task_metrics = ray.util.state.list_tasks(detail=True)
         self.cursor = cursor
+
+        memory_info = get_memory_info_reply(
+            get_state_from_address(ray.get_runtime_context().gcs_address)
+        )
+        self.object_store_stats = {
+            "spilled_bytes_total": memory_info.store_stats.spilled_bytes_total,
+            "restored_bytes_total": memory_info.store_stats.restored_bytes_total,
+            "cumulative_created_plasma_bytes": (
+                memory_info.store_stats.cumulative_created_bytes
+            ),
+            "cumulative_created_plasma_objects": (
+                memory_info.store_stats.cumulative_created_objects
+            ),
+        }
+
+        self.actor_metrics = ray.util.state.list_actors()
+
+    def clear_task_count(self):
+        self.task_metrics = []
+
+    def clear_object_store_stats(self):
+        self.object_store_stats = {}
+
+    def clear_actor_count(self):
+        self.actor_metrics = []
 
     def get_task_count(self):
         task_count = defaultdict(int)
-        tasks = self.core_task_metrics
-        # Filter out previous and dummy tasks.
-        if self.cursor is not None:
-            tasks = [t for t in tasks if t.task_id not in self.cursor]
+        tasks = self.task_metrics
         tasks = [t for t in tasks if t.name != "barrier"]
 
         for task in tasks:
             task_count[task.name] += 1
+
+        # Filter out previous and dummy tasks.
+        if self.cursor is not None:
+            prev_task_count = self.cursor.get_task_count()
+            if prev_task_count is not None:
+                for name, count in prev_task_count.items():
+                    task_count[name] -= count
         return task_count
 
-    def get_cursor(self):
-        task_ids = {t.task_id for t in self.core_task_metrics}
-        return task_ids
+    def get_actor_count(self):
+        actor_count = defaultdict(int)
+        for actor in self.actor_metrics:
+            actor_count[actor.class_name] += 1
+        if self.cursor is not None:
+            prev_actor_count = self.cursor.get_actor_count()
+            if prev_actor_count is not None:
+                for name, count in prev_actor_count.items():
+                    actor_count[name] -= count
+        return actor_count
 
 
 # Dummy task used to make sure that we wait until (most) stats are available.
@@ -568,7 +684,21 @@ def assert_core_execution_metrics_equals(
         )
     )
 
-    tasks = ray.util.state.list_tasks(detail=True)
-    metrics = PhysicalCoreExecutionMetrics(tasks, cursor)
+    if cursor is None:
+        cursor = CoreExecutionMetrics(task_count=None, object_store_stats=None)
+    metrics = PhysicalCoreExecutionMetrics(cursor)
     metrics.assert_task_metrics(expected_metrics)
-    return metrics.get_cursor()
+    metrics.assert_object_store_metrics(expected_metrics)
+    metrics.assert_actor_metrics(expected_metrics)
+
+    # Return a cursor to the current snapshot of metrics to make subsequent
+    # queries easier.
+    cursor = PhysicalCoreExecutionMetrics()
+    if expected_metrics.get_task_count() is None:
+        cursor.clear_task_count()
+    elif expected_metrics.get_object_store_stats() is None:
+        cursor.clear_object_store_stats()
+    elif expected_metrics.get_actor_count() is None:
+        cursor.clear_actor_count()
+
+    return cursor

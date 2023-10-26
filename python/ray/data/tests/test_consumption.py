@@ -266,7 +266,7 @@ def test_schema_no_execution(ray_start_regular_shared):
     cursor = None
     ds = ray.data.range(100, parallelism=10)
     cursor = assert_core_execution_metrics_equals(
-            CoreExecutionMetrics(task_count={"_get_reader": 1}), cursor
+        CoreExecutionMetrics(task_count={"_get_reader": 1}), cursor
     )
     # We do not kick off the read task by default.
     assert ds._plan._in_blocks._num_computed() == 0
@@ -276,7 +276,7 @@ def test_schema_no_execution(ray_start_regular_shared):
     # Fetching the schema does not trigger execution, since
     # the schema is known beforehand for RangeDatasource.
     cursor = assert_core_execution_metrics_equals(
-            CoreExecutionMetrics(task_count={}), cursor
+        CoreExecutionMetrics(task_count={}), cursor
     )
     assert ds._plan._in_blocks._num_computed() == 0
     # Fetching the schema should not trigger execution of extra read tasks.
@@ -293,9 +293,7 @@ def test_schema_cached(ray_start_regular_shared):
         cached_schema = ds.schema(fetch_if_missing=False)
         assert cached_schema is not None
         assert schema == cached_schema
-        cursor = assert_core_execution_metrics_equals(
-            CoreExecutionMetrics({}), cursor
-        )
+        cursor = assert_core_execution_metrics_equals(CoreExecutionMetrics({}), cursor)
         return cursor
 
     ds = ray.data.from_items([{"a": i} for i in range(100)], parallelism=10)
@@ -303,11 +301,14 @@ def test_schema_cached(ray_start_regular_shared):
 
     # Add a map_batches stage so that we are forced to compute the schema.
     ds = ds.map_batches(lambda x: x)
-    cursor = check_schema_cached(ds,
-            {
-                "MapBatches(<lambda>)": lambda count: count <= 5,
-                "slice_fn": 1,
-                }, cursor=cursor)
+    cursor = check_schema_cached(
+        ds,
+        {
+            "MapBatches(<lambda>)": lambda count: count <= 5,
+            "slice_fn": 1,
+        },
+        cursor=cursor,
+    )
 
 
 def test_columns(ray_start_regular_shared):
@@ -350,6 +351,10 @@ def test_count(ray_start_regular_shared):
     # Getting number of rows should not trigger execution of any read tasks
     # for ray.data.range(), as the number of rows is known beforehand.
     assert ds._plan._in_blocks._num_computed() == 0
+
+    assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(task_count={"_get_reader": 1})
+    )
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):

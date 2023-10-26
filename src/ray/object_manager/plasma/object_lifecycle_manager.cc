@@ -259,6 +259,10 @@ bool ObjectLifecycleManager::IsObjectSealed(const ObjectID &object_id) const {
   return entry && entry->state == ObjectState::PLASMA_SEALED;
 }
 
+int64_t ObjectLifecycleManager::GetNumObjectsCreatedTotal() const {
+  return stats_collector_->GetNumObjectsCreatedTotal();
+}
+
 int64_t ObjectLifecycleManager::GetNumBytesCreatedTotal() const {
   return stats_collector_->GetNumBytesCreatedTotal();
 }
