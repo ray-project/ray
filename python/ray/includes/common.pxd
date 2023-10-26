@@ -127,6 +127,8 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsRpcError()
         c_bool IsOutOfResource()
         c_bool IsObjectRefEndOfStream()
+        c_bool IsIntentionalSystemExit()
+        c_bool IsUnexpectedSystemExit()
 
         c_string ToString()
         c_string CodeAsString()
@@ -250,6 +252,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
     cdef CWorkerExitType WORKER_EXIT_TYPE_USER_ERROR "ray::rpc::WorkerExitType::USER_ERROR"  # noqa: E501
     cdef CWorkerExitType WORKER_EXIT_TYPE_SYSTEM_ERROR "ray::rpc::WorkerExitType::SYSTEM_ERROR"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR "ray::rpc::WorkerExitType::INTENDED_SYSTEM_EXIT"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
