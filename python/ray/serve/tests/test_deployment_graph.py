@@ -1,8 +1,8 @@
+import array
 import os
 import sys
 from typing import TypeVar
 
-import numpy as np
 import pytest
 import requests
 import starlette.requests
@@ -367,9 +367,9 @@ def test_pass_handle_to_multiple(serve_instance):
 
 def test_run_non_json_serializable_args(serve_instance):
     # Test that we can capture and bind non-json-serializable arguments.
-    arr1 = np.zeros(100)
-    arr2 = np.zeros(200)
-    arr3 = np.zeros(300)
+    arr1 = array.array("d", [1.0, 2.0, 3.0])
+    arr2 = array.array("d", [2.0, 3.0, 4.0])
+    arr3 = array.array("d", [3.0, 4.0, 5.0])
 
     @serve.deployment
     class A:
@@ -385,9 +385,9 @@ def test_run_non_json_serializable_args(serve_instance):
     ret1, ret2, ret3 = ray.get(handle.remote())
     assert all(
         [
-            np.array_equal(ret1, arr1),
-            np.array_equal(ret2, arr2),
-            np.array_equal(ret3, arr3),
+            ret1 == arr1,
+            ret2 == arr2,
+            ret3 == arr3,
         ]
     )
 

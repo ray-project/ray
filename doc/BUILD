@@ -284,8 +284,6 @@ doctest(
             "source/ray-core/tasks/nested-tasks.rst",
             "source/ray-observability/user-guides/ray-tracing.rst",
             "source/ray-observability/user-guides/cli-sdk.rst",
-            "source/rllib/rllib-env.rst",
-            "source/rllib/rllib-sample-collection.rst",
             "source/serve/advanced-guides/inplace-updates.md",
             "source/serve/deploy-many-models/multi-app.md",
             "source/serve/production-guide/deploy-vm.md",
@@ -296,6 +294,8 @@ doctest(
 	    "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
+            "source/rllib/**/*.rst",
+            "source/rllib/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
         ]
     ),
@@ -313,6 +313,22 @@ doctest(
         ]
     ),
     tags = ["team:core"]
+)
+
+doctest(
+    name="doctest[rllib]",
+    files = glob(
+        include=[
+            "source/rllib/**/*.rst",
+            "source/rllib/**/*.md"
+        ],
+        exclude=[
+            "source/rllib/rllib-env.rst",
+            "source/rllib/rllib-sample-collection.rst",
+        ]
+    ),
+    size = "enormous",
+    tags = ["team:rllib"]
 )
 
 doctest(

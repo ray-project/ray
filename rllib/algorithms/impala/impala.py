@@ -68,37 +68,45 @@ logger = logging.getLogger(__name__)
 class ImpalaConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.impala import ImpalaConfig
-        >>> config = ImpalaConfig()
-        >>> config = config.training(lr=0.0003, train_batch_size=512)  # doctest: +SKIP
-        >>> config = config.resources(num_gpus=4)  # doctest: +SKIP
-        >>> config = config.rollouts(num_rollout_workers=64)  # doctest: +SKIP
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.impala import ImpalaConfig
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = ImpalaConfig()
-        >>> # Print out some default values.
-        >>> print(config.vtrace)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config = config.training(   # doctest: +SKIP
-        ...     lr=tune.grid_search([0.0001, 0.0003]), grad_clip=20.0
-        ... )
-        >>> # Set the config object's env.
-        >>> config = config.environment(env="CartPole-v1")  # doctest: +SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "IMPALA",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.impala import ImpalaConfig
+        config = ImpalaConfig()
+        config = config.training(lr=0.0003, train_batch_size=512)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build(env="CartPole-v1")
+        algo.train()
+        del algo
+
+    .. testcode::
+
+        from ray.rllib.algorithms.impala import ImpalaConfig
+        from ray import air
+        from ray import tune
+        config = ImpalaConfig()
+
+        # Update the config object.
+        config = config.training(
+            lr=tune.grid_search([0.0001, ]), grad_clip=20.0
+        )
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+        # Set the config object's env.
+        config = config.environment(env="CartPole-v1")
+        # Use to_dict() to get the old-style python config dict
+        # when running with tune.
+        tune.Tuner(
+            "IMPALA",
+            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            param_space=config.to_dict(),
+        ).fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
