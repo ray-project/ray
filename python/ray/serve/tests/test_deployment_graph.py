@@ -53,9 +53,9 @@ class Combine:
         self.m2 = m2.get(NESTED_HANDLE_KEY) if m2_nested else m2
 
     async def __call__(self, req):
-        r1_ref = await self.m1.forward.remote(req)
-        r2_ref = await self.m2.forward.remote(req)
-        return sum(ray.get([r1_ref, r2_ref]))
+        r1_ref = self.m1.forward.remote(req)
+        r2_ref = self.m2.forward.remote(req)
+        return sum(await asyncio.gather(r1_ref, r2_ref))
 
 
 @serve.deployment
@@ -296,7 +296,7 @@ class TakeHandle:
         self.handle = handle
 
     async def __call__(self, inp):
-        return ray.get(await self.handle.remote(inp))
+        return await self.handle.remote(inp)
 
 
 @pytest.mark.parametrize("use_build", [False, True])
@@ -340,7 +340,7 @@ class Parent:
         self._child = child
 
     async def __call__(self, *args):
-        return ray.get(await self._child.remote())
+        return await self._child.remote()
 
 
 @serve.deployment
@@ -351,9 +351,7 @@ class GrandParent:
 
     async def __call__(self, *args):
         # Check that the grandparent and parent are talking to the same child.
-        assert ray.get(await self._child.remote()) == ray.get(
-            await self._parent.remote()
-        )
+        assert await self._child.remote() == await self._parent.remote()
         return "ok"
 
 
