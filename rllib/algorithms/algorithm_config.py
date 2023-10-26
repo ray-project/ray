@@ -912,12 +912,12 @@ class AlgorithmConfig(_Config):
                 description="learning rate",
             )
 
-        if self.learner_class is not None and not self._enable_new_api_stack:
+        if self._learner_class is not None and not self._enable_new_api_stack:
             logger.warning(
                 "You specified a custom Learner class (via "
-                "`AlgorithmConfig.training(learner_class=...)`, but have the new API "
-                "stack disabled. You need to enable it via `AlgorithmConfig."
-                "experimental(_enable_new_api_stack=True)`."
+                f"`AlgorithmConfig.training(learner_class={self._learner_class})`, but "
+                "have the new API stack disabled. You need to enable it via "
+                "`AlgorithmConfig.experimental(_enable_new_api_stack=True)`."
             )
 
 
