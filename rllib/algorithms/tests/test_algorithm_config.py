@@ -363,10 +363,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         ########################################
         # This is the simplest case where we have to construct the marl module based on
         # the default specs only.
-        config = (
-            SingleAgentAlgoConfig()
-            .experimental(_enable_new_api_stack=True)
-        )
+        config = SingleAgentAlgoConfig().experimental(_enable_new_api_stack=True)
         config.validate()
 
         spec, expected = self._get_expected_marl_spec(config, DiscreteBCTorchModule)
@@ -485,9 +482,8 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is the case where we ask the algorithm to use its default
         # MultiAgentRLModuleSpec, but the MultiAgentRLModuleSpec has not defined its
         # SingleAgentRLmoduleSpecs.
-        config = (
-            MultiAgentAlgoConfigWithNoSingleAgentSpec()
-            .experimental(_enable_new_api_stack=True)
+        config = MultiAgentAlgoConfigWithNoSingleAgentSpec().experimental(
+            _enable_new_api_stack=True
         )
 
         self.assertRaisesRegex(
@@ -500,10 +496,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is the case where we ask the algorithm to use its default
         # MultiAgentRLModuleSpec, and the MultiAgentRLModuleSpec has defined its
         # SingleAgentRLmoduleSpecs.
-        config = (
-            MultiAgentAlgoConfig()
-            .experimental(_enable_new_api_stack=True)
-        )
+        config = MultiAgentAlgoConfig().experimental(_enable_new_api_stack=True)
         config.validate()
 
         spec, expected = self._get_expected_marl_spec(

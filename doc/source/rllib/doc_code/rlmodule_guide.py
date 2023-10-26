@@ -406,8 +406,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 config = (
     PPOConfig()
     # Enable the new API stack (RLModule and Learner APIs).
-    .experimental(_enable_new_api_stack=True)
-    .environment("CartPole-v1")
+    .experimental(_enable_new_api_stack=True).environment("CartPole-v1")
 )
 env = gym.make("CartPole-v1")
 # Create an RL Module that we would like to checkpoint

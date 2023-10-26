@@ -169,8 +169,7 @@ class TestCuriosity(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             # TODO (Kourosh): We need to provide examples on how we do curiosity with
             # RLModule API
-            .training(lr=0.001)
-            .exploration(
+            .training(lr=0.001).exploration(
                 exploration_config={
                     "type": "Curiosity",
                     "eta": 0.2,

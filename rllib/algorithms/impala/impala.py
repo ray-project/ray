@@ -693,7 +693,10 @@ class Impala(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # First, check, whether our learner thread is still healthy.
-        if not self.config._enable_new_api_stack and not self._learner_thread.is_alive():
+        if (
+            not self.config._enable_new_api_stack
+            and not self._learner_thread.is_alive()
+        ):
             raise RuntimeError("The learner thread died while training!")
 
         use_tree_aggregation = (

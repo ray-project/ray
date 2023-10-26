@@ -181,22 +181,20 @@ class TestPPO(unittest.TestCase):
     def test_ppo_free_log_std_with_rl_modules(self):
         """Tests the free log std option works."""
         config = (
-            (
-                ppo.PPOConfig()
-                .experimental(_enable_new_api_stack=True)
-                .environment("Pendulum-v1")
-                .rollouts(
-                    num_rollout_workers=1,
-                )
-                .training(
-                    gamma=0.99,
-                    model=dict(
-                        fcnet_hiddens=[10],
-                        fcnet_activation="linear",
-                        free_log_std=True,
-                        vf_share_layers=True,
-                    ),
-                )
+            ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
+            .environment("Pendulum-v1")
+            .rollouts(
+                num_rollout_workers=1,
+            )
+            .training(
+                gamma=0.99,
+                model=dict(
+                    fcnet_hiddens=[10],
+                    fcnet_activation="linear",
+                    free_log_std=True,
+                    vf_share_layers=True,
+                ),
             )
         )
 

@@ -405,9 +405,10 @@ class Policy(metaclass=ABCMeta):
     def make_rl_module(self) -> "RLModule":
         """Returns the RL Module (only for when RLModule API is enabled.)
 
-        If RLModule API is enabled (self.config.experimental(_enable_new_api_stack=True),
-        this method should be implemented and should return the RLModule instance to
-        use for this Policy. Otherwise, RLlib will error out.
+        If RLModule API is enabled
+        (self.config.experimental(_enable_new_api_stack=True), this method should be
+        implemented and should return the RLModule instance to use for this Policy.
+        Otherwise, RLlib will error out.
         """
         # if imported on top it creates circular dependency
         from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec

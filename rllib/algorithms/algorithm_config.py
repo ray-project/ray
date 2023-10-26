@@ -606,7 +606,9 @@ class AlgorithmConfig(_Config):
         # inside `self.experimental()` before potentially overwriting it in the
         # following.
         if "_enable_new_api_stack" in config_dict:
-            self.experimental(_enable_new_api_stack=config_dict["_enable_new_api_stack"])
+            self.experimental(
+                _enable_new_api_stack=config_dict["_enable_new_api_stack"]
+            )
 
         # Modify our properties one by one.
         for key, value in config_dict.items():
@@ -793,8 +795,8 @@ class AlgorithmConfig(_Config):
         # Can not use "tf" with learner API.
         if self.framework_str == "tf" and self._enable_new_api_stack:
             raise ValueError(
-                "Cannot use `framework=tf` with the new API stack! Either switch to tf2 "
-                "via `config.framework('tf2')` OR disable the new API stack via "
+                "Cannot use `framework=tf` with the new API stack! Either switch to tf2"
+                " via `config.framework('tf2')` OR disable the new API stack via "
                 "`config.experimental(_enable_new_api_stack=False)`."
             )
 
@@ -919,7 +921,6 @@ class AlgorithmConfig(_Config):
                 "have the new API stack disabled. You need to enable it via "
                 "`AlgorithmConfig.experimental(_enable_new_api_stack=True)`."
             )
-
 
         # TODO @Avnishn: This is a short-term work around due to
         # https://github.com/ray-project/ray/issues/35409
