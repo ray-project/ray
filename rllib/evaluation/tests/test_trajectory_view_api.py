@@ -226,6 +226,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         action_space = Discrete(2)
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .framework("torch")
             .rollouts(rollout_fragment_length=200, num_rollout_workers=0)
         )
@@ -304,6 +305,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rw = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
             config=ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .framework("torch")
             .rollouts(
                 rollout_fragment_length=rollout_fragment_length,
@@ -371,18 +373,21 @@ class TestTrajectoryViewAPI(unittest.TestCase):
     def test_counting_by_agent_steps(self):
         num_agents = 3
 
-        config = ppo.PPOConfig()
-        # Env setup.
-        config.environment(MultiAgentPendulum, env_config={"num_agents": num_agents})
-        config.rollouts(num_rollout_workers=2, rollout_fragment_length=21)
-        config.training(num_sgd_iter=2, train_batch_size=168)
-        config.framework("torch")
-        config.multi_agent(
-            policies={f"p{i}" for i in range(num_agents)},
-            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
-                "p{}".format(agent_id)
-            ),
-            count_steps_by="agent_steps",
+        config = (
+            ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
+            # Env setup.
+            .environment(MultiAgentPendulum, env_config={"num_agents": num_agents})
+            .rollouts(num_rollout_workers=2, rollout_fragment_length=21)
+            .training(num_sgd_iter=2, train_batch_size=168)
+            .framework("torch")
+            .multi_agent(
+                policies={f"p{i}" for i in range(num_agents)},
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id)
+                ),
+                count_steps_by="agent_steps",
+            )
         )
 
         num_iterations = 2
