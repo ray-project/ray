@@ -11,28 +11,33 @@ class ImageDatasink(RowBasedFileDatasink):
     def __init__(
         self,
         path: str,
-        dataset_uuid: str,
-        filesystem: Any | None = None,
+        column: str,
+        file_format: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
-        open_stream_args: Dict[str, Any] | None = None,
-        filename_provider: FilenameProvider | None = None,
-        file_format: str | None = None,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        filename_provider: Optional[FilenameProvider] = None,
+        dataset_uuid: Optional[str] = None,
     ):
+        self.column = column
+        self.file_format = file_format
+
         super().__init__(
             path,
-            dataset_uuid,
-            filesystem,
-            try_create_dir,
-            open_stream_args,
-            filename_provider,
-            file_format,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=open_stream_args,
+            filename_provider=filename_provider,
+            dataset_uuid=dataset_uuid,
+            file_format=file_format,
         )
 
     def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
-
         from PIL import Image
 
-        image = Image.fromarray(row[column])
+        print(self.file_format)
+        image = Image.fromarray(row[self.column])
         buffer = io.BytesIO()
-        image.save(buffer, format=file_format)
-        f.write(buffer.getvalue())
+        image.save(buffer, format=self.file_format)
+        file.write(buffer.getvalue())

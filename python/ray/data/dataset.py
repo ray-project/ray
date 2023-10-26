@@ -109,7 +109,7 @@ from ray.data.datasource import (
     Datasink,
     Datasource,
     FilenameProvider,
-    ImageDatasource,
+    ImageDatasink,
     JSONDatasource,
     NumpyDatasource,
     ParquetDatasource,
@@ -2879,18 +2879,17 @@ class Dataset:
                 opening the file to write to.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            ImageDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = ImageDatasink(
+            path,
+            column,
+            file_format,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
-            column=column,
-            file_format=file_format,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_csv(
