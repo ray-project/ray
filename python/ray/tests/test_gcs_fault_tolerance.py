@@ -11,6 +11,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
 from ray._private import ray_constants
 from ray._private.test_utils import (
+    format_web_url,
     convert_actor_state,
     enable_external_redis,
     generate_system_config_map,
@@ -18,6 +19,7 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     run_string_as_driver,
 )
+from ray.job_submission import JobStatus, JobSubmissionClient
 
 import psutil
 
@@ -973,6 +975,55 @@ def test_redis_logs(external_redis):
                 "--force",
             ],
         )
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
+        )
+    ],
+    indirect=True,
+)
+def test_job_finished_after_gcs_server_restart(ray_start_regular_with_external_redis):
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
+    client = JobSubmissionClient(gcs_address)
+
+    # submit job
+    job_id = client.submit_job(
+        entrypoint="python -c 'import ray; ray.init(); print(ray.cluster_resources());'",
+    )
+    # restart the gcs server
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
+
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
+
+    async def async_get_all_job_info():
+        gcs_aio_client = gcs_utils.GcsAioClient(
+            address=gcs_address, nums_reconnect_retry=20
+        )
+        return await gcs_aio_client.get_all_job_info()
+
+    def get_job_info(job_id):
+        import asyncio
+
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        all_job_info = get_or_create_event_loop().run_until_complete(async_get_all_job_info())
+        return list(filter(lambda job_info: 'job_submission_id' in job_info.config.metadata \
+            and job_info.config.metadata['job_submission_id'] == job_id, list(all_job_info.values())))
+
+    # verify if job is finished, which marked is_dead
+    def _check_job_is_dead(job_id: str) -> bool:
+        job_infos = get_job_info(job_id)
+        if len(job_infos) == 0:
+            return False
+        job_info = job_infos[0]
+        return job_info.is_dead
+
+    wait_for_condition(_check_job_is_dead, job_id=job_id, timeout=20)
 
 
 if __name__ == "__main__":

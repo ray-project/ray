@@ -607,37 +607,34 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
   // Remove node and then check that the job is dead.
   auto address = all_job_info_reply.job_info_list().Get(0).driver_address();
   auto node_id = NodeID::FromBinary(address.raylet_id());
-  
-  std::promise<bool> on_node_dead_promise;
-  io_service_.post(
-    [&gcs_job_manager, node_id, &on_node_dead_promise]() {
-      gcs_job_manager.OnNodeDead(node_id);
-      on_node_dead_promise.set_value(true);
-    },
-    "test");
-  ASSERT_TRUE(on_node_dead_promise.get_future().get());
+  gcs_job_manager.OnNodeDead(node_id);
 
   // Test get all jobs with limit larger than the number of jobs.
-  rpc::GetAllJobInfoRequest all_job_info_request2;
-  rpc::GetAllJobInfoReply all_job_info_reply2;
-  std::promise<bool> all_job_info_promise2;
-  gcs_job_manager.HandleGetAllJobInfo(
-      all_job_info_request2,
-      &all_job_info_reply2,
-      [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
-        all_job_info_promise2.set_value(true);
-      });
-  all_job_info_promise2.get_future().get();
+  auto condition = [&gcs_job_manager, node_id]() -> bool {
+      rpc::GetAllJobInfoRequest all_job_info_request2;
+      rpc::GetAllJobInfoReply all_job_info_reply2;
+      std::promise<bool> all_job_info_promise2;
+      gcs_job_manager.HandleGetAllJobInfo(
+          all_job_info_request2,
+          &all_job_info_reply2,
+          [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
+            all_job_info_promise2.set_value(true);
+          });
+      all_job_info_promise2.get_future().get();
 
-  ASSERT_EQ(all_job_info_reply2.job_info_list().size(), 2);
-  auto job_info1 = all_job_info_reply2.job_info_list().Get(0);
-  auto job_info2 = all_job_info_reply2.job_info_list().Get(1);
+      auto job_info1 = all_job_info_reply2.job_info_list().Get(0);
+      auto job_info2 = all_job_info_reply2.job_info_list().Get(1);
 
-  // job1 from the current node should dead, while job2 is still alive
-  for(auto job_info: all_job_info_reply2.job_info_list()){
-    auto job_node_id = NodeID::FromBinary(job_info.driver_address().raylet_id());
-    ASSERT_EQ(job_info.is_dead(), job_node_id == node_id);
-  }
+      bool job_condition = true;
+      // job1 from the current node should dead, while job2 is still alive
+      for(auto job_info: all_job_info_reply2.job_info_list()){
+        auto job_node_id = NodeID::FromBinary(job_info.driver_address().raylet_id());
+        job_condition = job_condition && (job_info.is_dead() == (job_node_id == node_id));
+      }
+      return job_condition;
+  };
+
+  EXPECT_TRUE(WaitForCondition(condition, 2000));
 }
 
 int main(int argc, char **argv) {
