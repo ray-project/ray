@@ -277,7 +277,6 @@
     - ./ci/env/env_info.sh
     # Download files needed for running the bazel tests.
     - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/crr/
-    - wget https://raw.githubusercontent.com/ray-project/ray/master/rllib/tests/data/cartpole/large.json -P rllib_contrib/crr/tuned_examples/
     - wget https://raw.githubusercontent.com/ray-project/ray/master/rllib/tests/data/pendulum/pendulum_replay_v1.1.0.zip -P rllib_contrib/crr/tuned_examples/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-learning_tests rllib_contrib/crr/...
