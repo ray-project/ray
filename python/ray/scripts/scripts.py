@@ -1073,9 +1073,8 @@ def stop(force: bool, grace_period: int):
             for proc, proc_cmd, proc_args in found:
                 proc_string = str(subprocess.list2cmdline(proc_args))
                 if "nerdctl run" in proc_string:
-                    print(f"Skpping proc {proc} for keyword {keyword}")
                     continue
-                print(f"Killing proc {proc} for keyword {keyword}")
+
                 try:
                     if force:
                         proc.kill()
