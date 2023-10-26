@@ -354,11 +354,11 @@ install_pip_packages() {
 
     # Install MuJoCo.
     sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
-    wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+    wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
     mkdir -p /root/.mujoco
-    mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
-    (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
-    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco210/bin
+    mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
+    (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
+    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco-2.1.1/bin
   fi
 
   # Additional Train test dependencies.

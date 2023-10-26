@@ -1,10 +1,9 @@
 group: serve tests
 steps:
-  - label: ":ray-serve: serve: serve tests"
+  - label: ":ray-serve: serve: tests"
     parallelism: 2
     tags: 
       - serve
-      - ml
       - python
     instance_type: large
     commands:
@@ -14,10 +13,70 @@ steps:
     depends_on: servebuild
     job_env: forge
 
+  - label: ":ray-serve: serve: pydantic >= 2.0 tests"
+    parallelism: 2
+    tags: 
+      - serve
+      - python
+    instance_type: large
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
+        --except-tags post_wheel_build,gpu,worker-container,xcommit
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+    depends_on: servepydantic2build
+    job_env: forge
+
+  - label: ":ray-serve: serve: release tests"
+    tags:
+      - serve
+      - python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //release/... serve --parallelism-per-worker 3
+    depends_on: servebuild
+    job_env: forge
+
+  - label: ":ray-serve: serve: default minimal"
+    tags: python
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dashboard/... serve 
+        --parallelism-per-worker 2
+        --build-name minbuild-default-py3.8
+        --test-env=RAY_DEFAULT=1
+        --only-tags minimal
+    depends_on: minbuild-serve
+    job_env: forge
+
+  - label: ":ray-serve: serve: serve minimal"
+    tags: python
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve 
+        --parallelism-per-worker 2
+        --build-name minbuild-serve-py3.8
+        --test-env=RAY_DEFAULT=1
+        --only-tags minimal
+    depends_on: minbuild-serve
+    job_env: forge
+
+  - label: ":ray-serve: serve: doc gpu tests"
+    tags: 
+      - serve
+      - ci_doc
+      - gpu
+    instance_type: gpu
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... serve 
+        --build-name docgpubuild
+        --only-tags gpu
+    depends_on: docgpubuild
+    job_env: forge
+  
   - label: ":ray-serve: serve: flaky tests"
     tags: 
       - serve
-      - ml
       - python
     instance_type: medium
     soft_fail: true
@@ -25,3 +84,14 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
     depends_on: servebuild
     job_env: forge
+
+  - name: minbuild-serve
+    label: "wanda: minbuild-{{matrix}}-py38"
+    wanda: ci/docker/min.build.wanda.yaml
+    depends_on: oss-ci-base_build
+    matrix:
+      - serve
+      - default
+    env:
+      PYTHON_VERSION: "3.8"
+      EXTRA_DEPENDENCY: "{{matrix}}"
