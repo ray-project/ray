@@ -11,6 +11,9 @@ from ray.autoscaler._private.vsphere.config import (
     update_vsphere_configs,
     validate_frozen_vm_configs,
 )
+from ray.autoscaler._private.vsphere.gpu_utils import (
+    split_vm_2_gpu_ids_map,
+)
 
 _CLUSTER_NAME = "test"
 _PROVIDER_CONFIG = {
@@ -234,10 +237,13 @@ def test_create_instant_clone_node(mock_wait_task, mock_ic_spec, mock_relo_spec)
     vm_clone_from = MagicMock(vm="test-1")
     node_config = {"resource_pool": "rp1", "datastore": "ds1", "resources": {}}
     tags = {"key": "value"}
+    gpu_ids_map = None
 
     mock_ic_spec.return_value = MagicMock()
     mock_relo_spec.return_value = MagicMock()
-    vm = vnp.create_instant_clone_node(vm_clone_from, "target-vm", node_config, tags)
+    vm = vnp.create_instant_clone_node(
+        vm_clone_from, "target-vm", node_config, tags, gpu_ids_map
+    )
     # assert
     assert vm == "test VM"
 
@@ -539,6 +545,43 @@ def test_validate_frozen_vm_configs():
         "datastore": "vsanDatastore",
     }
     assert validate_frozen_vm_configs(config) is None
+
+
+def test_split_vm_2_gpu_ids_map():
+    # Test a valid case 1
+    vm_2_gpu_ids_map = {
+        "frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1", "0000:3b:00.2"],
+        "frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"],
+        "frozen-vm-3": ["0000:3b:00.5"],
+    }
+    requested_gpu_num = 1
+    node_number = 3
+    expected_result = [
+        {"frozen-vm-1": ["0000:3b:00.0"]},
+        {"frozen-vm-1": ["0000:3b:00.1"]},
+        {"frozen-vm-1": ["0000:3b:00.2"]},
+        {"frozen-vm-2": ["0000:3b:00.3"]},
+        {"frozen-vm-2": ["0000:3b:00.4"]},
+        {"frozen-vm-3": ["0000:3b:00.5"]},
+    ]
+
+    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
+    assert result == expected_result
+
+    # Test a valid case 2
+    requested_gpu_num = 2
+    node_number = 2
+    expected_result = [
+        {"frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1"]},
+        {"frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"]},
+    ]
+    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
+    assert result == expected_result
+
+    # Test an invalid case: No enough available GPU cards to assigned to nodes
+    node_number = 30
+    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
+    assert result == []
 
 
 if __name__ == "__main__":
