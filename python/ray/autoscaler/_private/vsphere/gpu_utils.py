@@ -81,7 +81,7 @@ def get_vm_2_gpu_ids_map(pool_name, desired_gpu_number):
     """
     result = {}
     pyvmomi_sdk_provider = get_sdk_provider(ClientType.PYVMOMI_SDK)
-    pool = pyvmomi_sdk_provider.get_pyvmomi_obj_by_name([vim.ResourcePool], pool_name)
+    pool = pyvmomi_sdk_provider.get_pyvmomi_obj([vim.ResourcePool], pool_name)
     if not pool.vm:
         logger.error(f"No frozen-vm in pool {pool.name}")
         return result
@@ -226,7 +226,7 @@ def add_gpus_to_vm(vm_name: str, gpu_ids: list):
     3. Power on the VM.
     """
     pyvmomi_sdk_provider = get_sdk_provider(ClientType.PYVMOMI_SDK)
-    vm_obj = pyvmomi_sdk_provider.get_pyvmomi_obj_by_name([vim.VirtualMachine], vm_name)
+    vm_obj = pyvmomi_sdk_provider.get_pyvmomi_obj([vim.VirtualMachine], vm_name)
     # The VM is supposed to be at powered on status after instant clone.
     # We need to power it off.
     if vm_obj.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:

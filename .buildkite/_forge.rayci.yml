@@ -122,6 +122,10 @@ steps:
     wanda: ci/docker/servepydantic2.build.wanda.yaml
     depends_on: oss-ci-base_build
 
+  - name: servepython311build
+    wanda: ci/docker/servepython311.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
   - name: serverlessbuild
     wanda: ci/docker/serverless.build.wanda.yaml
     depends_on: oss-ci-base_build

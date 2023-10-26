@@ -19,9 +19,9 @@ class TestPolicy(unittest.TestCase):
         ray.shutdown()
 
     def test_policy_get_and_set_state(self):
-        config = PPOConfig()
+        config = PPOConfig().environment("CartPole-v1")
         for fw in framework_iterator(config):
-            algo = config.build(env="CartPole-v1")
+            algo = config.build()
             policy = algo.get_policy()
             state1 = policy.get_state()
             algo.train()
