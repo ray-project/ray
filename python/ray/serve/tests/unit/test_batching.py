@@ -1,14 +1,9 @@
 import asyncio
 import time
-from concurrent.futures.thread import ThreadPoolExecutor
-from functools import partial
 from typing import List
 
 import pytest
-import requests
-from starlette.responses import StreamingResponse
 
-import ray
 from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray.serve.exceptions import RayServeException
