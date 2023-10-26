@@ -8,7 +8,7 @@ from ray.util.annotations import PublicAPI
 class FilenameProvider:
     """Generates filenames when you write a :class:`~ray.data.Dataset`.
 
-    Use this class to customize what your written files look like.
+    Use this class to customize the filenames used when writing a Dataset.
 
     Some methods write each row to a separate file, while others write each block to a
     separate file. For example, :meth:`ray.data.Dataset.write_images` writes individual
