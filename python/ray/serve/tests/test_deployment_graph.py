@@ -1,4 +1,5 @@
 import array
+import asyncio
 import os
 import sys
 from typing import TypeVar
@@ -7,7 +8,6 @@ import pytest
 import requests
 import starlette.requests
 
-import ray
 from ray import serve
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve.deployment_graph import InputNode

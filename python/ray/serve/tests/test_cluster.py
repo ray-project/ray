@@ -317,7 +317,7 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
             return ray.get_runtime_context().get_node_id()
 
         async def call_inner(self, block_on_signal: bool = False) -> str:
-            return await (await self._h.remote(block_on_signal))
+            return await self._h.remote(block_on_signal)
 
     # The inner deployment's two replicas will be spread across the two nodes and
     # the outer deployment's single replica will be placed on one of them.
