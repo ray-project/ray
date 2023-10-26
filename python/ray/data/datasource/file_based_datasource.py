@@ -398,7 +398,7 @@ class FileBasedDatasource(Datasource):
                         )
             else:
                 if filename_provider is not None:
-                    file_index = _generate_unique_file_index(ctx.task_inx, block_idx)
+                    file_index = _generate_unique_file_index(ctx.task_idx, block_idx)
                     filename = filename_provider.get_filename_for_block(
                         block, file_index
                     )
