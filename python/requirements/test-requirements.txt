@@ -32,12 +32,12 @@ websockets==11.0.3
 joblib==1.2.0
 jsonpatch==1.32
 kubernetes==24.2.0
-llvmlite==0.39.1; python_version < '3.11'
+llvmlite==0.41.1
 lxml==4.9.1
 moto[s3,server]==4.0.7
 mypy==0.982
 networkx==2.6.3
-numba==0.56.4
+numba==0.58.1
 openpyxl==3.0.10
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
@@ -53,7 +53,7 @@ PyOpenSSL==22.1.0
 pygame==2.1.2; python_version < '3.11'
 Pygments==2.13.0
 pymongo==4.3.2
-pyspark==3.3.1
+pyspark
 pytest==7.0.1
 pytest-asyncio==0.16.0
 pytest-httpserver==1.0.6
@@ -76,6 +76,7 @@ xlrd==2.0.1
 yq==3.2.2
 memray; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != 'aarch64'
 memray @ git+https://github.com/bloomberg/memray.git; platform_system != "Windows" and sys_platform != "darwin" and platform_machine == 'aarch64'
+numpy==1.23.5
 
 # For doc tests
 myst-parser==0.15.2

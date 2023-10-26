@@ -66,15 +66,15 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   void OnNodeDead(const NodeID &node) { node_resource_info_.erase(node); }
 
-  /// \brief Get the placement group load from GcsPlacementGroupManager
-  ///
-  /// \return The placement group load, nullptr if there is no placement group load.
-  std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
-
   const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
       &GetNodeResourceInfo() const {
     return node_resource_info_;
   }
+
+  /// \brief Get the placement group load from GcsPlacementGroupManager
+  ///
+  /// \return The placement group load, nullptr if there is no placement group load.
+  std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
 
  private:
   /// \brief Get the aggregated resource load from all nodes.

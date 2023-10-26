@@ -39,6 +39,7 @@ using raylet::ClusterTaskManager;
 
 namespace gcs {
 class GcsNodeManager;
+class GcsServer;
 
 /// Ideally, the logic related to resource calculation should be moved from
 /// `gcs_resource_manager` to `cluster_resource_manager`, and all logic related to
