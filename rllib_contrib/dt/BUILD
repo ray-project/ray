@@ -17,9 +17,9 @@ py_test(
     tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
     size = "large",
     srcs = ["run_regression_tests.py"],
-    # Include an offline json data file as well.
     data = [
         "tuned_examples/pendulum-v1-dt.yaml",
+        # Include the offline json data file as well.
         "tuned_examples/pendulum_expert_sac_50eps.zip",
     ],
     args = ["--dir=dt/tuned_examples/"]
@@ -31,7 +31,6 @@ py_test(
     tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
     size = "medium",
     srcs = ["run_regression_tests.py"],
-    # Include an offline json data file as well.
     data = ["tuned_examples/cartpole-v1-dt.yaml"],
     args = ["--dir=dt/tuned_examples/"]
 )

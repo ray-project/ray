@@ -11,7 +11,7 @@ pendulum_dt:
         input: dataset
         input_config:
             # Get this from: https://github.com/ray-project/ray/raw/releases/2.5.1/rllib/tests/data/pendulum/pendulum_expert_sac_50eps.zip
-            paths: tuned_examples/pendulum_expert_sac_50eps.zip
+            paths: rllib_contrib/dt/tuned_examples/pendulum_expert_sac_50eps.zip
             format: json
         num_workers: 3
         actions_in_input_normalized: True

@@ -17,9 +17,9 @@ py_test(
     tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
    size = "enormous",
    srcs = ["run_regression_tests.py"],
-   # Include an offline json data file as well.
    data = [
         "tuned_examples/pendulum-v1-crr.yaml",
+        # Include the offline json data file as well.
         "tuned_examples/pendulum_replay_v1.1.0.zip",
    ],
    args = ["--dir=crr/tuned_examples/"]
