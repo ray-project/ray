@@ -94,6 +94,11 @@ def framework_iterator(
     frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
 
     for fw in frameworks:
+        # Skip tf if on new API stack.
+        if fw == "tf" and config.get("_enable_new_api_stack", False):
+            logger.warning("framework_iterator skipping tf (new API stack configured)!")
+            continue
+
         # Skip non-installed frameworks.
         if fw == "torch" and not torch:
             logger.warning("framework_iterator skipping torch (not installed)!")

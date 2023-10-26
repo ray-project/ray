@@ -177,14 +177,12 @@ class TestAlgorithmConfig(unittest.TestCase):
             .rollouts(enable_connectors=True)
         )
 
-        config.validate()
         self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
 
         class A:
             pass
 
         config = config.rl_module(rl_module_spec=SingleAgentRLModuleSpec(A))
-        config.validate()
         self.assertEqual(config.rl_module_spec.module_class, A)
 
     def test_learner_hyperparameters_per_module(self):
@@ -239,7 +237,6 @@ class TestAlgorithmConfig(unittest.TestCase):
             .framework("tf2")
         )
 
-        config.validate()
         self.assertEqual(config.learner_class, PPOTfLearner)
 
     def _assertEqualMARLSpecs(self, spec1, spec2):
@@ -364,7 +361,6 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is the simplest case where we have to construct the marl module based on
         # the default specs only.
         config = SingleAgentAlgoConfig().experimental(_enable_new_api_stack=True)
-        config.validate()
 
         spec, expected = self._get_expected_marl_spec(config, DiscreteBCTorchModule)
         self._assertEqualMARLSpecs(spec, expected)
@@ -390,7 +386,6 @@ class TestAlgorithmConfig(unittest.TestCase):
                 ),
             )
         )
-        config.validate()
 
         spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
         self._assertEqualMARLSpecs(spec, expected)
@@ -405,7 +400,6 @@ class TestAlgorithmConfig(unittest.TestCase):
                 rl_module_spec=SingleAgentRLModuleSpec(module_class=CustomRLModule1),
             )
         )
-        config.validate()
 
         spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
         self._assertEqualMARLSpecs(spec, expected)
@@ -427,7 +421,6 @@ class TestAlgorithmConfig(unittest.TestCase):
                 ),
             )
         )
-        config.validate()
 
         spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
         self._assertEqualMARLSpecs(spec, expected)
@@ -455,7 +448,6 @@ class TestAlgorithmConfig(unittest.TestCase):
                 ),
             )
         )
-        config.validate()
 
         spec, expected = self._get_expected_marl_spec(
             config, CustomRLModule1, expected_marl_module_class=CustomMARLModule1
@@ -489,7 +481,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertRaisesRegex(
             ValueError,
             "Module_specs cannot be None",
-            lambda: config.validate(),
+            lambda: config.rl_module_spec,
         )
 
         ########################################
@@ -497,7 +489,6 @@ class TestAlgorithmConfig(unittest.TestCase):
         # MultiAgentRLModuleSpec, and the MultiAgentRLModuleSpec has defined its
         # SingleAgentRLmoduleSpecs.
         config = MultiAgentAlgoConfig().experimental(_enable_new_api_stack=True)
-        config.validate()
 
         spec, expected = self._get_expected_marl_spec(
             config, DiscreteBCTorchModule, expected_marl_module_class=CustomMARLModule1

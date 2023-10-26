@@ -461,7 +461,7 @@ class AlgorithmConfig(_Config):
         self.worker_restore_timeout_s = 1800
 
         # `self.rl_module()`
-        self.rl_module_spec = None
+        self._rl_module_spec = None
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
         self.__prior_exploration_config = None
@@ -904,7 +904,7 @@ class AlgorithmConfig(_Config):
 
         # Throw a warning if the user has used rl_module_spec but not enabled the
         # new API stack.
-        if self.rl_module_spec is not None and not self._enable_new_api_stack:
+        if self._rl_module_spec is not None and not self._enable_new_api_stack:
             logger.warning(
                 "You have setup a RLModuleSpec (via calling `config.rl_module(...)`), "
                 "but have not enabled the new API stack. To enable it, call "
@@ -1047,26 +1047,6 @@ class AlgorithmConfig(_Config):
                 self.input_config["parallelism"] = self.num_rollout_workers or 1
 
         if self._enable_new_api_stack:
-            default_rl_module_spec = self.get_default_rl_module_spec()
-            _check_rl_module_spec(default_rl_module_spec)
-
-            if self.rl_module_spec is not None:
-                # Merge provided RL Module spec class with defaults
-                _check_rl_module_spec(self.rl_module_spec)
-                # We can only merge if we have SingleAgentRLModuleSpecs.
-                # TODO(Artur): Support merging for MultiAgentRLModuleSpecs.
-                if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
-                    if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
-                        default_rl_module_spec.update(self.rl_module_spec)
-                        self.rl_module_spec = default_rl_module_spec
-                    elif isinstance(default_rl_module_spec, MultiAgentRLModuleSpec):
-                        raise ValueError(
-                            "Cannot merge MultiAgentRLModuleSpec with "
-                            "SingleAgentRLModuleSpec!"
-                        )
-            else:
-                self.rl_module_spec = default_rl_module_spec
-
             not_compatible_w_rlm_msg = (
                 "Cannot use `{}` option with the new API stack (RLModule and "
                 "Learner APIs)! `{}` is part of the ModelV2 API and Policy API,"
@@ -2594,7 +2574,7 @@ class AlgorithmConfig(_Config):
             This updated AlgorithmConfig object.
         """
         if rl_module_spec is not NotProvided:
-            self.rl_module_spec = rl_module_spec
+            self._rl_module_spec = rl_module_spec
 
         if _enable_rl_module_api is not NotProvided:
             deprecation_warning(
@@ -2678,6 +2658,28 @@ class AlgorithmConfig(_Config):
             )
 
         return self
+
+    @property
+    def rl_module_spec(self):
+        default_rl_module_spec = self.get_default_rl_module_spec()
+        _check_rl_module_spec(default_rl_module_spec)
+
+        if self._rl_module_spec is not None:
+            # Merge provided RL Module spec class with defaults
+            _check_rl_module_spec(self._rl_module_spec)
+            # We can only merge if we have SingleAgentRLModuleSpecs.
+            # TODO(Artur): Support merging for MultiAgentRLModuleSpecs.
+            if isinstance(self._rl_module_spec, SingleAgentRLModuleSpec):
+                if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+                    default_rl_module_spec.update(self._rl_module_spec)
+                    return default_rl_module_spec
+                elif isinstance(default_rl_module_spec, MultiAgentRLModuleSpec):
+                    raise ValueError(
+                        "Cannot merge MultiAgentRLModuleSpec with "
+                        "SingleAgentRLModuleSpec!"
+                    )
+        else:
+            return default_rl_module_spec
 
     @property
     def learner_class(self) -> Type["Learner"]:
@@ -3197,7 +3199,7 @@ class AlgorithmConfig(_Config):
                 values from other sources of information (e.g. environement)
             single_agent_rl_module_spec: The SingleAgentRLModuleSpec to use for
                 constructing a MultiAgentRLModuleSpec. If None, the already
-                configured spec (`self.rl_module_spec`) or the default ModuleSpec for
+                configured spec (`self._rl_module_spec`) or the default ModuleSpec for
                 this algorithm (`self.get_default_rl_module_spec()`) will be used.
         """
         # TODO (Kourosh): When we replace policy entirely there will be no need for
@@ -3211,7 +3213,7 @@ class AlgorithmConfig(_Config):
         default_rl_module_spec = self.get_default_rl_module_spec()
         # The currently configured ModuleSpec (might be multi-agent or single-agent).
         # If None, use the default one.
-        current_rl_module_spec = self.rl_module_spec or default_rl_module_spec
+        current_rl_module_spec = self._rl_module_spec or default_rl_module_spec
 
         # Algorithm is currently setup as a single-agent one.
         if isinstance(current_rl_module_spec, SingleAgentRLModuleSpec):
@@ -3232,7 +3234,7 @@ class AlgorithmConfig(_Config):
         # Algorithm is currently setup as a multi-agent one.
         else:
             # The user currently has a MultiAgentSpec setup (either via
-            # self.rl_module_spec or the default spec of this AlgorithmConfig).
+            # self._rl_module_spec or the default spec of this AlgorithmConfig).
             assert isinstance(current_rl_module_spec, MultiAgentRLModuleSpec)
 
             # Default is single-agent but the user has provided a multi-agent spec
