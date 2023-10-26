@@ -76,15 +76,23 @@ class HPUAcceleratorManager(AcceleratorManager):
                 return "GAUDI" #torch_hpu.get_device_name()
             else:
                 logging.info("HPU type cannot be detected")
-                return ""
+                return None
         else:
-            return ""
+            return None
 
     @staticmethod
     def validate_resource_request_quantity(
         quantity: float,
     ) -> Tuple[bool, Optional[str]]:
-        return (True, None)
+        if isinstance(quantity, float) and not quantity.is_integer():
+            return (
+                False,
+                f"{HPUAcceleratorManager.get_resource_name()} resource quantity"
+                " must be whole numbers. "
+                f"The specified quantity {quantity} is invalid.",
+            )
+        else:
+            return (True, None)
 
     @staticmethod
     def set_current_process_visible_accelerator_ids(
@@ -97,22 +105,3 @@ class HPUAcceleratorManager(AcceleratorManager):
             HPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join([str(i) for i in visible_hpu_devices])
 
-    @staticmethod
-    def get_ec2_instance_num_accelerators(
-        instance_type: str, instances: dict
-    ) -> Optional[int]:
-        if instance_type not in instances:
-            return None
-
-        #TBD
-        return None
-
-    @staticmethod
-    def get_ec2_instance_accelerator_type(
-        instance_type: str, instances: dict
-    ) -> Optional[str]:
-        if instance_type not in instances:
-            return None
-
-        #TBD
-        return None

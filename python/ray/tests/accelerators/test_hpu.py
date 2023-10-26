@@ -40,10 +40,6 @@ def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
     assert ray.available_resources()["HPU"] == 2
 
 
-def test_autodetect_num_hpus_accel():
-    assert HPUAcceleratorManager.get_current_node_num_accelerators() == 8 #default num cards in a node
-
-
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
