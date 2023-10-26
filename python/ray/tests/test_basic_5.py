@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def test_background_tasks_with_max_calls(shutdown_only):
+    ray.shutdown()
     ray.init(
         # TODO (Alex): We need to fix
         # https://github.com/ray-project/ray/issues/20203 to remove this flag.
