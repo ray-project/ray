@@ -297,7 +297,7 @@ py_test_module_list(
     "test_monitor_service.py",
   ],
   size = "medium",
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
