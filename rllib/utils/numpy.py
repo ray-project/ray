@@ -7,7 +7,11 @@ from typing import List, Optional
 
 
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+    Deprecated,
+)
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import SpaceStruct, TensorType, TensorStructType, Union
 
@@ -25,6 +29,10 @@ MAX_LOG_NN_OUTPUT = 2
 
 
 @PublicAPI
+@Deprecated(
+    help="RLlib itself has no use for this anymore.",
+    error=False,
+)
 def aligned_array(size: int, dtype, align: int = 64) -> np.ndarray:
     """Returns an array of a given size that is 64-byte aligned.
 
@@ -55,6 +63,10 @@ def aligned_array(size: int, dtype, align: int = 64) -> np.ndarray:
 
 
 @PublicAPI
+@Deprecated(
+    help="RLlib itself has no use for this anymore.",
+    error=False,
+)
 def concat_aligned(
     items: List[np.ndarray], time_major: Optional[bool] = None
 ) -> np.ndarray:
@@ -233,26 +245,31 @@ def flatten_inputs_to_1d_tensor(
         flattened/one-hot'd input components. Depending on the time_axis flag,
         the shape is (B, n) or (B, T, n).
 
-    Examples:
-        >>> # B=2
-        >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gymnasium.spaces import Discrete, Box
-        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
-        ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
-        ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
-        ... ) # doctest: +SKIP
-        >>> print(out) # doctest: +SKIP
-        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+    .. testcode::
+        :skipif: True
 
-        >>> # B=2; T=2
-        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
-        ...     ([[1, 0], [0, 1]],
-        ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
-        ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
-        ...     time_axis=True
-        ... ) # doctest: +SKIP
-        >>> print(out) # doctest: +SKIP
-        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],\
+        # B=2
+        from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
+        from gymnasium.spaces import Discrete, Box
+        out = flatten_inputs_to_1d_tensor(
+            {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
+            spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
+        )
+        print(out)
+
+        # B=2; T=2
+        out = flatten_inputs_to_1d_tensor(
+            ([[1, 0], [0, 1]],
+             [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
+            spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
+            time_axis=True
+        )
+        print(out)
+
+    .. testoutput::
+
+        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
         [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
     """
 
@@ -327,13 +344,15 @@ def make_action_immutable(obj):
     Returns:
         The immutable object.
 
-    Examples:
-        >>> import tree
-        >>> import numpy as np
-        >>> from ray.rllib.utils.numpy import make_action_immutable
-        >>> arr = np.arange(1,10)
-        >>> d = dict(a = 1, b = (arr, arr))
-        >>> tree.traverse(make_action_immutable, d, top_down=False) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        import tree
+        import numpy as np
+        from ray.rllib.utils.numpy import make_action_immutable
+        arr = np.arange(1,10)
+        d = dict(a = 1, b = (arr, arr))
+        tree.traverse(make_action_immutable, d, top_down=False)
     """
     if isinstance(obj, np.ndarray):
         obj.setflags(write=False)
@@ -443,6 +462,7 @@ def one_hot(
     depth: int = 0,
     on_value: float = 1.0,
     off_value: float = 0.0,
+    dtype: type = np.float32,
 ) -> np.ndarray:
     """One-hot utility function for numpy.
 
@@ -497,7 +517,7 @@ def one_hot(
         indices.append(r)
     indices.append(x)
     out[tuple(indices)] = on_value
-    return out
+    return out.astype(dtype)
 
 
 @PublicAPI

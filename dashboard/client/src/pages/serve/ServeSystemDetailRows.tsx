@@ -9,7 +9,9 @@ import {
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { StatusChip } from "../../components/StatusChip";
-import { ServeHttpProxy } from "../../type/serve";
+import { ServeProxy, ServeSystemActor } from "../../type/serve";
+import { useFetchActor } from "../actor/hook/useActorDetail";
+import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -24,42 +26,109 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-export type ServeHttpProxyRowProps = {
-  httpProxy: ServeHttpProxy;
+export type ServeProxyRowProps = {
+  proxy: ServeProxy;
 };
 
-export const ServeHttpProxyRow = ({ httpProxy }: ServeHttpProxyRowProps) => {
-  const { node_id, status, actor_id } = httpProxy;
+export const ServeProxyRow = ({ proxy }: ServeProxyRowProps) => {
+  const { status } = proxy;
+
+  return (
+    <ServeSystemActorRow
+      actor={proxy}
+      type="proxy"
+      status={<StatusChip type="serveProxy" status={status} />}
+    />
+  );
+};
+
+export type ServeControllerRowProps = {
+  controller: ServeSystemActor;
+};
+
+export const ServeControllerRow = ({ controller }: ServeControllerRowProps) => {
+  const { data: actor } = useFetchActor(controller.actor_id);
+
+  const status = actor?.state;
+
+  return (
+    <ServeSystemActorRow
+      actor={controller}
+      type="controller"
+      status={
+        status ? (
+          <StatusChip
+            type="serveController"
+            status={convertActorStateForServeController(status)}
+          />
+        ) : (
+          "-"
+        )
+      }
+    />
+  );
+};
+
+type ServeSystemActorRowProps = {
+  actor: ServeSystemActor;
+  type: "controller" | "proxy";
+  status: React.ReactNode;
+};
+
+const ServeSystemActorRow = ({
+  actor,
+  type,
+  status,
+}: ServeSystemActorRowProps) => {
+  const { node_id, actor_id } = actor;
   const classes = useStyles();
 
   return (
     <TableRow>
       <TableCell align="center">
-        <Link component={RouterLink} to={`httpProxies/${node_id}`}>
-          HTTPProxyActor:{node_id}
-        </Link>
-      </TableCell>
-      <TableCell align="center">
-        <StatusChip type="serveHttpProxy" status={status} />
-      </TableCell>
-      <TableCell align="center">
-        <Link component={RouterLink} to={`httpProxies/${node_id}`}>
-          Log
-        </Link>
-      </TableCell>
-      <TableCell align="center">
-        <Tooltip className={classes.idCol} title={node_id} arrow interactive>
-          <Link component={RouterLink} to={`/cluster/nodes/${node_id}`}>
-            {node_id}
+        {type === "proxy" ? (
+          <Link component={RouterLink} to={`proxies/${node_id}`}>
+            ProxyActor:{node_id}
           </Link>
-        </Tooltip>
+        ) : (
+          <Link component={RouterLink} to="controller">
+            Serve Controller
+          </Link>
+        )}
+      </TableCell>
+      <TableCell align="center">{status}</TableCell>
+      <TableCell align="center">
+        {type === "proxy" ? (
+          <Link component={RouterLink} to={`proxies/${node_id}`}>
+            Log
+          </Link>
+        ) : (
+          <Link component={RouterLink} to="controller">
+            Log
+          </Link>
+        )}
       </TableCell>
       <TableCell align="center">
-        <Tooltip className={classes.idCol} title={actor_id} arrow interactive>
-          <Link component={RouterLink} to={`/actors/${actor_id}`}>
-            {actor_id}
-          </Link>
-        </Tooltip>
+        {node_id ? (
+          <Tooltip className={classes.idCol} title={node_id} arrow interactive>
+            <Link component={RouterLink} to={`/cluster/nodes/${node_id}`}>
+              {node_id}
+            </Link>
+          </Tooltip>
+        ) : (
+          "-"
+        )}
+      </TableCell>
+      <TableCell align="center">
+        {actor_id ? (
+          <Tooltip className={classes.idCol} title={actor_id} arrow interactive>
+            <Link component={RouterLink} to={`/actors/${actor_id}`}>
+              {actor_id}
+            </Link>
+          </Tooltip>
+        ) : (
+          "-"
+        )}
       </TableCell>
     </TableRow>
   );

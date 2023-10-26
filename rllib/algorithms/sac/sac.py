@@ -22,14 +22,15 @@ logger = logging.getLogger(__name__)
 class SACConfig(AlgorithmConfig):
     """Defines a configuration class from which an SAC Algorithm can be built.
 
-    Example:
-        >>> config = SACConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
-        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
-        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
+
+        config = SACConfig().training(gamma=0.9, lr=0.01, train_batch_size=32)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build(env="CartPole-v1")
+        algo.train()
     """
 
     def __init__(self, algo_class=None):
@@ -100,7 +101,7 @@ class SACConfig(AlgorithmConfig):
         self.train_batch_size = 256
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
         self.num_steps_sampled_before_learning_starts = 1500
 
         # .reporting()

@@ -55,7 +55,7 @@ class TestLearnerGroupCheckpointing(unittest.TestCase):
         ray.shutdown()
 
     def test_save_load_state(self):
-        fws = ["tf", "torch"]
+        fws = ["tf2", "torch"]
         scaling_modes = REMOTE_SCALING_CONFIGS.keys()
         test_iterator = itertools.product(fws, scaling_modes)
 

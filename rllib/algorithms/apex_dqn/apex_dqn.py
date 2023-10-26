@@ -29,7 +29,11 @@ from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -143,7 +147,7 @@ class ApexDQNConfig(DQNConfig):
         self.training_intensity = 1
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
         self.num_steps_sampled_before_learning_starts = 50000
 
         self.max_requests_in_flight_per_replay_worker = float("inf")
@@ -310,6 +314,12 @@ class ApexDQNConfig(DQNConfig):
         super().validate()
 
 
+@Deprecated(
+    old="rllib/algorithms/apex_dqn/",
+    new="rllib_contrib/apex_dqn/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class ApexDQN(DQN):
     @override(Trainable)
     def setup(self, config: AlgorithmConfig):

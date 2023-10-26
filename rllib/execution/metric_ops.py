@@ -9,6 +9,8 @@ from ray.rllib.execution.common import (
     _get_shared_metrics,
 )
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 
 class CollectMetrics:
@@ -19,11 +21,16 @@ class CollectMetrics:
     This should be used with the .for_each() operator. For a higher level
     API, consider using StandardMetricsReporting instead.
 
-    Examples:
-        >>> from ray.rllib.execution.metric_ops import CollectMetrics
-        >>> train_op, workers = ... # doctest: +SKIP
-        >>> output_op = train_op.for_each(CollectMetrics(workers)) # doctest: +SKIP
-        >>> print(next(output_op)) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.execution.metric_ops import CollectMetrics
+        train_op, workers = ...
+        output_op = train_op.for_each(CollectMetrics(workers))
+        print(next(output_op))
+
+    .. testoutput::
+
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
@@ -43,6 +50,8 @@ class CollectMetrics:
         self.keep_custom_metrics = keep_per_episode_custom_metrics
         self.selected_workers = selected_workers
         self.by_steps_trained = by_steps_trained
+        if log_once("learner-thread-deprecation-warning"):
+            deprecation_warning(old="ray.rllib.execution.metric_ops.CollectMetrics")
 
     def __call__(self, _: Any) -> Dict:
         # Collect worker metrics.

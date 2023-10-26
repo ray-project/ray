@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.experimental.state.api import list_nodes
+from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
@@ -83,9 +83,6 @@ _METRICS = [
     "ray_gcs_actors_count",
 ]
 
-if not ray._raylet.Config.use_ray_syncer():
-    _METRICS.append("ray_outbound_heartbeat_size_kb_sum")
-
 # This list of metrics should be kept in sync with
 # ray/python/ray/autoscaler/_private/prom_metrics.py
 _AUTOSCALER_METRICS = [
@@ -114,7 +111,7 @@ _AUTOSCALER_METRICS = [
 
 
 # This list of metrics should be kept in sync with
-# ray/python/ray/autoscaler/_private/prom_metrics.py
+# dashboard/dashboard_metrics.py
 _DASHBOARD_METRICS = [
     "ray_dashboard_api_requests_duration_seconds_bucket",
     "ray_dashboard_api_requests_duration_seconds_created",
@@ -156,6 +153,7 @@ _NODE_COMPONENT_METRICS = [
     "ray_component_cpu_percentage",
     "ray_component_rss_mb",
     "ray_component_uss_mb",
+    "ray_component_num_fds",
 ]
 
 _METRICS.append("ray_health_check_rpc_latency_ms_sum")
@@ -447,6 +445,7 @@ def test_per_func_name_stats(shutdown_only):
     comp_metrics = [
         "ray_component_cpu_percentage",
         "ray_component_rss_mb",
+        "ray_component_num_fds",
     ]
     if sys.platform == "linux" or sys.platform == "linux2":
         # Uss only available from Linux

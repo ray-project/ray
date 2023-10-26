@@ -7,7 +7,7 @@ config = (  # 1. Configure the algorithm,
     PPOConfig()
     .environment("Taxi-v3")
     .rollouts(num_rollout_workers=2)
-    .framework("tf2")
+    .framework("torch")
     .training(model={"fcnet_hiddens": [64, 64]})
     .evaluation(evaluation_num_workers=1)
 )

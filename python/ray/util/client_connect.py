@@ -1,8 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple
 import logging
 
-import grpc
-
 from ray._private.client_mode_hook import (
     _explicitly_enable_client_mode,
     _set_client_hook_status,
@@ -30,7 +28,7 @@ def connect(
     namespace: str = None,
     *,
     ignore_version: bool = False,
-    _credentials: Optional[grpc.ChannelCredentials] = None,
+    _credentials: Optional["grpc.ChannelCredentials"] = None,  # noqa: F821
     ray_init_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if ray.is_connected():

@@ -4,7 +4,6 @@ import pytest
 
 import ray
 from ray.data.datasource import MongoDatasource
-
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -31,8 +30,8 @@ def start_mongo():
 
 
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):
-    from pymongoarrow.api import Schema
     from pymongo.errors import ServerSelectionTimeoutError
+    from pymongoarrow.api import Schema
 
     client, mongo_url = start_mongo
     foo_db = "foo-db"
@@ -132,7 +131,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     )
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=5,\n"
+        "   num_blocks=200,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"
@@ -149,7 +148,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     )
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=5,\n"
+        "   num_blocks=1000,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"
@@ -248,7 +247,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     ).materialize()
     assert str(ds) == (
         "MaterializedDataset(\n"
-        "   num_blocks=5,\n"
+        "   num_blocks=200,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"
@@ -266,7 +265,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     )
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=5,\n"
+        "   num_blocks=1000,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"

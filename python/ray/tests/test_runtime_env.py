@@ -12,7 +12,10 @@ from typing import Any, Dict, List
 from unittest import mock
 
 import pytest
-from ray.runtime_env.runtime_env import RuntimeEnvConfig
+from ray.runtime_env.runtime_env import (
+    RuntimeEnvConfig,
+    _merge_runtime_env,
+)
 import requests
 
 import ray
@@ -40,20 +43,84 @@ from ray.runtime_env import RuntimeEnv
 import ray._private.ray_constants as ray_constants
 
 
+def test_runtime_env_merge():
+    # Both are None.
+    parent = None
+    child = None
+    assert _merge_runtime_env(parent, child) == {}
+
+    parent = {}
+    child = None
+    assert _merge_runtime_env(parent, child) == {}
+
+    parent = None
+    child = {}
+    assert _merge_runtime_env(parent, child) == {}
+
+    parent = {}
+    child = {}
+    assert _merge_runtime_env(parent, child) == {}
+
+    # Only parent is given.
+    parent = {"conda": ["requests"], "env_vars": {"A": "1"}}
+    child = None
+    assert _merge_runtime_env(parent, child) == parent
+
+    # Only child is given.
+    parent = None
+    child = {"conda": ["requests"], "env_vars": {"A": "1"}}
+    assert _merge_runtime_env(parent, child) == child
+
+    # Successful case.
+    parent = {"conda": ["requests"], "env_vars": {"A": "1"}}
+    child = {"pip": ["requests"], "env_vars": {"B": "2"}}
+    assert _merge_runtime_env(parent, child) == {
+        "conda": ["requests"],
+        "pip": ["requests"],
+        "env_vars": {"A": "1", "B": "2"},
+    }
+
+    # Failure case
+    parent = {"pip": ["requests"], "env_vars": {"A": "1"}}
+    child = {"pip": ["colors"], "env_vars": {"B": "2"}}
+    assert _merge_runtime_env(parent, child) is None
+
+    # Failure case (env_vars)
+    parent = {"pip": ["requests"], "env_vars": {"A": "1"}}
+    child = {"conda": ["requests"], "env_vars": {"A": "2"}}
+    assert _merge_runtime_env(parent, child) is None
+
+    # override = True
+    parent = {"pip": ["requests"], "env_vars": {"A": "1"}}
+    child = {"pip": ["colors"], "env_vars": {"B": "2"}}
+    assert _merge_runtime_env(parent, child, override=True) == {
+        "pip": ["colors"],
+        "env_vars": {"A": "1", "B": "2"},
+    }
+
+    # override = True + env vars
+    parent = {"pip": ["requests"], "env_vars": {"A": "1"}}
+    child = {"pip": ["colors"], "conda": ["requests"], "env_vars": {"A": "2"}}
+    assert _merge_runtime_env(parent, child, override=True) == {
+        "pip": ["colors"],
+        "env_vars": {"A": "2"},
+        "conda": ["requests"],
+    }
+
+
 def test_get_wheel_filename():
     """Test the code that generates the filenames of the `latest` wheels."""
     # NOTE: These should not be changed for releases.
     ray_version = "3.0.0.dev0"
-    for sys_platform in ["darwin", "linux", "win32"]:
-        for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
-            # TODO(https://github.com/ray-project/ray/issues/31362)
-            if py_version == (3, 11) and sys_platform != "linux":
-                continue
-
-            filename = get_wheel_filename(sys_platform, ray_version, py_version)
-            prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
-            url = f"{prefix}{filename}"
-            assert requests.head(url).status_code == 200, url
+    for arch in ["x86_64", "aarch64", "arm64"]:
+        for sys_platform in ["darwin", "linux", "win32"]:
+            for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
+                filename = get_wheel_filename(
+                    sys_platform, ray_version, py_version, arch
+                )
+                prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
+                url = f"{prefix}{filename}"
+                assert requests.head(url).status_code == 200, url
 
 
 def test_get_master_wheel_url():
@@ -63,13 +130,9 @@ def test_get_master_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/master/<test_commit>/`.
-    test_commit = "cf23cd6810dbfd7b1ac3016fba02ff4594f24b7f"
+    test_commit = "0910639b6eba1b77b9a36b9f3350c5aa274578dd"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
-            # TODO(https://github.com/ray-project/ray/issues/31362)
-            if py_version == (3, 11) and sys_platform != "linux":
-                continue
-
             url = get_master_wheel_url(
                 test_commit, sys_platform, ray_version, py_version
             )
@@ -81,20 +144,10 @@ def test_get_release_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    test_commits = {"2.3.0": "cf7a56b4b0b648c324722df7c99c168e92ff0b45"}
+    test_commits = {"2.7.0": "904dbce085bc542b93fbe06d75f3b02a65d3a2b4"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():
-                # TODO(https://github.com/ray-project/ray/issues/31362)
-                if py_version == (3, 11) and sys_platform != "linux":
-                    continue
-
-                # TODO(https://github.com/ray-project/ray/issues/33396)
-                # We currently don't have a release with the new wheel names with the
-                # x86_64 suffix.
-                if sys_platform == "darwin":
-                    continue
-
                 url = get_release_wheel_url(commit, sys_platform, version, py_version)
                 assert requests.head(url).status_code == 200, url
 
@@ -279,11 +332,12 @@ def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
     start = time.time()
     got_num_workers = False
     while time.time() - start < 10:
-        # Check that no more workers were started.
+        # Check that no more than one extra worker is started. We add one
+        # because Ray will prestart an idle worker for the one available CPU.
         num_workers = get_num_workers()
         if num_workers is not None:
             got_num_workers = True
-            assert num_workers <= 1
+            assert num_workers <= 2
         time.sleep(0.1)
     assert got_num_workers, "failed to read num workers for 10 seconds"
 

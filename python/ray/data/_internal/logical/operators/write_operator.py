@@ -1,8 +1,8 @@
 from typing import Any, Dict, Optional
 
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data._internal.compute import TaskPoolStrategy
 from ray.data.datasource.datasource import Datasource
 
 
@@ -26,4 +26,4 @@ class Write(AbstractMap):
         # Always use task to write.
         self._compute = TaskPoolStrategy()
         # Take the input blocks unchanged while writing.
-        self._target_block_size = float("inf")
+        self._min_rows_per_block = float("inf")

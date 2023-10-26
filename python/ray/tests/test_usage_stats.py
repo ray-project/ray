@@ -125,6 +125,8 @@ def reset_ray_version_commit():
 def test_get_extra_usage_tags_to_report(
     monkeypatch, call_ray_start, reset_usage_stats, ray_client, gcs_storage_type
 ):
+    if os.environ.get("RAY_MINIMAL") == "1" and ray_client:
+        pytest.skip("Skipping due to we don't have ray client in minimal.")
     with monkeypatch.context() as m:
         # Test a normal case.
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2")
@@ -1204,6 +1206,8 @@ provider:
         if os.environ.get("RAY_MINIMAL") != "1":
             expected_payload["tune_scheduler"] = "FIFOScheduler"
             expected_payload["tune_searcher"] = "BasicVariantGenerator"
+            expected_payload["air_entrypoint"] = "Tuner.fit"
+            expected_payload["air_storage_configuration"] = "local"
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
@@ -1280,18 +1284,10 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats
             if "dashboard.log" in str(path):
                 with open(str(path), "r") as f:
                     contents = f.readlines()
+                break
         assert contents is not None
-
-        keyword_found = False
-        for c in contents:
-            if "Usage reporting is disabled" in c:
-                keyword_found = True
-
-        # Make sure the module was disabled.
-        assert keyword_found
-
-        for c in contents:
-            assert "Failed to report usage stats" not in c
+        assert any(["Usage reporting is disabled" in c for c in contents])
+        assert all(["Failed to report usage stats" not in c for c in contents])
 
 
 def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_usage_stats):

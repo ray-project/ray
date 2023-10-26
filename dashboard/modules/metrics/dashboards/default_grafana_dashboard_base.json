@@ -25,16 +25,32 @@
   "templating": {
     "list": [
       {
-        "allValue": null,
         "current": {
           "selected": false
         },
-        "datasource": "Prometheus",
+        "description": "Filter queries of a specific Prometheus type.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {
+          "selected": false
+        },
+        "datasource": "${datasource}",
         "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, SessionName)",
         "description": "Filter queries to specific ray sessions.",
         "error": null,
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": null,
         "multi": false,
         "name": "SessionName",
@@ -64,7 +80,7 @@
             "$__all"
           ]
         },
-        "datasource": "Prometheus",
+        "datasource": "${datasource}",
         "definition": "label_values(ray_node_network_receive_speed{{SessionName=\"$SessionName\",{global_filters}}}, instance)",
         "description": null,
         "error": null,

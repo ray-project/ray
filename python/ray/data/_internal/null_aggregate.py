@@ -1,10 +1,9 @@
-from typing import Tuple, Callable, Any, Union
 from types import ModuleType
+from typing import Any, Callable, Tuple, Union
 
 import numpy as np
 
-from ray.data.block import T, U, Block, KeyType, AggType
-
+from ray.data.block import AggType, Block, KeyType, T, U
 
 WrappedAggType = Tuple[AggType, int]
 

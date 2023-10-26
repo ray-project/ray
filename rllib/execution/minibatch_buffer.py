@@ -2,6 +2,7 @@ from typing import Any, Tuple
 import queue
 
 
+# TODO (sven): Deprecate MinibatchBuffer.
 class MinibatchBuffer:
     """Ring buffer of recent data batches for minibatch SGD.
 

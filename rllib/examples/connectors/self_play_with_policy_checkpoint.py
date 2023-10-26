@@ -4,7 +4,9 @@ The checkpointed policy may be trained with a different algorithm too.
 """
 
 import argparse
-from pathlib import Path
+from functools import partial
+import os
+import tempfile
 
 import ray
 from ray import air, tune
@@ -12,29 +14,20 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.env.utils import try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.examples.connectors.prepare_checkpoint import (
+    create_open_spiel_checkpoint,
+)
 from ray.rllib.policy.policy import Policy
 from ray.tune import CLIReporter, register_env
 
+
 pyspiel = try_import_pyspiel(error=True)
+register_env(
+    "open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game("connect_four"))
+)
+
 
 parser = argparse.ArgumentParser()
-# This should point to a checkpointed policy that plays connect_four.
-# Note that this policy may be trained with different algorithms than
-# the current one.
-parser.add_argument(
-    "--checkpoint_file",
-    type=str,
-    default="",
-    help=(
-        "Path to a connector enabled checkpoint file for restoring,"
-        "relative to //ray/rllib/ folder."
-    ),
-)
-parser.add_argument(
-    "--policy_id",
-    default="main",
-    help="ID of policy to load.",
-)
 parser.add_argument(
     "--train_iteration",
     type=int,
@@ -43,47 +36,42 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-assert args.checkpoint_file, "Must specify --checkpoint_file flag."
+
+MAIN_POLICY_ID = "main"
+OPPONENT_POLICY_ID = "opponent"
 
 
 class AddPolicyCallback(DefaultCallbacks):
-    def __init__(self):
+    def __init__(self, checkpoint_dir):
+        self._checkpoint_dir = checkpoint_dir
         super().__init__()
 
     def on_algorithm_init(self, *, algorithm, **kwargs):
-        checkpoint_path = str(
-            Path(__file__)
-            .parent.parent.parent.absolute()
-            .joinpath(args.checkpoint_file)
+        policy = Policy.from_checkpoint(
+            self._checkpoint_dir, policy_ids=[OPPONENT_POLICY_ID]
         )
-        policy = Policy.from_checkpoint(checkpoint_path)
 
-        # Add restored policy to trainer.
+        # Add restored policy to Algorithm.
         # Note that this policy doesn't have to be trained with the same algorithm
         # of the training stack. You can even mix up TF policies with a Torch stack.
         algorithm.add_policy(
-            policy_id="opponent",
+            policy_id=OPPONENT_POLICY_ID,
             policy=policy,
             evaluation_workers=True,
         )
 
 
-if __name__ == "__main__":
-    ray.init()
+def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+    # main policy plays against opponent policy.
+    return MAIN_POLICY_ID if episode.episode_id % 2 == agent_id else OPPONENT_POLICY_ID
 
-    register_env(
-        "open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game("connect_four"))
-    )
 
-    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
-        # main policy plays against opponent policy.
-        return "main" if episode.episode_id % 2 == agent_id else "opponent"
-
+def main(checkpoint_dir):
     config = (
         SACConfig()
         .environment("open_spiel_env")
         .framework("torch")
-        .callbacks(AddPolicyCallback)
+        .callbacks(partial(AddPolicyCallback, checkpoint_dir))
         .rollouts(
             num_rollout_workers=1,
             num_envs_per_worker=5,
@@ -99,14 +87,14 @@ if __name__ == "__main__":
             # will then play (instead of "random"). This is done in the
             # custom callback defined above (`SelfPlayCallback`).
             # Note: We will add the "opponent" policy with callback.
-            policies={"main"},  # Our main policy, we'd like to optimize.
+            policies={MAIN_POLICY_ID},  # Our main policy, we'd like to optimize.
             # Assign agent 0 and 1 randomly to the "main" policy or
             # to the opponent ("random" at first). Make sure (via episode_id)
             # that "main" always plays against "random" (and not against
             # another "main").
             policy_mapping_fn=policy_mapping_fn,
             # Always just train the "main" policy.
-            policies_to_train=["main"],
+            policies_to_train=[MAIN_POLICY_ID],
         )
     )
 
@@ -138,5 +126,21 @@ if __name__ == "__main__":
         ),
     )
     tuner.fit()
+
+
+if __name__ == "__main__":
+    ray.init()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        create_open_spiel_checkpoint(tmpdir)
+
+        policy_checkpoint_path = os.path.join(
+            tmpdir,
+            "checkpoint_000000",
+            "policies",
+            OPPONENT_POLICY_ID,
+        )
+
+        main(policy_checkpoint_path)
 
     ray.shutdown()

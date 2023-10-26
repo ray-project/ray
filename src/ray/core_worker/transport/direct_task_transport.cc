@@ -16,6 +16,7 @@
 
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace core {
@@ -24,7 +25,10 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
-  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
+  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
+    // NOTE: task_spec here is capture copied (from a stack variable) and also
+    // mutable. (Mutations to the variable are expected to be shared inside and
+    // outside of this closure).
     task_finisher_->MarkDependenciesResolved(task_spec.TaskId());
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
@@ -95,6 +99,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         keep_executing = false;
       }
       if (keep_executing) {
+        task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
+            current_sys_time_ms());
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
         const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
@@ -119,6 +125,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               OnWorkerIdle(active_worker_addr,
                            scheduling_key,
                            /*was_error*/ false,
+                           /*error_detail*/ "",
                            /*worker_exiting*/ false,
                            lease_entry.assigned_resources);
               break;
@@ -155,6 +162,7 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
 
 void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
                                                  bool was_error,
+                                                 const std::string &error_detail,
                                                  bool worker_exiting,
                                                  const SchedulingKey &scheduling_key) {
   RAY_LOG(DEBUG) << "Returning worker " << addr.worker_id << " to raylet "
@@ -175,7 +183,7 @@ void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
   }
 
   auto status = lease_entry.lease_client->ReturnWorker(
-      addr.port, addr.worker_id, was_error, worker_exiting);
+      addr.port, addr.worker_id, was_error, error_detail, worker_exiting);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
   }
@@ -186,6 +194,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     const rpc::WorkerAddress &addr,
     const SchedulingKey &scheduling_key,
     bool was_error,
+    const std::string &error_detail,
     bool worker_exiting,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   auto &lease_entry = worker_to_lease_entry_[addr];
@@ -205,13 +214,14 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
     // Return the worker only if there are no tasks to do.
     if (!lease_entry.is_busy) {
-      ReturnWorker(addr, was_error, worker_exiting, scheduling_key);
+      ReturnWorker(addr, was_error, error_detail, worker_exiting, scheduling_key);
     }
   } else {
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
 
     while (!current_queue.empty() && !lease_entry.is_busy) {
       auto task_spec = current_queue.front();
+
       lease_entry.is_busy = true;
 
       // Increment the total number of tasks in flight to any worker associated with the
@@ -219,6 +229,9 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
       RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
       scheduling_key_entry.num_busy_workers++;
+
+      task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
+      task_spec.EmitTaskMetrics();
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
@@ -477,6 +490,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               OnWorkerIdle(addr,
                            scheduling_key,
                            /*error=*/false,
+                           /*error_detail*/ "",
                            /*worker_exiting=*/false,
                            resources_copy);
             } else {
@@ -642,11 +656,14 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           }
 
           if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
+            bool was_error = !status.ok();
+            bool is_worker_exiting = reply.worker_exiting();
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr,
                          scheduling_key,
-                         /*error=*/!status.ok(),
-                         /*worker_exiting=*/reply.worker_exiting(),
+                         /*error=*/was_error,
+                         /*error_detail*/ status.message(),
+                         /*worker_exiting=*/is_worker_exiting,
                          assigned_resources);
           }
         }
@@ -786,6 +803,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
+  request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());
   client->CancelTask(
       request,
       [this, task_spec, scheduling_key, force_kill, recursive](

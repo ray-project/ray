@@ -6,6 +6,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     GRAD_WAIT_TIMER,
@@ -174,6 +175,12 @@ class A3CConfig(AlgorithmConfig):
             raise ValueError("`num_workers` for A3C must be >= 1!")
 
 
+@Deprecated(
+    old="rllib/algorithms/a3c/",
+    new="rllib_contrib/a3c/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class A3C(Algorithm):
     @classmethod
     @override(Algorithm)

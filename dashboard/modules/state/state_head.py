@@ -20,7 +20,7 @@ from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.utils import Change
-from ray.experimental.state.common import (
+from ray.util.state.common import (
     RAY_MAX_LIMIT_FROM_API_SERVER,
     ListApiOptions,
     GetLogOptions,
@@ -32,13 +32,13 @@ from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
 )
-from ray.experimental.state.exception import DataSourceUnavailable
-from ray.experimental.state.state_manager import StateDataSourceClient
-from ray.experimental.state.util import convert_string_to_type
+from ray.util.state.exception import DataSourceUnavailable
+from ray.util.state.state_manager import StateDataSourceClient
+from ray.util.state.util import convert_string_to_type
 
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 class RateLimitedModule(ABC):
@@ -250,6 +250,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 node_id,
                 node_info["nodeManagerAddress"],
                 int(node_info["nodeManagerPort"]),
+                int(node_info["runtimeEnvAgentPort"]),
             )
 
     async def _update_agent_stubs(self, change: Change):
@@ -406,6 +407,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             filename=req.query.get("filename", None),
             actor_id=req.query.get("actor_id", None),
             task_id=req.query.get("task_id", None),
+            submission_id=req.query.get("submission_id", None),
             pid=req.query.get("pid", None),
             lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),

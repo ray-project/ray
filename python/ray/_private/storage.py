@@ -1,4 +1,3 @@
-import importlib
 import os
 import re
 import urllib
@@ -6,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
+from ray._private.utils import _add_creatable_buckets_param_if_s3_uri, load_class
 from ray._private.auto_init_hook import wrap_auto_init
 
 if TYPE_CHECKING:
@@ -35,12 +34,22 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
     storage filesystem.
 
     Examples:
-        # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
-        >>> fs, path = storage.get_filesystem()
-        >>> print(fs)
-        <pyarrow._fs.LocalFileSystem object at 0x7fd745dd9830>
-        >>> print(path)
-        cluster_1/storage
+        .. testcode::
+
+            import ray
+            from ray._private import storage
+
+            ray.shutdown()
+
+            ray.init(storage="/tmp/storage/cluster_1/storage")
+            fs, path = storage.get_filesystem()
+            print(fs)
+            print(path)
+
+        .. testoutput::
+
+            <pyarrow._fs.LocalFileSystem object at ...>
+            /tmp/storage/cluster_1/storage
 
     Returns:
         Tuple of pyarrow filesystem instance and the path under which files should
@@ -63,9 +72,16 @@ def get_client(prefix: str) -> "KVClient":
             data will be stored under. All writes will be scoped to this sub-dir.
 
     Examples:
-        # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
-        >>> client = storage.get_client("foo")
-        >>> client.put("foo", b"bar")
+        .. testcode::
+
+            import ray
+            from ray._private import storage
+
+            ray.shutdown()
+
+            ray.init(storage="/tmp/storage/cluster_1/storage")
+            client = storage.get_client("foo")
+            client.put("foo", b"bar")
 
     Returns:
         KVClient.
@@ -107,9 +123,16 @@ class KVClient:
         """Save a blob in persistent storage at the given path, if possible.
 
         Examples:
-            # Writes "bar" to <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.put("path/foo.txt", b"bar")
+            .. testcode::
+
+                import ray
+                from ray._private import storage
+
+                ray.shutdown()
+
+                ray.init(storage="/tmp/storage/cluster_1/storage")
+                client = storage.get_client("my_app")
+                client.put("path/foo.txt", b"bar")
 
         Args:
             path: Relative directory of the blobs.
@@ -130,12 +153,19 @@ class KVClient:
         """Load a blob from persistent storage at the given path, if possible.
 
         Examples:
-            # Loads value from <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.get("path/foo.txt")
-            b"bar"
-            >>> client.get("invalid")
-            None
+            .. testcode::
+
+                import ray
+                from ray._private import storage
+
+                ray.shutdown()
+
+                ray.init(storage="/tmp/storage/cluster_1/storage")
+
+                client = storage.get_client("my_app")
+                client.put("path/foo.txt", b"bar")
+                assert client.get("path/foo.txt") == b"bar"
+                assert client.get("invalid") is None
 
         Args:
             path: Relative directory of the blobs.
@@ -158,10 +188,18 @@ class KVClient:
         """Load the blob from persistent storage at the given path, if possible.
 
         Examples:
-            # Deletes blob at <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.delete("path/foo.txt")
-            True
+            .. testcode::
+
+                import ray
+                from ray._private import storage
+
+                ray.shutdown()
+
+                ray.init(storage="/tmp/storage/cluster_1/storage")
+
+                client = storage.get_client("my_app")
+                client.put("path/foo.txt", b"bar")
+                assert client.delete("path/foo.txt")
 
         Args:
             path: Relative directory of the blob.
@@ -184,10 +222,18 @@ class KVClient:
         """Delete a directory and its contents, recursively.
 
         Examples:
-            # Deletes dir at <storage_prefix>/my_app/path/
-            >>> client = storage.get_client("my_app")
-            >>> client.delete_dir("path")
-            True
+            .. testcode::
+
+                import ray
+                from ray._private import storage
+
+                ray.shutdown()
+
+                ray.init(storage="/tmp/storage/cluster_1/storage")
+
+                client = storage.get_client("my_app")
+                client.put("path/foo.txt", b"bar")
+                assert client.delete_dir("path")
 
         Args:
             path: Relative directory of the blob.
@@ -210,15 +256,26 @@ class KVClient:
         """Get info about the persistent blob at the given path, if possible.
 
         Examples:
-            # Inspect blob at <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.get_info("path/foo.txt")
-            <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.File>
+            .. testcode::
 
-            # Non-existent blob.
-            >>> client.get_info("path/does_not_exist.txt")
-            None
-            <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.NotFound>
+                import ray
+                from ray._private import storage
+
+                ray.shutdown()
+
+                ray.init(storage="/tmp/storage/cluster_1/storage")
+
+                client = storage.get_client("my_app")
+                client.put("path/foo.txt", b"bar")
+
+                print(client.get_info("path/foo.txt"))
+
+                print(client.get_info("path/does_not_exist.txt"))
+
+            .. testoutput::
+
+                <FileInfo for '.../my_app/path/foo.txt': type=FileType.File, size=3>
+                None
 
         Args:
             path: Relative directory of the blob.
@@ -241,19 +298,33 @@ class KVClient:
         """List blobs and sub-dirs in the given path, if possible.
 
         Examples:
-            # List created blobs and dirs at <storage_prefix>/my_app/path
+
+            >>> import ray
+            >>> from ray._private import storage
+            >>> ray.shutdown()
+
+            Normal usage.
+
+            >>> ray.init(storage="/tmp/storage/cluster_1/storage")
+            RayContext(...)
             >>> client = storage.get_client("my_app")
+            >>> client.put("path/foo.txt", b"bar")
             >>> client.list("path")
-            [<FileInfo for '/tmp/storage/my_app/path/foo.txt' type=FileType.File>,
-             <FileInfo for '/tmp/storage/my_app/path/subdir' type=FileType.Directory>]
+            [<FileInfo for '.../my_app/path/foo.txt': type=FileType.File, size=3>]
 
-            # Non-existent path.
-            >>> client.get_info("does_not_exist")
-            FileNotFoundError: ...
+            Non-existent path.
 
-            # Not a directory.
-            >>> storage.get_info("path/foo.txt")
-            NotADirectoryError: ...
+            >>> client.list("does_not_exist")
+            Traceback (most recent call last):
+                ...
+            FileNotFoundError: ... No such file or directory
+
+            Not a directory.
+
+            >>> client.list("path/foo.txt")
+            Traceback (most recent call last):
+                ...
+            NotADirectoryError: ... Not a directory
 
         Args:
             path: Relative directory to list from.
@@ -415,15 +486,6 @@ def _reset() -> None:
     _storage_uri = _filesystem = _storage_prefix = None
 
 
+# TODO(ekl): remove this indirection.
 def _load_class(path):
-    """Load a class at runtime given a full path.
-
-    Example of the path: mypkg.mysubpkg.myclass
-    """
-    class_data = path.split(".")
-    if len(class_data) < 2:
-        raise ValueError("You need to pass a valid path like mymodule.provider_class")
-    module_path = ".".join(class_data[:-1])
-    class_str = class_data[-1]
-    module = importlib.import_module(module_path)
-    return getattr(module, class_str)
+    return load_class(path)

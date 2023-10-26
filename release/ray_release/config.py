@@ -6,27 +6,15 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import jsonschema
 import yaml
+from ray_release.test import (
+    Test,
+    TestDefinition,
+)
 from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.util import DeferredEnvVar, deep_update
-
-
-class Test(dict):
-    """A class represents a test to run on buildkite"""
-
-    pass
-
-
-class TestDefinition(dict):
-    """
-    A class represents a definition of a test, such as test name, group, etc. Comparing
-    to the test class, there are additional field, for example variations, which can be
-    used to define several variations of a test.
-    """
-
-    pass
 
 
 DEFAULT_WHEEL_WAIT_TIMEOUT = 7200  # Two hours
@@ -44,9 +32,6 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
     "prj_FKRmeV5pA6X72aVscFALNC32",
-)
-DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
 )
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -81,7 +66,7 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     tests = []
     for test_definition in test_definitions:
         if "variations" not in test_definition:
-            tests.append(test_definition)
+            tests.append(Test(test_definition))
             continue
         variations = test_definition.pop("variations")
         _test_definition_invariant(
@@ -98,7 +83,7 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
             test = copy.deepcopy(test_definition)
             test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
             test = deep_update(test, variation)
-            tests.append(test)
+            tests.append(Test(test))
     return tests
 
 
@@ -187,6 +172,12 @@ def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
 
 
 def validate_test_cluster_env(test: Test) -> Optional[str]:
+    if test.is_byod_cluster():
+        """
+        BYOD clusters are not validated because they do not need cluster environment
+        """
+        return None
+
     from ray_release.template import get_cluster_env_path
 
     cluster_env_path = get_cluster_env_path(test)

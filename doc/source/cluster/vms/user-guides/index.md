@@ -13,3 +13,4 @@ deployments of Ray on cloud VMs or on-premises.
 * {ref}`vms-large-cluster`
 * {ref}`vms-autoscaling`
 * {ref}`ref-cluster-setup`
+* {ref}`cluster-FAQ`

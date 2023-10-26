@@ -81,15 +81,17 @@ class RemoteCallResults:
     CallResults provides convenient APIs to iterate over the results
     while skipping errors, etc.
 
-    Example:
-    >>> manager = FaultTolerantActorManager(
-    ...     actors, max_remote_requests_in_flight_per_actor=2,
-    ... )
-    >>> results = manager.foreach_actor(lambda w: w.call())
-    >>>
-    >>> # Iterate over all results ignoring errors.
-    >>> for result in results.ignore_errors():
-    >>>     print(result.get())
+    .. testcode::
+        :skipif: True
+
+        manager = FaultTolerantActorManager(
+            actors, max_remote_requests_in_flight_per_actor=2,
+        )
+        results = manager.foreach_actor(lambda w: w.call())
+
+        # Iterate over all results ignoring errors.
+        for result in results.ignore_errors():
+            print(result.get())
     """
 
     class _Iterator:
@@ -158,7 +160,7 @@ class FaultAwareApply:
         *args,
         **kwargs,
     ) -> T:
-        """Calls the given function with this rollout worker instance.
+        """Calls the given function with this Actor instance.
 
         A generic interface for applying arbitray member functions on a
         remote actor.
@@ -175,12 +177,14 @@ class FaultAwareApply:
         try:
             return func(self, *args, **kwargs)
         except Exception as e:
+            # Actor should be recreated by Ray.
             if self.config.recreate_failed_workers:
                 logger.exception("Worker exception, recreating: {}".format(e))
                 # Small delay to allow logs messages to propagate.
                 time.sleep(self.config.delay_between_worker_restarts_s)
                 # Kill this worker so Ray Core can restart it.
                 sys.exit(1)
+            # Actor should be left dead.
             else:
                 raise e
 
@@ -189,35 +193,37 @@ class FaultAwareApply:
 class FaultTolerantActorManager:
     """A manager that is aware of the healthiness of remote actors.
 
-    Example:
-    >>> import ray
-    >>> from ray.rllib.utils.actor_manager import FaultTolerantActorManager
-    >>>
-    >>> @ray.remote
-    ... class MyActor:
-    ...    def apply(self, fn) -> Any:
-    ...        return fn(self)
-    ...
-    ...    def do_something(self):
-    ...        return True
-    >>>
-    >>> actors = [MyActor.remote() for _ in range(3)]
-    >>> manager = FaultTolerantActorManager(
-    ...     actors, max_remote_requests_in_flight_per_actor=2,
-    ... )
-    >>>
-    >>> # Synchrnous remote calls.
-    >>> results = manager.foreach_actor(lambda actor: actor.do_something())
-    >>> # Print results ignoring returned errors.
-    >>> print([r.get() for r in results.ignore_errors()])
-    >>>
-    >>> # Asynchronous remote calls.
-    >>> manager.foreach_actor_async(lambda actor: actor.do_something())
-    >>> time.sleep(2) # Wait for the tasks to finish.
-    >>> for r in manager.fetch_ready_async_reqs()
-    ...     # Handle result and errors.
-    ...     if r.ok: print(r.get())
-    ...     else print("Error: {}".format(r.get()))
+    .. testcode::
+        :skipif: True
+
+        import ray
+        from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+
+        @ray.remote
+        class MyActor:
+        def apply(self, fn) -> Any:
+            return fn(self)
+
+        def do_something(self):
+            return True
+
+        actors = [MyActor.remote() for _ in range(3)]
+        manager = FaultTolerantActorManager(
+            actors, max_remote_requests_in_flight_per_actor=2,
+        )
+
+        # Synchronous remote calls.
+        results = manager.foreach_actor(lambda actor: actor.do_something())
+        # Print results ignoring returned errors.
+        print([r.get() for r in results.ignore_errors()])
+
+        # Asynchronous remote calls.
+        manager.foreach_actor_async(lambda actor: actor.do_something())
+        time.sleep(2) # Wait for the tasks to finish.
+        for r in manager.fetch_ready_async_reqs()
+            # Handle result and errors.
+            if r.ok: print(r.get())
+            else print("Error: {}".format(r.get()))
     """
 
     @dataclass
@@ -268,16 +274,9 @@ class FaultTolerantActorManager:
         self._num_actor_restarts = 0
 
     @DeveloperAPI
-    def actors(self):
-        """Access the underlying actors being managed.
-
-        Warning (jungong): This API should almost never be used.
-        It is only exposed for testing and backward compatibility reasons.
-        Remote actors managed by this class should never be accessed directly.
-        """
-        # TODO(jungong) : remove this API once WorkerSet.remote_workers()
-        # and WorkerSet._remote_workers() are removed.
-        return self.__actors
+    def actor_ids(self) -> List[int]:
+        """Returns a list of all worker IDs (healthy or not)."""
+        return list(self.__actors.keys())
 
     @DeveloperAPI
     def healthy_actor_ids(self) -> List[int]:
@@ -414,7 +413,7 @@ class FaultTolerantActorManager:
             ), "Funcs must have the same number of callables as actor indices."
 
         if remote_actor_ids is None:
-            remote_actor_ids = list(self.__actors.keys())
+            remote_actor_ids = self.actor_ids()
 
         if isinstance(func, list):
             calls = [
@@ -585,7 +584,7 @@ class FaultTolerantActorManager:
             actual data returned or exceptions raised during the remote call in the
             format of RemoteCallResults.
         """
-        remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
+        remote_actor_ids = remote_actor_ids or self.actor_ids()
         if healthy_only:
             func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
                 func, remote_actor_ids
@@ -631,14 +630,15 @@ class FaultTolerantActorManager:
             The number of async requests that are actually fired.
         """
         # TODO(avnishn, jungong): so thinking about this a bit more, it would be the
-        # best if we can attach multiple tags to an async all, like basically this
-        # parameter should be tags:
-        # for sync alls, tags would be ()
-        # for async call users, they can attached multiple tags for a single call, like
-        # ("rollout_worker", "sync_weight")
-        # for async fetch result, we can also specify a single, or list of tags. for
-        # example, ("eval", "sample") will fetch all the sample() calls on eval workers.
-        remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
+        #  best if we can attach multiple tags to an async all, like basically this
+        #  parameter should be tags:
+        #  For sync calls, tags would be ().
+        #  For async call users, they can attached multiple tags for a single call, like
+        #  ("rollout_worker", "sync_weight").
+        #  For async fetch result, we can also specify a single, or list of tags. For
+        #  example, ("eval", "sample") will fetch all the sample() calls on eval
+        #  workers.
+        remote_actor_ids = remote_actor_ids or self.actor_ids()
 
         if healthy_only:
             func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
@@ -744,7 +744,7 @@ class FaultTolerantActorManager:
             timeout_seconds: Ray.get() timeout. Default is 0 (only those that are
                 already ready).
             tags: A tag or a list of tags to identify the results from this async call.
-            return_obj_refs: whether to return ObjectRef instead of actual results.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
             mark_healthy: whether to mark certain actors healthy based on the results
                 of these remote calls. Useful, for example, to make sure actors
                 do not come back without proper state restoration.
@@ -794,7 +794,7 @@ class FaultTolerantActorManager:
         """
         unhealthy_actor_ids = [
             actor_id
-            for actor_id in self.actors().keys()
+            for actor_id in self.actor_ids()
             if not self.is_actor_healthy(actor_id)
         ]
         if not unhealthy_actor_ids:
@@ -810,3 +810,8 @@ class FaultTolerantActorManager:
         )
 
         return [result.actor_id for result in remote_results if result.ok]
+
+    def actors(self):
+        # TODO(jungong) : remove this API once WorkerSet.remote_workers()
+        #  and WorkerSet._remote_workers() are removed.
+        return self.__actors

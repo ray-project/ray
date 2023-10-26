@@ -13,6 +13,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
           default: "rayDefaultDashboard",
           serve: "rayServeDashboard",
           serveDeployment: "rayServeDeploymentDashboard",
+          data: "rayDataDashboard",
         },
         prometheusHealth: true,
         sessionName: "session-name",
@@ -20,6 +21,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
         nodeMap: {},
         nodeMapByIp: {},
         namespaceMap: {},
+        dashboardDatasource: "Prometheus",
       }}
     >
       {children}
@@ -37,6 +39,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
           default: "rayDefaultDashboard",
           serve: "rayServeDashboard",
           serveDeployment: "rayServeDeploymentDashboard",
+          data: "rayDataDashboard",
         },
         prometheusHealth: false,
         sessionName: undefined,
@@ -44,6 +47,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
         nodeMap: {},
         nodeMapByIp: {},
         namespaceMap: {},
+        dashboardDatasource: "Prometheus",
       }}
     >
       {children}

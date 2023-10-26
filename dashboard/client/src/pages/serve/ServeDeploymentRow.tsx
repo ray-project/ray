@@ -33,23 +33,29 @@ const useStyles = makeStyles((theme) =>
       fontSize: "1.5em",
       verticalAlign: "middle",
     },
+    statusMessage: {
+      maxWidth: 400,
+      display: "inline-flex",
+    },
   }),
 );
 
 export type ServeDeployentRowProps = {
   deployment: ServeDeployment;
   application: ServeApplication;
+  startExpanded?: boolean;
 };
 
 export const ServeDeploymentRow = ({
   deployment,
   application: { last_deployed_time_s },
+  startExpanded = false,
 }: ServeDeployentRowProps) => {
   const { name, status, message, deployment_config, replicas } = deployment;
 
   const classes = useStyles();
 
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(startExpanded);
   const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
 
   return (
@@ -100,6 +106,7 @@ export const ServeDeploymentRow = ({
         <TableCell align="center">
           {message ? (
             <CodeDialogButtonWithPreview
+              className={classes.statusMessage}
               title="Message details"
               code={message}
             />

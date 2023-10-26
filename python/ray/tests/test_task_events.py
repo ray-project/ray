@@ -13,14 +13,14 @@ from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
 import ray
-from ray.experimental.state.common import ListApiOptions, StateResource
+from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
     raw_metrics,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.experimental.state.api import StateApiClient, list_tasks
+from ray.util.state import StateApiClient, list_tasks
 
 from ray._private.worker import RayContext
 
@@ -434,6 +434,7 @@ def test_parent_task_id_tune_e2e(shutdown_only):
     script = """
 import numpy as np
 import ray
+import ray.train
 from ray import tune
 import time
 
@@ -448,7 +449,7 @@ def train_function(config):
     for i in range(5):
         loss = config["mean"] * np.random.randn() + ray.get(
             train_step_1.remote())
-        tune.report(loss=loss, nodes=ray.nodes())
+        ray.train.report(dict(loss=loss, nodes=ray.nodes()))
 
 
 def tune_function():

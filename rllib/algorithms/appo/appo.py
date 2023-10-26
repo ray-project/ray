@@ -15,7 +15,7 @@ import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.appo.appo_learner import (
-    AppoHyperparameters,
+    AppoLearnerHyperparameters,
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
@@ -40,35 +40,44 @@ logger = logging.getLogger(__name__)
 class APPOConfig(ImpalaConfig):
     """Defines a configuration class from which an APPO Algorithm can be built.
 
-    Example:
-        >>> from ray.rllib.algorithms.appo import APPOConfig
-        >>> config = APPOConfig().training(lr=0.01, grad_clip=30.0)
-        >>> config = config.resources(num_gpus=1)
-        >>> config = config.rollouts(num_rollout_workers=16)
-        >>> config = config.environment("CartPole-v1")
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build an Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.appo import APPOConfig
-        >>> from ray import air
-        >>> from ray import tune
-        >>> config = APPOConfig()
-        >>> # Print out some default values.
-        >>> print(config.sample_async)   # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config = config.training(lr=tune.grid_search([0.001, 0.0001]))
-        >>> # Set the config object's env.
-        >>> config = config.environment(env="CartPole-v1")
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "APPO",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.appo import APPOConfig
+        config = APPOConfig().training(lr=0.01, grad_clip=30.0, train_batch_size=50)
+        config = config.resources(num_gpus=0)
+        config = config.rollouts(num_rollout_workers=1)
+        config = config.environment("CartPole-v1")
+
+        # Build an Algorithm object from the config and run 1 training iteration.
+        algo = config.build()
+        algo.train()
+        del algo
+
+    .. testcode::
+
+        from ray.rllib.algorithms.appo import APPOConfig
+        from ray import air
+        from ray import tune
+
+        config = APPOConfig()
+        # Update the config object.
+        config = config.training(lr=tune.grid_search([0.001,]))
+        # Set the config object's env.
+        config = config.environment(env="CartPole-v1")
+        # Use to_dict() to get the old-style python config dict
+        # when running with tune.
+        tune.Tuner(
+            "APPO",
+            run_config=air.RunConfig(stop={"training_iteration": 1},
+                                     verbose=0),
+            param_space=config.to_dict(),
+
+        ).fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
@@ -222,7 +231,10 @@ class APPOConfig(ImpalaConfig):
 
             return APPOTfLearner
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
     @override(ImpalaConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -235,16 +247,19 @@ class APPOConfig(ImpalaConfig):
                 APPOTfRLModule as RLModule,
             )
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
         from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
 
         return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
 
     @override(ImpalaConfig)
-    def get_learner_hyperparameters(self) -> AppoHyperparameters:
+    def get_learner_hyperparameters(self) -> AppoLearnerHyperparameters:
         base_hps = super().get_learner_hyperparameters()
-        return AppoHyperparameters(
+        return AppoLearnerHyperparameters(
             use_kl_loss=self.use_kl_loss,
             kl_target=self.kl_target,
             kl_coeff=self.kl_coeff,
@@ -355,9 +370,9 @@ class APPO(Impala):
         return dict(
             last_update=self._counters[LAST_TARGET_UPDATE_TS],
             mean_kl_loss_per_module={
-                mid: r[LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY]
-                for mid, r in train_results.items()
-                if mid != ALL_MODULES
+                module_id: r[LEARNER_RESULTS_KL_KEY]
+                for module_id, r in train_results.items()
+                if module_id != ALL_MODULES
             },
         )
 

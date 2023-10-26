@@ -15,9 +15,9 @@ def check_memory_leaks(
     repeats: Optional[int] = None,
     max_num_trials: int = 3,
 ) -> DefaultDict[str, List[Suspect]]:
-    """Diagnoses the given trainer for possible memory leaks.
+    """Diagnoses the given Algorithm for possible memory leaks.
 
-    Isolates single components inside the trainer's local worker, e.g. the env,
+    Isolates single components inside the Algorithm's local worker, e.g. the env,
     policy, etc.. and calls some of their methods repeatedly, while checking
     the memory footprints and keeping track of which lines in the code add
     un-GC'd items to memory.
@@ -46,7 +46,7 @@ def check_memory_leaks(
     # Test a single sub-env (first in the VectorEnv)?
     if "env" in to_check:
         assert local_worker.async_env is not None, (
-            "ERROR: Cannot test 'env' since given trainer does not have one "
+            "ERROR: Cannot test 'env' since given Algorithm does not have one "
             "in its local worker. Try setting `create_env_on_driver=True`."
         )
 
@@ -111,19 +111,21 @@ def check_memory_leaks(
         if test:
             results_per_category["policy"].extend(test)
 
-        # Call `learn_on_batch()` n times.
-        dummy_batch = policy._get_dummy_batch_from_view_requirements(batch_size=16)
+        # Testing this only makes sense if the learner API is disabled.
+        if not policy.config.get("_enable_learner_api", False):
+            # Call `learn_on_batch()` n times.
+            dummy_batch = policy._get_dummy_batch_from_view_requirements(batch_size=16)
 
-        test = _test_some_code_for_memory_leaks(
-            desc="Calling `learn_on_batch()`.",
-            init=None,
-            code=lambda: policy.learn_on_batch(dummy_batch),
-            # How many times to repeat the function call?
-            repeats=repeats or 100,
-            max_num_trials=max_num_trials,
-        )
-        if test:
-            results_per_category["policy"].extend(test)
+            test = _test_some_code_for_memory_leaks(
+                desc="Calling `learn_on_batch()`.",
+                init=None,
+                code=lambda: policy.learn_on_batch(dummy_batch),
+                # How many times to repeat the function call?
+                repeats=repeats or 100,
+                max_num_trials=max_num_trials,
+            )
+            if test:
+                results_per_category["policy"].extend(test)
 
     # Test only the model.
     if "model" in to_check:
@@ -169,5 +171,39 @@ def check_memory_leaks(
         )
         if test:
             results_per_category["rollout_worker"].extend(test)
+
+    if "learner" in to_check and algorithm.config.get("_enable_learner_api", False):
+        learner_group = algorithm.learner_group
+        assert learner_group._is_local, (
+            "This test will miss leaks hidden in remote "
+            "workers. Please make sure that there is a "
+            "local learner inside the learner group for "
+            "this test."
+        )
+
+        dummy_batch = (
+            algorithm.get_policy()
+            ._get_dummy_batch_from_view_requirements(batch_size=16)
+            .as_multi_agent()
+        )
+
+        print("Looking for leaks in Learner")
+
+        def code():
+            learner_group.update(dummy_batch)
+
+        # Call `compute_actions_from_input_dict()` n times.
+        test = _test_some_code_for_memory_leaks(
+            desc="Calling `LearnerGroup.update()`.",
+            init=None,
+            code=code,
+            # How many times to repeat the function call?
+            repeats=repeats or 400,
+            # How many times to re-try if we find a suspicious memory
+            # allocation?
+            max_num_trials=max_num_trials,
+        )
+        if test:
+            results_per_category["learner"].extend(test)
 
     return results_per_category

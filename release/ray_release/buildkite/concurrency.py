@@ -3,7 +3,7 @@ from collections import namedtuple
 from typing import Tuple, Optional, Dict
 
 from ray_release.bazel import bazel_runfile
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.template import load_test_cluster_compute
 from ray_release.logger import logger
 
@@ -25,7 +25,8 @@ aws_gpu_cpu_to_concurrency_groups = [
     ),
     Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=1024, group="large", limit=8),
     Condition(min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium", limit=6),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=32, group="tiny", limit=32),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=9, max_cpu=32, group="tiny", limit=32),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=8, group="minuscule", limit=128),
     # Make sure "small" is the last in the list, because it is the fallback.
     Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small", limit=16),
 ]
@@ -44,7 +45,10 @@ gce_gpu_cpu_to_concurrent_groups = [
     Condition(
         min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium-gce", limit=6
     ),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=32, group="tiny-gce", limit=32),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=9, max_cpu=32, group="tiny-gce", limit=32),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=8, group="minuscule-gce", limit=128
+    ),
     Condition(
         min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small-gce", limit=16
     ),

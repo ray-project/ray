@@ -80,6 +80,8 @@ TEST(RayClusterModeTest, FullTest) {
   auto get_result = *(ray::Get(obj));
   EXPECT_EQ(12345, get_result);
 
+  EXPECT_EQ(12345, *(ray::Get(obj, 5)));
+
   auto named_obj =
       ray::Task(Return1).SetName("named_task").SetResources({{"CPU", 1.0}}).Remote();
   EXPECT_EQ(1, *named_obj.Get());
@@ -168,6 +170,11 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result1, 31);
   EXPECT_EQ(result2, 25);
 
+  result_vector = ray::Get(objects, 5);
+  EXPECT_EQ(*(result_vector[0]), 1);
+  EXPECT_EQ(*(result_vector[1]), 31);
+  EXPECT_EQ(*(result_vector[2]), 25);
+
   /// general function remote call（args passed by reference）
   auto r3 = ray::Task(Return1).Remote();
   auto r4 = ray::Task(Plus1).Remote(r3);
@@ -231,7 +238,7 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(arr, *(ray::Get(r17)));
   EXPECT_EQ(arr, *(ray::Get(r18)));
 
-  uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get();
+  uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get(5);
   EXPECT_TRUE(Counter::IsProcessAlive(pid));
 
   auto actor_object4 = actor1.Task(&Counter::Exit).Remote();
@@ -305,6 +312,16 @@ TEST(RayClusterModeTest, MaxConcurrentTest) {
   EXPECT_EQ(*object1.Get(), "ok");
   EXPECT_EQ(*object2.Get(), "ok");
   EXPECT_EQ(*object3.Get(), "ok");
+
+  auto actor2 =
+      ray::Actor(ActorConcurrentCall::FactoryCreate).SetMaxConcurrency(2).Remote();
+  auto object2_1 = actor2.Task(&ActorConcurrentCall::CountDown).Remote();
+  auto object2_2 = actor2.Task(&ActorConcurrentCall::CountDown).Remote();
+  auto object2_3 = actor2.Task(&ActorConcurrentCall::CountDown).Remote();
+
+  EXPECT_THROW(object2_1.Get(2), ray::internal::RayTimeoutException);
+  EXPECT_THROW(object2_2.Get(2), ray::internal::RayTimeoutException);
+  EXPECT_THROW(object2_3.Get(2), ray::internal::RayTimeoutException);
 }
 
 TEST(RayClusterModeTest, ResourcesManagementTest) {
@@ -673,6 +690,17 @@ TEST(RayClusterModeTest, RuntimeEnvJobLevelEnvVarsTest) {
   auto r1 = actor_handle.Task(&Counter::GetEnvVar).Remote("KEY1");
   auto get_result1 = *(ray::Get(r1));
   EXPECT_EQ("value1", get_result1);
+
+  ray::Shutdown();
+}
+
+TEST(RayClusterModeTest, UnsupportObjectRefTest) {
+  ray::RayConfig config;
+  ray::Init(config, cmd_argc, cmd_argv);
+  ray::ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto int_ref = ray::Put(1);
+  EXPECT_THROW(actor.Task(&Counter::GetIntByObjectRef).Remote(int_ref),
+               std::invalid_argument);
 
   ray::Shutdown();
 }

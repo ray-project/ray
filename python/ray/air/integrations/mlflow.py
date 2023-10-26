@@ -1,14 +1,14 @@
 import logging
-import warnings
 from types import ModuleType
 from typing import Dict, Optional, Union
 
 import ray
 from ray.air import session
-
 from ray.air._internal.mlflow import _MLflowLoggerUtil
+from ray.air._internal import usage as air_usage
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.logger import LoggerCallback
-from ray.tune.result import TIMESTEPS_TOTAL, TRAINING_ITERATION
+from ray.tune.result import TIMESTEPS_TOTAL
 from ray.tune.experiment import Trial
 from ray.util.annotations import PublicAPI
 
@@ -109,7 +109,7 @@ def setup_mlflow(
             from ray.air.integrations.mlflow import setup_mlflow
 
             def training_loop(config):
-                setup_mlflow(config)
+                mlflow = setup_mlflow(config)
                 # ...
                 mlflow.log_metric(key="loss", val=0.123, step=0)
 
@@ -134,7 +134,7 @@ def setup_mlflow(
 
         .. code-block:: python
 
-            from ray.tune.integration.mlflow import setup_mlflow
+            from ray.air.integrations.mlflow import setup_mlflow
 
             def train_fn(config):
                 mlflow = setup_mlflow(config)
@@ -161,16 +161,6 @@ def setup_mlflow(
         default_trial_name = None
 
     _config = config.copy() if config else {}
-    mlflow_config = _config.pop("mlflow", {}).copy()
-
-    # Deprecate: 2.4
-    if mlflow_config:
-        warnings.warn(
-            "Passing a `mlflow` key in the config dict is deprecated and will raise an "
-            "error in the future. Please pass the actual arguments to `setup_mlflow()` "
-            "instead.",
-            DeprecationWarning,
-        )
 
     experiment_id = experiment_id or default_trial_id
     experiment_name = experiment_name or default_trial_name
@@ -178,22 +168,25 @@ def setup_mlflow(
     # Setup mlflow
     mlflow_util = _MLflowLoggerUtil()
     mlflow_util.setup_mlflow(
-        tracking_uri=tracking_uri or mlflow_config.get("tracking_uri", None),
-        registry_uri=registry_uri or mlflow_config.get("registry_uri", None),
-        experiment_id=experiment_id or mlflow_config.get("experiment_id", None),
-        experiment_name=experiment_name or mlflow_config.get("experiment_name", None),
-        tracking_token=tracking_token or mlflow_config.get("tracking_token", None),
-        artifact_location=artifact_location
-        or mlflow_config.get("artifact_location", None),
+        tracking_uri=tracking_uri,
+        registry_uri=registry_uri,
+        experiment_id=experiment_id,
+        experiment_name=experiment_name,
+        tracking_token=tracking_token,
+        artifact_location=artifact_location,
         create_experiment_if_not_exists=create_experiment_if_not_exists,
     )
 
     mlflow_util.start_run(
         run_name=run_name or experiment_name,
-        tags=tags or mlflow_config.get("tags", None),
+        tags=tags,
         set_active=True,
     )
     mlflow_util.log_params(_config)
+
+    # Record `setup_mlflow` usage when everything has setup successfully.
+    air_usage.tag_setup_mlflow()
+
     return mlflow_util._mlflow
 
 

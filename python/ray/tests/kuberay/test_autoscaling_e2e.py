@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import pytest
 import tempfile
 import unittest
 import subprocess
@@ -15,7 +16,6 @@ from ray.tests.kuberay.utils import (
     get_raycluster,
     ray_client_port_forward,
     ray_job_submit,
-    setup_logging,
     switch_to_ray_parent_dir,
     kubectl_exec_python_script,
     kubectl_logs,
@@ -40,7 +40,7 @@ RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:nightly-py38")
 # By default, use the same image for the autoscaler and Ray containers.
 AUTOSCALER_IMAGE = os.environ.get("AUTOSCALER_IMAGE", RAY_IMAGE)
 # Set to IfNotPresent in kind CI.
-PULL_POLICY = os.environ.get("PULL_POLICY", "Always")
+PULL_POLICY = os.environ.get("PULL_POLICY", "IfNotPresent")
 logger.info(f"Using image `{RAY_IMAGE}` for Ray containers.")
 logger.info(f"Using image `{AUTOSCALER_IMAGE}` for Autoscaler containers.")
 logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
@@ -55,6 +55,9 @@ HEAD_POD_PREFIX = "raycluster-autoscaler-head"
 CPU_WORKER_PREFIX = "raycluster-autoscaler-worker-small-group"
 RAY_CLUSTER_NAME = "raycluster-autoscaler"
 RAY_CLUSTER_NAMESPACE = "default"
+
+# Test runs longer than the default timeout.
+pytestmark = pytest.mark.timeout(300)
 
 
 class KubeRayAutoscalingTest(unittest.TestCase):
@@ -403,5 +406,4 @@ if __name__ == "__main__":
     import pytest
     import sys
 
-    setup_logging()
     sys.exit(pytest.main(["-vv", __file__]))

@@ -39,6 +39,9 @@ const useStyles = makeStyles((theme) =>
         maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
       },
     },
+    autoscalerCard: {
+      padding: theme.spacing(2, 3),
+    },
     section: {
       marginTop: theme.spacing(4),
     },
@@ -70,12 +73,20 @@ export const OverviewPage = () => {
           <div className={classes.overviewCardsContainer}>
             <NodeCountCard className={classes.overviewCard} />
             <OverviewCard
-              className={classNames(classes.root, classes.overviewCard)}
+              className={classNames(
+                classes.root,
+                classes.overviewCard,
+                classes.autoscalerCard,
+              )}
             >
               <NodeStatusCard cluster_status={cluster_status} />
             </OverviewCard>
             <OverviewCard
-              className={classNames(classes.root, classes.overviewCard)}
+              className={classNames(
+                classes.root,
+                classes.overviewCard,
+                classes.autoscalerCard,
+              )}
             >
               <ResourceStatusCard cluster_status={cluster_status} />
             </OverviewCard>

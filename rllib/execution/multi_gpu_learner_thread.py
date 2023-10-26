@@ -17,6 +17,8 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
+# TODO (sven): Deprecate once all algos are only available via the new API stack
+#  (learner API).
 class MultiGPULearnerThread(LearnerThread):
     """Learner that can use multiple GPUs and parallel loading.
 
@@ -162,7 +164,9 @@ class MultiGPULearnerThread(LearnerThread):
                 default_policy_results = policy.learn_on_loaded_batch(
                     offset=0, buffer_index=buffer_idx
                 )
-                learner_info_builder.add_learn_on_batch_results(default_policy_results)
+                learner_info_builder.add_learn_on_batch_results(
+                    default_policy_results, policy_id=pid
+                )
                 self.policy_ids_updated.append(pid)
                 get_num_samples_loaded_into_buffer += (
                     policy.get_num_samples_loaded_into_buffer(buffer_idx)

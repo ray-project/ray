@@ -46,21 +46,21 @@ class TestCNNTransposeHeads(unittest.TestCase):
         ]
         cnn_transpose_activations = [None, "relu", "silu"]
         cnn_transpose_use_layernorms = [False, True]
-        use_biases = [False, True]
+        cnn_transpose_use_biases = [False, True]
 
         for permutation in itertools.product(
             inputs_dimss,
             cnn_transpose_filter_specifierss,
             cnn_transpose_activations,
             cnn_transpose_use_layernorms,
-            use_biases,
+            cnn_transpose_use_biases,
         ):
             (
                 inputs_dims,
                 cnn_transpose_filter_specifiers,
                 cnn_transpose_activation,
                 cnn_transpose_use_layernorm,
-                use_bias,
+                cnn_transpose_use_bias,
             ) = permutation
 
             # Split up into filters and resulting expected output dims.
@@ -76,7 +76,7 @@ class TestCNNTransposeHeads(unittest.TestCase):
                 f"cnn_transpose_filter_specifiers: {cnn_transpose_filter_specifiers}\n"
                 f"cnn_transpose_activation: {cnn_transpose_activation}\n"
                 f"cnn_transpose_use_layernorm: {cnn_transpose_use_layernorm}\n"
-                f"use_bias: {use_bias}\n"
+                f"cnn_transpose_use_bias: {cnn_transpose_use_bias}\n"
             )
 
             config = CNNTransposeHeadConfig(
@@ -85,8 +85,7 @@ class TestCNNTransposeHeads(unittest.TestCase):
                 cnn_transpose_filter_specifiers=cnn_transpose_filter_specifiers,
                 cnn_transpose_activation=cnn_transpose_activation,
                 cnn_transpose_use_layernorm=cnn_transpose_use_layernorm,
-                output_dims=expected_output_dims,
-                use_bias=use_bias,
+                cnn_transpose_use_bias=cnn_transpose_use_bias,
             )
 
             # Use a ModelChecker to compare all added models (different frameworks)

@@ -31,6 +31,7 @@ import logging
 import math
 import os
 
+import ray
 from ray import serve
 from serve_test_utils import (
     aggregate_all_metrics,
@@ -74,7 +75,6 @@ def deploy_replicas(min_replicas, max_replicas, max_batch_size):
             "downscale_delay_s": 0.2,
             "upscale_delay_s": 0.2,
         },
-        version="v1",
     )
     class Echo:
         @serve.batch(max_batch_size=max_batch_size)
@@ -84,7 +84,25 @@ def deploy_replicas(min_replicas, max_replicas, max_batch_size):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    Echo.deploy()
+    serve.run(Echo.bind(), name="echo", route_prefix="/echo")
+
+
+def deploy_proxy_replicas():
+    # Deploy a special proxy deployment replica on each node
+    # to guarantee that the http proxy actor runs on each node
+    # even when the node has zero echo deployment replicas.
+    # This is needed since later on wrk will send requests to
+    # the http proxy on each node.
+    @serve.deployment(
+        name="proxy",
+        num_replicas=len(ray.nodes()),
+        ray_actor_options={"num_cpus": 0, "resources": {"proxy": 1}},
+    )
+    class Proxy:
+        def __call__(self, request):
+            return "Proxy"
+
+    serve.run(Proxy.bind(), name="proxy", route_prefix="/proxy")
 
 
 def save_results(final_result, default_name):
@@ -139,6 +157,8 @@ def main(
     http_port = str(serve_client._http_config.port)
     logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
+    deploy_proxy_replicas()
+
     logger.info(
         f"Deploying with min {min_replicas} and max {max_replicas} "
         f"target replicas ....\n"
@@ -151,7 +171,7 @@ def main(
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    all_endpoints = list(serve.list_deployments().keys())
+    all_endpoints = ["/echo"]
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
     )

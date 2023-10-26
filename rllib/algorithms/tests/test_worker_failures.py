@@ -5,7 +5,7 @@ import time
 import unittest
 
 import ray
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.a3c import A3CConfig
 from ray.rllib.algorithms.apex_dqn import ApexDQNConfig
@@ -51,28 +51,30 @@ class FaultInjectEnv(gym.Env):
     provided by a list (of ints) under the "bad_indices" key in the env's
     config.
 
-    Examples:
-        >>> from ray.rllib.env.env_context import EnvContext
-        >>> # This env will fail for workers 1 and 2 (not for the local worker
-        >>> # or any others with an index != [1|2]).
-        >>> bad_env = FaultInjectEnv(
-        ...     EnvContext(
-        ...         {"bad_indices": [1, 2]},
-        ...         worker_index=1,
-        ...         num_workers=3,
-        ...      )
-        ... )
+    .. testcode::
+        :skipif: True
 
-        >>> from ray.rllib.env.env_context import EnvContext
-        >>> # This env will fail only on the first evaluation worker, not on the first
-        >>> # regular rollout worker.
-        >>> bad_env = FaultInjectEnv(
-        ...     EnvContext(
-        ...         {"bad_indices": [1], "eval_only": True},
-        ...         worker_index=2,
-        ...         num_workers=5,
-        ...     )
-        ... )
+        from ray.rllib.env.env_context import EnvContext
+        # This env will fail for workers 1 and 2 (not for the local worker
+        # or any others with an index != [1|2]).
+        bad_env = FaultInjectEnv(
+            EnvContext(
+                {"bad_indices": [1, 2]},
+                worker_index=1,
+                num_workers=3,
+             )
+        )
+
+        from ray.rllib.env.env_context import EnvContext
+        # This env will fail only on the first evaluation worker, not on the first
+        # regular rollout worker.
+        bad_env = FaultInjectEnv(
+            EnvContext(
+                {"bad_indices": [1], "eval_only": True},
+                worker_index=2,
+                num_workers=5,
+            )
+        )
     """
 
     def __init__(self, config):
@@ -379,7 +381,7 @@ class TestWorkerFailures(unittest.TestCase):
         self._do_test_fault_ignore(
             A3CConfig()
             .training(optimizer={"grads_per_step": 1})
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
+            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
         )
 
     def test_async_replay(self):
@@ -391,6 +393,7 @@ class TestWorkerFailures(unittest.TestCase):
                 },
             )
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
             )
             .reporting(
@@ -399,7 +402,6 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .resources(num_gpus=0)
             .exploration(explore=False)
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
         config.target_network_update_freq = 100
         self._do_test_fault_ignore(config=config)
@@ -407,50 +409,54 @@ class TestWorkerFailures(unittest.TestCase):
     def test_async_samples(self):
         self._do_test_fault_ignore(
             ImpalaConfig()
+            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .resources(num_gpus=0)
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
     def test_sync_replay(self):
         self._do_test_fault_ignore(
             DQNConfig()
+            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .reporting(min_sample_timesteps_per_iteration=1)
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
     def test_multi_g_p_u(self):
         self._do_test_fault_ignore(
             PPOConfig()
-            .rollouts(rollout_fragment_length=5)
+            .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
+                rollout_fragment_length=5,
+            )
             .training(
                 train_batch_size=10,
                 sgd_minibatch_size=1,
                 num_sgd_iter=1,
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
     def test_sync_samples(self):
         self._do_test_fault_ignore(
             PGConfig()
+            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(optimizer={})
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
     def test_async_sampling_option(self):
         self._do_test_fault_ignore(
             PGConfig()
-            .rollouts(sample_async=True)
+            .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
+                sample_async=True,
+            )
             .training(optimizer={})
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
     def test_eval_workers_failing_ignore(self):
         # Test the case where one eval worker fails, but we chose to ignore.
         self._do_test_fault_ignore(
             PGConfig()
-            .training(model={"fcnet_hiddens": [4]})
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker),
+            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
+            .training(model={"fcnet_hiddens": [4]}),
             fail_eval=True,
         )
 
@@ -458,6 +464,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where all eval workers fail, but we chose to recover.
         config = (
             PGConfig()
+            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .evaluation(
                 evaluation_num_workers=1,
                 enable_async_evaluation=True,
@@ -465,7 +472,6 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_duration="auto",
             )
             .training(model={"fcnet_hiddens": [4]})
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
         self._do_test_fault_fatal_but_recreate(config)
@@ -478,6 +484,7 @@ class TestWorkerFailures(unittest.TestCase):
         # to recover.
         config = (
             PGConfig()
+            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .multi_agent(
                 policies={"main", "p0", "p1"},
                 policy_mapping_fn=(
@@ -495,7 +502,6 @@ class TestWorkerFailures(unittest.TestCase):
                 evaluation_duration="auto",
             )
             .training(model={"fcnet_hiddens": [4]})
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
         self._do_test_fault_fatal_but_recreate(config, multi_agent=True)
@@ -515,6 +521,7 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PGConfig()
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
             )
@@ -537,7 +544,6 @@ class TestWorkerFailures(unittest.TestCase):
                 # 0 delay for testing purposes.
                 delay_between_worker_restarts_s=0,
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
@@ -569,6 +575,7 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PGConfig()
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
             )
@@ -610,7 +617,6 @@ class TestWorkerFailures(unittest.TestCase):
                 # 0 delay for testing purposes.
                 delay_between_worker_restarts_s=0,
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
@@ -664,6 +670,7 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PGConfig()
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
             )
@@ -694,7 +701,6 @@ class TestWorkerFailures(unittest.TestCase):
                 # 0 delay for testing purposes.
                 delay_between_worker_restarts_s=0,
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
@@ -727,6 +733,7 @@ class TestWorkerFailures(unittest.TestCase):
                 num_gpus=0,
             )
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=3,
                 rollout_fragment_length=16,
             )
@@ -767,7 +774,6 @@ class TestWorkerFailures(unittest.TestCase):
                 worker_restore_timeout_s=5,
                 delay_between_worker_restarts_s=0,  # For testing, no delay.
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
@@ -800,6 +806,7 @@ class TestWorkerFailures(unittest.TestCase):
             PGConfig()
             .environment("fault_env")
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
             )
@@ -837,7 +844,6 @@ class TestWorkerFailures(unittest.TestCase):
                 # 0 delay for testing purposes.
                 delay_between_worker_restarts_s=0,
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
@@ -881,6 +887,7 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PGConfig()
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
                 rollout_fragment_length=16,
             )
@@ -920,7 +927,6 @@ class TestWorkerFailures(unittest.TestCase):
                     },
                 ),
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
@@ -956,6 +962,7 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PGConfig()
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=1,
                 create_env_on_local_worker=False,
             )
@@ -991,7 +998,6 @@ class TestWorkerFailures(unittest.TestCase):
                 # 0 delay for testing purposes.
                 delay_between_worker_restarts_s=0,
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
@@ -1018,6 +1024,7 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PGConfig()
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=1,
                 rollout_fragment_length=5,
                 # Use EMA PerfStat.
@@ -1056,7 +1063,6 @@ class TestWorkerFailures(unittest.TestCase):
                 # 0 delay for testing purposes.
                 delay_between_worker_restarts_s=0,
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):

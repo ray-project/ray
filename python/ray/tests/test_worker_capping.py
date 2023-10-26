@@ -245,6 +245,52 @@ def test_spillback(ray_start_cluster):
     ray.cancel(refs[0], force=True)
 
 
+def test_idle_workers(shutdown_only):
+    ray.init(
+        num_cpus=2,
+        _system_config={
+            "idle_worker_killing_time_threshold_ms": 10,
+        },
+    )
+
+    @ray.remote(num_cpus=0)
+    class Actor:
+        def get(self):
+            pass
+
+    @ray.remote
+    def getpid():
+        time.sleep(0.1)
+        return os.getpid()
+
+    # We start exactly as many workers as there are CPUs.
+    for _ in range(3):
+        pids = set(ray.get([getpid.remote() for _ in range(4)]))
+        assert len(pids) <= 2, pids
+        # Wait for at least the idle worker timeout.
+        time.sleep(0.1)
+
+    # Now test with two actors that uses 1 process each but 0 CPUs.
+    a1 = Actor.remote()
+    a2 = Actor.remote()
+    ray.get([a1.get.remote(), a2.get.remote()])
+
+    for _ in range(3):
+        pids = set(ray.get([getpid.remote() for _ in range(4)]))
+        assert len(pids) <= 2, pids
+        # Wait for at least the idle worker timeout.
+        time.sleep(0.1)
+
+    # Kill the actors and test again.
+    del a1
+    del a2
+    for _ in range(3):
+        pids = set(ray.get([getpid.remote() for _ in range(4)]))
+        assert len(pids) <= 2, pids
+        # Wait for at least the idle worker timeout.
+        time.sleep(0.1)
+
+
 if __name__ == "__main__":
     os.environ["RAY_worker_cap_enabled"] = "true"
     if os.environ.get("PARALLEL_CI"):

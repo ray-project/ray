@@ -1,11 +1,11 @@
 from ray.data.extensions.tensor_extension import (
-    TensorDtype,
+    ArrowTensorArray,
+    ArrowTensorType,
+    ArrowVariableShapedTensorArray,
+    ArrowVariableShapedTensorType,
     TensorArray,
     TensorArrayElement,
-    ArrowTensorType,
-    ArrowTensorArray,
-    ArrowVariableShapedTensorType,
-    ArrowVariableShapedTensorArray,
+    TensorDtype,
     column_needs_tensor_extension,
 )
 

@@ -1,7 +1,8 @@
 import os
 import threading
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
+import ray
 from ray._private.ray_constants import env_integer
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -17,9 +18,20 @@ _context_lock = threading.Lock()
 # a risk of triggering spilling. This is used to generate user warnings only.
 ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 
-# The max target block size in bytes for reads and transformations.
+# The max target block size in bytes for reads and transformations.  We choose
+# 128MiB: With streaming execution and num_cpus many concurrent tasks, the
+# memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM *
+# DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION * 0.3 (default object store memory
+# fraction set by Ray core), assuming typical memory:core ratio of 4:1.
+DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
+
+# The max target block size in bytes for shuffle ops (random_shuffle, sort,
+# repartition). Set a higher target block size because we have to materialize
+# all input blocks anyway, so there is no performance advantage to having
+# smaller blocks. Setting a larger block size allows avoiding overhead from an
+# excessive number of partitions.
 # We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
-DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
+DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 
 # Dataset will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
@@ -29,10 +41,6 @@ DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 # This default appears to work well with most file sizes on remote storage systems,
 # which is very sensitive to the buffer size.
 DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
-
-# Whether dynamic block splitting is enabled.
-# NOTE: disable dynamic block splitting when using Ray client.
-DEFAULT_BLOCK_SPLITTING_ENABLED = True
 
 # Whether pandas block format is enabled.
 # TODO (kfstorm): Remove this once stable.
@@ -62,8 +70,18 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
-# The default global scheduling strategy.
-DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
+# The default global scheduling strategy. Note that for tasks with large args,
+# DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS applies.
+DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
+
+# Default scheduling strategy for tasks with large args. This enables locality-based
+# scheduling in Ray for tasks where arg data transfer is a bottleneck.
+DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS = "DEFAULT"
+
+# Size in bytes after which point task arguments are considered large. Choose a value
+# here at which point data transfer overhead becomes significant in comparison to
+# task scheduling (i.e., low tens of ms).
+DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
@@ -99,18 +117,11 @@ DEFAULT_AUTO_LOG_STATS = False
 
 # Whether to enable optimizer.
 DEFAULT_OPTIMIZER_ENABLED = bool(
-    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "0"))
+    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "1"))
 )
 
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
-
-# Enable strict schema mode (experimental). In this mode, we only allow structured
-# schemas, and default to numpy as the batch format.
-DEFAULT_STRICT_MODE = bool(int(os.environ.get("RAY_DATA_STRICT_MODE", "1")))
-
-# Set this to True to use the legacy iter_batches codepath prior to 2.4.
-DEFAULT_USE_LEGACY_ITER_BATCHES = False
 
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
@@ -129,6 +140,9 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
     env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
 )
 
+# Whether to enable get_object_locations for metric
+DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
+
 
 @DeveloperAPI
 class DataContext:
@@ -140,8 +154,8 @@ class DataContext:
 
     def __init__(
         self,
-        block_splitting_enabled: bool,
         target_max_block_size: int,
+        target_shuffle_max_block_size: int,
         target_min_block_size: int,
         streaming_read_buffer_size: int,
         enable_pandas_block: bool,
@@ -153,6 +167,8 @@ class DataContext:
         use_push_based_shuffle: bool,
         pipeline_push_based_shuffle_reduce_tasks: bool,
         scheduling_strategy: SchedulingStrategyT,
+        scheduling_strategy_large_args: SchedulingStrategyT,
+        large_args_threshold: int,
         use_polars: bool,
         new_execution_backend: bool,
         use_streaming_executor: bool,
@@ -165,13 +181,12 @@ class DataContext:
         optimizer_enabled: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
-        use_legacy_iter_batches: bool,
-        strict_mode: bool,
         enable_progress_bars: bool,
+        enable_get_object_locations_for_metrics: bool,
     ):
         """Private constructor (use get_current() instead)."""
-        self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
+        self.target_shuffle_max_block_size = target_shuffle_max_block_size
         self.target_min_block_size = target_min_block_size
         self.streaming_read_buffer_size = streaming_read_buffer_size
         self.enable_pandas_block = enable_pandas_block
@@ -185,6 +200,8 @@ class DataContext:
             pipeline_push_based_shuffle_reduce_tasks
         )
         self.scheduling_strategy = scheduling_strategy
+        self.scheduling_strategy_large_args = scheduling_strategy_large_args
+        self.large_args_threshold = large_args_threshold
         self.use_polars = use_polars
         self.new_execution_backend = new_execution_backend
         self.use_streaming_executor = use_streaming_executor
@@ -198,9 +215,20 @@ class DataContext:
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
-        self.use_legacy_iter_batches = use_legacy_iter_batches
-        self.strict_mode = strict_mode
         self.enable_progress_bars = enable_progress_bars
+        self.enable_get_object_locations_for_metrics = (
+            enable_get_object_locations_for_metrics
+        )
+        # The additonal ray remote args that should be added to
+        # the task-pool-based data tasks.
+        self._task_pool_data_task_remote_args: Dict[str, Any] = {}
+        # The extra key-value style configs.
+        # These configs are managed by individual components or plugins via
+        # `set_config`, `get_config` and `remove_config`.
+        # The reason why we use a dict instead of individual fields is to decouple
+        # the DataContext from the plugin implementations, as well as to avoid
+        # circular dependencies.
+        self._kv_configs: Dict[str, Any] = {}
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -209,16 +237,14 @@ class DataContext:
         If the context has not yet been created in this process, it will be
         initialized with default settings.
         """
-        from ray.data._internal.execution.interfaces import ExecutionOptions
 
         global _default_context
 
         with _context_lock:
-
             if _default_context is None:
                 _default_context = DataContext(
-                    block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
+                    target_shuffle_max_block_size=DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
                     enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,
@@ -233,6 +259,10 @@ class DataContext:
                     # See https://github.com/ray-project/ray/issues/25412.
                     pipeline_push_based_shuffle_reduce_tasks=True,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
+                    scheduling_strategy_large_args=(
+                        DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
+                    ),
+                    large_args_threshold=DEFAULT_LARGE_ARGS_THRESHOLD,
                     use_polars=DEFAULT_USE_POLARS,
                     new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
                     use_streaming_executor=DEFAULT_USE_STREAMING_EXECUTOR,
@@ -245,11 +275,10 @@ class DataContext:
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
-                    execution_options=ExecutionOptions(),
+                    execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
-                    use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
-                    strict_mode=DEFAULT_STRICT_MODE,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
+                    enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
                 )
 
             return _default_context
@@ -263,6 +292,33 @@ class DataContext:
         """
         global _default_context
         _default_context = context
+
+    def get_config(self, key: str, default: Any = None) -> Any:
+        """Get the value for a key-value style config.
+
+        Args:
+            key: The key of the config.
+            default: The default value to return if the key is not found.
+        Returns: The value for the key, or the default value if the key is not found.
+        """
+        return self._kv_configs.get(key, default)
+
+    def set_config(self, key: str, value: Any) -> None:
+        """Set the value for a key-value style config.
+
+        Args:
+            key: The key of the config.
+            value: The value of the config.
+        """
+        self._kv_configs[key] = value
+
+    def remove_config(self, key: str) -> None:
+        """Remove a key-value style config.
+
+        Args:
+            key: The key of the config.
+        """
+        self._kv_configs.pop(key, None)
 
 
 # Backwards compatibility alias.

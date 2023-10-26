@@ -1,0 +1,10 @@
+# Used by CI for datasets tests.
+# https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
+
+python-snappy
+tensorflow-datasets
+datasets
+pytest-repeat
+soundfile
+google-cloud-bigquery
+google-cloud-bigquery-storage

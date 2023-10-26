@@ -26,30 +26,17 @@ from ray.rllib.utils.test_utils import (
 
 
 def get_model_config(framework, lstm=False):
-    model_config = {
-        "torch": dict(
-            # Settings in case we use an LSTM.
+    return (
+        dict(
+            use_lstm=True,
+            lstm_use_prev_action=True,
+            lstm_use_prev_reward=True,
             lstm_cell_size=10,
             max_seq_len=20,
-        ),
-        "tf2": dict(
-            fcnet_activation="relu",
-            fcnet_hiddens=[32, 32],
-            vf_share_layers=False,
-        ),
-    }
-    if framework == "tf2":
-        return model_config["tf2"]
-    elif framework == "torch":
-        torch_model_config = model_config["torch"]
-        for k in [
-            "use_lstm",
-            "lstm_use_prev_action",
-            "lstm_use_prev_reward",
-            "vf_share_layers",
-        ]:
-            torch_model_config[k] = lstm
-        return model_config["torch"]
+        )
+        if lstm
+        else {"use_lstm": False}
+    )
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -67,7 +54,7 @@ class MyCallbacks(DefaultCallbacks):
             0.0000075 if algorithm.iteration == 1 else 0.000005,
         )
         # Compare reported curr lr vs the actual lr found in the optimizer object.
-        optim = algorithm.learner_group._learner._named_optimizers[DEFAULT_POLICY_ID]
+        optim = algorithm.learner_group._learner.get_optimizer()
         actual_optimizer_lr = (
             optim.param_groups[0]["lr"]
             if algorithm.config.framework_str == "torch"
@@ -94,11 +81,10 @@ class TestPPO(unittest.TestCase):
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing lr-scheduling correctness.
-                lr_schedule=[[0, 0.00001], [512, 0.0]],  # 512=4x128
+                lr=[[0, 0.00001], [512, 0.0]],  # 512=4x128
                 # Set entropy_coeff to a faulty value to proof that it'll get
                 # overridden by the schedule below (which is expected).
-                entropy_coeff=100.0,
-                entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],  # 256=2x128
+                entropy_coeff=[[0, 0.1], [256, 0.0]],  # 256=2x128,
                 train_batch_size=128,
                 _enable_learner_api=True,
             )
@@ -114,14 +100,11 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(
-            config, frameworks=("torch", "tf2"), with_eager_tracing=True
-        ):
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
                 print("Env={}".format(env))
-                # TODO (Kourosh, Avnishn): for now just do lstm=False
-                for lstm in [False]:
+                for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
                     config.training(model=get_model_config(fw, lstm=lstm))
 
@@ -129,18 +112,16 @@ class TestPPO(unittest.TestCase):
                     # TODO: Maybe add an API to get the Learner(s) instances within
                     #  a learner group, remote or not.
                     learner = algo.learner_group._learner
-                    optim = algo.learner_group._learner._named_optimizers[
-                        DEFAULT_POLICY_ID
-                    ]
+                    optim = learner.get_optimizer()
                     # Check initial LR directly set in optimizer vs the first (ts=0)
                     # value from the schedule.
                     lr = optim.param_groups[0]["lr"] if fw == "torch" else optim.lr
-                    check(lr, config.lr_schedule[0][1])
+                    check(lr, config.lr[0][1])
 
                     # Check current entropy coeff value using the respective Scheduler.
-                    entropy_coeff = learner.entropy_coeff_scheduler.get_current_value(
+                    entropy_coeff = learner.entropy_coeff_schedulers_per_module[
                         DEFAULT_POLICY_ID
-                    )
+                    ].get_current_value()
                     check(entropy_coeff, 0.1)
 
                     for i in range(num_iterations):
@@ -171,9 +152,7 @@ class TestPPO(unittest.TestCase):
         )
         obs = np.array(0)
 
-        for _ in framework_iterator(
-            config, frameworks=("torch", "tf2"), with_eager_tracing=True
-        ):
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
             # Default Agent should be setup with StochasticSampling.
             algo = config.build()
             # explore=False, always expect the same (deterministic) action.
@@ -208,7 +187,7 @@ class TestPPO(unittest.TestCase):
                 ppo.PPOConfig()
                 .environment("Pendulum-v1")
                 .rollouts(
-                    num_rollout_workers=0,
+                    num_rollout_workers=1,
                 )
                 .training(
                     gamma=0.99,

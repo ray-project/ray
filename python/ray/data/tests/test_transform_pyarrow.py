@@ -6,13 +6,13 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorType,
 )
-from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
 
 
 def test_arrow_concat_empty():

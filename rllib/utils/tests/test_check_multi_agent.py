@@ -59,7 +59,7 @@ class TestCheckMultiAgent(unittest.TestCase):
             ),
         )
 
-    def test_setting_multi_agent_should_fail(self):
+    def test_setting_multiagent_key_in_config_should_fail(self):
         config = PGConfig().multi_agent(
             policies={
                 "pol1": (None, None, None, None),
@@ -68,8 +68,8 @@ class TestCheckMultiAgent(unittest.TestCase):
         )
 
         def set_ma(config):
-            print(config["multiagent"])  # ok
-            config["multiagent"] = {"policies": {"pol1", "pol2"}}  # not ok
+            # not ok: cannot set "multiagent" key in AlgorithmConfig anymore.
+            config["multiagent"] = {"policies": {"pol1", "pol2"}}
 
         self.assertRaisesRegex(
             AttributeError,

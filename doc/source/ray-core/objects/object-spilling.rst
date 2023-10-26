@@ -11,7 +11,13 @@ Ray uses object spilling by default. Without any setting, objects are spilled to
 
 To configure the directory where objects are spilled to, use:
 
-.. code-block:: python
+.. testcode::
+  :hide:
+
+  import ray
+  ray.shutdown()
+
+.. testcode::
 
     import json
     import ray
@@ -27,7 +33,12 @@ To configure the directory where objects are spilled to, use:
 You can also specify multiple directories for spilling to spread the IO load and disk space
 usage across multiple physical devices if needed (e.g., SSD devices):
 
-.. code-block:: python
+.. testcode::
+  :hide:
+
+  ray.shutdown()
+
+.. testcode::
 
     import json
     import ray
@@ -59,7 +70,12 @@ usage across multiple physical devices if needed (e.g., SSD devices):
 
 If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
 
-.. code-block:: python
+.. testcode::
+  :hide:
+
+  ray.shutdown()
+
+.. testcode::
 
     import json
     import ray
@@ -82,7 +98,12 @@ To prevent running out of disk space, local object spilling will throw ``OutOfDi
 If multiple physical devices are used, any physical device's over-usage will trigger the ``OutOfDiskError``.
 The default threshold is 0.95 (95%). You can adjust the threshold by setting ``local_fs_capacity_threshold``, or set it to 1 to disable the protection.
 
-.. code-block:: python
+.. testcode::
+  :hide:
+
+  ray.shutdown()
+
+.. testcode::
 
     import json
     import ray
@@ -97,6 +118,7 @@ The default threshold is 0.95 (95%). You can adjust the threshold by setting ``l
                   "type": "filesystem",
                   "params": {
                     "directory_path": "/tmp/spill",
+                  }
                 },
             )
         },
@@ -105,7 +127,13 @@ The default threshold is 0.95 (95%). You can adjust the threshold by setting ``l
 
 To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
 
-.. code-block:: python
+.. testcode::
+  :hide:
+
+  ray.shutdown()
+
+.. testcode::
+  :skipif: True
 
     import json
     import ray
@@ -130,7 +158,13 @@ It is recommended that you specify a large buffer size (> 1MB) to reduce IO requ
 
 Spilling to multiple remote storages is also supported.
 
-.. code-block:: python
+.. testcode::
+  :hide:
+
+  ray.shutdown()
+
+.. testcode::
+  :skipif: True
 
     import json
     import ray

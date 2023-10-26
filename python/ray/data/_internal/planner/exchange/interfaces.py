@@ -23,6 +23,9 @@ class ExchangeTaskSpec:
     (https://dl.acm.org/doi/10.1109/69.273032).
     """
 
+    MAP_SUB_PROGRESS_BAR_NAME = "Shuffle Map"
+    REDUCE_SUB_PROGRESS_BAR_NAME = "Shuffle Reduce"
+
     def __init__(self, map_args: List[Any] = None, reduce_args: List[Any] = None):
         self._map_args = map_args or []
         self._reduce_args = reduce_args or []

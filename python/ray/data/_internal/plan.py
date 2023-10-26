@@ -1,7 +1,6 @@
 import copy
 import functools
 import itertools
-import uuid
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -16,31 +15,39 @@ from typing import (
 )
 
 import ray
-from ray.data._internal.util import unify_block_metadata_schema
-from ray.data.block import BlockMetadata
-from ray.data._internal.util import capitalize
-from ray.types import ObjectRef
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
-    UserDefinedFunction,
     ActorPoolStrategy,
-    TaskPoolStrategy,
     BlockTransform,
     CallableClass,
     ComputeStrategy,
+    TaskPoolStrategy,
+    UserDefinedFunction,
     get_compute,
     is_task_compute,
 )
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
+from ray.data._internal.logical.rules.split_read_output_blocks import (
+    compute_additional_split_factor,
+)
+from ray.data._internal.planner.plan_read_op import (
+    apply_output_blocks_handling_to_read_task,
+)
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data.block import Block
+from ray.data._internal.util import capitalize, unify_block_metadata_schema
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.types import ObjectRef
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     import pyarrow
+
     from ray.data._internal.execution.interfaces import Executor
 
 
@@ -102,7 +109,6 @@ class ExecutionPlan:
         self,
         in_blocks: BlockList,
         stats: DatasetStats,
-        dataset_uuid=None,
         *,
         run_by_consumer: bool,
     ):
@@ -125,12 +131,13 @@ class ExecutionPlan:
         self._stages_after_snapshot = []
         # Cache of optimized stages.
         self._last_optimized_stages = None
-
-        self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
-        if not stats.dataset_uuid:
-            stats.dataset_uuid = self._dataset_uuid
+        # Cached schema.
+        self._schema = None
+        # Set when a Dataset is constructed with this plan
+        self._dataset_uuid = None
 
         self._run_by_consumer = run_by_consumer
+        self._dataset_name = None
 
         # Snapshot the current context, so that the config of Datasets is always
         # determined by the config at the time it was created.
@@ -216,9 +223,18 @@ class ExecutionPlan:
         if dataset_blocks is None:
             num_blocks = "?"
         else:
-            num_blocks = dataset_blocks.initial_num_blocks()
-        dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
-            classname, num_blocks, count, schema_str
+            num_blocks = dataset_blocks.estimated_num_blocks()
+        name_str = (
+            "name={}, ".format(self._dataset_name)
+            if self._dataset_name is not None
+            else ""
+        )
+        dataset_str = "{}({}num_blocks={}, num_rows={}, schema={})".format(
+            classname,
+            name_str,
+            num_blocks,
+            count,
+            schema_str,
         )
 
         # If the resulting string representation fits in one line, use it directly.
@@ -258,8 +274,14 @@ class ExecutionPlan:
                 schema_str = (
                     "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
                 )
+            name_str = (
+                f"\n{trailing_space}{INDENT_STR}name={self._dataset_name},"
+                if self._dataset_name is not None
+                else ""
+            )
             dataset_str = (
                 f"{classname}("
+                f"{name_str}"
                 f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
@@ -312,29 +334,23 @@ class ExecutionPlan:
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
+        plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
-    def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionPlan":
+    def deep_copy(self) -> "ExecutionPlan":
         """Create a deep copy of this execution plan.
 
         This copy can be executed AND cleared without mutating the original.
 
-        Args:
-            preserve_uuid: Whether to preserve the original UUID in the copy.
-
         Returns:
             A deep copy of this execution plan.
         """
-        dataset_uuid = None
-        if preserve_uuid:
-            dataset_uuid = self._dataset_uuid
         in_blocks = self._in_blocks
         if isinstance(in_blocks, BlockList):
             in_blocks = in_blocks.copy()
         plan_copy = ExecutionPlan(
             in_blocks,
             copy.copy(self._in_stats),
-            dataset_uuid=dataset_uuid,
             run_by_consumer=self._run_by_consumer,
         )
         if self._snapshot_blocks:
@@ -343,6 +359,7 @@ class ExecutionPlan:
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
+        plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
     def initial_num_blocks(self) -> int:
@@ -374,7 +391,14 @@ class ExecutionPlan:
         """
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
+        if self._schema is not None:
+            return self._schema
+
         if self._stages_after_snapshot:
+            # TODO(swang): There are several other stage types that could
+            # inherit the schema or we can compute the schema without having to
+            # execute any of the dataset: limit, filter, map_batches for
+            # add/drop columns, etc.
             if fetch_if_missing:
                 if isinstance(self._stages_after_snapshot[-1], RandomizeBlocksStage):
                     # TODO(ekl): this is a hack to optimize the case where we have a
@@ -405,7 +429,11 @@ class ExecutionPlan:
         blocks = self._snapshot_blocks
         if not blocks:
             return None
-        return self._get_unified_blocks_schema(blocks, fetch_if_missing)
+        self._schema = self._get_unified_blocks_schema(blocks, fetch_if_missing)
+        return self._schema
+
+    def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
+        self._schema = schema
 
     def _get_unified_blocks_schema(
         self, blocks: BlockList, fetch_if_missing: bool = False
@@ -499,12 +527,14 @@ class ExecutionPlan:
                 None,
             )
 
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_block_iterator,
         )
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
-        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
+        executor = StreamingExecutor(
+            copy.deepcopy(ctx.execution_options), self._dataset_uuid
+        )
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,
@@ -550,24 +580,22 @@ class ExecutionPlan:
                     "are freed up. A common reason is that cluster resources are "
                     "used by Actors or Tune trials; see the following link "
                     "for more details: "
-                    "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
+                    "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
-                from ray.data._internal.execution.bulk_executor import BulkExecutor
-                from ray.data._internal.execution.streaming_executor import (
-                    StreamingExecutor,
-                )
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
                 )
+                from ray.data._internal.execution.streaming_executor import (
+                    StreamingExecutor,
+                )
 
-                if context.use_streaming_executor:
-                    executor = StreamingExecutor(
-                        copy.deepcopy(context.execution_options)
-                    )
-                else:
-                    executor = BulkExecutor(copy.deepcopy(context.execution_options))
+                metrics_tag = (self._dataset_name or "") + self._dataset_uuid
+                executor = StreamingExecutor(
+                    copy.deepcopy(context.execution_options),
+                    metrics_tag,
+                )
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
@@ -614,6 +642,27 @@ class ExecutionPlan:
                     logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                         stats_summary_string,
                     )
+            # Retrieve memory-related stats from ray.
+            reply = get_memory_info_reply(
+                get_state_from_address(ray.get_runtime_context().gcs_address)
+            )
+            if reply.store_stats.spill_time_total_s > 0:
+                stats.global_bytes_spilled = int(reply.store_stats.spilled_bytes_total)
+            if reply.store_stats.restore_time_total_s > 0:
+                stats.global_bytes_restored = int(
+                    reply.store_stats.restored_bytes_total
+                )
+
+            stats.dataset_bytes_spilled = 0
+
+            def collect_stats(cur_stats):
+                stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
+                    "obj_store_mem_spilled", 0
+                )
+                for parent in cur_stats.parents:
+                    collect_stats(parent)
+
+            collect_stats(stats)
 
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
@@ -683,6 +732,42 @@ class ExecutionPlan:
         """
         context = self._context
         blocks, stats, stages = self._get_source_blocks_and_stages()
+        logical_op = self._logical_plan.dag
+        if isinstance(logical_op, Read) and isinstance(blocks, LazyBlockList):
+            # TODO(swang): Currently the legacy backend is used to execute
+            # Datasets that only contain a Read. Handle read task parallelism
+            # and output block splitting here. This duplicates logic in
+            # SplitReadOutputBlocksRule and can be removed once legacy backend
+            # is deprecated.
+            ctx = DataContext.get_current()
+            (
+                detected_parallelism,
+                reason,
+                estimated_num_blocks,
+                k,
+            ) = compute_additional_split_factor(
+                logical_op._reader,
+                logical_op._parallelism,
+                logical_op._mem_size,
+                ctx.target_max_block_size,
+                cur_additional_split_factor=None,
+            )
+            if logical_op._parallelism == -1:
+                assert reason != ""
+                logger.get_logger().info(
+                    f"Using autodetected parallelism={detected_parallelism} "
+                    f"for stage {logical_op.name} to satisfy {reason}."
+                )
+            if k is not None:
+                logger.get_logger().info(
+                    f"To satisfy the requested parallelism of {detected_parallelism}, "
+                    f"each read task output is split into {k} smaller blocks."
+                )
+
+            for read_task in blocks._tasks:
+                apply_output_blocks_handling_to_read_task(read_task, k)
+            blocks._estimated_num_blocks = estimated_num_blocks
+
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)
         if context.optimize_fuse_stages:
@@ -883,7 +968,7 @@ class OneToOneStage(Stage):
         block_fn: BlockTransform,
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
-        target_block_size: Optional[int] = None,
+        min_rows_per_block: Optional[int] = None,
         fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -894,7 +979,7 @@ class OneToOneStage(Stage):
         self.block_fn = block_fn
         self.compute = compute or TaskPoolStrategy()
         self.ray_remote_args = ray_remote_args or {}
-        self.target_block_size = target_block_size
+        self.min_rows_per_block = min_rows_per_block
         self.fn = fn
         self.fn_args = fn_args
         self.fn_kwargs = fn_kwargs
@@ -962,12 +1047,12 @@ class OneToOneStage(Stage):
 
         block_fn1 = prev.block_fn
         block_fn2 = self.block_fn
-        if prev.target_block_size is not None and self.target_block_size is not None:
-            target_block_size = max(prev.target_block_size, self.target_block_size)
-        elif prev.target_block_size is not None:
-            target_block_size = prev.target_block_size
+        if prev.min_rows_per_block is not None and self.min_rows_per_block is not None:
+            min_rows_per_block = max(prev.min_rows_per_block, self.min_rows_per_block)
+        elif prev.min_rows_per_block is not None:
+            min_rows_per_block = prev.min_rows_per_block
         else:
-            target_block_size = self.target_block_size
+            min_rows_per_block = self.min_rows_per_block
 
         def block_fn(
             blocks: Iterable[Block],
@@ -997,7 +1082,7 @@ class OneToOneStage(Stage):
             block_fn,
             self.compute,
             prev.ray_remote_args,
-            target_block_size=target_block_size,
+            min_rows_per_block=min_rows_per_block,
             fn=self.fn,
             fn_args=fn_args,
             fn_kwargs={},
@@ -1024,7 +1109,7 @@ class OneToOneStage(Stage):
             blocks,
             clear_input_blocks,
             name=self.name,
-            target_block_size=self.target_block_size,
+            min_rows_per_block=self.min_rows_per_block,
             fn=self.fn,
             fn_args=self.fn_args,
             fn_kwargs=self.fn_kwargs,
@@ -1264,34 +1349,6 @@ def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
         fused_stages.append(prev_stage)
         prev_stage = None
     return fused_stages
-
-
-def _are_remote_args_compatible(prev_args, next_args):
-    """Check if Ray remote arguments are compatible for merging."""
-    prev_args = _canonicalize(prev_args)
-    next_args = _canonicalize(next_args)
-    remote_args = next_args.copy()
-    for key in INHERITABLE_REMOTE_ARGS:
-        if key in prev_args:
-            remote_args[key] = prev_args[key]
-    if prev_args != remote_args:
-        return False
-    return True
-
-
-def _canonicalize(remote_args: dict) -> dict:
-    """Returns canonical form of given remote args."""
-    remote_args = remote_args.copy()
-    if "num_cpus" not in remote_args or remote_args["num_cpus"] is None:
-        remote_args["num_cpus"] = 1
-    if "num_gpus" not in remote_args or remote_args["num_gpus"] is None:
-        remote_args["num_gpus"] = 0
-    resources = remote_args.get("resources", {})
-    for k, v in list(resources.items()):
-        if v is None or v == 0.0:
-            del resources[k]
-    remote_args["resources"] = resources
-    return remote_args
 
 
 def _is_lazy(blocks: BlockList) -> bool:

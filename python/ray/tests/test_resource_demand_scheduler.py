@@ -58,7 +58,7 @@ from ray.tests.test_autoscaler import (
     MULTI_WORKER_CLUSTER,
     TYPES_A,
     MockAutoscaler,
-    MockNodeInfoStub,
+    MockGcsClient,
     MockProcessRunner,
     MockProvider,
     fill_in_raylet_ids,
@@ -196,6 +196,17 @@ def test_bin_pack():
         [{"GPU": 1}],
         [{"GPU": 2}],
     )
+
+    implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
+    assert (
+        get_bin_pack_residual(
+            [{"CPU": 1}], [{implicit_resource: 0.5}, {implicit_resource: 0.5}]
+        )[0]
+        == []
+    )
+    assert get_bin_pack_residual(
+        [{"CPU": 1}], [{implicit_resource: 1}, {implicit_resource: 0.5}]
+    ) == ([{implicit_resource: 0.5}], [{"CPU": 1, implicit_resource: 0}])
 
 
 def test_get_nodes_packing_heuristic():
@@ -1865,11 +1876,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "init_cmd")
         runner.assert_has_call("1.2.3.4", "setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
-        self.assertEqual(self.provider.mock_nodes[0].node_type, "empty_node")
-        self.assertEqual(self.provider.mock_nodes[0].node_config.get("FooProperty"), 42)
-        self.assertEqual(self.provider.mock_nodes[0].node_config.get("TestProp"), 1)
+        self.assertEqual(self.provider.mock_nodes["0"].node_type, "empty_node")
         self.assertEqual(
-            self.provider.mock_nodes[0].tags.get(TAG_RAY_USER_NODE_TYPE), "empty_node"
+            self.provider.mock_nodes["0"].node_config.get("FooProperty"), 42
+        )
+        self.assertEqual(self.provider.mock_nodes["0"].node_config.get("TestProp"), 1)
+        self.assertEqual(
+            self.provider.mock_nodes["0"].tags.get(TAG_RAY_USER_NODE_TYPE), "empty_node"
         )
 
     def testGetOrCreateMultiNodeTypeCustomHeadResources(self):
@@ -1896,11 +1909,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
         runner.assert_has_call("1.2.3.4", "empty_resource_name")
-        self.assertEqual(self.provider.mock_nodes[0].node_type, "empty_node")
-        self.assertEqual(self.provider.mock_nodes[0].node_config.get("FooProperty"), 42)
-        self.assertEqual(self.provider.mock_nodes[0].node_config.get("TestProp"), 1)
+        self.assertEqual(self.provider.mock_nodes["0"].node_type, "empty_node")
         self.assertEqual(
-            self.provider.mock_nodes[0].tags.get(TAG_RAY_USER_NODE_TYPE), "empty_node"
+            self.provider.mock_nodes["0"].node_config.get("FooProperty"), 42
+        )
+        self.assertEqual(self.provider.mock_nodes["0"].node_config.get("TestProp"), 1)
+        self.assertEqual(
+            self.provider.mock_nodes["0"].tags.get(TAG_RAY_USER_NODE_TYPE), "empty_node"
         )
 
     def testSummary(self):
@@ -1925,7 +1940,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             max_launch_batch=1,
             max_concurrent_launches=10,
@@ -2040,7 +2055,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2072,7 +2087,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2107,7 +2122,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2153,7 +2168,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(5)
 
         for i in range(1, 5):
-            assert self.provider.mock_nodes[i].node_type == "p2.8xlarge"
+            assert self.provider.mock_nodes[str(i)].node_type == "p2.8xlarge"
 
         pending_placement_groups = [
             PlacementGroupTableData(
@@ -2190,7 +2205,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2200,8 +2215,8 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
         assert len(self.provider.mock_nodes) == 3
         assert {
-            self.provider.mock_nodes[1].node_type,
-            self.provider.mock_nodes[2].node_type,
+            self.provider.mock_nodes["1"].node_type,
+            self.provider.mock_nodes["2"].node_type,
         } == {"p2.8xlarge", "m4.large"}
         self.provider.create_node(
             {},
@@ -2271,7 +2286,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2291,7 +2306,7 @@ class AutoscalingTest(unittest.TestCase):
         )
         autoscaler.update()
         self.waitForNodes(2)
-        assert self.provider.mock_nodes[1].node_type == "p2.xlarge"
+        assert self.provider.mock_nodes["1"].node_type == "p2.xlarge"
 
     def testRequestBundlesAccountsForHeadNode(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
@@ -2314,7 +2329,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2336,7 +2351,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.load_metrics.set_resource_requests([{"GPU": 8}] * 2)
         autoscaler.update()
         self.waitForNodes(2)
-        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
+        assert self.provider.mock_nodes["1"].node_type == "p2.8xlarge"
 
     def testRequestBundles(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
@@ -2358,7 +2373,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2369,17 +2384,17 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(2)
-        assert self.provider.mock_nodes[1].node_type == "m4.large"
+        assert self.provider.mock_nodes["1"].node_type == "m4.large"
         autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(3)
-        assert self.provider.mock_nodes[2].node_type == "p2.8xlarge"
+        assert self.provider.mock_nodes["2"].node_type == "p2.8xlarge"
         autoscaler.load_metrics.set_resource_requests([{"CPU": 32}] * 4)
         autoscaler.update()
         self.waitForNodes(5)
 
-        assert self.provider.mock_nodes[3].node_type == "m4.16xlarge"
-        assert self.provider.mock_nodes[4].node_type == "m4.16xlarge"
+        assert self.provider.mock_nodes["3"].node_type == "m4.16xlarge"
+        assert self.provider.mock_nodes["4"].node_type == "m4.16xlarge"
 
     def testResourcePassing(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
@@ -2401,7 +2416,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2412,11 +2427,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-        assert self.provider.mock_nodes[1].node_type == "m4.large"
+        assert self.provider.mock_nodes["1"].node_type == "m4.large"
         autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-        assert self.provider.mock_nodes[2].node_type == "p2.8xlarge"
+        assert self.provider.mock_nodes["2"].node_type == "p2.8xlarge"
 
         # TODO (Alex): Autoscaler creates the node during one update then
         # starts the updater in the next update. The sleep is largely
@@ -2453,7 +2468,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2474,7 +2489,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         nodes = {
-            self.provider.mock_nodes[1].node_type,
+            self.provider.mock_nodes["1"].node_type,
         }
         assert nodes == {"p2.xlarge"}
 
@@ -2509,7 +2524,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2520,29 +2535,33 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(2)
-        assert self.provider.mock_nodes[1].node_type == "m4.large"
+        assert self.provider.mock_nodes["1"].node_type == "m4.large"
         autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(3)
-        assert self.provider.mock_nodes[2].node_type == "p2.8xlarge"
+        assert self.provider.mock_nodes["2"].node_type == "p2.8xlarge"
         autoscaler.load_metrics.set_resource_requests([{"GPU": 1}] * 9)
         autoscaler.update()
         self.waitForNodes(4)
-        assert self.provider.mock_nodes[3].node_type == "p2.xlarge"
+        assert self.provider.mock_nodes["3"].node_type == "p2.xlarge"
         autoscaler.update()
         sleep(0.1)
         runner.assert_has_call(
-            self.provider.mock_nodes[2].internal_ip, "new_worker_setup_command"
+            self.provider.mock_nodes["2"].internal_ip, "new_worker_setup_command"
         )
 
-        runner.assert_not_has_call(self.provider.mock_nodes[2].internal_ip, "setup_cmd")
         runner.assert_not_has_call(
-            self.provider.mock_nodes[2].internal_ip, "worker_setup_cmd"
+            self.provider.mock_nodes["2"].internal_ip, "setup_cmd"
+        )
+        runner.assert_not_has_call(
+            self.provider.mock_nodes["2"].internal_ip, "worker_setup_cmd"
         )
         runner.assert_has_call(
-            self.provider.mock_nodes[3].internal_ip, "new_worker_initialization_cmd"
+            self.provider.mock_nodes["3"].internal_ip, "new_worker_initialization_cmd"
         )
-        runner.assert_not_has_call(self.provider.mock_nodes[3].internal_ip, "init_cmd")
+        runner.assert_not_has_call(
+            self.provider.mock_nodes["3"].internal_ip, "init_cmd"
+        )
 
     def testDockerWorkers(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
@@ -2576,7 +2595,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2587,15 +2606,15 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(2)
-        assert self.provider.mock_nodes[1].node_type == "m4.large"
+        assert self.provider.mock_nodes["1"].node_type == "m4.large"
         autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(3)
-        assert self.provider.mock_nodes[2].node_type == "p2.8xlarge"
+        assert self.provider.mock_nodes["2"].node_type == "p2.8xlarge"
         autoscaler.load_metrics.set_resource_requests([{"GPU": 1}] * 9)
         autoscaler.update()
         self.waitForNodes(4)
-        assert self.provider.mock_nodes[3].node_type == "p2.xlarge"
+        assert self.provider.mock_nodes["3"].node_type == "p2.xlarge"
         autoscaler.update()
         # Fill up m4, p2.8, p2 and request 2 more CPUs
         autoscaler.load_metrics.set_resource_requests(
@@ -2603,52 +2622,52 @@ class AutoscalingTest(unittest.TestCase):
         )
         autoscaler.update()
         self.waitForNodes(5)
-        assert self.provider.mock_nodes[4].node_type == "m4.large"
+        assert self.provider.mock_nodes["4"].node_type == "m4.large"
         autoscaler.update()
         sleep(0.1)
         runner.assert_has_call(
-            self.provider.mock_nodes[2].internal_ip, "p2.8x-run-options"
+            self.provider.mock_nodes["2"].internal_ip, "p2.8x-run-options"
         )
         runner.assert_has_call(
-            self.provider.mock_nodes[2].internal_ip, "head-and-worker-run-options"
+            self.provider.mock_nodes["2"].internal_ip, "head-and-worker-run-options"
         )
         runner.assert_has_call(
-            self.provider.mock_nodes[2].internal_ip, "p2.8x_image:latest"
+            self.provider.mock_nodes["2"].internal_ip, "p2.8x_image:latest"
         )
         runner.assert_not_has_call(
-            self.provider.mock_nodes[2].internal_ip, "default-image:nightly"
+            self.provider.mock_nodes["2"].internal_ip, "default-image:nightly"
         )
         runner.assert_not_has_call(
-            self.provider.mock_nodes[2].internal_ip, "standard-run-options"
+            self.provider.mock_nodes["2"].internal_ip, "standard-run-options"
         )
 
         runner.assert_has_call(
-            self.provider.mock_nodes[3].internal_ip, "p2x_image:nightly"
+            self.provider.mock_nodes["3"].internal_ip, "p2x_image:nightly"
         )
         runner.assert_has_call(
-            self.provider.mock_nodes[3].internal_ip, "standard-run-options"
+            self.provider.mock_nodes["3"].internal_ip, "standard-run-options"
         )
         runner.assert_has_call(
-            self.provider.mock_nodes[3].internal_ip, "head-and-worker-run-options"
+            self.provider.mock_nodes["3"].internal_ip, "head-and-worker-run-options"
         )
         runner.assert_not_has_call(
-            self.provider.mock_nodes[3].internal_ip, "p2.8x-run-options"
+            self.provider.mock_nodes["3"].internal_ip, "p2.8x-run-options"
         )
 
         runner.assert_has_call(
-            self.provider.mock_nodes[4].internal_ip, "default-image:nightly"
+            self.provider.mock_nodes["4"].internal_ip, "default-image:nightly"
         )
         runner.assert_has_call(
-            self.provider.mock_nodes[4].internal_ip, "standard-run-options"
+            self.provider.mock_nodes["4"].internal_ip, "standard-run-options"
         )
         runner.assert_has_call(
-            self.provider.mock_nodes[4].internal_ip, "head-and-worker-run-options"
+            self.provider.mock_nodes["4"].internal_ip, "head-and-worker-run-options"
         )
         runner.assert_not_has_call(
-            self.provider.mock_nodes[4].internal_ip, "p2.8x-run-options"
+            self.provider.mock_nodes["4"].internal_ip, "p2.8x-run-options"
         )
         runner.assert_not_has_call(
-            self.provider.mock_nodes[4].internal_ip, "p2x_image:nightly"
+            self.provider.mock_nodes["4"].internal_ip, "p2x_image:nightly"
         )
 
     def testUpdateConfig(self):
@@ -2670,7 +2689,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2705,7 +2724,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2716,11 +2735,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(2)
-        assert self.provider.mock_nodes[1].node_type == "m4.large"
+        assert self.provider.mock_nodes["1"].node_type == "m4.large"
         autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(3)
-        assert self.provider.mock_nodes[2].node_type == "p2.8xlarge"
+        assert self.provider.mock_nodes["2"].node_type == "p2.8xlarge"
 
     def testRequestResourcesIdleTimeout(self):
         """Test request_resources() with and without idle timeout."""
@@ -2756,7 +2775,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2865,7 +2884,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2976,7 +2995,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -3027,7 +3046,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -3114,6 +3133,7 @@ def test_info_string():
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
         ],
+        idle_nodes=[],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
     )
@@ -3122,15 +3142,17 @@ def test_info_string():
 ======== Autoscaler status: 2020-12-28 01:02:03 ========
 Node status
 --------------------------------------------------------
-Healthy:
+Active:
  2 p3.2xlarge
  20 m4.4xlarge
+Idle:
+ (no idle nodes)
 Pending:
  m4.4xlarge, 2 launching
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3186,13 +3208,21 @@ def test_info_string_verbose():
         },
     )
     autoscaler_summary = AutoscalerSummary(
-        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        active_nodes=[],
+        idle_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
         pending_nodes=[
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
         ],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
+        node_activities={
+            "192.168.1.1": (
+                "m4.4xlarge",
+                ["CPU in use.", "GPU in use.", "Active workers."],
+            ),
+            "192.168.1.2": ("m4.4xlarge", ["GPU in use.", "Active workers."]),
+        },
     )
 
     expected = """
@@ -3202,7 +3232,9 @@ Node Provider non_terminated_nodes time: 1.618000s
 
 Node status
 --------------------------------------------------------
-Healthy:
+Active:
+ (no active nodes)
+Idle:
  2 p3.2xlarge
  20 m4.4xlarge
 Pending:
@@ -3210,7 +3242,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3233,6 +3265,10 @@ Node: 192.168.1.1
   0.1/1 accelerator_type:V100
   1.00GiB/4.00GiB memory
   3.14GiB/4.00GiB object_store_memory
+ Activity:
+  CPU in use.
+  GPU in use.
+  Active workers.
 
 Node: 192.168.1.2
  Usage:
@@ -3241,6 +3277,9 @@ Node: 192.168.1.2
   0.9/1 accelerator_type:V100
   1.00GiB/12.00GiB memory
   0B/4.00GiB object_store_memory
+ Activity:
+  GPU in use.
+  Active workers.
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3290,6 +3329,7 @@ def test_info_string_verbose_node_types():
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
         ],
+        idle_nodes=[],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
         node_type_mapping={
@@ -3306,15 +3346,17 @@ Autoscaler iteration time: 3.141500s
 
 Node status
 --------------------------------------------------------
-Healthy:
+Active:
  2 p3.2xlarge
  20 m4.4xlarge
+Idle:
+ (no idle nodes)
 Pending:
  m4.4xlarge, 2 launching
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3378,7 +3420,8 @@ def test_info_string_verbose_no_breakdown():
         usage_by_node=None,
     )
     autoscaler_summary = AutoscalerSummary(
-        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        active_nodes=[],
+        idle_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
         pending_nodes=[
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
@@ -3394,7 +3437,9 @@ Node Provider non_terminated_nodes time: 1.618000s
 
 Node status
 --------------------------------------------------------
-Healthy:
+Active:
+ (no active nodes)
+Idle:
  2 p3.2xlarge
  20 m4.4xlarge
 Pending:
@@ -3402,7 +3447,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3453,6 +3498,7 @@ def test_info_string_with_launch_failures():
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
         ],
+        idle_nodes=[],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
         node_availability_summary=NodeAvailabilitySummary(
@@ -3483,9 +3529,11 @@ def test_info_string_with_launch_failures():
 ======== Autoscaler status: 2020-12-28 01:02:03 ========
 Node status
 --------------------------------------------------------
-Healthy:
+Active:
  2 p3.2xlarge
  20 m4.4xlarge
+Idle:
+ (no idle nodes)
 Pending:
  m4.4xlarge, 2 launching
  1.2.3.4: m4.4xlarge, waiting-for-ssh
@@ -3493,7 +3541,7 @@ Pending:
 Recent failures:
  A100: InstanceLimitExceeded (latest_attempt: 13:03:02)
  Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3536,7 +3584,8 @@ def test_info_string_with_launch_failures_verbose():
         year=2012, month=12, day=21, hour=13, minute=3, second=1
     ).timestamp()
     autoscaler_summary = AutoscalerSummary(
-        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        active_nodes=[],
+        idle_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
         pending_nodes=[
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
@@ -3572,7 +3621,9 @@ def test_info_string_with_launch_failures_verbose():
 
 Node status
 --------------------------------------------------------
-Healthy:
+Active:
+ (no active nodes)
+Idle:
  2 p3.2xlarge
  20 m4.4xlarge
 Pending:
@@ -3582,7 +3633,7 @@ Pending:
 Recent failures:
  A100: InstanceLimitExceeded (latest_attempt: 13:03:02) - you should fix it
  Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01) - desc
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3628,7 +3679,8 @@ def test_info_string_failed_node_cap():
         node_types=[],
     )
     autoscaler_summary = AutoscalerSummary(
-        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        active_nodes=[],
+        idle_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
         pending_nodes=[
             ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
             ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
@@ -3641,7 +3693,9 @@ def test_info_string_failed_node_cap():
 ======== Autoscaler status: 2020-12-28 01:02:03 ========
 Node status
 --------------------------------------------------------
-Healthy:
+Active:
+ (no active nodes)
+Idle:
  2 p3.2xlarge
  20 m4.4xlarge
 Pending:
@@ -3649,25 +3703,25 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.99)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.98)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.97)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.96)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.95)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.94)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.93)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.92)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.91)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.90)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.89)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.88)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.87)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.86)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.85)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.84)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.83)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.82)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.81)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.99)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.98)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.97)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.96)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.95)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.94)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.93)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.92)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.91)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.90)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.89)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.88)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.87)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.86)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.85)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.84)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.83)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.82)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.81)
 
 Resources
 --------------------------------------------------------

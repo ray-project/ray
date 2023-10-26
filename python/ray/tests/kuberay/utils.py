@@ -32,13 +32,6 @@ RAYCLUSTERS_QUALIFIED = "rayclusters.ray.io"
 LOG_FORMAT = "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
 
 
-def setup_logging():
-    logging.basicConfig(
-        level=logging.INFO,
-        format=LOG_FORMAT,
-    )
-
-
 def switch_to_ray_parent_dir():
     # Switch to parent of Ray repo, because that's what the doc examples do.
     logger.info("Switching to parent of Ray directory.")

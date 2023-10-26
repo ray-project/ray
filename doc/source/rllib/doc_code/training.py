@@ -4,7 +4,7 @@
 try:
     import gymnasium as gym
 
-    env = gym.make("GymV26Environment-v0", env_id="ALE/Pong-v5")
+    env = gym.make("ALE/Pong-v5")
     obs, infos = env.reset()
 except Exception:
     import gym
@@ -29,10 +29,10 @@ prep.transform(obs).shape
 # __query_action_dist_start__
 # Get a reference to the policy
 import numpy as np
-from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.dqn import DQNConfig
 
 algo = (
-    PPOConfig()
+    DQNConfig()
     .environment("CartPole-v1")
     .framework("tf2")
     .rollouts(num_rollout_workers=0)

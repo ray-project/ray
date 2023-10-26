@@ -7,7 +7,7 @@ import numpy as np
 import psutil
 import pytest
 from grpc._channel import _InactiveRpcError
-from ray.experimental.state.api import list_tasks
+from ray.util.state import list_tasks
 from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
@@ -373,7 +373,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
     p = error_pubsub
     errors = get_error_message(p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=10)
     # Should print the heartbeat messages.
-    assert "has missed too many heartbeats from it" in errors[0].error_message
+    assert "has missed too many heartbeats from it" in errors[0]["error_message"]
     # NOTE the killed raylet is a zombie since the
     # parent process (the pytest script) hasn't called wait syscall.
     # For normal scenarios where raylet is created by

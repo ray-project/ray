@@ -47,9 +47,11 @@ Serialization notes
 
 - For non-native objects, Ray will always keep a single copy even it is referred multiple times in an object:
 
-  .. code-block:: python
+  .. testcode::
 
+    import ray
     import numpy as np
+
     obj = [np.zeros(42)] * 99
     l = ray.get(ray.put(obj))
     assert l[0] is l[1]  # no problem!
@@ -72,12 +74,10 @@ There are at least 3 ways to define your custom serialization process:
    function inside the corresponding class. This is commonly done
    by most Python libraries. Example code:
 
-   .. code-block:: python
+   .. testcode::
 
      import ray
      import sqlite3
-
-     ray.init()
 
      class DBConnection:
          def __init__(self, path):
@@ -96,11 +96,17 @@ There are at least 3 ways to define your custom serialization process:
      copied = ray.get(ray.put(original))
      print(copied.conn)
 
+  .. testoutput::
+
+    <sqlite3.Connection object at ...>
+    <sqlite3.Connection object at ...>
+
+
 2. If you want to customize the serialization of a type of objects,
    but you cannot access or modify the corresponding class, you can
    register the class with the serializer you use:
 
-   .. code-block:: python
+   .. testcode::
 
       import ray
       import threading
@@ -110,7 +116,10 @@ There are at least 3 ways to define your custom serialization process:
               self.x = x
               self.lock = threading.Lock()  # could not be serialized!
 
-      ray.get(ray.put(A(1)))  # fail!
+      try:
+        ray.get(ray.put(A(1)))  # fail!
+      except TypeError:
+        pass
 
       def custom_serializer(a):
           return a.x
@@ -125,7 +134,10 @@ There are at least 3 ways to define your custom serialization process:
 
       # You can deregister the serializer at any time.
       ray.util.deregister_serializer(A)
-      ray.get(ray.put(A(1)))  # fail!
+      try:
+        ray.get(ray.put(A(1)))  # fail!
+      except TypeError:
+        pass
 
       # Nothing happens when deregister an unavailable serializer.
       ray.util.deregister_serializer(A)
@@ -141,7 +153,7 @@ There are at least 3 ways to define your custom serialization process:
 3. We also provide you an example, if you want to customize the serialization
    of a specific object:
 
-   .. code-block:: python
+   .. testcode::
 
      import threading
 
@@ -150,7 +162,10 @@ There are at least 3 ways to define your custom serialization process:
              self.x = x
              self.lock = threading.Lock()  # could not serialize!
 
-     ray.get(ray.put(A(1)))  # fail!
+     try:
+        ray.get(ray.put(A(1)))  # fail!
+     except TypeError:
+        pass
 
      class SerializationHelperForA:
          """A helper class for serialization."""
@@ -163,7 +178,10 @@ There are at least 3 ways to define your custom serialization process:
      ray.get(ray.put(SerializationHelperForA(A(1))))  # success!
      # the serializer only works for a specific object, not all A
      # instances, so we still expect failure here.
-     ray.get(ray.put(A(1)))  # still fail!
+     try:
+        ray.get(ray.put(A(1)))  # still fail!
+     except TypeError:
+        pass
 
 
 Troubleshooting
@@ -173,7 +191,7 @@ Use ``ray.util.inspect_serializability`` to identify tricky pickling issues. Thi
 
 Below, we demonstrate this behavior on a function with a non-serializable object (threading lock):
 
-.. code-block:: python
+.. testcode::
 
     from ray.util import inspect_serializability
     import threading
@@ -187,24 +205,26 @@ Below, we demonstrate this behavior on a function with a non-serializable object
 
 The resulting output is:
 
-
-.. code-block:: bash
+.. testoutput::
+  :options: +MOCK
 
     =============================================================
-    Checking Serializability of <function test at 0x7f9ca9843950>
+    Checking Serializability of <function test at 0x7ff130697e50>
     =============================================================
-    !!! FAIL serialization: can't pickle _thread.lock objects
+    !!! FAIL serialization: cannot pickle '_thread.lock' object
     Detected 1 global variables. Checking serializability...
-        Serializing 'lock' <unlocked _thread.lock object at 0x7f9cb83fb210>...
-        !!! FAIL serialization: can't pickle _thread.lock objects
-        WARNING: Did not find non-serializable object in <unlocked _thread.lock object at 0x7f9cb83fb210>. This may be an oversight.
+        Serializing 'lock' <unlocked _thread.lock object at 0x7ff1306a9f30>...
+        !!! FAIL serialization: cannot pickle '_thread.lock' object
+        WARNING: Did not find non-serializable object in <unlocked _thread.lock object at 0x7ff1306a9f30>. This may be an oversight.
     =============================================================
     Variable:
 
-        lock [obj=<unlocked _thread.lock object at 0x7f9cb83fb210>, parent=<function test at 0x7f9ca9843950>]
+    	FailTuple(lock [obj=<unlocked _thread.lock object at 0x7ff1306a9f30>, parent=<function test at 0x7ff130697e50>])
 
     was found to be non-serializable. There may be multiple other undetected variables that were non-serializable.
     Consider either removing the instantiation/imports of these variables or moving the instantiation into the scope of the function/class.
+    =============================================================
+    Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information.
     If you have any suggestions on how to improve this error message, please reach out to the Ray developers on github.com/ray-project/ray/issues/
     =============================================================
 
@@ -218,4 +238,3 @@ Known Issues
 Users could experience memory leak when using certain python3.8 & 3.9 versions. This is due to `a bug in python's pickle module <https://bugs.python.org/issue39492>`_.
 
 This issue has been solved for Python 3.8.2rc1, Python 3.9.0 alpha 4 or late versions.
-

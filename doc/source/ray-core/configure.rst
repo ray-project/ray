@@ -19,17 +19,37 @@ Cluster Resources
 
 Ray by default detects available resources.
 
-.. code-block:: python
+.. testcode::
+  :hide:
+
+  import ray
+  ray.shutdown()
+
+.. testcode::
+
+  import ray
 
   # This automatically detects available resources in the single machine.
   ray.init()
 
 If not running cluster mode, you can specify cluster resources overrides through ``ray.init`` as follows.
 
-.. code-block:: python
+.. testcode::
+  :hide:
+
+  ray.shutdown()
+
+.. testcode::
 
   # If not connecting to an existing cluster, you can specify resources overrides:
   ray.init(num_cpus=8, num_gpus=1)
+
+.. testcode::
+  :hide:
+
+  ray.shutdown()
+
+.. testcode::
 
   # Specifying custom resources
   ray.init(num_gpus=1, resources={'Resource1': 4, 'Resource2': 16})
@@ -49,7 +69,8 @@ When starting Ray from the command line, pass the ``--num-cpus`` and ``--num-gpu
 
 If using the command line, connect to the Ray cluster as follow:
 
-.. code-block:: python
+.. testcode::
+  :skipif: True
 
   # Connect to ray. Notice if connected to existing cluster, you don't specify resources.
   ray.init(address=<address>)
@@ -96,12 +117,13 @@ Look :ref:`Logging Directory Structure <logging-directory-structure>` for more d
 
 Ports configurations
 --------------------
-Ray requires bi-directional communication among its nodes in a cluster. Each node opens specific ports to receive incoming network requests. 
+Ray requires bi-directional communication among its nodes in a cluster. Each node opens specific ports to receive incoming network requests.
 
 All Nodes
 ~~~~~~~~~
 - ``--node-manager-port``: Raylet port for node manager. Default: Random value.
 - ``--object-manager-port``: Raylet port for object manager. Default: Random value.
+- ``--runtime-env-agent-port``: Raylet port for runtime env agent. Default: Random value.
 
 The node manager and object manager run as separate processes with their own ports for communication.
 
@@ -182,14 +204,14 @@ former is kept secret by the owner and the latter is shared with the other party
 This pattern ensures that only the intended recipient can read the message.
 
 A Certificate Authority (CA) is a trusted third party that certifies the identity of the
-public key owner. The digital certificate issued by the CA contains the public key itself, 
+public key owner. The digital certificate issued by the CA contains the public key itself,
 the identity of the public key owner, and the expiration date of the certificate. Note that
-if the owner of the public key does not want to obtain a digital certificate from a CA, 
-they can generate a self-signed certificate with some tools like OpenSSL. 
+if the owner of the public key does not want to obtain a digital certificate from a CA,
+they can generate a self-signed certificate with some tools like OpenSSL.
 
 To obtain a digital certificate, the owner of the public key must generate a Certificate Signing
-Request (CSR). The CSR contains information about the owner of the public 
-key and the public key itself. For Ray, some additional steps are required for achieving 
+Request (CSR). The CSR contains information about the owner of the public
+key and the public key itself. For Ray, some additional steps are required for achieving
 a successful TLS encryption.
 
 Here is a step-by-step guide for adding TLS Authentication to a static Kubernetes Ray cluster using
@@ -225,9 +247,9 @@ The `YAML file
 <https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.tls.yaml>`__, has a ConfigMap named `tls` that
 includes two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts produce the private key
 and self-signed certificate files (`tls.key` and `tls.crt`) for both head and worker Pods in the initContainer
-of each deployment. By using the initContainer, we can dynamically retrieve the `POD_IP` to the `[alt_names]` section. 
+of each deployment. By using the initContainer, we can dynamically retrieve the `POD_IP` to the `[alt_names]` section.
 
-The scripts perform the following steps: first, a 2048-bit RSA private key is generated and saved as 
+The scripts perform the following steps: first, a 2048-bit RSA private key is generated and saved as
 `/etc/ray/tls/tls.key`. Then, a Certificate Signing Request (CSR) is generated using the `tls.key` file
 and the `csr.conf` configuration file. Finally, a self-signed certificate (`tls.crt`) is created using
 the Certificate Authority's (`ca.key and ca.crt`) keypair and the CSR (`ca.csr`).
@@ -249,8 +271,8 @@ Step 4: Verify TLS authentication
 
   # Log in to the worker Pod
   kubectl exec -it ${WORKER_POD} -- bash
-  
-  # Since the head Pod has the certificate of the full qualified DNS resolution for the Ray head service, the connection to the worker Pods 
+
+  # Since the head Pod has the certificate of the full qualified DNS resolution for the Ray head service, the connection to the worker Pods
   # is established successfully
   ray health-check --address service-ray-head.default.svc.cluster.local:6379
 

@@ -42,17 +42,19 @@ BUILDKITE_PIPELINE = "release-tests-branch"
 
 # Format: job name regex --> filename to save results to
 RESULTS_TO_FETCH = {
-    r"^microbenchmark \(.+\)$": "microbenchmark.json",
-    r"^many_actors \(.+\)$": "benchmarks/many_actors.json",
-    r"^many_nodes \(.+\)$": "benchmarks/many_nodes.json",
-    r"^many_pgs \(.+\)$": "benchmarks/many_pgs.json",
-    r"^many_tasks \(.+\)$": "benchmarks/many_tasks.json",
-    r"^object_store \(.+\)$": "scalability/object_store.json",
-    r"^single_node \(.+\)$": "scalability/single_node.json",
-    r"^stress_test_dead_actors \(.+\)$": "stress_tests/stress_test_dead_actors.json",
-    r"^stress_test_many_tasks \(.+\)$": "stress_tests/stress_test_many_tasks.json",
-    r"^stress_test_placement_group \(.+\)$": (
-        "stress_tests/" "stress_test_placement_group.json"
+    r"^microbenchmark.aws \(.+\)$": "microbenchmark.json",
+    r"^many_actors.aws \(.+\)$": "benchmarks/many_actors.json",
+    r"^many_nodes.aws \(.+\)$": "benchmarks/many_nodes.json",
+    r"^many_pgs.aws \(.+\)$": "benchmarks/many_pgs.json",
+    r"^many_tasks.aws \(.+\)$": "benchmarks/many_tasks.json",
+    r"^object_store.aws \(.+\)$": "scalability/object_store.json",
+    r"^single_node.aws \(.+\)$": "scalability/single_node.json",
+    r"^stress_test_dead_actors.aws \(.+\)$": (
+        "stress_tests/stress_test_dead_actors.json"
+    ),
+    r"^stress_test_many_tasks.aws \(.+\)$": "stress_tests/stress_test_many_tasks.json",
+    r"^stress_test_placement_group.aws \(.+\)$": (
+        "stress_tests/stress_test_placement_group.json"
     ),
 }
 
@@ -205,7 +207,6 @@ def main(version: str):
     build_dict_list = bk.builds().list_all_for_pipeline(
         organization=BUILDKITE_ORGANIZATION, pipeline=BUILDKITE_PIPELINE, branch=branch
     )
-
     fetched_results = get_results_from_build_collection(bk, build_dict_list)
     write_results(log_dir, fetched_results)
 

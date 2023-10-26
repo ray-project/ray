@@ -1,9 +1,4 @@
-import {
-  CircularProgress,
-  createStyles,
-  makeStyles,
-  Typography,
-} from "@material-ui/core";
+import { createStyles, makeStyles, Typography } from "@material-ui/core";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -16,18 +11,18 @@ import {
   MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import { Section } from "../../common/Section";
-import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeReplica } from "../../type/serve";
-import { useFetchActor } from "../actor/hook/useActorDetail";
-import { MainNavPageInfo } from "../layout/mainNavContext";
 import TaskList from "../state/task";
 import { useServeReplicaDetails } from "./hook/useServeApplications";
 import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
+    root: {
+      padding: theme.spacing(3),
+    },
     section: {
       marginTop: theme.spacing(4),
     },
@@ -38,16 +33,13 @@ export const ServeReplicaDetailPage = () => {
   const { applicationName, deploymentName, replicaId } = useParams();
   const classes = useStyles();
 
-  const { loading, application, deployment, replica, error } =
-    useServeReplicaDetails(applicationName, deploymentName, replicaId);
+  const { application, deployment, replica } = useServeReplicaDetails(
+    applicationName,
+    deploymentName,
+    replicaId,
+  );
 
-  if (error) {
-    return <Typography color="error">{error.toString()}</Typography>;
-  }
-
-  if (loading) {
-    return <Loading loading />;
-  } else if (!replica || !deployment || !application) {
+  if (!replica || !deployment || !application) {
     return (
       <Typography color="error">
         {applicationName} / {deploymentName} / {replicaId} not found.
@@ -55,7 +47,6 @@ export const ServeReplicaDetailPage = () => {
     );
   }
 
-  const appName = application.name ? application.name : "-";
   const {
     replica_id,
     state,
@@ -67,19 +58,7 @@ export const ServeReplicaDetailPage = () => {
     start_time_s,
   } = replica;
   return (
-    <div>
-      <MainNavPageInfo
-        pageInfo={{
-          id: "serveReplicaDetail",
-          title: replica_id,
-          pageTitle: `${replica_id} | Serve Replica`,
-          path: `/serve/applications/${encodeURIComponent(
-            appName,
-          )}/${encodeURIComponent(deployment.name)}/${encodeURIComponent(
-            replica_id,
-          )}`,
-        }}
-      />
+    <div className={classes.root}>
       <MetadataSection
         metadataList={[
           {
@@ -179,49 +158,18 @@ type ServeReplicaLogsProps = {
 const ServeReplicaLogs = ({
   replica: { log_file_path, node_id, actor_id },
 }: ServeReplicaLogsProps) => {
-  const { data: actor } = useFetchActor(actor_id);
-
-  if (!actor) {
-    return <CircularProgress />;
-  }
-
-  const {
-    address: { workerId },
-    pid,
-    jobId,
-  } = actor;
-
   const tabs: MultiTabLogViewerTabDetails[] = [
-    {
-      title: "stderr",
-      nodeId: node_id,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.err`,
-    },
-    {
-      title: "stdout",
-      nodeId: node_id,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.out`,
-    },
-    {
-      title: "system",
-      nodeId: node_id,
-      // TODO(aguo): Have API return the log file name.
-      filename: `python-core-worker-${workerId}_${pid}.log`,
-    },
-    // TODO(aguo): enable this once state-api logs supports files with # in the name.
-    // ...(log_file_path
-    //   ? [
-    //       {
-    //         title: "replica",
-    //         nodeId: node_id,
-    //         filename: log_file_path.startsWith("/")
-    //           ? log_file_path.substring(1)
-    //           : log_file_path,
-    //       },
-    //     ]
-    //   : []),
+    ...(log_file_path
+      ? [
+          {
+            title: "replica",
+            nodeId: node_id,
+            filename: log_file_path.startsWith("/")
+              ? log_file_path.substring(1)
+              : log_file_path,
+          },
+        ]
+      : []),
   ];
   return <MultiTabLogViewer tabs={tabs} />;
 };

@@ -9,6 +9,7 @@ Constructor
 -----------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset
@@ -17,6 +18,7 @@ Basic Transformations
 ---------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.map
@@ -33,6 +35,7 @@ Sorting, Shuffling, Repartitioning
 ----------------------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.sort
@@ -44,6 +47,7 @@ Splitting and Merging Datasets
 ---------------------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.split
@@ -58,9 +62,11 @@ Grouped and Global Aggregations
 -------------------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.groupby
+   Dataset.unique
    Dataset.aggregate
    Dataset.sum
    Dataset.min
@@ -68,19 +74,11 @@ Grouped and Global Aggregations
    Dataset.mean
    Dataset.std
 
-Converting to Pipeline
-----------------------
-
-.. autosummary::
-   :toctree: doc/
-
-   Dataset.repeat
-   Dataset.window
-
 Consuming Data
 ---------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.show
@@ -97,6 +95,7 @@ I/O and Conversion
 ------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.write_parquet
@@ -123,11 +122,12 @@ Inspecting Metadata
 -------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.count
+   Dataset.columns
    Dataset.schema
-   Dataset.default_batch_format
    Dataset.num_blocks
    Dataset.size_bytes
    Dataset.input_files
@@ -138,6 +138,7 @@ Execution
 ---------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Dataset.materialize
@@ -147,20 +148,23 @@ Serialization
 -------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    Dataset.has_serializable_lineage
    Dataset.serialize_lineage
    Dataset.deserialize_lineage
 
+.. _block-api:
+
 Internals
 ---------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
-   Dataset.__init__
-   Dataset.dataset_format
-   Dataset.fully_executed
-   Dataset.is_fully_executed
-   Dataset.lazy
+   block.Block
+   block.BlockExecStats
+   block.BlockMetadata
+   block.BlockAccessor

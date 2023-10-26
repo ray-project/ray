@@ -1,7 +1,8 @@
 from typing import Tuple
 
 import ray
-from ray.data.aggregate import _AggregateOnKeyBase, Max, Mean, Min, Sum
+from ray.data.aggregate import Max, Mean, Min, Sum
+from ray.data.aggregate._aggregate import _AggregateOnKeyBase
 from ray.data.block import Block
 from ray.data.dataset import Dataset
 import pyarrow.compute as pac
@@ -40,7 +41,7 @@ def run_h2oai(benchmark: Benchmark):
         ]
 
         for q, name in q_list:
-            benchmark.run(f"{test_name}-{name}", q, ds=input_ds)
+            benchmark.run_materialize_ds(f"{test_name}-{name}", q, ds=input_ds)
 
 
 def h2oai_q1(ds: Dataset) -> Dataset:

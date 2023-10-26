@@ -2,7 +2,6 @@ import json
 import logging
 import os
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -32,8 +31,10 @@ KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
 KUBERAY_LABEL_KEY_TYPE = "ray.io/group"
 # Kind label value indicating the pod is the head.
 KUBERAY_KIND_HEAD = "head"
-# Group name (node type) to use for the  head.
+# Group name (node type) to use for the head.
 KUBERAY_TYPE_HEAD = "head-group"
+# KubeRay CRD version
+KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
@@ -163,7 +164,7 @@ def url_from_resource(namespace: str, path: str) -> str:
     if path.startswith("pods"):
         api_group = "/api/v1"
     elif path.startswith("rayclusters"):
-        api_group = "/apis/ray.io/v1alpha1"
+        api_group = "/apis/ray.io/" + KUBERAY_CRD_VER
     else:
         raise NotImplementedError("Tried to access unknown entity at {}".format(path))
     return (
@@ -343,21 +344,13 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         return True
 
     def _get_pods_resource_version(self) -> str:
-        """Extract a recent pods resource version by patching the head pod's annotations
-        and reading the metadata.resourceVersion of the response.
+        """
+        Extract a recent pods resource version by reading the head pod's
+        metadata.resourceVersion of the response.
         """
         if not RAY_HEAD_POD_NAME:
             return None
-        # Patch the head pod.
-        resource_path = f"pods/{RAY_HEAD_POD_NAME}"
-        # Patch the annotation "ray.io/autoscaler-update-timestamp"
-        patch_path = "/metadata/annotations/ray.io~1autoscaler-update-timestamp"
-        # Mimic the timestamp format used by K8s.
-        value = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        payload = [replace_patch(patch_path, value)]
-        pod_resp = self._patch(resource_path, payload)
-        # The response carries the pod resource version at which the patch
-        # was accepted.
+        pod_resp = self._get(f"pods/{RAY_HEAD_POD_NAME}")
         return pod_resp["metadata"]["resourceVersion"]
 
     def _scale_request_to_patch_payload(
@@ -407,7 +400,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         if path.startswith("pods"):
             api_group = "/api/v1"
         elif path.startswith("rayclusters"):
-            api_group = "/apis/ray.io/v1alpha1"
+            api_group = "/apis/ray.io/" + KUBERAY_CRD_VER
         else:
             raise NotImplementedError(
                 "Tried to access unknown entity at {}".format(path)

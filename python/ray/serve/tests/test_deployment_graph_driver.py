@@ -1,17 +1,14 @@
 import sys
-from pydantic import BaseModel
 
 import pytest
 import requests
 import starlette.requests
-from starlette.testclient import TestClient
 
-from ray.serve.drivers import DAGDriver
-from ray.serve.air_integrations import SimpleSchemaIngress
-from ray.serve.drivers_utils import load_http_adapter
-from ray.serve.dag import InputNode
-from ray import serve
 import ray
+from ray import serve
+from ray.serve.dag import InputNode
+from ray.serve.drivers import DAGDriver
+from ray.serve.drivers_utils import load_http_adapter
 
 
 def my_resolver(a: int):
@@ -36,54 +33,6 @@ def test_loading_check():
     )
 
 
-class EchoIngress(SimpleSchemaIngress):
-    async def predict(self, inp):
-        return inp
-
-
-def test_unit_schema_injection():
-    async def resolver(my_custom_param: int):
-        return my_custom_param
-
-    server = EchoIngress(http_adapter=resolver)
-    client = TestClient(server.app)
-
-    response = client.post("/")
-    assert response.status_code == 422
-
-    response = client.post("/?my_custom_param=1")
-    assert response.status_code == 200
-    assert response.text == "1"
-
-    response = client.get("/openapi.json")
-    assert response.status_code == 200
-    assert response.json()["paths"]["/"]["get"]["parameters"][0] == {
-        "required": True,
-        "schema": {"title": "My Custom Param", "type": "integer"},
-        "name": "my_custom_param",
-        "in": "query",
-    }
-
-
-class MyType(BaseModel):
-    a: int
-    b: str
-
-
-def test_unit_pydantic_class_adapter():
-
-    server = EchoIngress(http_adapter=MyType)
-    client = TestClient(server.app)
-    response = client.get("/openapi.json")
-    assert response.status_code == 200
-    assert response.json()["paths"]["/"]["get"]["requestBody"] == {
-        "content": {
-            "application/json": {"schema": {"$ref": "#/components/schemas/MyType"}}
-        },
-        "required": True,
-    }
-
-
 @serve.deployment
 def echo(inp):
     # FastAPI can't handle this.
@@ -101,21 +50,21 @@ def test_multi_dag(serve_instance):
 
     @serve.deployment
     class D1:
-        def forward(self):
+        def forward(self, *args):
             return "D1"
 
     @serve.deployment
     class D2:
-        def forward(self):
+        def forward(self, *args):
             return "D2"
 
     @serve.deployment
     class D3:
-        def __call__(self):
+        def __call__(self, *args):
             return "D3"
 
     @serve.deployment
-    def D4():
+    def D4(*args):
         return "D4"
 
     d1 = D1.bind()

@@ -89,6 +89,28 @@ that specific worker and can access and mutate the state of that worker.
           // as the argument.
           auto counter = ray::Actor(CreateCounter).Remote();
 
+
+
+Use `ray list actors` from :ref:`State API <state-api-overview-ref>` to see actors states:
+
+.. code-block:: bash
+
+  # This API is only available when you install Ray with `pip install "ray[default]"`.
+  ray list actors
+
+.. code-block:: bash
+
+  ======== List: 2023-05-25 10:10:50.095099 ========
+  Stats:
+  ------------------------------
+  Total: 1
+  
+  Table:
+  ------------------------------
+      ACTOR_ID                          CLASS_NAME    STATE      JOB_ID  NAME    NODE_ID                                                     PID  RAY_NAMESPACE
+   0  9e783840250840f87328c9f201000000  Counter       ALIVE    01000000          13a475571662b784b4522847692893a823c78f1d3fd8fd32a2624923  38906  ef9de910-64fb-4575-8eb5-50573faa3ddf
+
+
 Specifying required resources
 -----------------------------
 
@@ -310,7 +332,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
                 print(ray.get(counter.get_counter.remote()))
 
         .. testoutput::
-            :options: +SKIP
+            :options: +MOCK
 
             0
             3
@@ -357,6 +379,53 @@ If we instantiate an actor, we can pass the handle around to various tasks.
               std::cout << *counter.Task(&Counter::GetCounter).Remote().Get() << std::endl;
             }
 
+
+
+Generators
+----------
+Ray is compatible with Python generator syntax. See :ref:`Ray Generators <generators>` for more details.
+
+Cancelling Actor Tasks
+----------------------
+
+Cancel Actor Tasks by calling :func:`ray.cancel() <ray.cancel>` on the returned `ObjectRef`.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. literalinclude:: doc_code/actors.py
+            :language: python
+            :start-after: __cancel_start__
+            :end-before: __cancel_end__
+
+
+In Ray, Task cancellation behavior is contingent on the Task's current state:
+
+**Unscheduled Tasks**:
+If the Actor Task hasn't been scheduled yet, Ray attempts to cancel the scheduling. 
+When successfully cancelled at this stage, invoking ``ray.get(actor_task_ref)`` 
+produce a :class:`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
+
+**Running Actor Tasks (Regular Actor, Threaded Actor)**:
+For tasks classified as a single-threaded Actor or a multi-threaded Actor,
+Ray offers no mechanism for interruption.
+
+**Running Async Actor Tasks**:
+For Tasks classified as `async Actors <_async-actors>`, Ray seeks to cancel the associated `asyncio.Task`. 
+This cancellation approach aligns with the standards presented in 
+`asyncio task cancellation <https://docs.python.org/3/library/asyncio-task.html#task-cancellation>`__.
+Note that `asyncio.Task` won't be interrupted in the middle of execution if you don't `await` within the async function.
+
+**Cancellation Guarantee**:
+Ray attempts to cancel Tasks on a *best-effort* basis, meaning cancellation isn't always guaranteed.
+For example, if the cancellation request doesn't get through to the executor,
+the Task might not be cancelled.
+You can check if a Task was successfully cancelled using ``ray.get(actor_task_ref)``.
+
+**Recursive Cancellation**:
+Ray tracks all child and Actor Tasks. When the``recursive=True`` argument is given,
+it cancels all child and Actor Tasks.
 
 Scheduling
 ----------

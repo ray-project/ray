@@ -1,5 +1,7 @@
 import os
 import pickle
+import time
+
 import numpy as np
 
 from ray.tune import result as tune_result
@@ -8,7 +10,7 @@ from ray.rllib.utils.annotations import override
 
 
 class _MockTrainer(Algorithm):
-    """Mock trainer for use in tests."""
+    """Mock Algorithm for use in tests."""
 
     @classmethod
     @override(Algorithm)
@@ -22,6 +24,7 @@ class _MockTrainer(Algorithm):
                     "persistent_error": False,
                     "test_variable": 1,
                     "user_checkpoint_freq": 0,
+                    "sleep": 0,
                 }
             )
         )
@@ -46,6 +49,8 @@ class _MockTrainer(Algorithm):
             and (self.config.persistent_error or not self.restored)
         ):
             raise Exception("mock error")
+        if self.config.sleep:
+            time.sleep(self.config.sleep)
         result = dict(
             episode_reward_mean=10, episode_len_mean=10, timesteps_this_iter=10, info={}
         )
@@ -59,11 +64,11 @@ class _MockTrainer(Algorithm):
         path = os.path.join(checkpoint_dir, "mock_agent.pkl")
         with open(path, "wb") as f:
             pickle.dump(self.info, f)
-        return path
 
     @override(Algorithm)
-    def load_checkpoint(self, checkpoint_path):
-        with open(checkpoint_path, "rb") as f:
+    def load_checkpoint(self, checkpoint_dir):
+        path = os.path.join(checkpoint_dir, "mock_agent.pkl")
+        with open(path, "rb") as f:
             info = pickle.load(f)
         self.info = info
         self.restored = True
@@ -83,7 +88,7 @@ class _MockTrainer(Algorithm):
 
 
 class _SigmoidFakeData(_MockTrainer):
-    """Trainer that returns sigmoid learning curves.
+    """Algorithm that returns sigmoid learning curves.
 
     This can be helpful for evaluating early stopping algorithms."""
 
@@ -140,10 +145,10 @@ class _ParameterTuningTrainer(_MockTrainer):
 def _algorithm_import_failed(trace):
     """Returns dummy Algorithm class for if PyTorch etc. is not installed."""
 
-    class _TrainerImportFailed(Algorithm):
-        _name = "TrainerImportFailed"
+    class _AlgorithmImportFailed(Algorithm):
+        _name = "AlgorithmImportFailed"
 
         def setup(self, config):
             raise ImportError(trace)
 
-    return _TrainerImportFailed
+    return _AlgorithmImportFailed

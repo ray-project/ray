@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 import time
+import traceback
 from threading import Thread
 
 import click
@@ -13,7 +14,10 @@ from ray.autoscaler._private.command_runner import (
     AUTOSCALER_NODE_START_WAIT_S,
     ProcessRunnerError,
 )
-from ray.autoscaler._private.constants import RESOURCES_ENVIRONMENT_VARIABLE
+from ray.autoscaler._private.constants import (
+    LABELS_ENVIRONMENT_VARIABLE,
+    RESOURCES_ENVIRONMENT_VARIABLE,
+)
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler.tags import (
@@ -75,6 +79,7 @@ class NodeUpdater:
         file_mounts_contents_hash,
         is_head_node,
         node_resources=None,
+        node_labels=None,
         cluster_synced_files=None,
         rsync_options=None,
         process_runner=subprocess,
@@ -113,6 +118,7 @@ class NodeUpdater:
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
         self.node_resources = node_resources
+        self.node_labels = node_labels
         self.runtime_hash = runtime_hash
         self.file_mounts_contents_hash = file_mounts_contents_hash
         # TODO (Alex): This makes the assumption that $HOME on the head and
@@ -159,16 +165,19 @@ class NodeUpdater:
 
             cli_logger.error("!!!")
             if hasattr(e, "cmd"):
+                stderr_output = getattr(e, "stderr", "No stderr available")
                 cli_logger.error(
-                    "Setup command `{}` failed with exit code {}. stderr:",
+                    "Setup command `{}` failed with exit code {}. stderr: {}",
                     cf.bold(e.cmd),
                     e.returncode,
+                    stderr_output,
                 )
             else:
-                cli_logger.verbose_error("{}", str(vars(e)))
+                cli_logger.verbose_error("Exception details: {}", str(vars(e)))
+                full_traceback = traceback.format_exc()
+                cli_logger.error("Full traceback: {}", full_traceback)
                 # todo: handle this better somehow?
-                cli_logger.error("{}", str(e))
-            # todo: print stderr here
+                cli_logger.error("Error message: {}", str(e))
             cli_logger.error("!!!")
             cli_logger.newline()
 
@@ -500,14 +509,16 @@ class NodeUpdater:
                         else:
                             # Disable usage stats collection in the cluster.
                             env_vars[usage_constants.USAGE_STATS_ENABLED_ENV_VAR] = 0
-                    # Add a resource override env variable if needed:
-                    if self.provider_type == "local":
-                        # Local NodeProvider doesn't need resource override.
-                        pass
-                    elif self.node_resources:
-                        env_vars[RESOURCES_ENVIRONMENT_VARIABLE] = self.node_resources
-                    else:
-                        pass
+
+                    # Add a resource override env variable if needed.
+                    # Local NodeProvider doesn't need resource and label override.
+                    if self.provider_type != "local":
+                        if self.node_resources:
+                            env_vars[
+                                RESOURCES_ENVIRONMENT_VARIABLE
+                            ] = self.node_resources
+                        if self.node_labels:
+                            env_vars[LABELS_ENVIRONMENT_VARIABLE] = self.node_labels
 
                     try:
                         old_redirected = cmd_output_util.is_output_redirected()

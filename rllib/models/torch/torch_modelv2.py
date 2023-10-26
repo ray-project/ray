@@ -36,7 +36,6 @@ class TorchModelV2(ModelV2):
                 self._logits = ...
                 self._value_branch = ...
         """
-
         if not isinstance(self, nn.Module):
             raise ValueError(
                 "Subclasses of TorchModelV2 must also inherit from "

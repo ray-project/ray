@@ -16,26 +16,20 @@ class TestRecurrentEncoders(unittest.TestCase):
 
         # Loop through different combinations of hyperparameters.
         inputs_dimss = [[1], [100]]
-        output_dimss = [[1], [50]]
         num_layerss = [1, 4]
         hidden_dims = [128, 256]
-        output_activations = ["linear", "silu", "relu"]
         use_biases = [False, True]
 
         for permutation in itertools.product(
             inputs_dimss,
             num_layerss,
             hidden_dims,
-            output_activations,
-            output_dimss,
             use_biases,
         ):
             (
                 inputs_dims,
                 num_layers,
                 hidden_dim,
-                output_activation,
-                output_dims,
                 use_bias,
             ) = permutation
 
@@ -44,8 +38,6 @@ class TestRecurrentEncoders(unittest.TestCase):
                 f"input_dims: {inputs_dims}\n"
                 f"num_layers: {num_layers}\n"
                 f"hidden_dim: {hidden_dim}\n"
-                f"output_activation: {output_activation}\n"
-                f"output_dims: {output_dims}\n"
                 f"use_bias: {use_bias}\n"
             )
 
@@ -54,8 +46,6 @@ class TestRecurrentEncoders(unittest.TestCase):
                 input_dims=inputs_dims,
                 num_layers=num_layers,
                 hidden_dim=hidden_dim,
-                output_dims=output_dims,
-                output_activation=output_activation,
                 use_bias=use_bias,
             )
 
@@ -67,7 +57,10 @@ class TestRecurrentEncoders(unittest.TestCase):
                 # Add this framework version of the model to our checker.
                 outputs = model_checker.add(framework=fw)
                 # Output shape: [1=B, 1=T, [output_dim]]
-                self.assertEqual(outputs[ENCODER_OUT].shape, (1, 1, output_dims[0]))
+                self.assertEqual(
+                    outputs[ENCODER_OUT].shape,
+                    (1, 1, config.output_dims[0]),
+                )
                 # State shapes: [1=B, 1=num_layers, [hidden_dim]]
                 self.assertEqual(
                     outputs[STATE_OUT]["h"].shape,
@@ -81,26 +74,20 @@ class TestRecurrentEncoders(unittest.TestCase):
 
         # Loop through different combinations of hyperparameters.
         inputs_dimss = [[1], [100]]
-        output_dimss = [[1], [100]]
         num_layerss = [1, 3]
         hidden_dims = [16, 128]
-        output_activations = [None, "linear", "relu"]
         use_biases = [False, True]
 
         for permutation in itertools.product(
             inputs_dimss,
             num_layerss,
             hidden_dims,
-            output_activations,
-            output_dimss,
             use_biases,
         ):
             (
                 inputs_dims,
                 num_layers,
                 hidden_dim,
-                output_activation,
-                output_dims,
                 use_bias,
             ) = permutation
 
@@ -109,8 +96,6 @@ class TestRecurrentEncoders(unittest.TestCase):
                 f"input_dims: {inputs_dims}\n"
                 f"num_layers: {num_layers}\n"
                 f"hidden_dim: {hidden_dim}\n"
-                f"output_activation: {output_activation}\n"
-                f"output_dims: {output_dims}\n"
                 f"use_bias: {use_bias}\n"
             )
 
@@ -119,8 +104,6 @@ class TestRecurrentEncoders(unittest.TestCase):
                 input_dims=inputs_dims,
                 num_layers=num_layers,
                 hidden_dim=hidden_dim,
-                output_dims=output_dims,
-                output_activation=output_activation,
                 use_bias=use_bias,
             )
 
@@ -132,7 +115,10 @@ class TestRecurrentEncoders(unittest.TestCase):
                 # Add this framework version of the model to our checker.
                 outputs = model_checker.add(framework=fw)
                 # Output shape: [1=B, 1=T, [output_dim]]
-                self.assertEqual(outputs[ENCODER_OUT].shape, (1, 1, output_dims[0]))
+                self.assertEqual(
+                    outputs[ENCODER_OUT].shape,
+                    (1, 1, config.output_dims[0]),
+                )
                 # State shapes: [1=B, 1=num_layers, [hidden_dim]]
                 self.assertEqual(
                     outputs[STATE_OUT]["h"].shape,

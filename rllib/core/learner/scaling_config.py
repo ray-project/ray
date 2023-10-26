@@ -5,6 +5,8 @@ from dataclasses import dataclass
 class LearnerGroupScalingConfig:
     """Configuratiom for scaling training actors.
 
+    :noindex:
+
     Attributes:
         num_workers: The number of workers to use for training. num_workers=0 means you
             have only one local worker (either on 1 CPU or 1 GPU)

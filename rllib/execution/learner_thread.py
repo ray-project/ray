@@ -14,6 +14,8 @@ from ray.util.iter import _NextValueNotReady
 tf1, tf, tfv = try_import_tf()
 
 
+# TODO (sven): Deprecate once all algos are only available via the new API stack
+#  (learner API).
 class LearnerThread(threading.Thread):
     """Background thread that updates the local model from sample trajectories.
 
@@ -68,7 +70,7 @@ class LearnerThread(threading.Thread):
 
     def run(self) -> None:
         # Switch on eager mode if configured.
-        if self.local_worker.policy_config.get("framework") == "tf2":
+        if self.local_worker.config.framework_str == "tf2":
             tf1.enable_eager_execution()
         while not self.stopped:
             self.step()

@@ -27,7 +27,7 @@ export const ClusterDetailInfoPage = () => {
           pageInfo={{
             title: "Cluster Info",
             id: "cluster-info",
-            path: undefined,
+            path: "info",
           }}
         />
         <Loading loading={isLoading} />

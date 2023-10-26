@@ -16,16 +16,19 @@ from typing import (
     Union,
 )
 
+import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import (
@@ -77,7 +80,7 @@ def handle_remote_call_result_errors(
 
 @DeveloperAPI
 class WorkerSet:
-    """Set of RolloutWorkers with n @ray.remote workers and zero or one local worker.
+    """Set of EnvRunners with n @ray.remote workers and zero or one local worker.
 
     Where: n >= 0.
     """
@@ -93,9 +96,6 @@ class WorkerSet:
         local_worker: bool = True,
         logdir: Optional[str] = None,
         _setup: bool = True,
-        # deprecated args.
-        policy_class=DEPRECATED_VALUE,
-        trainer_config=DEPRECATED_VALUE,
     ):
         """Initializes a WorkerSet instance.
 
@@ -115,23 +115,8 @@ class WorkerSet:
                 in the returned set as well (default: True). If `num_workers`
                 is 0, always create a local worker.
             logdir: Optional logging directory for workers.
-            _setup: Whether to setup workers. This is only for testing.
+            _setup: Whether to actually set up workers. This is only for testing.
         """
-        if policy_class != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="WorkerSet(policy_class=..)",
-                new="WorkerSet(default_policy_class=..)",
-                error=False,
-            )
-            default_policy_class = policy_class
-        if trainer_config != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="WorkerSet(trainer_config=..)",
-                new="WorkerSet(config=..)",
-                error=False,
-            )
-            config = trainer_config
-
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
         # Make sure `config` is an AlgorithmConfig object.
@@ -147,12 +132,14 @@ class WorkerSet:
             "num_cpus": self._remote_config.num_cpus_per_worker,
             "num_gpus": self._remote_config.num_gpus_per_worker,
             "resources": self._remote_config.custom_resources_per_worker,
-            "max_num_worker_restarts": config.max_num_worker_restarts,
+            "max_restarts": config.max_num_worker_restarts,
         }
 
-        # See if we should use a custom RolloutWorker class for testing purpose.
-        worker_cls = RolloutWorker if config.worker_cls is None else config.worker_cls
-        self._cls = worker_cls.as_remote(**self._remote_args).remote
+        # Set the EnvRunner subclass to be used as "workers". Default: RolloutWorker.
+        self.env_runner_cls = (
+            RolloutWorker if config.env_runner_cls is None else config.env_runner_cls
+        )
+        self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
         self._ignore_worker_failures = config["ignore_worker_failures"]
@@ -176,7 +163,7 @@ class WorkerSet:
                     local_worker=local_worker,
                 )
             # WorkerSet creation possibly fails, if some (remote) workers cannot
-            # be initialized properly (due to some errors in the RolloutWorker's
+            # be initialized properly (due to some errors in the EnvRunners's
             # constructor).
             except RayActorError as e:
                 # In case of an actor (remote worker) init failure, the remote worker
@@ -184,7 +171,7 @@ class WorkerSet:
                 # its `sample.remote()` would result in strange "property not found"
                 # errors.
                 if e.actor_init_failed:
-                    # Raise the original error here that the RolloutWorker raised
+                    # Raise the original error here that the EnvRunners raised
                     # during its construction process. This is to enforce transparency
                     # for the user (better to understand the real reason behind the
                     # failure).
@@ -260,7 +247,7 @@ class WorkerSet:
         # Create a local worker, if needed.
         if local_worker:
             self._local_worker = self._make_worker(
-                cls=RolloutWorker,
+                cls=self.env_runner_cls,
                 env_creator=self._env_creator,
                 validate_env=validate_env,
                 worker_index=0,
@@ -276,16 +263,38 @@ class WorkerSet:
             A dict mapping from policy ids to spaces.
         """
         # Get ID of the first remote worker.
-        worker_id = next(iter(self.__worker_manager.actors().keys()))
+        worker_id = self.__worker_manager.actor_ids()[0]
 
         # Try to figure out spaces from the first remote worker.
-        remote_spaces = self.foreach_worker(
-            lambda worker: worker.foreach_policy(
-                lambda p, pid: (pid, p.observation_space, p.action_space)
-            ),
-            remote_worker_ids=[worker_id],
-            local_worker=False,
-        )
+        # Traditional RolloutWorker.
+        if issubclass(self.env_runner_cls, RolloutWorker):
+            remote_spaces = self.foreach_worker(
+                lambda worker: worker.foreach_policy(
+                    lambda p, pid: (pid, p.observation_space, p.action_space)
+                ),
+                remote_worker_ids=[worker_id],
+                local_worker=False,
+            )
+        # Generic EnvRunner.
+        else:
+            remote_spaces = self.foreach_worker(
+                lambda worker: worker.marl_module.foreach_module(
+                    lambda mid, m: (
+                        mid,
+                        m.config.observation_space,
+                        m.config.action_space,
+                    ),
+                )
+                if hasattr(worker, "marl_module")
+                else [
+                    (
+                        DEFAULT_POLICY_ID,
+                        worker.module.config.observation_space,
+                        worker.module.config.action_space,
+                    ),
+                ]
+            )
+
         if not remote_spaces:
             raise ValueError(
                 "Could not get observation and action spaces from remote "
@@ -296,18 +305,19 @@ class WorkerSet:
             for e in remote_spaces[0]
         }
 
-        # Try to add the actual env's obs/action spaces.
-        env_spaces = self.foreach_worker(
-            lambda worker: worker.foreach_env(
-                lambda env: (env.observation_space, env.action_space)
-            ),
-            remote_worker_ids=[worker_id],
-            local_worker=False,
-        )
-        if env_spaces:
-            # env_spaces group spaces by environment then worker.
-            # So need to unpack thing twice.
-            spaces["__env__"] = env_spaces[0][0]
+        if issubclass(self.env_runner_cls, RolloutWorker):
+            # Try to add the actual env's obs/action spaces.
+            env_spaces = self.foreach_worker(
+                lambda worker: worker.foreach_env(
+                    lambda env: (env.observation_space, env.action_space)
+                ),
+                remote_worker_ids=[worker_id],
+                local_worker=False,
+            )
+            if env_spaces:
+                # env_spaces group spaces by environment then worker.
+                # So need to unpack thing twice.
+                spaces["__env__"] = env_spaces[0][0]
 
         logger.info(
             "Inferred observation/action spaces from remote "
@@ -317,38 +327,9 @@ class WorkerSet:
         return spaces
 
     @DeveloperAPI
-    def local_worker(self) -> RolloutWorker:
+    def local_worker(self) -> EnvRunner:
         """Returns the local rollout worker."""
         return self._local_worker
-
-    @property
-    @Deprecated(
-        old="_remote_workers",
-        help=(
-            "Accessing remote workers directly through "
-            "_remote_workers is strongly discouraged. "
-            "Please try to use one of the foreach accessors "
-            "that is fault tolerant. "
-        ),
-        error=False,
-    )
-    def _remote_workers(self) -> List[ActorHandle]:
-        """Returns the list of remote rollout workers."""
-        return list(self.__worker_manager.actors().values())
-
-    @Deprecated(
-        old="remote_workers()",
-        help=(
-            "Accessing the list of remote workers directly through "
-            "remote_workers() is strongly discouraged. "
-            "Please try to use one of the foreach accessors "
-            "that is fault tolerant. "
-        ),
-        error=False,
-    )
-    def remote_workers(self) -> List[ActorHandle]:
-        """Returns the list of remote rollout workers."""
-        return list(self.__worker_manager.actors().values())
 
     @DeveloperAPI
     def healthy_worker_ids(self) -> List[int]:
@@ -362,12 +343,12 @@ class WorkerSet:
 
     @DeveloperAPI
     def num_healthy_remote_workers(self) -> int:
-        """Returns the number of healthy workers, including local and remote workers."""
+        """Returns the number of healthy remote workers."""
         return self.__worker_manager.num_healthy_actors()
 
     @DeveloperAPI
     def num_healthy_workers(self) -> int:
-        """Returns the number of healthy workers, including local and remote workers."""
+        """Returns the number of all healthy workers, including the local worker."""
         return int(bool(self._local_worker)) + self.num_healthy_remote_workers()
 
     @DeveloperAPI
@@ -377,14 +358,14 @@ class WorkerSet:
 
     @DeveloperAPI
     def num_remote_worker_restarts(self) -> int:
-        """Total number of times managed remote workers get restarted."""
+        """Total number of times managed remote workers have been restarted."""
         return self.__worker_manager.total_num_restarts()
 
     @DeveloperAPI
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker_or_trainer: Optional[Union[RolloutWorker, LearnerGroup]] = None,
+        from_worker_or_learner_group: Optional[Union[EnvRunner, LearnerGroup]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,
@@ -397,7 +378,7 @@ class WorkerSet:
         Args:
             policies: Optional list of PolicyIDs to sync weights for.
                 If None (default), sync weights to/from all policies.
-            from_worker_or_trainer: Optional (local) RolloutWorker instance or
+            from_worker_or_learner_group: Optional (local) EnvRunner instance or
                 LearnerGroup instance to sync from. If None (default),
                 sync from this WorkerSet's local worker.
             to_worker_indices: Optional list of worker indices to sync the
@@ -409,16 +390,16 @@ class WorkerSet:
                 for any sync calls to finish). This significantly improves
                 algorithm performance.
         """
-        if self.local_worker() is None and from_worker_or_trainer is None:
+        if self.local_worker() is None and from_worker_or_learner_group is None:
             raise TypeError(
-                "No `local_worker` in WorkerSet, must provide `from_worker` "
-                "arg in `sync_weights()`!"
+                "No `local_worker` in WorkerSet, must provide "
+                "`from_worker_or_learner_group` arg in `sync_weights()`!"
             )
 
         # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
         weights = None
-        if self.num_remote_workers() or from_worker_or_trainer is not None:
-            weights_src = from_worker_or_trainer or self.local_worker()
+        if self.num_remote_workers() or from_worker_or_learner_group is not None:
+            weights_src = from_worker_or_learner_group or self.local_worker()
 
             if weights_src is None:
                 raise ValueError(
@@ -442,10 +423,10 @@ class WorkerSet:
                 timeout_seconds=timeout_seconds,
             )
 
-        # If `from_worker` is provided, also sync to this WorkerSet's
+        # If `from_worker_or_learner_group` is provided, also sync to this WorkerSet's
         # local worker.
         if self.local_worker() is not None:
-            if from_worker_or_trainer is not None:
+            if from_worker_or_learner_group is not None:
                 self.local_worker().set_weights(weights, global_vars=global_vars)
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.
@@ -472,7 +453,7 @@ class WorkerSet:
         ] = None,
         module_spec: Optional[SingleAgentRLModuleSpec] = None,
         # Deprecated.
-        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
+        workers: Optional[List[Union[EnvRunner, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> None:
         """Adds a policy to this WorkerSet's workers or a specific list of workers.
 
@@ -505,8 +486,8 @@ class WorkerSet:
             module_spec: In the new RLModule API we need to pass in the module_spec for
                 the new module that is supposed to be added. Knowing the policy spec is
                 not sufficient.
-            workers: A list of RolloutWorker/ActorHandles (remote
-                RolloutWorkers) to add this policy to. If defined, will only
+            workers: A list of EnvRunner/ActorHandles (remote
+                EnvRunners) to add this policy to. If defined, will only
                 add the given policy to these workers.
 
         Raises:
@@ -570,7 +551,7 @@ class WorkerSet:
                 module_spec=module_spec,
             )
 
-        def _create_new_policy_fn(worker: RolloutWorker):
+        def _create_new_policy_fn(worker):
             # `foreach_worker` function: Adds the policy the the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
             worker.add_policy(**new_policy_instance_kwargs)
@@ -597,7 +578,7 @@ class WorkerSet:
         """Creates and adds a number of remote workers to this worker set.
 
         Can be called several times on the same WorkerSet to add more
-        RolloutWorkers to the set.
+        EnvRunners to the set.
 
         Args:
             num_workers: The number of remote Workers to add to this
@@ -639,7 +620,7 @@ class WorkerSet:
         """Hard overrides the remote workers in this set with the given one.
 
         Args:
-            new_remote_workers: A list of new RolloutWorkers
+            new_remote_workers: A list of new EnvRunners
                 (as `ActorHandles`) to use as remote workers.
         """
         self.__worker_manager.clear()
@@ -675,11 +656,11 @@ class WorkerSet:
     @DeveloperAPI
     def foreach_worker(
         self,
-        func: Callable[[RolloutWorker], T],
+        func: Callable[[EnvRunner], T],
         *,
-        local_worker=True,
+        local_worker: bool = True,
         # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only=False,
+        healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
         return_obj_refs: bool = False,
@@ -689,10 +670,9 @@ class WorkerSet:
 
         Args:
             func: The function to call for each worker (as only arg).
-            local_worker: Whether apply func on local worker too. Default is True.
-            healthy_only: Apply func on known active workers only. By default
-                this will apply func on all workers regardless of their states.
-            remote_worker_ids: Apply func on a selected set of remote workers.
+            local_worker: Whether apply `func` on local worker too. Default is True.
+            healthy_only: Apply `func` on known-to-be healthy workers only.
+            remote_worker_ids: Apply `func` on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
@@ -729,11 +709,11 @@ class WorkerSet:
     @DeveloperAPI
     def foreach_worker_with_id(
         self,
-        func: Callable[[int, RolloutWorker], T],
+        func: Callable[[int, EnvRunner], T],
         *,
-        local_worker=True,
+        local_worker: bool = True,
         # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only=False,
+        healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[int] = None,
     ) -> List[T]:
@@ -741,10 +721,9 @@ class WorkerSet:
 
         Args:
             func: The function to call for each worker (as only arg).
-            local_worker: Whether apply func on local worker too. Default is True.
-            healthy_only: Apply func on known active workers only. By default
-                this will apply func on all workers regardless of their states.
-            remote_worker_ids: Apply func on a selected set of remote workers.
+            local_worker: Whether apply `func` on local worker too. Default is True.
+            healthy_only: Apply `func` on known-to-be healthy workers only.
+            remote_worker_ids: Apply `func` on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
 
         Returns:
@@ -755,7 +734,7 @@ class WorkerSet:
             local_result = [func(0, self.local_worker())]
 
         if not remote_worker_ids:
-            remote_worker_ids = list(self.__worker_manager.actors().keys())
+            remote_worker_ids = self.__worker_manager.actor_ids()
 
         funcs = [functools.partial(func, i) for i in remote_worker_ids]
 
@@ -775,10 +754,10 @@ class WorkerSet:
     @DeveloperAPI
     def foreach_worker_async(
         self,
-        func: Callable[[RolloutWorker], T],
+        func: Callable[[EnvRunner], T],
         *,
         # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only=False,
+        healthy_only: bool = False,
         remote_worker_ids: List[int] = None,
     ) -> int:
         """Calls the given function asynchronously with each worker as the argument.
@@ -789,9 +768,8 @@ class WorkerSet:
 
         Args:
             func: The function to call for each worker (as only arg).
-            healthy_only: Apply func on known active workers only. By default
-                this will apply func on all workers regardless of their states.
-            remote_worker_ids: Apply func on a selected set of remote workers.
+            healthy_only: Apply `func` on known-to-be healthy workers only.
+            remote_worker_ids: Apply `func` on a selected set of remote workers.
 
         Returns:
              The number of async requests that are currently in-flight.
@@ -815,6 +793,7 @@ class WorkerSet:
         Args:
             timeout_seconds: Time to wait for results. Default is 0, meaning
                 those requests that are already ready.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
             mark_healthy: Whether to mark the worker as healthy based on call results.
 
         Returns:
@@ -930,18 +909,19 @@ class WorkerSet:
 
     @DeveloperAPI
     def probe_unhealthy_workers(self) -> List[int]:
-        """Checks the unhealth workers, and try restoring their states.
+        """Checks for unhealthy workers and tries restoring their states.
 
         Returns:
-            IDs of the workers that were restored.
+            List of IDs of the workers that were restored.
         """
         return self.__worker_manager.probe_unhealthy_actors(
             timeout_seconds=self._remote_config.worker_health_probe_timeout_s
         )
 
+    # TODO (sven): Deprecate once ARS/ES have been moved to `rllib_contrib`.
     @staticmethod
     def _from_existing(
-        local_worker: RolloutWorker, remote_workers: List[ActorHandle] = None
+        local_worker: EnvRunner, remote_workers: List[ActorHandle] = None
     ):
         workers = WorkerSet(
             env_creator=None, default_policy_class=None, config=None, _setup=False
@@ -963,7 +943,7 @@ class WorkerSet:
         spaces: Optional[
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,
-    ) -> Union[RolloutWorker, ActorHandle]:
+    ) -> Union[EnvRunner, ActorHandle]:
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,
@@ -1001,8 +981,25 @@ class WorkerSet:
 
     @Deprecated(new="WorkerSet.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func):
-        return self.foreach_policy_to_train(func)
-
-    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=True)
-    def trainable_policies(self):
         pass
+
+    @property
+    @Deprecated(
+        old="_remote_workers",
+        new="Use either the `foreach_worker()`, `foreach_worker_with_id()`, or "
+        "`foreach_worker_async()` APIs of `WorkerSet`, which all handle fault "
+        "tolerance.",
+        error=False,
+    )
+    def _remote_workers(self) -> List[ActorHandle]:
+        return list(self.__worker_manager.actors().values())
+
+    @Deprecated(
+        old="remote_workers()",
+        new="Use either the `foreach_worker()`, `foreach_worker_with_id()`, or "
+        "`foreach_worker_async()` APIs of `WorkerSet`, which all handle fault "
+        "tolerance.",
+        error=False,
+    )
+    def remote_workers(self) -> List[ActorHandle]:
+        return list(self.__worker_manager.actors().values())

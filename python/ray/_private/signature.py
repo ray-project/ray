@@ -101,10 +101,6 @@ def flatten_args(signature_parameters: list, args, kwargs):
 
     Raises:
         TypeError: Raised if arguments do not fit in the function signature.
-
-    Example:
-        >>> flatten_args([1, 2, 3], {"a": 4})
-        [None, 1, None, 2, None, 3, "a", 4]
     """
 
     reconstructed_signature = inspect.Signature(parameters=signature_parameters)

@@ -48,5 +48,17 @@ struct AffinityWithBundleSchedulingContext : public SchedulingContext {
   BundleID affinity_bundle_id_;
 };
 
+struct NodeLabelSchedulingContext : public SchedulingContext {
+ public:
+  explicit NodeLabelSchedulingContext(const rpc::SchedulingStrategy &scheduling_strategy)
+      : scheduling_strategy_(scheduling_strategy) {}
+  const rpc::SchedulingStrategy &GetSchedulingStrategy() const {
+    return scheduling_strategy_;
+  }
+
+ private:
+  rpc::SchedulingStrategy scheduling_strategy_;
+};
+
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

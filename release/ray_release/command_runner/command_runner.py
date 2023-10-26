@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.file_manager.file_manager import FileManager
@@ -100,6 +100,7 @@ class CommandRunner(abc.ABC):
         env: Optional[Dict] = None,
         timeout: float = 3600.0,
         raise_on_timeout: bool = True,
+        pip: Optional[List[str]] = None,
     ) -> float:
         """Run command."""
         raise NotImplementedError

@@ -4,18 +4,17 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data.tests.util import Counter
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
-    PartitionStyle,
-    PathPartitionEncoder,
-    PathPartitionFilter,
     Partitioning,
+    PartitionStyle,
+    PathPartitionFilter,
 )
-
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.test_partitioning import PathPartitionEncoder
+from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 
 
@@ -88,7 +87,7 @@ def test_read_text_ignore_missing_paths(
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_text(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.fully_executed()
+            ds.materialize()
 
 
 def test_read_text_meta_provider(

@@ -43,15 +43,13 @@ if __name__ == "__main__":
             "target_network_update_freq": 50000,
             "min_sample_timesteps_per_iteration": 25000,
             # Method specific.
-            "multiagent": {
-                # We only have one policy (calling it "shared").
-                # Class, obs/act-spaces, and config will be derived
-                # automatically.
-                "policies": {"shared_policy"},
-                # Always use "shared" policy.
-                "policy_mapping_fn": (
-                    lambda agent_id, episode, worker, **kwargs: "shared_policy"
-                ),
-            },
+            # We only have one policy (calling it "shared").
+            # Class, obs/act-spaces, and config will be derived
+            # automatically.
+            "policies": {"shared_policy"},
+            # Always use "shared" policy.
+            "policy_mapping_fn": (
+                lambda agent_id, episode, worker, **kwargs: "shared_policy"
+            ),
         },
     ).fit()

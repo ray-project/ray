@@ -48,8 +48,13 @@ def postprocess_notebook(notebook):
     return notebook
 
 
-if __name__ == "__main__":
+DISPLAY_FUNCTION = """
+def display(*args, **kwargs):
+    print(*args, **kwargs)
+"""
 
+
+if __name__ == "__main__":
     args, remainder = parser.parse_known_args()
 
     path = Path(args.path)
@@ -66,6 +71,9 @@ if __name__ == "__main__":
 
     name = ""
     with tempfile.NamedTemporaryFile("w", delete=False) as f:
+        # Define the display function, which is available in notebooks,
+        # but not in normal Python scripts.
+        f.write(DISPLAY_FUNCTION)
         jupytext.write(notebook, f, fmt="py:percent")
         name = f.name
 

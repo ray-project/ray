@@ -1,7 +1,6 @@
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import ray._private.gcs_utils as gcs_utils
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -32,7 +31,7 @@ class JobConfig:
             specify the search path for user code. This will be used as
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
             See :ref:`Ray cross-language programming <cross_language>` for more details.
-        runtime_env: A :ref:`runtime environment <runtime-environment>` dictionary.
+        runtime_env: A :ref:`runtime environment <runtime-environments>` dictionary.
         metadata: An opaque metadata dictionary.
         ray_namespace: A :ref:`namespace <namespaces-guide>`
             is a logical grouping of jobs and named actors.
@@ -108,7 +107,7 @@ class JobConfig:
         working_dir translated from a local directory to a URI).
 
         Args:
-            runtime_env: A :ref:`runtime environment <runtime-environment>` dictionary.
+            runtime_env: A :ref:`runtime environment <runtime-environments>` dictionary.
             validate: Whether to validate the runtime env.
         """
         self.runtime_env = runtime_env if runtime_env is not None else {}
@@ -135,11 +134,13 @@ class JobConfig:
         Args:
             default_actor_lifetime: The default actor lifetime to set.
         """
+        import ray.core.generated.common_pb2 as common_pb2
+
         if default_actor_lifetime == "detached":
-            self._default_actor_lifetime = gcs_utils.JobConfig.ActorLifetime.DETACHED
+            self._default_actor_lifetime = common_pb2.JobConfig.ActorLifetime.DETACHED
         elif default_actor_lifetime == "non_detached":
             self._default_actor_lifetime = (
-                gcs_utils.JobConfig.ActorLifetime.NON_DETACHED
+                common_pb2.JobConfig.ActorLifetime.NON_DETACHED
             )
         else:
             raise ValueError(
@@ -161,10 +162,11 @@ class JobConfig:
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
+        import ray.core.generated.common_pb2 as common_pb2
         from ray._private.utils import get_runtime_env_info
 
         if self._cached_pb is None:
-            pb = gcs_utils.JobConfig()
+            pb = common_pb2.JobConfig()
             if self.ray_namespace is None:
                 pb.ray_namespace = str(uuid.uuid4())
             else:

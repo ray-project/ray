@@ -1,25 +1,27 @@
 import pytest
 
 import ray
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     Repartition,
 )
-from ray.data._internal.logical.operators.map_operator import MapBatches
-from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
-from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.map_operator import AbstractUDFMap, MapBatches
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.planner.planner import Planner
+from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import extract_values
 
 
 def test_randomize_blocks_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(datasource=None)
+    read_op = get_parquet_read_logical_op()
     op = RandomizeBlocks(
         read_op,
         seed=0,
@@ -27,14 +29,14 @@ def test_randomize_blocks_operator(ray_start_regular_shared, enable_optimizer):
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
-    assert op.name == "RandomizeBlocks"
+    assert op.name == "RandomizeBlockOrder"
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
 
 def test_randomize_block_order_rule():
-    read = Read(datasource=None)
+    read = get_parquet_read_logical_op()
     operator1 = RandomizeBlocks(input_op=read, seed=None)
     operator2 = RandomizeBlocks(input_op=operator1, seed=None)
     operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
@@ -57,7 +59,7 @@ def test_randomize_block_order_rule():
 
 
 def test_randomize_block_order_rule_seed():
-    read = Read(datasource=None)
+    read = get_parquet_read_logical_op()
     operator1 = RandomizeBlocks(input_op=read, seed=None)
     operator2 = RandomizeBlocks(input_op=operator1, seed=2)
     operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
@@ -84,7 +86,7 @@ def test_randomize_block_order_rule_seed():
 
 
 def test_randomize_block_order_after_repartition():
-    read = Read(datasource=None)
+    read = get_parquet_read_logical_op()
     operator1 = RandomizeBlocks(input_op=read)
     operator2 = Repartition(input_op=operator1, num_outputs=1, shuffle=False)
     operator3 = RandomizeBlocks(input_op=operator2)

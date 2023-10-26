@@ -13,9 +13,6 @@ EVALUATION_DATASET_KEY = "evaluation"
 # This is the dataset that the preprocessor is fit on.
 TRAIN_DATASET_KEY = "train"
 
-# Key to denote all user-specified auxiliary datasets in DatasetConfig.
-WILDCARD_KEY = "*"
-
 # Name to use for the column when representing tensors in table format.
 TENSOR_COLUMN_NAME = "__value__"
 
@@ -45,6 +42,39 @@ CHECKPOINT_ID_ATTR = "_current_checkpoint_id"
 # checkpointing.
 LAZY_CHECKPOINT_MARKER_FILE = ".lazy_checkpoint_marker"
 
+
+# The timestamp of when the result is generated.
+# Default to when the result is processed by tune.
+TIMESTAMP = "timestamp"
+
+# (Auto-filled) Time in seconds this iteration took to run.
+# This may be overridden to override the system-computed time difference.
+TIME_THIS_ITER_S = "time_this_iter_s"
+
+# (Auto-filled) The index of this training iteration.
+TRAINING_ITERATION = "training_iteration"
+
+# File that stores parameters of the trial.
+EXPR_PARAM_FILE = "params.json"
+
+# Pickle File that stores parameters of the trial.
+EXPR_PARAM_PICKLE_FILE = "params.pkl"
+
+# File that stores the progress of the trial.
+EXPR_PROGRESS_FILE = "progress.csv"
+
+# File that stores results of the trial.
+EXPR_RESULT_FILE = "result.json"
+
+# File that stores the pickled error file
+EXPR_ERROR_PICKLE_FILE = "error.pkl"
+
+# File that stores the error file
+EXPR_ERROR_FILE = "error.txt"
+
+# File that stores the checkpoint metadata
+CHECKPOINT_TUNE_METADATA_FILE = ".tune_metadata"
+
 # ==================================================
 #               Environment Variables
 # ==================================================
@@ -55,15 +85,10 @@ COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
     "TRAIN_COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING"
 )
 
-# Integer value which if set will disable lazy checkpointing
-# (avoiding unnecessary serialization if worker is on the same node
-# as Trainable)
-DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
-
-
 # NOTE: When adding a new environment variable, please track it in this list.
 # TODO(ml-team): Most env var constants should get moved here.
 AIR_ENV_VARS = {
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
+    "RAY_AIR_FULL_TRACEBACKS",
+    "RAY_AIR_NEW_OUTPUT",
 }

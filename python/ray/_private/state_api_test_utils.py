@@ -10,10 +10,16 @@ import pprint
 import time
 import traceback
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from ray.experimental.state.api import list_tasks
+from ray.util.state import list_tasks
 import ray
 from ray.actor import ActorHandle
-from ray.experimental.state.api import list_workers
+from ray.util.state import list_workers
+
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
+from ray.util.state.state_manager import StateDataSourceClient
+from ray.dashboard.state_aggregator import (
+    StateAPIManager,
+)
 
 
 @dataclass
@@ -309,6 +315,16 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
     print("State api actor is ready now.")
     actor.start.remote()
     return actor
+
+
+def get_state_api_manager(gcs_address: str) -> StateAPIManager:
+    gcs_aio_client = GcsAioClient(address=gcs_address)
+    gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
+    gcs_channel.connect()
+    state_api_data_source_client = StateDataSourceClient(
+        gcs_channel.channel(), gcs_aio_client
+    )
+    return StateAPIManager(state_api_data_source_client)
 
 
 def summarize_worker_startup_time():

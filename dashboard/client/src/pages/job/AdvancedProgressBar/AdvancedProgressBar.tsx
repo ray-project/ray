@@ -15,6 +15,7 @@ import {
   RiCloseLine,
   RiSubtractLine,
 } from "react-icons/ri";
+import { Link } from "react-router-dom";
 import { ClassNameProps } from "../../../common/props";
 import { JobProgressGroup, NestedJobProgressLink } from "../../../type/job";
 import { MiniTaskProgressBar } from "../TaskProgressBar";
@@ -166,15 +167,21 @@ export const AdvancedProgressBarSegment = ({
               }}
             />
             {link ? (
-              <button
-                className={classes.link}
-                onClick={(event) => {
-                  onClickLink?.(link);
-                  event.stopPropagation();
-                }}
-              >
-                {name}
-              </button>
+              link.type === "actor" ? (
+                <button
+                  className={classes.link}
+                  onClick={(event) => {
+                    onClickLink?.(link);
+                    event.stopPropagation();
+                  }}
+                >
+                  {name}
+                </button>
+              ) : (
+                <Link className={classes.link} to={`tasks/${link.id}`}>
+                  {name}
+                </Link>
+              )
             ) : (
               name
             )}

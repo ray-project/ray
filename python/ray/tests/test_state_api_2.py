@@ -1,15 +1,19 @@
 import asyncio
 import json
 import os
+import sys
+from pathlib import Path
+import tempfile
 
 from collections import defaultdict
+from ray._private.test_utils import check_call_subprocess
 
 import ray
 import requests
 import pytest
 
 from ray._private.profiling import chrome_tracing_dump
-from ray.experimental.state.api import (
+from ray.util.state import (
     get_actor,
     list_tasks,
     list_actors,
@@ -250,6 +254,126 @@ def test_actor_repr_name(shutdown_only):
 
     a = OutClass().get_actor(name="inner")
     wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="inner")
+
+
+def test_experimental_import_deprecation():
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.api import list_tasks  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.custom_types import ACTOR_STATUS  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.exception import RayStateApiException  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.state_cli import ray_get  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.state_manager import (  # noqa: F401
+            StateDataSourceClient,
+        )
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.util import convert_string_to_type  # noqa: F401
+
+
+def test_actor_task_with_repr_name(ray_start_with_dashboard):
+    @ray.remote
+    class ReprActor:
+        def __init__(self, x) -> None:
+            self.x = x
+
+        def __repr__(self) -> str:
+            return self.x
+
+        def f(self):
+            pass
+
+    a = ReprActor.remote(x="repr-name-a")
+    ray.get(a.f.remote())
+
+    def verify():
+        tasks = list_tasks(detail=True, filters=[("type", "=", "ACTOR_TASK")])
+        assert len(tasks) == 1, tasks
+        assert tasks[0].name == "repr-name-a.f"
+        assert tasks[0].func_or_class_name == "ReprActor.f"
+        return True
+
+    wait_for_condition(verify)
+
+    b = ReprActor.remote(x="repr-name-b")
+    ray.get(b.f.options(name="custom-name").remote())
+
+    def verify():
+        tasks = list_tasks(
+            detail=True,
+            filters=[("actor_id", "=", b._actor_id.hex()), ("type", "=", "ACTOR_TASK")],
+        )
+        assert len(tasks) == 1, tasks
+        assert tasks[0].name == "custom-name"
+        assert tasks[0].func_or_class_name == "ReprActor.f"
+        return True
+
+    wait_for_condition(verify)
+
+    @ray.remote
+    class Actor:
+        def f(self):
+            pass
+
+    c = Actor.remote()
+    ray.get(c.f.remote())
+
+    def verify():
+        tasks = list_tasks(
+            detail=True,
+            filters=[("actor_id", "=", c._actor_id.hex()), ("type", "=", "ACTOR_TASK")],
+        )
+
+        assert len(tasks) == 1, tasks
+        assert tasks[0].name == "Actor.f"
+        assert tasks[0].func_or_class_name == "Actor.f"
+        return True
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Release test not expected to work on non-linux."
+)
+def test_state_api_scale_smoke(shutdown_only):
+    ray.init()
+    release_test_file_path = (
+        "../../release/nightly_tests/stress_tests/test_state_api_scale.py"
+    )
+    full_path = Path(ray.__file__).parents[0] / release_test_file_path
+    assert full_path.exists()
+
+    check_call_subprocess(["python", str(full_path), "--smoke-test"])
+
+
+def test_ray_timeline(shutdown_only):
+    ray.init(num_cpus=8)
+
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "timeline.json")
+        ray.timeline(filename)
+
+        with open(filename, "r") as f:
+            dumped = json.load(f)
+        # TODO(swang): Check actual content. It doesn't seem to match the
+        # return value of chrome_tracing_dump in above tests?
+        assert len(dumped) > 0
 
 
 if __name__ == "__main__":

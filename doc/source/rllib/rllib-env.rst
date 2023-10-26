@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/announcement.rst
-
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-environments-doc:
@@ -25,17 +23,18 @@ Custom env classes passed directly to the algorithm must take a single ``env_con
 
 .. code-block:: python
 
-    import gym, ray
+    import gymnasium as gym
+    import ray
     from ray.rllib.algorithms import ppo
 
     class MyEnv(gym.Env):
         def __init__(self, env_config):
             self.action_space = <gym.Space>
             self.observation_space = <gym.Space>
-        def reset(self):
-            return <obs>
+        def reset(self, seed, options):
+            return <obs>, <info>
         def step(self, action):
-            return <obs>, <reward: float>, <done: bool>, <info: dict>
+            return <obs>, <reward: float>, <terminated: bool>, <truncated: bool>, <info: dict>
 
     ray.init()
     algo = ppo.PPO(env=MyEnv, config={
@@ -61,7 +60,7 @@ For a full runnable code example using the custom environment API, see `custom_e
 
 .. warning::
 
-   The gym registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
+   The gymnasium registry is not compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
 
 In the above example, note that the ``env_creator`` function takes in an ``env_config`` object.
 This is a dict containing options passed in through your algorithm.
@@ -77,8 +76,8 @@ This can be useful if you want to train over an ensemble of different environmen
                 choose_env_for(env_config.worker_index, env_config.vector_index))
             self.action_space = self.env.action_space
             self.observation_space = self.env.observation_space
-        def reset(self):
-            return self.env.reset()
+        def reset(self, seed, options):
+            return self.env.reset(seed, options)
         def step(self, action):
             return self.env.step(action)
 
@@ -186,7 +185,7 @@ Here is an example of an env, in which all agents always step simultaneously:
     # ... {"car_2": True, "__all__": False}
 
 
-An another example, where agents step one after the other (turn-based game):
+And another example, where agents step one after the other (turn-based game):
 
 .. code-block:: python
 
@@ -432,7 +431,9 @@ Alternatively, you can use an observation function to share observations between
 Grouping Agents
 ~~~~~~~~~~~~~~~
 
-It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as :ref:`Q-Mix <qmix>` that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
+It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space.
+The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies that
+implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
 
 .. literalinclude:: ../../../rllib/env/multi_agent_env.py
    :language: python
@@ -594,5 +595,3 @@ Advanced Integrations
 ---------------------
 
 For more complex / high-performance environment integrations, you can instead extend the low-level `BaseEnv <https://github.com/ray-project/ray/blob/master/rllib/env/base_env.py>`__ class. This low-level API models multiple agents executing asynchronously in multiple environments. A call to ``BaseEnv:poll()`` returns observations from ready agents keyed by 1) their environment, then 2) agent ids. Actions for those agents are sent back via ``BaseEnv:send_actions()``. BaseEnv is used to implement all the other env types in RLlib, so it offers a superset of their functionality. For example, ``BaseEnv`` is used to implement dynamic batching of observations for inference over `multiple simulator actors <https://github.com/ray-project/ray/blob/master/rllib/env/remote_vector_env.py>`__.
-
-.. include:: /_includes/rllib/announcement_bottom.rst

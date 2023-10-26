@@ -99,7 +99,7 @@ config = (
         lr=0.0001,
         grad_clip=100,
         sgd_minibatch_size=500,
-        train_batch_size=5000,
+        train_batch_size=5000 if not args.as_test else 1000,
         model={"vf_share_layers": True},
     )
     .resources(num_gpus=1 if not args.as_test else 0)

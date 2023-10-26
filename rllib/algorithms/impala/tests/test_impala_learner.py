@@ -31,6 +31,9 @@ FAKE_BATCH = {
     SampleBatch.VF_PREDS: np.array(
         list(reversed(range(frag_length))), dtype=np.float32
     ),
+    SampleBatch.VALUES_BOOTSTRAPPED: np.array(
+        list(reversed(range(frag_length))), dtype=np.float32
+    ),
     SampleBatch.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
@@ -79,16 +82,16 @@ class TestImpalaLearner(unittest.TestCase):
         #  Deprecate the current default and set it to {}.
         config.exploration_config = {}
 
-        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
+        for fw in framework_iterator(config, frameworks=["torch", "tf2"]):
             algo = config.build()
             policy = algo.get_policy()
 
-            if fw == "tf2":
+            if fw == "torch":
+                train_batch = convert_to_torch_tensor(SampleBatch(FAKE_BATCH))
+            else:
                 train_batch = SampleBatch(
                     tree.map_structure(lambda x: tf.convert_to_tensor(x), FAKE_BATCH)
                 )
-            elif fw == "torch":
-                train_batch = convert_to_torch_tensor(SampleBatch(FAKE_BATCH))
 
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()

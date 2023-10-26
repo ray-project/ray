@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import ActorDetailPage from "./pages/actor/ActorDetail";
+import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
 import JobList, { JobsLayout } from "./pages/job";
@@ -30,9 +30,18 @@ import {
   ServeApplicationDetailPage,
 } from "./pages/serve/ServeApplicationDetailPage";
 import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
-import { ServeLayout } from "./pages/serve/ServeLayout";
+import { ServeLayout, ServeSideTabLayout } from "./pages/serve/ServeLayout";
+import { ServeReplicaDetailLayout } from "./pages/serve/ServeReplicaDetailLayout";
 import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
-import { ServeHttpProxyDetailPage } from "./pages/serve/ServeSystemActorDetailPage";
+import {
+  ServeControllerDetailPage,
+  ServeProxyDetailPage,
+} from "./pages/serve/ServeSystemActorDetailPage";
+import {
+  ServeSystemDetailLayout,
+  ServeSystemDetailPage,
+} from "./pages/serve/ServeSystemDetailPage";
+import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
 
@@ -72,6 +81,10 @@ export type GlobalContextType = {
    * The name of the currently running ray session.
    */
   sessionName: string | undefined;
+  /**
+   * The name of the current selected datasource.
+   */
+  dashboardDatasource: string | undefined;
 };
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
@@ -83,6 +96,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   dashboardUids: undefined,
   prometheusHealth: undefined,
   sessionName: undefined,
+  dashboardDatasource: undefined,
 });
 
 const App = () => {
@@ -96,6 +110,7 @@ const App = () => {
     dashboardUids: undefined,
     prometheusHealth: undefined,
     sessionName: undefined,
+    dashboardDatasource: undefined,
   });
   useEffect(() => {
     getNodeList().then((res) => {
@@ -122,8 +137,13 @@ const App = () => {
   // Detect if grafana is running
   useEffect(() => {
     const doEffect = async () => {
-      const { grafanaHost, sessionName, prometheusHealth, dashboardUids } =
-        await getMetricsInfo();
+      const {
+        grafanaHost,
+        sessionName,
+        prometheusHealth,
+        dashboardUids,
+        dashboardDatasource,
+      } = await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
         metricsContextLoaded: true,
@@ -131,6 +151,7 @@ const App = () => {
         dashboardUids,
         sessionName,
         prometheusHealth,
+        dashboardDatasource,
       }));
     };
     doEffect();
@@ -201,33 +222,66 @@ const App = () => {
                     <Route
                       element={
                         <JobDetailActorDetailWrapper>
-                          <ActorDetailPage />
+                          <ActorDetailLayout />
                         </JobDetailActorDetailWrapper>
                       }
                       path="actors/:actorId"
-                    />
+                    >
+                      <Route element={<ActorDetailPage />} path="" />
+                      <Route element={<TaskPage />} path="tasks/:taskId" />
+                    </Route>
+                    <Route element={<TaskPage />} path="tasks/:taskId" />
                   </Route>
                 </Route>
                 <Route element={<ActorLayout />} path="actors">
                   <Route element={<Actors />} path="" />
-                  <Route element={<ActorDetailPage />} path=":actorId" />
+                  <Route element={<ActorDetailLayout />} path=":actorId">
+                    <Route element={<ActorDetailPage />} path="" />
+                    <Route element={<TaskPage />} path="tasks/:taskId" />
+                  </Route>
                 </Route>
                 <Route element={<Metrics />} path="metrics" />
                 <Route element={<ServeLayout />} path="serve">
-                  <Route element={<ServeApplicationsListPage />} path="" />
-                  <Route
-                    element={<ServeHttpProxyDetailPage />}
-                    path="httpProxies/:httpProxyId"
-                  />
+                  <Route element={<ServeSideTabLayout />} path="">
+                    <Route
+                      element={
+                        <SideTabPage tabId="system">
+                          <ServeSystemDetailPage />
+                        </SideTabPage>
+                      }
+                      path="system"
+                    />
+                    <Route
+                      element={
+                        <SideTabPage tabId="applications">
+                          <ServeApplicationsListPage />
+                        </SideTabPage>
+                      }
+                      path=""
+                    />
+                  </Route>
+                  <Route element={<ServeSystemDetailLayout />} path="system">
+                    <Route
+                      element={<ServeControllerDetailPage />}
+                      path="controller"
+                    />
+                    <Route
+                      element={<ServeProxyDetailPage />}
+                      path="proxies/:proxyId"
+                    />
+                  </Route>
                   <Route
                     element={<ServeApplicationDetailLayout />}
                     path="applications/:applicationName"
                   >
                     <Route element={<ServeApplicationDetailPage />} path="" />
                     <Route
-                      element={<ServeReplicaDetailPage />}
+                      element={<ServeReplicaDetailLayout />}
                       path=":deploymentName/:replicaId"
-                    />
+                    >
+                      <Route element={<ServeReplicaDetailPage />} path="" />
+                      <Route path="tasks/:taskId" element={<TaskPage />} />
+                    </Route>
                   </Route>
                 </Route>
                 <Route element={<LogsLayout />} path="logs">

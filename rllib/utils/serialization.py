@@ -1,4 +1,5 @@
 import base64
+from collections import OrderedDict
 import importlib
 import io
 import zlib
@@ -113,8 +114,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
     def _multi_binary(sp: gym.spaces.MultiBinary) -> Dict:
         return {
             "space": "multi-binary",
-            "n": int(sp.n),
-            "dtype": sp.dtype.str,
+            "n": sp.n,
         }
 
     def _multi_discrete(sp: gym.spaces.MultiDiscrete) -> Dict:
@@ -269,7 +269,18 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         return gym.spaces.Tuple(spaces=spaces)
 
     def _dict(d: Dict) -> gym.spaces.Discrete:
-        spaces = {k: gym_space_from_dict(sp) for k, sp in d["spaces"].items()}
+        # We need to always use an OrderedDict here to cover the following two ways, by
+        # which a user might construct a Dict space originally. We need to restore this
+        # original Dict space with the exact order of keys the user intended to.
+        # - User provides an OrderedDict inside the gym.spaces.Dict constructor ->
+        #  gymnasium should NOT further sort the keys. The same (user-provided) order
+        #  must be restored.
+        # - User provides a simple dict inside the gym.spaces.Dict constructor ->
+        #  By its API definition, gymnasium automatically sorts all keys alphabetically.
+        #  The same (alphabetical) order must thus be restored.
+        spaces = OrderedDict(
+            {k: gym_space_from_dict(sp) for k, sp in d["spaces"].items()}
+        )
         return gym.spaces.Dict(spaces=spaces)
 
     def _simplex(d: Dict) -> Simplex:

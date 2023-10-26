@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 import ray
-from ray._private.ray_constants import DEFAULT_PORT
+import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
 )
@@ -194,7 +194,7 @@ def create_node_spec(
         node_spec["command"] = DOCKER_HEAD_CMD.format(**cmd_kwargs)
         # Expose ports so we can connect to the cluster from outside
         node_spec["ports"] = [
-            f"{host_gcs_port}:{DEFAULT_PORT}",
+            f"{host_gcs_port}:{ray_constants.DEFAULT_PORT}",
             f"{host_object_manager_port}:8076",
             f"{host_client_port}:10001",
         ]
@@ -303,7 +303,9 @@ class FakeMultiNodeProvider(NodeProvider):
     def set_node_tags(self, node_id, tags):
         raise AssertionError("Readonly node provider cannot be updated")
 
-    def create_node_with_resources(self, node_config, tags, count, resources):
+    def create_node_with_resources_and_labels(
+        self, node_config, tags, count, resources, labels
+    ):
         with self.lock:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             next_id = self._next_hex_node_id()
@@ -315,6 +317,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 num_gpus=resources.pop("GPU", 0),
                 object_store_memory=resources.pop("object_store_memory", None),
                 resources=resources,
+                labels=labels,
                 redis_address="{}:6379".format(
                     ray._private.services.get_node_ip_address()
                 ),
@@ -323,7 +326,8 @@ class FakeMultiNodeProvider(NodeProvider):
                 ),
                 env_vars={
                     "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
-                    "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
+                    ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(resources),
+                    ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
                 },
             )
             node = ray._private.node.Node(
@@ -473,7 +477,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             resources=resources,
             env_vars={
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
-                "RAY_OVERRIDE_RESOURCES": resource_str,
+                ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: resource_str,
                 **self.provider_config.get("env_vars", {}),
             },
             volume_dir=self._volume_dir,
@@ -622,7 +626,9 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         assert node_id in self._nodes
         self._nodes[node_id]["tags"].update(tags)
 
-    def create_node_with_resources(self, node_config, tags, count, resources):
+    def create_node_with_resources_and_labels(
+        self, node_config, tags, count, resources, labels
+    ):
         with self.lock:
             is_head = tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
 
@@ -644,7 +650,9 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
     ) -> Optional[Dict[str, Any]]:
         resources = self._head_resources
-        return self.create_node_with_resources(node_config, tags, count, resources)
+        return self.create_node_with_resources_and_labels(
+            node_config, tags, count, resources, {}
+        )
 
     def _terminate_node(self, node):
         self._update_docker_compose_config()

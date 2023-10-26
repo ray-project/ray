@@ -33,9 +33,8 @@ from typing import (
     Union,
     Coroutine,
     List,
+    Mapping,
 )
-
-import grpc
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -43,19 +42,12 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
-
-try:
-    from grpc import aio as aiogrpc
-except ImportError:
-    from grpc.experimental import aio as aiogrpc
-
 
 pwd = None
 if sys.platform != "win32":
@@ -72,12 +64,17 @@ linux_prctl = None
 win32_job = None
 win32_AssignProcessToJobObject = None
 
-
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
 _PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
+_CALLED_FREQ_LOCK = threading.Lock()
+
+PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
+    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
+)
+PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
 
 
 def get_user_temp_dir():
@@ -279,30 +276,21 @@ def compute_driver_id_from_job(job_id):
     return ray.WorkerID(driver_id_str)
 
 
-def get_cuda_visible_devices():
-    """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
+def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
+    """Get the mapping from accelerator resource name
+    to the visible ids."""
 
-    Returns:
-        devices (List[str]): If CUDA_VISIBLE_DEVICES is set, returns a
-            list of strings representing the IDs of the visible GPUs.
-            If it is not set or is set to NoDevFiles, returns empty list.
-    """
-    gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    from ray._private.accelerators import (
+        get_all_accelerator_resource_names,
+        get_accelerator_manager_for_resource,
+    )
 
-    if gpu_ids_str is None:
-        return None
-
-    if gpu_ids_str == "":
-        return []
-
-    if gpu_ids_str == "NoDevFiles":
-        return []
-
-    # GPU identifiers are given as strings representing integers or UUIDs.
-    return list(gpu_ids_str.split(","))
-
-
-last_set_gpu_ids = None
+    return {
+        accelerator_resource_name: get_accelerator_manager_for_resource(
+            accelerator_resource_name
+        ).get_current_process_visible_accelerator_ids()
+        for accelerator_resource_name in get_all_accelerator_resource_names()
+    }
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -345,22 +333,16 @@ def set_omp_num_threads_if_unset() -> bool:
     return True
 
 
-def set_cuda_visible_devices(gpu_ids):
-    """Set the CUDA_VISIBLE_DEVICES environment variable.
-
-    Args:
-        gpu_ids (List[str]): List of strings representing GPU IDs.
+def set_visible_accelerator_ids() -> None:
+    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
+    TPU_VISIBLE_CHIPS ,...) environment variables based on the accelerator runtime.
     """
-
-    if os.environ.get(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
-        return
-
-    global last_set_gpu_ids
-    if last_set_gpu_ids == gpu_ids:
-        return  # optimization: already set
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
-    last_set_gpu_ids = gpu_ids
+    for resource_name, accelerator_ids in (
+        ray.get_runtime_context().get_resource_ids().items()
+    ):
+        ray._private.accelerators.get_accelerator_manager_for_resource(
+            resource_name
+        ).set_current_process_visible_accelerator_ids(accelerator_ids)
 
 
 def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -602,7 +584,7 @@ def get_num_cpus(
             # TODO (Alex): We should probably add support for fractional cpus.
             if int(docker_count) != float(docker_count):
                 logger.warning(
-                    f"Ray currently does not support initializing Ray"
+                    f"Ray currently does not support initializing Ray "
                     f"with fractional cpus. Your num_cpus will be "
                     f"truncated from {docker_count} to "
                     f"{int(docker_count)}."
@@ -1168,8 +1150,10 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str):
+def import_attr(full_path: str, *, reload_module: bool = False):
     """Given a full import path to a module attr, return the imported attr.
+
+    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
 
     For example, the following are equivalent:
         MyClass = import_attr("module.submodule:MyClass")
@@ -1195,6 +1179,8 @@ def import_attr(full_path: str):
         attr_name = full_path[last_period_idx + 1 :]
 
     module = importlib.import_module(module_name)
+    if reload_module:
+        importlib.reload(module)
     return getattr(module, attr_name)
 
 
@@ -1223,12 +1209,13 @@ def get_wheel_filename(
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
-    if py_version_str in ["37", "38", "39"]:
-        darwin_os_string = "macosx_10_15_x86_64"
-    else:
-        darwin_os_string = "macosx_10_15_universal2"
 
     architecture = architecture or platform.processor()
+
+    if py_version_str in ["311", "310", "39", "38"] and architecture == "arm64":
+        darwin_os_string = "macosx_11_0_arm64"
+    else:
+        darwin_os_string = "macosx_10_15_x86_64"
 
     if architecture == "aarch64":
         linux_os_string = "manylinux2014_aarch64"
@@ -1301,6 +1288,15 @@ def init_grpc_channel(
     options: Optional[Sequence[Tuple[str, Any]]] = None,
     asynchronous: bool = False,
 ):
+    import grpc
+
+    try:
+        from grpc import aio as aiogrpc
+    except ImportError:
+        from grpc.experimental import aio as aiogrpc
+
+    from ray._private.tls_utils import load_certs_from_env
+
     grpc_module = aiogrpc if asynchronous else grpc
 
     options = options or []
@@ -1344,6 +1340,28 @@ def check_dashboard_dependencies_installed() -> bool:
         return False
 
 
+def check_ray_client_dependencies_installed() -> bool:
+    """Returns True if Ray Client dependencies are installed.
+
+    See documents for check_dashboard_dependencies_installed.
+    """
+    try:
+        import grpc  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+connect_error = (
+    "Unable to connect to GCS (ray head) at {}. "
+    "Check that (1) Ray with matching version started "
+    "successfully at the specified address, (2) this "
+    "node can reach the specified address, and (3) there is "
+    "no firewall setting preventing access."
+)
+
+
 def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
     result = None
     if isinstance(prefix, str):
@@ -1355,15 +1373,10 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
             result = gcs_client.internal_kv_keys(prefix, namespace)
         except Exception as e:
             if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
-                grpc.StatusCode.UNAVAILABLE.value[0],
-                grpc.StatusCode.UNKNOWN.value[0],
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV List failed")
             result = None
@@ -1389,15 +1402,10 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             result = gcs_client.internal_kv_get(key, namespace)
         except Exception as e:
             if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
-                grpc.StatusCode.UNAVAILABLE.value[0],
-                grpc.StatusCode.UNKNOWN.value[0],
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV Get failed")
             result = None
@@ -1420,16 +1428,40 @@ def parse_resources_json(
     try:
         resources = json.loads(resources)
         if not isinstance(resources, dict):
-            raise ValueError
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={resources}"),
+            str(e),
+        )
         cli_logger.abort(
             "Valid values look like this: `{}`",
             cf.bold(
-                f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''
+                f'{command_arg}=\'{{"CustomResource3": 1, "CustomResource2": 2}}\''
             ),
         )
     return resources
+
+
+def parse_metadata_json(
+    metadata: str, cli_logger, cf, command_arg="--metadata-json"
+) -> Dict[str, str]:
+    try:
+        metadata = json.loads(metadata)
+        if not isinstance(metadata, dict):
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={metadata}"),
+            str(e),
+        )
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(f'{command_arg}=\'{{"key1": "value1", "key2": "value2"}}\''),
+        )
+    return metadata
 
 
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
@@ -1447,15 +1479,10 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
             )
         except ray.exceptions.RpcError as e:
             if e.rpc_code in (
-                grpc.StatusCode.UNAVAILABLE.value[0],
-                grpc.StatusCode.UNKNOWN.value[0],
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV Put failed")
             time.sleep(2)
@@ -1614,7 +1641,7 @@ def split_address(address: str) -> Tuple[str, str]:
 
     Examples:
         >>> split_address("ray://my_cluster")
-        ("ray", "my_cluster")
+        ('ray', 'my_cluster')
     """
     if "://" not in address:
         raise ValueError("Address must contain '://'")
@@ -1638,8 +1665,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
     version >= 3.7, if not possible, one should create and manage the event
     loops explicitly.
     """
-    import sys
-
     vers_info = sys.version_info
     if vers_info.major >= 3 and vers_info.minor >= 10:
         # This follows the implementation of the deprecating `get_event_loop`
@@ -1882,15 +1907,96 @@ def update_envs(env_vars: Dict[str, str]):
     if not env_vars:
         return
 
-    replaceable_keys = [
-        "PATH",
-        "LD_LIBRARY_PATH",
-        "DYLD_LIBRARY_PATH",
-        "LD_PRELOAD",
-    ]
-
     for key, value in env_vars.items():
-        if key in replaceable_keys:
-            os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
-        else:
-            os.environ[key] = value
+        expanded = os.path.expandvars(value)
+        # Replace non-existant env vars with an empty string.
+        result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
+        os.environ[key] = result
+
+
+def parse_node_labels_json(
+    labels_json: str, cli_logger, cf, command_arg="--labels"
+) -> Dict[str, str]:
+    try:
+        labels = json.loads(labels_json)
+        if not isinstance(labels, dict):
+            raise ValueError(
+                "The format after deserialization is not a key-value pair map"
+            )
+        for key, value in labels.items():
+            if not isinstance(key, str):
+                raise ValueError("The key is not string type.")
+            if not isinstance(value, str):
+                raise ValueError(f'The value of the "{key}" is not string type')
+    except Exception as e:
+        cli_logger.abort(
+            "`{}` is not a valid JSON string, detail error:{}"
+            "Valid values look like this: `{}`",
+            cf.bold(f"{command_arg}={labels_json}"),
+            str(e),
+            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
+        )
+    return labels
+
+
+def validate_node_labels(labels: Dict[str, str]):
+    if labels is None:
+        return
+    for key in labels.keys():
+        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
+            raise ValueError(
+                f"Custom label keys `{key}` cannot start with the prefix "
+                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
+                f"This is reserved for Ray defined labels."
+            )
+
+
+def pasre_pg_formatted_resources_to_original(
+    pg_formatted_resources: Dict[str, float]
+) -> Dict[str, float]:
+    original_resources = {}
+
+    for key, value in pg_formatted_resources.items():
+        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 2:
+            original_resources[result.group(1)] = value
+            continue
+        result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 3:
+            original_resources[result.group(1)] = value
+            continue
+        original_resources[key] = value
+
+    return original_resources
+
+
+def load_class(path):
+    """Load a class at runtime given a full path.
+
+    Example of the path: mypkg.mysubpkg.myclass
+    """
+    class_data = path.split(".")
+    if len(class_data) < 2:
+        raise ValueError("You need to pass a valid path like mymodule.provider_class")
+    module_path = ".".join(class_data[:-1])
+    class_str = class_data[-1]
+    module = importlib.import_module(module_path)
+    return getattr(module, class_str)
+
+
+def validate_actor_state_name(actor_state_name):
+    if actor_state_name is None:
+        return
+    actor_state_names = [
+        "DEPENDENCIES_UNREADY",
+        "PENDING_CREATION",
+        "ALIVE",
+        "RESTARTING",
+        "DEAD",
+    ]
+    if actor_state_name not in actor_state_names:
+        raise ValueError(
+            f'"{actor_state_name}" is not a valid actor state name, '
+            'it must be one of the following: "DEPENDENCIES_UNREADY", '
+            '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
+        )

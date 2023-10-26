@@ -8,7 +8,7 @@ from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
-from ray.experimental.state.api import list_workers, list_nodes
+from ray.util.state import list_workers, list_nodes, list_tasks
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -156,9 +156,11 @@ ray.shutdown()
         type = worker["exit_type"]
         detail = worker["exit_detail"]
         assert type == "INTENDED_USER_EXIT" and "exit_actor" in detail
-        return verify_failed_task(
-            name="exit", error_type="ACTOR_DIED", error_message="INTENDED_USER_EXIT"
-        )
+
+        t = list_tasks(filters=[("name", "=", "exit")])[0]
+        # exit_actor should be shown as non-task failure.
+        assert t["state"] == "FINISHED"
+        return True
 
     wait_for_condition(verify_worker_exit_actor)
 
@@ -172,11 +174,10 @@ ray.shutdown()
         type = worker["exit_type"]
         detail = worker["exit_detail"]
         assert type == "INTENDED_USER_EXIT" and "exit code 0" in detail
-        return verify_failed_task(
-            name="exit_with_exit_code",
-            error_type="ACTOR_DIED",
-            error_message=["INTENDED_USER_EXIT", "exit code 0"],
-        )
+        t = list_tasks(filters=[("name", "=", "exit_with_exit_code")])[0]
+        # exit_actor should be shown as non-task failure.
+        assert t["state"] == "FINISHED"
+        return True
 
     wait_for_condition(verify_exit_code_0)
 

@@ -1,5 +1,3 @@
-.. include:: /_includes/core/announcement.rst
-
 .. _core-walkthrough:
 
 What is Ray Core?
@@ -60,7 +58,7 @@ As seen above, Ray stores task and actor call results in its :ref:`distributed o
 Next Steps
 ----------
 
-.. tip:: To check how your application is doing, you can use the :ref:`Ray dashboard <ray-dashboard>`. 
+.. tip:: To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`. 
 
 Ray's key primitives are simple, but can be composed together to express almost any kind of distributed computation.
 Learn more about Ray's :ref:`key concepts <core-key-concepts>` with the following user guides:
@@ -93,6 +91,3 @@ Learn more about Ray's :ref:`key concepts <core-key-concepts>` with the followin
         .. button-ref:: objects-in-ray
 
             Working with Ray Objects
-
-
-.. include:: /_includes/core/announcement_bottom.rst

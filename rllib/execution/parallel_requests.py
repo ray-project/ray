@@ -4,6 +4,8 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -24,29 +26,36 @@ class AsyncRequestsManager:
             to be done and ready when calling
             AsyncRequestsManager.get_ready_results().
 
-    Example:
-        >>> import time # doctest: +SKIP
-        >>> import ray # doctest: +SKIP
-        >>> from ray.rllib.execution.parallel_requests import AsyncRequestsManager # doctest: +SKIP # noqa
-        >>>
-        >>> @ray.remote # doctest: +SKIP
-        ... class MyActor: # doctest: +SKIP
-        ...    def apply(self, fn, *args: List[Any], **kwargs: Dict[str, Any]) -> Any: # doctest: +SKIP # noqa
-        ...        return fn(*args, **kwargs) # doctest: +SKIP
-        ...
-        ...    def task(self, a: int, b: int) -> Any: # doctest: +SKIP
-        ...        time.sleep(0.5) # doctest: +SKIP
-        ...        return a + b # doctest: +SKIP
-        >>>
-        >>> workers = [MyActor.remote() for _ in range(3)] # doctest: +SKIP
-        >>> manager = AsyncRequestsManager(workers, # doctest: +SKIP
-        ...                                max_remote_requests_in_flight_per_worker=2) # doctest: +SKIP # noqa
-        >>> manager.call(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2]) # doctest: +SKIP # noqa
-        >>> print(manager.get_ready()) # doctest: +SKIP
-        >>> manager.call(lambda worker, a, b: worker.task(a, b), # doctest: +SKIP
-        ...                fn_kwargs={"a": 1, "b": 2}) # doctest: +SKIP
-        >>> time.sleep(2) # Wait for the tasks to finish. # doctest: +SKIP
-        >>> print(manager.get_ready()) # doctest: +SKIP
+    .. testcode::
+
+        import time
+        import ray
+        from ray.rllib.execution.parallel_requests import AsyncRequestsManager
+
+        ray.init()
+
+        @ray.remote
+        class MyActor:
+           def apply(self, fn, *args: List[Any], **kwargs: Dict[str, Any]) -> Any:
+               return fn(self, *args, **kwargs)
+
+           def task(self, a: int, b: int) -> Any:
+               time.sleep(0.5)
+               return a + b
+
+        workers = [MyActor.remote() for _ in range(2)]
+        manager = AsyncRequestsManager(
+            workers, max_remote_requests_in_flight_per_worker=2
+        )
+        for _ in range(2):
+            manager.call(lambda w, a, b: w.task(a, b), fn_args=[1, 2])
+        time.sleep(3)
+        print(list(manager.get_ready().values()))
+        ray.shutdown()
+
+    .. testoutput::
+
+        [[3], [3]]
     """
 
     def __init__(
@@ -67,6 +76,11 @@ class AsyncRequestsManager:
             list(workers) if not isinstance(workers, list) else workers.copy()
         )
         self._curr_actor_ptr = 0
+        if log_once("multi_gpu_learner_thread_deprecation_warning"):
+            deprecation_warning(
+                old="ray.rllib.execution.multi_gpu_learner_thread."
+                "MultiGPULearnerThread"
+            )
 
     def call(
         self,

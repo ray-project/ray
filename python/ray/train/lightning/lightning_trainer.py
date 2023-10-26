@@ -1,87 +1,49 @@
+import logging
 import os
+from copy import copy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
-import pytorch_lightning as pl
-from pytorch_lightning.plugins.environments import ClusterEnvironment
-
-from packaging.version import Version
-
-if Version(pl.__version__) >= Version("2.0.0"):
-    from pytorch_lightning.callbacks.progress import ProgressBar as ProgressBarBase
-else:
-    from pytorch_lightning.callbacks.progress.base import ProgressBarBase
 
 from ray.air import session
-from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY
-from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
-from ray.train.trainer import GenDataset
+from ray.train import Checkpoint, CheckpointConfig, DataConfig, RunConfig, ScalingConfig
+from ray.train.lightning._lightning_utils import (
+    RayDataModule,
+    RayDDPStrategy,
+    RayDeepSpeedStrategy,
+    RayFSDPStrategy,
+    RayLightningEnvironment,
+    RayModelCheckpoint,
+    import_lightning,
+    prepare_trainer,
+)
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
-from ray.util import PublicAPI
-from ray.train.lightning._lightning_utils import (
-    RayDDPStrategy,
-    RayFSDPStrategy,
-    RayEnvironment,
-    RayDataModule,
-    RayModelCheckpoint,
-    get_worker_root_device,
-)
-
-
-import logging
+from ray.train.trainer import GenDataset
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
+pl = import_lightning()
 
-@PublicAPI(stability="alpha")
+
+LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE = (
+    "The LightningConfigBuilder will be hard deprecated in Ray 2.8. "
+    "Use `ray.train.TorchTrainer` instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated
 class LightningConfigBuilder:
-    """Configuration Class to pass into LightningTrainer.
-
-    Example:
-        .. code-block:: python
-
-            import torch
-            import torch.nn as nn
-            from ray.train.lightning import LightningConfigBuilder
-
-            class LinearModule(pl.LightningModule):
-                def __init__(self, input_dim, output_dim) -> None:
-                    super().__init__()
-                    self.linear = nn.Linear(input_dim, output_dim)
-
-                def forward(self, input):
-                    return self.linear(input)
-
-                def training_step(self, batch):
-                    output = self.forward(batch)
-                    loss = torch.sum(output)
-                    self.log("loss", loss)
-                    return loss
-
-                def predict_step(self, batch, batch_idx):
-                    return self.forward(batch)
-
-                def configure_optimizers(self):
-                    return torch.optim.SGD(self.parameters(), lr=0.1)
-
-            lightning_config = (
-                LightningConfigBuilder()
-                .module(
-                    cls=LinearModule,
-                    input_dim=32,
-                    output_dim=4,
-                )
-                .trainer(max_epochs=5, accelerator="gpu")
-                .fit_params(datamodule=datamodule)
-                .checkpointing(monitor="loss", save_top_k=2, mode="min")
-                .build()
-            )
-    """
+    """Configuration Class to pass into LightningTrainer."""
 
     def __init__(self) -> None:
         """Initialize the configurations with default values."""
+        raise DeprecationWarning(LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE)
+
         self._module_class = None
         self._module_init_config = {}
         self._trainer_init_config = {}
@@ -107,10 +69,14 @@ class LightningConfigBuilder:
     def trainer(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.Trainer``.
 
-        Note that you don't have to specify the `strategy` argument here since the
-        ``LightningTrainer`` creates a PyTorch Lightning Strategy object with the
-        configurations specified in the `.strategy()` method. If no configuration
-        is specified, it creates a DDPStrategy by default.
+        Note that you don't have to specify the ``strategy``, ``device`` and
+        ``num_nodes`` arguments here, since the ``LightningTrainer`` creates
+        a PyTorch Lightning Strategy object with the configurations specified
+        in the `.strategy()` method. The ``device`` and ``num_nodes`` are also
+        configured automatically by the LightningTrainer. If no configuration
+        is specified, it creates a ``DDPStrategy`` by default.
+
+        For ``accelerator``, currently only ``"cpu"`` and ``"gpu"`` are supported.
 
         Args:
             kwargs: The initialization arguments for ``pytorch_lightning.Trainer``
@@ -149,16 +115,18 @@ class LightningConfigBuilder:
 
         Args:
             name: The name of your distributed strategy. You can choose
-                from "ddp" and "fsdp". Default: "ddp".
+                from "ddp", "fsdp", and "deepspeed". Default: "ddp".
             kwargs: For valid arguments to pass, please refer to:
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
-                and
+                ,
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
+                and
+                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DeepSpeedStrategy.html
         """
-        if name not in ["ddp", "fsdp"]:
+        if name not in ["ddp", "fsdp", "deepspeed"]:
             raise ValueError(
-                "LightningTrainer currently supports 'ddp' and 'fsdp' strategy. "
-                "Please choose one of them."
+                "LightningTrainer currently supports 'ddp', 'fsdp', and 'deepspeed'"
+                " strategy. Please choose one of them."
             )
 
         self._strategy_config["_strategy_name"] = name
@@ -172,17 +140,17 @@ class LightningConfigBuilder:
         with the kwargs. It handles checkpointing and metrics logging logics.
 
         Specifically, the callback periodically reports the latest metrics
-        and checkpoint to the AIR session via
-        :meth:`session.report() <ray.air.session.report>`.
+        and checkpoint via
+        :meth:`ray.train.report() <ray.train.report>`.
         The report frequency matches the checkpointing frequency here.
         You have to make sure that the target metrics (e.g. metrics defined in
         :class:`TuneConfig <ray.tune.TuneConfig>` or
-        :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`)
+        :class:`CheckpointConfig <ray.train.CheckpointConfig>`)
         are ready when a new checkpoint is being saved.
 
         Note that this method is not a replacement for the
-        ``ray.air.configs.CheckpointConfig``. You still need to specify your
-        AIR checkpointing strategy in ``CheckpointConfig``. Otherwise, AIR stores
+        ``ray.train.CheckpointConfig``. You still need to specify your
+        checkpointing strategy in ``CheckpointConfig``. Otherwise, Ray stores
         all the reported checkpoints by default.
 
         Args:
@@ -211,7 +179,15 @@ class LightningConfigBuilder:
         return config_dict
 
 
-@PublicAPI(stability="alpha")
+LIGHTNING_TRAINER_DEPRECATION_MESSAGE = (
+    "The LightningTrainer is hard deprecated in Ray 2.8. "
+    "Use `ray.train.TorchTrainer` instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated
 class LightningTrainer(TorchTrainer):
     """A Trainer for data parallel PyTorch Lightning training.
 
@@ -226,117 +202,22 @@ class LightningTrainer(TorchTrainer):
     ``pytorch_lightning.LightningModule`` using the arguments provided in
     ``LightningConfigBuilder.module()``.
 
-    For data ingestion, the LightningTrainer will then either convert the Dataset
+    For data ingestion, the LightningTrainer will then either convert the Ray Dataset
     shards to a ``pytorch_lightning.LightningDataModule``, or directly use the
     datamodule or dataloaders if provided by users.
 
     The trainer also creates a ModelCheckpoint callback based on the configuration
     provided in ``LightningConfigBuilder.checkpointing()``. In addition to
-    checkpointing, this callback also calls ``session.report()`` to report the
-    latest metrics along with the checkpoint to the AIR session.
+    checkpointing, this callback also calls ``train.report()`` to report the
+    latest metrics along with the checkpoint.
 
     For logging, users can continue to use Lightning's native loggers, such as
     WandbLogger, TensorboardLogger, etc. LightningTrainer will also log the latest
-    metrics to the trail directory whenever a new checkpoint is saved.
+    metrics to the training results directory whenever a new checkpoint is saved.
 
     Then, the training function will initialize an instance of ``pl.Trainer``
     using the arguments provided in ``LightningConfigBuilder.fit_params()`` and then
     run ``pytorch_lightning.Trainer.fit``.
-
-    Example:
-        .. testcode::
-
-            import torch
-            import torch.nn.functional as F
-            from torchmetrics import Accuracy
-            from torch.utils.data import DataLoader, Subset
-            from torchvision.datasets import MNIST
-            from torchvision import transforms
-            import pytorch_lightning as pl
-            from ray.air.config import ScalingConfig
-            from ray.train.lightning import LightningTrainer, LightningConfigBuilder
-
-
-            class MNISTClassifier(pl.LightningModule):
-                def __init__(self, lr, feature_dim):
-                    super(MNISTClassifier, self).__init__()
-                    self.fc1 = torch.nn.Linear(28 * 28, feature_dim)
-                    self.fc2 = torch.nn.Linear(feature_dim, 10)
-                    self.lr = lr
-                    self.accuracy = Accuracy()
-
-                def forward(self, x):
-                    x = x.view(-1, 28 * 28)
-                    x = torch.relu(self.fc1(x))
-                    x = self.fc2(x)
-                    return x
-
-                def training_step(self, batch, batch_idx):
-                    x, y = batch
-                    y_hat = self(x)
-                    loss = torch.nn.functional.cross_entropy(y_hat, y)
-                    self.log("train_loss", loss)
-                    return loss
-
-                def validation_step(self, val_batch, batch_idx):
-                    x, y = val_batch
-                    logits = self.forward(x)
-                    loss = F.nll_loss(logits, y)
-                    acc = self.accuracy(logits, y)
-                    return {"val_loss": loss, "val_accuracy": acc}
-
-                def validation_epoch_end(self, outputs):
-                    avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
-                    avg_acc = torch.stack([x["val_accuracy"] for x in outputs]).mean()
-                    self.log("ptl/val_loss", avg_loss)
-                    self.log("ptl/val_accuracy", avg_acc)
-
-                def configure_optimizers(self):
-                    optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-                    return optimizer
-
-            # Prepare MNIST Datasets
-            transform = transforms.Compose(
-                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-            )
-            mnist_train = MNIST(
-                './data', train=True, download=True, transform=transform
-            )
-            mnist_val = MNIST(
-                './data', train=False, download=True, transform=transform
-            )
-
-            # Take small subsets for smoke test
-            # Please remove these two lines if you want to train the full dataset
-            mnist_train = Subset(mnist_train, range(1000))
-            mnist_train = Subset(mnist_train, range(500))
-
-            train_loader = DataLoader(mnist_train, batch_size=128, shuffle=True)
-            val_loader = DataLoader(mnist_val, batch_size=128, shuffle=False)
-
-            lightning_config = (
-                LightningConfigBuilder()
-                .module(cls=MNISTClassifier, lr=1e-3, feature_dim=128)
-                .trainer(max_epochs=3, accelerator="cpu")
-                .fit_params(train_dataloaders=train_loader, val_dataloaders=val_loader)
-                .build()
-            )
-
-            scaling_config = ScalingConfig(
-                num_workers=4, use_gpu=False, resources_per_worker={"CPU": 1}
-            )
-            trainer = LightningTrainer(
-                lightning_config=lightning_config,
-                scaling_config=scaling_config,
-            )
-            result = trainer.fit()
-            result
-
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
-
-        ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
@@ -348,22 +229,26 @@ class LightningTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: A dictionary of Datasets to use for training.
+        datasets: A dictionary of Ray Datasets to use for training.
             Use the key "train" to denote which dataset is the training
             dataset and (optionally) key "val" to denote the validation
-            dataset. If a ``preprocessor`` is provided and has not already
-            been fit, it will be fit on the training dataset. All datasets will be
-            transformed by the ``preprocessor`` if one is provided.
-        datasets_iter_config: Configurations for iterating over input Datasets.
-            This configuration is only valid when `datasets` argument is provided to
-            the LightningTrainer. Otherwise, LightningTrainer will use datamodule
-            or dataloaders specified in ``LightningConfig.trainer_init_config``.
-            For valid arguments to pass, please refer to:
+            dataset. Internally, LightningTrainer shards the training dataset
+            across all workers, and creates a PyTorch Dataloader for each shard.
+
+            If ``datasets`` is not specified, ``LightningTrainer`` will use datamodule
+            or dataloaders specified in ``LightningConfigBuilder.fit_params`` instead.
+        datasets_iter_config: Configuration for iterating over the input ray datasets.
+            You can configure the per-device batch size, prefetch batch size, collate
+            function, and more. For valid arguments to pass, please refer to:
             :py:meth:`Dataset.iter_torch_batches
             <ray.data.Dataset.iter_torch_batches>`
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
+
+            Note that if you provide a ``datasets`` parameter, you must always specify
+            ``datasets_iter_config`` for it.
+
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -372,17 +257,27 @@ class LightningTrainer(TorchTrainer):
         *,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         datasets_iter_config: Optional[Dict[str, Any]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
-        run_config = run_config or RunConfig()
+        raise DeprecationWarning(LIGHTNING_TRAINER_DEPRECATION_MESSAGE)
+
+        run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
 
-        self._check_checkpoint_configs(
+        if datasets and not datasets_iter_config:
+            raise RuntimeError(
+                "No `datasets_iter_config` provided for the input `datasets`!"
+                "Please refer to the API of `ray.data.DataIterator.iter_torch_batches`"
+                "for all valid arguments."
+            )
+
+        run_config.checkpoint_config = self._unify_checkpoint_configs(
             ptl_ckpt_config=lightning_config["_model_checkpoint_config"],
             air_ckpt_config=run_config.checkpoint_config,
         )
@@ -409,18 +304,20 @@ class LightningTrainer(TorchTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
-    def _check_checkpoint_configs(
+    def _unify_checkpoint_configs(
         self, ptl_ckpt_config: Dict, air_ckpt_config: CheckpointConfig
-    ):
-        """Check if configs are set correctly"""
+    ) -> CheckpointConfig:
+        """Unify the Lightning checkpointing config and the Ray CheckpointConfig."""
+
         ptl_ckpt_metric = ptl_ckpt_config.get("monitor", None)
         air_ckpt_metric = air_ckpt_config.checkpoint_score_attribute
 
         if ptl_ckpt_metric and air_ckpt_metric and ptl_ckpt_metric != air_ckpt_metric:
             logger.warning(
-                "You have specified different metrics to track in AIR "
+                "You have specified different metrics to track in "
                 "`CheckpointConfig` and Lightning ModelCheckpoint. "
                 "Make sure that you have logged both metrics before "
                 "a checkpoint is created."
@@ -436,31 +333,25 @@ class LightningTrainer(TorchTrainer):
                 "through `LightningConfigBuilder.checkpointing()`."
             )
 
-    @PublicAPI(stability="alpha")
-    @classmethod
-    def restore(
-        cls: Type["LightningTrainer"],
-        path: str,
-        datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
-        scaling_config: Optional[ScalingConfig] = None,
-        **kwargs,
-    ) -> "LightningTrainer":
-        """Restores a LightningTrainer from a previously interrupted/failed run.
+        # Auto-fill the AIR CheckpointConfig if the user didn't specify it.
+        if air_ckpt_config == CheckpointConfig():
+            # save_tok_k = 1 -> num_to_keep = 1     : Lightning saves 1 ckpt by default
+            # save_top_k = 0 -> num_to_keep = 1     : AIR saves at least 1 ckpt
+            # save_top_k = -1 -> num_to_keep = None : Save all ckpts
 
-        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
-        for descriptions of the arguments.
+            save_top_k = ptl_ckpt_config.get("save_top_k", 1)
+            if save_top_k == -1:
+                num_to_keep = None
+            else:
+                num_to_keep = max(save_top_k, 1)
 
-        Returns:
-            LightningTrainer: A restored instance of `LightningTrainer`
-        """
-        return super(LightningTrainer, cls).restore(
-            path=path,
-            datasets=datasets,
-            preprocessor=preprocessor,
-            scaling_config=scaling_config,
-            **kwargs,
-        )
+            return CheckpointConfig(
+                num_to_keep=num_to_keep,
+                checkpoint_score_attribute=ptl_ckpt_config.get("monitor", None),
+                checkpoint_score_order=ptl_ckpt_config.get("mode", "min"),
+            )
+        else:
+            return air_ckpt_config
 
 
 def _lightning_train_loop_per_worker(config):
@@ -509,25 +400,13 @@ def _lightning_train_loop_per_worker(config):
     lightning_module = module_class(**module_init_config)
 
     # Prepare Lightning Trainer
-    # Disable the Lightning progress bar to avoid corrupted AIR outputs,
-    # unless users provide a customized progress bar callback.
-    trainer_config["enable_progress_bar"] = any(
-        isinstance(callback, ProgressBarBase)
-        for callback in trainer_config.get("callbacks", [])
-    )
-
     # Setup trainer's parallel devices
-    if trainer_config.get("accelerator", None) == "gpu":
-        current_device = get_worker_root_device()
-        trainer_config["devices"] = [current_device.index]
+    trainer_config["devices"] = "auto"
 
     # Setup ray cluster environment info
-    trainer_config["plugins"] = [
-        plugin
-        for plugin in trainer_config.get("plugins", [])
-        if not isinstance(plugin, ClusterEnvironment)
-    ]
-    trainer_config["plugins"].append(RayEnvironment())
+    if "plugins" not in trainer_config:
+        trainer_config["plugins"] = []
+    trainer_config["plugins"].append(RayLightningEnvironment())
 
     # Setup ddp strategy for ray orchestration
     if "strategy" in trainer_config:
@@ -541,6 +420,8 @@ def _lightning_train_loop_per_worker(config):
         trainer_config["strategy"] = RayDDPStrategy(**strategy_config)
     if strategy_name == "fsdp":
         trainer_config["strategy"] = RayFSDPStrategy(**strategy_config)
+    if strategy_name == "deepspeed":
+        trainer_config["strategy"] = RayDeepSpeedStrategy(**strategy_config)
 
     # LightningTrainer always requires checkpointing
     trainer_config["enable_checkpointing"] = True
@@ -552,9 +433,15 @@ def _lightning_train_loop_per_worker(config):
 
     trainer = pl.Trainer(**trainer_config)
 
-    # Restore from a previously failed run
+    trainer = prepare_trainer(trainer)
+
     checkpoint = session.get_checkpoint()
-    if checkpoint and "ckpt_path" not in trainer_fit_params:
+    if checkpoint:
+        checkpoint_log_message = "Resuming training from a checkpoint."
+        if "ckpt_path" in trainer_fit_params:
+            checkpoint_log_message += " `ckpt_path` will be ignored."
+        logger.info(checkpoint_log_message)
+
         with checkpoint.as_directory() as ckpt_dir:
             trainer_fit_params["ckpt_path"] = f"{ckpt_dir}/{MODEL_KEY}"
             trainer.fit(lightning_module, **trainer_fit_params)
