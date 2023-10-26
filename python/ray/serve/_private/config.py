@@ -6,7 +6,7 @@ from google.protobuf.json_format import MessageToDict
 
 from ray import cloudpickle
 from ray._private import ray_option_utils
-from ray._private.pydantic_compat import Field, validator
+from ray._private.pydantic_compat import Field
 from ray._private.serialization import pickle_dumps
 from ray._private.utils import resources_from_ray_options
 from ray.serve._private.constants import MAX_REPLICAS_PER_NODE_MAX_VALUE
@@ -54,18 +54,6 @@ class InternalDeploymentConfig(BaseDeploymentModel):
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
-
-    @validator("user_config", always=True)
-    def user_config_json_serializable(cls, v):
-        if isinstance(v, bytes):
-            return v
-        if v is not None:
-            try:
-                json.dumps(v)
-            except TypeError as e:
-                raise ValueError(f"user_config is not JSON-serializable: {str(e)}.")
-
-        return v
 
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)

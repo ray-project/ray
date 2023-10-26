@@ -2,8 +2,8 @@ import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
 from enum import Enum
+from typing import Dict, List, Optional, Union
 
 from ray._private.pydantic_compat import (
     BaseModel,

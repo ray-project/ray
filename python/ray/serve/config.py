@@ -1,7 +1,10 @@
+import json
 import logging
 import warnings
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
+
+from typing_extensions import Annotated
 
 from ray._private.pydantic_compat import (
     BaseModel,
@@ -12,8 +15,6 @@ from ray._private.pydantic_compat import (
     PositiveInt,
     validator,
 )
-from typing_extensions import Annotated
-
 from ray._private.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -205,7 +206,7 @@ class RayActorOptionsConfig(BaseModel):
 
 
 @PublicAPI(stability="stable")
-class BaseDeploymentModel(BaseModel, allow_population_by_field_name=True):
+class BaseDeploymentModel(BaseModel):
     """Defines options that can be used to configure a Serve deployment."""
 
     num_replicas: Annotated[
@@ -340,6 +341,18 @@ class BaseDeploymentModel(BaseModel, allow_population_by_field_name=True):
             update_type=DeploymentOptionUpdateType.HeavyWeight,
         ),
     ] = None
+
+    @validator("user_config", always=True)
+    def user_config_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(f"user_config is not JSON-serializable: {str(e)}.")
+
+        return v
 
 
 @PublicAPI(stability="stable")

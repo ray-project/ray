@@ -1,8 +1,8 @@
 import pytest
 
 from ray import cloudpickle
-from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray._private.pydantic_compat import ValidationError
+from ray.serve._private.config import InternalDeploymentConfig, ReplicaInitInfo
 from ray.serve._private.constants import DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
