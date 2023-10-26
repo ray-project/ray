@@ -6,7 +6,7 @@ import pytest
 
 @pytest.mark.skipif(
     "EXPECTED_PYTHON_VERSION" not in os.environ,
-    reason="EXPECTED_PYTHON_VERSION environment variable not set."
+    reason="EXPECTED_PYTHON_VERSION environment variable not set.",
 )
 def test_expected_python_version():
     """
