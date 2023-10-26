@@ -35,7 +35,7 @@ def main(args):
     if args.single_node:
         run_images_benchmark_single_node(benchmark)
     elif args.multi_node:
-        run_images_benchmark_multi_node()
+        run_images_benchmark_multi_node(benchmark)
 
     benchmark.write_result()
 
@@ -126,7 +126,7 @@ def run_images_benchmark_single_node(benchmark: Benchmark):
     )
 
 
-def run_images_benchmark_multi_node(benchmark):
+def run_images_benchmark_multi_node(benchmark: Benchmark):
     hundred_thousand_image_paths = [
         f"s3://air-example-data-2/100k-images-data-synthetic-raw/dog_{i}/dog_0.jpg"
         for i in range(100_000)
