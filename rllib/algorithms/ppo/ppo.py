@@ -431,12 +431,14 @@ class PPO(Algorithm):
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
+        use_rollout_worker = self.config.env_runner_cls is None or issubclass(
+            self.config.env_runner_cls, RolloutWorker
+        )
+
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
-            if self.config.env_runner_cls is None or issubclass(
-                self.config.env_runner_cls, RolloutWorker
-            ):
+            if use_rollout_worker:
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
@@ -512,8 +514,8 @@ class PPO(Algorithm):
             policies_to_update = list(train_results.keys())
 
         # TODO (Kourosh): num_grad_updates per each policy should be accessible via
-        # train_results
-        if self.config._enable_learner_api:
+        #  train_results.
+        if not use_rollout_worker:
             global_vars = None
         else:
             global_vars = {

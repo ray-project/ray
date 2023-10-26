@@ -74,6 +74,7 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
+from ray.util import log_once
 
 gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
@@ -240,6 +241,9 @@ class AlgorithmConfig(_Config):
         return config_overrides
 
     def __init__(self, algo_class=None):
+        # Issue a rllib_contrib warning in case one of these algorithms is being built.
+        rllib_contrib_warning(algo_class)
+
         # Define all settings and their default values.
 
         # Define the default RLlib Algorithm class that this AlgorithmConfig will be
@@ -3731,3 +3735,48 @@ class AlgorithmConfig(_Config):
     @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
     def num_workers(self):
         pass
+
+
+def rllib_contrib_warning(algo_class):
+    if (
+        algo_class is not None
+        and algo_class.__name__
+        in [
+            "A2C",
+            "A3C",
+            "AlphaStar",
+            "AlphaZero",
+            "ApexDDPG",
+            "ApexDQN",
+            "ARS",
+            "BanditLinTS",
+            "BanditLinUCB",
+            "CRR",
+            "DDPG",
+            "DDPPO",
+            "Dreamer" "DT",
+            "ES",
+            "LeelaChessZero",
+            "MADDPG",
+            "MAML",
+            "MBMPO",
+            "PG",
+            "QMIX",
+            "R2D2",
+            "SimpleQ",
+            "SlateQ",
+            "TD3",
+        ]
+        and log_once(f"{algo_class.__name__}_contrib")
+    ):
+        logger.warning(
+            "{} has been moved to `rllib_contrib` and will no longer be maintained"
+            " by the RLlib team. You can still use it normally inside RLlib util "
+            "Ray 2.8, but from Ray 2.9 on, all `rllib_contrib` algorithms will no "
+            "longer be part of the core repo, and will therefore have to be installed "
+            "separately with pinned dependencies for e.g. ray[rllib] and other "
+            "packages! See "
+            "https://github.com/ray-project/ray/tree/master/rllib_contrib#rllib-contrib"
+            " for more information on the RLlib contrib "
+            "effort.".format(algo_class.__name__)
+        )
