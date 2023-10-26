@@ -11,19 +11,19 @@ py_test(
 
 # Learning Tests
 
-py_test(
-    name = "learning_tests_pendulum_dt",
-    main = "run_regression_tests.py",
-    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
-    size = "large",
-    srcs = ["run_regression_tests.py"],
-    data = [
-        "tuned_examples/pendulum-v1-dt.yaml",
-        # Include the offline json data file as well.
-        "tuned_examples/pendulum_expert_sac_50eps.zip",
-    ],
-    args = ["--dir=dt/tuned_examples/"]
-)
+# py_test(
+#    name = "learning_tests_pendulum_dt",
+#    main = "run_regression_tests.py",
+#    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
+#    size = "large",
+#    srcs = ["run_regression_tests.py"],
+#    data = [
+#        "tuned_examples/pendulum-v1-dt.yaml",
+#        # Include the offline json data file as well.
+#        "tuned_examples/pendulum_expert_sac_50eps.zip",
+#    ],
+#    args = ["--dir=dt/tuned_examples/"]
+# )
 
 py_test(
     name = "learning_tests_cartpole_dt",

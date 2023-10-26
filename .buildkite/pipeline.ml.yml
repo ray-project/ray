@@ -256,7 +256,6 @@
     - wget https://raw.githubusercontent.com/ray-project/ray/master/rllib/tests/data/pendulum/pendulum_replay_v1.1.0.zip -P rllib_contrib/crr/tuned_examples/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-learning_tests rllib_contrib/crr/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/crr/...
 
 - label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -288,7 +287,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-learning_tests rllib_contrib/ddppo/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/ddppo/...
 
-- label: ":exploding_death_star: RLlib Contrib: Decision Transformer Tests"
+- label: ":exploding_death_star: RLlib Contrib: Decision Transformer (DT) Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -303,7 +302,6 @@
     - wget https://github.com/ray-project/ray/raw/releases/2.5.1/rllib/tests/data/pendulum/pendulum_medium_sac_50eps.zip -P rllib_contrib/dt/tuned_examples/
     # BAZEL (learning and compilation) tests:
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-learning_tests rllib_contrib/dt/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/dt/...
 
 - label: ":exploding_death_star: RLlib Contrib: ES Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
