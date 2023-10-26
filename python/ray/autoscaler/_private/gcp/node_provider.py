@@ -63,6 +63,7 @@ class GCPNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.lock = RLock()
         self._construct_clients()
+        self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", False)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -177,10 +178,33 @@ class GCPNodeProvider(NodeProvider):
             node_type = get_node_type(base_config)
             resource = self.resources[node_type]
 
-            results = resource.create_instances(
-                base_config, labels, count
-            )  # type: List[Tuple[dict, str]]
-            return {instance_id: result for result, instance_id in results}
+            all_nodes = {}
+            if self.cache_stopped_nodes:
+                filters = {
+                    "ray-node-name": labels["ray-node-name"],
+                    "ray-node-type": labels["ray-node-type"],
+                    "ray-user-node-type": labels["ray-user-node-type"],
+                }
+                reuse_nodes = resource.list_instances(filters, True)[:count]
+                if reuse_nodes:
+                    reused_nodes_dict = {
+                        n["name"]: resource.start_instance(n["name"])
+                        for n in reuse_nodes
+                    }
+                    all_nodes.update(reused_nodes_dict)
+                    count -= len(reuse_nodes)
+
+            if count > 0:
+                results = resource.create_instances(
+                    base_config, labels, count
+                )  # type: List[Tuple[dict, str]]
+
+                created_nodes_dict = {
+                    instance_id: result for result, instance_id in results
+                }
+                all_nodes.update(created_nodes_dict)
+
+        return all_nodes
 
     def _thread_unsafe_terminate_node(self, node_id: str):
         # Assumes the global lock is held for the duration of this operation.
@@ -207,9 +231,16 @@ class GCPNodeProvider(NodeProvider):
         with self.lock:
             resource = self._get_resource_depending_on_node_name(node_id)
             try:
-                result = resource.delete_instance(
-                    node_id=node_id,
-                )
+                if self.cache_stopped_nodes:
+                    node = self._get_cached_node(node_id)
+                    if node.is_running():
+                        result = resource.stop_instance(node_id=node_id)
+                    else:
+                        result = None
+                else:
+                    result = resource.delete_instance(
+                        node_id=node_id,
+                    )
             except googleapiclient.errors.HttpError as http_error:
                 if http_error.resp.status == 404:
                     logger.warning(

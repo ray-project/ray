@@ -4,15 +4,20 @@ import numpy as np
 class WindowStat:
     """Handles/stores incoming dataset and provides window-based statistics.
 
-    Examples:
-        >>> win_stats = WindowStat("level", 3)
-        >>> win_stats.push(5.0)
-        >>> win_stats.push(7.0)
-        >>> win_stats.push(7.0)
-        >>> win_stats.push(10.0)
-        >>> # Expect 8.0 as the mean of the last 3 values: (7+7+10)/3=8.0
-        >>> print(win_stats.mean())
-        ... 8.0
+    .. testcode::
+        :skipif: True
+
+        win_stats = WindowStat("level", 3)
+        win_stats.push(5.0)
+        win_stats.push(7.0)
+        win_stats.push(7.0)
+        win_stats.push(10.0)
+        # Expect 8.0 as the mean of the last 3 values: (7+7+10)/3=8.0
+        print(win_stats.mean())
+
+    .. testoutput::
+
+        8.0
     """
 
     def __init__(self, name: str, n: int):
