@@ -11,7 +11,6 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
 from ray._private import ray_constants
 from ray._private.test_utils import (
-    format_web_url,
     convert_actor_state,
     enable_external_redis,
     generate_system_config_map,
@@ -19,7 +18,7 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     run_string_as_driver,
 )
-from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.job_submission import JobSubmissionClient
 
 import psutil
 
@@ -993,7 +992,7 @@ def test_job_finished_after_gcs_server_restart(ray_start_regular_with_external_r
 
     # submit job
     job_id = client.submit_job(
-        entrypoint="python -c 'import ray; ray.init(); print(ray.cluster_resources());'",
+        entrypoint="python -c 'import ray; ray.init(); print(ray.cluster_resources());'"
     )
     # restart the gcs server
     ray._private.worker._global_node.kill_gcs_server()
