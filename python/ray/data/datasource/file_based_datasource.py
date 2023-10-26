@@ -345,7 +345,7 @@ class FileBasedDatasource(Datasource):
         if block_path_provider is not None:
             warnings.warn(
                 "`block_path_provider` has been deprecated in favor of "
-                "`filename_provider`.",
+                "`filename_provider`. For more information, see ",
                 DeprecationWarning,
             )
 
@@ -367,20 +367,15 @@ class FileBasedDatasource(Datasource):
             fs = _unwrap_s3_serialization_workaround(filesystem)
 
             if self._WRITE_FILE_PER_ROW:
-                for row_index, row in enumerate(
-                    block.iter_rows(public_row_format=False)
-                ):
+                for row_idx, row in enumerate(block.iter_rows(public_row_format=False)):
                     if filename_provider is not None:
-                        file_index = _generate_unique_file_index(
-                            ctx.task_index, block_idx, row_index
-                        )
                         filename = filename_provider.get_filename_for_row(
-                            row, file_index
+                            row, ctx.task_idx, block_idx, row_idx
                         )
                     else:  # Legacy code path
                         filename = (
                             f"{dataset_uuid}_{ctx.task_idx:06}_{block_idx:06}_"
-                            f"{row_index:06}.{file_format}"
+                            f"{row_idx:06}.{file_format}"
                         )
                     write_path = posixpath.join(path, filename)
 
@@ -398,9 +393,8 @@ class FileBasedDatasource(Datasource):
                         )
             else:
                 if filename_provider is not None:
-                    file_index = _generate_unique_file_index(ctx.task_idx, block_idx)
                     filename = filename_provider.get_filename_for_block(
-                        block, file_index
+                        block, ctx.task_idx, block_idx
                     )
                     write_path = posixpath.join(path, filename)
                 else:  # Legacy code path
@@ -489,20 +483,6 @@ class FileBasedDatasource(Datasource):
         if cls._FILE_EXTENSION is None:
             return None
         return FileExtensionFilter(cls._FILE_EXTENSION)
-
-
-def _generate_unique_file_index(*numbers) -> int:
-    assert all(isinstance(number, int) for number in numbers)
-    assert len(numbers) >= 2
-
-    if len(numbers) == 2:
-        return _cantor_pair(numbers[0], numbers[1])
-
-    return _cantor_pair(_cantor_pair(numbers[0], numbers[1]), *numbers[2:])
-
-
-def _cantor_pair(a: int, b: int) -> int:
-    return (a + b) * (a + b + 1) / 2 + a
 
 
 class _FileBasedDatasourceReader(Reader):
