@@ -1,7 +1,7 @@
 (kuberay-rayservice-ha)=
-# RayService high-availability
+# RayService high availability
 
-[RayService](kuberay-rayservice) provides high-availability so that the service can still serve requests when the Ray head Pod fails.
+[RayService](kuberay-rayservice) provides high availability so that the service can still serve requests when the Ray head Pod fails.
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ In addition, the YAML sets `num-cpus: "0"` in `rayStartParams` to ensure the sys
 In conclusion, each Ray Serve deployment has two replicas, and each Ray node can have at most one identical Ray Serve replica. Additionally, Ray Serve replicas can't schedule on the Ray head Pod. As a result, each worker node should have one Ray Serve replica for each Ray Serve deployment.
 
 For Ray Serve, Ray head always has a HTTPProxyActor no matter whether it has a Ray Serve replica or not.
-Ray workers only have HTTPProxyActors when they have Ray Serve replicas.
+Ray worker nodes only have HTTPProxyActors when they have Ray Serve replicas.
 Thus, there are 3 endpoints for the `rayservice-ha-serve-svc` service in the previous step.
 
 ```sh
