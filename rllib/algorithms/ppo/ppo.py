@@ -9,10 +9,9 @@ See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
-from collections import defaultdict
 import dataclasses
 import logging
-from typing import Callable, List, Optional, Type, Union, TYPE_CHECKING
+from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 import numpy as np
 import tree
@@ -37,7 +36,6 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -46,9 +44,7 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
     ALL_MODULES,
@@ -376,13 +372,6 @@ class PPOConfig(PGConfig):
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
-    @property
-    def share_module_between_env_runner_and_learner(self) -> bool:
-        # If we only have one local Learner (num_learner_workers=0) and only
-        # one local EnvRunner (num_rollout_workers=0), share the RLModule
-        # between these two to avoid having to sync weights, ever.
-        return self.num_learner_workers == 0 and self.num_rollout_workers == 0
-
 
 class UpdateKL:
     """Callback to update the KL based on optimization info.
@@ -416,19 +405,6 @@ class UpdateKL:
 
 
 class PPO(Algorithm):
-    @override(Algorithm)
-    def setup(self, config: AlgorithmConfig):
-        super().setup(config=config)
-
-        if self.config._enable_learner_api and self.config.env_runner_cls is not None:
-            # Share RLModule between EnvRunner and single (local) Learner instance.
-            # To avoid possibly expensive weight synching step.
-            if self.config.share_module_between_env_runner_and_learner:
-                assert self.workers.local_worker().module is None
-                self.workers.local_worker().module = self.learner_group._learner.module[
-                    DEFAULT_POLICY_ID
-                ]
-
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
@@ -440,6 +416,7 @@ class PPO(Algorithm):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
+
             from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 
             return PPOTorchPolicy
@@ -567,6 +544,7 @@ class PPO(Algorithm):
                 self.workers.local_worker().set_weights(weights)
 
         if self.config._enable_learner_api:
+
             kl_dict = {}
             if self.config.use_kl_loss:
                 for pid in policies_to_update:
