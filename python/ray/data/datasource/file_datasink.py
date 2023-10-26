@@ -46,7 +46,7 @@ class _FileDatasink(Datasink):
 
         self.filename_provider = filename_provider
         if filename_provider is None:
-            filename_provider = _DefaultFilenameProvider(
+            self.filename_provider = _DefaultFilenameProvider(
                 dataset_uuid=dataset_uuid, file_format=file_format
             )
 
