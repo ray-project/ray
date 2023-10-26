@@ -80,7 +80,7 @@ class _FileDatasink(Datasink):
             if block.num_rows() == 0:
                 continue
 
-            self.write_block(block, ctx)
+            self.write_block(block, block_index, ctx)
 
             num_rows_written += block.num_rows()
             block_index += 1
