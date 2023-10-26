@@ -252,20 +252,6 @@ Ray Examples
 
         Batch Prediction using Ray Data
 
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing inference
-        :link: /data/examples/nyc_taxi_basic_processing
-        :link-type: doc
-
-        Batch Inference on NYC taxi data using Ray Data
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing inference
-        :link: /data/examples/ocr_example
-        :link-type: doc
-
-        Batch OCR processing using Ray Data
-
     .. grid-item-card:: :bdg-primary:`Blog`
         :class-item: gallery-item training
         :link: https://www.anyscale.com/blog/training-one-million-machine-learning-models-in-record-time-with-ray
@@ -1164,39 +1150,11 @@ Ray Examples
         Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing
-        :link: /data/examples/nyc_taxi_basic_processing
-        :link-type: doc
-
-        Processing the NYC taxi dataset
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item data data-processing training
         :link: /data/examples/batch_training
         :link-type: doc
 
-        Batch Training with Ray Data
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing cv
-        :link: /data/examples/ocr_example
-        :link-type: doc
-
-        Scaling OCR with Ray Data
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data data-processing
-        :link: /data/examples/random-access
-        :link-type: doc
-
-        Random Data Access (Experimental)
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing
-        :link: /data/examples/custom-datasource
-        :link-type: doc
-
-        Implementing a Custom Datasource
+        Many Model Training with Ray Data
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core inference
@@ -1232,13 +1190,6 @@ Ray Examples
         :link-type: doc
 
         Learning to Play Pong
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item core rl
-        :link: /ray-core/examples/plot_example-a3c
-        :link-type: doc
-
-        Asynchronous Advantage Actor Critic (A3C)
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core

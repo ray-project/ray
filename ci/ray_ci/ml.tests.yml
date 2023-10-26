@@ -1,0 +1,4 @@
+flaky_tests:
+  # tune
+  - //python/ray/tune:cifar10_pytorch
+  - //python/ray/tune:test_commands

@@ -1,5 +1,4 @@
 import abc
-import contextlib
 import copy
 import datetime
 import logging
@@ -16,14 +15,12 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
-    Tuple,
     Type,
     Union,
     TYPE_CHECKING,
 )
 
 import ray
-from ray._private.storage import _get_storage_uri
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
@@ -50,7 +47,6 @@ from ray.tune.progress_reporter import (
     _stream_client_output,
 )
 from ray.tune.registry import get_trainable_cls, is_function_trainable
-from ray.tune.result import _get_defaults_results_dir
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import (
@@ -85,7 +81,6 @@ from ray.tune.utils.log import (
     set_verbosity,
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.utils.util import _resolve_storage_path
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
@@ -227,57 +222,6 @@ def _ray_auto_init(entrypoint: str):
             "For cluster usage or custom Ray initialization, "
             f"call `ray.init(...)` before `{entrypoint}`."
         )
-
-
-def _resolve_and_validate_storage_path(
-    storage_path: str, local_dir: Optional[str], sync_config: Optional[SyncConfig]
-) -> Tuple[str, str, Optional[str], SyncConfig]:
-    # TODO(ml-team): Simplify/remove this in 2.6 when `local_dir`
-    # and `SyncConfig(upload_dir)` are hard-deprecated.
-    sync_config = sync_config or SyncConfig()
-
-    # Resolve storage_path
-    local_path, remote_path = _resolve_storage_path(
-        storage_path, local_dir, sync_config.upload_dir, error_location="tune.run"
-    )
-
-    if sync_config.upload_dir:
-        assert remote_path == sync_config.upload_dir
-        warnings.warn(
-            "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
-            "in the future. Pass `RunConfig.storage_path` instead."
-        )
-        # Set upload_dir to None to avoid further downstream resolution.
-        # Copy object first to not alter user input.
-        sync_config = copy.copy(sync_config)
-        sync_config.upload_dir = None
-
-    if local_dir:
-        assert local_path == local_dir
-        warnings.warn(
-            "Passing a `local_dir` is deprecated and will be removed "
-            "in the future. Pass `storage_path` instead or set the "
-            "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
-        )
-        local_path = local_dir
-
-    if not remote_path:
-        # If no remote path is set, try to get Ray Storage URI
-        remote_path = _get_storage_uri()
-        if remote_path:
-            logger.info(
-                "Using configured Ray storage URI as storage path: " f"{remote_path}"
-            )
-
-    if not local_path:
-        local_path = _get_defaults_results_dir()
-
-    storage_path = storage_path or remote_path or local_path
-
-    if storage_path != local_path and local_path:
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
-
-    return storage_path, local_path, remote_path, sync_config
 
 
 class _Config(abc.ABC):
@@ -1040,60 +984,48 @@ def run(
                 )
                 break
 
-    # rich live context manager has to be called encapsulating
-    # the while loop. For other kind of reporters, no op.
-    # `ExitStack` allows us to *conditionally* apply context manager.
-    with contextlib.ExitStack() as stack:
-        from ray.tune.experimental.output import TuneRichReporter
+    experiment_local_path = runner._storage.experiment_local_path
+    experiment_dir_name = runner._storage.experiment_dir_name
 
-        experiment_local_path = runner._storage.experiment_local_path
-        experiment_dir_name = runner._storage.experiment_dir_name
+    if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
+        tensorboard_path = experiment_local_path
+    else:
+        tensorboard_path = None
 
-        if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
-            tensorboard_path = experiment_local_path
-        else:
-            tensorboard_path = None
+    if air_progress_reporter:
+        air_progress_reporter.experiment_started(
+            experiment_name=experiment_dir_name,
+            experiment_path=runner.experiment_path,
+            searcher_str=search_alg.__class__.__name__,
+            scheduler_str=scheduler.__class__.__name__,
+            total_num_samples=search_alg.total_samples,
+            tensorboard_path=tensorboard_path,
+        )
 
-        if air_progress_reporter and isinstance(
-            air_progress_reporter, TuneRichReporter
-        ):
-            stack.enter_context(air_progress_reporter.with_live())
-        elif air_progress_reporter:
-            air_progress_reporter.experiment_started(
-                experiment_name=experiment_dir_name,
-                experiment_path=runner.experiment_path,
-                searcher_str=search_alg.__class__.__name__,
-                scheduler_str=scheduler.__class__.__name__,
-                total_num_samples=search_alg.total_samples,
-                tensorboard_path=tensorboard_path,
-            )
+    try:
+        while not runner.is_finished() and not experiment_interrupted_event.is_set():
+            runner.step()
+            if has_verbosity(Verbosity.V1_EXPERIMENT):
+                _report_progress(runner, progress_reporter)
 
-        try:
-            while (
-                not runner.is_finished() and not experiment_interrupted_event.is_set()
-            ):
-                runner.step()
-                if has_verbosity(Verbosity.V1_EXPERIMENT):
-                    _report_progress(runner, progress_reporter)
+            if air_verbosity is not None:
+                _report_air_progress(runner, air_progress_reporter)
+    except Exception:
+        runner.cleanup()
+        raise
 
-                if air_verbosity is not None:
-                    _report_air_progress(runner, air_progress_reporter)
-        except Exception:
-            runner.cleanup()
-            raise
+    tune_taken = time.time() - tune_start
 
-        tune_taken = time.time() - tune_start
+    try:
+        runner.checkpoint(force=True, wait=True)
+    except Exception as e:
+        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
-        try:
-            runner.checkpoint(force=True, wait=True)
-        except Exception as e:
-            logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+    if has_verbosity(Verbosity.V1_EXPERIMENT):
+        _report_progress(runner, progress_reporter, done=True)
 
-        if has_verbosity(Verbosity.V1_EXPERIMENT):
-            _report_progress(runner, progress_reporter, done=True)
-
-        if air_verbosity is not None:
-            _report_air_progress(runner, air_progress_reporter, force=True)
+    if air_verbosity is not None:
+        _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
 

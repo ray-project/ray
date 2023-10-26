@@ -21,11 +21,16 @@ class CollectMetrics:
     This should be used with the .for_each() operator. For a higher level
     API, consider using StandardMetricsReporting instead.
 
-    Examples:
-        >>> from ray.rllib.execution.metric_ops import CollectMetrics
-        >>> train_op, workers = ... # doctest: +SKIP
-        >>> output_op = train_op.for_each(CollectMetrics(workers)) # doctest: +SKIP
-        >>> print(next(output_op)) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.execution.metric_ops import CollectMetrics
+        train_op, workers = ...
+        output_op = train_op.for_each(CollectMetrics(workers))
+        print(next(output_op))
+
+    .. testoutput::
+
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 

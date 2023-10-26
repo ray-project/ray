@@ -426,18 +426,7 @@ class BaseTrainer(abc.ABC):
             )
         else:
             for key, dataset in self.datasets.items():
-                if isinstance(dataset, ray.data.DatasetPipeline):
-                    raise ValueError(
-                        f"The Dataset under '{key}' key is a "
-                        f"`ray.data.DatasetPipeline`. Only `ray.data.Dataset` are "
-                        f"allowed to be passed in.  Pipelined/streaming ingest can be "
-                        f"configured via the `dataset_config` arg. See "
-                        "https://docs.ray.io/en/latest/ray-air/check-ingest.html#enabling-streaming-ingest"  # noqa: E501
-                        "for an example."
-                    )
-                elif not isinstance(dataset, ray.data.Dataset) and not callable(
-                    dataset
-                ):
+                if not isinstance(dataset, ray.data.Dataset) and not callable(dataset):
                     raise ValueError(
                         f"The Dataset under '{key}' key is not a "
                         "`ray.data.Dataset`. "
