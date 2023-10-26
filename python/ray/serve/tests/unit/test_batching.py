@@ -423,7 +423,7 @@ async def test_batch_use_earliest_setters():
     assert len(done) == 0 and len(pending) == 2
 
     # Batch should execute after last request
-    pending.add(func("hi5", "hi6"))
+    pending.add(get_or_create_event_loop().create_task(func("hi5", "hi6")))
     done, pending = await asyncio.wait(pending, timeout=0.1)
     assert len(pending) == 0
     assert {task.result() for task in done} == {
