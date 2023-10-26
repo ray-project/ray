@@ -1,7 +1,7 @@
 # ML tracking integrations
 comet-ml==3.31.9
 mlflow==1.30.0; python_version <= '3.7'
-mlflow==2.4.1; python_version > '3.7'
+mlflow==2.5.0; python_version > '3.7'
 wandb==0.13.4
 
 # ML training frameworks
