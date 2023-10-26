@@ -35,7 +35,7 @@ py_test(
     name = "learning_tests_two_step_game_qmix_no_mixer",
     main = "run_regression_tests.py",
     tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
-    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
+    size = "large",
     srcs = ["run_regression_tests.py"],
     data = ["tuned_examples/two-step-game-qmix-no-mixer.yaml"],
     args = ["--dir=qmix/tuned_examples/"]

@@ -11,10 +11,10 @@ pendulum_medium_expert_dt:
     config:
         input: dataset
         input_config:         
-            paths: [
-                'tests/data/pendulum/pendulum_expert_sac_50eps.zip',
-                'tests/data/pendulum/pendulum_medium_sac_50eps.zip',
-            ]
+            paths:
+                # Get these from: https://github.com/ray-project/ray/raw/releases/2.5.1/rllib/tests/data/pendulum/pendulum_[expert|medium]_sac_50eps.zip
+                - tuned_examples/pendulum_expert_sac_50eps.zip
+                - tuned_examples/pendulum_medium_sac_50eps.zip
             format: json
         num_workers: 3
         actions_in_input_normalized: True
