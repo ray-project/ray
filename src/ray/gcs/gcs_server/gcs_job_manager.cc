@@ -222,7 +222,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                        << WorkerID::FromBinary(data.second.driver_address().worker_id());
         client->NumPendingTasks(
             std::move(request),
-            [reply, i, num_processed_jobs, try_send_reply](
+            [data, reply, i, num_processed_jobs, try_send_reply](
                 const Status &status,
                 const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
               RAY_LOG(DEBUG) << "SendNumPendingTaskReply: "
