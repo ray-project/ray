@@ -67,10 +67,10 @@ if __name__ == "__main__":
 
     config = (
         get_trainable_cls(args.run)
+        .get_default_config()
         # TODO (Kourosh): This example needs to be migrated to the new RLModule/Learner
         #  API. Users should just inherit the Learner and extend the loss_fn.
         .experimental(_enable_new_api_stack=False)
-        .get_default_config()
         .environment("CartPole-v1")
         .framework(args.framework)
         .rollouts(num_rollout_workers=0)
