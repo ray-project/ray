@@ -1,22 +1,19 @@
 import numpy as np
 import uuid
 
+from gymnasium.core import ActType, ObsType
 from typing import Any, Dict, List, Optional, SupportsFloat
 
 from ray.rllib.policy.sample_batch import SampleBatch
 
 
-# TODO (sven): Make this EpisodeV3 - replacing EpisodeV2 - to reduce all the
-#  information leakage we currently have in EpisodeV2 (policy_map, worker, etc.. are
-#  all currently held by EpisodeV2 for no good reason).
-# TODO (simon): Put into rllib/env
 class SingleAgentEpisode:
     def __init__(
         self,
         id_: Optional[str] = None,
         *,
-        observations: List[np.ndarray] = None,
-        actions: List[Any] = None,
+        observations: List[ObsType] = None,
+        actions: List[ActType] = None,
         rewards: List[SupportsFloat] = None,
         infos: List[Dict] = None,
         states=None,
@@ -121,9 +118,7 @@ class SingleAgentEpisode:
             {} if extra_model_outputs is None else extra_model_outputs
         )
 
-    def concat_episode(
-        self, episode_chunk: "SingleAgentEpisode"
-    ) -> "SingleAgentEpisode":
+    def concat_episode(self, episode_chunk: "SingleAgentEpisode"):
         """Adds the given `episode_chunk` to the right side of self.
 
         Args:
@@ -169,7 +164,7 @@ class SingleAgentEpisode:
     def add_initial_observation(
         self,
         *,
-        initial_observation,
+        initial_observation: ObsType,
         initial_info: Optional[Dict] = None,
         initial_state=None,
         initial_render_image: Optional[np.ndarray] = None,
@@ -203,16 +198,16 @@ class SingleAgentEpisode:
 
     def add_timestep(
         self,
-        observation,
-        action,
+        observation: ObsType,
+        action: ActType,
         reward: SupportsFloat,
-        info: Dict,
+        info: Dict[str, Any],
         *,
         state=None,
         is_terminated: bool = False,
         is_truncated: bool = False,
         render_image: np.ndarray = None,
-        extra_model_output: Dict[Any] = None,
+        extra_model_output: Dict[str, Any] = None,
     ) -> None:
         """Adds a timestep to the episode.
 
@@ -280,6 +275,10 @@ class SingleAgentEpisode:
         # self.t - self.t_started is 1, but len(rewards) is 100.
         assert len(self.rewards) == (self.t - self.t_started)
 
+        if len(self.extra_model_outputs) > 0:
+            for k, v in self.extra_model_outputs.items():
+                assert len(v) == len(self.observations) - 1
+
         # Convert all lists to numpy arrays, if we are terminated.
         if self.is_done:
             self.convert_lists_to_numpy()
@@ -335,7 +334,7 @@ class SingleAgentEpisode:
             # First (and only) observation of successor is this episode's last obs.
             observations=[self.observations[-1]],
             # First (and only) info of successor is this episode's last info.
-            info=[self.infos[-1]],
+            infos=[self.infos[-1]],
             # Same state.
             states=self.states,
             # Continue with self's current timestep.
@@ -414,6 +413,7 @@ class SingleAgentEpisode:
                 SampleBatch.T,
                 SampleBatch.SEQ_LENS,
                 SampleBatch.OBS,
+                SampleBatch.INFOS,
                 SampleBatch.NEXT_OBS,
                 SampleBatch.ACTIONS,
                 SampleBatch.PREV_ACTIONS,
@@ -436,7 +436,10 @@ class SingleAgentEpisode:
             is_terminated=batch[SampleBatch.TERMINATEDS][-1],
             is_truncated=batch[SampleBatch.TRUNCATEDS][-1],
             infos=infos if is_done else infos.tolist(),
-            extra_model_outputs={k: batch[k] for k in extra_model_output_keys},
+            extra_model_outputs={
+                k: (batch[k] if is_done else batch[k].tolist())
+                for k in extra_model_output_keys
+            },
         )
 
     def get_return(self) -> float:
@@ -498,7 +501,9 @@ class SingleAgentEpisode:
         eps.t = state[7][1]
         eps.is_terminated = state[8][1]
         eps.is_truncated = state[9][1]
-        eps.extra_model_outputs = {*state[10:][1]}
+        eps.extra_model_outputs = {k: v for k, v in state[10:]}
+        # Validate the episode to ensure complete data.
+        eps.validate()
         return eps
 
     def __len__(self) -> int:
