@@ -595,44 +595,6 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
-TEST_P(GcsClientTest, TestNodeResourceUsage) {
-  // Register node.
-  auto node_info = Mocker::GenNodeInfo();
-  RAY_CHECK(RegisterNode(*node_info));
-
-  // Report resource usage of a node to GCS.
-  NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto resource = std::make_shared<rpc::ResourcesData>();
-  resource->set_node_id(node_id.Binary());
-  resource->set_should_global_gc(true);
-  std::string resource_name = "CPU";
-  double resource_value = 1.0;
-  (*resource->mutable_resources_total())[resource_name] = resource_value;
-  ASSERT_TRUE(ReportResourceUsage(resource));
-
-  // Get and check last report resource usage.
-  auto last_resource_usage = gcs_client_->NodeResources().GetLastResourceUsage();
-  ASSERT_EQ(last_resource_usage->total.Get(scheduling::ResourceID::CPU()),
-            resource_value);
-}
-
-TEST_P(GcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
-  // Register node.
-  auto node_info = Mocker::GenNodeInfo();
-  RAY_CHECK(RegisterNode(*node_info));
-
-  // Report unchanged resource usage of a node to GCS.
-  NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto resource = std::make_shared<rpc::ResourcesData>();
-  resource->set_node_id(node_id.Binary());
-  ASSERT_TRUE(ReportResourceUsage(resource));
-
-  // Report changed resource usage of a node to GCS.
-  auto resource1 = std::make_shared<rpc::ResourcesData>();
-  resource1->set_node_id(node_id.Binary());
-  ASSERT_TRUE(ReportResourceUsage(resource1));
-}
-
 TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   // Register node.
   auto node_info = Mocker::GenNodeInfo();

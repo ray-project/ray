@@ -285,9 +285,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
 
-  /// Fill out the normal task resource report.
-  void FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data);
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
 

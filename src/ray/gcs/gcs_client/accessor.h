@@ -460,29 +460,12 @@ class NodeResourceInfoAccessor {
   /// server.
   virtual void AsyncResubscribe();
 
-  /// Report resource usage of a node to GCS asynchronously.
-  ///
-  /// \param data_ptr The data that will be reported to GCS.
-  /// \param callback Callback that will be called after report finishes.
-  /// \return Status
-  virtual Status AsyncReportResourceUsage(
-      const std::shared_ptr<rpc::ResourcesData> &data_ptr,
-      const StatusCallback &callback);
-
-  /// Return resources in last report. Used by light heartbeat.
-  virtual const std::shared_ptr<NodeResources> &GetLastResourceUsage() {
-    return last_resource_usage_;
-  }
-
   /// Get newest resource usage of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetAllResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &callback);
-
-  /// Fill resource fields with cached resources. Used by light resource usage report.
-  virtual void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
 
  protected:
   /// Cache which stores resource usage in last report used to check if they are changed.

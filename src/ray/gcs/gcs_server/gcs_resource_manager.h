@@ -92,11 +92,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                               rpc::GetDrainingNodesReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle report resource usage rpc from a raylet.
-  void HandleReportResourceUsage(rpc::ReportResourceUsageRequest request,
-                                 rpc::ReportResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle get all resource usage rpc request.
   /// Autoscaler-specific RPC called from Python.
   void HandleGetAllResourceUsage(rpc::GetAllResourceUsageRequest request,

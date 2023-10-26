@@ -390,11 +390,6 @@ void LocalResourceManager::OnResourceOrStateChanged() {
   resource_change_subscriber_(ToNodeResources());
 }
 
-void LocalResourceManager::ResetLastReportResourceUsage(
-    const NodeResources &replacement) {
-  last_report_resources_.reset(new NodeResources(replacement));
-}
-
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {
   return local_resources_.total.Has(resource_id);
 }
