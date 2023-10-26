@@ -36,7 +36,6 @@ class ImageDatasink(RowBasedFileDatasink):
     def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
         from PIL import Image
 
-        print(self.file_format)
         image = Image.fromarray(row[self.column])
         buffer = io.BytesIO()
         image.save(buffer, format=self.file_format)
