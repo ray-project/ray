@@ -21,12 +21,14 @@ from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import (
@@ -78,7 +80,7 @@ def handle_remote_call_result_errors(
 
 @DeveloperAPI
 class WorkerSet:
-    """Set of RolloutWorkers with n @ray.remote workers and zero or one local worker.
+    """Set of EnvRunners with n @ray.remote workers and zero or one local worker.
 
     Where: n >= 0.
     """
@@ -133,7 +135,7 @@ class WorkerSet:
             "max_restarts": config.max_num_worker_restarts,
         }
 
-        # See if we should use a custom RolloutWorker class for testing purpose.
+        # Set the EnvRunner subclass to be used as "workers". Default: RolloutWorker.
         self.env_runner_cls = (
             RolloutWorker if config.env_runner_cls is None else config.env_runner_cls
         )
@@ -161,7 +163,7 @@ class WorkerSet:
                     local_worker=local_worker,
                 )
             # WorkerSet creation possibly fails, if some (remote) workers cannot
-            # be initialized properly (due to some errors in the RolloutWorker's
+            # be initialized properly (due to some errors in the EnvRunners's
             # constructor).
             except RayActorError as e:
                 # In case of an actor (remote worker) init failure, the remote worker
@@ -169,7 +171,7 @@ class WorkerSet:
                 # its `sample.remote()` would result in strange "property not found"
                 # errors.
                 if e.actor_init_failed:
-                    # Raise the original error here that the RolloutWorker raised
+                    # Raise the original error here that the EnvRunners raised
                     # during its construction process. This is to enforce transparency
                     # for the user (better to understand the real reason behind the
                     # failure).
@@ -264,13 +266,35 @@ class WorkerSet:
         worker_id = self.__worker_manager.actor_ids()[0]
 
         # Try to figure out spaces from the first remote worker.
-        remote_spaces = self.foreach_worker(
-            lambda worker: worker.foreach_policy(
-                lambda p, pid: (pid, p.observation_space, p.action_space)
-            ),
-            remote_worker_ids=[worker_id],
-            local_worker=False,
-        )
+        # Traditional RolloutWorker.
+        if issubclass(self.env_runner_cls, RolloutWorker):
+            remote_spaces = self.foreach_worker(
+                lambda worker: worker.foreach_policy(
+                    lambda p, pid: (pid, p.observation_space, p.action_space)
+                ),
+                remote_worker_ids=[worker_id],
+                local_worker=False,
+            )
+        # Generic EnvRunner.
+        else:
+            remote_spaces = self.foreach_worker(
+                lambda worker: worker.marl_module.foreach_module(
+                    lambda mid, m: (
+                        mid,
+                        m.config.observation_space,
+                        m.config.action_space,
+                    ),
+                )
+                if hasattr(worker, "marl_module")
+                else [
+                    (
+                        DEFAULT_POLICY_ID,
+                        worker.module.config.observation_space,
+                        worker.module.config.action_space,
+                    ),
+                ]
+            )
+
         if not remote_spaces:
             raise ValueError(
                 "Could not get observation and action spaces from remote "
@@ -281,18 +305,19 @@ class WorkerSet:
             for e in remote_spaces[0]
         }
 
-        # Try to add the actual env's obs/action spaces.
-        env_spaces = self.foreach_worker(
-            lambda worker: worker.foreach_env(
-                lambda env: (env.observation_space, env.action_space)
-            ),
-            remote_worker_ids=[worker_id],
-            local_worker=False,
-        )
-        if env_spaces:
-            # env_spaces group spaces by environment then worker.
-            # So need to unpack thing twice.
-            spaces["__env__"] = env_spaces[0][0]
+        if issubclass(self.env_runner_cls, RolloutWorker):
+            # Try to add the actual env's obs/action spaces.
+            env_spaces = self.foreach_worker(
+                lambda worker: worker.foreach_env(
+                    lambda env: (env.observation_space, env.action_space)
+                ),
+                remote_worker_ids=[worker_id],
+                local_worker=False,
+            )
+            if env_spaces:
+                # env_spaces group spaces by environment then worker.
+                # So need to unpack thing twice.
+                spaces["__env__"] = env_spaces[0][0]
 
         logger.info(
             "Inferred observation/action spaces from remote "
@@ -302,7 +327,7 @@ class WorkerSet:
         return spaces
 
     @DeveloperAPI
-    def local_worker(self) -> RolloutWorker:
+    def local_worker(self) -> EnvRunner:
         """Returns the local rollout worker."""
         return self._local_worker
 
@@ -340,9 +365,7 @@ class WorkerSet:
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker_or_learner_group: Optional[
-            Union[RolloutWorker, LearnerGroup]
-        ] = None,
+        from_worker_or_learner_group: Optional[Union[EnvRunner, LearnerGroup]] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,
@@ -355,7 +378,7 @@ class WorkerSet:
         Args:
             policies: Optional list of PolicyIDs to sync weights for.
                 If None (default), sync weights to/from all policies.
-            from_worker_or_learner_group: Optional (local) RolloutWorker instance or
+            from_worker_or_learner_group: Optional (local) EnvRunner instance or
                 LearnerGroup instance to sync from. If None (default),
                 sync from this WorkerSet's local worker.
             to_worker_indices: Optional list of worker indices to sync the
@@ -430,7 +453,7 @@ class WorkerSet:
         ] = None,
         module_spec: Optional[SingleAgentRLModuleSpec] = None,
         # Deprecated.
-        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
+        workers: Optional[List[Union[EnvRunner, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> None:
         """Adds a policy to this WorkerSet's workers or a specific list of workers.
 
@@ -463,8 +486,8 @@ class WorkerSet:
             module_spec: In the new RLModule API we need to pass in the module_spec for
                 the new module that is supposed to be added. Knowing the policy spec is
                 not sufficient.
-            workers: A list of RolloutWorker/ActorHandles (remote
-                RolloutWorkers) to add this policy to. If defined, will only
+            workers: A list of EnvRunner/ActorHandles (remote
+                EnvRunners) to add this policy to. If defined, will only
                 add the given policy to these workers.
 
         Raises:
@@ -528,7 +551,7 @@ class WorkerSet:
                 module_spec=module_spec,
             )
 
-        def _create_new_policy_fn(worker: RolloutWorker):
+        def _create_new_policy_fn(worker):
             # `foreach_worker` function: Adds the policy the the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
             worker.add_policy(**new_policy_instance_kwargs)
@@ -555,7 +578,7 @@ class WorkerSet:
         """Creates and adds a number of remote workers to this worker set.
 
         Can be called several times on the same WorkerSet to add more
-        RolloutWorkers to the set.
+        EnvRunners to the set.
 
         Args:
             num_workers: The number of remote Workers to add to this
@@ -597,7 +620,7 @@ class WorkerSet:
         """Hard overrides the remote workers in this set with the given one.
 
         Args:
-            new_remote_workers: A list of new RolloutWorkers
+            new_remote_workers: A list of new EnvRunners
                 (as `ActorHandles`) to use as remote workers.
         """
         self.__worker_manager.clear()
@@ -633,7 +656,7 @@ class WorkerSet:
     @DeveloperAPI
     def foreach_worker(
         self,
-        func: Callable[[RolloutWorker], T],
+        func: Callable[[EnvRunner], T],
         *,
         local_worker: bool = True,
         # TODO(jungong) : switch to True once Algorithm is migrated.
@@ -686,7 +709,7 @@ class WorkerSet:
     @DeveloperAPI
     def foreach_worker_with_id(
         self,
-        func: Callable[[int, RolloutWorker], T],
+        func: Callable[[int, EnvRunner], T],
         *,
         local_worker: bool = True,
         # TODO(jungong) : switch to True once Algorithm is migrated.
@@ -731,7 +754,7 @@ class WorkerSet:
     @DeveloperAPI
     def foreach_worker_async(
         self,
-        func: Callable[[RolloutWorker], T],
+        func: Callable[[EnvRunner], T],
         *,
         # TODO(jungong) : switch to True once Algorithm is migrated.
         healthy_only: bool = False,
@@ -898,7 +921,7 @@ class WorkerSet:
     # TODO (sven): Deprecate once ARS/ES have been moved to `rllib_contrib`.
     @staticmethod
     def _from_existing(
-        local_worker: RolloutWorker, remote_workers: List[ActorHandle] = None
+        local_worker: EnvRunner, remote_workers: List[ActorHandle] = None
     ):
         workers = WorkerSet(
             env_creator=None, default_policy_class=None, config=None, _setup=False
@@ -920,7 +943,7 @@ class WorkerSet:
         spaces: Optional[
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,
-    ) -> Union[RolloutWorker, ActorHandle]:
+    ) -> Union[EnvRunner, ActorHandle]:
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,

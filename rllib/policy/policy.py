@@ -784,9 +784,11 @@ class Policy(metaclass=ABCMeta):
         Returns:
             Dictionary of extra metadata from `compute_gradients()`.
 
-        Examples:
-            >>> policy, sample_batch = ... # doctest: +SKIP
-            >>> policy.learn_on_batch(sample_batch) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            policy, sample_batch = ...
+            policy.learn_on_batch(sample_batch)
         """
         # The default implementation is simply a fused `compute_gradients` plus
         # `apply_gradients` call.
@@ -1155,10 +1157,12 @@ class Policy(metaclass=ABCMeta):
                 `self.get_state()` calls of its different Policies.
             checkpoint_format: Either one of 'cloudpickle' or 'msgpack'.
 
-        Example:
-            >>> from ray.rllib.algorithms.ppo import PPOTorchPolicy
-            >>> policy = PPOTorchPolicy(...) # doctest: +SKIP
-            >>> policy.export_checkpoint("/tmp/export_dir") # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.algorithms.ppo import PPOTorchPolicy
+            policy = PPOTorchPolicy(...)
+            policy.export_checkpoint("/tmp/export_dir")
         """
         # `filename_prefix` should not longer be used as new Policy checkpoints
         # contain more than one file with a fixed filename structure.
