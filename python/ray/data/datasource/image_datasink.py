@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 
 import pyarrow
 
+from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.file_datasink import RowBasedFileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
 
@@ -18,6 +19,7 @@ class ImageDatasink(RowBasedFileDatasink):
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
     ):
         self.column = column
@@ -29,6 +31,7 @@ class ImageDatasink(RowBasedFileDatasink):
             try_create_dir=try_create_dir,
             open_stream_args=open_stream_args,
             filename_provider=filename_provider,
+            block_path_provider=block_path_provider,
             dataset_uuid=dataset_uuid,
             file_format=file_format,
         )

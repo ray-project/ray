@@ -8,6 +8,7 @@ import numpy as np
 import pyarrow
 
 from ray.data.block import BlockAccessor
+from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.webdataset_datasource import (
@@ -27,6 +28,7 @@ class WebDatasetDatasink(BlockBasedFileDatasink):
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
     ):
         self.encoder = encoder
@@ -37,12 +39,13 @@ class WebDatasetDatasink(BlockBasedFileDatasink):
             try_create_dir=try_create_dir,
             open_stream_args=open_stream_args,
             filename_provider=filename_provider,
+            block_path_provider=block_path_provider,
             dataset_uuid=dataset_uuid,
             file_format="tar",
         )
 
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
-        stream = tarfile.open(fileobj=f, mode="w|")
+        stream = tarfile.open(fileobj=file, mode="w|")
         samples = _make_iterable(block)
         for sample in samples:
             if not isinstance(sample, dict):
