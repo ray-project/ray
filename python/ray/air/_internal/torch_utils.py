@@ -9,6 +9,7 @@ import torch
 import ray
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
+
 def get_device() -> Union[torch.device, List[torch.device]]:
     """Gets the correct torch device configured for this process.
 
