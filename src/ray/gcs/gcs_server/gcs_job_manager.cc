@@ -297,5 +297,28 @@ std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id)
   return it->second;
 }
 
+void GcsJobManager::OnNodeDead(const NodeID &node_id) {
+  RAY_LOG(INFO) << "Node " << node_id
+              << " failed, mark all jobs from this node as finished";
+
+  auto on_done = [this, node_id](
+    const absl::flat_hash_map<JobID, JobTableData> &result) {
+      // If job is not dead and from driver in current node, then mark it as finished
+      for (auto &data : result) {
+        if (!data.second.is_dead() && NodeID::FromBinary(data.second.driver_address().raylet_id()) == node_id) {
+          RAY_LOG(INFO) << "marking job: " << data.first << "as finished";
+          MarkJobAsFinished(data.second, [data](Status status) {
+              if (!status.ok()) {
+                RAY_LOG(WARNING) << "Failed to mark job as finished";
+              }
+          });
+        }
+      }
+  };
+
+  // make all jobs in current node to finished
+  RAY_CHECK_OK(gcs_table_storage_->JobTable().GetAll(on_done));
+}
+
 }  // namespace gcs
 }  // namespace ray
