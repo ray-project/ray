@@ -20,6 +20,10 @@ from ray.data.datasource.file_based_datasource import (
     FileExtensionFilter,
     _S3FileSystemWrapper,
 )
+from ray.data.datasource.file_datasink import (
+    BlockBasedFileDatasink,
+    RowBasedFileDatasink,
+)
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
@@ -54,6 +58,7 @@ __all__ = [
     "BaseFileMetadataProvider",
     "BinaryDatasource",
     "BigQueryDatasource",
+    "BlockBasedFileDatasink",
     "BlockWritePathProvider",
     "Connection",
     "CSVDatasource",
@@ -66,6 +71,7 @@ __all__ = [
     "DummyOutputDatasource",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
+    "FileDatasink",
     "FileExtensionFilter",
     "FileMetadataProvider",
     "FilenameProvider",
@@ -84,6 +90,7 @@ __all__ = [
     "MongoDatasource",
     "ReadTask",
     "Reader",
+    "RowBasedFileDatasink",
     "TextDatasource",
     "TFRecordDatasource",
     "TorchDatasource",
