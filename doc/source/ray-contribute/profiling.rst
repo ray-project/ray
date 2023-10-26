@@ -29,7 +29,7 @@ symbolize on Mac OS have failed.
 
   sudo apt-get install google-perftools libgoogle-perftools-dev
 
-Launching the to-profile binary
+Launching the CPU Profiling and set to-profile binary file
 -------------------------------
 
 If you want to launch Ray in profiling mode, define the following variables:
@@ -38,13 +38,39 @@ If you want to launch Ray in profiling mode, define the following variables:
 
   export PERFTOOLS_PATH=/usr/lib/x86_64-linux-gnu/libprofiler.so
   export PERFTOOLS_LOGFILE=/tmp/pprof.out
+  export RAY_RAYLET_PERFTOOLS_PROFILER=1
 
 
 The file ``/tmp/pprof.out`` will be empty until you let the binary run the
 target workload for a while and then ``kill`` it via ``ray stop`` or by
 letting the driver exit.
 
-Memory Profiling
+
+
+Visualizing the CPU profile
+---------------------------
+
+The output of ``pprof`` can be visualized in many ways. Here we output it as a
+zoomable ``.svg`` image displaying the call graph annotated with hot paths.
+
+.. code-block:: bash
+
+  # Use the appropriate path.
+  RAYLET=ray/python/ray/core/src/ray/raylet/raylet
+
+  google-pprof -svg $RAYLET /tmp/pprof.out > /tmp/pprof.svg
+  # Then open the .svg file with Chrome.
+
+  # If you realize the call graph is too large, use -focus=<some function> to zoom
+  # into subtrees.
+  google-pprof -focus=epoll_wait -svg $RAYLET /tmp/pprof.out > /tmp/pprof.svg
+
+Here's a snapshot of an example svg output, taken from the official
+documentation:
+
+.. image:: http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif
+
+Launching Memory Profiling
 ----------------
 If you want to run memory profiling on Ray core components, you can use Jemalloc (https://github.com/jemalloc/jemalloc).
 Ray supports environment variables to override LD_PRELOAD on core components.
@@ -79,28 +105,20 @@ Users are supposed to provide 3 env vars for memory profiling.
   # You should be able to see the following logs.
   2021-10-20 19:45:08,175	INFO services.py:622 -- Jemalloc profiling will be used for gcs_server. env vars: {'LD_PRELOAD': '/Users/sangbincho/jemalloc-5.2.1/lib/libjemalloc.so', 'MALLOC_CONF': 'prof:true,lg_prof_interval:33,lg_prof_sample:17,prof_final:true,prof_leak:true'}
 
-Visualizing the CPU profile
+Visualizing the Memory profile
 ---------------------------
-
-The output of ``pprof`` can be visualized in many ways. Here we output it as a
-zoomable ``.svg`` image displaying the call graph annotated with hot paths.
+The output files will be at the path where we call "ray start".
+A example of profile file is "jeprof.15786.0.f.heap", then we can use following commands to generate the .svg plot.
 
 .. code-block:: bash
 
   # Use the appropriate path.
   RAYLET=ray/python/ray/core/src/ray/raylet/raylet
 
-  google-pprof -svg $RAYLET /tmp/pprof.out > /tmp/pprof.svg
+  sudo jeprof $RAYLET jeprof.15786.0.f.heap --svg > /tmp/prof.svg
   # Then open the .svg file with Chrome.
 
-  # If you realize the call graph is too large, use -focus=<some function> to zoom
-  # into subtrees.
-  google-pprof -focus=epoll_wait -svg $RAYLET /tmp/pprof.out > /tmp/pprof.svg
 
-Here's a snapshot of an example svg output, taken from the official
-documentation:
-
-.. image:: http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif
 
 Running Microbenchmarks
 -----------------------
