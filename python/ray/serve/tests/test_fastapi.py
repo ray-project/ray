@@ -24,6 +24,7 @@ from starlette.routing import Route
 
 import ray
 from ray import serve
+from ray.serve.handle import DeploymentHandle
 from ray._private.pydantic_compat import BaseModel, Field
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import GetTimeoutError
@@ -691,12 +692,12 @@ def test_two_fastapi_in_one_application(
     @serve.deployment
     @serve.ingress(app1)
     class Model:
-        def __init__(self, submodel):
+        def __init__(self, submodel: DeploymentHandle):
             self.submodel = submodel
 
         @app1.get("/{a}")
         async def func(self, a: int):
-            return await (await self.submodel.add.remote(a))
+            return await self.submodel.add.remote(a)
 
     if two_fastapi:
         SubModel = serve.deployment(serve.ingress(app2)(SubModel))

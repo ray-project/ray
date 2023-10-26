@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 import ray
 from ray import serve
+from ray.serve.handle import DeploymentHandle
 from ray._private.test_utils import SignalActor
 from ray.serve.context import _get_global_client
 from ray.serve.drivers import DAGDriver
@@ -61,12 +62,12 @@ def test_np_in_composed_model(serve_instance):
 
     @serve.deployment(name="model")
     class ComposedModel:
-        def __init__(self, handle):
+        def __init__(self, handle: DeploymentHandle):
             self.model = handle
 
         async def __call__(self, *args):
             data = np.ones((10, 10))
-            return await (await self.model.remote(data))
+            return await self.model.remote(data)
 
     sum_d = Sum.bind()
     cm_d = ComposedModel.bind(sum_d)
@@ -166,7 +167,7 @@ def test_handle_cache_out_of_scope(serve_instance):
     def sender_where_handle_goes_out_of_scope():
         f = _get_global_client().get_handle("f", "app", missing_ok=True, sync=True)
         assert f is handle
-        assert ray.get(f.remote()) == "hi"
+        assert f.remote().result() == "hi"
 
     [sender_where_handle_goes_out_of_scope() for _ in range(30)]
     assert len(handle_cache) == initial_num_cached + 1
@@ -195,9 +196,9 @@ def test_out_of_order_chaining(serve_instance):
             self.m2 = m2
 
         async def run(self, _id):
-            r1_task: asyncio.Task = self.m1.compute.remote(_id)
-            r2_ref = await self.m2.compute.remote(r1_task)
-            await r2_ref
+            return await self.m2.compute.remote(
+                self.m1.compute.remote(_id)
+            )
 
     @serve.deployment(graceful_shutdown_timeout_s=0.0)
     class FirstModel:
@@ -221,7 +222,7 @@ def test_out_of_order_chaining(serve_instance):
     handle = serve.run(combine)
 
     handle.run.remote(_id=0)
-    ray.get(handle.run.remote(_id=1))
+    handle.run.remote(_id=1).result()
 
     assert ray.get(collector.get.remote()) == ["first-1", "second-1"]
 
@@ -261,12 +262,12 @@ def test_healthcheck_timeout(serve_instance):
             ray.get(signal.wait.remote())
 
     handle = serve.run(A.bind())
-    result = handle.remote()
+    response = handle.remote()
     # without the proper fix, the ref will fail with actor died error.
     with pytest.raises(TimeoutError):
-        result.result(timeout_s=10)
+        response.result(timeout_s=10)
     signal.send.remote()
-    result.result()
+    response.result()
 
 
 if __name__ == "__main__":

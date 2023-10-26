@@ -404,7 +404,7 @@ def test_multiplexed_e2e(serve_instance):
 
     for _ in range(10):
         assert (
-            ray.get(handle.options(multiplexed_model_id="1").remote("blabla"))
+            handle.options(multiplexed_model_id="1").remote("blabla").result()
             == initial_pid
         )
 
@@ -461,11 +461,11 @@ def test_multiplexed_multiple_replicas(serve_instance):
             return os.getpid()
 
     handle = serve.run(Model.bind())
-    pid1_ref = handle.options(multiplexed_model_id="1").remote()
+    pid1_response = handle.options(multiplexed_model_id="1").remote()
     # Second request should be sent to the second replica
-    pid2_ref = handle.options(multiplexed_model_id="1").remote()
+    pid2_response = handle.options(multiplexed_model_id="1").remote()
     signal.send.remote()
-    assert ray.get(pid1_ref) != ray.get(pid2_ref)
+    assert pid1_response.result() != pid2_response.result()
 
     wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="1")
 
@@ -500,7 +500,7 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
             return model_id_before
 
     handle = serve.run(Upstream.bind(Downstream.bind()))
-    assert ray.get(handle.options(multiplexed_model_id="foo").remote()) == "foo"
+    assert handle.options(multiplexed_model_id="foo").remote().result() == "foo"
 
 
 def test_replica_upgrade_to_cleanup_resource(serve_instance):
@@ -552,9 +552,9 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
     model_id = "1"
     headers = {"serve_multiplexed_model_id": model_id}
     requests.get("http://localhost:8000", headers=headers)
-    assert ray.get(record_handle.get_call_record.remote()) == set()
+    assert record_handle.get_call_record.remote().result() == set()
     serve.run(Model.bind(record_handle))
-    assert ray.get(record_handle.get_call_record.remote()) == {"1"}
+    assert record_handle.get_call_record.remote().result() == {"1"}
 
 
 if __name__ == "__main__":

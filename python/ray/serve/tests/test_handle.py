@@ -11,7 +11,7 @@ from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle, _HandleOptions
+from ray.serve.handle import DeploymentHandle, _HandleOptions
 
 
 def test_handle_options():
@@ -314,14 +314,14 @@ def test_handle_typing(serve_instance):
     @serve.deployment
     class Ingress:
         def __init__(
-            self, class_downstream: RayServeHandle, func_downstream: RayServeHandle
+            self, class_downstream: DeploymentHandle, func_downstream: DeploymentHandle
         ):
             # serve.run()'ing this deployment fails if these assertions fail.
-            assert isinstance(class_downstream, RayServeHandle)
-            assert isinstance(func_downstream, RayServeHandle)
+            assert isinstance(class_downstream, DeploymentHandle)
+            assert isinstance(func_downstream, DeploymentHandle)
 
     h = serve.run(Ingress.bind(DeploymentClass.bind(), deployment_func.bind()))
-    assert isinstance(h, RayServeSyncHandle)
+    assert isinstance(h, DeploymentHandle)
 
 
 def test_call_function_with_argument(serve_instance):
@@ -331,7 +331,7 @@ def test_call_function_with_argument(serve_instance):
 
     @serve.deployment
     class Ingress:
-        def __init__(self, h: RayServeHandle):
+        def __init__(self, h: DeploymentHandle):
             self._h = h
 
         async def __call__(self, name: str):
