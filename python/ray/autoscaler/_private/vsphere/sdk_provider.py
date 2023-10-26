@@ -12,25 +12,26 @@ pyvmomi_sdk_provider = None
 vsphere_sdk_provider = None
 
 
-class VmwSdkProviderFactory:
-    class ClientType(Enum):
-        # Enum for SDK clients
-        PYVMOMI_SDK = "pyvmomi"
-        AUTOMATION_SDK = "automation_sdk"
+class ClientType(Enum):
+    # Enum for SDK clients
+    PYVMOMI_SDK = "pyvmomi"
+    AUTOMATION_SDK = "automation_sdk"
 
+
+class VmwSdkProviderFactory:
     def __init__(self, server, user, password, client_type: ClientType):
         self.server = server
         self.user = user
         self.password = password
 
-        if client_type == self.ClientType.PYVMOMI_SDK:
+        if client_type == ClientType.PYVMOMI_SDK:
             self.sdk_provider = self.get_pyvmomi_sdk_provider()
-        elif client_type == self.ClientType.AUTOMATION_SDK:
+        elif client_type == ClientType.AUTOMATION_SDK:
             self.sdk_provider = self.get_vsphere_sdk_provider()
         else:
             raise ValueError(
                 f"Unknown client {client_type}, supported client types"
-                f"are: {list(self.ClientType)}"
+                f"are: {list(ClientType)}"
             )
 
     def get_pyvmomi_sdk_provider(self):
@@ -48,3 +49,22 @@ class VmwSdkProviderFactory:
                 self.server, self.user, self.password, Constants.SessionType.UNVERIFIED
             )
         return vsphere_sdk_provider
+
+
+def get_sdk_provider(client_type: ClientType):
+    global pyvmomi_sdk_provider
+    global vsphere_sdk_provider
+
+    if client_type == ClientType.PYVMOMI_SDK:
+        if pyvmomi_sdk_provider is None:
+            raise RuntimeError("pyvmomi_sdk_provider is None")
+        return pyvmomi_sdk_provider
+    elif client_type == ClientType.AUTOMATION_SDK:
+        if vsphere_sdk_provider is None:
+            raise RuntimeError("vsphere_sdk_provider is None")
+        return vsphere_sdk_provider
+    else:
+        raise ValueError(
+            f"Unknown client {client_type}, supported client types"
+            f"are: {list(ClientType)}"
+        )
