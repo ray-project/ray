@@ -314,8 +314,6 @@ class ModelIO(abc.ABC):
     """
 
     def __init__(self, config: ModelConfig) -> None:
-        if log_once("rllib_base_model_io_deprecation"):
-            deprecation_warning(old="ray.rllib.models.base_model.ModelIO")
         self._config = config
 
     @DeveloperAPI
