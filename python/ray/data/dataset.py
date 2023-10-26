@@ -20,6 +20,7 @@ from typing import (
     TypeVar,
     Union,
 )
+from uuid import uuid4
 
 import numpy as np
 
@@ -82,11 +83,7 @@ from ray.data._internal.stage_impl import (
     SortStage,
     ZipStage,
 )
-from ray.data._internal.stats import (
-    DatasetStats,
-    DatasetStatsSummary,
-    get_dataset_id_from_stats_actor,
-)
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import ConsumptionAPI, _is_local_scheme, validate_compute
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
@@ -239,6 +236,7 @@ class Dataset:
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
         self._plan = plan
+        self._set_uuid(uuid4().hex)
         self._logical_plan = logical_plan
         if logical_plan is not None:
             self._plan.link_logical_plan(logical_plan)
@@ -246,8 +244,6 @@ class Dataset:
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
-
-        self._set_uuid(get_dataset_id_from_stats_actor())
 
     @staticmethod
     def copy(
