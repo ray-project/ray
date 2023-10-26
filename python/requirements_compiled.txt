@@ -448,8 +448,6 @@ ecdsa==0.18.0
     #   moto
     #   python-jose
     #   sshpubkeys
-email-validator==2.1.0.post1
-    # via fastapi
 entrypoints==0.4
     # via
     #   jupyter-client
@@ -2446,9 +2444,7 @@ uvicorn==0.22.0
     #   aim
     #   gradio
 uvloop==0.19.0
-    # via
-    #   pymars
-    #   uvicorn
+    # via pymars
     # via
     #   nsx-policy-python-sdk
     #   nsx-python-sdk
