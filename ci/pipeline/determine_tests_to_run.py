@@ -184,7 +184,6 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif (
                 changed_file == ".buildkite/ml.rayci.yml"
-                or changed_file == ".buildkite/pipeline.build.yml"
                 or changed_file == ".buildkite/pipeline.test.yml"
                 or changed_file == ".buildkite/pipeline.ml.yml"
                 or changed_file == "ci/docker/ml.build.Dockerfile"
@@ -257,6 +256,7 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/min.build.Dockerfile"
                 or changed_file == "ci/docker/min.build.wanda.yaml"
                 or changed_file == ".buildkite/serverless.rayci.yml"
+                or changed_file == ".buildkite/pipeline.build.yml"
             ):
                 RAY_CI_PYTHON_AFFECTED = 1
             elif changed_file.startswith("java/"):
