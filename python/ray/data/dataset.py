@@ -21,6 +21,7 @@ from typing import (
     TypeVar,
     Union,
 )
+from uuid import uuid4
 
 import numpy as np
 
@@ -83,11 +84,7 @@ from ray.data._internal.stage_impl import (
     SortStage,
     ZipStage,
 )
-from ray.data._internal.stats import (
-    DatasetStats,
-    DatasetStatsSummary,
-    get_dataset_id_from_stats_actor,
-)
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import ConsumptionAPI, _is_local_scheme, validate_compute
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
@@ -111,7 +108,7 @@ from ray.data.datasource import (
     CSVDatasource,
     Datasink,
     Datasource,
-    DefaultBlockWritePathProvider,
+    FilenameProvider,
     ImageDatasource,
     JSONDatasource,
     NumpyDatasource,
@@ -241,6 +238,7 @@ class Dataset:
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
         self._plan = plan
+        self._set_uuid(uuid4().hex)
         self._logical_plan = logical_plan
         if logical_plan is not None:
             self._plan.link_logical_plan(logical_plan)
@@ -248,8 +246,6 @@ class Dataset:
         # Handle to currently running executor for this dataset.
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
-
-        self._set_uuid(get_dataset_id_from_stats_actor())
 
     @staticmethod
     def copy(
@@ -2659,7 +2655,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
         **arrow_parquet_args,
@@ -2704,12 +2701,9 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
-            block_path_provider: A
-                :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation specifying the filename structure for each output
-                parquet file. By default, the format of the output files is
-                ``{uuid}_{block_idx}.parquet``, where ``uuid`` is a unique id for the
-                dataset.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.parquet.write_table() <https:/\
                     /arrow.apache.org/docs/python/generated/\
@@ -2734,6 +2728,7 @@ class Dataset:
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
             write_args_fn=arrow_parquet_args_fn,
             **arrow_parquet_args,
@@ -2747,7 +2742,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
@@ -2801,12 +2797,9 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
-            block_path_provider: A
-                :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation specifying the filename structure for each output
-                parquet file. By default, the format of the output files is
-                ``{uuid}_{block_idx}.json``, where ``uuid`` is a unique id for the
-                dataset.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             pandas_json_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to
                 `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
@@ -2832,6 +2825,7 @@ class Dataset:
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
             write_args_fn=pandas_json_args_fn,
             **pandas_json_args,
@@ -2848,6 +2842,7 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        filename_provider: Optional[FilenameProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to images.
@@ -2892,6 +2887,7 @@ class Dataset:
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             column=column,
             file_format=file_format,
         )
@@ -2904,7 +2900,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
         **arrow_csv_args,
@@ -2958,12 +2955,9 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
-            block_path_provider: A
-                :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation specifying the filename structure for each output
-                parquet file. By default,  the format of the output files is
-                ``{uuid}_{block_idx}.csv``, where ``uuid`` is a unique id for the
-                dataset.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             arrow_csv_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.write.write_csv <https://\
                 arrow.apache.org/docs/python/generated/\
@@ -2986,6 +2980,7 @@ class Dataset:
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
             write_args_fn=arrow_csv_args_fn,
             **arrow_csv_args,
@@ -3000,7 +2995,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write the :class:`~ray.data.Dataset` to TFRecord files.
@@ -3055,12 +3051,9 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
-            block_path_provider: A
-                :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation specifying the filename structure for each output
-                parquet file. By default, the format of the output files is
-                ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id for the
-                dataset.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
@@ -3073,6 +3066,7 @@ class Dataset:
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
             tf_schema=tf_schema,
         )
@@ -3086,7 +3080,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
     ) -> None:
@@ -3146,6 +3141,7 @@ class Dataset:
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
             encoder=encoder,
         )
@@ -3159,7 +3155,8 @@ class Dataset:
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        filename_provider: Optional[FilenameProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
@@ -3205,12 +3202,9 @@ class Dataset:
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
                 #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
                 opening the file to write to.
-            block_path_provider: A
-                :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation specifying the filename structure for each output
-                parquet file. By default,  the format of the output files is
-                ``{uuid}_{block_idx}.npy``, where ``uuid`` is a unique id for the
-                dataset.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
 
@@ -3223,6 +3217,7 @@ class Dataset:
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
             block_path_provider=block_path_provider,
         )
 

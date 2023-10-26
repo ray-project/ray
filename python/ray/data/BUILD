@@ -186,6 +186,14 @@ py_test(
 )
 
 py_test(
+    name = "test_filename_provider",
+    size = "small",
+    srcs = ["tests/test_filename_provider.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],
