@@ -45,9 +45,10 @@ class _FileDatasink(Datasink):
             self.open_stream_args = {}
 
         self.filename_provider = filename_provider
+        self.dataset_uuid = dataset_uuid
         if filename_provider is None:
             self.filename_provider = _DefaultFilenameProvider(
-                dataset_uuid=dataset_uuid, file_format=file_format
+                dataset_uuid=self.dataset_uuid, file_format=file_format
             )
 
         self.has_created_dir = False
