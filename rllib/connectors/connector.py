@@ -17,6 +17,7 @@ from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
     AlgorithmConfigDict,
+    EpisodeType,
     TensorType,
 )
 from ray.util.annotations import PublicAPI
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# TODO (Sven): Deprecate this API.
 @PublicAPI(stability="alpha")
 class ConnectorContext:
     """Information needed by pieces of connector pipeline to communicate with each other.
@@ -99,12 +101,24 @@ class ConnectorContextV2:
     def __init__(
         self,
         rl_module: Optional[RLModule] = None,
-        env: Optional[gym.Env] = None,
+        env: Optional[EnvType] = None,
         explore: Optional[bool] = None,
         *,
         data: Optional[Any] = None,
     ):
-        """Initializes a ConnectorContextV2 instance."""
+        """Initializes a ConnectorContextV2 instance.
+
+        Args:
+            rl_module: The RLModule used for forward passes in the current Env -> Module
+                setup.
+            env: The Env object used to reset/step through in the current Env -> Module
+                setup.
+            explore: Whether `explore` is currently on. Per convention, if True, the
+                RLModule's `forward_exploration` method should be called, if False, the
+                EnvRunner should call `forward_inference` instead.
+            data: Optional additional context data that needs to be exchanged between
+                different Connector pieces and -pipelines.
+        """
 
         self.rl_module = rl_module
         self.env = env
@@ -145,7 +159,7 @@ class Connector(abc.ABC):
 
     def __init__(
         self,
-        ctx: Optional[ConnectorContext] = None,  # TODO (sven): deprecate
+        ctx: Optional[ConnectorContextV2] = None,  # TODO (sven): deprecate
         *,
         config: Optional[AlgorithmConfig] = None,
         observation_space: Optional[gym.spaces.Space] = None,
@@ -174,23 +188,23 @@ class Connector(abc.ABC):
         self,
         *,
         input_: Any,
-        episodes: List[_Episode],  # TODO: generalize to be also MultiAgentEpisode
+        episodes: List[EpisodeType],  # TODO: generalize to be also MultiAgentEpisode
         ctx: ConnectorContextV2,
     ) -> Any:
         """Method for transforming input data into output data.
 
         Args:
-            input_: The input data to be transformed by this connector. Transformations
-                might either be done in-place or a new structure may be returned that
-                matches `self.output_type`.
-            episodes: The list of _Episode objects, each corresponding to one slot in the
-                vector env. Note that Episodes should always be considered read-only
-                and not be altered.
+            input_: The input data abiding to `self.input_type` to be transformed by
+                this connector. Transformations might either be done in-place or a new
+                structure may be returned that matches `self.output_type`.
+            episodes: The list of SingleAgentEpisode or MultiAgentEpisode objects,
+                each corresponding to one slot in the vector env. Note that episodes
+                should always be considered read-only and not be altered.
             ctx: The ConnectorContext that might be used to pass along other important
                 information in between connector pieces (even across pipelines).
 
         Returns:
-            The transformed connector output.
+            The transformed connector output abiding to `self.output_type`.
         """
 
     def __str__(self, indentation: int = 0):
