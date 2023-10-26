@@ -366,7 +366,6 @@ class AlgorithmConfig(_Config):
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
-        self._enable_learner_api = False
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -459,12 +458,12 @@ class AlgorithmConfig(_Config):
 
         # `self.rl_module()`
         self.rl_module_spec = None
-        self._enable_rl_module_api = False
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
         self.__prior_exploration_config = None
 
         # `self.experimental()`
+        self._enable_new_api_stack = False
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
@@ -491,6 +490,8 @@ class AlgorithmConfig(_Config):
         self.policy_map_cache = DEPRECATED_VALUE
         self.worker_cls = DEPRECATED_VALUE
         self.synchronize_filters = DEPRECATED_VALUE
+        self._enable_learner_api = DEPRECATED_VALUE
+        self._enable_rl_module_api = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -899,15 +900,22 @@ class AlgorithmConfig(_Config):
                 "`config.rollouts(enable_connectors=True)`."
             )
 
-        # Learner API requires RLModule API.
-        if self._enable_learner_api is not self._enable_rl_module_api:
-            raise ValueError(
-                "Learner API requires RLModule API and vice-versa! "
-                "Enable RLModule API via "
-                "`config.rl_module(_enable_rl_module_api=True)` and the Learner API "
-                "via `config.training(_enable_learner_api=True)` (or set both to "
-                "False)."
+        # Throw a warning if the user has used rl_module_spec but not enabled the
+        # new API stack.
+        if self.rl_module_spec is not None and not self._enable_new_api_stack:
+            logger.warning(
+                "You have setup a RLModuleSpec (via calling `config.rl_module(...)`), "
+                "but have not enabled the new API stack. To enable it, call "
+                "`config.experimental(_enable_new_api_stack=True)`."
             )
+        # LR-schedule checking.
+        if self._enable_new_api_stack:
+            Scheduler.validate(
+                fixed_value_or_schedule=self.lr,
+                setting_name="lr",
+                description="learning rate",
+            )
+
         # TODO @Avnishn: This is a short-term work around due to
         # https://github.com/ray-project/ray/issues/35409
         # Remove this once we are able to specify placement group bundle index in RLlib
@@ -926,17 +934,8 @@ class AlgorithmConfig(_Config):
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # Enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
-            self.rl_module(_enable_rl_module_api=True)
-            self.training(_enable_learner_api=True)
+            self.experimental(_enable_new_api_stack=True)
             self.enable_connectors = True
-
-        # LR-schedule checking.
-        if self._enable_learner_api:
-            Scheduler.validate(
-                fixed_value_or_schedule=self.lr,
-                setting_name="lr",
-                description="learning rate",
-            )
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:
@@ -950,7 +949,7 @@ class AlgorithmConfig(_Config):
         if self.simple_optimizer is True:
             pass
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        elif not self._enable_learner_api and self.num_gpus > 1:
+        elif not self._enable_new_api_stack and self.num_gpus > 1:
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
             #  Remove this hacky check, once we have fully moved to the Learner API.
@@ -1721,8 +1720,10 @@ class AlgorithmConfig(_Config):
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
-        _enable_learner_api: Optional[bool] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
+        # Deprecated arg.
+            TODO: add warning for when learner class is providede, but new stack is not activated
+        _enable_learner_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2569,6 +2570,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         rl_module_spec: Optional[ModuleSpec] = NotProvided,
+        # Deprecated arg.
         _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
@@ -2579,10 +2581,6 @@ class AlgorithmConfig(_Config):
                 observation_space, action_space, catalog_class, or the model config is
                 not specified it will be inferred from the env and other parts of the
                 algorithm config object.
-            _enable_rl_module_api: Whether to enable the RLModule API for this config.
-                By default if you call `config.rl_module(...)`, the
-                RLModule API will NOT be enabled. If you want to enable it, you can call
-                `config.rl_module(_enable_rl_module_api=True)`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2604,19 +2602,13 @@ class AlgorithmConfig(_Config):
                         "config._enable_rl_module_api was set to False, but no prior "
                         "exploration config was found to be restored."
                     )
-        else:
-            # Throw a warning if the user has used this API but not enabled it.
-            logger.warning(
-                "You have called `config.rl_module(...)` but "
-                "have not enabled the RLModule API. To enable it, call "
-                "`config.rl_module(_enable_rl_module_api=True)`."
-            )
 
         return self
 
     def experimental(
         self,
         *,
+        _enable_new_api_stack: Optional[bool] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
@@ -2626,6 +2618,9 @@ class AlgorithmConfig(_Config):
         """Sets the config's experimental settings.
 
         Args:
+            _enable_new_api_stack: Enables the new API stack, which will use RLModule
+                (instead of ModelV2) as well as the multi-GPU capable Learner API
+                (instead of using Policy to compute loss and update the model).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
                 Set this to True, if you would like to return more than
@@ -2651,6 +2646,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if _enable_new_api_stack is not NotProvided:
+            self._enable_new_api_stack = _enable_new_api_stack
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
                 _tf_policy_handles_more_than_one_loss
