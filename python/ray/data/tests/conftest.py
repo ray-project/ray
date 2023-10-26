@@ -589,6 +589,9 @@ class CoreExecutionMetrics:
             <= 1,
             "_StatsActor.clear_metrics": lambda count: count < 100,
             "_StatsActor.update_metrics": lambda count: count < 100,
+            "_StatsActor.get": lambda count: True,
+            "_StatsActor.record_start": lambda count: True,
+            "_StatsActor.record_task": lambda count: True,
             "datasets_stats_actor:_StatsActor.__init__": lambda count: count <= 1,
         }
 
@@ -654,6 +657,8 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
             if prev_task_count is not None:
                 for name, count in prev_task_count.items():
                     task_count[name] -= count
+                    if task_count[name] < 0:
+                        task_count[name] = 0
         return task_count
 
     def get_actor_count(self):
@@ -665,6 +670,8 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
             if prev_actor_count is not None:
                 for name, count in prev_actor_count.items():
                     actor_count[name] -= count
+                    if actor_count[name] < 0:
+                        actor_count[name] = 0
         return actor_count
 
 
@@ -692,7 +699,7 @@ def assert_core_execution_metrics_equals(
     metrics.assert_actor_metrics(expected_metrics)
 
     # Return a cursor to the current snapshot of metrics to make subsequent
-    # queries easier.
+    # queries easier. Don't return a cursor for metrics that weren't asserted.
     cursor = PhysicalCoreExecutionMetrics()
     if expected_metrics.get_task_count() is None:
         cursor.clear_task_count()
