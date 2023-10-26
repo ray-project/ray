@@ -97,7 +97,7 @@ class PyvmomiSdkProvider:
                     return c
         elif obj_id:
             for c in container.view:
-                if str(c) == obj_id:
+                if obj_id in str(c):
                     return c
         raise ValueError(
             f"Cannot find the object with type {vimtype} on vSphere with"
