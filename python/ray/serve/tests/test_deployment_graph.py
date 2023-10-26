@@ -10,8 +10,9 @@ import starlette.requests
 import ray
 from ray import serve
 from ray.serve._private.deployment_graph_build import build as pipeline_build
-from ray.serve.deployment_graph import InputNode, RayServeDAGHandle
+from ray.serve.deployment_graph import InputNode
 from ray.serve.drivers import DAGDriver
+from ray.serve.handle import DeploymentHandle
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
@@ -104,11 +105,11 @@ class Adder:
 
 @serve.deployment
 class NoargDriver:
-    def __init__(self, dag: RayServeDAGHandle):
-        self.dag = dag
+    def __init__(self, h: DeploymentHandle):
+        self._h = h
 
     async def __call__(self):
-        return await (await self.dag.remote())
+        return await self._h.remote()
 
 
 def test_single_func_no_input(serve_instance):

@@ -31,7 +31,9 @@ def test_basic(serve_instance):
 
     # Verify that each replica has its own placement group with the correct config.
     assert len(get_all_live_placement_group_names()) == 2
-    unique_pgs = set(ray.get([h.get_pg.remote()._to_object_ref_sync() for _ in range(20)]))
+    unique_pgs = set(
+        ray.get([h.get_pg.remote()._to_object_ref_sync() for _ in range(20)])
+    )
     assert len(unique_pgs) == 2
     for pg in unique_pgs:
         assert _get_pg_strategy(pg) == "PACK"
@@ -95,7 +97,9 @@ def test_pg_removed_on_replica_graceful_shutdown(serve_instance):
 
     # Two replicas to start, each should have their own placement group.
     assert len(get_all_live_placement_group_names()) == 2
-    original_unique_pgs = set(ray.get([h.get_pg.remote()._to_object_ref_sync() for _ in range(20)]))
+    original_unique_pgs = set(
+        ray.get([h.get_pg.remote()._to_object_ref_sync() for _ in range(20)])
+    )
     assert len(original_unique_pgs) == 2
 
     # Re-deploy the application with a single replica.
@@ -103,7 +107,9 @@ def test_pg_removed_on_replica_graceful_shutdown(serve_instance):
     # new replica.
     h = serve.run(D.options(num_replicas=1).bind(), name="pg_test")
     assert len(get_all_live_placement_group_names()) == 1
-    new_unique_pgs = set(ray.get([h.get_pg.remote()._to_object_ref_sync() for _ in range(20)]))
+    new_unique_pgs = set(
+        ray.get([h.get_pg.remote()._to_object_ref_sync() for _ in range(20)])
+    )
     assert len(new_unique_pgs) == 1
     assert not new_unique_pgs.issubset(original_unique_pgs)
 

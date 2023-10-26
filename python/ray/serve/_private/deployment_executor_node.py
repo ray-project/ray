@@ -50,7 +50,7 @@ class DeploymentExecutorNode(DAGNode):
         this function gets called, all child nodes are already resolved to
         ObjectRefs.
         """
-        return self._deployment_handle
+        return self._deployment_handle.options(use_new_handle_api=False)
 
     def __getattr__(self, method_name: str):
         return DeploymentMethodExecutorNode(

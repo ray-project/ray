@@ -18,8 +18,8 @@ from ray import serve
 from ray._private.pydantic_compat import BaseModel
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.handle import DeploymentHandle
 from ray.serve.tests.common.utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
@@ -487,11 +487,11 @@ def global_f(*args):
 
 @serve.deployment
 class NoArgDriver:
-    def __init__(self, dag: RayServeDAGHandle):
-        self.dag = dag
+    def __init__(self, h: DeploymentHandle):
+        self._h = h
 
     async def __call__(self):
-        return await (await self.dag.remote())
+        return await self._h.remote()
 
 
 TestBuildFNode = global_f.bind()

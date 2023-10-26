@@ -10,10 +10,10 @@ from fastapi.responses import JSONResponse
 
 import ray
 from ray import serve
-from ray.serve.handle import DeploymentHandle
 from ray._private.test_utils import SignalActor
 from ray.serve.context import _get_global_client
 from ray.serve.drivers import DAGDriver
+from ray.serve.handle import DeploymentHandle
 
 
 @pytest.fixture
@@ -196,9 +196,7 @@ def test_out_of_order_chaining(serve_instance):
             self.m2 = m2
 
         async def run(self, _id):
-            return await self.m2.compute.remote(
-                self.m1.compute.remote(_id)
-            )
+            return await self.m2.compute.remote(self.m1.compute.remote(_id))
 
     @serve.deployment(graceful_shutdown_timeout_s=0.0)
     class FirstModel:
