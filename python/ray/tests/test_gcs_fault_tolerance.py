@@ -1011,9 +1011,16 @@ def test_job_finished_after_gcs_server_restart(ray_start_regular_with_external_r
         import asyncio
 
         asyncio.set_event_loop(asyncio.new_event_loop())
-        all_job_info = get_or_create_event_loop().run_until_complete(async_get_all_job_info())
-        return list(filter(lambda job_info: 'job_submission_id' in job_info.config.metadata \
-            and job_info.config.metadata['job_submission_id'] == job_id, list(all_job_info.values())))
+        all_job_info = get_or_create_event_loop().run_until_complete(
+            async_get_all_job_info()
+        )
+        return list(
+            filter(
+                lambda job_info: "job_submission_id" in job_info.config.metadata
+                and job_info.config.metadata["job_submission_id"] == job_id,
+                list(all_job_info.values()),
+            )
+        )
 
     # verify if job is finished, which marked is_dead
     def _check_job_is_dead(job_id: str) -> bool:
