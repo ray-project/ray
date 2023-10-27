@@ -1020,7 +1020,9 @@ def test_job_finished_after_head_node_restart(
         return job_info.status == JobStatus.RUNNING
 
     # wait until job info is written in redis
-    wait_for_condition(_check_job_running, client=client, submission_id=submission_id, timeout=10)
+    wait_for_condition(
+        _check_job_running, client=client, submission_id=submission_id, timeout=10
+    )
 
     # kill head node
     ray.shutdown()

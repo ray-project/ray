@@ -222,12 +222,13 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                        << WorkerID::FromBinary(data.second.driver_address().worker_id());
         client->NumPendingTasks(
             std::move(request),
-            [data, reply, i, num_processed_jobs, try_send_reply](
-                const Status &status,
-                const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
-              RAY_LOG(DEBUG) << "SendNumPendingTaskReply: "
-                             << WorkerID::FromBinary(
-                                    data.second.driver_address().worker_id());
+            [worker_id = data.second.driver_address().worker_id(),
+             reply,
+             i,
+             num_processed_jobs,
+             try_send_reply](const Status &status,
+                             const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
+              RAY_LOG(DEBUG) << "SendNumPendingTaskReply: " << worker_id;
               if (!status.ok()) {
                 RAY_LOG(WARNING) << "Failed to get is_running_tasks from core worker: "
                                  << status.ToString();
