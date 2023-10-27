@@ -84,8 +84,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         if isinstance(key, str):
             columns.add(key)
         elif isinstance(key, list):
-            for k in key:
-                columns.add(k)
+            columns.update(key)
         elif callable(key):
             prune_columns = False
 
