@@ -13,7 +13,7 @@ from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import DeploymentSchema, RayActorOptionsSchema
+from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -354,6 +354,7 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+        logging_config: Default[LoggingConfig] = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
@@ -463,6 +464,9 @@ class Deployment:
 
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
+
+        if logging_config is not DEFAULT.VALUE:
+            new_deployment_config.logging_config = logging_config
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,

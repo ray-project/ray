@@ -769,6 +769,11 @@ class ServeController:
                         "Serve config instead."
                     )
 
+            # If the application logging config is not set, use the global logging
+            # config.
+            if app_config.logging_config is None and config.logging_config:
+                app_config.logging_config = config.logging_config
+
             app_config_dict = app_config.dict(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
 

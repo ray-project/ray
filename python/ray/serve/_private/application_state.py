@@ -37,7 +37,7 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
+from ray.serve.schema import DeploymentDetails, LoggingConfig, ServeApplicationSchema
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -392,6 +392,7 @@ class ApplicationState:
                 config_version,
                 self._target_state.config.name,
                 self._target_state.config.args,
+                self._target_state.config.logging_config,
             )
             self._build_app_task_info = BuildAppTaskInfo(
                 build_app_obj_ref, config_version, False
@@ -875,6 +876,7 @@ def build_serve_application(
     code_version: str,
     name: str,
     args: Dict,
+    logging_config: Optional[LoggingConfig] = None,
 ) -> Tuple[List[Dict], Optional[str]]:
     """Import and build a Serve application.
 
@@ -908,6 +910,11 @@ def build_serve_application(
         # Set code version and runtime env for each deployment
         for deployment in deployments:
             deployment.set_options(version=code_version, _internal=True)
+
+            # If deployment logging config is not set and use application logging
+            # config if it is set.
+            if deployment._deployment_config.logging_config is None and logging_config:
+                deployment._deployment_config.logging_config = logging_config.dict()
 
         deploy_args_list = []
         for deployment in deployments:
