@@ -179,7 +179,7 @@ class FaultAwareApply:
         except Exception as e:
             # Actor should be recreated by Ray.
             if self.config.recreate_failed_workers:
-                logger.exception("Worker exception, recreating: {}".format(e))
+                logger.exception(f"Worker exception caught during `apply()`: {e}")
                 # Small delay to allow logs messages to propagate.
                 time.sleep(self.config.delay_between_worker_restarts_s)
                 # Kill this worker so Ray Core can restart it.
@@ -498,7 +498,7 @@ class FaultTolerantActorManager:
 
                 # Mark the actor as unhealthy.
                 # TODO(jungong): Using RayError here to preserve historical behavior.
-                # It may very likely be better to use RayActorError here.
+                #  It may very likely be better to use RayActorError here.
                 if isinstance(e, RayError):
                     # Take this actor out of service and wait for Ray Core to
                     # restore it.

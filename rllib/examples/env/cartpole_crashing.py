@@ -28,7 +28,7 @@ class CartPoleCrashing(CartPoleEnv):
     def __init__(self, config=None):
         super().__init__()
 
-        config = config or {}
+        self.config = config or {}
 
         # Crash probability (in each `step()`).
         self.p_crash = config.get("p_crash", 0.005)
@@ -37,6 +37,7 @@ class CartPoleCrashing(CartPoleEnv):
         # Crash exactly after every n steps. If a 2-tuple, will uniformly sample
         # crash timesteps from in between the two given values.
         self.crash_after_n_steps = config.get("crash_after_n_steps")
+        self._crash_after_n_steps = None
         assert (
             self.crash_after_n_steps is None
             or isinstance(self.crash_after_n_steps, int)
@@ -58,6 +59,7 @@ class CartPoleCrashing(CartPoleEnv):
         self.p_hang_reset = config.get("p_hang_reset", 0.0)
         # Hang exactly after every n steps.
         self.hang_after_n_steps = config.get("hang_after_n_steps")
+        self._hang_after_n_steps = None
         # Amount of time to hang. If a 2-tuple, will uniformly sample from in between
         # the two given values.
         self.hang_time_sec = config.get("hang_time_sec")
@@ -97,11 +99,14 @@ class CartPoleCrashing(CartPoleEnv):
     def reset(self, *, seed=None, options=None):
         # Reset timestep counter for the new episode.
         self.timesteps = 0
+        self._crash_after_n_steps = None
+
         # Should we crash?
         if self._should_crash(p=self.p_crash_reset):
             raise EnvError(
-                "Simulated env crash in `reset()`! Feel free to use any "
-                "other exception type here instead."
+                f"Simulated env crash on worker={self.config.worker_index} "
+                f"env-idx={self.config.vector_index} during `reset()`! "
+                "Feel free to use any other exception type here instead."
             )
         # Should we hang for a while?
         self._hang_if_necessary(p=self.p_hang_reset)
@@ -116,8 +121,9 @@ class CartPoleCrashing(CartPoleEnv):
         # Should we crash?
         if self._should_crash(p=self.p_crash):
             raise EnvError(
-                "Simulated env crash in `step()`! Feel free to use any "
-                "other exception type here instead."
+                f"Simulated env crash on worker={self.config.worker_index} "
+                f"env-idx={self.config.vector_index} during `step()`! "
+                "Feel free to use any other exception type here instead."
             )
         # Should we hang for a while?
         self._hang_if_necessary(p=self.p_hang)
@@ -125,19 +131,25 @@ class CartPoleCrashing(CartPoleEnv):
         return super().step(action)
 
     def _should_crash(self, p):
-        if self._rng.rand() < p:
+        print(f"inside _should_crash() p={p}")
+        rnd = self._rng.rand()
+        if rnd < p:
+            print(f" -> return True ({rnd} < {p})")
             return True
         elif self.crash_after_n_steps is not None:
-            sample = (
-                self.crash_after_n_steps
-                if not isinstance(self.crash_after_n_steps, tuple)
-                else np.random.randint(
-                    self.crash_after_n_steps[0], self.crash_after_n_steps[1]
+            if self._crash_after_n_steps is None:
+                self._crash_after_n_steps = (
+                    self.crash_after_n_steps
+                    if not isinstance(self.crash_after_n_steps, tuple)
+                    else np.random.randint(
+                        self.crash_after_n_steps[0], self.crash_after_n_steps[1]
+                    )
                 )
-            )
-            if sample == self.timesteps:
+            if self._crash_after_n_steps == self.timesteps:
+                print(f" -> return True (n steps)")
                 return True
 
+        print(f" -> return False")
         return False
 
     def _hang_if_necessary(self, p):
@@ -145,17 +157,19 @@ class CartPoleCrashing(CartPoleEnv):
         if self._rng.rand() < p:
             hang = True
         elif self.hang_after_n_steps is not None:
-            sample = (
-                self.hang_after_n_steps
-                if not isinstance(self.hang_after_n_steps, tuple)
-                else np.random.randint(
-                    self.hang_after_n_steps[0], self.hang_after_n_steps[1]
+            if self._hang_after_n_steps is None:
+                self._hang_after_n_steps = (
+                    self.hang_after_n_steps
+                    if not isinstance(self.hang_after_n_steps, tuple)
+                    else np.random.randint(
+                        self.hang_after_n_steps[0], self.hang_after_n_steps[1]
+                    )
                 )
-            )
-            if sample == self.timesteps:
+            if self._hang_after_n_steps == self.timesteps:
                 hang = True
 
         if hang:
+            print("hanging ...")
             time.sleep(
                 self.hang_time_sec if not isinstance(self.hang_time_sec, tuple)
                 else np.random.uniform(self.hang_time_sec[0], self.hang_time_sec[1])
