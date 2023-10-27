@@ -14,6 +14,7 @@ import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 
 import numpy as np
+import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -24,6 +25,8 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -46,6 +49,7 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     ALL_MODULES,
 )
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -427,23 +431,46 @@ class PPO(Algorithm):
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
+        use_rollout_worker = self.config.env_runner_cls is None or issubclass(
+            self.config.env_runner_cls, RolloutWorker
+        )
+
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
-            if self.config.count_steps_by == "agent_steps":
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers,
-                    max_agent_steps=self.config.train_batch_size,
-                )
+            # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
+            if use_rollout_worker:
+                if self.config.count_steps_by == "agent_steps":
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_agent_steps=self.config.train_batch_size,
+                    )
+                else:
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_env_steps=self.config.train_batch_size,
+                    )
+            # New Episode-returning EnvRunner API.
             else:
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers, max_env_steps=self.config.train_batch_size
+                if self.workers.num_remote_workers() <= 0:
+                    episodes = [self.workers.local_worker().sample()]
+                else:
+                    episodes = self.workers.foreach_worker(
+                        lambda w: w.sample(), local_worker=False
+                    )
+                # Perform PPO postprocessing on a (flattened) list of Episodes.
+                postprocessed_episodes = self.postprocess_episodes(
+                    tree.flatten(episodes)
+                )
+                # Convert list of postprocessed Episodes into a single sample batch.
+                train_batch = postprocess_episodes_to_sample_batch(
+                    postprocessed_episodes
                 )
 
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
-        # Standardize advantages
+        # Standardize advantages.
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
         if self.config._enable_learner_api:
@@ -452,8 +479,18 @@ class PPO(Algorithm):
             # TODO (Kourosh) Do this inside the Learner so that we don't have to do
             #  this back and forth communication between driver and the remote
             #  learner actors.
-            is_module_trainable = self.workers.local_worker().is_policy_to_train
-            self.learner_group.set_is_module_trainable(is_module_trainable)
+            # TODO (sven): What's the plan for multi-agent setups when the
+            #  policy is gone?
+            # TODO (simon): The default method has already this functionality,
+            #  but this serves simply as a placeholder until it is decided on
+            #  how to replace the functionalities of the policy.
+
+            if (
+                self.config.env_runner_cls is None
+                or self.config.env_runner_cls.__name__ == "RolloutWorker"
+            ):
+                is_module_trainable = self.workers.local_worker().is_policy_to_train
+                self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
@@ -477,14 +514,17 @@ class PPO(Algorithm):
             policies_to_update = list(train_results.keys())
 
         # TODO (Kourosh): num_grad_updates per each policy should be accessible via
-        # train_results
-        global_vars = {
-            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
-            "num_grad_updates_per_policy": {
-                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
-                for pid in policies_to_update
-            },
-        }
+        #  train_results.
+        if not use_rollout_worker:
+            global_vars = None
+        else:
+            global_vars = {
+                "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+                "num_grad_updates_per_policy": {
+                    pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                    for pid in policies_to_update
+                },
+            }
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
@@ -572,6 +612,28 @@ class PPO(Algorithm):
                 )
 
         # Update global vars on local worker as well.
+        # TODO (simon): At least in RolloutWorker obsolete I guess as called in
+        #  `sync_weights()` called above if remote workers. Can we call this
+        #  where `set_weights()` is called on the local_worker?
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
+
+    def postprocess_episodes(self, episodes: List[Episode]) -> List[Episode]:
+        """Calculate advantages and value targets."""
+        from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
+
+        # Bootstrap values.
+        postprocessed_episodes = []
+        # TODO (simon): Remove somehow the double list.
+        # episodes = [episode for episode_list in episodes for episode in episode_list]
+        for episode in episodes:
+            # TODO (sven): Calling 'module' on the 'EnvRunner' only works
+            #  for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
+            postprocessed_episodes.append(
+                compute_gae_for_episode(
+                    episode, self.config, self.workers.local_worker().module
+                )
+            )
+
+        return postprocessed_episodes
