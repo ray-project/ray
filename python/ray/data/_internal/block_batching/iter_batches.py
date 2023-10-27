@@ -26,6 +26,7 @@ from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
+# Interval for metrics update remote calls to _StatsActor during iteration.
 STATS_UPDATE_INTERVAL_SECONDS = 30
 
 
