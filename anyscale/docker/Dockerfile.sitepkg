@@ -11,15 +11,17 @@ FROM $FULL_BASE_IMAGE as sitepkg
 ARG WHEEL_PATH
 ARG RAY_VERSION="3.0.0.dev0"
 ARG RAY_MOD_DATE="UTC 2020-01-01"
+ARG FIND_LINKS_PATH=".whl"
 
 COPY requirements_compiled.txt ./
-RUN --mount=type=bind,source=$WHEEL_PATH,target=$WHEEL_PATH <<EOF
+RUN --mount=type=bind,source=$FIND_LINKS_PATH,target=$FIND_LINKS_PATH <<EOF
 #!/bin/bash
 
 set -euo pipefail
 
 $HOME/anaconda3/bin/pip --no-cache-dir \
-    install -c requirements_compiled.txt "$WHEEL_PATH"[all]
+    install -c requirements_compiled.txt "${WHEEL_PATH}"[all] \
+    --find-links "${FIND_LINKS_PATH}"
 
 # Now do the packaging.
 

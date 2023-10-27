@@ -44,21 +44,24 @@ else
 fi
 
 if [[ "${PY_VERSION}" == "3.8" ]]; then
-    WHEEL_FILE="ray-${RAY_VERSION}-cp38-cp38-manylinux2014_${HOSTTYPE}.whl"
     PY_VERSION_CODE="py38"
+    WHEEL_PYTHON_CODE="cp38-cp38"
 elif [[ "${PY_VERSION}" == "3.9" ]]; then
-    WHEEL_FILE="ray-${RAY_VERSION}-cp39-cp39-manylinux2014_${HOSTTYPE}.whl"
     PY_VERSION_CODE="py39"
+    WHEEL_PYTHON_CODE="cp39-cp39"
 elif [[ "${PY_VERSION}" == "3.10" ]]; then
-    WHEEL_FILE="ray-${RAY_VERSION}-cp310-cp310-manylinux2014_${HOSTTYPE}.whl"
     PY_VERSION_CODE="py310"
+    WHEEL_PYTHON_CODE="cp310-cp310"
 elif [[ "${PY_VERSION}" == "3.11" ]]; then
-    WHEEL_FILE="ray-${RAY_VERSION}-cp311-cp311-manylinux2014_${HOSTTYPE}.whl"
     PY_VERSION_CODE="py311"
+    WHEEL_PYTHON_CODE="cp311-cp311"
 else
     echo "Unknown python version code: ${PY_VERSION}" >/dev/stderr
     exit 1
 fi
+
+WHEEL_FILE="ray-${RAY_VERSION}-${WHEEL_PYTHON_CODE}-manylinux2014_${HOSTTYPE}.whl"
+CPP_WHEEL_FILE="ray_cpp-${RAY_VERSION}-${WHEEL_PYTHON_CODE}-manylinux2014_${HOSTTYPE}.whl"
 
 if [[ "${IMG_TYPE}" == "cpu" ]]; then
     IMG_TYPE_CODE=cpu
@@ -115,6 +118,7 @@ echo "--- Fetch wheel and base image"
 
 echo "OSS wheel: ${OSS_WHEEL_URL_PREFIX}${WHEEL_FILE}"
 curl -sfL "${OSS_WHEEL_URL_PREFIX}${WHEEL_FILE}" -o "${BUILD_TMP}/oss-whl/${WHEEL_FILE}"
+curl -sfL "${OSS_WHEEL_URL_PREFIX}${CPP_WHEEL_FILE}" -o "${BUILD_TMP}/oss-whl/${CPP_WHEEL_FILE}"
 
 aws s3 cp "${S3_TEMP}/${WHEEL_FILE}" "${BUILD_TMP}/runtime-whl/${WHEEL_FILE}"
 
@@ -157,6 +161,7 @@ CONTEXT_TMP="$(mktemp -d)"
 
 mkdir -p "${CONTEXT_TMP}/.whl"
 cp "${BUILD_TMP}/oss-whl/${WHEEL_FILE}" "${CONTEXT_TMP}/.whl/${WHEEL_FILE}"
+cp "${BUILD_TMP}/oss-whl/${CPP_WHEEL_FILE}" "${CONTEXT_TMP}/.whl/${CPP_WHEEL_FILE}"
 cp python/requirements_compiled.txt "${CONTEXT_TMP}/."
 cp anyscale/docker/Dockerfile.sitepkg "${CONTEXT_TMP}/Dockerfile"
 
@@ -185,6 +190,7 @@ echo "--- Step 2: Build Runtime site package tarball"
 
 # Only need to overwrite the wheel
 cp "${BUILD_TMP}/runtime-whl/${WHEEL_FILE}" "${CONTEXT_TMP}/.whl/${WHEEL_FILE}"
+rm "${CONTEXT_TMP}/.whl/${CPP_WHEEL_FILE}" # And removes the ray-cpp wheel.
 
 # Runtime uses a later date, this will force pyc file recompile after
 # extraction.
