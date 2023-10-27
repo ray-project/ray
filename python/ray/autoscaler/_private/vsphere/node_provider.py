@@ -417,7 +417,7 @@ class VsphereNodeProvider(NodeProvider):
         requested_gpu_num = resources.get("GPU", 0)
         if requested_gpu_num > 0:
             for vm_name in gpu_ids_map:
-                parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+                parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
                     [vim.VirtualMachine], vm_name
                 )
                 to_be_plugged_gpu = gpu_ids_map[vm_name]
