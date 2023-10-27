@@ -63,6 +63,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "event_stats_test",
+    size = "small",
+    srcs = ["event_stats_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:event_stats",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "ray_config_test",
     size = "small",
     srcs = ["ray_config_test.cc"],
