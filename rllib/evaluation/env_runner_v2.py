@@ -178,7 +178,7 @@ def _build_multi_agent_batch(
 
         policy = collector.policy
 
-        if policy.config.get("_enable_rl_module_api", False):
+        if policy.config.get("_enable_new_api_stack", False):
             # Before we send the collected batch back for training, we may need
             # to add a time dimension for the RLModule.
             seq_lens = batch.get(SampleBatch.SEQ_LENS)
@@ -188,7 +188,7 @@ def _build_multi_agent_batch(
                 shuffle=False,
                 batch_divisibility_req=getattr(policy, "batch_divisibility_req", 1),
                 view_requirements=getattr(policy, "view_requirements", None),
-                _enable_rl_module_api=True,
+                _enable_new_api_stack=True,
             )
             batch = policy.maybe_add_time_dimension(
                 batch, seq_lens=seq_lens, framework="np"
@@ -1068,7 +1068,7 @@ class EnvRunnerV2:
                 # changed (mapping fn not staying constant within one episode).
                 policy: Policy = _try_find_policy_again(eval_data)
 
-            if policy.config.get("_enable_rl_module_api", False):
+            if policy.config.get("_enable_new_api_stack", False):
                 # _batch_inference_sample_batches does nothing but concatenating AND
                 # setting SEQ_LENS to ones in the recurrent case. We do not need this
                 # because RLModules do not care about SEQ_LENS anymore. They have an

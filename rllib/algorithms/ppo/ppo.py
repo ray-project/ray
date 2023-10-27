@@ -152,10 +152,6 @@ class PPOConfig(PGConfig):
             # Add constructor kwargs here (if any).
         }
 
-        # Enable the rl module api by default.
-        self.rl_module(_enable_rl_module_api=True)
-        self.training(_enable_learner_api=True)
-
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
@@ -320,11 +316,6 @@ class PPOConfig(PGConfig):
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
-        # Can not use Tf with learner api.
-        if self.framework_str == "tf":
-            self.rl_module(_enable_rl_module_api=False)
-            self.training(_enable_learner_api=False)
-
         # Call super's validation method.
         super().validate()
 
@@ -359,7 +350,7 @@ class PPOConfig(PGConfig):
             )
 
         # Entropy coeff schedule checking.
-        if self._enable_learner_api:
+        if self._enable_new_api_stack:
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -432,12 +423,14 @@ class PPO(Algorithm):
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
+        use_rollout_worker = self.config.env_runner_cls is None or issubclass(
+            self.config.env_runner_cls, RolloutWorker
+        )
+
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
-            if self.config.env_runner_cls is None or issubclass(
-                self.config.env_runner_cls, RolloutWorker
-            ):
+            if use_rollout_worker:
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
@@ -474,7 +467,7 @@ class PPO(Algorithm):
         # Standardize advantages.
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             # TODO (Kourosh) Clearly define what train_batch_size
             #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
             # TODO (Kourosh) Do this inside the Learner so that we don't have to do
@@ -503,7 +496,7 @@ class PPO(Algorithm):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             # The train results's loss keys are pids to their loss values. But we also
             # return a total_loss key at the same level as the pid keys. So we need to
             # subtract that to get the total set of pids to update.
@@ -515,8 +508,8 @@ class PPO(Algorithm):
             policies_to_update = list(train_results.keys())
 
         # TODO (Kourosh): num_grad_updates per each policy should be accessible via
-        # train_results
-        if self.config._enable_learner_api:
+        #  train_results.
+        if not use_rollout_worker:
             global_vars = None
         else:
             global_vars = {
@@ -532,7 +525,7 @@ class PPO(Algorithm):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
                 from_worker_or_learner_group = None
-                if self.config._enable_learner_api:
+                if self.config._enable_new_api_stack:
                     # sync weights from learner_group to all rollout workers
                     from_worker_or_learner_group = self.learner_group
                 self.workers.sync_weights(
@@ -540,11 +533,11 @@ class PPO(Algorithm):
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
-            elif self.config._enable_learner_api:
+            elif self.config._enable_new_api_stack:
                 weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
 
             kl_dict = {}
             if self.config.use_kl_loss:

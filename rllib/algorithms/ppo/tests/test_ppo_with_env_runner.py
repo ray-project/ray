@@ -74,6 +74,12 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object with the `SingleAgentEnvRunner` class.
         config = (
             ppo.PPOConfig()
+            # Enable new API stack and use EnvRunner.
+            .experimental(_enable_new_api_stack=True)
+            .rollouts(
+                env_runner_cls=SingleAgentEnvRunner,
+                num_rollout_workers=0,
+            )
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing lr-scheduling correctness.
@@ -82,10 +88,6 @@ class TestPPO(unittest.TestCase):
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=[[0, 0.1], [256, 0.0]],  # 256=2x128,
                 train_batch_size=128,
-            )
-            .rollouts(
-                num_rollout_workers=0,
-                env_runner_cls=SingleAgentEnvRunner,
             )
             .callbacks(MyCallbacks)
             .evaluation(

@@ -176,12 +176,29 @@ class VsphereNodeProvider(NodeProvider):
             return nodes
 
     def is_running(self, node_id):
-        node = self._get_cached_node(node_id)
-        return node.power_state in {HardPower.State.POWERED_ON}
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.VirtualMachine], obj_id=node_id
+        )
+        return vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn
 
     def is_terminated(self, node_id):
-        node = self._get_cached_node(node_id)
-        return node.power_state not in {HardPower.State.POWERED_ON}
+        vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
+            [vim.VirtualMachine], obj_id=node_id
+        )
+        if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOn:
+            return False
+        else:
+            vns = Constants.VSPHERE_NODE_STATUS
+            matched_tags, _ = self.get_matched_tags(
+                {vns: Constants.VsphereNodeStatus.CREATING.value},
+                DynamicID(type=Constants.TYPE_OF_RESOURCE, id=vm._moId),
+            )
+            if matched_tags:
+                # If the node is not powered on but has the creating tag, then it could
+                # be under reconfiguration, such as plugging the GPU. In this case we
+                # should consider the node is not terminated, it will be turned on later
+                return False
+        return True
 
     def node_tags(self, node_id):
         with self.tag_cache_lock:
@@ -413,7 +430,7 @@ class VsphereNodeProvider(NodeProvider):
         requested_gpu_num = resources.get("GPU", 0)
         if requested_gpu_num > 0:
             for vm_name in gpu_ids_map:
-                parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj_by_name(
+                parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
                     [vim.VirtualMachine], vm_name
                 )
                 to_be_plugged_gpu = gpu_ids_map[vm_name]

@@ -4,11 +4,13 @@ from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
 config = (
     PPOConfig()
-    .environment("CartPole-v1")
+    # Enable new API stack and use EnvRunner.
+    .experimental(_enable_new_api_stack=True)
     .rollouts(
-        num_rollout_workers=1,
         env_runner_cls=SingleAgentEnvRunner,
+        num_rollout_workers=1,
     )
+    .environment("CartPole-v1")
     .training(
         gamma=0.99,
         lr=0.0003,
