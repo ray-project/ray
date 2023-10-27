@@ -37,7 +37,6 @@ steps:
       - serve
       - python
     instance_type: large
-    soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,worker-container,xcommit

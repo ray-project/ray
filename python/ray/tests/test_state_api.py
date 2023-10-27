@@ -8,11 +8,10 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
-from ray._private.state_api_test_utils import get_state_api_manager
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 import yaml
 from click.testing import CliRunner
 
@@ -157,7 +156,14 @@ def state_source_client(gcs_address):
 def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_address = address_info["gcs_address"]
-    manager = get_state_api_manager(gcs_address)
+    gcs_aio_client = GcsAioClient(address=gcs_address)
+    gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
+    gcs_channel.connect()
+    state_api_data_source_client = StateDataSourceClient(
+        gcs_channel.channel(), gcs_aio_client
+    )
+    manager = StateAPIManager(state_api_data_source_client)
+
     yield manager
 
 
@@ -271,7 +277,6 @@ def generate_task_data(events_by_task):
         events_by_task=events_by_task,
         num_status_task_events_dropped=0,
         num_profile_task_events_dropped=0,
-        num_total_stored=len(events_by_task),
     )
 
 
@@ -3464,10 +3469,6 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
             "RAY_MAX_LIMIT_FROM_DATA_SOURCE",
             "10",
         )
-        m.setenv(
-            "RAY_task_events_skip_driver_for_test",
-            "1",
-        )
         ray.init()
 
         @ray.remote
@@ -3484,7 +3485,7 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
         try:
             list_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all" in str(e)
+            assert "Failed to retrieve all tasks from the cluster" in str(e)
             assert "(> 10)" in str(e)
         else:
             assert False
@@ -3492,7 +3493,7 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
         try:
             summarize_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all" in str(e)
+            assert "Failed to retrieve all tasks from the cluster" in str(e)
             assert "(> 10)" in str(e)
         else:
             assert False
