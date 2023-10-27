@@ -311,11 +311,11 @@ def test_passing_handle(serve_instance, use_build):
 
 @serve.deployment
 class DictParent:
-    def __init__(self, d):
+    def __init__(self, d: Dict[str, DeploymentHandle]):
         self._d = d
 
-    async def __call__(self, key):
-        return await (await self._d[key].remote())
+   async def __call__(self, key: str):
+        return await self._d[key].remote()
 
 
 def test_passing_handle_in_obj(serve_instance):
