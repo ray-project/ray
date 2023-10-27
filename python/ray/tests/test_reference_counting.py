@@ -33,19 +33,24 @@ def one_worker_100MiB(request):
 
 
 def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
+    objs = []
     for _ in range(num_objects):
-        ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
+        objs.append(ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8)))
 
     if type(obj) is bytes:
         obj = ray.ObjectRef(obj)
 
     if succeed:
         wait_for_condition(
-            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
+            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj),
+            timeout=30,
         )
     else:
         wait_for_condition(
-            lambda: not ray._private.worker.global_worker.core_worker.object_exists(obj)
+            lambda: not ray._private.worker.global_worker.core_worker.object_exists(
+                obj
+            ),
+            timeout=30,
         )
 
 
