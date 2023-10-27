@@ -236,6 +236,8 @@ table PlasmaReleaseRequest {
 table PlasmaReleaseReply {
   // ID of the object that was released.
   object_id: string;
+  // Client should unmap the mmap section for this object_id.
+  should_unmap: bool;
   // Error code.
   error: PlasmaError;
 }
