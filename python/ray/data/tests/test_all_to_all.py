@@ -16,7 +16,6 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import column_udf, named_values
 from ray.tests.conftest import *  # noqa
 
-
 RANDOM_SEED = 123
 
 
