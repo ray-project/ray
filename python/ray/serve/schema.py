@@ -115,7 +115,8 @@ class LoggingConfig(BaseModel):
     access_log: Union[str, AcessLoggingType] = Field(
         default="ALL",
         description=(
-            "Controll how to enable the servelogs. Default to ALL to enable streaming and file access logs."
+            "Configure how to access the Serve logs. Default to 'ALL' to enable "
+            " streaming and file access logs together."
         ),
     )
 

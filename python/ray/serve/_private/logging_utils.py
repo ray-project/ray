@@ -7,9 +7,7 @@ from typing import Optional, Tuple, Union
 import ray
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
-    DEBUG_LOG_ENV_VAR,
     RAY_SERVE_ENABLE_CPU_PROFILING,
-    RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
@@ -24,7 +22,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_TIME,
     SERVE_LOGGER_NAME,
 )
-from ray.serve.schema import AcessLoggingType, EncodingType, LoggingConfig
+from ray.serve.schema import EncodingType, LoggingConfig
 
 try:
     import cProfile
