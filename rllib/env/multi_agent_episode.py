@@ -195,8 +195,6 @@ class MultiAgentEpisode:
 
         return self._getattr_by_index("observations", indices, global_ts)
 
-    
-
     def get_actions(
         self, indices: Union[int, List[int]] = -1, global_ts: bool = True
     ) -> MultiAgentDict:
@@ -243,7 +241,7 @@ class MultiAgentEpisode:
             necessarily in the keys).
         """
         return self._getattr_by_index("rewards", indices, global_ts)
-    
+
     def add_initial_observation(
         self,
         *,
@@ -623,7 +621,7 @@ class MultiAgentEpisode:
                 # we?
                 if self.agent_episodes[agent_id].t > 0
             }
-        
+
     def _get_single_agent_data(
         self,
         agent_id: str,
