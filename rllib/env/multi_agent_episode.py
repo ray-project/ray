@@ -105,11 +105,11 @@ class MultiAgentEpisode:
         self.agent_episodes: MultiAgentDict = {
             agent_id: self._generate_single_agent_episode(
                 agent_id,
+                agent_episode_ids,
                 observations,
                 actions,
                 rewards,
                 states,
-                agent_episode_ids,
             )
             for agent_id in self._agent_ids
         }
@@ -187,46 +187,15 @@ class MultiAgentEpisode:
             global_ts: Boolean that defines, if the indices should be considered
                 environment (`True`) or agent (`False`) steps.
 
-        Returns: A dicitonary mapping agent ids to observations (of different
+        Returns: A dictionary mapping agent ids to observations (of different
             timesteps). Only for agents that have stepped (were ready) at a
             timestep, observations are returned (i.e. not all agent ids are
             necessarily in the keys).
         """
 
-        # First for global_ts = True:
-        if global_ts:
-            # Check, if the indices are iterable.
-            if isinstance(indices, list):
-                indices = [self.t + idx if idx < 0 else idx for idx in indices]
-            else:
-                indices = [self.t + indices] if indices < 0 else [indices]
+        return self._getattr_by_index("observations", indices, global_ts)
 
-            return {
-                agent_id: list(
-                    map(
-                        agent_eps.observations.__getitem__,
-                        self.global_t_to_local_t[agent_id].find_indices(indices),
-                    )
-                )
-                for agent_id, agent_eps in self.agent_episodes.items()
-                # Only include agent data for agents that stepped.
-                if len(self.global_t_to_local_t[agent_id].find_indices(indices)) > 0
-            }
-        # Otherwise just look for the timesteps in the `SingleAgentEpisode`s
-        # directly.
-        else:
-            # Check, if the indices are iterable.
-            if not isinstance(indices, list):
-                indices = [indices]
-
-            return {
-                agent_id: list(map(agent_eps.observations.__getitem__, indices))
-                for agent_id, agent_eps in self.agent_episodes.items()
-                # Only include agent data for agents that stepped so far at least once.
-                # TODO (sven, simon): This will not include initial observations. Should
-                # we?
-                if self.agent_episodes[agent_id].t > 0
-            }
+    
 
     def get_actions(
         self, indices: Union[int, List[int]] = -1, global_ts: bool = True
@@ -244,46 +213,13 @@ class MultiAgentEpisode:
             global_ts: Boolean that defines, if the indices should be considered
                 environment (`True`) or agent (`False`) steps.
 
-        Returns: A dicitonary mapping agent ids to actions (of different
+        Returns: A dictionary mapping agent ids to actions (of different
             timesteps). Only for agents that have stepped (were ready) at a
             timestep, actions are returned (i.e. not all agent ids are
             necessarily in the keys).
         """
 
-        # First for global_ts = True:
-        if global_ts:
-            # Check, if the indices are iterable.
-            if isinstance(indices, list):
-                indices = [self.t + idx for idx in indices]
-            else:
-                indices = [self.t + indices]
-
-            return {
-                agent_id: list(
-                    map(
-                        agent_eps.actions.__getitem__,
-                        self.global_t_to_local_t[agent_id].find_indices(indices),
-                    )
-                )
-                for agent_id, agent_eps in self.agent_episodes.items()
-                # Only include agent data for agents that stepped.
-                if self.global_t_to_local_t[agent_id].find_indices(indices) > 0
-            }
-        # Otherwise just look for the timesteps in the `SingleAgentEpisode`s
-        # directly.
-        else:
-            # Check, if the indices are iterable.
-            if not isinstance(indices, list):
-                indices = [indices]
-
-            return {
-                agent_id: list(map(agent_eps.actions.__getitem__, indices))
-                for agent_id, agent_eps in self.agent_episodes.items()
-                # Only include agent data for agents that stepped so far at least once.
-                # TODO (sven, simon): This will not include initial observations. Should
-                # we?
-                if self.agent_episodes[agent_id].t > 0
-            }
+        return self._getattr_by_index("actions", indices, global_ts)
 
     def get_rewards(
         self, indices: Union[int, List[int]] = -1, global_ts: bool = True
@@ -301,47 +237,13 @@ class MultiAgentEpisode:
             global_ts: Boolean that defines, if the indices should be considered
                 environment (`True`) or agent (`False`) steps.
 
-        Returns: A dicitonary mapping agent ids to actions (of different
+        Returns: A dictionary mapping agent ids to actions (of different
             timesteps). Only for agents that have stepped (were ready) at a
             timestep, rewards are returned (i.e. not all agent ids are
             necessarily in the keys).
         """
-        # TODO (simon): Refactor into helper functions.
-        # First for global_ts = True:
-        if global_ts:
-            # Check, if the indices are iterable.
-            if isinstance(indices, list):
-                indices = [self.t + idx for idx in indices]
-            else:
-                indices = [self.t + indices]
-
-            return {
-                agent_id: list(
-                    map(
-                        agent_eps.rewards.__getitem__,
-                        self.global_t_to_local_t[agent_id].find_indices(indices),
-                    )
-                )
-                for agent_id, agent_eps in self.agent_episodes.items()
-                # Only include agent data for agents that stepped.
-                if self.global_t_to_local_t[agent_id].find_indices(indices) > 0
-            }
-        # Otherwise just look for the timesteps in the `SingleAgentEpisode`s
-        # directly.
-        else:
-            # Check, if the indices are iterable.
-            if not isinstance(indices, list):
-                indices = [indices]
-
-            return {
-                agent_id: list(map(agent_eps.rewards.__getitem__, indices))
-                for agent_id, agent_eps in self.agent_episodes.items()
-                # Only include agent data for agents that stepped so far at least once.
-                # TODO (sven, simon): This will not include initial observations. Should
-                # we?
-                if self.agent_episodes[agent_id].t > 0
-            }
-
+        return self._getattr_by_index("rewards", indices, global_ts)
+    
     def add_initial_observation(
         self,
         *,
@@ -681,6 +583,47 @@ class MultiAgentEpisode:
         else:
             return SingleAgentEpisode(id_=episode_id)
 
+    def _getattr_by_index(
+        self,
+        attr: str = "observations",
+        indices: Union[int, List[int]] = -1,
+        global_ts: bool = True,
+    ) -> MultiAgentDict:
+        # First for global_ts = True:
+        if global_ts:
+            # Check, if the indices are iterable.
+            if isinstance(indices, list):
+                indices = [self.t + (idx if idx < 0 else idx) for idx in indices]
+            else:
+                indices = [self.t + indices] if indices < 0 else [indices]
+
+            return {
+                agent_id: list(
+                    map(
+                        getattr(agent_eps, attr).__getitem__,
+                        self.global_t_to_local_t[agent_id].find_indices(indices),
+                    )
+                )
+                for agent_id, agent_eps in self.agent_episodes.items()
+                # Only include agent data for agents that stepped.
+                if len(self.global_t_to_local_t[agent_id].find_indices(indices)) > 0
+            }
+        # Otherwise just look for the timesteps in the `SingleAgentEpisode`s
+        # directly.
+        else:
+            # Check, if the indices are iterable.
+            if not isinstance(indices, list):
+                indices = [indices]
+
+            return {
+                agent_id: list(map(getattr(agent_eps, attr).__getitem__, indices))
+                for agent_id, agent_eps in self.agent_episodes.items()
+                # Only include agent data for agents that stepped so far at least once.
+                # TODO (sven, simon): This will not include initial observations. Should
+                # we?
+                if self.agent_episodes[agent_id].t > 0
+            }
+        
     def _get_single_agent_data(
         self,
         agent_id: str,
