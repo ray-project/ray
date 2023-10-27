@@ -11,15 +11,18 @@ logger = logging.getLogger(__name__)
 
 
 class CartPoleCrashing(CartPoleEnv):
-    """A CartPole env that crashes from time to time.
+    """A CartPole env that crashes (or hangs) from time to time.
 
     Useful for testing faulty sub-env (within a vectorized env) handling by
-    RolloutWorkers.
+    EnvRunners.
 
     After crashing, the env expects a `reset()` call next (calling `step()` will
     result in yet another error), which may or may not take a very long time to
     complete. This simulates the env having to reinitialize some sub-processes, e.g.
     an external connection.
+
+    The env can also be configured to hang (and do nothing during a call to `step()`)
+    from time to time for a configurable amount of time.
     """
 
     def __init__(self, config=None):
@@ -29,27 +32,60 @@ class CartPoleCrashing(CartPoleEnv):
 
         # Crash probability (in each `step()`).
         self.p_crash = config.get("p_crash", 0.005)
+        # Crash probability when `reset()` is called.
         self.p_crash_reset = config.get("p_crash_reset", 0.0)
+        # Crash exactly after every n steps. If a 2-tuple, will uniformly sample
+        # crash timesteps from in between the two given values.
         self.crash_after_n_steps = config.get("crash_after_n_steps")
-        # Only crash (with prob=p_crash) if on certain worker indices.
+        assert (
+            self.crash_after_n_steps is None
+            or isinstance(self.crash_after_n_steps, int)
+            or (
+                isinstance(self.crash_after_n_steps, tuple)
+                and len(self.crash_after_n_steps) == 2
+            )
+        )
+        # Only ever crash, if on certain worker indices.
         faulty_indices = config.get("crash_on_worker_indices", None)
         if faulty_indices and config.worker_index not in faulty_indices:
             self.p_crash = 0.0
             self.p_crash_reset = 0.0
             self.crash_after_n_steps = None
+
+        # Hang probability (in each `step()`).
+        self.p_hang = config.get("p_hang", 0.0)
+        # Hang probability when `reset()` is called.
+        self.p_hang_reset = config.get("p_hang_reset", 0.0)
+        # Hang exactly after every n steps.
+        self.hang_after_n_steps = config.get("hang_after_n_steps")
+        # Amount of time to hang. If a 2-tuple, will uniformly sample from in between
+        # the two given values.
+        self.hang_time_sec = config.get("hang_time_sec")
+        assert (
+            self.hang_time_sec is None
+            or isinstance(self.hang_time_sec, (int, float))
+            or (
+                isinstance(self.hang_time_sec, tuple)
+                and len(self.hang_time_sec) == 2
+            )
+        )
+
         # Timestep counter for the ongoing episode.
         self.timesteps = 0
 
         # Time in seconds to initialize (in this c'tor).
+        sample = 0.0
         if "init_time_s" in config:
-            init_time_s = config.get("init_time_s", 0)
-        else:
-            init_time_s = np.random.randint(
-                config.get("init_time_s_min", 0),
-                config.get("init_time_s_max", 1),
+            sample = (
+                config["init_time_s"]
+                if not isinstance(config["init_time_s"], tuple)
+                else np.random.uniform(
+                    config["init_time_s"][0], config["init_time_s"][1]
+                )
             )
-        print(f"Initializing crashing env with init-delay of {init_time_s}sec ...")
-        time.sleep(init_time_s)
+
+        print(f"Initializing crashing env (with init-delay of {sample}sec) ...")
+        time.sleep(sample)
 
         # No env pre-checking?
         self._skip_env_checking = config.get("skip_env_checking", False)
@@ -62,29 +98,68 @@ class CartPoleCrashing(CartPoleEnv):
         # Reset timestep counter for the new episode.
         self.timesteps = 0
         # Should we crash?
-        if self._rng.rand() < self.p_crash_reset or (
-            self.crash_after_n_steps is not None and self.crash_after_n_steps == 0
-        ):
+        if self._should_crash(p=self.p_crash_reset):
             raise EnvError(
                 "Simulated env crash in `reset()`! Feel free to use any "
                 "other exception type here instead."
             )
+        # Should we hang for a while?
+        self._hang_if_necessary(p=self.p_hang_reset)
+
         return super().reset()
 
     @override(CartPoleEnv)
     def step(self, action):
         # Increase timestep counter for the ongoing episode.
         self.timesteps += 1
+
         # Should we crash?
-        if self._rng.rand() < self.p_crash or (
-            self.crash_after_n_steps and self.crash_after_n_steps == self.timesteps
-        ):
+        if self._should_crash(p=self.p_crash):
             raise EnvError(
                 "Simulated env crash in `step()`! Feel free to use any "
                 "other exception type here instead."
             )
-        # No crash.
+        # Should we hang for a while?
+        self._hang_if_necessary(p=self.p_hang)
+
         return super().step(action)
+
+    def _should_crash(self, p):
+        if self._rng.rand() < p:
+            return True
+        elif self.crash_after_n_steps is not None:
+            sample = (
+                self.crash_after_n_steps
+                if not isinstance(self.crash_after_n_steps, tuple)
+                else np.random.randint(
+                    self.crash_after_n_steps[0], self.crash_after_n_steps[1]
+                )
+            )
+            if sample == self.timesteps:
+                return True
+
+        return False
+
+    def _hang_if_necessary(self, p):
+        hang = False
+        if self._rng.rand() < p:
+            hang = True
+        elif self.hang_after_n_steps is not None:
+            sample = (
+                self.hang_after_n_steps
+                if not isinstance(self.hang_after_n_steps, tuple)
+                else np.random.randint(
+                    self.hang_after_n_steps[0], self.hang_after_n_steps[1]
+                )
+            )
+            if sample == self.timesteps:
+                hang = True
+
+        if hang:
+            time.sleep(
+                self.hang_time_sec if not isinstance(self.hang_time_sec, tuple)
+                else np.random.uniform(self.hang_time_sec[0], self.hang_time_sec[1])
+            )
 
 
 MultiAgentCartPoleCrashing = make_multi_agent(lambda config: CartPoleCrashing(config))
