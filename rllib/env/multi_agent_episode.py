@@ -146,8 +146,8 @@ class MultiAgentEpisode:
             - timesteps match (`t` of `self` matches `t_started` of `episode_chunk`).
 
         Args:
-            episode_chunk: `MultiAgentEpsiode` instance that should be concatenated
-                to `self`.
+            episode_chunk: `MultiAgentEpsiode` instance that should be concatenated 
+                to `self`. 
         """
         assert episode_chunk.id_ == self.id_
         assert not self.is_done
@@ -387,16 +387,17 @@ class MultiAgentEpisode:
                 corresponding info. Note that not all agents must have stepped
                 a this timestep.
             state: Optional. A dictionary, mapping agent ids to their
-                corresponding hidden model state. Note, this is only available for a stateful
-                model. Also note that not all agents must have stepped a this timestep.
+                corresponding hidden model state. Note, this is only available for a 
+                stateful model. Also note that not all agents must have stepped a this 
+                timestep.
             is_terminated: A boolean indicating, if the environment has been
                 terminated.
             is_truncated: A boolean indicating, if the environment has been
                 truncated.
             render_image: Optional. An RGB uint8 image from rendering the environment.
             extra_model_output: Optional. A dictionary, mapping agent ids to their
-                corresponding specific model outputs (also in a dictionary; e.g. `vf_preds`
-                for PPO).
+                corresponding specific model outputs (also in a dictionary; e.g. 
+                `vf_preds` for PPO).
         """
         # Cannot add data to an already done episode.
         assert not self.is_done
@@ -449,16 +450,18 @@ class MultiAgentEpisode:
         correspond to single agents having terminated or being truncated.
 
         `self.is_terminated` should be `True`, if all agents are terminated and
-        `self.is_truncated` should be `True`, if all agents are truncated. If
-        only one or more (but not all!) agents are `terminated/truncated the
-        `MultiAgentEpisode.is_terminated/is_truncated` should be `False`. This
-        information about single agent's terminated/truncated states can always
+        `self.is_truncated` should be `True`, if all agents are truncated. If 
+        only one or more (but not all!) agents are `terminated/truncated the 
+        `MultiAgentEpisode.is_terminated/is_truncated` should be `False`. This 
+        information about single agent's terminated/truncated states can always 
         be retrieved from the `SingleAgentEpisode`s inside the 'MultiAgentEpisode`
-        one.
+        one. 
 
-        If all agents are either terminated or truncated, but in a mixed fashion,
-        i.e. some are terminated and others are truncated: This is currently
-        undefined and could potentially be a problem.
+        If all agents are either terminated or truncated, but in a mixed fashion, 
+        i.e. some are terminated and others are truncated: This is currently 
+        undefined and could potentially be a problem (if a user really implemented 
+        such a multi-agent env that behaves this way).
+
         Returns:
             Boolean defining if an episode has either terminated or truncated.
         """
