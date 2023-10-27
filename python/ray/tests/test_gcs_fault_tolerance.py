@@ -1012,7 +1012,7 @@ def test_job_finished_after_head_node_restart(
             )
         )
 
-    def _check_job_running(client: JobSubmissionClient, submission_id: str) -> bool:
+    def _check_job_running(submission_id: str) -> bool:
         job_infos = get_job_info(submission_id)
         if len(job_infos) == 0:
             return False
@@ -1020,9 +1020,7 @@ def test_job_finished_after_head_node_restart(
         return job_info.status == JobStatus.RUNNING
 
     # wait until job info is written in redis
-    wait_for_condition(
-        _check_job_running, client=client, submission_id=submission_id, timeout=10
-    )
+    wait_for_condition(_check_job_running, submission_id=submission_id, timeout=10)
 
     # kill head node
     ray.shutdown()
@@ -1036,7 +1034,7 @@ def test_job_finished_after_head_node_restart(
     wait_for_pid_to_exit(gcs_server_pid, 1000)
 
     # restart head node
-    new_head_node = cluster.add_node()
+    cluster.add_node()
     ray.init(cluster.address)
 
     # verify if job is finished, which marked is_dead

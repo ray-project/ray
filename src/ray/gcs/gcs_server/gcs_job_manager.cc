@@ -218,13 +218,13 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
         std::unique_ptr<rpc::NumPendingTasksRequest> request(
             new rpc::NumPendingTasksRequest());
-        RAY_LOG(DEBUG) << "SendNumPendingTask: " << worker_id;
+        RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id;
         client->NumPendingTasks(
             std::move(request),
             [worker_id, reply, i, num_processed_jobs, try_send_reply](
                 const Status &status,
                 const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
-              RAY_LOG(DEBUG) << "SendNumPendingTaskReply: " << worker_id;
+              RAY_LOG(DEBUG) << "Received NumPendingTasksReply from worker " << worker_id;
               if (!status.ok()) {
                 RAY_LOG(WARNING) << "Failed to get is_running_tasks from core worker: "
                                  << status.ToString();
