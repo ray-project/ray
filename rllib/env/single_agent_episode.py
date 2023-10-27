@@ -21,7 +21,7 @@ class SingleAgentEpisode:
         is_terminated: bool = False,
         is_truncated: bool = False,
         render_images: List[np.ndarray] = None,
-        extra_model_outputs: Dict[str, Any] = None,
+        extra_model_outputs: List[Dict[str, Any]] = None,
     ) -> "SingleAgentEpisode":
         """Initializes a `SingleAgentEpisode` instance.
 
