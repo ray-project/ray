@@ -1,38 +1,39 @@
 """
-Tests, whether APPO can learn in a fault-tolerant fashion.
+Tests, whether APPO can learn in a fault-tolerant fashion in a
+multi-agent setting.
 
 Workers will be configured to automatically get recreated upon failures (here: within
 the environment).
 The environment we use here is configured to crash with a certain probability on each
-`step()` and/or `reset()` call. Additionally, the environment is configured to hang
-with a configured probability on each `step()` call for a certain amount of time.
+`step()` and/or `reset()` call.
 """
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.env.cartpole_crashing import MultiAgentCartPoleCrashing
 from ray import tune
 
-tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
-
+tune.register_env("ma_env", lambda cfg: MultiAgentCartPoleCrashing(cfg))
 
 stop = {
-    "evaluation/sampler_results/episode_reward_mean": 400.0,
+    "evaluation/sampler_results/episode_reward_mean": 800.0,
     "num_env_steps_sampled": 250000,
 }
 
 config = (
     APPOConfig()
     .environment(
-        "env",
+        "ma_env",
         env_config={
+            "num_agents": 2,
+            # Crash roughly every 300 ts. This should be ok to measure 180.0
+            # reward (episodes are 200 ts long).
             "p_crash": 0.0001,  # prob to crash during step()
             "p_crash_reset": 0.001,  # prob to crash during reset()
-            "crash_on_worker_indices": [1, 2],
             "init_time_s": 2.0,
 
-            "p_hang": 0.001,  # prob to hang during step()
-            "p_hang_reset": 0.001,  # prob to hang during reset()
-            "hang_time_sec": (2, 10), # hang between 2 and 10sec.
-            "hang_on_worker_indices": [2, 3],
+            "p_stall": 0.001,  # prob to stall during step()
+            "p_stall_reset": 0.001,  # prob to stall during reset()
+            "stall_time_sec": (2, 10),  # stall between 2 and 10sec.
+            "stall_on_worker_indices": [2, 3],
         },
         # Disable env checking. Env checker doesn't handle Exceptions from
         # user envs, and will crash rollout worker.
@@ -62,8 +63,8 @@ config = (
                 "p_crash": 0.0,
                 "p_crash_reset": 0.0,
                 "init_time_s": 0.0,
-                "p_hang": 0.0,
-                "p_hang_reset": 0.0,
+                "p_stall": 0.0,
+                "p_stall_reset": 0.0,
             },
         ),
     )

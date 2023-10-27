@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class CartPoleCrashing(CartPoleEnv):
-    """A CartPole env that crashes (or hangs) from time to time.
+    """A CartPole env that crashes (or stalls) from time to time.
 
     Useful for testing faulty sub-env (within a vectorized env) handling by
     EnvRunners.
@@ -21,7 +21,7 @@ class CartPoleCrashing(CartPoleEnv):
     complete. This simulates the env having to reinitialize some sub-processes, e.g.
     an external connection.
 
-    The env can also be configured to hang (and do nothing during a call to `step()`)
+    The env can also be configured to stall (and do nothing during a call to `step()`)
     from time to time for a configurable amount of time.
     """
 
@@ -53,31 +53,31 @@ class CartPoleCrashing(CartPoleEnv):
             self.p_crash_reset = 0.0
             self.crash_after_n_steps = None
 
-        # Hang probability (in each `step()`).
-        self.p_hang = config.get("p_hang", 0.0)
-        # Hang probability when `reset()` is called.
-        self.p_hang_reset = config.get("p_hang_reset", 0.0)
-        # Hang exactly after every n steps.
-        self.hang_after_n_steps = config.get("hang_after_n_steps")
-        self._hang_after_n_steps = None
-        # Amount of time to hang. If a 2-tuple, will uniformly sample from in between
+        # Stall probability (in each `step()`).
+        self.p_stall = config.get("p_stall", 0.0)
+        # Stall probability when `reset()` is called.
+        self.p_stall_reset = config.get("p_stall_reset", 0.0)
+        # Stall exactly after every n steps.
+        self.stall_after_n_steps = config.get("stall_after_n_steps")
+        self._stall_after_n_steps = None
+        # Amount of time to stall. If a 2-tuple, will uniformly sample from in between
         # the two given values.
-        self.hang_time_sec = config.get("hang_time_sec")
+        self.stall_time_sec = config.get("stall_time_sec")
         assert (
-            self.hang_time_sec is None
-            or isinstance(self.hang_time_sec, (int, float))
+            self.stall_time_sec is None
+            or isinstance(self.stall_time_sec, (int, float))
             or (
-                isinstance(self.hang_time_sec, tuple)
-                and len(self.hang_time_sec) == 2
+                isinstance(self.stall_time_sec, tuple)
+                and len(self.stall_time_sec) == 2
             )
         )
 
-        # Only ever hang, if on certain worker indices.
-        faulty_indices = config.get("hang_on_worker_indices", None)
+        # Only ever stall, if on certain worker indices.
+        faulty_indices = config.get("stall_on_worker_indices", None)
         if faulty_indices and config.worker_index not in faulty_indices:
-            self.p_hang = 0.0
-            self.p_hang_reset = 0.0
-            self.hang_after_n_steps = None
+            self.p_stall = 0.0
+            self.p_stall_reset = 0.0
+            self.stall_after_n_steps = None
 
         # Timestep counter for the ongoing episode.
         self.timesteps = 0
@@ -115,8 +115,8 @@ class CartPoleCrashing(CartPoleEnv):
                 f"env-idx={self.config.vector_index} during `reset()`! "
                 "Feel free to use any other exception type here instead."
             )
-        # Should we hang for a while?
-        self._hang_if_necessary(p=self.p_hang_reset)
+        # Should we stall for a while?
+        self._stall_if_necessary(p=self.p_stall_reset)
 
         return super().reset()
 
@@ -132,8 +132,8 @@ class CartPoleCrashing(CartPoleEnv):
                 f"env-idx={self.config.vector_index} during `step()`! "
                 "Feel free to use any other exception type here instead."
             )
-        # Should we hang for a while?
-        self._hang_if_necessary(p=self.p_hang)
+        # Should we stall for a while?
+        self._stall_if_necessary(p=self.p_stall)
 
         return super().step(action)
 
@@ -157,31 +157,28 @@ class CartPoleCrashing(CartPoleEnv):
 
         return False
 
-    def _hang_if_necessary(self, p):
-        print(f"in _hang_if_necessary(p={p})")
-        hang = False
+    def _stall_if_necessary(self, p):
+        stall = False
         if self._rng.rand() < p:
-            print(f" -> hang via p")
-            hang = True
-        elif self.hang_after_n_steps is not None:
-            if self._hang_after_n_steps is None:
-                self._hang_after_n_steps = (
-                    self.hang_after_n_steps
-                    if not isinstance(self.hang_after_n_steps, tuple)
+            stall = True
+        elif self.stall_after_n_steps is not None:
+            if self._stall_after_n_steps is None:
+                self._stall_after_n_steps = (
+                    self.stall_after_n_steps
+                    if not isinstance(self.stall_after_n_steps, tuple)
                     else np.random.randint(
-                        self.hang_after_n_steps[0], self.hang_after_n_steps[1]
+                        self.stall_after_n_steps[0], self.stall_after_n_steps[1]
                     )
                 )
-            if self._hang_after_n_steps == self.timesteps:
-                print(f" -> hang via n-steps")
-                hang = True
+            if self._stall_after_n_steps == self.timesteps:
+                stall = True
 
-        if hang:
+        if stall:
             sec = (
-                self.hang_time_sec if not isinstance(self.hang_time_sec, tuple)
-                else np.random.uniform(self.hang_time_sec[0], self.hang_time_sec[1])
+                self.stall_time_sec if not isinstance(self.stall_time_sec, tuple)
+                else np.random.uniform(self.stall_time_sec[0], self.stall_time_sec[1])
             )
-            print(f" -> will hang for {sec}sec ...")
+            print(f" -> will stall for {sec}sec ...")
             time.sleep(sec)
 
 
