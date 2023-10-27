@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List, Tuple
+from ray._private.metrics_agent import Record
 
 
 class AcceleratorManager(ABC):
@@ -121,3 +122,13 @@ class AcceleratorManager(ABC):
             Return None if it's unknown.
         """
         return None
+
+    @staticmethod
+    def get_current_node_accelerator_usage_metrics() -> List[Record]:
+        """Get the physical usage metrics of this accelerator family on the current node.
+
+        Returns:
+            A list of physical usage metric records.
+        """
+
+        return []
