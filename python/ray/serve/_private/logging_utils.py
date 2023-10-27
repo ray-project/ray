@@ -2,7 +2,7 @@ import copy
 import json
 import logging
 import os
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import ray
 from ray.serve._private.common import ServeComponentType
