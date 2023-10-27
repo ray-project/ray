@@ -6,9 +6,8 @@ PY_VERSION="${1:-3.8}"
 IMG_TYPE="${2:-cpu}"
 BASE_TYPE="${3:-ray}"
 
-RAY_VERSION="3.0.0.dev0"
-S3_TEMP="s3://bk-premerge-first-jawfish-artifacts/tmp/runtime/${RAYCI_BUILD_ID}"
-RUNTIME_ECR="830883877497.dkr.ecr.us-west-2.amazonaws.com"
+source anyscale/ci/setup-env.sh
+
 IMAGE_PREFIX="${RAYCI_BUILD_ID}"
 
 UPSTREAM_COMMIT="$(cat .UPSTREAM)"
@@ -26,12 +25,6 @@ fi
 # Normally at thist point, the wheel should have already been built, but there
 # is no hard guarantee.
 OSS_WHEEL_URL_PREFIX="https://ray-wheels.s3.us-west-2.amazonaws.com/${UPSTREAM_BRANCH}/${UPSTREAM_COMMIT}/"
-
-# Default cuda is also tagged as "gpu".
-readonly ML_CUDA_VERSION="cu118"
-
-# Always use buildkit.
-export DOCKER_BUILDKIT=1
 
 if [[ "${BASE_TYPE}" == "ray" ]]; then
     RUNTIME_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime"
@@ -143,7 +136,8 @@ docker pull "${BASE_IMG}"
 
 if [[ "${BUILDKITE:-}" == "true" ]]; then
     rm -rf /artifact-mount/sitepkg
-    mkdir -p /artifact-mount/sitepkg
+    mkdir -p /artifact-mount/sitepkg/ray-oss
+    mkdir -p /artifact-mount/sitepkg/ray-opt
 fi
 
 # Everything is prepared, starts building now.
@@ -153,7 +147,7 @@ export DOCKER_BUILDKIT=1
 BUILD_TAG="${IMAGE_PREFIX}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
 RAY_IMG="${RUNTIME_REPO}:${BUILD_TAG}"
 ANYSCALE_IMG="${RUNTIME_REPO}:${BUILD_TAG}-as"
-
+SITEPKG_TGZ="${BASE_TYPE}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}.tar.gz"
 
 ####
 echo "--- Step 1: Build OSS site package tarball"
@@ -178,9 +172,10 @@ cp anyscale/docker/Dockerfile.sitepkg "${CONTEXT_TMP}/Dockerfile"
 )
 
 mv "${BUILD_TMP}/ray.tgz" "${BUILD_TMP}/ray-oss.tgz"
+
+aws s3 cp "${BUILD_TMP}/ray-oss.tgz" "${S3_TEMP}/ray-oss/${PY_VERSION_CODE}/${SITEPKG_TGZ}"
 if [[ "${BUILDKITE:-}" == "true" ]]; then
-    cp "${BUILD_TMP}/ray-oss.tgz" \
-        "/artifact-mount/sitepkg/ray-oss-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}.tgz"
+    cp "${BUILD_TMP}/ray-oss.tgz" "/artifact-mount/sitepkg/ray-oss/${SITEPKG_TGZ}"
 fi
 
 
@@ -205,9 +200,10 @@ cp "${BUILD_TMP}/runtime-whl/${WHEEL_FILE}" "${CONTEXT_TMP}/.whl/${WHEEL_FILE}"
 )
 
 mv "${BUILD_TMP}/ray.tgz" "${BUILD_TMP}/ray-opt.tgz" 
+
+aws s3 cp "${BUILD_TMP}/ray-opt.tgz" "${S3_TEMP}/ray-opt/${PY_VERSION_CODE}/${SITEPKG_TGZ}"
 if [[ "${BUILDKITE:-}" == "true" ]]; then
-    cp "${BUILD_TMP}/ray-opt.tgz" \
-        "/artifact-mount/sitepkg/ray-opt-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}.tgz"
+    cp "${BUILD_TMP}/ray-opt.tgz" "/artifact-mount/sitepkg/ray-opt/${SITEPKG_TGZ}"
 fi
 
 # Cleanup sitepkg build context.

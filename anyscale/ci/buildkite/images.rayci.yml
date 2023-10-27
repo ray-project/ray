@@ -80,3 +80,11 @@ steps:
         base:
           - "cpu"
           - "cu11.8.0"
+
+  - wait: ~
+
+  - label: ":tapioca: check and upload runtime site package tarball"
+    commands:
+      - bash anyscale/ci/publish-ray-site-pkg.sh
+    instance_type: small
+    job_env: forge
