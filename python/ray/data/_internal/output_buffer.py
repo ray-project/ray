@@ -72,13 +72,13 @@ class BlockOutputBuffer:
         block_to_yield = self._buffer.build()
         block_remainder = None
         block = BlockAccessor.for_block(block_to_yield)
-        if block.size_bytes() > self._target_max_block_size:
+        if block.size_bytes() > self._target_max_block_size and block.num_rows() > 1:
             num_bytes_per_row = block.size_bytes() // block.num_rows()
             target_num_rows = self._target_max_block_size // num_bytes_per_row
             target_num_rows = max(1, target_num_rows)
 
             num_rows = min(target_num_rows, block.num_rows())
-            # Use copy=True to avoid holding the entire block in memory.
+            # Use copy=True because this seems to use less memory.
             block_to_yield = block.slice(0, num_rows, copy=True)
             block_remainder = block.slice(num_rows, block.num_rows(), copy=True)
 

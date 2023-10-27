@@ -573,10 +573,12 @@ class CoreExecutionMetrics:
             ), f"{key}: expected {val} got {actual_object_store_stats[key]}"
 
     def assert_actor_metrics(self, expected_metrics):
+        if expected_metrics.get_actor_count() is None:
+            return
+
         expected_actor_count = CoreExecutionMetrics.get_default_actor_count()
-        if expected_metrics.get_actor_count() is not None:
-            for key, val in expected_metrics.get_actor_count().items():
-                expected_actor_count[key] = val
+        for key, val in expected_metrics.get_actor_count().items():
+            expected_actor_count[key] = val
 
         actual_actor_count = self.get_actor_count()
         self._assert_count_equals(actual_actor_count, expected_actor_count)
@@ -612,7 +614,11 @@ class CoreExecutionMetrics:
 
 class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
     """Generated from a snapshot of the metrics collected by Ray Core during
-    the physical execution."""
+    the physical execution.
+
+    NOTE(swang): Currently object store stats only include objects stored in
+    plasma shared memory.
+    """
 
     def __init__(self, cursor=None):
         self.task_metrics = ray.util.state.list_tasks(detail=True)
@@ -673,6 +679,15 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
                     if actor_count[name] < 0:
                         actor_count[name] = 0
         return actor_count
+
+    def get_object_store_stats(self):
+        object_store_stats = self.object_store_stats.copy()
+        if self.cursor is not None:
+            prev_object_store_stats = self.cursor.get_object_store_stats()
+            if prev_object_store_stats is not None:
+                for key, val in prev_object_store_stats.items():
+                    object_store_stats[key] -= val
+        return object_store_stats
 
 
 # Dummy task used to make sure that we wait until (most) stats are available.
