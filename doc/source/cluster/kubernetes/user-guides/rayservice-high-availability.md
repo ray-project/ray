@@ -35,6 +35,7 @@ The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-p
 
 ### Step 4: Verify the Kubernetes Serve service
 
+Check the output of the following command to verify that you successfully started the Kubernetes Serve service:
 ```sh
 # Step 4.1: KubeRay creates the K8s service `rayservice-ha-serve-svc` after the Ray Serve applications are ready.
 kubectl describe svc rayservice-ha-serve-svc
