@@ -158,8 +158,10 @@ class CartPoleCrashing(CartPoleEnv):
         return False
 
     def _hang_if_necessary(self, p):
+        print(f"in _hang_if_necessary(p={p})")
         hang = False
         if self._rng.rand() < p:
+            print(f" -> hang via p")
             hang = True
         elif self.hang_after_n_steps is not None:
             if self._hang_after_n_steps is None:
@@ -171,6 +173,7 @@ class CartPoleCrashing(CartPoleEnv):
                     )
                 )
             if self._hang_after_n_steps == self.timesteps:
+                print(f" -> hang via n-steps")
                 hang = True
 
         if hang:
@@ -178,7 +181,7 @@ class CartPoleCrashing(CartPoleEnv):
                 self.hang_time_sec if not isinstance(self.hang_time_sec, tuple)
                 else np.random.uniform(self.hang_time_sec[0], self.hang_time_sec[1])
             )
-            print(f"Will hang for {sec}sec ...")
+            print(f" -> will hang for {sec}sec ...")
             time.sleep(sec)
 
 
