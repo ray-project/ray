@@ -96,6 +96,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs::GcsClientOptions options("127.0.0.1:5397");
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     ReconnectClient();
+    local_resource_manager_ = std::make_unique<LocalResourceManager>();
   }
 
   void TearDown() override {
