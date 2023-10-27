@@ -1975,8 +1975,9 @@ def determine_plasma_store_config(
             shm_avail = ray._private.utils.get_shared_memory_bytes()
             # Compare the requested memory size to the memory available in
             # /dev/shm.
+            dev_shm = "/dev/shm"
             if shm_avail > object_store_memory:
-                plasma_directory = "/dev/shm"
+                plasma_directory = dev_shm
             elif (
                 not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE")
                 and object_store_memory > ray_constants.REQUIRE_SHM_SIZE_THRESHOLD
@@ -1993,20 +1994,29 @@ def determine_plasma_store_config(
                 )
             else:
                 plasma_directory = ray._private.utils.get_user_temp_dir()
-                logger.warning(
-                    "WARNING: The object store is using {} instead of "
-                    "/dev/shm because /dev/shm has only {} bytes available. "
-                    "This will harm performance! You may be able to free up "
-                    "space by deleting files in /dev/shm. If you are inside a "
-                    "Docker container, you can increase /dev/shm size by "
-                    "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
-                    "to the run_options list in a Ray cluster config). Make "
-                    "sure to set this to more than 30% of available RAM.".format(
-                        ray._private.utils.get_user_temp_dir(),
-                        shm_avail,
-                        object_store_memory * (1.1) / (2**30),
-                    )
+                recommend_size_gb = object_store_memory * 1.1 / (2**30)
+                warning_message = (
+                    f"This will harm performance! You may be able to free up "
+                    f"space by deleting files in {dev_shm}. If you are inside a "
+                    f"Docker container, you can increase {dev_shm} size by "
+                    f"passing '--shm-size={recommend_size_gb:.2f}gb' to "
+                    f"'docker run' (or add it to the run_options list in "
+                    f"a Ray cluster config). Make sure to set this to more "
+                    f"than 30% of available RAM."
                 )
+
+                if plasma_directory != dev_shm:
+                    logger.warning(
+                        f"WARNING: The object store is using {plasma_directory} "
+                        f"instead of {dev_shm} because {dev_shm} has only "
+                        f"{shm_avail} bytes available. " + warning_message
+                    )
+                else:
+                    logger.warning(
+                        f"WARNING: The object store is using {plasma_directory} "
+                        f"but {dev_shm} has only {shm_avail} bytes available."
+                        + warning_message
+                    )
         else:
             plasma_directory = ray._private.utils.get_user_temp_dir()
 
