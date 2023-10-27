@@ -44,7 +44,7 @@ from ray.serve._private.logging_utils import (
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
-from ray.serve._private.long_poll import LongPollHost
+from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -67,6 +67,7 @@ from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
     ApplicationDetails,
     HTTPOptionsSchema,
+    LoggingConfig,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -82,6 +83,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
+LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 
 
 @ray.remote(num_cpus=0)
@@ -115,6 +117,7 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
+        logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -122,8 +125,21 @@ class ServeController:
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
 
+        # Try to read config from checkpoint
+        self.ray_worker_namespace = ray.get_runtime_context().namespace
+        self.controller_name = controller_name
+        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
+        self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        log_config_checkpoint = self.kv_store.get(LOGGING_CONFIG_CHECKPOINT_KEY)
+        if log_config_checkpoint is not None:
+            logging_config = pickle.loads(log_config_checkpoint)
+        self.logging_config: LoggingConfig = logging_config
+
         configure_component_logger(
-            component_name="controller", component_id=str(os.getpid())
+            component_name="controller",
+            component_id=str(os.getpid()),
+            logging_config=self.logging_config,
         )
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
@@ -139,11 +155,6 @@ class ServeController:
             call_function_from_import_path(RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH)
 
         # Used to read/write checkpoints.
-        self.ray_worker_namespace = ray.get_runtime_context().namespace
-        self.controller_name = controller_name
-        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-        kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
@@ -155,6 +166,7 @@ class ServeController:
             http_config,
             self._controller_node_id,
             self.cluster_node_info_cache,
+            self.logging_config,
             grpc_options,
         )
 
@@ -211,6 +223,22 @@ class ServeController:
             "serve_controller_num_starts",
             description="The number of times that controller has started.",
         ).inc()
+
+    def reconfigure_system_logging_config(self, logging_config: LoggingConfig):
+        if self.logging_config.version == logging_config.version:
+            return
+        self.logging_config = logging_config
+        self.kv.put(LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(logging_config))
+
+        self.long_poll_host.notify_changed(
+            LongPollNamespace.SYSTEM_LOGGING_CONFIG,
+            logging_config,
+        )
+        configure_component_logger(
+            component_name="controller",
+            component_id=str(os.getpid()),
+            logging_config=logging_config,
+        )
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -520,6 +548,7 @@ class ServeController:
 
         logger.info("Controller shutdown started!", extra={"log_to_stderr": False})
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
+        self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()

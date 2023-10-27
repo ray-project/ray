@@ -63,6 +63,7 @@ from ray.serve._private.utils import (
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -89,10 +90,15 @@ def create_replica_wrapper(actor_class_name: str):
             app_name: str = None,
         ):
             self._replica_tag = replica_tag
+            deployment_config = DeploymentConfig.from_proto_bytes(
+                deployment_config_proto_bytes
+            )
+
             configure_component_logger(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
+                logging_config=LoggingConfig(**deployment_config.logging_config),
             )
             configure_component_memory_profiler(
                 component_type=ServeComponentType.DEPLOYMENT,
@@ -129,10 +135,6 @@ def create_replica_wrapper(actor_class_name: str):
 
             init_args = cloudpickle.loads(serialized_init_args)
             init_kwargs = cloudpickle.loads(serialized_init_kwargs)
-
-            deployment_config = DeploymentConfig.from_proto_bytes(
-                deployment_config_proto_bytes
-            )
 
             if inspect.isfunction(deployment_def):
                 is_function = True

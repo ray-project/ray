@@ -2,7 +2,7 @@ import copy
 import json
 import logging
 import os
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import ray
 from ray.serve._private.common import ServeComponentType
@@ -24,6 +24,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_TIME,
     SERVE_LOGGER_NAME,
 )
+from ray.serve.schema import AcessLoggingType, EncodingType, LoggingConfig
 
 try:
     import cProfile
@@ -165,12 +166,10 @@ def configure_component_logger(
     *,
     component_name: str,
     component_id: str,
+    logging_config: LoggingConfig,
     component_type: Optional[ServeComponentType] = None,
-    log_level: int = logging.INFO,
-    max_bytes: Optional[int] = None,
-    backup_count: Optional[int] = None,
 ):
-    """Returns a logger to be used by a Serve component.
+    """Configure a logger to be used by a Serve component.
 
     The logger will log using a standard format to make components identifiable
     using the provided name and unique ID for this instance (e.g., replica ID).
@@ -179,9 +178,8 @@ def configure_component_logger(
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
-    logger.setLevel(log_level)
-    if os.environ.get(DEBUG_LOG_ENV_VAR, "0") != "0":
-        logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging_config.log_level)
+    logger.handlers.clear()
 
     factory = logging.getLogRecordFactory()
 
@@ -198,37 +196,42 @@ def configure_component_logger(
 
     logging.setLogRecordFactory(record_factory)
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(ServeFormatter(component_name, component_id))
-    stream_handler.addFilter(log_to_stderr_filter)
-    logger.addHandler(stream_handler)
+    if logging_config._should_enable_stream_logging:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
+        stream_handler.addFilter(log_to_stderr_filter)
+        logger.addHandler(stream_handler)
 
-    logs_dir = get_serve_logs_dir()
-    os.makedirs(logs_dir, exist_ok=True)
-    if max_bytes is None:
+    if logging_config._should_enable_file_logging:
+
+        if logging_config.logs_dir:
+            logs_dir = logging_config.logs_dir
+        else:
+            logs_dir = get_serve_logs_dir()
+        os.makedirs(logs_dir, exist_ok=True)
+
         max_bytes = ray._private.worker._global_node.max_bytes
-    if backup_count is None:
         backup_count = ray._private.worker._global_node.backup_count
 
-    log_file_name = get_component_log_file_name(
-        component_name=component_name,
-        component_id=component_id,
-        component_type=component_type,
-        suffix=".log",
-    )
-
-    file_handler = logging.handlers.RotatingFileHandler(
-        os.path.join(logs_dir, log_file_name),
-        maxBytes=max_bytes,
-        backupCount=backup_count,
-    )
-    if RAY_SERVE_ENABLE_JSON_LOGGING:
-        file_handler.setFormatter(
-            ServeJSONFormatter(component_name, component_id, component_type)
+        log_file_name = get_component_log_file_name(
+            component_name=component_name,
+            component_id=component_id,
+            component_type=component_type,
+            suffix=".log",
         )
-    else:
-        file_handler.setFormatter(ServeFormatter(component_name, component_id))
-    logger.addHandler(file_handler)
+
+        file_handler = logging.handlers.RotatingFileHandler(
+            os.path.join(logs_dir, log_file_name),
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+        )
+        if logging_config.encoding == EncodingType.JSON:
+            file_handler.setFormatter(
+                ServeJSONFormatter(component_name, component_id, component_type)
+            )
+        else:
+            file_handler.setFormatter(ServeFormatter(component_name, component_id))
+        logger.addHandler(file_handler)
 
 
 def configure_component_memory_profiler(

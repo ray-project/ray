@@ -26,9 +26,12 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
+from ray.serve.generated.serve_pb2 import AccessLoggingType as AccessLoggingTypeProto
 from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.generated.serve_pb2 import EncodingType as EncodingTypeProto
+from ray.serve.generated.serve_pb2 import LoggingConfig as LoggingConfigProto
 from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
 from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
 
@@ -118,6 +121,11 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.HeavyWeight,
     )
 
+    logging_config: Optional[dict] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
+
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
@@ -159,6 +167,16 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
+        if data.get("logging_config"):
+            if "encoding" in data["logging_config"]:
+                data["logging_config"]["encoding"] = EncodingTypeProto.Value(
+                    data["logging_config"]["encoding"]
+                )
+            if "access_log" in data["logging_config"]:
+                data["logging_config"]["access_log"] = AccessLoggingTypeProto.Value(
+                    data["logging_config"]["access_log"]
+                )
+            data["logging_config"] = LoggingConfigProto(**data["logging_config"])
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
         )
@@ -206,6 +224,16 @@ class DeploymentConfig(BaseModel):
             data["user_configured_option_names"] = set(
                 data["user_configured_option_names"]
             )
+        if "logging_config" in data:
+            if "encoding" in data["logging_config"]:
+                data["logging_config"]["encoding"] = EncodingTypeProto.Name(
+                    data["logging_config"]["encoding"]
+                )
+            if "access_log" in data["logging_config"]:
+                data["logging_config"]["access_log"] = AccessLoggingTypeProto.Name(
+                    data["logging_config"]["access_log"]
+                )
+
         return cls(**data)
 
     @classmethod

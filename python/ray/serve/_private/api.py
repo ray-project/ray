@@ -20,6 +20,7 @@ from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(__file__)
 
@@ -110,6 +111,7 @@ def _check_http_options(
 def _start_controller(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, str]:
     """Start Ray Serve controller.
@@ -155,10 +157,16 @@ def _start_controller(
     if isinstance(grpc_options, dict):
         grpc_options = gRPCOptions(**grpc_options)
 
+    if logging_config is None:
+        logging_config = LoggingConfig()
+    elif isinstance(logging_config, dict):
+        logging_config = LoggingConfig(**logging_config)
+
     controller = ServeController.options(**controller_actor_options).remote(
         SERVE_CONTROLLER_NAME,
         http_config=http_options,
         grpc_options=grpc_options,
+        logging_config=logging_config,
     )
 
     proxy_handles = ray.get(controller.get_proxies.remote())
@@ -222,6 +230,7 @@ async def serve_start_async(
 def serve_start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -279,7 +288,7 @@ def serve_start(
         pass
 
     controller, controller_name = _start_controller(
-        http_options, grpc_options, **kwargs
+        http_options, grpc_options, logging_config, **kwargs
     )
 
     client = ServeControllerClient(

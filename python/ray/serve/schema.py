@@ -4,6 +4,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Set, Union
+from zlib import crc32
 
 from ray._private.pydantic_compat import (
     BaseModel,
@@ -74,6 +75,15 @@ class EncodingType(str, Enum):
 
 
 @PublicAPI(stability="alpha")
+class AcessLoggingType(str, Enum):
+
+    ALL = "ALL"
+    FILE_ONLY = "FILE_ONLY"
+    STREAM_ONLY = "STREAM_ONLY"
+    DISABLE = "DISABLE"
+
+
+@PublicAPI(stability="alpha")
 class LoggingConfig(BaseModel):
     """Logging config schema for configuring serve components logs."""
 
@@ -88,7 +98,7 @@ class LoggingConfig(BaseModel):
         ),
     )
     log_level: Union[int, str] = Field(
-        default=logging.INFO,
+        default="INFO",
         description=(
             "Log level for the serve logs. Defaults to INFO. You can set it to "
             "'DEBUG' to get more detailed debug logs."
@@ -102,10 +112,10 @@ class LoggingConfig(BaseModel):
             "('/tmp/ray/session_latest/logs/serve/...')."
         ),
     )
-    enable_access_log: bool = Field(
-        default=True,
+    access_log: Union[str, AcessLoggingType] = Field(
+        default="ALL",
         description=(
-            "Whether to enable access logs for each request. Default to True."
+            "Controll how to enable the servelogs. Default to ALL to enable streaming and file access logs."
         ),
     )
 
@@ -116,6 +126,17 @@ class LoggingConfig(BaseModel):
             raise ValueError(
                 f"Got '{v}' for encoding. Encoding must be one "
                 f"of {set(EncodingType)}."
+            )
+
+        return v
+
+    @validator("access_log")
+    def valida_acccess_log(cls, v):
+
+        if v not in list(AcessLoggingType):
+            raise ValueError(
+                f"Got '{v}' for access_log. access_log must be one "
+                f"of {set(AcessLoggingType)}."
             )
 
         return v
@@ -131,6 +152,23 @@ class LoggingConfig(BaseModel):
                 f"{list(logging._nameToLevel.keys())}."
             )
         return logging._nameToLevel[v]
+
+    def _should_enable_stream_logging(self):
+        return self.access_log in [AcessLoggingType.ALL, AcessLoggingType.STREAM_ONLY]
+
+    def _should_enable_file_logging(self):
+        return self.access_log in [AcessLoggingType.ALL, AcessLoggingType.FILE_ONLY]
+
+    @property
+    def version(self):
+        return crc32(
+            (
+                str(self.encoding)
+                + str(self.log_level)
+                + str(self.logs_dir)
+                + str(self.access_log)
+            ).encode("utf-8")
+        )
 
 
 @PublicAPI(stability="stable")

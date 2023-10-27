@@ -609,6 +609,7 @@ def deployment_to_schema(
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
+        "logging_config": d._deployment_config.logging_config,
     }
 
     if include_route_prefix:
@@ -670,6 +671,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
+        logging_config=s.logging_config,
     )
     deployment_config.user_configured_option_names = (
         s.get_user_configured_option_names()

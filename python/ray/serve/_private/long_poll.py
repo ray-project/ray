@@ -40,6 +40,7 @@ class LongPollNamespace(Enum):
 
     RUNNING_REPLICAS = auto()
     ROUTE_TABLE = auto()
+    SYSTEM_LOGGING_CONFIG = auto()
 
 
 @dataclass
