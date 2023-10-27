@@ -72,8 +72,12 @@ class HPUAcceleratorManager(AcceleratorManager):
         if HPU_PACKAGE_AVAILABLE:
             import habana_frameworks.torch.hpu as torch_hpu
             if torch_hpu.is_available():
-                #Fix me, if device is not initialized, we open a device to get the name
-                return "GAUDI" #torch_hpu.get_device_name()
+                if torch_hpu.is_initialized():
+                    return torch_hpu.get_device_name()
+                else:
+                    # return base family name to avoid undesired device open until
+                    # a utility is implemented
+                    return "GAUDI"
             else:
                 logging.info("HPU type cannot be detected")
                 return None
