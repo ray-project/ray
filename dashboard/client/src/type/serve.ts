@@ -78,15 +78,16 @@ export type ServeReplica = {
   log_file_path: string | null;
 };
 
-// Keep in sync with DeploymentMode in python/ray/serve/config.py
-export enum ServeDeploymentMode {
+// Keep in sync with ProxyLocation in python/ray/serve/config.py
+export enum ServeProxyLocation {
+  Disabled = "Disabled",
   NoServer = "NoServer",
   HeadOnly = "HeadOnly",
   EveryNode = "EveryNode",
   FixedNumber = "FixedNumber",
 }
 
-// Keep in sync with HTTPProxyStatus in python/ray/serve/_private/common.py
+// Keep in sync with ProxyStatus in python/ray/serve/_private/common.py
 export enum ServeSystemActorStatus {
   STARTING = "STARTING",
   HEALTHY = "HEALTHY",
@@ -103,7 +104,7 @@ export type ServeSystemActor = {
   log_file_path: string | null;
 };
 
-export type ServeHttpProxy = {
+export type ServeProxy = {
   status: ServeSystemActorStatus;
 } & ServeSystemActor;
 
@@ -117,10 +118,10 @@ export type ServeApplicationsRsp = {
   grpc_options: {
     port: number;
   };
-  proxy_location: ServeDeploymentMode;
+  proxy_location: ServeProxyLocation;
   controller_info: ServeSystemActor;
   proxies: {
-    [name: string]: ServeHttpProxy;
+    [name: string]: ServeProxy;
   } | null;
   applications: {
     [name: string]: ServeApplication;

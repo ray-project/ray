@@ -26,8 +26,11 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
                const OptionalItemCallback<rpc::ActorTableData> &callback),
               (override));
   MOCK_METHOD(Status,
-              AsyncGetAll,
-              (const MultiItemCallback<rpc::ActorTableData> &callback),
+              AsyncGetAllByFilter,
+              (const std::optional<ActorID> &actor_id,
+               const std::optional<JobID> &job_id,
+               const std::optional<std::string> &actor_state_name,
+               const MultiItemCallback<rpc::ActorTableData> &callback),
               (override));
   MOCK_METHOD(Status,
               AsyncGetByName,

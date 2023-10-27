@@ -202,7 +202,7 @@ mypy_on_each() {
 format_frontend() {
   (
     echo "$(date)" "format frontend...."
-    local folder 
+    local folder
     folder="$(pwd)/dashboard/client"
     local filenames
     # shellcheck disable=SC2207

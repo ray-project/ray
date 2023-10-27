@@ -13,7 +13,7 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
 
-from ray._private import ray_constants
+from ray._private.accelerators import TPUAcceleratorManager, tpu
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -65,10 +65,9 @@ def _validate_tpu_config(node: dict):
         )
     if "acceleratorType" in node:
         accelerator_type = node["acceleratorType"]
-        expected_pattern = re.compile(r"^v\d+[a-zA-Z]*-\d+$")
-        if not expected_pattern.match(accelerator_type):
+        if not TPUAcceleratorManager.is_valid_tpu_accelerator_type(accelerator_type):
             raise ValueError(
-                "`acceleratorType` should match v(generation)-(cores/chips)"
+                "`acceleratorType` should match v(generation)-(cores/chips). "
                 f"Got {accelerator_type}."
             )
     else:  # "acceleratorConfig" in node
@@ -102,7 +101,7 @@ def _get_num_tpu_chips(node: dict) -> int:
         accelerator_type = node["acceleratorType"]
         # `acceleratorType` is typically v{generation}-{cores}
         cores = int(accelerator_type.split("-")[1])
-        chips = cores / ray_constants.RAY_TPU_CORES_PER_CHIP
+        chips = cores / tpu.TPU_CORES_PER_CHIP
     if "acceleratorConfig" in node:
         topology = node["acceleratorConfig"]["topology"]
         # `topology` is typically {chips}x{chips}x{chips}
@@ -114,7 +113,7 @@ def _get_num_tpu_chips(node: dict) -> int:
 
 
 def _is_single_host_tpu(node: dict) -> bool:
-    return _get_num_tpu_chips(node) == ray_constants.RAY_TPU_NUM_CHIPS_PER_HOST
+    return _get_num_tpu_chips(node) == tpu.TPU_NUM_CHIPS_PER_HOST
 
 
 def get_node_type(node: dict) -> GCPNodeType:

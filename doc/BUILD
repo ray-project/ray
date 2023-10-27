@@ -25,7 +25,7 @@ py_test(
     name = "datasets_train",
     size = "medium",
     srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "datasets_train"],
+    tags = ["exclusive", "team:ml", "datasets_train", "gpu"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 
@@ -197,18 +197,6 @@ py_test_run_all_subdirectory(
 )
 
 # --------------------------------------------------------------------
-# Test all doc/source/ray-air/doc_code code included in rst/md files.
-# --------------------------------------------------------------------
-
-py_test_run_all_subdirectory(
-    size = "large",
-    include = ["source/ray-air/doc_code/*.py"],
-    exclude = [],
-    extra_srcs = [],
-    tags = ["exclusive", "team:ml"],
-)
-
-# --------------------------------------------------------------------
 # Test all doc/source/train/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
@@ -296,8 +284,6 @@ doctest(
             "source/ray-core/tasks/nested-tasks.rst",
             "source/ray-observability/user-guides/ray-tracing.rst",
             "source/ray-observability/user-guides/cli-sdk.rst",
-            "source/rllib/rllib-env.rst",
-            "source/rllib/rllib-sample-collection.rst",
             "source/serve/advanced-guides/inplace-updates.md",
             "source/serve/deploy-many-models/multi-app.md",
             "source/serve/production-guide/deploy-vm.md",
@@ -308,6 +294,8 @@ doctest(
 	    "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
+            "source/rllib/**/*.rst",
+            "source/rllib/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
         ]
     ),
@@ -325,6 +313,22 @@ doctest(
         ]
     ),
     tags = ["team:core"]
+)
+
+doctest(
+    name="doctest[rllib]",
+    files = glob(
+        include=[
+            "source/rllib/**/*.rst",
+            "source/rllib/**/*.md"
+        ],
+        exclude=[
+            "source/rllib/rllib-env.rst",
+            "source/rllib/rllib-sample-collection.rst",
+        ]
+    ),
+    size = "enormous",
+    tags = ["team:rllib"]
 )
 
 doctest(

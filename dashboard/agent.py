@@ -25,6 +25,7 @@ from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_initialized,
 )
+from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +113,19 @@ class DashboardAgent:
         else:
             aiogrpc.init_grpc_aio()
 
-        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
+        self.server = aiogrpc.server(
+            options=(
+                ("grpc.so_reuseport", 0),
+                (
+                    "grpc.max_send_message_length",
+                    AGENT_GRPC_MAX_MESSAGE_LENGTH,
+                ),  # noqa
+                (
+                    "grpc.max_receive_message_length",
+                    AGENT_GRPC_MAX_MESSAGE_LENGTH,
+                ),
+            )  # noqa
+        )
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
             self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
@@ -218,7 +231,11 @@ class DashboardAgent:
             tasks.append(check_parent_task)
         await asyncio.gather(*tasks)
 
-        await self.server.wait_for_termination()
+        if self.server:
+            await self.server.wait_for_termination()
+        else:
+            while True:
+                await asyncio.sleep(3600)  # waits forever
 
         if self.http_server:
             await self.http_server.cleanup()

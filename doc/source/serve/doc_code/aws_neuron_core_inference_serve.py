@@ -1,8 +1,7 @@
-from contextlib import contextmanager
-
+# flake8: noqa
 # __compile_neuron_code_start__
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
-import torch, torch_neuronx  # noqa
+import torch, torch_neuronx
 
 hf_model = "j-hartmann/emotion-english-distilroberta-base"
 neuron_model = "./sentiment_neuron.pt"
@@ -27,10 +26,11 @@ print(f"Saved Neuron-compiled model {neuron_model}")
 
 
 # __neuron_serve_code_start__
-from fastapi import FastAPI  # noqa
-from ray import serve  # noqa
+from fastapi import FastAPI
+import torch
 
-import torch  # noqa
+from ray import serve
+from ray.serve.handle import DeploymentHandle
 
 app = FastAPI()
 
@@ -38,17 +38,17 @@ hf_model = "j-hartmann/emotion-english-distilroberta-base"
 neuron_model = "./sentiment_neuron.pt"
 
 
-@serve.deployment(num_replicas=1, route_prefix="/")
+@serve.deployment(num_replicas=1)
 @serve.ingress(app)
 class APIIngress:
     def __init__(self, bert_base_model_handle) -> None:
-        self.handle = bert_base_model_handle
+        self.handle: DeploymentHandle = bert_base_model_handle.options(
+            use_new_handle_api=True,
+        )
 
     @app.get("/infer")
     async def infer(self, sentence: str):
-        ref = await self.handle.infer.remote(sentence)
-        result = await ref
-        return result
+        return await self.handle.infer.remote(sentence)
 
 
 @serve.deployment(
@@ -89,17 +89,6 @@ entrypoint = APIIngress.bind(BertBaseModel.bind())
 
 
 # __neuron_serve_code_end__
-
-
-@contextmanager
-def serve_session(deployment):
-    handle = serve.run(deployment)
-    try:
-        yield handle
-    finally:
-        serve.shutdown()
-
-
 if __name__ == "__main__":
     import requests
     import ray
@@ -107,9 +96,9 @@ if __name__ == "__main__":
     # On inf2.8xlarge instance, there will be 2 neuron cores.
     ray.init(resources={"neuron_cores": 2})
 
-    with serve_session(entrypoint):
-        prompt = "Ray is super cool."
-        resp = requests.get(f"http://127.0.0.1:8000/infer?sentence={prompt}")
-        print(resp.status_code, resp.json())
+    serve.run(entrypoint)
+    prompt = "Ray is super cool."
+    resp = requests.get(f"http://127.0.0.1:8000/infer?sentence={prompt}")
+    print(resp.status_code, resp.json())
 
-        assert resp.status_code == 200
+    assert resp.status_code == 200

@@ -1,9 +1,10 @@
 """Unit tests for AIR telemetry."""
 
-from collections import namedtuple
 import json
 import os
+from packaging.version import Version
 
+import pyarrow.fs
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ from ray import train, tune
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.integrations import wandb, mlflow, comet
+from ray.train._internal.storage import StorageContext
 from ray.tune.callback import Callback
 from ray.tune.experiment.experiment import Experiment
 from ray.tune.logger import LoggerCallback
@@ -68,59 +70,35 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-# (nfs: bool, remote_path: str | None, syncing_disabled: bool, expected: str)
-_StorageTestConfig = namedtuple(
-    "StorageTestConfig", ["nfs", "remote_path", "syncing_disabled", "expected"]
-)
-
-_storage_test_configs = [
-    # Local
-    _StorageTestConfig(False, None, False, "driver"),
-    _StorageTestConfig(False, None, True, "local"),
-    # Remote
-    _StorageTestConfig(False, "s3://mock/bucket?param=1", False, "s3"),
-    _StorageTestConfig(False, "gs://mock/bucket?param=1", False, "gs"),
-    _StorageTestConfig(False, "hdfs://mock/bucket?param=1", False, "hdfs"),
-    _StorageTestConfig(False, "file://mock/bucket?param=1", False, "local_uri"),
-    _StorageTestConfig(False, "memory://mock/bucket?param=1", False, "memory"),
-    _StorageTestConfig(
-        False, "custom://mock/bucket?param=1", False, "custom_remote_storage"
-    ),
-    # NFS
-    _StorageTestConfig(True, None, True, "nfs"),
-]
-
-
 @pytest.mark.parametrize(
-    "storage_test_config",
-    _storage_test_configs,
-    ids=[str(config) for config in _storage_test_configs],
+    "storage_path_filesystem_expected",
+    [
+        ("/tmp/test", None, "local"),
+        ("s3://test", None, "s3"),
+        ("gs://test", None, "gcs"),
+        ("mock://test", None, "mock"),
+        ("test", pyarrow.fs.LocalFileSystem(), "custom"),
+    ],
 )
-def test_tag_ray_air_storage_config(
-    tmp_path, storage_test_config, mock_record, monkeypatch
-):
-    if storage_test_config.nfs:
-        import ray.air._internal.remote_storage
+def test_tag_storage_type(storage_path_filesystem_expected, mock_record, monkeypatch):
+    # Don't write anything to storage for the test.
+    monkeypatch.setattr(StorageContext, "_create_validation_file", lambda _: None)
+    monkeypatch.setattr(StorageContext, "_check_validation_file", lambda _: None)
 
-        monkeypatch.setattr(
-            ray.air._internal.remote_storage,
-            "_get_network_mounts",
-            lambda: [str(tmp_path)],
-        )
+    storage_path, storage_filesystem, expected = storage_path_filesystem_expected
 
-    local_path = str(tmp_path / "local_path")
-    sync_config = (
-        train.SyncConfig(syncer=None)
-        if storage_test_config.syncing_disabled
-        else train.SyncConfig()
+    if Version(pyarrow.__version__) < Version("9.0.0") and storage_path.startswith(
+        "gs://"
+    ):
+        pytest.skip("GCS support requires pyarrow >= 9.0.0")
+
+    storage = StorageContext(
+        storage_path=storage_path,
+        experiment_dir_name="test",
+        storage_filesystem=storage_filesystem,
     )
-
-    air_usage.tag_ray_air_storage_config(
-        local_path=local_path,
-        remote_path=storage_test_config.remote_path,
-        sync_config=sync_config,
-    )
-    assert storage_test_config.expected == mock_record[TagKey.AIR_STORAGE_CONFIGURATION]
+    air_usage.tag_storage_type(storage)
+    assert mock_record[TagKey.AIR_STORAGE_CONFIGURATION] == expected
 
 
 class _CustomLoggerCallback(LoggerCallback):

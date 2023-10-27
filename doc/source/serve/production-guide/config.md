@@ -4,153 +4,149 @@
 
 This section should help you:
 
-- understand the Serve config file format.
-- understand how to generate and update a config file for a Serve application.
+- Understand the Serve config file format.
+- Understand how to generate and update a config file for a Serve application.
 
-This config file can be used with the [serve deploy](serve-in-production-deploying) command CLI or embedded in a [RayService](serve-in-production-kubernetes) custom resource in Kubernetes to deploy and update your application in production.
-The file is written in YAML and has the following format:
+You can use the Serve config with the [serve deploy](serve-in-production-deploying) CLI command or embed it in a [RayService](serve-in-production-kubernetes) custom resource in Kubernetes to deploy and update your application in production.
+The config is a YAML file with the following format:
 
 ```yaml
+proxy_location: ...
+
 http_options: 
-
   host: ...
-
   port: ...
-
   request_timeout_s: ...
+  keep_alive_timeout_s: ...
+
+grpc_options:
+  port: ...
+  grpc_servicer_functions: ...
 
 applications:
-  
 - name: ...
-    
   route_prefix: ...
-    
   import_path: ...
-    
   runtime_env: ... 
-
   deployments:
-
   - name: ...
     num_replicas: ...
     ...
-
   - name:
-    ...
-
     ...
 ```
 
-The file contains `http_options` and `applications`. These are the `http_options`:
+The file contains `proxy_location`, `http_options`, `grpc_options`, and `applications`.
 
-- `host` and `port` are HTTP options that determine the host IP address and the port for your Serve application's HTTP proxies. These are optional settings and can be omitted. By default, the `host` will be set to `0.0.0.0` to expose your deployments publicly, and the port will be set to `8000`. If you're using Kubernetes, setting `host` to `0.0.0.0` is necessary to expose your deployments outside the cluster.
-- `request_timeout_s` is a field in the `http_options` that allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. This config is global to your Ray cluster, and it cannot be updated during runtime. By default, the Serve HTTP proxy retries up to `10` times when a response is not received due to failures (e.g. network disconnect, request timeout, etc.). By default, there is no request timeout. 
+The `proxy_location` field configures where to run proxies to handle traffic to the cluster. You can set `proxy_location` to the following values:
+- EveryNode (default): Run a proxy on every node in the cluster that has at least one replica actor.
+- HeadOnly: Only run a single proxy on the head node.
+- Disabled: Don't run proxies at all. Set this value if you are only making calls to your applications using deployment handles.
+
+The `http_options` are as follows. Note that the HTTP config is global to your Ray cluster, and you can't update it during runtime.
+
+- **`host`**: The host IP address for Serve's HTTP proxies. This is optional and can be omitted. By default, the `host` is set to `0.0.0.0` to expose your deployments publicly. If you're using Kubernetes, you must set `host` to `0.0.0.0` to expose your deployments outside the cluster.
+- **`port`**: The port for Serve's HTTP proxies. This parameter is optional and can be omitted. By default, the port is set to `8000`. 
+- **`request_timeout_s`**: Allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. By default, the Serve HTTP proxy retries up to `10` times when a response is not received due to failures (for example, network disconnect, request timeout, etc.) By default, there is no request timeout. 
+- **`keep_alive_timeout_s`**: Allows you to set the keep alive timeout for the HTTP proxy. For more details, see [here](serve-http-guide-keep-alive-timeout)
+
+The `grpc_options` are as follows. Note that the gRPC config is global to your Ray cluster, and you can't update it during runtime.
+- **`port`**: The port that the gRPC proxies listen on. These are optional settings and can be omitted. By default, the port is
+  set to `9000`.
+- **`grpc_servicer_functions`**: List of import paths for gRPC `add_servicer_to_server` functions to add to Serve's gRPC proxy. The servicer functions need to be importable from the context of where Serve is running. This defaults to an empty list, which means the gRPC server isn't started.
+
+These are the `grpc_options`:
+
+- `port` are gRPC options that determine the host port for your Serve application's gRPC
+  proxies. These are optional settings and can be omitted. By default, the port is
+  set to `9000`.
+- `grpc_servicer_functions` is a list of import paths for gRPC `add_servicer_to_server`
+  functions to add to Serve’s gRPC proxy. It also serves as the flag to determine
+  whether to start gRPC server. The default is an empty list, meaning no gRPC server is
+  started.
 
 These are the fields per application:
 
-- `name` - The names for each application are auto-generated by `serve build`. The name per application must be unique. 
-- `route_prefix` - An application can be called via HTTP at the specified route prefix. It defaults to `/`. The route prefix for each application must be unique 
-- An `import_path`, which is the path to your top-level Serve deployment (or the same path passed to `serve run`). The most minimal config file consists of only an `import_path`.
-- A `runtime_env` that defines the environment that the application will run in. This is used to package application dependencies such as `pip` packages (see {ref}`Runtime Environments <runtime-environments>` for supported fields). The `import_path` must be available _within_ the `runtime_env` if it's specified. The Serve config's `runtime_env` can only use [remote URIs](remote-uris) in its `working_dir` and `py_modules`; it cannot use local zip files or directories. [More details on runtime env](serve-runtime-env).
-- A list of `deployments`. This is optional and allows you to override the `@serve.deployment` settings specified in the deployment graph code. Each entry in this list must include the deployment `name`, which must match one in the code. If this section is omitted, Serve launches all deployments in the graph with the settings specified in the code.
+- **`name`**: The names for each application that are auto-generated by `serve build`. The name of each application must be unique. 
+- `route_prefix`: An application can be called via HTTP at the specified route prefix. It defaults to `/`. The route prefix for each application must be unique.
+- **`import_path`**: The path to your top-level Serve deployment (or the same path passed to `serve run`). The most minimal config file consists of only an `import_path`.
+- **`runtime_env`**: Defines the environment that the application runs in. Use this parameter to package application dependencies such as `pip` packages (see {ref}`Runtime Environments <runtime-environments>` for supported fields). The `import_path` must be available _within_ the `runtime_env` if it's specified. The Serve config's `runtime_env` can only use [remote URIs](remote-uris) in its `working_dir` and `py_modules`; it can't use local zip files or directories. [More details on runtime env](serve-runtime-env).
+- **`deployments (optional)`**: A list of deployment options that allows you to override the `@serve.deployment` settings specified in the deployment graph code. Each entry in this list must include the deployment `name`, which must match one in the code. If this section is omitted, Serve launches all deployments in the graph with the settings specified in the code. See how to [configure serve deployment options](serve-configure-deployment).
+- **`args`**: Arguments that are passed to the [application builder](serve-app-builder-guide).
 
-Below is an equivalent config for the [`FruitStand` example](serve-in-production-example):
+Below is a config for the [`Text ML Model` example](serve-in-production-example) that follows the format explained above:
 
 ```yaml
+proxy_location: EveryNode
+
+http_options:
+  host: 0.0.0.0
+  port: 8000
+
 applications:
-
-- name: app1
-
+- name: default
   route_prefix: /
-
-  import_path: fruit:deployment_graph
-
-  runtime_env: {}
-
+  import_path: text_ml:app
+  runtime_env:
+    pip:
+      - torch
+      - transformers
   deployments:
-
-  - name: MangoStand
+  - name: Translator
+    num_replicas: 1
     user_config:
-      price: 3
-
-  - name: OrangeStand
-    user_config:
-      price: 2
-
-  - name: PearStand
-    user_config:
-      price: 4
-
-  - name: FruitMarket
-    num_replicas: 2
-
-  - name: DAGDriver
+      language: french
+  - name: Summarizer
+    num_replicas: 1
 ```
 
-The file uses the same `fruit:deployment_graph` import path that was used with `serve run` and it has five entries in the `deployments` list– one for each deployment. All the entries contain a `name` setting and some other configuration options such as `num_replicas` or `user_config`.
+The file uses the same `text_ml:app` import path that was used with `serve run`, and has two entries in the `deployments` list for the translation and summarization deployments. Both entries contain a `name` setting and some other configuration options such as `num_replicas`.
 
 :::{tip}
-Each individual entry in the `deployments` list is optional. In the example config file above, we could omit the `PearStand`, including its `name` and `user_config`, and the file would still be valid. When we deploy the file, the `PearStand` deployment will still be deployed, using the configurations set in the `@serve.deployment` decorator from the deployment graph's code.
+Each individual entry in the `deployments` list is optional. In the example config file above, you could omit the `Summarizer`, including its `name` and `num_replicas`, and the file would still be valid. When you deploy the file, the `Summarizer` deployment is still deployed, using the configurations set in the `@serve.deployment` decorator from the application's code.
 :::
 
 We can also auto-generate this config file from the code. The `serve build` command takes an import path to your deployment graph and it creates a config file containing all the deployments and their settings from the graph. You can tweak these settings to manage your deployments in production.
 
-Using the `FruitStand` deployment graph example:
-
 ```console
 $ ls
-fruit.py
+text_ml.py
 
-$ serve build fruit:deployment_graph -o fruit_config.yaml
+$ serve build text_ml:app -o serve_config.yaml
 
 $ ls
-fruit.py
-fruit_config.yaml
+text_ml.py
+serve_config.yaml
 ```
 
-(fruit-config-yaml)=
-
-The `fruit_config.yaml` file contains:
+(production-config-yaml)=
+The `serve_config.yaml` file contains:
 
 ```yaml
+proxy_location: EveryNode
+
 http_options:
-
   host: 0.0.0.0
-
   port: 8000
 
+grpc_options:
+  port: 9000
+  grpc_servicer_functions: []
+
 applications:
-
-- name: app1
-
+- name: default
   route_prefix: /
-
-  import_path: fruit:deployment_graph
-
+  import_path: text_ml:app
   runtime_env: {}
-
   deployments:
-
-  - name: MangoStand
+  - name: Translator
+    num_replicas: 1
     user_config:
-      price: 3
-
-  - name: OrangeStand
-    user_config:
-      price: 2
-
-  - name: PearStand
-    user_config:
-      price: 4
-
-  - name: FruitMarket
-    num_replicas: 2
-
-  - name: DAGDriver
+      language: french
+  - name: Summarizer
 ```
 
-Note that the `runtime_env` field will always be empty when using `serve build` and must be set manually.
+Note that the `runtime_env` field will always be empty when using `serve build` and must be set manually. In this case, if `torch` and `transformers` are not installed globally, you should include these two pip packages in the `runtime_env`.
 
-Additionally, `serve build` includes the default `host` and `port` in its
-autogenerated files. You can modify these parameters to select a different host
-and port.
+Additionally, `serve build` includes the default HTTP and gPRC options in its
+autogenerated files. You can modify these parameters.

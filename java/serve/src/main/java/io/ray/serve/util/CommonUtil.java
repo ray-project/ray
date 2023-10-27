@@ -10,4 +10,8 @@ public class CommonUtil {
     }
     return controllerName + ":" + actorName;
   }
+
+  public static String getDeploymentName(String deploymentDef) {
+    return StringUtils.substringAfterLast(StringUtils.substringAfterLast(deploymentDef, "."), "$");
+  }
 }

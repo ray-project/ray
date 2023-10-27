@@ -62,6 +62,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                             1,
                             /*returns_dynamic=*/false,
                             /*is_streaming_generator*/ false,
+                            /*generator_backpressure_num_objects*/ -1,
                             required_resources,
                             required_placement_resources,
                             "",
@@ -93,6 +94,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
     builder.AddArg(*invocation.args[i]);
   }
   auto task_specification = builder.Build();
+
   ObjectID return_object_id = task_specification.ReturnId(0);
 
   std::shared_ptr<msgpack::sbuffer> actor;

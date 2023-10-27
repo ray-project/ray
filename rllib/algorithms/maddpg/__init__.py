@@ -3,4 +3,5 @@ from ray.rllib.algorithms.maddpg.maddpg import (
     MADDPGConfig,
 )
 
+
 __all__ = ["MADDPGConfig", "MADDPG"]

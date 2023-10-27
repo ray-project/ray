@@ -166,6 +166,7 @@ RayTask CreateTask(
                                  0,
                                  /*returns_dynamic=*/false,
                                  /*is_streaming_generator*/ false,
+                                 /*generator_backpressure_num_objects*/ -1,
                                  required_resources,
                                  {},
                                  "",
@@ -989,6 +990,33 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
             task.GetTaskSpecification().TaskId());
 
   AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, TestIdleNode) {
+  RayTask task = CreateTask({{}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(scheduler_->GetLocalResourceManager().IsLocalNodeIdle());
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.TriggerCallbacks();
+
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_FALSE(scheduler_->GetLocalResourceManager().IsLocalNodeIdle());
+  ASSERT_EQ(node_info_calls_, 0);
 }
 
 TEST_F(ClusterTaskManagerTest, NotOKPopWorkerAfterDrainingTest) {

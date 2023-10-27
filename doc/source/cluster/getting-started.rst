@@ -92,5 +92,3 @@ What's next?
             :expand:
 
             Job Submission
-
-.. include:: /_includes/clusters/announcement_bottom.rst

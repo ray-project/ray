@@ -61,7 +61,7 @@ pip_parse(
 pip_parse(
     name = "py_deps_ray_ci",
     python_interpreter_target = python39,
-    requirements_lock = "//release:requirements_buildkite.txt",
+    requirements_lock = "//ci/ray_ci:requirements.txt",
 )
 
 load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")

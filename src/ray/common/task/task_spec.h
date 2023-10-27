@@ -328,6 +328,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsStreamingGenerator() const;
 
+  int64_t GeneratorBackpressureNumObjects() const;
+
   std::vector<ObjectID> DynamicReturnIds() const;
 
   void AddDynamicReturnId(const ObjectID &dynamic_return_id);
@@ -501,10 +503,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
   static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
   static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
-      GUARDED_BY(mutex_);
-  static int next_sched_id_ GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
+  static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
 };
 
 /// \class WorkerCacheKey
