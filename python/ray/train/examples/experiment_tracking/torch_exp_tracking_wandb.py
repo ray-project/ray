@@ -3,6 +3,7 @@
 
 # __start__
 # Run the following script with the WANDB_API_KEY env var set.
+from filelock import FileLock
 import os
 
 import torch
@@ -40,9 +41,10 @@ def train_func(config):
     transform = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
     )
-    train_data = datasets.FashionMNIST(
-        root="./data", train=True, download=True, transform=transform
-    )
+    with FileLock("./data.lock"):
+        train_data = datasets.FashionMNIST(
+            root="./data", train=True, download=True, transform=transform
+        )
     train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
