@@ -93,7 +93,7 @@ steps:
   - label: ":ray-serve: serve: doc gpu tests"
     tags: 
       - serve
-      - ci_doc
+      - doc
       - gpu
     instance_type: gpu
     commands:
