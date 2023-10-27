@@ -1,5 +1,23 @@
 group: data tests
 steps:
+  # builds
+  - name: data6build
+    wanda: ci/docker/data6.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  - name: data12build
+    wanda: ci/docker/data12.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  - name: datanbuild
+    wanda: ci/docker/datan.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  - name: datamongobuild
+    wanda: ci/docker/datamongo.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  # tests
   - label: ":database: data: arrow 6 tests"
     tags: 
       - python
@@ -59,6 +77,20 @@ steps:
         --build-name docgpubuild
         --only-tags gpu
     depends_on: docgpubuild
+    job_env: forge
+
+  - label: ":database: data: integration tests"
+    tags:
+      - python
+      - data
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data 
+        --build-name datamongobuild
+        --build-type java
+        --only-tags data_integration
+        --except-tags doctest
+    depends_on: datamongobuild
     job_env: forge
 
   - label: ":database: data: flaky tests"
