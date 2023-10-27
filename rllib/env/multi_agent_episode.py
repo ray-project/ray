@@ -58,9 +58,10 @@ class MultiAgentEpisode:
             observations: A dictionary mapping from agent ids to observations.
                 Can be None. If provided, it should be provided together with
                 all other episode data (actions, rewards, etc.)
-            actions: A dictionary mapping from agent ids to corresponding actions.
-                Can be None. If provided, it should be provided together with
-                all other episode data (observations, rewards, etc.).
+            actions: A dictionary mapping from agent ids to corresponding
+                actions. Can be None. If provided, it should be provided
+                together with all other episode data (observations, rewards,
+                etc.).
             rewards: A dictionary mapping from agent ids to corresponding rewards.
                 Can be None. If provided, it should be provided together with
                 all other episode data (observations, rewards, etc.).
@@ -79,7 +80,7 @@ class MultiAgentEpisode:
             is_truncated: Optional. A boolean, defining, if an environment is
                 truncated. The default is `False`, i.e. the episode is ongoing.
             render_images: Optional. A list of RGB uint8 images from rendering
-                the environment; the images include the corresponding rewards.
+                the environment.
             extra_model_outputs: Optional. A dictionary mapping agent ids to their
                 corresponding extra model outputs. Each of the latter is a list of
                 dictionaries containing specific model outputs for the algorithm
@@ -87,8 +88,6 @@ class MultiAgentEpisode:
                 If data is provided it should be complete (i.e. observations,
                 actions, rewards, is_terminated, is_truncated, and all necessary
                 `extra_model_outputs`).
-
-        Returns: A `MultiAgentEpisode` instance.
         """
 
         self.id_: str = id_ or uuid.uuid4().hex
@@ -143,8 +142,13 @@ class MultiAgentEpisode:
     def concat_episode(self, episode_chunk: "MultiAgentEpisode") -> None:
         """Adds the given `episode_chunk` to the right side of self.
 
-        This is used for concatenating ongoing episodes in the buffer with
-        ongoing episodes in the sampler.
+        For concatenating episodes the following rules hold:
+            - IDs are identical.
+            - timesteps match (`t` of `self` matches `t_started` of `episode_chunk`).
+
+        Args:
+            episode_chunk: `MultiAgentEpsiode` instance that should be concatenated
+                to `self`.
         """
         assert episode_chunk.id_ == self.id_
         assert not self.is_done
@@ -306,7 +310,7 @@ class MultiAgentEpisode:
         self,
         *,
         initial_observation: MultiAgentDict,
-        initial_info: MultiAgentDict,
+        initial_info: Optional[MultiAgentDict] = None,
         initial_state: Optional[MultiAgentDict] = None,
         initial_render_image: Optional[np.ndarray] = None,
     ) -> None:
@@ -316,6 +320,14 @@ class MultiAgentEpisode:
             initial_observation: Obligatory. A dictionary, mapping agent ids
                 to initial observations. Note that not all agents must have
                 an initial observation.
+            initial_info: Optional. A dictionary, mapping agent ids to initial
+                infos. Note that not all agents must have an initial info.
+            initial_state: Optional. A dictionary, mapping agent ids to the
+                initial hidden states of their corresponding model (`RLModule`).
+                Note, this is only available, if the models are stateful. Note
+                also that not all agents must have an initial state at `t=0`.
+            initial_render_image: An RGB uint8 image from rendering the
+                environment.
         """
         assert not self.is_done
         # Assume that this episode is completely empty and has not stepped yet.
@@ -341,7 +353,7 @@ class MultiAgentEpisode:
             self.agent_episodes[agent_id].add_initial_observation(
                 # Note, initial observation has to be provided.
                 initial_observation=initial_observation[agent_id],
-                initial_info=initial_info[agent_id],
+                initial_info=None if initial_info is None else initial_info[agent_id],
                 initial_state=None
                 if initial_state is None
                 else initial_state[agent_id],
@@ -352,14 +364,42 @@ class MultiAgentEpisode:
         observation: MultiAgentDict,
         action: MultiAgentDict,
         reward: MultiAgentDict,
-        info: MultiAgentDict,
         *,
+        info: Optional[MultiAgentDict] = None,
         state: Optional[MultiAgentDict] = None,
         is_terminated: Optional[bool] = None,
         is_truncated: Optional[bool] = None,
         render_image: Optional[np.ndarray] = None,
         extra_model_output: Optional[MultiAgentDict] = None,
     ) -> None:
+        """Adds a timestep to the episode.
+
+        Args:
+            observation: Mandatory. A dictionary, mapping agent ids to their
+                corresponding observations. Note that not all agents must have stepped
+                a this timestep.
+            action: Mandatory. A dictionary, mapping agent ids to their
+                corresponding actions. Note that not all agents must have stepped
+                a this timestep.
+            reward: Mandatory. A dictionary, mapping agent ids to their
+                corresponding observations. Note that not all agents must have stepped
+                a this timestep.
+            info: Optional. A dictionary, mapping agent ids to their
+                corresponding info. Note that not all agents must have stepped
+                a this timestep.
+            state: Optional. A dictionary, mapping agent ids to their
+                corresponding hidden model state. Note, this is only available for a
+                stateful model. Also note that not all agents must have stepped a this
+                timestep.
+            is_terminated: A boolean indicating, if the environment has been
+                terminated.
+            is_truncated: A boolean indicating, if the environment has been
+                truncated.
+            render_image: Optional. An RGB uint8 image from rendering the environment.
+            extra_model_output: Optional. A dictionary, mapping agent ids to their
+                corresponding specific model outputs (also in a dictionary; e.g.
+                `vf_preds` for PPO).
+        """
         # Cannot add data to an already done episode.
         assert not self.is_done
 
@@ -387,7 +427,7 @@ class MultiAgentEpisode:
                 observation[agent_id],
                 action[agent_id],
                 reward[agent_id],
-                info[agent_id],
+                info=None if info is None else info[agent_id],
                 state=None if state is None else state[agent_id],
                 is_terminated=None
                 if is_terminated is None
@@ -409,6 +449,19 @@ class MultiAgentEpisode:
 
         Note that in a multi-agent environment this does not necessarily
         correspond to single agents having terminated or being truncated.
+
+        `self.is_terminated` should be `True`, if all agents are terminated and
+        `self.is_truncated` should be `True`, if all agents are truncated. If
+        only one or more (but not all!) agents are `terminated/truncated the
+        `MultiAgentEpisode.is_terminated/is_truncated` should be `False`. This
+        information about single agent's terminated/truncated states can always
+        be retrieved from the `SingleAgentEpisode`s inside the 'MultiAgentEpisode`
+        one.
+
+        If all agents are either terminated or truncated, but in a mixed fashion,
+        i.e. some are terminated and others are truncated: This is currently
+        undefined and could potentially be a problem (if a user really implemented
+        such a multi-agent env that behaves this way).
 
         Returns:
             Boolean defining if an episode has either terminated or truncated.
