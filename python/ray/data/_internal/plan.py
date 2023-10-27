@@ -591,7 +591,7 @@ class ExecutionPlan:
                     StreamingExecutor,
                 )
 
-                metrics_tag = (self._dataset_name or "") + self._dataset_uuid
+                metrics_tag = (self._dataset_name or "dataset") + self._dataset_uuid
                 executor = StreamingExecutor(
                     copy.deepcopy(context.execution_options),
                     metrics_tag,
