@@ -200,6 +200,7 @@ class _StatsActor:
             description="Seconds spent in user code",
             tag_keys=tags_keys,
         )
+
     def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
         self.fifo_queue.append(stats_uuid)
