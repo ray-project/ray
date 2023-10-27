@@ -98,6 +98,16 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
         except Exception as e:
             self._done = True
             raise e from None
+        except asyncio.CancelledError as e:
+            # This cancellation can happen from client dropped connection before the
+            # request is completed. If self._response is not already canceled, we want
+            # to explicit cancel the task, so it doesn't waste cluster resource in this
+            # case and can be terminated gracefully.
+            if not self._response.cancelled():
+                self._response.cancel()
+                self._done = True
+
+            raise e from None
 
         return result
 

@@ -637,9 +637,12 @@ class DeploymentResponse(_DeploymentResponseBase):
 
     def __await__(self):
         """Yields the final result of the deployment handle call."""
-        obj_ref = yield from asyncio.wrap_future(self._object_ref_future)
-        result = yield from obj_ref.__await__()
-        return result
+        try:
+            obj_ref = yield from asyncio.wrap_future(self._object_ref_future)
+            result = yield from obj_ref.__await__()
+            return result
+        except ray.exceptions.TaskCancelledError:
+            print(f"Task {obj_ref} is already cancelled.")
 
     def result(self, timeout_s: Optional[float] = None) -> Any:
         """Fetch the result of the handle call synchronously.

@@ -1,5 +1,7 @@
 import os
 import sys
+import time
+import asyncio
 
 import grpc
 
@@ -515,6 +517,60 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
 
     assert rpc_error.code() == grpc.StatusCode.INTERNAL
     assert error_message in rpc_error.details()
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bool):
+    """Test gRPC request client cancelled.
+
+    When the request error out, gRPC proxy should return INTERNAL status and the error
+    message in the response for both unary and streaming request.
+    """
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+    wait_time = 1
+    wait_period = 0.1
+
+    @serve.deployment
+    class HelloModel:
+        async def __call__(self, user_message):
+            start = time.time()
+            while time.time() - start < wait_time:
+                print("sleeping", time.time() - start)
+                await asyncio.sleep(wait_period)
+            return serve_pb2.UserDefinedResponse(greeting="hello")
+
+
+        async def Streaming(self, user_message):
+            start = time.time()
+            while time.time() - start < wait_time:
+                print("sleeping", time.time() - start)
+                await asyncio.sleep(wait_period)
+                yield serve_pb2.UserDefinedResponse(greeting="hello")
+
+    model = HelloModel.bind()
+    app_name = "app1"
+    serve.run(target=model, name=app_name)
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    if streaming:
+        response = stub.Streaming(request=request)
+        print("streaming response", response)
+    else:
+        response = stub.__call__(request=request)
+        print("unary response", response)
 
 
 if __name__ == "__main__":
