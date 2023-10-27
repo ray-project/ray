@@ -186,6 +186,7 @@ def _start_controller(
 async def serve_start_async(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
