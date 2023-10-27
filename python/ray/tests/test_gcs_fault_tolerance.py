@@ -1038,7 +1038,6 @@ def test_job_finished_after_head_node_restart(
     # restart head node
     new_head_node = cluster.add_node()
     ray.init(cluster.address)
-    new_gcs_address = new_head_node.address
 
     # verify if job is finished, which marked is_dead
     def _check_job_is_dead(submission_id: str) -> bool:

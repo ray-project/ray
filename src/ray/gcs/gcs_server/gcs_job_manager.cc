@@ -204,11 +204,11 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         job_data_key_to_indices[job_data_key].push_back(i);
       }
 
+      WorkerID worker_id = WorkerID::FromBinary(data.second.driver_address().worker_id());
+
       // If job is not dead, get is_running_tasks from the core worker for the driver.
       if (data.second.is_dead()) {
         reply->mutable_job_info_list(i)->set_is_running_tasks(false);
-        WorkerID worker_id =
-            WorkerID::FromBinary(data.second.driver_address().worker_id());
         core_worker_clients_.Disconnect(worker_id);
         (*num_processed_jobs)++;
         ;
@@ -218,16 +218,12 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
         std::unique_ptr<rpc::NumPendingTasksRequest> request(
             new rpc::NumPendingTasksRequest());
-        RAY_LOG(DEBUG) << "SendNumPendingTask: "
-                       << WorkerID::FromBinary(data.second.driver_address().worker_id());
+        RAY_LOG(DEBUG) << "SendNumPendingTask: " << worker_id;
         client->NumPendingTasks(
             std::move(request),
-            [worker_id = data.second.driver_address().worker_id(),
-             reply,
-             i,
-             num_processed_jobs,
-             try_send_reply](const Status &status,
-                             const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
+            [worker_id, reply, i, num_processed_jobs, try_send_reply](
+                const Status &status,
+                const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
               RAY_LOG(DEBUG) << "SendNumPendingTaskReply: " << worker_id;
               if (!status.ok()) {
                 RAY_LOG(WARNING) << "Failed to get is_running_tasks from core worker: "
