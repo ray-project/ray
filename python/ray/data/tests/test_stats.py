@@ -3,7 +3,7 @@ import time
 from collections import Counter
 from contextlib import contextmanager
 from typing import List, Optional
-from unittest.mock import patch, PropertyMock
+from unittest.mock import patch
 
 import numpy as np
 import pytest
