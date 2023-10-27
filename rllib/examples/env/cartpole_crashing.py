@@ -72,6 +72,13 @@ class CartPoleCrashing(CartPoleEnv):
             )
         )
 
+        # Only ever hang, if on certain worker indices.
+        faulty_indices = config.get("hang_on_worker_indices", None)
+        if faulty_indices and config.worker_index not in faulty_indices:
+            self.p_hang = 0.0
+            self.p_hang_reset = 0.0
+            self.hang_after_n_steps = None
+
         # Timestep counter for the ongoing episode.
         self.timesteps = 0
 
@@ -131,10 +138,9 @@ class CartPoleCrashing(CartPoleEnv):
         return super().step(action)
 
     def _should_crash(self, p):
-        print(f"inside _should_crash() p={p}")
         rnd = self._rng.rand()
         if rnd < p:
-            print(f" -> return True ({rnd} < {p})")
+            print(f"Should crash! ({rnd} < {p})")
             return True
         elif self.crash_after_n_steps is not None:
             if self._crash_after_n_steps is None:
@@ -146,10 +152,9 @@ class CartPoleCrashing(CartPoleEnv):
                     )
                 )
             if self._crash_after_n_steps == self.timesteps:
-                print(f" -> return True (n steps)")
+                print(f"Should crash! (after {self.timesteps} steps)")
                 return True
 
-        print(f" -> return False")
         return False
 
     def _hang_if_necessary(self, p):
@@ -169,11 +174,12 @@ class CartPoleCrashing(CartPoleEnv):
                 hang = True
 
         if hang:
-            print("hanging ...")
-            time.sleep(
+            sec = (
                 self.hang_time_sec if not isinstance(self.hang_time_sec, tuple)
                 else np.random.uniform(self.hang_time_sec[0], self.hang_time_sec[1])
             )
+            print(f"Will hang for {sec}sec ...")
+            time.sleep(sec)
 
 
 MultiAgentCartPoleCrashing = make_multi_agent(lambda config: CartPoleCrashing(config))

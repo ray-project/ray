@@ -1,5 +1,5 @@
 """
-Tests, whether APPO can learn in a fault tolerant fashion.
+Tests, whether APPO can learn in a fault-tolerant fashion.
 
 Workers will be configured to automatically get recreated upon failures (here: within
 the environment).
@@ -8,6 +8,9 @@ The environment we use here is configured to crash with a certain probability on
 """
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
+from ray import tune
+
+tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
 
 
 stop = {
@@ -18,7 +21,7 @@ stop = {
 config = (
     APPOConfig()
     .environment(
-        CartPoleCrashing,
+        "env",
         env_config={
             # Crash roughly every 300 ts. This should be ok to measure 180.0
             # reward (episodes are 200 ts long).
