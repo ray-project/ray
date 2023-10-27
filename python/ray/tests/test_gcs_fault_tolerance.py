@@ -19,6 +19,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
 )
 from ray.job_submission import JobSubmissionClient, JobStatus
+from ray._raylet import GcsClient
 
 import psutil
 
@@ -992,61 +993,60 @@ def test_job_finished_after_head_node_restart(
     cluster = ray_start_cluster_head_with_external_redis
     head_node = cluster.head_node
 
-    client = JobSubmissionClient(head_node.address)
-
     # submit job
-    job_id = client.submit_job(
+    client = JobSubmissionClient(head_node.address)
+    submission_id = client.submit_job(
         entrypoint="python -c 'import ray; ray.init(); print(ray.cluster_resources()); \
-            import time; time.sleep(100)'"
+            import time; time.sleep(1000)'"
     )
 
-    def _check_job_status(client, job_status):
-        return client.get_job_info(job_id).status == job_status
-
-    wait_for_condition(_check_job_status, client=client, job_status=JobStatus.RUNNING)
-
-    # kill and restart head node
-    head_node.kill_raylet()
-    wait_for_condition(
-        lambda: not cluster.global_state.node_table()[0]["Alive"], timeout=30
-    )
-
-    wait_for_condition(_check_job_status, client=client, job_status=JobStatus.FAILED)
-
-    new_head_node = cluster.head_node
-    new_gcs_address = new_head_node.address
-
-    async def async_get_all_job_info():
-        gcs_aio_client = gcs_utils.GcsAioClient(
-            address=new_gcs_address, nums_reconnect_retry=20
-        )
-        return await gcs_aio_client.get_all_job_info()
-
-    def get_job_info(job_id):
-        import asyncio
-
-        asyncio.set_event_loop(asyncio.new_event_loop())
-        all_job_info = get_or_create_event_loop().run_until_complete(
-            async_get_all_job_info()
-        )
+    def get_job_info(submission_id):
+        gcs_client = GcsClient(cluster.address)
+        all_job_info = gcs_client.get_all_job_info()
 
         return list(
             filter(
                 lambda job_info: "job_submission_id" in job_info.config.metadata
-                and job_info.config.metadata["job_submission_id"] == job_id,
+                and job_info.config.metadata["job_submission_id"] == submission_id,
                 list(all_job_info.values()),
             )
         )
 
+    def _check_job_running(client: JobSubmissionClient, submission_id: str) -> bool:
+        job_infos = get_job_info(submission_id)
+        if len(job_infos) == 0:
+            return False
+        job_info = job_infos[0].job_info
+        return job_info.status == JobStatus.RUNNING
+
+    # wait until job info is written in redis
+    wait_for_condition(_check_job_running, client=client, submission_id=submission_id, timeout=10)
+
+    # kill head node
+    ray.shutdown()
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    cluster.remove_node(head_node)
+
+    # Wait to prevent the gcs server process becoming zombie.
+    gcs_server_process.wait()
+    wait_for_pid_to_exit(gcs_server_pid, 1000)
+
+    # restart head node
+    new_head_node = cluster.add_node()
+    ray.init(cluster.address)
+    new_gcs_address = new_head_node.address
+
     # verify if job is finished, which marked is_dead
-    def _check_job_is_dead(job_id: str) -> bool:
-        job_infos = get_job_info(job_id)
+    def _check_job_is_dead(submission_id: str) -> bool:
+        job_infos = get_job_info(submission_id)
         if len(job_infos) == 0:
             return False
         job_info = job_infos[0]
         return job_info.is_dead
 
-    wait_for_condition(_check_job_is_dead, job_id=job_id, timeout=20)
+    wait_for_condition(_check_job_is_dead, submission_id=submission_id, timeout=10)
 
 
 if __name__ == "__main__":
