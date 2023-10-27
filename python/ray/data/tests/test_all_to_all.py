@@ -17,6 +17,9 @@ from ray.data.tests.util import column_udf, named_values
 from ray.tests.conftest import *  # noqa
 
 
+RANDOM_SEED = 123
+
+
 def test_zip(ray_start_regular_shared):
     ds1 = ray.data.range(5, parallelism=5)
     ds2 = ray.data.range(5, parallelism=5).map(column_udf("id", lambda x: x + 1))
@@ -337,9 +340,8 @@ def test_groupby_multiple_keys_tabular_count(
     ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
 ):
     # Test built-in count aggregation
-    seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
-    random.seed(seed)
+    print(f"Seeding RNG for test_groupby_arrow_count with: {RANDOM_SEED}")
+    random.seed(RANDOM_SEED)
     xs = list(range(100))
     random.shuffle(xs)
 
