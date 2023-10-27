@@ -26,7 +26,7 @@ from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
-STATS_UPDATE_INTERVAL_SECONDS = 10
+STATS_UPDATE_INTERVAL_SECONDS = 30
 
 
 def iter_batches(
