@@ -156,6 +156,7 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif (
                 changed_file.startswith("python/ray/data")
+                or changed_file == ".buildkite/pipeline.ml.yml"
                 or changed_file == ".buildkite/data.rayci.yml"
                 or changed_file == "ci/docker/data.build.Dockerfile"
                 or changed_file == "ci/docker/data.build.wanda.yaml"
