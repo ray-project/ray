@@ -17,11 +17,11 @@ class SingleAgentEpisode:
         rewards: List[SupportsFloat] = None,
         infos: List[Dict] = None,
         states=None,
-        t_started: int = None,
+        t_started: Optional[int] = None,
         is_terminated: bool = False,
         is_truncated: bool = False,
-        render_images: List[np.ndarray] = None,
-        extra_model_outputs: Dict[str, Any] = None,
+        render_images: Optional[List[np.ndarray]] = None,
+        extra_model_outputs: Optional[Dict[str, Any]] = None,
     ) -> "SingleAgentEpisode":
         """Initializes a `SingleAgentEpisode` instance.
 
@@ -68,15 +68,12 @@ class SingleAgentEpisode:
                 truncated. Note, this parameter is only needed, if episode data is
                 provided in the constructor. The default is `False`.
             render_images: Optional. A list of RGB uint8 images from rendering
-                the environment; the images include the corresponding rewards.
+                the environment.
             extra_model_outputs: Optional. A list of dictionaries containing specific
                 model outputs for the algorithm used (e.g. `vf_preds` and `action_logp`
                 for PPO) from a rollout. If data is provided it should be complete
                 (i.e. observations, actions, rewards, is_terminated, is_truncated,
                 and all necessary `extra_model_outputs`).
-
-        Returns: A `SingleAgentEpisode` instance.
-
         """
         self.id_ = id_ or uuid.uuid4().hex
         # Observations: t0 (initial obs) to T.
@@ -177,7 +174,7 @@ class SingleAgentEpisode:
             initial_state: Optional. The initial hidden state of a
                 model (`RLModule`) if the latter is stateful.
             initial_render_image: Optional. An RGB uint8 image from rendering
-                the environment; the images include the corresponding rewards.
+                the environment.
         """
         assert not self.is_done
         assert len(self.observations) == 0
@@ -201,13 +198,13 @@ class SingleAgentEpisode:
         observation: ObsType,
         action: ActType,
         reward: SupportsFloat,
-        info: Dict[str, Any],
         *,
+        info: Optional[Dict[str, Any]] = None,
         state=None,
         is_terminated: bool = False,
         is_truncated: bool = False,
-        render_image: np.ndarray = None,
-        extra_model_output: Dict[str, Any] = None,
+        render_image: Optional[np.ndarray] = None,
+        extra_model_output: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Adds a timestep to the episode.
 
@@ -224,7 +221,7 @@ class SingleAgentEpisode:
             is_truncated: A boolean indicating, if the environment has been
                 truncated.
             render_image: Optional. An RGB uint8 image from rendering
-                the environment; the images include the corresponding rewards.
+                the environment.
             extra_model_output: The last timestep's specific model outputs
                 (e.g. `vf_preds`  for PPO).
         """
@@ -234,6 +231,7 @@ class SingleAgentEpisode:
         self.observations.append(observation)
         self.actions.append(action)
         self.rewards.append(reward)
+        info = info or {}
         self.infos.append(info)
         self.states = state
         self.t += 1
@@ -514,8 +512,10 @@ class SingleAgentEpisode:
         The length is undefined in case of a just started episode.
 
         Returns:
-            An integer, defining the length of an episode. Returns an error in case the
-            episode has never been stepped so far.
+            An integer, defining the length of an episode.
+
+        Raises:
+            AssertionError: If episode has never been stepped so far.
         """
         assert len(self.observations) > 0, (
             "ERROR: Cannot determine length of episode that hasn't started yet! Call "

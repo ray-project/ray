@@ -25,7 +25,7 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import SingleAgentEpisode
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.numpy import one_hot
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
