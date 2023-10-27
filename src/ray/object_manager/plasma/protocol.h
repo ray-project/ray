@@ -172,9 +172,13 @@ Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id);
 
 Status SendReleaseReply(const std::shared_ptr<Client> &client,
                         ObjectID object_id,
+                        bool should_unmap,
                         PlasmaError error);
 
-Status ReadReleaseReply(uint8_t *data, size_t size, ObjectID *object_id);
+Status ReadReleaseReply(uint8_t *data,
+                        size_t size,
+                        ObjectID *object_id,
+                        bool *should_unmap);
 
 /* Plasma Delete objects message functions. */
 
