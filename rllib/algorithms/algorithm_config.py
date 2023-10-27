@@ -241,9 +241,6 @@ class AlgorithmConfig(_Config):
         return config_overrides
 
     def __init__(self, algo_class=None):
-        # Issue a rllib_contrib warning in case one of these algorithms is being built.
-        rllib_contrib_warning(algo_class)
-
         # Define all settings and their default values.
 
         # Define the default RLlib Algorithm class that this AlgorithmConfig will be

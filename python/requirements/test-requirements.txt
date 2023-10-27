@@ -12,14 +12,12 @@ azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 msrestazure==0.6.4
 beautifulsoup4==4.11.1
-boto3==1.24.59; python_version < '3.8'
-boto3==1.26.76; python_version >= '3.8'
+boto3==1.26.76
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
 # Keep in sync with `ci/build/upload_build_info.sh`
 cryptography==38.0.1
 cython==0.29.32
-dataclasses; python_version < '3.7'
 fastapi[all]==0.99.1
 feather-format==0.4.1
 # Keep compatible with Werkzeug
@@ -32,12 +30,12 @@ websockets==11.0.3
 joblib==1.2.0
 jsonpatch==1.32
 kubernetes==24.2.0
-llvmlite==0.39.1; python_version < '3.11'
+llvmlite==0.41.1
 lxml==4.9.1
 moto[s3,server]==4.0.7
 mypy==0.982
 networkx==2.6.3
-numba==0.56.4
+numba==0.58.1
 openpyxl==3.0.10
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
@@ -76,6 +74,7 @@ xlrd==2.0.1
 yq==3.2.2
 memray; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != 'aarch64'
 memray @ git+https://github.com/bloomberg/memray.git; platform_system != "Windows" and sys_platform != "darwin" and platform_machine == 'aarch64'
+numpy==1.23.5
 
 # For doc tests
 myst-parser==0.15.2
@@ -104,13 +103,11 @@ attrs==21.4.0
 pytz==2022.7.1
 # Compatibility with spacy 3.5 (model en_core_web_sm)
 typing-extensions==4.5.0
-networkx==2.6.3; python_version <= '3.7'
 # Aim requires segment-analytics-python, which requires backoff~=2.10,
 # which conflicts with the opentelemetry-api 1.1.0.
 segment-analytics-python==2.2.0
 httpcore==0.15.0
 backoff==1.10
-sympy==1.10.1; python_version <= '3.7'
 
 # For test_basic.py::test_omp_threads_set
 threadpoolctl==3.1.0
