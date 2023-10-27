@@ -6,7 +6,7 @@ import torch
 
 from ray.air._internal.torch_utils import load_torch_model
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
 
@@ -22,13 +22,22 @@ except ImportError as e:
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
+TRANSFORMERS_CHECKPOINT_DEPRECATION_MESSAGE = (
+    "`TransformersCheckpoint` will be hard deprecated in Ray 2.8. Please use "
+    "`ray.train.Checkpoint` instead."
+)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated
 class TransformersCheckpoint(FrameworkCheckpoint):
     """A :py:class:`~ray.train.Checkpoint` with HuggingFace-specific functionality.
 
     Use ``TransformersCheckpoint.from_model`` to create this type of checkpoint.
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        raise DeprecationWarning(TRANSFORMERS_CHECKPOINT_DEPRECATION_MESSAGE)
 
     @classmethod
     def from_model(

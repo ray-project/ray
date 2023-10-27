@@ -110,9 +110,14 @@ class RecurrentModel(abc.ABC):
         Returns:
             A TensorDict containing the state before the first step.
 
-        Examples:
-            >>> state = model.initial_state()
-            >>> state # TensorDict(...)
+        .. testcode::
+            :skipif: True
+
+            model.initial_state()
+
+        .. testoutput::
+
+            TensorDict(...)
         """
         initial_state = self._initial_state()
         self.next_state_spec.validate(initial_state)
@@ -155,10 +160,12 @@ class RecurrentModel(abc.ABC):
             next_state: A TensorDict containing the
                 state to be passed as the first state of the next rollout.
 
-        Examples:
-            >>> output, state = model.unroll(TensorDict(...), TensorDict(...))
-            >>> output # TensorDict(...)
-            >>> state # TensorDict(...)
+        .. testcode::
+            :skipif: True
+
+            output, state = model.unroll(TensorDict(...), TensorDict(...))
+            output # TensorDict(...)
+            state # TensorDict(...)
 
         """
         self.input_specs.validate(inputs)
@@ -289,10 +296,12 @@ class Model(RecurrentModel):
         Returns:
             outputs: A TensorDict containing model outputs
 
-        Examples:
+        .. testcode::
+            :skipif: True
+
             # This is abstract, see the torch/tf/jax implementations
-            >>> out = model._forward(TensorDict({"in": np.arange(10)}))
-            >>> out # TensorDict(...)
+            out = model._forward(TensorDict({"in": np.arange(10)}))
+            out # TensorDict(...)
         """
 
 
@@ -305,8 +314,6 @@ class ModelIO(abc.ABC):
     """
 
     def __init__(self, config: ModelConfig) -> None:
-        if log_once("rllib_base_model_io_deprecation"):
-            deprecation_warning(old="ray.rllib.models.base_model.ModelIO")
         self._config = config
 
     @DeveloperAPI

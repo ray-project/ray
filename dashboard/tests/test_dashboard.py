@@ -10,7 +10,6 @@ import sys
 import time
 import warnings
 
-import numpy as np
 import pytest
 import requests
 import socket
@@ -765,14 +764,6 @@ def test_immutable_types():
     with pytest.raises(AttributeError):
         immutable_dict["list"].insert(1, 2)
 
-    d2 = dashboard_utils.ImmutableDict({1: np.zeros([3, 5])})
-    with pytest.raises(TypeError):
-        print(d2[1])
-
-    d3 = dashboard_utils.ImmutableList([1, np.zeros([3, 5])])
-    with pytest.raises(TypeError):
-        print(d3[1])
-
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
@@ -920,12 +911,11 @@ def test_dashboard_does_not_depend_on_serve():
 
     ctx = ray.init()
 
-    # Ensure standard dashboard features, like snapshot, still work
-    response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")
+    # Ensure standard dashboard features, like component_activities, still work
+    response = requests.get(f"http://{ctx.dashboard_url}/api/component_activities")
     assert response.status_code == 200
 
-    assert response.json()["result"] is True
-    assert "snapshot" in response.json()["data"]
+    assert "driver" in response.json()
 
     agent_url = (
         ctx.address_info["node_ip_address"]

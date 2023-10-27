@@ -9,6 +9,7 @@ import logging
 import math
 import os
 import pathlib
+import random
 import socket
 import subprocess
 import sys
@@ -25,7 +26,6 @@ from dataclasses import dataclass
 import requests
 from ray._raylet import Config
 
-import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
     ray_constants,
@@ -1443,7 +1443,7 @@ def get_and_run_node_killer(
                 if not self.is_running:
                     break
 
-                sleep_interval = np.random.rand() * self.node_kill_interval_s
+                sleep_interval = random.random() * self.node_kill_interval_s
                 time.sleep(sleep_interval)
 
                 if node_to_kill_port is not None:

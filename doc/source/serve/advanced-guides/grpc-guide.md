@@ -288,5 +288,5 @@ Serve uses the following gRPC error codes:
 - `UNAVAILABLE`: Only on the health check methods when the proxy is in draining state.
   When the health check is throwing `UNAVAILABLE`, it means the health check failed on
   this node and you should no longer route to this node.
-- `CANCELLED`: The request took longer than the timeout setting and got cancelled.
+- `DEADLINE_EXCEEDED`: The request took longer than the timeout setting and got cancelled.
 - `INTERNAL`: Other unhandled errors during the request.

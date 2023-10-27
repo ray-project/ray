@@ -107,16 +107,4 @@ public class ServeTest {
       BaseServeTest.clearContext();
     }
   }
-
-  @Test(groups = {"cluster"})
-  public void connectTest() {
-    try {
-      BaseServeTest.startServe();
-
-      ServeControllerClient client = Serve.connect();
-      Assert.assertNotNull(client);
-    } finally {
-      BaseServeTest.shutdownServe();
-    }
-  }
 }
