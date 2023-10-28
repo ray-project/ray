@@ -86,6 +86,7 @@ class SingleAgentEpisode:
         self.infos = [] if infos is None else infos
         # h-states: t0 (in case this episode is a continuation chunk, we need to know
         # about the initial h) to T.
+        # TODO (simon): Create as list not as singleton.
         self.states = states
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
