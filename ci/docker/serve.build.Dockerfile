@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.3-labs
+
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
 FROM $DOCKER_IMAGE_BASE_BUILD
 
@@ -14,20 +16,40 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-# Install custom Python version if requested.
-RUN if [[ -z $PYTHON_VERSION ]] ; then echo Not installing custom Python version ; else PYTHON=$PYTHON_VERSION ci/env/install-dependencies.sh ; fi
+RUN <<EOF
+#!/bin/bash
 
-RUN pip install -U torch==2.0.1 torchvision==0.15.2
-RUN pip install -U tensorflow==2.13.1 tensorflow-probability==0.21.0
-RUN pip install -U --ignore-installed \
+set -euo pipefail
+
+# Install custom Python version if requested.
+if [[ -n "${PYTHON_VERSION-}" ]]; then 
+  PYTHON=$PYTHON_VERSION ci/env/install-dependencies.sh 
+else 
+  echo "Not installing custom Python version" 
+fi
+
+pip install -U torch==2.0.1 torchvision==0.15.2
+pip install -U tensorflow==2.13.1 tensorflow-probability==0.21.0
+pip install -U --ignore-installed \
   -c python/requirements_compiled.txt \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt
 
-RUN git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
+# doc requirements
+#
+# TODO (shrekris-anyscale): Remove transformers after core transformer requirement 
+# is upgraded
+pip install transformers==4.30.2
+pip install -c python/requirements_compiled.txt aioboto3
 
-# Install Pydantic from source if requested.
-RUN if [[ -z $PYDANTIC_BUILD_COMMIT ]] ; \
-    then echo "Not installing Pydantic from source." ; \
-    else pip install -U git+https://github.com/pydantic/pydantic@$PYDANTIC_BUILD_COMMIT ; \
+git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
+
+# Install custom Pydantic version if requested.
+if [[ -n "${PYDANTIC_BUILD_COMMIT-}" ]]; then 
+  pip install -U git+https://github.com/pydantic/pydantic@$PYDANTIC_BUILD_COMMIT
+else 
+  echo "Not installing Pydantic from source"
 fi
+
+EOF
+

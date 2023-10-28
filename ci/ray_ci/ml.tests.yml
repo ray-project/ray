@@ -3,5 +3,7 @@ flaky_tests:
   - //python/ray/tune:cifar10_pytorch
   - //python/ray/tune:test_commands
   - //python/ray/train:torch_exp_tracking_mlflow
+  # doc tests
+  - //doc/source/train/examples/pytorch:convert_existing_pytorch_code_to_ray_train
   # gpu tests
   - //python/ray/train:test_torch_lightning_train 
