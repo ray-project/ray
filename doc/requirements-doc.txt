@@ -1,6 +1,5 @@
 # Production requirements. This is what readthedocs.com picks up
 
-tune-sklearn==0.4.6
 watchfiles # Required because sphinx-click doesn't support mocking
 
 # Syntax highlighting
