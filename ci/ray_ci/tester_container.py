@@ -17,7 +17,7 @@ class TesterContainer(Container):
         docker_tag: str,
         shard_count: int = 1,
         gpus: int = 0,
-        envs: Optional[List[str]] = None,
+        test_envs: Optional[List[str]] = None,
         shard_ids: Optional[List[int]] = None,
         skip_ray_installation: bool = False,
         build_type: Optional[str] = None,
@@ -29,10 +29,10 @@ class TesterContainer(Container):
         used to run tests in a distributed fashion.
         :param shard_ids: The list of shard ids to run. If none, run no shards.
         """
-        super().__init__(docker_tag, envs=envs)
+        super().__init__(docker_tag, envs=test_envs)
         self.shard_count = shard_count
         self.shard_ids = shard_ids or []
-        self.envs = envs or []
+        self.test_envs = test_envs or []
         self.build_type = build_type
         self.gpus = gpus
         assert (
@@ -67,7 +67,7 @@ class TesterContainer(Container):
         # divide gpus evenly among chunks
         gpu_ids = chunk_into_n(list(range(self.gpus)), len(chunks))
         runs = [
-            self._run_tests_in_docker(chunks[i], gpu_ids[i], self.envs, test_arg)
+            self._run_tests_in_docker(chunks[i], gpu_ids[i], self.test_envs, test_arg)
             for i in range(len(chunks))
         ]
         exits = [run.wait() for run in runs]

@@ -98,10 +98,6 @@ steps:
     wanda: ci/docker/doc.build.wanda.yaml
     depends_on: oss-ci-base_build
 
-  - name: corebuild
-    wanda: ci/docker/core.build.wanda.yaml
-    depends_on: oss-ci-base_build
-
   - name: servebuild
     wanda: ci/docker/serve.build.wanda.yaml
     depends_on: oss-ci-base_build

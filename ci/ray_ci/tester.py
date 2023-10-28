@@ -164,7 +164,7 @@ def _get_container(
 
     return TesterContainer(
         build_name or f"{team}build",
-        envs=test_env,
+        test_envs=test_env,
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
         gpus=gpus,
