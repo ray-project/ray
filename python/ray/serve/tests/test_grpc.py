@@ -1,5 +1,6 @@
 import asyncio
 import os
+import signal
 import sys
 import time
 
@@ -24,6 +25,7 @@ from ray.serve.tests.common.utils import (
     ping_grpc_list_applications,
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
+    send_signal_on_cancellation,
 )
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 
@@ -523,8 +525,7 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
 def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request client cancelled.
 
-    When the request error out, gRPC proxy should return INTERNAL status and the error
-    message in the response for both unary and streaming request.
+    When the request is canceled, gRPC proxy should cancel the underlying task.
     """
     grpc_port = 9000
     grpc_servicer_functions = [
@@ -537,40 +538,53 @@ def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bool):
             grpc_servicer_functions=grpc_servicer_functions,
         ),
     )
-    wait_time = 1
-    wait_period = 0.1
+
+    running_signal_actor = SignalActor.remote()
+    cancelled_signal_actor = SignalActor.remote()
 
     @serve.deployment
-    class HelloModel:
-        async def __call__(self, user_message):
-            start = time.time()
-            while time.time() - start < wait_time:
-                print("sleeping", time.time() - start)
-                await asyncio.sleep(wait_period)
+    class Downstream:
+        async def wait_for_singal(self):
+            await running_signal_actor.send.remote()
+            await send_signal_on_cancellation(cancelled_signal_actor)
+
+        async def __call__(self, *args):
+            await self.wait_for_singal()
             return serve_pb2.UserDefinedResponse(greeting="hello")
 
-        async def Streaming(self, user_message):
-            start = time.time()
-            while time.time() - start < wait_time:
-                print("sleeping", time.time() - start)
-                await asyncio.sleep(wait_period)
-                yield serve_pb2.UserDefinedResponse(greeting="hello")
+        async def Streaming(self, *args):
+            await self.wait_for_singal()
+            yield serve_pb2.UserDefinedResponse(greeting="hello")
 
-    model = HelloModel.bind()
-    app_name = "app1"
-    serve.run(target=model, name=app_name)
+    @serve.deployment
+    class Ingress:
+        async def __call__(self, *args):
+            # Send a request and wait for it to start executing.
+            channel = grpc.insecure_channel("localhost:9000")
+            stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+            metadata = (("application", "downstream"),)
+            request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+            if streaming:
+                r = stub.Streaming(request=request, metadata=metadata)
+            else:
+                r = stub.__call__.future(request=request, metadata=metadata)
+            await running_signal_actor.wait.remote()
 
-    channel = grpc.insecure_channel("localhost:9000")
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+            # Cancel it and verify that it is cancelled via signal.
+            r.cancel()
+            await cancelled_signal_actor.wait.remote()
 
-    if streaming:
-        response = stub.Streaming(request=request)
-        print("streaming response", response)
-        print("asyncio.all_tasks(", asyncio.all_tasks())
-    else:
-        response = stub.__call__(request=request)
-        print("unary response", response)
+            with pytest.raises(grpc.FutureCancelledError):
+                r.result()
+
+    downstream = Downstream.bind()
+    serve.run(target=downstream, name="downstream", route_prefix="/downstream")
+
+    ingress = Ingress.bind()
+    h = serve.run(target=ingress, name="ingress", route_prefix="/ingress").options(
+        use_new_handle_api=True
+    )
+    h.remote().result()
 
 
 if __name__ == "__main__":
