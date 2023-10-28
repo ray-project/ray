@@ -1,5 +1,4 @@
 import functools
-import os
 import sys
 import threading
 import time
@@ -8,202 +7,13 @@ from typing import Dict
 
 import pytest
 import requests
-from pydantic import ValidationError
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import ApplicationStatus
 from ray.serve.drivers import DAGDriver
-
-
-class TestGetDeployment:
-    # Test V1 API get_deployment()
-    def get_deployment(self, name, use_list_api):
-        if use_list_api:
-            return serve.list_deployments()[name]
-        else:
-            return serve.get_deployment(name)
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_basic_get(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name, version="1")
-        def d(*args):
-            return "1", os.getpid()
-
-        with pytest.raises(KeyError):
-            self.get_deployment(name, use_list_api)
-
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
-        assert val1 == "1"
-
-        del d
-
-        d2 = self.get_deployment(name, use_list_api)
-        val2, pid2 = ray.get(d2.get_handle().remote())
-        assert val2 == "1"
-        assert pid2 == pid1
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_get_after_delete(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name, version="1")
-        def d(*args):
-            return "1", os.getpid()
-
-        d.deploy()
-        del d
-
-        d2 = self.get_deployment(name, use_list_api)
-        d2.delete()
-        del d2
-
-        with pytest.raises(KeyError):
-            self.get_deployment(name, use_list_api)
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_deploy_new_version(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name, version="1")
-        def d(*args):
-            return "1", os.getpid()
-
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
-        assert val1 == "1"
-
-        del d
-
-        d2 = self.get_deployment(name, use_list_api)
-        d2.options(version="2").deploy()
-        val2, pid2 = ray.get(d2.get_handle().remote())
-        assert val2 == "1"
-        assert pid2 != pid1
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_deploy_empty_version(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name)
-        def d(*args):
-            return "1", os.getpid()
-
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
-        assert val1 == "1"
-
-        del d
-
-        d2 = self.get_deployment(name, use_list_api)
-        d2.deploy()
-        val2, pid2 = ray.get(d2.get_handle().remote())
-        assert val2 == "1"
-        assert pid2 != pid1
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_init_args(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name)
-        class D:
-            def __init__(self, val):
-                self._val = val
-
-            def __call__(self, *arg):
-                return self._val, os.getpid()
-
-        D.deploy("1")
-        val1, pid1 = ray.get(D.get_handle().remote())
-        assert val1 == "1"
-
-        del D
-
-        D2 = self.get_deployment(name, use_list_api)
-        D2.deploy()
-        val2, pid2 = ray.get(D2.get_handle().remote())
-        assert val2 == "1"
-        assert pid2 != pid1
-
-        D2 = self.get_deployment(name, use_list_api)
-        D2.deploy("2")
-        val3, pid3 = ray.get(D2.get_handle().remote())
-        assert val3 == "2"
-        assert pid3 != pid2
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_scale_replicas(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name)
-        def d(*args):
-            return os.getpid()
-
-        def check_num_replicas(num):
-            handle = self.get_deployment(name, use_list_api).get_handle()
-            assert len(set(ray.get([handle.remote() for _ in range(50)]))) == num
-
-        d.deploy()
-        check_num_replicas(1)
-        del d
-
-        d2 = self.get_deployment(name, use_list_api)
-        d2.options(num_replicas=2).deploy()
-        check_num_replicas(2)
-
-
-def test_list_deployments(serve_instance):
-    assert serve.list_deployments() == {}
-
-    @serve.deployment(name="hi", num_replicas=2)
-    def d1(*args):
-        pass
-
-    d1.deploy()
-
-    assert serve.list_deployments() == {"hi": d1}
-
-
-def test_deploy_change_route_prefix(serve_instance):
-    name = "test"
-
-    @serve.deployment(name=name, version="1", route_prefix="/old")
-    def d(*args):
-        return f"1|{os.getpid()}"
-
-    def call(route):
-        ret = requests.get(f"http://localhost:8000/{route}").text
-        return ret.split("|")[0], ret.split("|")[1]
-
-    d.deploy()
-    val1, pid1 = call("old")
-    assert val1 == "1"
-
-    # Check that the old route is gone and the response from the new route
-    # has the same value and PID (replica wasn't restarted).
-    def check_switched():
-        try:
-            print(call("old"))
-            return False
-        except Exception:
-            print("failed")
-            pass
-
-        try:
-            val2, pid2 = call("new")
-        except Exception:
-            return False
-
-        assert val2 == "1"
-        assert pid2 == pid1
-        return True
-
-    d.options(route_prefix="/new").deploy()
-    wait_for_condition(check_switched)
 
 
 @pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
@@ -275,26 +85,26 @@ def test_json_serialization_user_config(serve_instance):
         def get_nested_value(self) -> None:
             return self.nested_value
 
-    SimpleDeployment.options(
+    app = SimpleDeployment.options(
         user_config={
             "value": "Success!",
             "nested": {"value": "Success!"},
         }
-    ).deploy()
+    ).bind()
+    handle = serve.run(app)
 
-    handle = SimpleDeployment.get_handle()
     assert ray.get(handle.get_value.remote()) == "Success!"
     assert ray.get(handle.get_nested_value.remote()) == "Success!"
 
-    SimpleDeployment.options(
+    app = SimpleDeployment.options(
         user_config={
             "value": "Failure!",
             "another-value": "Failure!",
             "nested": {"value": "Success!"},
         }
-    ).deploy()
+    ).bind()
+    handle = serve.run(app)
 
-    handle = SimpleDeployment.get_handle()
     assert ray.get(handle.get_value.remote()) == "Failure!"
     assert ray.get(handle.get_nested_value.remote()) == "Success!"
 

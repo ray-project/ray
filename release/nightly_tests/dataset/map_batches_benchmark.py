@@ -1,4 +1,3 @@
-import sys
 from typing import Optional, Union
 import numpy as np
 
@@ -8,10 +7,7 @@ from ray.data.dataset import Dataset, MaterializedDataset
 
 from benchmark import Benchmark
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 
 def map_batches(
@@ -51,7 +47,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
         for batch_size in batch_sizes:
             num_calls = 2
             test_name = f"map-batches-{batch_format}-{batch_size}-{num_calls}-eager"
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 map_batches,
                 input_ds=input_ds,
@@ -61,7 +57,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 is_eager_executed=True,
             )
             test_name = f"map-batches-{batch_format}-{batch_size}-{num_calls}-lazy"
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 map_batches,
                 input_ds=input_ds,
@@ -83,7 +79,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 f"map-batches-{batch_format}-{batch_size}-{num_calls}-"
                 f"{compute_strategy}-eager"
             )
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 map_batches,
                 input_ds=input_ds,
@@ -97,7 +93,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 f"map-batches-{batch_format}-{batch_size}-{num_calls}-"
                 f"{compute_strategy}-lazy"
             )
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 map_batches,
                 input_ds=input_ds,
@@ -115,7 +111,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
         for new_format in ["pyarrow", "pandas", "numpy"]:
             for batch_size in batch_sizes:
                 test_name = f"map-batches-{current_format}-to-{new_format}-{batch_size}"
-                benchmark.run(
+                benchmark.run_materialize_ds(
                     test_name,
                     map_batches,
                     input_ds=new_input_ds,
@@ -137,7 +133,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 compute_strategy = "actors"
             test_name = f"map-batches-{batch_format}-{compute_strategy}-multi-files"
 
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 map_batches,
                 input_ds=input_ds,
@@ -197,7 +193,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
             return_ds = ds
             return ds
 
-        benchmark.run(
+        benchmark.run_materialize_ds(
             test_name,
             test_fn,
         )

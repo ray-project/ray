@@ -127,6 +127,9 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
+            # TODO (Kourosh): Enable when the scheduler is supported in the new
+            #  Learner API stack.
+            .experimental(_enable_new_api_stack=False)
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing.
@@ -141,9 +144,6 @@ class TestPPO(unittest.TestCase):
                     lstm_cell_size=10,
                     max_seq_len=20,
                 ),
-                # TODO (Kourosh): Enable when the scheduler is supported in the new
-                # Learner API stack.
-                _enable_learner_api=False,
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -152,7 +152,11 @@ class TestPPO(unittest.TestCase):
                 enable_connectors=True,
             )
             .callbacks(MyCallbacks)
-            .rl_module(_enable_rl_module_api=False)
+            .evaluation(
+                evaluation_duration=2,
+                evaluation_duration_unit="episodes",
+                evaluation_num_workers=1,
+            )
         )  # For checking lr-schedule correctness.
 
         num_iterations = 2
@@ -186,6 +190,8 @@ class TestPPO(unittest.TestCase):
                         check_train_results(results)
                         print(results)
 
+                    algo.evaluate()
+
                     check_inference_w_connectors(policy, env_name=env)
                     algo.stop()
 
@@ -195,6 +201,9 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
+            # TODO (Kourosh): Enable when the scheduler is supported in the new
+            #  Learner API stack.
+            .experimental(_enable_new_api_stack=False)
             .training(
                 # Setup lr schedule for testing.
                 lr_schedule=[[0, 5e-5], [256, 0.0]],
@@ -210,9 +219,6 @@ class TestPPO(unittest.TestCase):
                     lstm_cell_size=10,
                     max_seq_len=20,
                 ),
-                # TODO (Kourosh): Enable when the scheduler is supported in the new
-                # Learner API stack.
-                _enable_learner_api=False,
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -220,7 +226,6 @@ class TestPPO(unittest.TestCase):
                 compress_observations=True,
             )
             .callbacks(MyCallbacks)
-            .rl_module(_enable_rl_module_api=False)
         )  # For checking lr-schedule correctness.
 
         num_iterations = 2
@@ -269,6 +274,7 @@ class TestPPO(unittest.TestCase):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
@@ -292,7 +298,7 @@ class TestPPO(unittest.TestCase):
             # Test whether this is really the argmax action over the logits.
             # TODO (Kourosh): Only meaningful in the ModelV2 stack.
             config.validate()
-            if not config._enable_rl_module_api and fw != "tf":
+            if not config._enable_new_api_stack and fw != "tf":
                 last_out = algo.get_policy().model.last_output()
                 if fw == "torch":
                     check(a_, np.argmax(last_out.detach().cpu().numpy(), 1)[0])
@@ -329,6 +335,9 @@ class TestPPO(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
+            # TODO (Kourosh): Enable when free log std is supported in the new
+            #  Learner API stack.
+            .experimental(_enable_new_api_stack=False)
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -341,9 +350,7 @@ class TestPPO(unittest.TestCase):
                     free_log_std=True,
                     vf_share_layers=True,
                 ),
-                _enable_learner_api=False,
             )
-            .rl_module(_enable_rl_module_api=False)
         )
 
         for fw, sess in framework_iterator(config, session=True):
@@ -395,6 +402,7 @@ class TestPPO(unittest.TestCase):
         """
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=False)
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -406,9 +414,7 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=True,
                 ),
-                _enable_learner_api=False,
             )
-            .rl_module(_enable_rl_module_api=False)
         )
 
         for fw, sess in framework_iterator(config, session=True):

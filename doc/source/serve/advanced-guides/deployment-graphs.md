@@ -1,9 +1,9 @@
 (serve-deployment-graphs)=
 
-# Experimental Deployment Graphs
+# Deployment Graphs (Deprecated)
 
 :::{note}
-The call graph is in **alpha**, so its APIs are subject to change.
+This API is **deprecated** and will be removed in an upcoming release. Please use the recommended [model composition pattern](https://docs.ray.io/en/latest/serve/model_composition.html) instead.
 :::
 
 For more advanced composition patterns, it can be useful to surface the relationships between deployments, instead of hiding them inside individual deployment definitions.
@@ -273,5 +273,3 @@ On the other hand, when the script visualizes the final graph output, `combine_o
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/visualize_full.svg)
 
-### Visualizing the Graph with Gradio
-Another option is to visualize your deployment graph through Gradio. Check out the [Graph Visualization with Gradio Tutorial](serve-gradio-dag-visualization) to learn how to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.

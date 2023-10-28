@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
@@ -8,8 +8,10 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.stats import StatsDict
+from ray.data.context import DataContext
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, StreamingObjectRefGenerator]
@@ -24,15 +26,6 @@ class OpTask(ABC):
     @abstractmethod
     def get_waitable(self) -> Waitable:
         """Return the ObjectRef or StreamingObjectRefGenerator to wait on."""
-        pass
-
-    @abstractmethod
-    def on_waitable_ready(self):
-        """Called when the waitable is ready.
-
-        This method may get called multiple times if the waitable is a
-        streaming generator.
-        """
         pass
 
 
@@ -63,18 +56,25 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> StreamingObjectRefGenerator:
         return self._streaming_gen
 
-    def on_waitable_ready(self):
-        # Handle all the available outputs of the streaming generator.
-        while True:
+    def on_data_ready(self, max_blocks_to_read: Optional[int]) -> int:
+        """Callback when data is ready to be read from the streaming generator.
+
+        Args:
+            max_blocks_to_read: Max number of blocks to read. If None, all available
+                will be read.
+        Returns: The number of blocks read.
+        """
+        num_blocks_read = 0
+        while max_blocks_to_read is None or num_blocks_read < max_blocks_to_read:
             try:
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
-                    return
+                    break
             except StopIteration:
                 self._task_done_callback()
-                return
+                break
 
             try:
                 meta = ray.get(next(self._streaming_gen))
@@ -91,6 +91,8 @@ class DataOpTask(OpTask):
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
+            num_blocks_read += 1
+        return num_blocks_read
 
 
 class MetadataOpTask(OpTask):
@@ -110,7 +112,8 @@ class MetadataOpTask(OpTask):
     def get_waitable(self) -> ray.ObjectRef:
         return self._object_ref
 
-    def on_waitable_ready(self):
+    def on_task_finished(self):
+        """Callback when the task is finished."""
         self._task_done_callback()
 
 
@@ -147,16 +150,43 @@ class PhysicalOperator(Operator):
     be interleaved.
     """
 
-    def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
+    def __init__(
+        self,
+        name: str,
+        input_dependencies: List["PhysicalOperator"],
+        target_max_block_size: Optional[int],
+    ):
         super().__init__(name, input_dependencies)
+
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._target_max_block_size = target_max_block_size
         self._dependents_complete = False
         self._started = False
+        self._metrics = OpRuntimeMetrics(self)
+        self._estimated_output_blocks = None
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
+
+    @property
+    def target_max_block_size(self) -> Optional[int]:
+        """
+        Target max block size output by this operator. If this returns None,
+        then the default from DataContext should be used.
+        """
+        return self._target_max_block_size
+
+    @property
+    def actual_target_max_block_size(self) -> int:
+        """
+        The actual target max block size output by this operator.
+        """
+        target_max_block_size = self._target_max_block_size
+        if target_max_block_size is None:
+            target_max_block_size = DataContext.get_current().target_max_block_size
+        return target_max_block_size
 
     def completed(self) -> bool:
         """Return True when this operator is completed.
@@ -175,12 +205,15 @@ class PhysicalOperator(Operator):
         """Return recorded execution stats for use with DatasetStats."""
         raise NotImplementedError
 
-    def get_metrics(self) -> Dict[str, int]:
-        """Returns dict of metrics reported from this operator.
+    @property
+    def metrics(self) -> OpRuntimeMetrics:
+        """Returns the runtime metrics of this operator."""
+        self._metrics._extra_metrics = self._extra_metrics()
+        return self._metrics
 
-        These should be instant values that can be queried at any time, e.g.,
-        obj_store_mem_allocated, obj_store_mem_freed.
-        """
+    def _extra_metrics(self) -> Dict[str, Any]:
+        """Subclasses should override this method to report extra metrics
+        that are specific to them."""
         return {}
 
     def progress_str(self) -> str:
@@ -190,14 +223,17 @@ class PhysicalOperator(Operator):
         """
         return ""
 
-    def num_outputs_total(self) -> Optional[int]:
-        """Returns the total number of output bundles of this operator, if known.
+    def num_outputs_total(self) -> int:
+        """Returns the total number of output bundles of this operator.
 
+        The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
         """
+        if self._estimated_output_blocks is not None:
+            return self._estimated_output_blocks
         if len(self.input_dependencies) == 1:
             return self.input_dependencies[0].num_outputs_total()
-        return None
+        raise AttributeError
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
@@ -228,12 +264,19 @@ class PhysicalOperator(Operator):
         Inputs may be added in any order, and calls to `add_input` may be interleaved
         with calls to `get_next` / `has_next` to implement streaming execution.
 
+        Subclasses should override `_add_input_inner` instead of this method.
+
         Args:
             refs: The ref bundle that should be added as input.
             input_index: The index identifying the input dependency producing the
                 input. For most operators, this is always `0` since there is only
                 one upstream input operator.
         """
+        self._metrics.on_input_received(refs)
+        self._add_input_inner(refs, input_index)
+
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
+        """Subclasses should override this method to implement `add_input`."""
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
@@ -270,7 +313,15 @@ class PhysicalOperator(Operator):
         """Get the next downstream output.
 
         It is only allowed to call this if `has_next()` has returned True.
+
+        Subclasses should override `_get_next_inner` instead of this method.
         """
+        output = self._get_next_inner()
+        self._metrics.on_output_taken(output)
+        return output
+
+    def _get_next_inner(self) -> RefBundle:
+        """Subclasses should override this method to implement `get_next`."""
         raise NotImplementedError
 
     def get_active_tasks(self) -> List[OpTask]:

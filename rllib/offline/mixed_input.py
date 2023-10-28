@@ -14,15 +14,17 @@ from ray.tune.registry import registry_get_input, registry_contains_input
 class MixedInput(InputReader):
     """Mixes input from a number of other input sources.
 
-    Examples:
-        >>> from ray.rllib.offline.io_context import IOContext
-        >>> from ray.rllib.offline.mixed_input import MixedInput
-        >>> ioctx = IOContext(...) # doctest: +SKIP
-        >>> MixedInput({ # doctest: +SKIP
-        ...    "sampler": 0.4, # doctest: +SKIP
-        ...    "/tmp/experiences/*.json": 0.4, # doctest: +SKIP
-        ...    "s3://bucket/expert.json": 0.2, # doctest: +SKIP
-        ... }, ioctx) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.offline.io_context import IOContext
+        from ray.rllib.offline.mixed_input import MixedInput
+        ioctx = IOContext(...)
+        MixedInput({
+           "sampler": 0.4,
+           "/tmp/experiences/*.json": 0.4,
+           "s3://bucket/expert.json": 0.2,
+        }, ioctx)
     """
 
     @DeveloperAPI

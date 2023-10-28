@@ -1,10 +1,17 @@
 import json
+import logging
 from collections import Counter
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List, Optional, Set, Union
 
-from pydantic import BaseModel, Extra, Field, root_validator, validator
-
+from ray._private.pydantic_compat import (
+    BaseModel,
+    Extra,
+    Field,
+    root_validator,
+    validator,
+)
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
@@ -56,6 +63,74 @@ def _route_prefix_format(cls, v):
         )
 
     return v
+
+
+@PublicAPI(stability="alpha")
+class EncodingType(str, Enum):
+    """Encoding type for the serve logs."""
+
+    TEXT = "TEXT"
+    JSON = "JSON"
+
+
+@PublicAPI(stability="alpha")
+class LoggingConfig(BaseModel):
+    """Logging config schema for configuring serve components logs."""
+
+    class Config:
+        extra = Extra.forbid
+
+    encoding: Union[str, EncodingType] = Field(
+        default="TEXT",
+        description=(
+            "Encoding type for the serve logs. Default to 'TEXT'. 'JSON' is also "
+            "supported to format all serve logs into json structure."
+        ),
+    )
+    log_level: Union[int, str] = Field(
+        default=logging.INFO,
+        description=(
+            "Log level for the serve logs. Defaults to INFO. You can set it to "
+            "'DEBUG' to get more detailed debug logs."
+        ),
+    )
+    logs_dir: Union[str, None] = Field(
+        default=None,
+        description=(
+            "Directory to store the logs. Default to None, which means "
+            "logs will be stored in the default directory "
+            "('/tmp/ray/session_latest/logs/serve/...')."
+        ),
+    )
+    enable_access_log: bool = Field(
+        default=True,
+        description=(
+            "Whether to enable access logs for each request. Default to True."
+        ),
+    )
+
+    @validator("encoding")
+    def valid_encoding_format(cls, v):
+
+        if v not in list(EncodingType):
+            raise ValueError(
+                f"Got '{v}' for encoding. Encoding must be one "
+                f"of {set(EncodingType)}."
+            )
+
+        return v
+
+    @validator("log_level")
+    def valid_log_level(cls, v):
+        if isinstance(v, int):
+            return v
+
+        if v not in logging._nameToLevel:
+            raise ValueError(
+                f'Got "{v}" for log_level. log_level must be one of '
+                f"{list(logging._nameToLevel.keys())}."
+            )
+        return logging._nameToLevel[v]
 
 
 @PublicAPI(stability="stable")
@@ -259,11 +334,9 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             "Defaults to no limitation."
         ),
     )
-
-    is_driver_deployment: bool = Field(
+    logging_config: LoggingConfig = Field(
         default=DEFAULT.VALUE,
-        description="Indicate Whether the deployment is driver deployment "
-        "Driver deployments are spawned one per node.",
+        description="Logging config for configuring serve deployment logs.",
     )
 
     @root_validator
@@ -312,7 +385,6 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_period_s=info.deployment_config.health_check_period_s,
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
-        is_driver_deployment=info.is_driver_deployment,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -390,6 +462,10 @@ class ServeApplicationSchema(BaseModel):
     args: Dict = Field(
         default={},
         description="Arguments that will be passed to the application builder.",
+    )
+    logging_config: LoggingConfig = Field(
+        default=None,
+        description="Logging config for configuring serve application logs.",
     )
 
     @property
@@ -605,6 +681,10 @@ class ServeDeploySchema(BaseModel):
     )
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
+    )
+    logging_config: LoggingConfig = Field(
+        default=None,
+        description="Logging config for configuring serve components logs.",
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
