@@ -100,8 +100,7 @@ def test_pipelined_execution(ray_start_10_cpus_shared):
         reversed_list = inputs[::-1]
         return reversed_list, {}
 
-    ctx = DataContext.get_current()
-    o4 = AllToAllOperator(reverse_sort, o3, ctx.target_max_block_size)
+    o4 = AllToAllOperator(reverse_sort, o3)
     it = executor.execute(o4)
     output = ref_bundles_to_list(it)
     expected = [[x * -2] for x in range(20)][::-1]

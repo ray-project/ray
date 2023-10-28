@@ -30,14 +30,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
-from ray.data._internal.logical.rules.split_read_output_blocks import (
-    compute_additional_split_factor,
-)
-from ray.data._internal.planner.plan_read_op import (
-    apply_output_blocks_handling_to_read_task,
-)
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import capitalize, unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
@@ -732,42 +725,6 @@ class ExecutionPlan:
         """
         context = self._context
         blocks, stats, stages = self._get_source_blocks_and_stages()
-        logical_op = self._logical_plan.dag
-        if isinstance(logical_op, Read) and isinstance(blocks, LazyBlockList):
-            # TODO(swang): Currently the legacy backend is used to execute
-            # Datasets that only contain a Read. Handle read task parallelism
-            # and output block splitting here. This duplicates logic in
-            # SplitReadOutputBlocksRule and can be removed once legacy backend
-            # is deprecated.
-            ctx = DataContext.get_current()
-            (
-                detected_parallelism,
-                reason,
-                estimated_num_blocks,
-                k,
-            ) = compute_additional_split_factor(
-                logical_op._reader,
-                logical_op._parallelism,
-                logical_op._mem_size,
-                ctx.target_max_block_size,
-                cur_additional_split_factor=None,
-            )
-            if logical_op._parallelism == -1:
-                assert reason != ""
-                logger.get_logger().info(
-                    f"Using autodetected parallelism={detected_parallelism} "
-                    f"for stage {logical_op.name} to satisfy {reason}."
-                )
-            if k is not None:
-                logger.get_logger().info(
-                    f"To satisfy the requested parallelism of {detected_parallelism}, "
-                    f"each read task output is split into {k} smaller blocks."
-                )
-
-            for read_task in blocks._tasks:
-                apply_output_blocks_handling_to_read_task(read_task, k)
-            blocks._estimated_num_blocks = estimated_num_blocks
-
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)
         if context.optimize_fuse_stages:
@@ -968,7 +925,7 @@ class OneToOneStage(Stage):
         block_fn: BlockTransform,
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
-        min_rows_per_block: Optional[int] = None,
+        target_block_size: Optional[int] = None,
         fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -979,7 +936,7 @@ class OneToOneStage(Stage):
         self.block_fn = block_fn
         self.compute = compute or TaskPoolStrategy()
         self.ray_remote_args = ray_remote_args or {}
-        self.min_rows_per_block = min_rows_per_block
+        self.target_block_size = target_block_size
         self.fn = fn
         self.fn_args = fn_args
         self.fn_kwargs = fn_kwargs
@@ -1047,12 +1004,12 @@ class OneToOneStage(Stage):
 
         block_fn1 = prev.block_fn
         block_fn2 = self.block_fn
-        if prev.min_rows_per_block is not None and self.min_rows_per_block is not None:
-            min_rows_per_block = max(prev.min_rows_per_block, self.min_rows_per_block)
-        elif prev.min_rows_per_block is not None:
-            min_rows_per_block = prev.min_rows_per_block
+        if prev.target_block_size is not None and self.target_block_size is not None:
+            target_block_size = max(prev.target_block_size, self.target_block_size)
+        elif prev.target_block_size is not None:
+            target_block_size = prev.target_block_size
         else:
-            min_rows_per_block = self.min_rows_per_block
+            target_block_size = self.target_block_size
 
         def block_fn(
             blocks: Iterable[Block],
@@ -1082,7 +1039,7 @@ class OneToOneStage(Stage):
             block_fn,
             self.compute,
             prev.ray_remote_args,
-            min_rows_per_block=min_rows_per_block,
+            target_block_size=target_block_size,
             fn=self.fn,
             fn_args=fn_args,
             fn_kwargs={},
@@ -1109,7 +1066,7 @@ class OneToOneStage(Stage):
             blocks,
             clear_input_blocks,
             name=self.name,
-            min_rows_per_block=self.min_rows_per_block,
+            target_block_size=self.target_block_size,
             fn=self.fn,
             fn_args=self.fn_args,
             fn_kwargs=self.fn_kwargs,
