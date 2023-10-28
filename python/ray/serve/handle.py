@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import logging
 import threading
 import warnings
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ import ray
 from ray import serve
 from ray._raylet import GcsClient, StreamingObjectRefGenerator
 from ray.serve._private.common import DeploymentID, RequestProtocol
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.router import RequestMetadata, Router
 from ray.serve._private.usage import ServeUsageTag
@@ -20,6 +22,8 @@ from ray.serve._private.utils import (
 )
 from ray.util import metrics
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _global_async_loop = None
 _global_async_loop_creation_lock = threading.Lock()
@@ -642,7 +646,7 @@ class DeploymentResponse(_DeploymentResponseBase):
             result = yield from obj_ref.__await__()
             return result
         except ray.exceptions.TaskCancelledError:
-            print(f"Task {obj_ref} is already cancelled.")
+            logger.info(f"Task {obj_ref} is already cancelled.")
 
     def result(self, timeout_s: Optional[float] = None) -> Any:
         """Fetch the result of the handle call synchronously.
