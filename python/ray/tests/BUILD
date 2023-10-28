@@ -122,6 +122,7 @@ py_test_module_list(
     "accelerators/test_neuron.py",
     "accelerators/test_tpu.py",
     "accelerators/test_nvidia_gpu.py",
+    "accelerators/test_intel_gpu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -175,6 +176,8 @@ py_test_module_list(
     "test_streaming_generator.py",
     "test_streaming_generator_2.py",
     "test_streaming_generator_3.py",
+    "test_streaming_generator_4.py",
+    "test_streaming_generator_backpressure.py",
     "test_scheduling_performance.py",
     "test_implicit_resource.py",
   ],
@@ -194,27 +197,43 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_minimal_install.py",
-    "test_runtime_env_ray_minimal.py",
     "test_basic.py",
     "test_basic_2.py",
     "test_basic_4.py",
     "test_basic_5.py",
-    "test_utils.py",
   ],
   size = "medium",
-  tags = ["exclusive", "minimal", "team:core"],
+  tags = ["exclusive", "minimal", "basic_test", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test_module_list(
   files = [
     "test_basic_3.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "minimal", "basic_test", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_minimal_install.py",
+    "test_runtime_env_ray_minimal.py",
+    "test_utils.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "minimal", "no_basic_test", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
     "test_output.py",
     "test_usage_stats.py",
   ],
   size = "large",
-  tags = ["exclusive", "minimal", "team:core"],
+  tags = ["exclusive", "minimal", "no_basic_test", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

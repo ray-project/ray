@@ -137,6 +137,7 @@ class ExecutionPlan:
         self._dataset_uuid = None
 
         self._run_by_consumer = run_by_consumer
+        self._dataset_name = None
 
         # Snapshot the current context, so that the config of Datasets is always
         # determined by the config at the time it was created.
@@ -223,8 +224,17 @@ class ExecutionPlan:
             num_blocks = "?"
         else:
             num_blocks = dataset_blocks.estimated_num_blocks()
-        dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
-            classname, num_blocks, count, schema_str
+        name_str = (
+            "name={}, ".format(self._dataset_name)
+            if self._dataset_name is not None
+            else ""
+        )
+        dataset_str = "{}({}num_blocks={}, num_rows={}, schema={})".format(
+            classname,
+            name_str,
+            num_blocks,
+            count,
+            schema_str,
         )
 
         # If the resulting string representation fits in one line, use it directly.
@@ -264,8 +274,14 @@ class ExecutionPlan:
                 schema_str = (
                     "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
                 )
+            name_str = (
+                f"\n{trailing_space}{INDENT_STR}name={self._dataset_name},"
+                if self._dataset_name is not None
+                else ""
+            )
             dataset_str = (
                 f"{classname}("
+                f"{name_str}"
                 f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
@@ -318,6 +334,7 @@ class ExecutionPlan:
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
+        plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
     def deep_copy(self) -> "ExecutionPlan":
@@ -342,6 +359,7 @@ class ExecutionPlan:
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
+        plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
     def initial_num_blocks(self) -> int:
@@ -573,8 +591,10 @@ class ExecutionPlan:
                     StreamingExecutor,
                 )
 
+                metrics_tag = (self._dataset_name or "dataset") + self._dataset_uuid
                 executor = StreamingExecutor(
-                    copy.deepcopy(context.execution_options), self._dataset_uuid
+                    copy.deepcopy(context.execution_options),
+                    metrics_tag,
                 )
                 blocks = execute_to_legacy_block_list(
                     executor,

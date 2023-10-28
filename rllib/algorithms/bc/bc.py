@@ -20,40 +20,44 @@ from ray.rllib.utils.typing import ResultDict
 class BCConfig(MARWILConfig):
     """Defines a configuration class from which a new BC Algorithm can be built
 
-    Example:
-        >>> from ray.rllib.algorithms.bc import BCConfig
-        >>> # Run this from the ray directory root.
-        >>> config = BCConfig().training(lr=0.00001, gamma=0.99)
-        >>> config = config.offline_data(  # doctest: +SKIP
-        ...     input_="./rllib/tests/data/cartpole/large.json")
-        >>> print(config.to_dict())  # doctest:+SKIP
-        >>> # Build an Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
+        :skipif: True
 
-    Example:
-        >>> from ray.rllib.algorithms.bc import BCConfig
-        >>> from ray import tune
-        >>> config = BCConfig()
-        >>> # Print out some default values.
-        >>> print(config.beta)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config.training(  # doctest:+SKIP
-        ...     lr=tune.grid_search([0.001, 0.0001]), beta=0.75
-        ... )
-        >>> # Set the config object's data path.
-        >>> # Run this from the ray directory root.
-        >>> config.offline_data(  # doctest:+SKIP
-        ...     input_="./rllib/tests/data/cartpole/large.json"
-        ... )
-        >>> # Set the config object's env, used for evaluation.
-        >>> config.environment(env="CartPole-v1")  # doctest:+SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(   # doctest:+SKIP
-        ...     "BC",
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        from ray.rllib.algorithms.bc import BCConfig
+        # Run this from the ray directory root.
+        config = BCConfig().training(lr=0.00001, gamma=0.99)
+        config = config.offline_data(
+            input_="./rllib/tests/data/cartpole/large.json")
+
+        # Build an Algorithm object from the config and run 1 training iteration.
+        algo = config.build()
+        algo.train()
+
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.algorithms.bc import BCConfig
+        from ray import tune
+        config = BCConfig()
+        # Print out some default values.
+        print(config.beta)
+        # Update the config object.
+        config.training(
+            lr=tune.grid_search([0.001, 0.0001]), beta=0.75
+        )
+        # Set the config object's data path.
+        # Run this from the ray directory root.
+        config.offline_data(
+            input_="./rllib/tests/data/cartpole/large.json"
+        )
+        # Set the config object's env, used for evaluation.
+        config.environment(env="CartPole-v1")
+        # Use to_dict() to get the old-style python config dict
+        # when running with tune.
+        tune.Tuner(
+            "BC",
+            param_space=config.to_dict(),
+        ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -67,8 +71,7 @@ class BCConfig(MARWILConfig):
         # not important for behavioral cloning.
         self.postprocess_inputs = False
         # Set RLModule as default.
-        self.rl_module(_enable_rl_module_api=True)
-        self.training(_enable_learner_api=True)
+        self.experimental(_enable_new_api_stack=True)
         # __sphinx_doc_end__
         # fmt: on
 
@@ -112,11 +115,6 @@ class BCConfig(MARWILConfig):
 
     @override(MARWILConfig)
     def validate(self) -> None:
-        # Can not use Tf with learner api.
-        if self.framework_str == "tf":
-            self.rl_module(_enable_rl_module_api=False)
-            self.training(_enable_learner_api=False)
-
         # Call super's validation method.
         super().validate()
 
@@ -137,7 +135,7 @@ class BC(MARWIL):
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
-        if not self.config["_enable_rl_module_api"]:
+        if not self.config["_enable_new_api_stack"]:
             # Using ModelV2.
             return super().training_step()
         else:

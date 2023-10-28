@@ -55,14 +55,13 @@ ray.init(num_cpus=1)
 def test_spill_logs():
     script = """
 import ray
-import numpy as np
 
 ray.init(object_store_memory=200e6)
 
 x = []
 
 for _ in range(10):
-    x.append(ray.put(np.ones(100 * 1024 * 1024, dtype=np.uint8)))
+    x.append(ray.put(bytes(100 * 1024 * 1024)))
 """
 
     proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "1"})

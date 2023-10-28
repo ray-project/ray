@@ -1,6 +1,7 @@
 import re
 import time
 from collections import Counter
+from contextlib import contextmanager
 from typing import List, Optional
 from unittest.mock import patch
 
@@ -134,6 +135,22 @@ def map_batches_sleep(x, n):
 def enable_get_object_locations_flag():
     ctx = ray.data.context.DataContext.get_current()
     ctx.enable_get_object_locations_for_metrics = True
+
+
+@contextmanager
+def patch_update_stats_actor():
+    with patch(
+        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
+    ) as update_fn:
+        yield update_fn
+
+
+@contextmanager
+def patch_update_stats_actor_iter():
+    with patch(
+        "ray.data._internal.block_batching.iter_batches.update_stats_actor_iter_metrics"
+    ) as update_fn:
+        yield update_fn
 
 
 def test_streaming_split_stats(ray_start_regular_shared):
@@ -474,7 +491,7 @@ def test_dataset__repr__(ray_start_regular_shared):
 
     expected_stats = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=None,\n"
         "   number=N,\n"
         "   extra_metrics={},\n"
@@ -530,7 +547,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     assert len(ds2.take_all()) == n
     expected_stats2 = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
         "   extra_metrics={\n"
@@ -587,7 +604,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   dataset_bytes_spilled=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
-        "         dataset_uuid=U,\n"
+        "         dataset_uuid=N,\n"
         "         base_name=None,\n"
         "         number=N,\n"
         "         extra_metrics={},\n"
@@ -1151,10 +1168,8 @@ Dataset memory:
 
 
 def test_stats_actor_metrics():
-    ray.init(object_store_memory=100e6, num_gpus=1)
-    with patch(
-        "ray.data._internal.execution.streaming_executor.update_stats_actor_metrics"
-    ) as update_fn:
+    ray.init(object_store_memory=100e6)
+    with patch_update_stats_actor() as update_fn:
         ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
     # last emitted metrics from map operator
@@ -1173,7 +1188,92 @@ def test_stats_actor_metrics():
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
 
+    assert "dataset" + ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+
+
+def test_stats_actor_iter_metrics():
+    ds = ray.data.range(1e6).map_batches(lambda x: x)
+    with patch_update_stats_actor_iter() as update_fn:
+        ds.take_all()
+
+    ds_stats = ds._plan.stats()
+    final_stats = update_fn.call_args_list[-1].args[0]
+
+    assert final_stats == ds_stats
     assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+
+
+def test_dataset_name():
+    ds = ray.data.range(100, parallelism=20).map_batches(lambda x: x)
+    ds._set_name("test_ds")
+    assert ds._name == "test_ds"
+    assert (
+        str(ds)
+        == """MapBatches(<lambda>)
++- Dataset(name=test_ds, num_blocks=20, num_rows=100, schema={id: int64})"""
+    )
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
+
+    # Names persist after an execution
+    ds = ds.random_shuffle()
+    assert ds._name == "test_ds"
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
+
+    ds._set_name("test_ds_two")
+    ds = ds.map_batches(lambda x: x)
+    assert ds._name == "test_ds_two"
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds_two" + mds._uuid
+
+    ds._set_name(None)
+    ds = ds.map_batches(lambda x: x)
+    assert ds._name is None
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == "dataset" + mds._uuid
+
+    ds = ray.data.range(100, parallelism=20)
+    ds._set_name("very_loooooooong_name")
+    assert (
+        str(ds)
+        == """Dataset(
+   name=very_loooooooong_name,
+   num_blocks=20,
+   num_rows=100,
+   schema={id: int64}
+)"""
+    )
+
+
+def test_op_metrics_logging():
+    logger = DatasetLogger(
+        "ray.data._internal.execution.streaming_executor"
+    ).get_logger()
+    with patch.object(logger, "info") as mock_logger:
+        ray.data.range(100).map_batches(lambda x: x).materialize()
+        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
+        input_str = (
+            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
+            + gen_expected_metrics(is_map=False)
+        )
+        map_str = (
+            "Operator InputDataBuffer[Input] -> "
+            "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
+            "Operator Metrics:\n"
+        ) + STANDARD_EXTRA_METRICS
+
+        # Check that these strings are logged exactly once.
+        assert sum([log == input_str for log in logs]) == 1
+        assert sum([log == map_str for log in logs]) == 1
 
 
 if __name__ == "__main__":
