@@ -1,7 +1,7 @@
+import asyncio
 import os
 import sys
 import time
-import asyncio
 
 import grpc
 
@@ -549,7 +549,6 @@ def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bool):
                 await asyncio.sleep(wait_period)
             return serve_pb2.UserDefinedResponse(greeting="hello")
 
-
         async def Streaming(self, user_message):
             start = time.time()
             while time.time() - start < wait_time:
@@ -568,6 +567,7 @@ def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bool):
     if streaming:
         response = stub.Streaming(request=request)
         print("streaming response", response)
+        print("asyncio.all_tasks(", asyncio.all_tasks())
     else:
         response = stub.__call__(request=request)
         print("unary response", response)
