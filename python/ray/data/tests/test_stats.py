@@ -145,14 +145,6 @@ def patch_update_stats_actor():
         yield update_fn
 
 
-@contextmanager
-def patch_update_stats_actor_iter():
-    with patch(
-        "ray.data._internal.block_batching.iter_batches.update_stats_actor_iter_metrics"
-    ) as update_fn:
-        yield update_fn
-
-
 def test_streaming_split_stats(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
@@ -1168,7 +1160,7 @@ Dataset memory:
 
 
 def test_stats_actor_metrics():
-    ray.init(object_store_memory=100e6)
+    ray.init(object_store_memory=100e6, num_gpus=1)
     with patch_update_stats_actor() as update_fn:
         ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
@@ -1189,18 +1181,6 @@ def test_stats_actor_metrics():
     assert final_metric.obj_store_mem_cur == 0
 
     assert "dataset" + ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
-
-
-def test_stats_actor_iter_metrics():
-    ds = ray.data.range(1e6).map_batches(lambda x: x)
-    with patch_update_stats_actor_iter() as update_fn:
-        ds.take_all()
-
-    ds_stats = ds._plan.stats()
-    final_stats = update_fn.call_args_list[-1].args[0]
-
-    assert final_stats == ds_stats
-    assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
 
 
 def test_dataset_name():

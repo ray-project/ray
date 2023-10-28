@@ -15,11 +15,7 @@ from ray.data._internal.block_batching.util import (
     resolve_block_refs,
 )
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data._internal.stats import (
-    DatasetStats,
-    clear_stats_actor_iter_metrics,
-    update_stats_actor_iter_metrics,
-)
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.context import DataContext
@@ -28,7 +24,6 @@ from ray.types import ObjectRef
 
 def iter_batches(
     block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-    dataset_tag: str,
     *,
     stats: Optional[DatasetStats] = None,
     clear_block_after_read: bool = False,
@@ -174,7 +169,6 @@ def iter_batches(
     # Run everything in a separate thread to not block the main thread when waiting
     # for streaming results.
     async_batch_iter = make_async_gen(block_refs, fn=_async_iter_batches, num_workers=1)
-    metrics_tag = {"dataset": dataset_tag}
 
     while True:
         with stats.iter_total_blocked_s.timer() if stats else nullcontext():
@@ -184,8 +178,6 @@ def iter_batches(
                 break
         with stats.iter_user_s.timer() if stats else nullcontext():
             yield next_batch
-        update_stats_actor_iter_metrics(stats, metrics_tag)
-    clear_stats_actor_iter_metrics(metrics_tag)
 
 
 def _format_in_threadpool(
