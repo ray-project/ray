@@ -44,6 +44,7 @@ class GaussianNoise(Exploration):
         initial_scale: float = 1.0,
         final_scale: float = 0.02,
         scale_timesteps: int = 10000,
+        scale_using_action_space: bool = False,
         scale_schedule: Optional[Schedule] = None,
         **kwargs
     ):
@@ -62,6 +63,9 @@ class GaussianNoise(Exploration):
             scale_timesteps: The timesteps over which to linearly anneal
                 the scaling factor (after(!) having used random actions for
                 `random_timesteps` steps).
+            scale_using_action_space: Whether or not to also scale based on the
+                action space range. This is useful if the action space itself is multi-
+                dimensional and doesn't have the same ranges throughout.
             scale_schedule: An optional Schedule object
                 to use (instead of constructing one from the given parameters).
         """
@@ -76,6 +80,8 @@ class GaussianNoise(Exploration):
         )
 
         self.stddev = stddev
+        self.scale_using_action_space = scale_using_action_space
+        self.action_space_range = action_space.high - action_space.low
         # The `scale` annealing schedule.
         self.scale_schedule = scale_schedule or PiecewiseSchedule(
             endpoints=[
@@ -128,7 +134,10 @@ class GaussianNoise(Exploration):
         deterministic_actions = action_dist.deterministic_sample()
 
         # Take a Gaussian sample with our stddev (mean=0.0) and scale it.
-        gaussian_sample = self.scale_schedule(ts) * tf.random.normal(
+        scale = self.scale_schedule(ts)
+        if self.scale_using_action_space:
+            scale *= tf.convert_to_tensor(self.action_space_range)
+        gaussian_sample = scale * tf.random.normal(
             tf.shape(deterministic_actions), stddev=self.stddev
         )
 
@@ -195,6 +204,8 @@ class GaussianNoise(Exploration):
             else:
                 det_actions = action_dist.deterministic_sample()
                 scale = self.scale_schedule(self.last_timestep)
+                if self.scale_using_action_space:
+                    scale *= torch.from_numpy(self.action_space_range)
                 gaussian_sample = scale * torch.normal(
                     mean=torch.zeros(det_actions.size()), std=self.stddev
                 ).to(self.device)
