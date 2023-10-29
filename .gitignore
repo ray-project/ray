@@ -71,10 +71,6 @@ python/ray/_raylet.pyd
 # Debug symbols
 *.pdb
 
-# Fortran module files
-*.mod
-!deploy/ray-operator/go.mod
-
 # Compiled Static libraries
 *.lai
 *.la
