@@ -2,8 +2,10 @@ from typing import Any, Iterable, List
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class Datasink:
     def on_write_start(self, **_) -> None:
         """Callback for when a write job starts.
