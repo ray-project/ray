@@ -62,6 +62,7 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
+        .experimental(_enable_new_api_stack=True)
         .environment(StatelessCartPole)
         .framework(args.framework)
         .training(num_sgd_iter=5, vf_loss_coeff=0.0001)

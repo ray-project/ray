@@ -134,7 +134,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.num_aggregation_workers = 0
 
         self.grad_clip = 40.0
-        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
         # configured by the user. On the old API stack, RLlib will always clip by
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
@@ -237,9 +237,10 @@ class ImpalaConfig(AlgorithmConfig):
             minibatch_size: The size of minibatches that are trained over during
                 each SGD iteration. If "auto", will use the same value as
                 `train_batch_size`.
-                Note that this setting only has an effect if `_enable_learner_api=True`
-                and it must be a multiple of `rollout_fragment_length` or
-                `sequence_length` and smaller than or equal to `train_batch_size`.
+                Note that this setting only has an effect if
+                `_enable_new_api_stack=True` and it must be a multiple of
+                `rollout_fragment_length` or `sequence_length` and smaller than or equal
+                to `train_batch_size`.
             num_sgd_iter: Number of passes to make over each train batch.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
                 be replayed with a p:1 proportion to new data samples.
@@ -378,7 +379,7 @@ class ImpalaConfig(AlgorithmConfig):
             )
 
         # Entropy coeff schedule checking.
-        if self._enable_learner_api:
+        if self._enable_new_api_stack:
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -421,7 +422,7 @@ class ImpalaConfig(AlgorithmConfig):
                     "_tf_policy_handles_more_than_one_loss=True)."
                 )
         # Learner API specific checks.
-        if self._enable_learner_api:
+        if self._enable_new_api_stack:
             if not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
                 and self.minibatch_size <= self.train_batch_size
@@ -682,7 +683,7 @@ class Impala(Algorithm):
         self._results = {}
         self._timeout_s_sampler_manager = self.config.timeout_s_sampler_manager
 
-        if not self.config._enable_learner_api:
+        if not self.config._enable_new_api_stack:
             # Create and start the learner thread.
             self._learner_thread = make_learner_thread(
                 self.workers.local_worker(), self.config
@@ -692,7 +693,10 @@ class Impala(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # First, check, whether our learner thread is still healthy.
-        if not self.config._enable_learner_api and not self._learner_thread.is_alive():
+        if (
+            not self.config._enable_new_api_stack
+            and not self._learner_thread.is_alive()
+        ):
             raise RuntimeError("The learner thread died while training!")
 
         use_tree_aggregation = (
@@ -729,7 +733,7 @@ class Impala(Algorithm):
         self.concatenate_batches_and_pre_queue(batches)
         # Using the Learner API. Call `update()` on our LearnerGroup object with
         # all collected batches.
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             train_results = self.learn_on_processed_samples()
             additional_results = self.learner_group.additional_update(
                 module_ids_to_update=set(train_results.keys()) - {ALL_MODULES},
@@ -756,7 +760,7 @@ class Impala(Algorithm):
 
         # Sync worker weights (only those policies that were actually updated).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.config._enable_learner_api:
+            if self.config._enable_new_api_stack:
                 if train_results:
                     pids = list(set(train_results.keys()) - {ALL_MODULES})
                     self.update_workers_from_learner_group(
@@ -780,7 +784,7 @@ class Impala(Algorithm):
                 mark_healthy=True,
             )
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             if train_results:
                 # Store the most recent result and return it if no new result is
                 # available. This keeps backwards compatibility with the old
@@ -845,7 +849,7 @@ class Impala(Algorithm):
         )
         # TODO(avnishn): Remove this once we have a way to extend placement group
         # factories.
-        if cf._enable_learner_api:
+        if cf._enable_new_api_stack:
             # Resources for the Algorithm.
             learner_bundles = cls._get_learner_bundles(cf)
 
@@ -984,7 +988,7 @@ class Impala(Algorithm):
     def place_processed_samples_on_learner_thread_queue(self) -> None:
         """Place processed samples on the learner queue for training.
 
-        NOTE: This method is called if self.config._enable_learner_api is False.
+        NOTE: This method is called if self.config._enable_new_api_stack is False.
 
         """
         while self.batches_to_place_on_learner:
@@ -1008,7 +1012,7 @@ class Impala(Algorithm):
     def process_trained_results(self) -> ResultDict:
         """Process training results that are outputed by the learner thread.
 
-        NOTE: This method is called if self.config._enable_learner_api is False.
+        NOTE: This method is called if self.config._enable_new_api_stack is False.
 
         Returns:
             Aggregated results from the learner thread after an update is completed.
@@ -1234,7 +1238,7 @@ class Impala(Algorithm):
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
         result = super()._compile_iteration_results(*args, **kwargs)
-        if not self.config._enable_learner_api:
+        if not self.config._enable_new_api_stack:
             result = self._learner_thread.add_learner_metrics(
                 result, overwrite_learner_info=False
             )

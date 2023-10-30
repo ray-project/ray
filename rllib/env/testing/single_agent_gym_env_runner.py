@@ -4,8 +4,8 @@ import gymnasium as gym
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 
 
 class SingleAgentGymEnvRunner(EnvRunner):
@@ -42,7 +42,7 @@ class SingleAgentGymEnvRunner(EnvRunner):
         num_episodes: Optional[int] = None,
         force_reset: bool = False,
         **kwargs,
-    ) -> Tuple[List[Episode], List[Episode]]:
+    ) -> Tuple[List[SingleAgentEpisode], List[SingleAgentEpisode]]:
         """Returns a tuple (list of completed episodes, list of ongoing episodes).
 
         Args:
@@ -61,9 +61,9 @@ class SingleAgentGymEnvRunner(EnvRunner):
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            A tuple consisting of: A list of Episode instances that are already
-            done (either terminated or truncated, hence their `is_done` property is
-            True), a list of Episode instances that are still ongoing
+            A tuple consisting of: A list of SingleAgentEpisode instances that are
+            already done (either terminated or truncated, hence their `is_done` property
+            is True), a list of SingleAgentEpisode instances that are still ongoing
             (their `is_done` property is False).
         """
         assert not (num_timesteps is not None and num_episodes is not None)
@@ -89,7 +89,7 @@ class SingleAgentGymEnvRunner(EnvRunner):
         self,
         num_timesteps: int,
         force_reset: bool = False,
-    ) -> Tuple[List[Episode], List[Episode]]:
+    ) -> Tuple[List[SingleAgentEpisode], List[SingleAgentEpisode]]:
         """Runs n timesteps on the environment(s) and returns experiences.
 
         Timesteps are counted in total (across all vectorized sub-environments). For
@@ -104,7 +104,7 @@ class SingleAgentGymEnvRunner(EnvRunner):
             # Start new episodes.
             # Set initial observations of the new episodes.
             self._episodes = [
-                Episode(observations=[o]) for o in self._split_by_env(obs)
+                SingleAgentEpisode(observations=[o]) for o in self._split_by_env(obs)
             ]
             self._needs_initial_reset = False
 
@@ -146,7 +146,7 @@ class SingleAgentGymEnvRunner(EnvRunner):
                     # Add this finished episode to the list of completed ones.
                     done_episodes_to_return.append(self._episodes[i])
                     # Start a new episode and set its initial observation to `o`.
-                    self._episodes[i] = Episode(observations=[o])
+                    self._episodes[i] = SingleAgentEpisode(observations=[o])
                 # Episode is ongoing -> Add a timestep.
                 else:
                     self._episodes[i].add_timestep(o, a, r)
@@ -156,7 +156,7 @@ class SingleAgentGymEnvRunner(EnvRunner):
         ongoing_episodes = self._episodes
         # Create new chunks (using the same IDs and latest observations).
         self._episodes = [
-            Episode(id_=eps.id_, observations=[eps.observations[-1]])
+            SingleAgentEpisode(id_=eps.id_, observations=[eps.observations[-1]])
             for eps in self._episodes
         ]
         # Return tuple: done episodes, ongoing ones.
@@ -175,7 +175,9 @@ class SingleAgentGymEnvRunner(EnvRunner):
         done_episodes_to_return = []
 
         obs, _ = self.env.reset()
-        episodes = [Episode(observations=[o]) for o in self._split_by_env(obs)]
+        episodes = [
+            SingleAgentEpisode(observations=[o]) for o in self._split_by_env(obs)
+        ]
 
         eps = 0
         while eps < num_episodes:
@@ -216,7 +218,7 @@ class SingleAgentGymEnvRunner(EnvRunner):
                         break
 
                     # Start a new episode and set its initial observation to `o`.
-                    episodes[i] = Episode(observations=[o])
+                    episodes[i] = SingleAgentEpisode(observations=[o])
                 else:
                     episodes[i].add_timestep(o, a, r)
 
