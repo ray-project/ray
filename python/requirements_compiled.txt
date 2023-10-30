@@ -35,7 +35,7 @@ aimrecords==0.0.7
     # via aim
 aimrocks==0.4.0
     # via aim
-aioboto3==11.2.0 ; python_version >= "3.8"
+aioboto3==11.2.0
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 aiobotocore==2.5.0
     # via
@@ -148,7 +148,7 @@ aws-sam-translator==1.79.0
     # via cfn-lint
 aws-xray-sdk==2.12.1
     # via moto
-ax-platform==0.3.2 ; python_version >= "3.8"
+ax-platform==0.3.2
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 azure-cli-core==2.40.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
@@ -217,7 +217,7 @@ boltons==21.0.0
     #   semgrep
 boto==2.49.0
     # via gcs-oauth2-boto-plugin
-boto3==1.26.76 ; python_version >= "3.8"
+boto3==1.26.76
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aiobotocore
@@ -366,7 +366,7 @@ cython==0.29.32
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gpy
-dask==2022.10.1 ; python_version >= "3.8"
+dask==2022.10.1
     # via
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
     #   distributed
@@ -435,7 +435,7 @@ docutils==0.17.1
     #   sphinx-jsonschema
     #   sphinx-tabs
     #   sphinx-togglebutton
-dopamine-rl==4.0.5 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version >= "3.8"
+dopamine-rl==4.0.5 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   recsim
@@ -468,7 +468,7 @@ exceptiongroup==1.1.3
     # via anyio
 execnet==2.0.2
     # via pytest-shutil
-executing==2.0.0
+executing==2.0.1
     # via stack-data
 face==22.0.0
     # via glom
@@ -492,7 +492,7 @@ feather-format==0.4.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 ffmpy==0.3.1
     # via gradio
-filelock==3.12.4
+filelock==3.13.0
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   aim
@@ -915,7 +915,7 @@ jupyter-client==7.3.4
     #   nbclassic
     #   nbclient
     #   notebook
-jupyter-core==5.4.0
+jupyter-core==5.5.0
     # via
     #   ipykernel
     #   jupyter-client
@@ -972,6 +972,8 @@ kubernetes==24.2.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
+lazy-loader==0.3
+    # via scikit-image
 lazy-object-proxy==1.9.0
     # via openapi-spec-validator
 libclang==16.0.6
@@ -1056,13 +1058,13 @@ ml-dtypes==0.2.0
     #   jaxlib
 mlagents-envs==0.28.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-mlflow==2.4.1 ; python_version > "3.7"
+mlflow==2.4.1
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 mock==5.1.0
     # via
     #   asyncmock
     #   pytest-shutil
-modin==0.22.2 ; python_version >= "3.8"
+modin==0.22.2
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 monotonic==1.6
     # via
@@ -1176,9 +1178,8 @@ netifaces==0.11.0
     # via
     #   hpbandster
     #   raydp
-networkx==2.6.3 ; python_version < "3.11"
+networkx==3.1 ; python_version < "3.11"
     # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   cfn-lint
     #   hyperopt
     #   scikit-image
@@ -1462,7 +1463,7 @@ pbr==5.11.1
     #   sarif-om
 peewee==3.17.0
     # via semgrep
-pettingzoo==1.23.1 ; python_version >= "3.7"
+pettingzoo==1.23.1
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 pexpect==4.8.0
     # via
@@ -1833,7 +1834,7 @@ querystring-parser==1.2.4
     #   xgboost-ray
 raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
-recsim==0.2.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version >= "3.8"
+recsim==0.2.4 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 redis==4.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1935,7 +1936,7 @@ ruamel-yaml==0.17.40
     # via semgrep
 ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
-s3fs==2023.5.0 ; python_version >= "3.8"
+s3fs==2023.5.0
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 s3transfer==0.6.2
     # via boto3
@@ -1943,7 +1944,7 @@ safetensors==0.4.0
     # via timm
 sarif-om==1.0.4
     # via cfn-lint
-scikit-image==0.19.3 ; python_version < "3.11"
+scikit-image==0.21.0 ; python_version < "3.11"
     # via -r /ray/ci/../python/requirements.txt
 scikit-learn==1.0.2 ; python_version < "3.11"
     # via
@@ -2174,7 +2175,7 @@ starlette==0.27.0
     #   fastapi
 statsmodels==0.14.0
     # via hpbandster
-supersuit==3.8.0 ; python_version >= "3.7"
+supersuit==3.8.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 sympy==1.12
     # via
@@ -2281,7 +2282,7 @@ toolz==0.12.0
     #   dask
     #   distributed
     #   partd
-torch==2.0.1 ; python_version > "3.7"
+torch==2.0.1
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
@@ -2310,13 +2311,13 @@ torch-spline-conv==1.2.2
     # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 torchdata==0.6.1
     # via torchtext
-torchmetrics==0.10.3 ; python_version > "3.7"
+torchmetrics==0.10.3
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   pytorch-lightning
-torchtext==0.15.2 ; python_version > "3.7"
+torchtext==0.15.2
     # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.15.2 ; python_version > "3.7"
+torchvision==0.15.2
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   timm
@@ -2351,7 +2352,7 @@ tqdm==4.64.1
     #   torch-geometric
     #   torchtext
     #   transformers
-traitlets==5.12.0
+traitlets==5.13.0
     # via
     #   comm
     #   ipykernel
@@ -2508,7 +2509,7 @@ werkzeug==2.1.2
     #   moto
     #   pytest-httpserver
     #   tensorboard
-wheel==0.41.2
+wheel==0.41.3
     # via
     #   astunparse
     #   lightgbm
@@ -2527,7 +2528,7 @@ wrapt==1.15.0
     #   xgboost-ray
 wurlitzer==3.0.3
     # via comet-ml
-xgboost==1.7.6 ; python_version > "3.7"
+xgboost==1.7.6
     # via
     #   -r /ray/ci/../python/requirements/ml/core-requirements.txt
     #   flaml
