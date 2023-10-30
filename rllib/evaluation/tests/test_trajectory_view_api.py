@@ -104,6 +104,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         # and Learner API.
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=False)
             .environment("CartPole-v1")
             # Activate LSTM + prev-action + rewards.
             .training(
@@ -112,10 +113,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     "lstm_use_prev_action": True,
                     "lstm_use_prev_reward": True,
                 },
-                _enable_learner_api=False,
             )
             .rollouts(create_env_on_local_worker=True)
-            .rl_module(_enable_rl_module_api=False)
         )
 
         for _ in framework_iterator(config):
@@ -184,6 +183,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
     def test_traj_view_attention_net(self):
         config = (
             ppo.PPOConfig()
+            # Batch-norm models have not been migrated to the RL Module API yet.
+            .experimental(_enable_new_api_stack=False)
             .environment(
                 "ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
                 env_config={"config": {"start_at_t": 1}},  # first obs is [1.0]
@@ -210,9 +211,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 sgd_minibatch_size=201,
                 num_sgd_iter=5,
             )
-            # Batch-norm models have not been migrated to the RL Module API yet.
-            .training(_enable_learner_api=False)
-            .rl_module(_enable_rl_module_api=False)
         )
 
         for _ in framework_iterator(config, frameworks="tf2"):
@@ -228,6 +226,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         action_space = Discrete(2)
         config = (
             ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .framework("torch")
             .rollouts(rollout_fragment_length=200, num_rollout_workers=0)
         )
@@ -306,6 +305,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rw = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
             config=ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .framework("torch")
             .rollouts(
                 rollout_fragment_length=rollout_fragment_length,
@@ -349,20 +349,19 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
+            # The Policy used to be passed in, now we have to pass in the RLModuleSpecs
+            .experimental(_enable_new_api_stack=False)
             .framework("torch")
             .multi_agent(policies=policies, policy_mapping_fn=policy_fn)
             .training(
                 model={"max_seq_len": max_seq_len},
                 train_batch_size=2010,
-                _enable_learner_api=False,
             )
             .rollouts(
                 num_rollout_workers=0,
                 rollout_fragment_length=rollout_fragment_length,
             )
             .environment(normalize_actions=False)
-            # The Policy used to be passed in, now we have to pass in the RLModuleSpecs
-            .rl_module(_enable_rl_module_api=False)
         )
 
         rollout_worker_w_api = RolloutWorker(
@@ -374,18 +373,21 @@ class TestTrajectoryViewAPI(unittest.TestCase):
     def test_counting_by_agent_steps(self):
         num_agents = 3
 
-        config = ppo.PPOConfig()
-        # Env setup.
-        config.environment(MultiAgentPendulum, env_config={"num_agents": num_agents})
-        config.rollouts(num_rollout_workers=2, rollout_fragment_length=21)
-        config.training(num_sgd_iter=2, train_batch_size=168)
-        config.framework("torch")
-        config.multi_agent(
-            policies={f"p{i}" for i in range(num_agents)},
-            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
-                "p{}".format(agent_id)
-            ),
-            count_steps_by="agent_steps",
+        config = (
+            ppo.PPOConfig()
+            .experimental(_enable_new_api_stack=True)
+            # Env setup.
+            .environment(MultiAgentPendulum, env_config={"num_agents": num_agents})
+            .rollouts(num_rollout_workers=2, rollout_fragment_length=21)
+            .training(num_sgd_iter=2, train_batch_size=168)
+            .framework("torch")
+            .multi_agent(
+                policies={f"p{i}" for i in range(num_agents)},
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                    "p{}".format(agent_id)
+                ),
+                count_steps_by="agent_steps",
+            )
         )
 
         num_iterations = 2
