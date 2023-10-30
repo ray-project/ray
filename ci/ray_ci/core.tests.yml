@@ -13,3 +13,4 @@ flaky_tests:
   - //python/ray/tests:test_unhandled_error
   - //python/ray/tests:test_state_api_log
   - //python/ray/tests:test_ray_init_2
+  - //python/ray/workflow:tests/test_http_events_2
