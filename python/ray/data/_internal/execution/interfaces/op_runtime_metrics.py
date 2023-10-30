@@ -48,7 +48,9 @@ class OpRuntimeMetrics:
     # Number of generated output blocks.
     num_outputs_generated: int = field(default=0, metadata={"map_only": True})
     # Total size in bytes of generated output blocks.
-    bytes_outputs_generated: int = field(default=0, metadata={"map_only": True})
+    bytes_outputs_generated: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
 
     # Number of output blocks that are already taken by the downstream.
     num_outputs_taken: int = 0
@@ -74,19 +76,35 @@ class OpRuntimeMetrics:
     # === Object store memory metrics ===
 
     # Allocated memory size in the object store.
-    obj_store_mem_alloc: int = field(default=0, metadata={"map_only": True})
+    obj_store_mem_alloc: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
     # Freed memory size in the object store.
-    obj_store_mem_freed: int = field(default=0, metadata={"map_only": True})
+    obj_store_mem_freed: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
     # Current memory size in the object store.
-    obj_store_mem_cur: int = field(default=0, metadata={"map_only": True})
+    obj_store_mem_cur: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
     # Peak memory size in the object store.
     obj_store_mem_peak: int = field(default=0, metadata={"map_only": True})
     # Spilled memory size in the object store.
-    obj_store_mem_spilled: int = field(default=0, metadata={"map_only": True})
+    obj_store_mem_spilled: int = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
+
+    # === Miscellaneous metrics ===
+
+    # Time spent generating blocks.
+    block_generation_time: float = field(
+        default=0, metadata={"map_only": True, "export_metric": True}
+    )
 
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
 
+        self._op = op
         self._is_map = isinstance(op, MapOperator)
         self._running_tasks: Dict[int, RunningTaskInfo] = {}
         self._extra_metrics: Dict[str, Any] = {}
@@ -96,17 +114,36 @@ class OpRuntimeMetrics:
         """Return a dict of extra metrics."""
         return self._extra_metrics
 
-    def as_dict(self):
+    def as_dict(self, metrics_only: bool = False):
         """Return a dict representation of the metrics."""
         result = []
         for f in fields(self):
             if f.metadata.get("export", True):
-                if not self._is_map and f.metadata.get("map_only", False):
+                if (not self._is_map and f.metadata.get("map_only", False)) or (
+                    metrics_only and not f.metadata.get("export_metric", False)
+                ):
                     continue
                 value = getattr(self, f.name)
                 result.append((f.name, value))
+
+        # TODO: record resource usage in OpRuntimeMetrics,
+        # avoid calling self._op.current_resource_usage()
+        resource_usage = self._op.current_resource_usage()
+        result.extend(
+            [
+                ("cpu_usage", resource_usage.cpu or 0),
+                ("gpu_usage", resource_usage.gpu or 0),
+            ]
+        )
         result.extend(self._extra_metrics.items())
         return dict(result)
+
+    @classmethod
+    def get_metric_keys(cls):
+        """Return a list of metric keys."""
+        return [
+            f.name for f in fields(cls) if f.metadata.get("export_metric", False)
+        ] + ["cpu_usage", "gpu_usage"]
 
     @property
     def average_num_outputs_per_task(self) -> Optional[float]:
@@ -178,7 +215,9 @@ class OpRuntimeMetrics:
         if self.obj_store_mem_cur > self.obj_store_mem_peak:
             self.obj_store_mem_peak = self.obj_store_mem_cur
 
-        for block_ref, _ in output.blocks:
+        for block_ref, meta in output.blocks:
+            assert meta.exec_stats and meta.exec_stats.wall_time_s
+            self.block_generation_time += meta.exec_stats.wall_time_s
             trace_allocation(block_ref, "operator_output")
 
     def on_task_finished(self, task_index: int):

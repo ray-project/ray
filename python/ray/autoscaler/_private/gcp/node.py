@@ -166,7 +166,9 @@ class GCPNode(UserDict, metaclass=abc.ABCMeta):
 class GCPComputeNode(GCPNode):
     """Abstraction around compute nodes"""
 
+    # https://cloud.google.com/compute/docs/instances/instance-life-cycle
     NON_TERMINATED_STATUSES = {"PROVISIONING", "STAGING", "RUNNING"}
+    TERMINATED_STATUSES = {"TERMINATED", "SUSPENDED"}
     RUNNING_STATUSES = {"RUNNING"}
     STATUS_FIELD = "status"
 
@@ -243,7 +245,11 @@ class GCPResource(metaclass=abc.ABCMeta):
         return None
 
     @abc.abstractmethod
-    def list_instances(self, label_filters: Optional[dict] = None) -> List["GCPNode"]:
+    def list_instances(
+        self,
+        label_filters: Optional[dict] = None,
+        is_terminated: bool = False,
+    ) -> List["GCPNode"]:
         """Returns a filtered list of all instances.
 
         The filter removes all terminated instances and, if ``label_filters``
@@ -307,6 +313,16 @@ class GCPResource(metaclass=abc.ABCMeta):
         """Deletes an instance and returns result."""
         return
 
+    @abc.abstractmethod
+    def stop_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+        """Deletes an instance and returns result."""
+        return
+
+    @abc.abstractmethod
+    def start_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+        """Starts a single instance and returns result."""
+        return
+
 
 class GCPCompute(GCPResource):
     """Abstraction around GCP compute resource"""
@@ -348,7 +364,9 @@ class GCPCompute(GCPResource):
         return result
 
     def list_instances(
-        self, label_filters: Optional[dict] = None
+        self,
+        label_filters: Optional[dict] = None,
+        is_terminated: bool = False,
     ) -> List[GCPComputeNode]:
         label_filters = label_filters or {}
 
@@ -366,13 +384,16 @@ class GCPCompute(GCPResource):
         else:
             label_filter_expr = ""
 
+        statuses = (
+            GCPComputeNode.TERMINATED_STATUSES
+            if is_terminated
+            else GCPComputeNode.NON_TERMINATED_STATUSES
+        )
+
         instance_state_filter_expr = (
             "("
             + " OR ".join(
-                [
-                    "(status = {status})".format(status=status)
-                    for status in GCPComputeNode.NON_TERMINATED_STATUSES
-                ]
+                ["(status = {status})".format(status=status) for status in statuses]
             )
             + ")"
         )
@@ -455,7 +476,7 @@ class GCPCompute(GCPResource):
     ) -> Dict[str, Any]:
         """Ensures that resources are in their full URL form.
 
-        GCP expects machineType and accleratorType to be a full URL (e.g.
+        GCP expects machineType and acceleratorType to be a full URL (e.g.
         `zones/us-west1/machineTypes/n1-standard-2`) instead of just the
         type (`n1-standard-2`)
 
@@ -558,6 +579,41 @@ class GCPCompute(GCPResource):
 
         return result
 
+    def stop_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+        operation = (
+            self.resource.instances()
+            .stop(
+                project=self.project_id,
+                zone=self.availability_zone,
+                instance=node_id,
+            )
+            .execute()
+        )
+
+        if wait_for_operation:
+            result = self.wait_for_operation(operation)
+        else:
+            result = operation
+        return result
+
+    def start_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+
+        operation = (
+            self.resource.instances()
+            .start(
+                project=self.project_id,
+                zone=self.availability_zone,
+                instance=node_id,
+            )
+            .execute()
+        )
+
+        if wait_for_operation:
+            result = self.wait_for_operation(operation)
+        else:
+            result = operation
+        return result
+
 
 class GCPTPU(GCPResource):
     """Abstraction around GCP TPU resource"""
@@ -602,7 +658,11 @@ class GCPTPU(GCPResource):
 
         return result
 
-    def list_instances(self, label_filters: Optional[dict] = None) -> List[GCPTPUNode]:
+    def list_instances(
+        self,
+        label_filters: Optional[dict] = None,
+        is_terminated: bool = False,
+    ) -> List[GCPTPUNode]:
         response = (
             self.resource.projects()
             .locations()
@@ -731,6 +791,30 @@ class GCPTPU(GCPResource):
         )
 
         # No need to increase MAX_POLLS for deletion
+        if wait_for_operation:
+            result = self.wait_for_operation(operation, max_polls=MAX_POLLS)
+        else:
+            result = operation
+
+        return result
+
+    def stop_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+        operation = (
+            self.resource.projects().locations().nodes().stop(name=node_id).execute()
+        )
+
+        if wait_for_operation:
+            result = self.wait_for_operation(operation, max_polls=MAX_POLLS)
+        else:
+            result = operation
+
+        return result
+
+    def start_instance(self, node_id: str, wait_for_operation: bool = True) -> dict:
+        operation = (
+            self.resource.projects().locations().nodes().start(name=node_id).execute()
+        )
+
         if wait_for_operation:
             result = self.wait_for_operation(operation, max_polls=MAX_POLLS)
         else:

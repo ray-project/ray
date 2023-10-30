@@ -49,10 +49,17 @@ def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
 def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     """Return optimization stats reported from the policy.
 
-    Example:
-        >>> grad_info = worker.learn_on_batch(samples)
-        {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
-        >>> print(get_stats(grad_info))
+    .. testcode::
+        :skipif: True
+
+        grad_info = worker.learn_on_batch(samples)
+
+        # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
+
+        print(get_stats(grad_info))
+
+    .. testoutput::
+
         {"vf_loss": ..., "policy_loss": ...}
     """
     if LEARNER_STATS_KEY in grad_info:
