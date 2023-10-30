@@ -1,5 +1,14 @@
 group: runtime images
 steps:
+  - label: ":tapioca: go download helper"
+    key: runtime-helper
+    instance_type: small
+    commands:
+      - bash anyscale/go/build-on-buildkite.sh
+    depends_on:
+      - forge
+    job_env: forge
+
   - label: ":tapioca: runtime py{{matrix}} wheel"
     key: runtime-wheels
     instance_type: medium
@@ -22,6 +31,7 @@ steps:
     instance_type: medium
     depends_on:
       - runtime-wheels
+      - runtime-helper
       - raycpubase
       - raycudabase
     job_env: forge
@@ -45,6 +55,7 @@ steps:
     instance_type: medium
     depends_on:
       - runtime-wheels
+      - runtime-helper
       - raycpubase
       - raycudabase
     job_env: forge
@@ -67,6 +78,7 @@ steps:
     instance_type: medium
     depends_on:
       - runtime-wheels
+      - runtime-helper
       - ray-mlcpubase
       - ray-mlcudabase
     job_env: forge

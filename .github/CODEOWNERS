@@ -9,6 +9,7 @@
 # mature
 anyscale/ci @aslonnie @can-anyscale
 anyscale/docker @aslonnie @can-anyscale
+anyscale/go @aslonnie @lanbochen-anyscale @hckuo-anyscale
 
 # Data team
 /python/ray/anyscale/data @bveeramani @c21 @amogkam @scottjlee @raulchen
