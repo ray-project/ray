@@ -44,7 +44,7 @@ class Datasink:
         method fails, then ``on_write_failed()`` is called.
 
         Args:
-            write_results: The list of the write task results.
+            write_results: The list of results returned by all write tasks.
             _: Forward-compatibility placeholder.
         """
         pass
