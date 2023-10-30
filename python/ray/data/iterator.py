@@ -166,6 +166,7 @@ class DataIterator(abc.ABC):
             iterator = iter(
                 iter_batches(
                     block_iterator,
+                    dataset_tag=self._get_dataset_tag(),
                     stats=stats,
                     clear_block_after_read=blocks_owned_by_consumer,
                     batch_size=batch_size,
@@ -186,6 +187,9 @@ class DataIterator(abc.ABC):
                 stats.iter_total_s.add(time.perf_counter() - time_start)
 
         return _IterableFromIterator(_create_iterator)
+
+    def _get_dataset_tag(self) -> str:
+        return "unknown_dataset"
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.

@@ -59,6 +59,7 @@ class TestImpalaLearner(unittest.TestCase):
         """
         config = (
             ImpalaConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -72,10 +73,6 @@ class TestImpalaLearner(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
-            )
-            .rl_module(
-                _enable_rl_module_api=True,
             )
         )
         # TODO (Artur): See if setting Impala's default to {} pose any issues.

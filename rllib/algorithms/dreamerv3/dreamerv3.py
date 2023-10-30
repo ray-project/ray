@@ -153,8 +153,7 @@ class DreamerV3Config(AlgorithmConfig):
         # with RLlib's `RemoteVectorEnv`).
         self.remote_worker_envs = True
         # Dreamer only runs on the new API stack.
-        self._enable_learner_api = True
-        self._enable_rl_module_api = True
+        self._enable_new_api_stack = True
         # __sphinx_doc_end__
         # fmt: on
 
@@ -387,10 +386,10 @@ class DreamerV3Config(AlgorithmConfig):
             raise ValueError("DreamerV3 does NOT support multi-agent setups yet!")
 
         # Make sure, we are configure for the new API stack.
-        if not (self._enable_learner_api and self._enable_rl_module_api):
+        if not self._enable_new_api_stack:
             raise ValueError(
-                "DreamerV3 must be run with `config._enable_learner_api`=True AND "
-                "with `config._enable_rl_module_api`=True!"
+                "DreamerV3 must be run with `config.experimental("
+                "_enable_new_api_stack=True)`!"
             )
 
         # If run on several Learners, the provided batch_size_B must be a multiple
