@@ -25,6 +25,7 @@ from ray.train._internal.storage import (
     _upload_to_fs_path,
 )
 from ray.tune import Callback, Trainable
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
@@ -743,22 +744,21 @@ def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_traina
     assert not results.errors
 
 
-# TODO(justinvyu): [handle_moved_storage_path]
-@pytest.mark.skip("Restoring from a moved storage path is not supported yet.")
-@pytest.mark.parametrize("use_tune_run", [True, False])
+@pytest.mark.parametrize("use_tune_run", [True])
 def test_tuner_restore_from_moved_experiment_path(
     ray_start_2_cpus, tmp_path, use_tune_run
 ):
     """Check that restoring a Tuner from a moved experiment directory works."""
     # Create a fail_marker dummy file that causes the first Tune run to fail and
     # the second run to succeed
+    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = str(tmp_path / "local_dir")
     fail_marker = tmp_path / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 
-    old_local_dir = tmp_path / "ray_results"
+    old_storage_path = tmp_path / "ray_results"
     old_exp_name = "exp_dir"
 
-    new_local_dir = tmp_path / "new_ray_results"
+    new_storage_path = tmp_path / "new_ray_results"
     new_exp_name = "new_exp_dir"
 
     # Initial training run (that errors out in the middle)
@@ -770,25 +770,35 @@ def test_tuner_restore_from_moved_experiment_path(
         ),
         run_config=RunConfig(
             name=old_exp_name,
-            storage_path=str(old_local_dir),
+            storage_path=str(old_storage_path),
             checkpoint_config=CheckpointConfig(num_to_keep=num_to_keep),
         ),
         param_space={
             "failing_hanging": (fail_marker, None),
         },
     )
-    results = tuner.fit()
-    assert len(results.errors) == 1
+    tuner.fit()
+
+    # Move experiment from `tmp_path/ray_results/exp_dir`
+    # to `tmp_path/moved_ray_results/new_exp_dir`, changing both `storage_path` and
+    # the experiment `name`
+    shutil.move(str(old_storage_path), str(new_storage_path))
+    os.rename(
+        str(new_storage_path / old_exp_name), str(new_storage_path / new_exp_name)
+    )
+
+    # Check that the results can be read from the new location.
+    restore_path = str(new_storage_path / new_exp_name)
+    results = ResultGrid(ExperimentAnalysis(restore_path))
+
+    # TODO(justinvyu): [populate_exception] for storage_path != None
+    # assert len(results.errors) == 1
     training_iteration = results[0].metrics["training_iteration"]
     assert (
         training_iteration == 1
     ), f"Should only have 1 train.report before erroring, got {training_iteration}"
-
-    # Move experiment from `tmp_path/ray_results/exp_dir`
-    # to `tmp_path/moved_ray_results/new_exp_dir`, changing both `local_dir` and
-    # the experiment `name`
-    shutil.move(str(old_local_dir), str(new_local_dir))
-    os.rename(str(new_local_dir / old_exp_name), str(new_local_dir / new_exp_name))
+    assert results[0].checkpoint.path.endswith("checkpoint_000000")
+    assert "new_exp_dir" in results[0].checkpoint.path
 
     del tuner
     # Remove fail_marker so that the restored Tuner doesn't error again
@@ -799,18 +809,18 @@ def test_tuner_restore_from_moved_experiment_path(
         analysis = tune.run(
             _train_fn_sometimes_failing,
             name=new_exp_name,
-            storage_path=str(new_local_dir),
+            storage_path=str(new_storage_path),
             resume="AUTO+ERRORED",
         )
         results = ResultGrid(analysis)
     else:
-        restore_path = str(new_local_dir / new_exp_name)
         tuner = Tuner.restore(
             restore_path, trainable=_train_fn_sometimes_failing, resume_errored=True
         )
         results = tuner.fit()
 
     assert len(results.errors) == 0
+
     # Check that we restored iter=1, then made 2 calls to train.report -> iter=3
     training_iteration = results[0].metrics["training_iteration"]
     assert training_iteration == 3, training_iteration
@@ -819,21 +829,12 @@ def test_tuner_restore_from_moved_experiment_path(
     assert results[0].checkpoint
     assert len(results[0].best_checkpoints) == num_to_keep
     checkpoint_dirs = [
-        path
-        for path in os.listdir(results[0].log_dir)
-        if path.startswith("checkpoint_")
+        path for path in os.listdir(results[0].path) if path.startswith("checkpoint_")
     ]
     assert sorted(checkpoint_dirs) == ["checkpoint_000001", "checkpoint_000002"]
 
     # Make sure that we did not create a logdir in the old location
-    assert not old_local_dir.exists()
-
-
-# TODO(justinvyu): [handle_moved_storage_path]
-@pytest.mark.skip("Restoring from a moved storage path is not supported yet.")
-def test_tuner_restore_from_moved_cloud_uri(ray_start_2_cpus, tmp_path):
-    """Test that restoring an experiment that was moved to a new remote URI
-    resumes and continues saving new results at that URI."""
+    assert not old_storage_path.exists()
 
 
 def test_custom_searcher_and_scheduler_restore(ray_start_2_cpus, tmpdir):
