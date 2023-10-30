@@ -98,7 +98,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
           // Keep io_service_ alive.
           boost::asio::io_service::work io_service_work_(io_service_);
           io_service_.run();
-        })) {}
+        })),
+        periodical_runner_(io_service_) {
+    periodical_runner_.RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
+                                         5 * 1000,
+                                         "GcsTaskManager.GcJobSummary");
+  }
 
   /// Handles a AddTaskEventData request.
   ///
@@ -257,6 +262,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
       it->second.OnJobEnds();
     }
 
+    void GcJobSummary() {
+      for (auto &job_summary : job_task_summary_) {
+        job_summary.second.GcOldDroppedTaskAttempts(job_summary.first);
+      }
+    }
+
     /// Return if a job exists in the storage.
     bool HasJob(const JobID &job_id) const {
       auto it = job_task_summary_.find(job_id);
@@ -336,8 +347,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
       ///
       /// \param task_attempt Task attempt.
       void RecordTaskAttemptDropped(const TaskAttempt &task_attempt) {
-        dropped_task_attempts_.insert(task_attempt);
-        num_task_attempts_dropped_ = dropped_task_attempts_.size();
+        dropped_task_attempts_.insert({task_attempt, absl::Now()});
+        num_task_attempts_dropped_tracked_ = dropped_task_attempts_.size();
       }
 
       /// Record a number of profile event as dropped.
@@ -353,7 +364,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
 
       size_t NumProfileEventsDropped() const { return num_profile_events_dropped_; }
 
-      size_t NumTaskAttemptsDropped() const { return num_task_attempts_dropped_; }
+      size_t NumTaskAttemptsDropped() const {
+        return num_task_attempts_dropped_tracked_ + num_dropped_task_attempts_evicted_;
+      }
+
+      /// GC the currently tracked dropped task attempts.
+      void GcOldDroppedTaskAttempts(const JobID&job_id);
 
       /// Callback when job is finished.
       ///
@@ -364,11 +380,16 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
      private:
       int64_t num_profile_events_dropped_ = 0;
 
-      int64_t num_task_attempts_dropped_ = 0;
+      int64_t num_task_attempts_dropped_tracked_ = 0;
 
-      absl::flat_hash_set<TaskAttempt> dropped_task_attempts_;
+      int64_t num_dropped_task_attempts_evicted_ = 0;
+
+      // A map of task attempts that are already dropped to the last modified timestamp.
+      absl::flat_hash_map<TaskAttempt, absl::Time> dropped_task_attempts_;
 
       FRIEND_TEST(GcsTaskManagerTest, TestMultipleJobsDataLoss);
+      FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit);
+      FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsTimeout);
     };
 
     ///  Mark a task attempt as failed if needed.
@@ -464,6 +485,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
     FRIEND_TEST(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded);
     FRIEND_TEST(GcsTaskManagerTest, TestMultipleJobsDataLoss);
+    FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit);
+    FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsTimeout);
   };
 
  private:
@@ -510,6 +533,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// Its own IO thread from the main thread.
   std::unique_ptr<std::thread> io_service_thread_;
 
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
+
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
@@ -518,6 +544,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   FRIEND_TEST(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded);
   FRIEND_TEST(GcsTaskManagerTest, TestTaskDataLossWorker);
   FRIEND_TEST(GcsTaskManagerTest, TestMultipleJobsDataLoss);
+  FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit);
+  FRIEND_TEST(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsTimeout);
 };
 
 }  // namespace gcs

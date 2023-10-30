@@ -591,5 +591,54 @@ void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_
       });
 }
 
+void GcsTaskManager::GcsTaskManagerStorage::JobTaskSummary::GcOldDroppedTaskAttempts(
+    const JobID &job_id) {
+  const auto max_dropped_task_attempts_tracked_in_gcs = static_cast<size_t>(
+      RayConfig::instance()
+          .task_events_max_dropped_task_attempts_tracked_per_job_in_gcs());
+  if (dropped_task_attempts_.size() <= max_dropped_task_attempts_tracked_in_gcs) {
+    return;
+  }
+  RAY_LOG(INFO) << "Evict extra dropped task attempts(" << dropped_task_attempts_.size()
+                << " > " << max_dropped_task_attempts_tracked_in_gcs
+                << ") tracked in GCS for job=" << job_id.Hex() << ". Setting the "
+                << "RAY_task_events_max_dropped_task_attempts_tracked_per_job_in_gcs"
+                << " to a higher value to store more.";
+
+  // Pass 1: GC any dropped task attempt if they have not been updated.
+  for (auto itr = dropped_task_attempts_.begin(); itr != dropped_task_attempts_.end();) {
+    if (itr->second +
+            absl::Seconds(RayConfig::instance()
+                              .task_events_dropped_task_attempts_gc_threshold_s()) <
+        absl::Now()) {
+      // NOTE: this is special for absl::flat_hash_map:
+      // https://github.com/abseil/abseil-cpp/blob/master/absl/container/flat_hash_map.h#L211-L216
+      dropped_task_attempts_.erase(itr++);
+      num_dropped_task_attempts_evicted_++;
+    } else {
+      ++itr;
+    }
+  }
+
+  // Pass 2: If there's still more than
+  // task_events_max_dropped_task_attempts_tracked_per_job_in_gcs, just take and evict
+  // to prevent OOM.
+  size_t num_to_evict = 0;
+  if (dropped_task_attempts_.size() > max_dropped_task_attempts_tracked_in_gcs) {
+    num_to_evict =
+        dropped_task_attempts_.size() - max_dropped_task_attempts_tracked_in_gcs;
+  }
+  num_task_attempts_dropped_tracked_ = dropped_task_attempts_.size();
+  if (num_to_evict == 0) {
+    return;
+  }
+
+  // Evict ignoring timestamp.
+  num_dropped_task_attempts_evicted_ += num_to_evict;
+  dropped_task_attempts_.erase(dropped_task_attempts_.begin(),
+                               std::next(dropped_task_attempts_.begin(), num_to_evict));
+  num_task_attempts_dropped_tracked_ = dropped_task_attempts_.size();
+}
+
 }  // namespace gcs
 }  // namespace ray

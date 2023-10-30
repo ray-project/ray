@@ -496,6 +496,19 @@ RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 /// Setting the value to -1 allows for unlimited task events stored in GCS.
 RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
 
+/// The number of task attempts being dropped per job tracked at GCS. When GCS is forced
+/// to stop tracking some task attempts that are lost, this will incur potential partial
+/// data loss for a single task attempt (e.g. some task events were dropped, but some were
+/// tracked). When this happens, users should be cautious of inconsistency in the task
+/// events data.
+RAY_CONFIG(int64_t,
+           task_events_max_dropped_task_attempts_tracked_per_job_in_gcs,
+           1 * 1000 * 1000)
+
+/// The threshold in seconds for actively GCing the dropped task attempts. If a task
+/// attempt wasn't being reported to GCS for more than this threshold, it will be GCed.
+RAY_CONFIG(int64_t, task_events_dropped_task_attempts_gc_threshold_s, 15 * 60)
+
 /// Max number of task status events stored on
 /// workers. Events will be evicted based on a FIFO order.
 RAY_CONFIG(uint64_t, task_events_max_num_status_events_buffer_on_worker, 100 * 1000)

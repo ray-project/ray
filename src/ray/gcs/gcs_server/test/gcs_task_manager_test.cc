@@ -283,6 +283,20 @@ class GcsTaskManagerMemoryLimitedTest : public GcsTaskManagerTest {
   }
 };
 
+class GcsTaskManagerDroppedTaskAttemptsLimit : public GcsTaskManagerTest {
+ public:
+  GcsTaskManagerDroppedTaskAttemptsLimit() : GcsTaskManagerTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_max_num_task_in_gcs": 10,
+  "task_events_max_dropped_task_attempts_tracked_per_job_in_gcs": 5,
+  "task_events_dropped_task_attempts_gc_threshold_s": 3
+}
+  )");
+  }
+};
+
 TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
   size_t num_task_events = 100;
   int32_t num_status_events_dropped = 10;
@@ -967,6 +981,83 @@ TEST_F(GcsTaskManagerTest, TestMultipleJobsDataLoss) {
         task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
     EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 0);
   }
+}
+
+TEST_F(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsTimeout) {
+  // Test that when the number of dropped task attempts exceeds the limit,
+  // we should be them to prevent OOM.
+
+  // Generate 15 task attempts, 5 should be dropped.
+  {
+    for (int i = 0; i < 15; i++) {
+      auto t = GenTaskIDForJob(0);
+      SyncAddTaskEvent({t}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 0);
+    }
+  }
+
+  // Before GC we should have 5 dropped task attempts tracked.
+  auto job_summary =
+      task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
+  EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 5);
+
+  // Sleep for longer than the timeout (3 secs)
+  boost::asio::io_service io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::seconds(
+          RayConfig::instance().task_events_dropped_task_attempts_gc_threshold_s()));
+  timer.wait();
+
+  // We should not have triggered GC yet.
+  {
+    auto job_summary =
+        task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
+    EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 5);
+  }
+
+  // Add one more to trigger threshold for GC
+  {
+    auto t = GenTaskIDForJob(0);
+    SyncAddTaskEvent({t}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 0);
+    auto job_summary =
+        task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
+    EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 6);
+  }
+
+  // When GC is triggered, those old ones should ALL be GCed, leaving only the recently
+  // added ones.
+  task_manager->task_event_storage_->GcJobSummary();
+  {
+    auto job_summary =
+        task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
+    EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 1);
+    EXPECT_EQ(job_summary.num_dropped_task_attempts_evicted_, 5);
+    EXPECT_EQ(job_summary.NumTaskAttemptsDropped(), 6);
+  }
+}
+
+TEST_F(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit) {
+  // Test that when the number of dropped task attempts exceeds the limit,
+  // we should be them to prevent OOM.
+
+  // Generate 20 task attempts, 10 should be dropped.
+  {
+    for (int i = 0; i < 20; i++) {
+      auto t = GenTaskIDForJob(0);
+      SyncAddTaskEvent({t}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 0);
+    }
+  }
+
+  // Before GC we should have 10 dropped task attempts tracked.
+  auto job_summary =
+      task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
+  EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 10);
+
+  // After GC, there should only be 5 tracked.
+  job_summary.GcOldDroppedTaskAttempts(JobID::FromInt(0));
+  EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 5);
+  EXPECT_EQ(job_summary.num_dropped_task_attempts_evicted_, 5);
+  EXPECT_EQ(job_summary.NumTaskAttemptsDropped(), 10);
 }
 
 TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitGcPriorityBased) {
