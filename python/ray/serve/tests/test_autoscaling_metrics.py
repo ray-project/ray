@@ -1,5 +1,3 @@
-import time
-
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
