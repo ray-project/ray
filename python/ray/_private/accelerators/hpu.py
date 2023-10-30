@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 HABANA_VISIBLE_DEVICES_ENV_VAR = "HABANA_VISIBLE_MODULES"
 NOSET_HABANA_VISIBLE_MODULES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES"
 
+
 @lru_cache()
 def is_package_present(package_name: str) -> bool:
     try:
@@ -108,4 +109,3 @@ class HPUAcceleratorManager(AcceleratorManager):
         os.environ[
             HPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join([str(i) for i in visible_hpu_devices])
-

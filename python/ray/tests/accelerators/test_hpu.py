@@ -1,12 +1,12 @@
 import os
 import sys
-import subprocess
 import pytest
 from unittest.mock import patch
 
 import ray
 from ray._private.accelerators import HPUAcceleratorManager
 from ray._private.accelerators import hpu
+
 
 def test_user_configured_more_than_visible(monkeypatch, shutdown_only):
     # Test more hpus are configured than visible.
@@ -42,7 +42,7 @@ def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
 
 def test_get_current_process_visible_accelerator_ids():
     os.environ[hpu.HABANA_VISIBLE_DEVICES_ENV_VAR] = "0,1,2"
-    assert HPUAcceleratorManager.get_current_process_visible_accelerator_ids() == ["0", "1", "2"]
+    assert HPUAcceleratorManager.get_current_process_visible_accelerator_ids() == ["0", "1", "2"]  # noqa: E501
 
     del os.environ[hpu.HABANA_VISIBLE_DEVICES_ENV_VAR]
     assert HPUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
@@ -64,6 +64,7 @@ def test_set_current_process_visible_accelerator_ids():
     assert os.environ[hpu.HABANA_VISIBLE_DEVICES_ENV_VAR] == "0,1,2"
 
     del os.environ[hpu.HABANA_VISIBLE_DEVICES_ENV_VAR]
+
 
 @pytest.mark.parametrize(
     "test_config",
@@ -101,9 +102,9 @@ def test_check_accelerator_info():
     if hpu.HPU_PACKAGE_AVAILABLE:
         assert "GAUDI" in HPUAcceleratorManager.get_current_node_accelerator_type()
     else:
-        assert HPUAcceleratorManager.get_current_node_accelerator_type() == None
+        assert HPUAcceleratorManager.get_current_node_accelerator_type() is None
 
-    assert HPUAcceleratorManager.get_resource_name() =="HPU"
+    assert HPUAcceleratorManager.get_resource_name() == "HPU"
 
 
 if __name__ == "__main__":
