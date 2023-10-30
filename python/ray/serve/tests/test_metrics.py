@@ -1392,7 +1392,7 @@ def check_metric_float_eq(
     return True
 
 
-def test_actor_summary(serve_instance):
+def test_actor_summary(serve_start_shutdown):
     @serve.deployment
     def f():
         pass
