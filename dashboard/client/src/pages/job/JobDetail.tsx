@@ -11,6 +11,7 @@ import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { NestedJobProgressLink } from "../../type/job";
 import ActorList from "../actor/ActorList";
+import DataOverview from "../data/DataOverview";
 import { NodeCountCard } from "../overview/cards/NodeCountCard";
 import PlacementGroupList from "../state/PlacementGroup";
 import TaskList from "../state/task";
@@ -207,6 +208,14 @@ export const JobDetailChartsPage = () => {
           >
             <Section>
               <PlacementGroupList jobId={job.job_id} />
+            </Section>
+          </CollapsibleSection>
+          <CollapsibleSection
+            title="Ray Data Overview"
+            className={classes.section}
+          >
+            <Section>
+              <DataOverview />
             </Section>
           </CollapsibleSection>
         </React.Fragment>

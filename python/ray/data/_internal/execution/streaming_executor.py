@@ -37,6 +37,8 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import (
     DatasetStats,
     clear_stats_actor_metrics,
+    register_dataset_to_stats_actor,
+    update_stats_actor_dataset,
     update_stats_actor_metrics,
 )
 from ray.data.context import DataContext
@@ -125,6 +127,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._global_info = ProgressBar("Running", dag.num_outputs_total())
 
         self._output_node: OpState = self._topology[dag]
+        register_dataset_to_stats_actor(self._dataset_tag)
         self.start()
 
         class StreamIterator(OutputIterator):
@@ -154,8 +157,8 @@ class StreamingExecutor(Executor, threading.Thread):
                         return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
-                except BaseException:
-                    self._outer.shutdown()
+                except BaseException as e:
+                    self._outer.shutdown(isinstance(e, StopIteration))
                     raise
 
             def __del__(self):
@@ -166,7 +169,7 @@ class StreamingExecutor(Executor, threading.Thread):
     def __del__(self):
         self.shutdown()
 
-    def shutdown(self):
+    def shutdown(self, execution_completed: bool = True):
         context = DataContext.get_current()
         global _num_shutdown
 
@@ -174,6 +177,13 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._shutdown:
                 return
             logger.get_logger().debug(f"Shutting down {self}.")
+            update_stats_actor_dataset(
+                self._dataset_tag,
+                {
+                    "state": "FINISHED" if execution_completed else "FAILED",
+                    "end_time": time.time(),
+                },
+            )
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
@@ -298,9 +308,15 @@ class StreamingExecutor(Executor, threading.Thread):
         if not DEBUG_TRACE_SCHEDULING:
             _debug_dump_topology(topology, log_to_stdout=False)
 
+        last_op, last_state = list(topology.items())[-1]
         update_stats_actor_metrics(
             [op.metrics for op in self._topology],
             self._get_metrics_tags(),
+            # TODO (Zandew): report progress at operator level
+            {
+                "progress": last_state.num_completed_tasks,
+                "total": last_op.num_outputs_total(),
+            },
         )
 
         # Log metrics of newly completed operators.
