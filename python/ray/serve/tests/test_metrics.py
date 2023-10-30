@@ -1276,7 +1276,7 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     ray.get(signal.send.remote())
 
 
-def test_long_poll_host_sends_counted(serve_instance):
+def test_long_poll_host_sends_counted(serve_start_shutdown):
     """Check that the transmissions by the long_poll are counted."""
 
     host = ray.remote(LongPollHost).remote(
