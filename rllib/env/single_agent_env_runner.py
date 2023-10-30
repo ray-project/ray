@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     # TODO (sven): This gives a tricky circular import that goes
     # deep into the library. We have to see, where to dissolve it.
-    from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
+    from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 _, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
@@ -95,9 +95,11 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # This should be the default.
         self._needs_initial_reset: bool = True
-        self._episodes: List[Optional["Episode"]] = [None for _ in range(self.num_envs)]
+        self._episodes: List[Optional["SingleAgentEpisode"]] = [
+            None for _ in range(self.num_envs)
+        ]
 
-        self._done_episodes_for_metrics: List["Episode"] = []
+        self._done_episodes_for_metrics: List["SingleAgentEpisode"] = []
         self._ongoing_episodes_for_metrics: Dict[List] = defaultdict(list)
         self._ts_since_last_metrics: int = 0
         self._weights_seq_no: int = 0
@@ -111,7 +113,7 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List["Episode"]:
+    ) -> List["SingleAgentEpisode"]:
         """Runs and returns a sample (n timesteps or m episodes) on the env(s)."""
 
         # If not execution details are provided, use the config.
@@ -149,16 +151,14 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         force_reset: bool = False,
-    ) -> List["Episode"]:
+    ) -> List["SingleAgentEpisode"]:
         """Helper method to sample n timesteps."""
 
         # TODO (sven): This gives a tricky circular import that goes
         # deep into the library. We have to see, where to dissolve it.
-        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
-            _Episode as Episode,
-        )
+        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
-        done_episodes_to_return: List["Episode"] = []
+        done_episodes_to_return: List["SingleAgentEpisode"] = []
 
         # Get initial states for all 'batch_size_B` rows in the forward batch,
         # i.e. for all vector sub_envs.
@@ -174,7 +174,7 @@ class SingleAgentEnvRunner(EnvRunner):
         if force_reset or self._needs_initial_reset:
             obs, infos = self.env.reset()
 
-            self._episodes = [Episode() for _ in range(self.num_envs)]
+            self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
             states = initial_states
 
             # Set initial obs and states in the episodes.
@@ -284,7 +284,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     done_episodes_to_return.append(self._episodes[i])
                     # Create a new episode object.
-                    self._episodes[i] = Episode(
+                    self._episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]], infos=[infos[i]], states=s
                     )
                 else:
@@ -320,7 +320,7 @@ class SingleAgentEnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ) -> List["Episode"]:
+    ) -> List["SingleAgentEpisode"]:
         """Helper method to run n episodes.
 
         See docstring of `self.sample()` for more details.
@@ -328,14 +328,12 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # TODO (sven): This gives a tricky circular import that goes
         # deep into the library. We have to see, where to dissolve it.
-        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
-            _Episode as Episode,
-        )
+        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
-        done_episodes_to_return: List["Episode"] = []
+        done_episodes_to_return: List["SingleAgentEpisode"] = []
 
         obs, infos = self.env.reset()
-        episodes = [Episode() for _ in range(self.num_envs)]
+        episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
 
         # Multiply states n times according to our vector env batch size (num_envs).
         states = tree.map_structure(
@@ -431,7 +429,7 @@ class SingleAgentEnvRunner(EnvRunner):
                         states[k][i] = (convert_to_numpy(v),)
 
                     # Create a new episode object.
-                    episodes[i] = Episode(
+                    episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]],
                         infos=[infos[i]],
                         states=s,

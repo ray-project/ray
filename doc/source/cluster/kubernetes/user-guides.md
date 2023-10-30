@@ -9,6 +9,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 
 * {ref}`kuberay-rayservice`
 * {ref}`kuberay-observability`
+* {ref}`kuberay-upgrade-guide`
 * {ref}`kuberay-k8s-setup`
 * {ref}`kuberay-storage`
 * {ref}`kuberay-config`

@@ -436,7 +436,7 @@ py_test(
 
 py_test(
     name = "test_split",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_split.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
