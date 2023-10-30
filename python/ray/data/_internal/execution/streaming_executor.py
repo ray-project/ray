@@ -4,8 +4,6 @@ import time
 import uuid
 from typing import Dict, Iterator, List, Optional
 
-import tqdm
-
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
@@ -42,6 +40,11 @@ from ray.data._internal.stats import (
     update_stats_actor_metrics,
 )
 from ray.data.context import DataContext
+
+try:
+    import tqdm
+except ImportError:
+    tqdm = None
 
 logger = DatasetLogger(__name__)
 
@@ -297,16 +300,22 @@ class StreamingExecutor(Executor, threading.Thread):
         cur_time = time.perf_counter()
         for op, op_state in topology.items():
             op_state.refresh_progress_bar()
-            log_str += (
-                tqdm.tqdm.format_meter(
-                    op_state.num_completed_tasks,
-                    op.num_outputs_total(),
-                    cur_time - self._start_time,
-                    prefix=op.name,
-                    bar_format="{desc:<35.34}{percentage:3.0f}%|{bar}{r_bar}",
+            if tqdm is not None:
+                log_str += (
+                    tqdm.tqdm.format_meter(
+                        op_state.num_completed_tasks,
+                        op.num_outputs_total(),
+                        cur_time - self._start_time,
+                        prefix=op.name,
+                        bar_format="{desc:<35.34}{percentage:3.0f}%|{bar}{r_bar}",
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
+            else:
+                log_str += (
+                    f"{op.name}: "
+                    f"{op_state.num_completed_tasks}/{op.num_outputs_total()}\n"
+                )
         logger.get_logger(log_to_stdout=False).info(log_str)
 
         update_stats_actor_metrics(

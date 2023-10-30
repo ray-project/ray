@@ -1293,17 +1293,22 @@ def test_op_metrics_logging():
 
 
 def test_progress_bar_logging():
-    logger = DatasetLogger(
-        "ray.data._internal.execution.streaming_executor"
-    ).get_logger()
-    with patch.object(logger, "info") as mock_logger:
-        ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
+    def _test_progress_bar_logging():
+        logger = DatasetLogger(
+            "ray.data._internal.execution.streaming_executor"
+        ).get_logger()
+        with patch.object(logger, "info") as mock_logger:
+            ray.data.range(100).map_batches(lambda x: x).materialize()
+            logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
 
-        for log in logs:
-            if log.startswith("Execution Progress Status:"):
-                assert "Input" in log
-                assert "ReadRange->MapBatches(<lambda>)" in log
+            for log in logs:
+                if log.startswith("Execution Progress Status:"):
+                    assert "Input" in log
+                    assert "ReadRange->MapBatches(<lambda>)" in log
+
+    _test_progress_bar_logging()
+    with patch("ray.data._internal.execution.streaming_executor.tqdm", new=None):
+        _test_progress_bar_logging()
 
 
 if __name__ == "__main__":
