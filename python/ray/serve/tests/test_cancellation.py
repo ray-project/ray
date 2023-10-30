@@ -185,7 +185,8 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
             r.cancel()
             await cancelled_signal_actor.wait.remote()
 
-            await r
+            with pytest.raises(ray.exceptions.TaskCancelledError):
+                await r
 
     h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
     h.remote().result()  # Would raise if test failed.
