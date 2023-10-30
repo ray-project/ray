@@ -624,7 +624,7 @@ def test_deploy_app_runtime_env(client: ServeControllerClient):
         "runtime_env": {
             "working_dir": (
                 "https://github.com/ray-project/test_dag/archive/"
-                "41d09119cbdf8450599f993f51318e9e27c59098.zip"
+                "e85f0754d1d033b3153b71bd4aabd655e07c29b9.zip"
             )
         },
     }
@@ -997,7 +997,7 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
                 "runtime_env": {
                     "working_dir": (
                         "https://github.com/ray-project/test_dag/archive/"
-                        "41d09119cbdf8450599f993f51318e9e27c59098.zip"
+                        "e85f0754d1d033b3153b71bd4aabd655e07c29b9.zip"
                     )
                 },
             },

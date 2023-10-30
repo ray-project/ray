@@ -1,7 +1,7 @@
 import_path: "dir.subdir.a.add_and_sub.serve_dag"
 
 runtime_env:
-  working_dir: "https://github.com/ray-project/test_dag/archive/445c9611151720716060b1471b29c70219ed33ef.zip"
+  working_dir: "https://github.com/ray-project/test_dag/archive/e85f0754d1d033b3153b71bd4aabd655e07c29b9.zip"
 
 deployments:
   - name: "DAGDriver"
