@@ -45,7 +45,7 @@ def test_get_current_process_visible_accelerator_ids():
     assert HPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
         "0",
         "1",
-        "2"
+        "2",
     ]  # noqa: E501
 
     del os.environ[hpu.HABANA_VISIBLE_DEVICES_ENV_VAR]

@@ -56,6 +56,7 @@ class HPUAcceleratorManager(AcceleratorManager):
         """
         if HPU_PACKAGE_AVAILABLE:
             import habana_frameworks.torch.hpu as torch_hpu
+
             if torch_hpu.is_available():
                 return torch_hpu.device_count()
             else:
@@ -72,6 +73,7 @@ class HPUAcceleratorManager(AcceleratorManager):
         """
         if HPU_PACKAGE_AVAILABLE:
             import habana_frameworks.torch.hpu as torch_hpu
+
             if torch_hpu.is_available():
                 if torch_hpu.is_initialized():
                     return torch_hpu.get_device_name()
