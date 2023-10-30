@@ -1287,7 +1287,7 @@ def test_op_metrics_logging():
         ray.data.range(100).map_batches(lambda x: x).materialize()
         logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
         input_str = (
-            "Operator InputDataBuffer[Input] completed. Operatorh Metrics:\n"
+            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
             + gen_expected_metrics(is_map=False)
         )
         map_str = (

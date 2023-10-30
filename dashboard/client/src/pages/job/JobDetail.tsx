@@ -119,6 +119,17 @@ export const JobDetailChartsPage = () => {
     <div className={classes.root}>
       <JobMetadataSection job={job} />
 
+      {data?.datasets && data.datasets.length > 0 && (
+        <CollapsibleSection
+          title="Ray Data Overview"
+          className={classes.section}
+        >
+          <Section>
+            <DataOverview datasets={data.datasets} />
+          </Section>
+        </CollapsibleSection>
+      )}
+
       <CollapsibleSection
         title="Tasks/actor overview (beta)"
         startExpanded
@@ -176,17 +187,6 @@ export const JobDetailChartsPage = () => {
           </Section>
         </Box>
       </CollapsibleSection>
-
-      {data?.datasets && data.datasets.length > 0 && (
-        <CollapsibleSection
-          title="Ray Data Overview"
-          className={classes.section}
-        >
-          <Section>
-            <DataOverview datasets={data.datasets} />
-          </Section>
-        </CollapsibleSection>
-      )}
 
       {job.job_id && (
         <React.Fragment>
