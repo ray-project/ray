@@ -126,8 +126,7 @@ async def json_resolver(request: starlette.requests.Request):
     return await request.json()
 
 
-@pytest.mark.parametrize("use_build", [False, True])
-def test_single_func_deployment_dag(serve_instance, use_build):
+def test_single_func_deployment_dag(serve_instance):
     with InputNode() as dag_input:
         dag = combine.bind(dag_input[0], dag_input[1], kwargs_output=1)
         serve_dag = DAGDriver.bind(dag, http_adapter=json_resolver)
@@ -136,8 +135,7 @@ def test_single_func_deployment_dag(serve_instance, use_build):
     assert requests.post("http://127.0.0.1:8000/", json=[1, 2]).json() == 4
 
 
-@pytest.mark.parametrize("use_build", [False, True])
-def test_chained_function(serve_instance, use_build):
+def test_chained_function(serve_instance):
     @serve.deployment
     def func_1(input):
         return input
@@ -171,8 +169,7 @@ def test_chained_function(serve_instance, use_build):
     assert requests.post("http://127.0.0.1:8000/", json=2).json() == 18
 
 
-@pytest.mark.parametrize("use_build", [False, True])
-def test_simple_class_with_class_method(serve_instance, use_build):
+def test_simple_class_with_class_method(serve_instance):
     with InputNode() as dag_input:
         model = Model.bind(2, ratio=0.3)
         dag = model.forward.bind(dag_input)
@@ -182,8 +179,7 @@ def test_simple_class_with_class_method(serve_instance, use_build):
     assert requests.post("http://127.0.0.1:8000/", json=1).json() == 0.6
 
 
-@pytest.mark.parametrize("use_build", [False, True])
-def test_func_class_with_class_method(serve_instance, use_build):
+def test_func_class_with_class_method(serve_instance):
     with InputNode() as dag_input:
         m1 = Model.bind(1)
         m2 = Model.bind(2)
@@ -197,8 +193,7 @@ def test_func_class_with_class_method(serve_instance, use_build):
     assert requests.post("http://127.0.0.1:8000/", json=[1, 2, 3]).json() == 8
 
 
-@pytest.mark.parametrize("use_build", [False, True])
-def test_multi_instantiation_class_deployment_in_init_args(serve_instance, use_build):
+def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     with InputNode() as dag_input:
         m1 = Model.bind(2)
         m2 = Model.bind(3)
@@ -211,8 +206,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance, use_b
     assert requests.post("http://127.0.0.1:8000/", json=1).json() == 5
 
 
-@pytest.mark.parametrize("use_build", [False, True])
-def test_shared_deployment_handle(serve_instance, use_build):
+def test_shared_deployment_handle(serve_instance):
     with InputNode() as dag_input:
         m = Model.bind(2)
         combine = Combine.bind(m, m2=m)
@@ -224,8 +218,7 @@ def test_shared_deployment_handle(serve_instance, use_build):
     assert requests.post("http://127.0.0.1:8000/", json=1).json() == 4
 
 
-@pytest.mark.parametrize("use_build", [False, True])
-def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance, use_build):
+def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
     with InputNode() as dag_input:
         m1 = Model.bind(2)
         m2 = Model.bind(3)
@@ -264,8 +257,7 @@ def test_single_node_deploy_success(serve_instance):
     assert handle.remote(41).result() == 42
 
 
-@pytest.mark.parametrize("use_build", [False, True])
-def test_single_node_driver_sucess(serve_instance, use_build):
+def test_single_node_driver_sucess(serve_instance):
     m1 = Adder.bind(1)
     m2 = Adder.bind(2)
     with InputNode() as input_node:
@@ -300,8 +292,7 @@ class TakeHandle:
         return await self.handle.remote(inp)
 
 
-@pytest.mark.parametrize("use_build", [False, True])
-def test_passing_handle(serve_instance, use_build):
+def test_passing_handle(serve_instance):
     child = Adder.bind(1)
     parent = TakeHandle.bind(child)
     driver = DAGDriver.bind(parent, http_adapter=json_resolver)
