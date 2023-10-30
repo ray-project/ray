@@ -136,8 +136,7 @@ def test_auto_parallelism_basic(shutdown_only):
     assert ds.num_blocks() == 16, ds
     # Block size bound.
     ds = ray.data.range_tensor(100000000, shape=(100,), parallelism=-1)
-    assert ds.num_blocks() >= 590, ds
-    assert ds.num_blocks() <= 600, ds
+    assert ds.num_blocks() == 150, ds
 
 
 def test_auto_parallelism_placement_group(shutdown_only):
