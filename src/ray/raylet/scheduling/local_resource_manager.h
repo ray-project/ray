@@ -142,7 +142,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
       int64_t after_version, syncer::MessageType message_type) const override;
 
   /// Populate resource usage.
-  virtual void PopulateResourceUsage(rpc::ResourcesData &resources_data) const;
+  void PopulateResourceUsage(rpc::ResourcesData &resources_data) const;
 
   /// Record the metrics.
   void RecordMetrics() const;
