@@ -21,7 +21,7 @@ from ray_release.config import (
     RELEASE_PACKAGE_DIR,
     DEFAULT_AUTOSUSPEND_MINS,
 )
-from ray_release.template import load_test_cluster_env, load_test_cluster_compute
+from ray_release.template import load_test_cluster_compute
 from ray_release.exception import (
     ReleaseTestConfigError,
     ReleaseTestSetupError,
@@ -167,12 +167,7 @@ def _setup_cluster_environment(
                 f"{cluster_env_id}: {e}"
             ) from e
     else:
-        cluster_env = (
-            None
-            if test.is_byod_cluster()
-            else load_test_cluster_env(test)
-        )
-        cluster_manager.set_cluster_env(cluster_env)
+        cluster_manager.set_cluster_env()
 
     # Load some timeouts
     build_timeout = int(test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT))

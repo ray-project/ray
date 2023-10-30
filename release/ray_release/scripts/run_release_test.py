@@ -6,14 +6,11 @@ from pathlib import Path
 import click
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
-    DEFAULT_WHEEL_WAIT_TIMEOUT,
     as_smoke_test,
     find_test,
-    parse_python_version,
     read_and_validate_release_test_collection,
 )
 from ray_release.configs.global_config import init_global_config
-from ray_release.test import DEFAULT_PYTHON_VERSION
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
@@ -119,12 +116,6 @@ def main(
     env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
     populate_os_env(env_dict)
-
-    if "python" in test:
-        python_version = parse_python_version(test["python"])
-    else:
-        python_version = DEFAULT_PYTHON_VERSION
-
     anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)
     if not anyscale_project:
         raise ReleaseTestCLIError(
