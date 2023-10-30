@@ -23,7 +23,7 @@ ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 # memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM *
 # DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION * 0.3 (default object store memory
 # fraction set by Ray core), assuming typical memory:core ratio of 4:1.
-DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
+DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 
 # The max target block size in bytes for shuffle ops (random_shuffle, sort,
 # repartition). Set a higher target block size because we have to materialize

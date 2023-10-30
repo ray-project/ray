@@ -79,13 +79,13 @@ TEST_CASES = [
         avail_cpus=4,
         target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=1000 * GiB,
-        expected_parallelism=8000,  # MAX_BLOCK_SIZE has precedence
+        expected_parallelism=2000,  # MAX_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
         target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=10000 * GiB,
-        expected_parallelism=80000,  # MAX_BLOCK_SIZE has precedence
+        expected_parallelism=20000,  # MAX_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
@@ -136,8 +136,7 @@ def test_auto_parallelism_basic(shutdown_only):
     assert ds.num_blocks() == 16, ds
     # Block size bound.
     ds = ray.data.range_tensor(100000000, shape=(100,), parallelism=-1)
-    assert ds.num_blocks() >= 590, ds
-    assert ds.num_blocks() <= 600, ds
+    assert ds.num_blocks() == 150, ds
 
 
 def test_auto_parallelism_placement_group(shutdown_only):
