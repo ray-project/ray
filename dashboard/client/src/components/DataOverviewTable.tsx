@@ -47,7 +47,15 @@ const DataOverviewTable = ({
     { label: "Start Time" },
     { label: "End Time" },
     { label: "Bytes Outputted" },
-    { label: "Memory Usage (Current / Max)" },
+    {
+      label: "Memory Usage (Current / Max)",
+      helpInfo: (
+        <Typography>
+          Amount of object store memory used by a dataset. Includes spilled
+          objects.
+        </Typography>
+      ),
+    },
     {
       label: "Bytes Spilled",
       helpInfo: (
