@@ -367,12 +367,6 @@ class GcsRpcClient {
                              node_resource_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Report resource usage of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
-                             ReportResourceUsage,
-                             node_resource_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
   /// Get resource usage of all nodes from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetAllResourceUsage,

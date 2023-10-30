@@ -237,14 +237,6 @@ message GetAllAvailableResourcesReply {
   repeated AvailableResources resources_list = 2;
 }
 
-message ReportResourceUsageRequest {
-  ResourcesData resources = 1;
-}
-
-message ReportResourceUsageReply {
-  GcsStatus status = 1;
-}
-
 message ReportWorkerFailureRequest {
   WorkerTableData worker_failure = 1;
 }
@@ -619,8 +611,6 @@ service NodeResourceInfoGcsService {
   // Get available resources of all nodes.
   rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
       returns (GetAllAvailableResourcesReply);
-  // Report resource usage of a node to GCS Service.
-  rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
   // Get ids of draining nodes.

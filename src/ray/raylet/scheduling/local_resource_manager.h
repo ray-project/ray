@@ -131,11 +131,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Get the number of cpus on this node.
   uint64_t GetNumCpus() const;
 
-  /// Replace the local resources by the provided value.
-  ///
-  /// \param replacement: the new value.
-  void ResetLastReportResourceUsage(const NodeResources &replacement);
-
   /// Check whether the specific resource exists or not in local node.
   ///
   /// \param resource_name: the specific resource name.
@@ -147,7 +142,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
       int64_t after_version, syncer::MessageType message_type) const override;
 
   /// Populate resource usage.
-  void PopulateResourceUsage(rpc::ResourcesData &resources_data) const;
+  virtual void PopulateResourceUsage(rpc::ResourcesData &resources_data) const;
 
   /// Record the metrics.
   void RecordMetrics() const;
