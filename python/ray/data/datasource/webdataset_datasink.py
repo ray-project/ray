@@ -4,7 +4,6 @@ import time
 import uuid
 from typing import Any, Dict, Optional, Union
 
-import numpy as np
 import pyarrow
 
 from ray.data.block import BlockAccessor
