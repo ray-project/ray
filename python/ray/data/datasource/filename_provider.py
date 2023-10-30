@@ -69,6 +69,8 @@ class FilenameProvider:
             task_index: The index of the the write task.
             block_index: The index of the block *within* the write task.
             row_index: The index of the row *within* the block.
+            
+        Note: If you require a contiguous row index into the global dataset, you may use :meth:`~Dataset.iter_rows`, but note this method is single-threaded and not recommended for large datasets.
         """
         raise NotImplementedError
 
