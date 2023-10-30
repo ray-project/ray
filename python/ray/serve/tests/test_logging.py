@@ -280,5 +280,53 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         check_log_file(resp2["log_file"], user_class_method_log_regexes)
 
 
+@pytest.mark.parametrize("is_deployment_type_component", [False, True])
+def test_json_log_formatter(is_deployment_type_component):
+    """Test the json log formatter"""
+
+    if is_deployment_type_component:
+        component_type = ServeComponentType.DEPLOYMENT
+        formatter = ServeJSONFormatter("component", "component_id", component_type)
+    else:
+        formatter = ServeJSONFormatter("component", "component_id")
+    init_kwargs = {
+        "name": "test_log",
+        "level": logging.DEBUG,
+        "pathname": "my_path",
+        "lineno": 1,
+        "msg": "my_message",
+        "args": (),
+        "exc_info": None,
+    }
+    record = logging.LogRecord(**init_kwargs)
+
+    def format_and_verify_json_output(record, expected_record: dict):
+        formatted_record = formatter.format(record)
+        formatted_record_dict = json.loads(formatted_record)
+        for key in expected_record:
+            assert key in formatted_record_dict
+            assert formatted_record_dict[key] == expected_record[key]
+
+    expected_json = {}
+    if is_deployment_type_component:
+        expected_json["deployment"] = "component"
+        expected_json["replica"] = "component_id"
+
+    # Set request id
+    record.request_id = "request_id"
+    expected_json["request_id"] = "request_id"
+    format_and_verify_json_output(record, expected_json)
+
+    # Set route
+    record.route = "route"
+    expected_json["route"] = "route"
+    format_and_verify_json_output(record, expected_json)
+
+    # set application
+    record.application = "application"
+    expected_json["application"] = "application"
+    format_and_verify_json_output(record, expected_json)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

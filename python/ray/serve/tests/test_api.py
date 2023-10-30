@@ -1066,12 +1066,12 @@ class TestDeploymentLoggingAPI:
 
         serve.run(Model.bind())
         resp = requests.get("http://127.0.0.1:8000/").json()
-        expected_log_regex = [f".*model_info_level.*"]
+        expected_log_regex = [".*model_info_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
         serve.run(Model.options(logging_config={"log_level": "DEBUG"}).bind())
         resp = requests.get("http://127.0.0.1:8000/").json()
-        expected_log_regex = [f".*model_info_level.*", f".*model_debug_level.*"]
+        expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
     def test_logs_dir(self, serve_instance):
