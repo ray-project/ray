@@ -13,6 +13,7 @@ exceptions:
   - AWS
   - CLI
   - CPU
+  - CRD
   - CSS
   - CSV
   - CUDA

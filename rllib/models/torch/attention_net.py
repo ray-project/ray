@@ -104,9 +104,6 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                 (two GRUs per Transformer unit, one after the MHA, one after
                 the position-wise MLP).
         """
-        if log_once("deprecate_gtrxlnet_torch"):
-            deprecation_warning(old="ray.rllib.models.torch.attention_net.GTrXLNet")
-
         super().__init__(
             observation_space, action_space, num_outputs, model_config, name
         )

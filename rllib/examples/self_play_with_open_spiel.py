@@ -183,7 +183,7 @@ class SelfPlayCallback(DefaultCallbacks):
                 )
 
             main_policy = algorithm.get_policy("main")
-            if algorithm.config._enable_learner_api:
+            if algorithm.config._enable_new_api_stack:
                 new_policy = algorithm.add_policy(
                     policy_id=new_pol_id,
                     policy_cls=type(main_policy),

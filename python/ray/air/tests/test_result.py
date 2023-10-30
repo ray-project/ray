@@ -15,6 +15,9 @@ from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.air.tests.test_remote_storage_hdfs import setup_hdfs
 
 
+_PARAM_SPACE = {"a": 1, "b": 2}
+
+
 @pytest.fixture
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
@@ -24,7 +27,7 @@ def ray_start_4_cpus():
 
 
 def build_dummy_trainer(configs):
-    def worker_loop():
+    def worker_loop(_config):
         for i in range(configs["NUM_ITERATIONS"]):
             # Do some random reports in between checkpoints.
             train.report({"metric_a": -100, "metric_b": -100})
@@ -41,6 +44,7 @@ def build_dummy_trainer(configs):
 
     trainer = TorchTrainer(
         train_loop_per_worker=worker_loop,
+        train_loop_config=_PARAM_SPACE,
         scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
         run_config=RunConfig(
             name=configs["EXP_NAME"],
@@ -57,7 +61,9 @@ def build_dummy_trainer(configs):
 
 def build_dummy_tuner(configs):
     return Tuner(
-        trainable=build_dummy_trainer(configs), tune_config=TuneConfig(num_samples=1)
+        build_dummy_trainer(configs),
+        param_space={"train_loop_config": _PARAM_SPACE},
+        tune_config=TuneConfig(num_samples=1),
     )
 
 
@@ -130,6 +136,9 @@ def test_result_restore(
 
     # Check if we properly restored errors
     assert isinstance(result.error, RuntimeError)
+
+    # Check that the config is properly formatted in the result metrics
+    assert result.metrics.get("config") == {"train_loop_config": _PARAM_SPACE}
 
     # [2] Restore from path without result.json
     fs.delete_file(f"{trial_dir}/{EXPR_RESULT_FILE}")

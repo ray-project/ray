@@ -399,8 +399,8 @@ def _expand_paths(
 
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-        _unwrap_protocol,
     )
+    from ray.data.datasource.path_util import _unwrap_protocol
 
     # We break down our processing paths into a few key cases:
     # 1. If len(paths) < threshold, fetch the file info for the individual files/paths

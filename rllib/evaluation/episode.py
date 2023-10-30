@@ -52,10 +52,13 @@ class Episode:
     Use case 2: Returning extra rollouts data.
         The model rollouts can be returned back to the sampler by calling:
 
-        >>> batch = episode.new_batch_builder()
-        >>> for each transition:
-               batch.add_values(...)  # see sampler for usage
-        >>> episode.extra_batches.add(batch.build_and_reset())
+        .. testcode::
+            :skipif: True
+
+            batch = episode.new_batch_builder()
+            for each transition:
+                batch.add_values(...)  # see sampler for usage
+            episode.extra_batches.add(batch.build_and_reset())
     """
 
     def __init__(
