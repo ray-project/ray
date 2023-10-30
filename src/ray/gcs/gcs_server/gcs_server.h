@@ -110,6 +110,11 @@ class GcsServer {
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
 
+  GcsResourceManager &GetGcsResourceManager() {
+    RAY_CHECK(gcs_resource_manager_ != nullptr);
+    return *gcs_resource_manager_;
+  }
+
  protected:
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;

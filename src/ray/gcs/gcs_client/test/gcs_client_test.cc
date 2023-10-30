@@ -96,7 +96,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs::GcsClientOptions options("127.0.0.1:5397");
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     ReconnectClient();
-    local_resource_manager_ = std::make_unique<LocalResourceManager>();
   }
 
   void TearDown() override {
@@ -373,11 +372,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return resource_map;
   }
 
-  bool ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-        resources, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+  void ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
+    // Do it from the server side.
+    gcs_server_->GetGcsResourceManager().UpdateFromResourceView(*resources);
   }
 
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
@@ -455,6 +452,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::unique_ptr<std::thread> client_io_service_thread_;
   std::unique_ptr<instrumented_io_context> client_io_service_;
   std::unique_ptr<gcs::GcsClient> gcs_client_;
+  std::unique_ptr<std::thread> syncer_io_service_thread_;
+  std::unique_ptr<instrumented_io_context> syncer_io_service_;
+
+  // Ray Syncer and reporter.
+  std::unique_ptr<syncer::RaySyncer> ray_syncer_;
+  std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
+  std::unique_ptr<grpc::Server> syncer_server_;
+  std::unique_ptr<LocalResourceManager> local_resource_manager_;
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
@@ -613,7 +618,7 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   (*resource->mutable_resources_available())["GPU"] = 10.0;
   (*resource->mutable_resources_total())["CPU"] = 1.0;
   (*resource->mutable_resources_total())["GPU"] = 10.0;
-  ASSERT_TRUE(ReportResourceUsage(resource));
+  ReportResourceUsage(resource);
 
   // Assert get all available resources right.
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
@@ -757,7 +762,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   resources->set_node_id(node_info->node_id());
   // Set this flag because GCS won't publish unchanged resources.
   resources->set_should_global_gc(true);
-  ASSERT_TRUE(ReportResourceUsage(resources));
+  ReportResourceUsage(resources);
 
   RestartGcsServer();
 
@@ -765,7 +770,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(RegisterNode(*node_info));
   node_id = NodeID::FromBinary(node_info->node_id());
   resources->set_node_id(node_info->node_id());
-  ASSERT_TRUE(ReportResourceUsage(resources));
+  ReportResourceUsage(resources);
 
   WaitForExpectedCount(node_change_count, 2);
 }

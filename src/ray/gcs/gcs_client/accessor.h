@@ -473,13 +473,6 @@ class NodeResourceInfoAccessor {
   std::shared_ptr<NodeResources> last_resource_usage_ = std::make_shared<NodeResources>();
 
  private:
-  // Mutex to protect the cached_resource_usage_ field.
-  absl::Mutex mutex_;
-
-  /// Save the resource usage data, so we can resend it again when GCS server restarts
-  /// from a failure.
-  rpc::ReportResourceUsageRequest cached_resource_usage_ ABSL_GUARDED_BY(mutex_);
-
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
   SubscribeOperation subscribe_resource_operation_;
