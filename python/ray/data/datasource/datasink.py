@@ -73,5 +73,5 @@ class Datasink:
 
     @property
     def supports_distributed_writes(self) -> bool:
-        """If ``False``, launch writes tasks on the head node only."""
+        """If ``False``, only launch writes tasks on the driver's node."""
         return True
