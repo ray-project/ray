@@ -133,16 +133,6 @@ def test_non_terminated_nodes_with_multiple_filters_not_matching():
     assert len(nodes) == 0
 
 
-def test_is_running():
-    """Should return true if a cached node is in POWERED_ON state"""
-    vnp = mock_vsphere_node_provider()
-    node1 = MagicMock()
-    node1.power_state = HardPower.State.POWERED_ON
-    vnp.cached_nodes = {"node1": node1}
-    is_running = vnp.is_running("node1")
-    assert is_running is True
-
-
 def test_is_terminated():
     """Should return true if a cached node is not in POWERED_ON state"""
     vnp = mock_vsphere_node_provider()
