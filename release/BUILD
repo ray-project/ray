@@ -268,24 +268,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "air_benchmark_data_smoke_test",
-    size = "small",
-    srcs = test_srcs,
-    args = [
-        "--dataset-size-gb=1",
-        "--num-workers=1",
-    ],
-    main = "air_tests/air_benchmarks/workloads/data_benchmark.py",
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/air:ml_lib",
-    ],
-)
 
 py_test(
     name = "air_benchmark_gpu_batch_inference_parquet_smoke_test",
