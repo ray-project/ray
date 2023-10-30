@@ -12,7 +12,7 @@ from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema
 from ray.data.dataset_pipeline import DatasetPipeline
-from ray.data.datasource import Datasource, ReadTask
+from ray.data.datasource import Datasink, Datasource, ReadTask
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
