@@ -574,6 +574,7 @@ py_test(
     ) + [
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
+        "ray_release/tests/test_collection_data.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
