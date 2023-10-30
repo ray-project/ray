@@ -79,13 +79,13 @@ TEST_CASES = [
         avail_cpus=4,
         target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=1000 * GiB,
-        expected_parallelism=8000,  # MAX_BLOCK_SIZE has precedence
+        expected_parallelism=2000,  # MAX_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
         target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=10000 * GiB,
-        expected_parallelism=80000,  # MAX_BLOCK_SIZE has precedence
+        expected_parallelism=20000,  # MAX_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
