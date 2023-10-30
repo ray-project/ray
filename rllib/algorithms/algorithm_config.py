@@ -324,22 +324,25 @@ class AlgorithmConfig(_Config):
         self.env_runner_cls = None
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
-        self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
+        # TODO (sven): Deprecate as soon as A3C moves to `rllib_contrib`.
         self.sample_async = False
         self.enable_connectors = True
-        self.update_worker_filter_stats = True
-        self.use_worker_filter_stats = True
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
-        self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
         self.validate_workers_after_construction = True
+        self.compress_observations = False
+        self.sampler_perf_stats_ema_coef = None
+        # TODO (sven): Deprecate together with old stack.
+        self.remote_worker_envs = False
+        self.enable_tf1_exec_eagerly = False
+        self.sample_collector = SimpleListCollector
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
-        self.compress_observations = False
-        self.enable_tf1_exec_eagerly = False
-        self.sampler_perf_stats_ema_coef = None
+        self.update_worker_filter_stats = True
+        self.use_worker_filter_stats = True
+        # TODO (sven): End: deprecate.
 
         # `self.training()`
         self.gamma = 0.99
@@ -891,7 +894,7 @@ class AlgorithmConfig(_Config):
                 error=True,
             )
 
-        # RLModule API only works with connectors and with Learner API.
+        # New API stack (RLModule, Learner APIs) only works with connectors.
         if not self.enable_connectors and self._enable_new_api_stack:
             raise ValueError(
                 "The new API stack (RLModule and Learner APIs) only works with "
@@ -938,6 +941,8 @@ class AlgorithmConfig(_Config):
                 "https://github.com/ray-project/ray/issues/35409 for more details."
             )
 
+        # TODO (sven): Remove this hack. We should not have env-var dependent logic
+        #  in the codebase.
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # Enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)

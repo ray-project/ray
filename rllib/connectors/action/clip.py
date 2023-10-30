@@ -31,7 +31,7 @@ class ClipActionsConnector(ActionConnector):
             (clip_action(actions, self._action_space_struct), states, fetches),
         )
 
-    @override(ActionConnector)
+    @override
     def serialize(self):
         return ClipActionsConnector.__name__, None
 

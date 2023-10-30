@@ -3,21 +3,15 @@
 
 import abc
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import gymnasium as gym
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.connectors.input_output_types import INPUT_OUTPUT_TYPE
-from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
     AlgorithmConfigDict,
-    EpisodeType,
     TensorType,
 )
 from ray.util.annotations import PublicAPI
@@ -28,12 +22,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# TODO (Sven): Deprecate this API.
 @PublicAPI(stability="alpha")
 class ConnectorContext:
-    """Information needed by pieces of connector pipeline to communicate with each other.
+    """Data bits that may be needed for running connectors.
 
-    Note: We need to be really careful with the data fields here.
+    Note(jungong) : we need to be really careful with the data fields here.
     E.g., everything needs to be serializable, in case we need to fetch them
     in a remote setting.
     """
@@ -44,13 +37,21 @@ class ConnectorContext:
     def __init__(
         self,
         config: AlgorithmConfigDict = None,
-        initial_states: List[TensorType] = None,  # TODO (sven): deprecate
+        initial_states: List[TensorType] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
-        view_requirements: Dict[str, ViewRequirement] = None,  # TODO (sven): deprecate
-        is_policy_recurrent: bool = False,  # TODO (sven): deprecate
+        view_requirements: Dict[str, ViewRequirement] = None,
+        is_policy_recurrent: bool = False,
     ):
-        """Initializes a ConnectorContext instance."""
+        """Construct a ConnectorContext instance.
+
+        Args:
+            initial_states: States that are used for constructing
+                the initial input dict for RNN models. [] if a model is not recurrent.
+            action_space_struct: a policy's action space, in python
+                data format. E.g., python dict instead of DictSpace, python tuple
+                instead of TupleSpace.
+        """
         self.config = config or {}
         self.initial_states = initial_states or []
         self.observation_space = observation_space
@@ -58,9 +59,6 @@ class ConnectorContext:
         self.view_requirements = view_requirements
         self.is_policy_recurrent = is_policy_recurrent
 
-        self._state = {}
-
-    # TODO (sven): Deprecate along with Policy deprecation.
     @staticmethod
     def from_policy(policy: "Policy") -> "ConnectorContext":
         """Build ConnectorContext from a given policy.
@@ -82,138 +80,35 @@ class ConnectorContext:
 
 
 @PublicAPI(stability="alpha")
-class ConnectorContextV2:
-    """Information needed by pieces of connector pipeline to communicate with each other.
-
-    ConnectorContextV2 will be passed to each connector (pipeline) call.
-    Also might contain references to the RLModule used, the Env, as well as whether
-    `explore` is True or False (whether forward_exploration or forward_inference was
-    used).
-
-    TODO: Describe use cases, e.g.
-     - state out need to be fed back as state ins.
-     Unless we would like to temporarily store the states in the episode.
-     - agent_to_policy_mappings need to be stored as they might be stochastic. Then the
-     to_env pipeline can properly map back from module (formerly known as policy) IDs
-     to agent IDs.
-    """
-
-    def __init__(
-        self,
-        rl_module: Optional[RLModule] = None,
-        env: Optional[EnvType] = None,
-        explore: Optional[bool] = None,
-        *,
-        data: Optional[Any] = None,
-    ):
-        """Initializes a ConnectorContextV2 instance.
-
-        Args:
-            rl_module: The RLModule used for forward passes in the current Env -> Module
-                setup.
-            env: The Env object used to reset/step through in the current Env -> Module
-                setup.
-            explore: Whether `explore` is currently on. Per convention, if True, the
-                RLModule's `forward_exploration` method should be called, if False, the
-                EnvRunner should call `forward_inference` instead.
-            data: Optional additional context data that needs to be exchanged between
-                different Connector pieces and -pipelines.
-        """
-
-        self.rl_module = rl_module
-        self.env = env
-        self.explore = explore
-
-        self._data = data or {}
-
-    def add_data(self, key, value):
-        assert key not in self._data
-        self._data[key] = value
-
-    def get_data(self, key):
-        assert key in self._data
-        return self._data[key]
-
-    def override_data(self, key, value):
-        assert key in self._data
-        self._data[key] = value
-
-    def del_data(self, key):
-        assert key in self._data
-        del self._data[key]
-
-
-@PublicAPI(stability="alpha")
 class Connector(abc.ABC):
     """Connector base class.
 
-    A connector performs a transformation step, either on envrionment data before it
-    gets to the RLModule, or on RLModule output before it is sent back to the
-    environment.
+    A connector is a step of transformation, of either envrionment data before they
+    get to a policy, or policy output before it is sent back to the environment.
 
     Connectors may be training-aware, for example, behave slightly differently
     during training and inference.
 
-    All connectors are required to be serializable and implement the `serialize()` method.
+    All connectors are required to be serializable and implement to_state().
     """
 
-    def __init__(
-        self,
-        ctx: Optional[ConnectorContextV2] = None,  # TODO (sven): deprecate
-        *,
-        config: Optional[AlgorithmConfig] = None,
-        observation_space: Optional[gym.spaces.Space] = None,
-        action_space: Optional[gym.spaces.Space] = None,
-        input_type: INPUT_OUTPUT_TYPE = INPUT_OUTPUT_TYPE.DATA,
-        output_type: INPUT_OUTPUT_TYPE = INPUT_OUTPUT_TYPE.DATA,
-    ):
-        self.config = config
-        self.observation_space = observation_space
-        self.action_space = action_space
-        self.input_type = input_type
-        self.output_type = output_type
+    def __init__(self, ctx: ConnectorContext):
+        # Default is training mode.
+        self._is_training = True
 
-        self._is_training = True  # TODO (sven): deprecate
-
-    # TODO (sven): deprecate
     def in_training(self):
         self._is_training = True
 
-    # TODO (sven): deprecate
     def in_eval(self):
         self._is_training = False
-
-    @abc.abstractmethod
-    def __call__(
-        self,
-        *,
-        input_: Any,
-        episodes: List[EpisodeType],  # TODO: generalize to be also MultiAgentEpisode
-        ctx: ConnectorContextV2,
-    ) -> Any:
-        """Method for transforming input data into output data.
-
-        Args:
-            input_: The input data abiding to `self.input_type` to be transformed by
-                this connector. Transformations might either be done in-place or a new
-                structure may be returned that matches `self.output_type`.
-            episodes: The list of SingleAgentEpisode or MultiAgentEpisode objects,
-                each corresponding to one slot in the vector env. Note that episodes
-                should always be considered read-only and not be altered.
-            ctx: The ConnectorContext that might be used to pass along other important
-                information in between connector pieces (even across pipelines).
-
-        Returns:
-            The transformed connector output abiding to `self.output_type`.
-        """
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    def serialize(self) -> Tuple[str, Any]:
+    def to_state(self) -> Tuple[str, Any]:
         """Serialize a connector into a JSON serializable Tuple.
 
-        `serialize()` is required, so that all Connectors are serializable.
+        to_state is required, so that all Connectors are serializable.
 
         Returns:
             A tuple of connector's name and its serialized states.
@@ -223,13 +118,13 @@ class Connector(abc.ABC):
             state can simply be None.
         """
         # Must implement by each connector.
-        raise NotImplementedError
+        return NotImplementedError
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: Any) -> "Connector":
+    def from_state(self, ctx: ConnectorContext, params: Any) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
-        `from_state()` is required, so that all Connectors are serializable.
+        from_state is required, so that all Connectors are serializable.
 
         Args:
             ctx: Context for constructing this connector.
@@ -239,26 +134,9 @@ class Connector(abc.ABC):
             De-serialized connector.
         """
         # Must implement by each connector.
-        raise NotImplementedError
-
-    @Deprecated(new="Connector.serialize()", error=False)
-    def to_state(self):
-        return self.serialize()
+        return NotImplementedError
 
 
-class FromEnvConnector(Connector):
-    pass
-
-
-class FromModuleConnector(Connector):
-    pass
-
-
-class TrainingConnector(Connector):
-    pass
-
-
-# TODO (sven): deprecate
 @PublicAPI(stability="alpha")
 class AgentConnector(Connector):
     """Connector connecting user environments to RLlib policies.
@@ -268,7 +146,7 @@ class AgentConnector(Connector):
     The input API is designed so agent connectors can have access to all the
     agents assigned to a particular policy.
 
-    AgentConnectorDataTypes can be used to specify arbitrary types of env data,
+    AgentConnectorDataTypes can be used to specify arbitrary type of env data,
 
     Example:
 
@@ -346,11 +224,10 @@ class AgentConnector(Connector):
         For example, at the end of an episode.
 
         Args:
-            env_id: The ID of the environment.
+            env_id: required. ID of a user environment. Required.
         """
         pass
 
-    # TODO (sven): Deprecate in favor of Episodes (which contain all the needed data).
     def on_policy_output(self, output: ActionConnectorDataType):
         """Callback on agent connector of policy output.
 
@@ -370,8 +247,8 @@ class AgentConnector(Connector):
         """Transform a list of data items from env before they reach policy.
 
         Args:
-            acd_list: List of `AgentConnectorDataType`, each containing env-, agent ID,
-                and arbitrary data items from an environment or upstream agent connectors.
+            ac_data: List of env and agent IDs, plus arbitrary data items from
+                an environment or upstream agent connectors.
 
         Returns:
             A list of transformed data items in AgentConnectorDataType format.
@@ -391,8 +268,8 @@ class AgentConnector(Connector):
         """Transform a single agent connector data item.
 
         Args:
-            ac_data: Env and agent IDs, plus arbitrary data item from a single agent
-                of an environment.
+            data: Env and agent IDs, plus arbitrary data item from a single agent
+            of an environment.
 
         Returns:
             A transformed piece of agent connector data.
@@ -400,7 +277,6 @@ class AgentConnector(Connector):
         raise NotImplementedError
 
 
-# TODO (sven): deprecate
 @PublicAPI(stability="alpha")
 class ActionConnector(Connector):
     """Action connector connects policy outputs including actions,
@@ -454,3 +330,149 @@ class ActionConnector(Connector):
             The processed action connector data.
         """
         raise NotImplementedError
+
+
+@PublicAPI(stability="alpha")
+class ConnectorPipeline(abc.ABC):
+    """Utility class for quick manipulation of a connector pipeline."""
+
+    def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
+        self.connectors = connectors
+
+    def in_training(self):
+        for c in self.connectors:
+            c.in_training()
+
+    def in_eval(self):
+        for c in self.connectors:
+            c.in_eval()
+
+    def remove(self, name: str):
+        """Remove a connector by <name>
+
+        Args:
+            name: name of the connector to be removed.
+        """
+        idx = -1
+        for i, c in enumerate(self.connectors):
+            if c.__class__.__name__ == name:
+                idx = i
+                break
+        if idx >= 0:
+            del self.connectors[idx]
+            logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
+        else:
+            logger.warning(f"Trying to remove a non-existent connector {name}.")
+
+    def insert_before(self, name: str, connector: Connector):
+        """Insert a new connector before connector <name>
+
+        Args:
+            name: name of the connector before which a new connector
+                will get inserted.
+            connector: a new connector to be inserted.
+        """
+        idx = -1
+        for idx, c in enumerate(self.connectors):
+            if c.__class__.__name__ == name:
+                break
+        if idx < 0:
+            raise ValueError(f"Can not find connector {name}")
+        self.connectors.insert(idx, connector)
+
+        logger.info(
+            f"Inserted {connector.__class__.__name__} before {name} "
+            f"to {self.__class__.__name__}."
+        )
+
+    def insert_after(self, name: str, connector: Connector):
+        """Insert a new connector after connector <name>
+
+        Args:
+            name: name of the connector after which a new connector
+                will get inserted.
+            connector: a new connector to be inserted.
+        """
+        idx = -1
+        for idx, c in enumerate(self.connectors):
+            if c.__class__.__name__ == name:
+                break
+        if idx < 0:
+            raise ValueError(f"Can not find connector {name}")
+        self.connectors.insert(idx + 1, connector)
+
+        logger.info(
+            f"Inserted {connector.__class__.__name__} after {name} "
+            f"to {self.__class__.__name__}."
+        )
+
+    def prepend(self, connector: Connector):
+        """Append a new connector at the beginning of a connector pipeline.
+
+        Args:
+            connector: a new connector to be appended.
+        """
+        self.connectors.insert(0, connector)
+
+        logger.info(
+            f"Added {connector.__class__.__name__} to the beginning of "
+            f"{self.__class__.__name__}."
+        )
+
+    def append(self, connector: Connector):
+        """Append a new connector at the end of a connector pipeline.
+
+        Args:
+            connector: a new connector to be appended.
+        """
+        self.connectors.append(connector)
+
+        logger.info(
+            f"Added {connector.__class__.__name__} to the end of "
+            f"{self.__class__.__name__}."
+        )
+
+    def __str__(self, indentation: int = 0):
+        return "\n".join(
+            [" " * indentation + self.__class__.__name__]
+            + [c.__str__(indentation + 4) for c in self.connectors]
+        )
+
+    def __getitem__(self, key: Union[str, int, type]):
+        """Returns a list of connectors that fit 'key'.
+
+        If key is a number n, we return a list with the nth element of this pipeline.
+        If key is a Connector class or a string matching the class name of a
+        Connector class, we return a list of all connectors in this pipeline matching
+        the specified class.
+
+        Args:
+            key: The key to index by
+
+        Returns: The Connector at index `key`.
+        """
+        # In case key is a class
+        if not isinstance(key, str):
+            if isinstance(key, slice):
+                raise NotImplementedError(
+                    "Slicing of ConnectorPipeline is currently not supported."
+                )
+            elif isinstance(key, int):
+                return [self.connectors[key]]
+            elif isinstance(key, type):
+                results = []
+                for c in self.connectors:
+                    if issubclass(c.__class__, key):
+                        results.append(c)
+                return results
+            else:
+                raise NotImplementedError(
+                    "Indexing by {} is currently not supported.".format(type(key))
+                )
+
+        results = []
+        for c in self.connectors:
+            if c.__class__.__name__ == key:
+                results.append(c)
+
+        return results

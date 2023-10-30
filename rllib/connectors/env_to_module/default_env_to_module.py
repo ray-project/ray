@@ -1,41 +1,40 @@
 from typing import Any, List
 
-from ray.rllib.connectors.connector import Connector, ConnectorContextV2
-from ray.rllib.connectors.input_output_types import INPUT_OUTPUT_TYPE
+from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode
 from ray.rllib.utils.spaces.space_utils import batch
+from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class DefaultIntoModuleSingleAgent(Connector):
-    """Default into-module-connector used if no connectors are configured by the user.
+class DefaultEnvToModule(ConnectorV2):
+    """Default env-to-module-connector always in the pipeline at the very end.
 
-    Extracts the last observation of all agents from the list of episodes.
+    Makes sure that there is at least an observation (the most recent one) for each
+    agent as well as a state - in case the RLModule is recurrent. Doesn't do anything
+    in case other pieces in the pipeline already take care of populating these fields.
+
     TODO: Generalize to MultiAgentEpisodes.
-    Also, if the module is recurrent, will add the most recent state to its output.
     """
 
-    def __init__(self, **kwargs):
-        # Data dict in (possibly empty), data dict out
-        # (obs and - if applicable - states).
-        super().__init__(
-            input_type=INPUT_OUTPUT_TYPE.DATA,
-            output_type=INPUT_OUTPUT_TYPE.DATA,
-        )
-
-    @override(Connector)
-    def __call__(self, input_: Any, episodes: List[_Episode], ctx: ConnectorContextV2):
+    @override(ConnectorV2)
+    def __call__(
+        self,
+        input_: Any,
+        episodes: List[EpisodeType],
+        ctx: ConnectorContextV2,
+    ):
         # If obs are not already part of the input, add the most recent ones (from all
         # single-agent episodes).
         if SampleBatch.OBS not in input_:
             observations = []
             for episode in episodes:
                 # Make sure we have a single agent episode.
-                assert isinstance(episodes, _Episode)
+                assert isinstance(episode, EpisodeType)
                 # Make sure, we have at least one observation in the episode.
                 assert len(episode.observations) > 0
                 observations.append(episode.observations[-1])
@@ -46,8 +45,9 @@ class DefaultIntoModuleSingleAgent(Connector):
             states = []
             for episode in episodes:
                 # Make sure we have a single agent episode.
-                assert isinstance(episodes, _Episode)
+                assert isinstance(episodes, EpisodeType)
                 # Make sure, we have at least one observation in the episode.
+                # TODO: Generalize to MultiAgentEpisodes.
                 assert episode.state is not None
                 states.append(episode.state)
             input_[STATE_IN] = batch(states)

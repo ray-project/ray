@@ -6,8 +6,8 @@ from ray.rllib.connectors.connector import (
     ActionConnector,
     Connector,
     ConnectorContext,
-    ConnectorPipeline,
 )
+from ray.rllib.connectors.connector_pipeline import ConnectorPipeline
 from ray.rllib.connectors.registry import get_connector, register_connector
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import ActionConnectorDataType

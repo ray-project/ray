@@ -2,11 +2,8 @@ from typing import Any
 
 import numpy as np
 
-from ray.rllib.connectors.connector import (
-    AgentConnector,
-    ConnectorContext,
-)
-from ray.rllib.connectors.registry import register_connector
+from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import AgentConnectorDataType
@@ -14,23 +11,23 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class ClipRewardAgentConnector(AgentConnector):
-    def __init__(self, ctx: ConnectorContext, sign=False, limit=None):
+class ClipRewards(ConnectorV2):
+    def __init__(self, ctx: ConnectorContextV2, sign=False, limit=None):
         super().__init__(ctx)
-        assert (
-            not sign or not limit
-        ), "should not enable both sign and limit reward clipping."
+        assert not sign or not limit, (
+            "Should not enable both sign and limit reward clipping!"
+        )
         self.sign = sign
         self.limit = limit
 
-    def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
-        d = ac_data.data
-        assert (
-            type(d) == dict
-        ), "Single agent data must be of type Dict[str, TensorStructType]"
-
+    def __call__(
+        self,
+        input_: Any,
+        episodes: List[EpisodeType],
+        ctx: ConnectorContextV2,
+    ) -> Any:
+        # Nothing to clip. May happen for initial obs.
         if SampleBatch.REWARDS not in d:
-            # Nothing to clip. May happen for initial obs.
             return ac_data
 
         if self.sign:
@@ -45,7 +42,7 @@ class ClipRewardAgentConnector(AgentConnector):
 
     @override(AgentConnector)
     def serialize(self):
-        return ClipRewardAgentConnector.__name__, {
+        return ClipRewards.__name__, {
             "sign": self.sign,
             "limit": self.limit,
         }
@@ -53,6 +50,3 @@ class ClipRewardAgentConnector(AgentConnector):
     @staticmethod
     def from_state(ctx: ConnectorContext, params: Any):
         return ClipRewardAgentConnector(ctx, **params)
-
-
-register_connector(ClipRewardAgentConnector.__name__, ClipRewardAgentConnector)

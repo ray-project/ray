@@ -2,8 +2,9 @@ from collections import defaultdict
 import logging
 from typing import Any, List, Union
 
-from ray.rllib.connectors.connector import Connector, ConnectorContext
-from ray.rllib.connectors.registry import get_connector
+from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_context_v2 import  ConnectorContextV2
+#from ray.rllib.connectors.registry import get_connector
 from ray.rllib.utils.annotations import override
 from ray.util.annotations import PublicAPI
 from ray.util.timer import _Timer
@@ -12,30 +13,20 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
-class ConnectorPipeline(Connector):
+class ConnectorPipelineV2(ConnectorV2):
     """Utility class for quick manipulation of a connector pipeline."""
 
-    def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
+    def __init__(self, ctx: ConnectorContextV2, connectors: List[ConnectorV2]):
         assert len(connectors) > 0
 
-        super().__init__(
-            ctx,
-            input_type=connectors[0].input_type,
-            output_type=connectors[-1].output_type,
-        )
+        super().__init__(ctx=ctx)
 
         self.connectors = connectors
+
+        self.input_type = self.connectors[0].input_type
+        self.output_type = self.connectors[-1].output_type
+
         self.timers = defaultdict(_Timer)
-
-    # TODO (sven): deprecate
-    def in_training(self):
-        for c in self.connectors:
-            c.in_training()
-
-    # TODO (sven): deprecate
-    def in_eval(self):
-        for c in self.connectors:
-            c.in_eval()
 
     def remove(self, name: str):
         """Remove a connector piece by <name>.
@@ -55,7 +46,7 @@ class ConnectorPipeline(Connector):
         else:
             logger.warning(f"Trying to remove a non-existent connector {name}.")
 
-    def insert_before(self, name: str, connector: Connector):
+    def insert_before(self, name: str, connector: ConnectorV2):
         """Insert a new connector before connector <name>
 
         Args:
@@ -77,7 +68,7 @@ class ConnectorPipeline(Connector):
             f"to {self.__class__.__name__}."
         )
 
-    def insert_after(self, name: str, connector: Connector):
+    def insert_after(self, name: str, connector: ConnectorV2):
         """Insert a new connector after connector <name>
 
         Args:
@@ -99,7 +90,7 @@ class ConnectorPipeline(Connector):
             f"to {self.__class__.__name__}."
         )
 
-    def prepend(self, connector: Connector):
+    def prepend(self, connector: ConnectorV2):
         """Append a new connector at the beginning of a connector pipeline.
 
         Args:
@@ -113,7 +104,7 @@ class ConnectorPipeline(Connector):
             f"{self.__class__.__name__}."
         )
 
-    def append(self, connector: Connector):
+    def append(self, connector: ConnectorV2):
         """Append a new connector at the end of a connector pipeline.
 
         Args:
@@ -127,7 +118,6 @@ class ConnectorPipeline(Connector):
             f"{self.__class__.__name__}."
         )
 
-    @override(Connector)
     def __call__(self, input_: Any, ctx: ConnectorContext) -> Any:
         ret = input_
         for c in self.connectors:
@@ -136,7 +126,7 @@ class ConnectorPipeline(Connector):
                 ret = c(ret)
         return ret
 
-    @override(Connector)
+    @override(ConnectorV2)
     def serialize(self):
         children = []
         for c in self.connectors:
@@ -147,11 +137,11 @@ class ConnectorPipeline(Connector):
                 f"for connector {c.__name__}."
             )
             children.append(state)
-        return ConnectorPipeline.__name__, children
+        return ConnectorPipelineV2.__name__, children
 
-    @override(Connector)
+    @override(ConnectorV2)
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContextV2, params: List[Any]):
         assert (
             type(params) == list
         ), "AgentConnectorPipeline takes a list of connector params."
@@ -163,7 +153,7 @@ class ConnectorPipeline(Connector):
             except Exception as e:
                 logger.error(f"Failed to de-serialize connector state: {state}")
                 raise e
-        return ConnectorPipeline(ctx, connectors)
+        return ConnectorPipelineV2(ctx, connectors)
 
     def __str__(self, indentation: int = 0):
         return "\n".join(

@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class INPUT_OUTPUT_TYPE(Enum):
+class INPUT_OUTPUT_TYPES(Enum):
     """Definitions of possible datatypes being processed by individual connectors.
 
     TODO: Make sure this is valid:
