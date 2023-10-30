@@ -63,7 +63,9 @@ class FilenameProvider:
         """Generate a filename for a row.
 
         .. note::
-            Filenames must be unique and deterministic for a given task, block, and row
+            A block consists of multiple rows, and each row corresponds to a single output file. Each task may produce a different number of blocks, and each block may contain a different number of rows.
+
+            Filenames must be unique and deterministic for a given task, block, and row.
             index.
 
         Args:
