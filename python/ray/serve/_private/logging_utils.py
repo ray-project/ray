@@ -21,6 +21,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_ROUTE,
     SERVE_LOG_TIME,
     SERVE_LOGGER_NAME,
+    RAY_SERVE_ENABLE_JSON_LOGGING,
 )
 from ray.serve.schema import EncodingType, LoggingConfig
 
@@ -194,13 +195,13 @@ def configure_component_logger(
 
     logging.setLogRecordFactory(record_factory)
 
-    if logging_config._should_enable_stream_logging:
+    if logging_config._should_enable_stream_logging():
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(ServeFormatter(component_name, component_id))
         stream_handler.addFilter(log_to_stderr_filter)
         logger.addHandler(stream_handler)
 
-    if logging_config._should_enable_file_logging:
+    if logging_config._should_enable_file_logging():
 
         if logging_config.logs_dir:
             logs_dir = logging_config.logs_dir
@@ -223,7 +224,10 @@ def configure_component_logger(
             maxBytes=max_bytes,
             backupCount=backup_count,
         )
-        if logging_config.encoding == EncodingType.JSON:
+        if RAY_SERVE_ENABLE_JSON_LOGGING:
+            logger.warning("'RAY_SERVE_ENABLE_JSON_LOGGING' is going to be deprecated, please use "
+                           "'LoggingConfig' to enable json format.") 
+        if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
             file_handler.setFormatter(
                 ServeJSONFormatter(component_name, component_id, component_type)
             )

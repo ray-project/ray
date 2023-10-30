@@ -354,7 +354,7 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-        logging_config: Default[LoggingConfig] = DEFAULT.VALUE,
+        logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
@@ -466,6 +466,8 @@ class Deployment:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
 
         if logging_config is not DEFAULT.VALUE:
+            if isinstance(logging_config, LoggingConfig):
+                logging_config = logging_config.dict()
             new_deployment_config.logging_config = logging_config
 
         new_replica_config = ReplicaConfig.create(

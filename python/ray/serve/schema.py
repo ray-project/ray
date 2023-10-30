@@ -145,14 +145,19 @@ class LoggingConfig(BaseModel):
     @validator("log_level")
     def valid_log_level(cls, v):
         if isinstance(v, int):
-            return v
-
+            if v not in logging._levelToName:
+                raise ValueError(
+                    f'Got "{v}" for log_level. log_level must be one of '
+                    f"{list(logging._levelToName.keys())}."
+                )
+            return logging._levelToName[v]
+            
         if v not in logging._nameToLevel:
             raise ValueError(
                 f'Got "{v}" for log_level. log_level must be one of '
                 f"{list(logging._nameToLevel.keys())}."
             )
-        return logging._nameToLevel[v]
+        return v
 
     def _should_enable_stream_logging(self):
         return self.access_log in [AcessLoggingType.ALL, AcessLoggingType.STREAM_ONLY]
