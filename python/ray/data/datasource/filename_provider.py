@@ -26,6 +26,7 @@ class FilenameProvider:
 
         .. testcode::
 
+            import ray
             from ray.data.datasource import FilenameProvider
 
             class ImageFilenameProvider(FilenameProvider):
@@ -38,6 +39,13 @@ class FilenameProvider:
                         f"{row['label']}_{task_index:06}_{block_index:06}"
                         f"_{row_index:06}.{self.file_format}"
                     )
+
+            ds = ray.data.read_parquet("s3://anonymous@ray-example-data/images.parquet")
+            ds.write_images(
+                "/tmp/results",
+                column="image",
+                filename_provider=ImageFilenameProvider("png")
+            )
     """  # noqa: E501
 
     def get_filename_for_block(
@@ -46,9 +54,10 @@ class FilenameProvider:
         """Generate a filename for a block of data.
 
         .. note::
-            A block consists of multiple rows and corresponds to a single output file. Each task may produce a different number of blocks.
-
             Filenames must be unique and deterministic for a given task and block index.
+
+            A block consists of multiple rows and corresponds to a single output file.
+            Each task might produce a different number of blocks.
 
         Args:
             block: The block that will be written to a file.
@@ -63,18 +72,23 @@ class FilenameProvider:
         """Generate a filename for a row.
 
         .. note::
-            A block consists of multiple rows, and each row corresponds to a single output file. Each task may produce a different number of blocks, and each block may contain a different number of rows.
-
             Filenames must be unique and deterministic for a given task, block, and row.
             index.
+
+            A block consists of multiple rows, and each row corresponds to a single
+            output file. Each task might produce a different number of blocks, and each
+            block might contain a different number of rows.
+
+        .. tip::
+            If you require a contiguous row index into the global dataset, use
+            :meth:`~Dataset.iter_rows`. This method is single-threaded and isn't
+            recommended for large datasets.
 
         Args:
             row: The row that will be written to a file.
             task_index: The index of the the write task.
             block_index: The index of the block *within* the write task.
             row_index: The index of the row *within* the block.
-            
-        Note: If you require a contiguous row index into the global dataset, you may use :meth:`~Dataset.iter_rows`, but note this method is single-threaded and not recommended for large datasets.
         """
         raise NotImplementedError
 
