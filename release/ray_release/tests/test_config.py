@@ -13,7 +13,10 @@ from ray_release.config import (
 )
 from ray_release.exception import ReleaseTestConfigError
 
-_TEST_COLLECTION_FILE = bazel_runfile("release/release_tests.yaml")
+_TEST_COLLECTION_FILES = [
+    bazel_runfile("release/release_tests.yaml"),
+    bazel_runfile("release/ray_release/tests/test_collection_data.yaml"),
+]
 
 VALID_TEST = Test(
     **{
@@ -217,7 +220,8 @@ def test_compute_config_invalid_ebs():
 
 
 def test_load_and_validate_test_collection_file():
-    read_and_validate_release_test_collection(_TEST_COLLECTION_FILE)
+    tests = read_and_validate_release_test_collection(_TEST_COLLECTION_FILES)
+    assert [test for test in tests if test.get_name() == "test_name"]
 
 
 if __name__ == "__main__":

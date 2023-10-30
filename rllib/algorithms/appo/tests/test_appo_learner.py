@@ -58,6 +58,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         """Test that appo_policy_rlm loss matches the appo learner loss."""
         config = (
             appo.APPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
             .rollouts(
                 num_rollout_workers=0,
@@ -71,10 +72,6 @@ class TestAPPOTfLearner(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
-            )
-            .rl_module(
-                _enable_rl_module_api=True,
             )
         )
         # We have to set exploration_config here manually because setting it through
@@ -118,6 +115,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             appo.APPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
             # Asynchronous Algo, make sure we have some results after 1 iteration.
             .reporting(min_time_s_per_iteration=10)
@@ -133,12 +131,8 @@ class TestAPPOTfLearner(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
                 use_kl_loss=True,
                 kl_coeff=initial_kl_coeff,
-            )
-            .rl_module(
-                _enable_rl_module_api=True,
             )
             .exploration(exploration_config={})
         )

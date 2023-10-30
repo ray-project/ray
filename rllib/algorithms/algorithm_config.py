@@ -74,6 +74,7 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
+from ray.util import log_once
 
 gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
@@ -366,7 +367,6 @@ class AlgorithmConfig(_Config):
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
-        self._enable_learner_api = False
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -458,13 +458,13 @@ class AlgorithmConfig(_Config):
         self.worker_restore_timeout_s = 1800
 
         # `self.rl_module()`
-        self.rl_module_spec = None
-        self._enable_rl_module_api = False
+        self._rl_module_spec = None
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
         self.__prior_exploration_config = None
 
         # `self.experimental()`
+        self._enable_new_api_stack = False
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
@@ -604,9 +604,12 @@ class AlgorithmConfig(_Config):
         # We deal with this special key before all others because it may influence
         # stuff like "exploration_config".
         # Namely, we want to re-instantiate the exploration config this config had
-        # inside `self.rl_module()` before potentially overwriting it in the following.
-        if "_enable_rl_module_api" in config_dict:
-            self.rl_module(_enable_rl_module_api=config_dict["_enable_rl_module_api"])
+        # inside `self.experimental()` before potentially overwriting it in the
+        # following.
+        if "_enable_new_api_stack" in config_dict:
+            self.experimental(
+                _enable_new_api_stack=config_dict["_enable_new_api_stack"]
+            )
 
         # Modify our properties one by one.
         for key, value in config_dict.items():
@@ -617,7 +620,7 @@ class AlgorithmConfig(_Config):
             if key == TRIAL_INFO:
                 continue
 
-            if key == "_enable_rl_module_api":
+            if key == "_enable_new_api_stack":
                 # We've dealt with this above.
                 continue
             # Set our multi-agent settings.
@@ -650,7 +653,7 @@ class AlgorithmConfig(_Config):
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
-                if config_dict.get("_enable_rl_module_api", False):
+                if config_dict.get("_enable_new_api_stack", False):
                     self.exploration_config = value
                     continue
                 if isinstance(value, dict) and "type" in value:
@@ -791,14 +794,11 @@ class AlgorithmConfig(_Config):
             _torch, _ = try_import_torch()
 
         # Can not use "tf" with learner API.
-        if self.framework_str == "tf" and (
-            self._enable_rl_module_api or self._enable_learner_api
-        ):
+        if self.framework_str == "tf" and self._enable_new_api_stack:
             raise ValueError(
-                "Cannot use `framework=tf` with new API stack! Either do "
-                "`config.framework('tf2')` OR set both `config.rl_module("
-                "_enable_rl_module_api=False)` and `config.training("
-                "_enable_learner_api=False)`."
+                "Cannot use `framework=tf` with the new API stack! Either switch to tf2"
+                " via `config.framework('tf2')` OR disable the new API stack via "
+                "`config.experimental(_enable_new_api_stack=False)`."
             )
 
         # Check if torch framework supports torch.compile.
@@ -892,22 +892,37 @@ class AlgorithmConfig(_Config):
             )
 
         # RLModule API only works with connectors and with Learner API.
-        if not self.enable_connectors and self._enable_rl_module_api:
+        if not self.enable_connectors and self._enable_new_api_stack:
             raise ValueError(
-                "RLModule API only works with connectors. "
-                "Please enable connectors via "
+                "The new API stack (RLModule and Learner APIs) only works with "
+                "connectors! Please enable connectors via "
                 "`config.rollouts(enable_connectors=True)`."
             )
 
-        # Learner API requires RLModule API.
-        if self._enable_learner_api is not self._enable_rl_module_api:
-            raise ValueError(
-                "Learner API requires RLModule API and vice-versa! "
-                "Enable RLModule API via "
-                "`config.rl_module(_enable_rl_module_api=True)` and the Learner API "
-                "via `config.training(_enable_learner_api=True)` (or set both to "
-                "False)."
+        # Throw a warning if the user has used rl_module_spec but not enabled the
+        # new API stack.
+        if self._rl_module_spec is not None and not self._enable_new_api_stack:
+            logger.warning(
+                "You have setup a RLModuleSpec (via calling `config.rl_module(...)`), "
+                "but have not enabled the new API stack. To enable it, call "
+                "`config.experimental(_enable_new_api_stack=True)`."
             )
+        # LR-schedule checking.
+        if self._enable_new_api_stack:
+            Scheduler.validate(
+                fixed_value_or_schedule=self.lr,
+                setting_name="lr",
+                description="learning rate",
+            )
+
+        if self._learner_class is not None and not self._enable_new_api_stack:
+            logger.warning(
+                "You specified a custom Learner class (via "
+                f"`AlgorithmConfig.training(learner_class={self._learner_class})`, but "
+                "have the new API stack disabled. You need to enable it via "
+                "`AlgorithmConfig.experimental(_enable_new_api_stack=True)`."
+            )
+
         # TODO @Avnishn: This is a short-term work around due to
         # https://github.com/ray-project/ray/issues/35409
         # Remove this once we are able to specify placement group bundle index in RLlib
@@ -926,17 +941,8 @@ class AlgorithmConfig(_Config):
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # Enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
-            self.rl_module(_enable_rl_module_api=True)
-            self.training(_enable_learner_api=True)
+            self.experimental(_enable_new_api_stack=True)
             self.enable_connectors = True
-
-        # LR-schedule checking.
-        if self._enable_learner_api:
-            Scheduler.validate(
-                fixed_value_or_schedule=self.lr,
-                setting_name="lr",
-                description="learning rate",
-            )
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:
@@ -950,7 +956,7 @@ class AlgorithmConfig(_Config):
         if self.simple_optimizer is True:
             pass
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        elif not self._enable_learner_api and self.num_gpus > 1:
+        elif not self._enable_new_api_stack and self.num_gpus > 1:
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
             #  Remove this hacky check, once we have fully moved to the Learner API.
@@ -1037,36 +1043,14 @@ class AlgorithmConfig(_Config):
                 # compatibility for now. User only needs to set num_rollout_workers.
                 self.input_config["parallelism"] = self.num_rollout_workers or 1
 
-        if self._enable_rl_module_api:
-            default_rl_module_spec = self.get_default_rl_module_spec()
-            _check_rl_module_spec(default_rl_module_spec)
-
-            if self.rl_module_spec is not None:
-                # Merge provided RL Module spec class with defaults
-                _check_rl_module_spec(self.rl_module_spec)
-                # We can only merge if we have SingleAgentRLModuleSpecs.
-                # TODO(Artur): Support merging for MultiAgentRLModuleSpecs.
-                if isinstance(self.rl_module_spec, SingleAgentRLModuleSpec):
-                    if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
-                        default_rl_module_spec.update(self.rl_module_spec)
-                        self.rl_module_spec = default_rl_module_spec
-                    elif isinstance(default_rl_module_spec, MultiAgentRLModuleSpec):
-                        raise ValueError(
-                            "Cannot merge MultiAgentRLModuleSpec with "
-                            "SingleAgentRLModuleSpec!"
-                        )
-            else:
-                self.rl_module_spec = default_rl_module_spec
-
+        if self._enable_new_api_stack:
             not_compatible_w_rlm_msg = (
-                "Cannot use `{}` option with RLModule API. `{"
-                "}` is part of the ModelV2 API and Policy API,"
-                " which are not compatible with the RLModule "
-                "API. You can either deactivate the RLModule "
-                "API by setting `config.rl_module( "
-                "_enable_rl_module_api=False)` and "
-                "`config.training(_enable_learner_api=False)` ,"
-                "or use the RLModule API and implement your "
+                "Cannot use `{}` option with the new API stack (RLModule and "
+                "Learner APIs)! `{}` is part of the ModelV2 API and Policy API,"
+                " which are not compatible with the new API stack. You can either "
+                "deactivate the new stack via `config.experimental( "
+                "_enable_new_api_stack=False)`,"
+                "or use the new stack (incl. RLModule API) and implement your "
                 "custom model as an RLModule."
             )
 
@@ -1721,8 +1705,9 @@ class AlgorithmConfig(_Config):
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
-        _enable_learner_api: Optional[bool] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
+        # Deprecated arg.
+        _enable_learner_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -1767,7 +1752,7 @@ class AlgorithmConfig(_Config):
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer. This setting is not
-                used when `_enable_learner_api=True`.
+                used when `_enable_new_api_stack=True`.
             max_requests_in_flight_per_sampler_worker: Max number of inflight requests
                 to each sampling worker. See the FaultTolerantActorManager class for
                 more details.
@@ -1780,9 +1765,6 @@ class AlgorithmConfig(_Config):
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
-            _enable_learner_api: Whether to enable the LearnerGroup and Learner
-                for training. This API uses ray.train to run the training loop which
-                allows for a more flexible distributed training.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1814,10 +1796,10 @@ class AlgorithmConfig(_Config):
                 deprecation_warning(
                     old="AlgorithmConfig.training(_use_default_native_models=True)",
                     help="_use_default_native_models is not supported "
-                    "anymore. To get rid of this error, set `rl_module("
-                    "_enable_rl_module_api` to True. Native models will "
+                    "anymore. To get rid of this error, set `config.experimental("
+                    "_enable_new_api_stack=True)`. Native models will "
                     "be better supported by the upcoming RLModule API.",
-                    # Error out if user tries to enable this
+                    # Error out if user tries to enable this.
                     error=model["_use_default_native_models"],
                 )
 
@@ -1828,7 +1810,11 @@ class AlgorithmConfig(_Config):
                 max_requests_in_flight_per_sampler_worker
             )
         if _enable_learner_api is not NotProvided:
-            self._enable_learner_api = _enable_learner_api
+            deprecation_warning(
+                old="AlgorithmConfig.training(_enable_learner_api=True|False)",
+                new="AlgorithmConfig.experimental(_enable_new_api_stack=True|False)",
+                error=True,
+            )
         if learner_class is not NotProvided:
             self._learner_class = learner_class
 
@@ -2110,9 +2096,9 @@ class AlgorithmConfig(_Config):
                 raise ValueError(
                     f"input_config must be a dict, got {type(input_config)}."
                 )
-            # TODO (Kourosh) Once we use a complete sepration between rollout worker
-            # and input dataset reader we can remove this.
-            # For now Error out if user attempts to set these parameters.
+            # TODO (Kourosh) Once we use a complete separation between rollout worker
+            #  and input dataset reader we can remove this.
+            #  For now Error out if user attempts to set these parameters.
             msg = "{} should not be set in the input_config. RLlib will use {} instead."
             if input_config.get("num_cpus_per_read_task") is not None:
                 raise ValueError(
@@ -2198,10 +2184,10 @@ class AlgorithmConfig(_Config):
                 4-tuples of (policy_cls, obs_space, act_space, config) or PolicySpecs.
                 These tuples or PolicySpecs define the class of the policy, the
                 observation- and action spaces of the policies, and any extra config.
-            algorithm_config_overrides_per_module: Only used if both
-                `_enable_learner_api` and `_enable_rl_module_api` are True.
-                A mapping from ModuleIDs to
-                per-module AlgorithmConfig override dicts, which apply certain settings,
+            algorithm_config_overrides_per_module: Only used if
+                `_enable_new_api_stack=True`.
+                A mapping from ModuleIDs to per-module AlgorithmConfig override dicts,
+                which apply certain settings,
                 e.g. the learning rate, from the main AlgorithmConfig only to this
                 particular module (within a MultiAgentRLModule).
                 You can create override dicts by using the `AlgorithmConfig.overrides`
@@ -2569,6 +2555,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         rl_module_spec: Optional[ModuleSpec] = NotProvided,
+        # Deprecated arg.
         _enable_rl_module_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
@@ -2579,44 +2566,25 @@ class AlgorithmConfig(_Config):
                 observation_space, action_space, catalog_class, or the model config is
                 not specified it will be inferred from the env and other parts of the
                 algorithm config object.
-            _enable_rl_module_api: Whether to enable the RLModule API for this config.
-                By default if you call `config.rl_module(...)`, the
-                RLModule API will NOT be enabled. If you want to enable it, you can call
-                `config.rl_module(_enable_rl_module_api=True)`.
 
         Returns:
             This updated AlgorithmConfig object.
         """
         if rl_module_spec is not NotProvided:
-            self.rl_module_spec = rl_module_spec
+            self._rl_module_spec = rl_module_spec
 
         if _enable_rl_module_api is not NotProvided:
-            self._enable_rl_module_api = _enable_rl_module_api
-            if _enable_rl_module_api is True and self.exploration_config:
-                self.__prior_exploration_config = self.exploration_config
-                self.exploration_config = {}
-            elif _enable_rl_module_api is False and not self.exploration_config:
-                if self.__prior_exploration_config is not None:
-                    self.exploration_config = self.__prior_exploration_config
-                    self.__prior_exploration_config = None
-                else:
-                    logger.warning(
-                        "config._enable_rl_module_api was set to False, but no prior "
-                        "exploration config was found to be restored."
-                    )
-        else:
-            # Throw a warning if the user has used this API but not enabled it.
-            logger.warning(
-                "You have called `config.rl_module(...)` but "
-                "have not enabled the RLModule API. To enable it, call "
-                "`config.rl_module(_enable_rl_module_api=True)`."
+            deprecation_warning(
+                old="AlgorithmConfig.rl_module(_enable_rl_module_api=True|False)",
+                new="AlgorithmConfig.experimental(_enable_new_api_stack=True|False)",
+                error=True,
             )
-
         return self
 
     def experimental(
         self,
         *,
+        _enable_new_api_stack: Optional[bool] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
@@ -2626,6 +2594,9 @@ class AlgorithmConfig(_Config):
         """Sets the config's experimental settings.
 
         Args:
+            _enable_new_api_stack: Enables the new API stack, which will use RLModule
+                (instead of ModelV2) as well as the multi-GPU capable Learner API
+                (instead of using Policy to compute loss and update the model).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
                 Set this to True, if you would like to return more than
@@ -2651,6 +2622,23 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if _enable_new_api_stack is not NotProvided:
+            self._enable_new_api_stack = _enable_new_api_stack
+
+            if _enable_new_api_stack is True and self.exploration_config:
+                self.__prior_exploration_config = self.exploration_config
+                self.exploration_config = {}
+
+            elif _enable_new_api_stack is False and not self.exploration_config:
+                if self.__prior_exploration_config is not None:
+                    self.exploration_config = self.__prior_exploration_config
+                    self.__prior_exploration_config = None
+                else:
+                    logger.warning(
+                        "config._enable_new_api_stack was set to False, but no prior "
+                        "exploration config was found to be restored."
+                    )
+
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
                 _tf_policy_handles_more_than_one_loss
@@ -2667,6 +2655,28 @@ class AlgorithmConfig(_Config):
             )
 
         return self
+
+    @property
+    def rl_module_spec(self):
+        default_rl_module_spec = self.get_default_rl_module_spec()
+        _check_rl_module_spec(default_rl_module_spec)
+
+        if self._rl_module_spec is not None:
+            # Merge provided RL Module spec class with defaults
+            _check_rl_module_spec(self._rl_module_spec)
+            # We can only merge if we have SingleAgentRLModuleSpecs.
+            # TODO(Artur): Support merging for MultiAgentRLModuleSpecs.
+            if isinstance(self._rl_module_spec, SingleAgentRLModuleSpec):
+                if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+                    default_rl_module_spec.update(self._rl_module_spec)
+                    return default_rl_module_spec
+                elif isinstance(default_rl_module_spec, MultiAgentRLModuleSpec):
+                    raise ValueError(
+                        "Cannot merge MultiAgentRLModuleSpec with "
+                        "SingleAgentRLModuleSpec!"
+                    )
+        else:
+            return default_rl_module_spec
 
     @property
     def learner_class(self) -> Type["Learner"]:
@@ -3186,7 +3196,7 @@ class AlgorithmConfig(_Config):
                 values from other sources of information (e.g. environement)
             single_agent_rl_module_spec: The SingleAgentRLModuleSpec to use for
                 constructing a MultiAgentRLModuleSpec. If None, the already
-                configured spec (`self.rl_module_spec`) or the default ModuleSpec for
+                configured spec (`self._rl_module_spec`) or the default ModuleSpec for
                 this algorithm (`self.get_default_rl_module_spec()`) will be used.
         """
         # TODO (Kourosh): When we replace policy entirely there will be no need for
@@ -3200,7 +3210,7 @@ class AlgorithmConfig(_Config):
         default_rl_module_spec = self.get_default_rl_module_spec()
         # The currently configured ModuleSpec (might be multi-agent or single-agent).
         # If None, use the default one.
-        current_rl_module_spec = self.rl_module_spec or default_rl_module_spec
+        current_rl_module_spec = self._rl_module_spec or default_rl_module_spec
 
         # Algorithm is currently setup as a single-agent one.
         if isinstance(current_rl_module_spec, SingleAgentRLModuleSpec):
@@ -3221,7 +3231,7 @@ class AlgorithmConfig(_Config):
         # Algorithm is currently setup as a multi-agent one.
         else:
             # The user currently has a MultiAgentSpec setup (either via
-            # self.rl_module_spec or the default spec of this AlgorithmConfig).
+            # self._rl_module_spec or the default spec of this AlgorithmConfig).
             assert isinstance(current_rl_module_spec, MultiAgentRLModuleSpec)
 
             # Default is single-agent but the user has provided a multi-agent spec
@@ -3731,3 +3741,48 @@ class AlgorithmConfig(_Config):
     @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
     def num_workers(self):
         pass
+
+
+def rllib_contrib_warning(algo_class):
+    if (
+        algo_class is not None
+        and algo_class.__name__
+        in [
+            "A2C",
+            "A3C",
+            "AlphaStar",
+            "AlphaZero",
+            "ApexDDPG",
+            "ApexDQN",
+            "ARS",
+            "BanditLinTS",
+            "BanditLinUCB",
+            "CRR",
+            "DDPG",
+            "DDPPO",
+            "Dreamer" "DT",
+            "ES",
+            "LeelaChessZero",
+            "MADDPG",
+            "MAML",
+            "MBMPO",
+            "PG",
+            "QMIX",
+            "R2D2",
+            "SimpleQ",
+            "SlateQ",
+            "TD3",
+        ]
+        and log_once(f"{algo_class.__name__}_contrib")
+    ):
+        logger.warning(
+            "{} has been moved to `rllib_contrib` and will no longer be maintained"
+            " by the RLlib team. You can still use it normally inside RLlib util "
+            "Ray 2.8, but from Ray 2.9 on, all `rllib_contrib` algorithms will no "
+            "longer be part of the core repo, and will therefore have to be installed "
+            "separately with pinned dependencies for e.g. ray[rllib] and other "
+            "packages! See "
+            "https://github.com/ray-project/ray/tree/master/rllib_contrib#rllib-contrib"
+            " for more information on the RLlib contrib "
+            "effort.".format(algo_class.__name__)
+        )
