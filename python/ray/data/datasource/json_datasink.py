@@ -32,7 +32,7 @@ class JSONDatasink(BlockBasedFileDatasink):
             try_create_dir=try_create_dir,
             open_stream_args=open_stream_args,
             filename_provider=filename_provider,
-            block_path_provider=block_path_provider
+            block_path_provider=block_path_provider,
             dataset_uuid=dataset_uuid,
             file_format="json",
         )
