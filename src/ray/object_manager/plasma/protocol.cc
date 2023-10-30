@@ -395,23 +395,18 @@ Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id) {
 
 Status SendReleaseReply(const std::shared_ptr<Client> &client,
                         ObjectID object_id,
-                        bool should_unmap,
                         PlasmaError error) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaReleaseReply(
-      fbb, fbb.CreateString(object_id.Binary()), should_unmap, error);
+  auto message =
+      fb::CreatePlasmaReleaseReply(fbb, fbb.CreateString(object_id.Binary()), error);
   return PlasmaSend(client, MessageType::PlasmaReleaseReply, &fbb, message);
 }
 
-Status ReadReleaseReply(uint8_t *data,
-                        size_t size,
-                        ObjectID *object_id,
-                        bool *should_unmap) {
+Status ReadReleaseReply(uint8_t *data, size_t size, ObjectID *object_id) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaReleaseReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   *object_id = ObjectID::FromBinary(message->object_id()->str());
-  *should_unmap = message->should_unmap();
   return PlasmaErrorStatus(message->error());
 }
 
