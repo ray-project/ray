@@ -234,7 +234,6 @@ class GlueTest(unittest.TestCase):
             test=self.test,
             anyscale_project=self.anyscale_project,
             result=result,
-            ray_wheels_url=self.ray_wheels_url,
             **kwargs
         )
 

@@ -23,7 +23,6 @@ from ray_release.reporter.db import DBReporter
 from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
-from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 
 @click.command()
@@ -47,20 +46,6 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     type=bool,
     is_flag=True,
     help="Report results to database",
-)
-@click.option(
-    "--ray-wheels",
-    default=None,
-    type=str,
-    help=(
-        "Commit hash or URL to Ray wheels to be used for testing. "
-        "If empty, defaults to the BUILDKITE_COMMIT env variable. "
-        "Can be e.g. `master` to fetch latest wheels from the "
-        "Ray master branch. Can also be `<repo_url>:<branch>` or "
-        "`<repo_url>:<commit>` to specify a different repository to "
-        "fetch wheels from, if available. Can also be "
-        "`file://<path to local wheel>` for wheels built locally."
-    ),
 )
 @click.option(
     "--cluster-id",
@@ -106,7 +91,6 @@ def main(
     test_collection_file: Optional[str] = None,
     smoke_test: bool = False,
     report: bool = False,
-    ray_wheels: Optional[str] = None,
     cluster_id: Optional[str] = None,
     cluster_env_id: Optional[str] = None,
     env: Optional[str] = None,
@@ -141,10 +125,6 @@ def main(
     else:
         python_version = DEFAULT_PYTHON_VERSION
 
-    ray_wheels_url = find_and_wait_for_ray_wheels_url(
-        ray_wheels, python_version=python_version, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
-    )
-
     anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)
     if not anyscale_project:
         raise ReleaseTestCLIError(
@@ -173,7 +153,6 @@ def main(
             test,
             anyscale_project=anyscale_project,
             result=result,
-            ray_wheels_url=ray_wheels_url,
             reporters=reporters,
             smoke_test=smoke_test,
             cluster_id=cluster_id,
