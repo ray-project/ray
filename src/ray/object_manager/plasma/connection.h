@@ -72,6 +72,10 @@ class Client : public ray::ClientConnection, public ClientInterface {
   // Removes object ID's ref to the fd, if any. If the fd's refcnt goes to 0, also remove
   // the fd from used_fds_ and return true, directing the client to unmap it.
   //
+  // Invalidates the corresponding iterator from GetObjectIDs() in the middle of
+  // execution. *Don't* pass in the object_id dererfenced from an iterator from
+  // GetObjectIDs().
+  //
   // Returns: bool, client should unmap.
   // Idempotency: only decrements ref count if the object ID was held.
   virtual bool MarkObjectAsUnused(const ray::ObjectID &object_id) override {

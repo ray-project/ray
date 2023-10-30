@@ -251,7 +251,7 @@ bool PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
   auto &object_ids = client->GetObjectIDs();
   auto it = object_ids.find(object_id);
   if (it != object_ids.end()) {
-    bool should_unmap = client->MarkObjectAsUnused(*it);
+    bool should_unmap = client->MarkObjectAsUnused(object_id);
     RAY_LOG(DEBUG) << "Object " << object_id
                    << " no longer in use by client, should_unmap = " << should_unmap;
     // Decrease reference count.
@@ -298,7 +298,7 @@ int PlasmaStore::AbortObject(const ObjectID &object_id,
   }
   // The client requesting the abort is the creator. Free the object.
   RAY_CHECK(object_lifecycle_mgr_.AbortObject(object_id) == PlasmaError::OK);
-  client->MarkObjectAsUnused(*it);
+  client->MarkObjectAsUnused(object_id);
   return 1;
 }
 
