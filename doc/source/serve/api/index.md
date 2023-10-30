@@ -354,14 +354,19 @@ Content-Type: application/json
 ```{eval-rst}
 .. autosummary::
    :nosignatures:
-   :template: autosummary/class_with_inherited_members.rst
    :toctree: doc/
 
    schema.ServeInstanceDetails
    schema.ApplicationDetails
    schema.DeploymentDetails
-   schema.ReadDeploymentModel
    schema.ReplicaDetails
+```
+
+```{eval-rst}
+.. autoclass:: schema.ReadDeploymentModel
+   :members:
+   :show-inheritance:
+   :toctree: doc/
 ```
 
 ## Metrics API
