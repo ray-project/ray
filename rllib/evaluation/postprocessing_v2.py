@@ -12,7 +12,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 
@@ -28,7 +28,9 @@ class Postprocessing:
 
 
 @DeveloperAPI
-def postprocess_episodes_to_sample_batch(episodes: List[_Episode]) -> SampleBatch:
+def postprocess_episodes_to_sample_batch(
+    episodes: List[SingleAgentEpisode],
+) -> SampleBatch:
     """Converts the results from sampling with an `EnvRunner` to one `SampleBatch'.
 
     Once the `SampleBatch` will be deprecated this function will be
@@ -58,7 +60,7 @@ def postprocess_episodes_to_sample_batch(episodes: List[_Episode]) -> SampleBatc
 
 @DeveloperAPI
 def compute_gae_for_episode(
-    episode: _Episode,
+    episode: SingleAgentEpisode,
     config: AlgorithmConfig,
     module: RLModule,
 ):
@@ -90,7 +92,9 @@ def compute_gae_for_episode(
     return episode
 
 
-def compute_bootstrap_value(episode: _Episode, module: RLModule) -> _Episode:
+def compute_bootstrap_value(
+    episode: SingleAgentEpisode, module: RLModule
+) -> SingleAgentEpisode:
     if episode.is_terminated:
         last_r = 0.0
     else:
@@ -142,7 +146,7 @@ def compute_bootstrap_value(episode: _Episode, module: RLModule) -> _Episode:
 
 
 def compute_advantages(
-    episode: _Episode,
+    episode: SingleAgentEpisode,
     last_r: float,
     gamma: float = 0.9,
     lambda_: float = 1.0,

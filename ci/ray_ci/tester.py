@@ -100,7 +100,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 )
 @click.option(
     "--build-type",
-    type=click.Choice(["optimized", "debug", "asan"]),
+    type=click.Choice(["optimized", "debug", "asan", "java"]),
     default="optimized",
 )
 def main(
@@ -164,7 +164,7 @@ def _get_container(
 
     return TesterContainer(
         build_name or f"{team}build",
-        envs=test_env,
+        test_envs=test_env,
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
         gpus=gpus,
