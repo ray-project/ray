@@ -3775,12 +3775,11 @@ def rllib_contrib_warning(algo_class):
         ]
         and log_once(f"{algo_class.__name__}_contrib")
     ):
-        logger.warning(
-            "{} has been moved to `rllib_contrib` and will no longer be maintained"
-            " by the RLlib team. You can still use it normally inside RLlib util "
-            "Ray 2.8, but from Ray 2.9 on, all `rllib_contrib` algorithms will no "
-            "longer be part of the core repo, and will therefore have to be installed "
-            "separately with pinned dependencies for e.g. ray[rllib] and other "
+        raise ValueError(
+            "{} has been moved to `rllib_contrib` (as of Ray 2.9) and will no longer "
+            "be actively maintained by the RLlib team. You can still use the algorithm, "
+            "however, you will have to separately install it and it will be "
+            "\"frozen\" in time with pinned dependencies for e.g. ray[rllib] and other "
             "packages! See "
             "https://github.com/ray-project/ray/tree/master/rllib_contrib#rllib-contrib"
             " for more information on the RLlib contrib "
