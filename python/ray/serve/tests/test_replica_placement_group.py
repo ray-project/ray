@@ -131,15 +131,15 @@ def test_pg_removed_on_replica_crash(serve_instance):
 
     # Get the placement group for the original replica.
     assert len(get_all_live_placement_group_names()) == 1
-    pg = h.get_pg.remote().result()
+    pg = ray.get(h.get_pg.remote())
 
     # Kill the replica forcefully.
     with pytest.raises(ray.exceptions.RayActorError):
-        h.die.remote().result()
+        ray.get(h.die.remote())
 
     def new_replica_scheduled():
         try:
-            h.get_pg.remote().result()
+            ray.get(h.get_pg.remote())
         except ray.exceptions.RayActorError:
             return False
 
@@ -148,7 +148,7 @@ def test_pg_removed_on_replica_crash(serve_instance):
     # The original placement group should be deleted and a new replica should
     # be scheduled with its own new placement group.
     wait_for_condition(new_replica_scheduled)
-    new_pg = h.get_pg.remote().result()
+    new_pg = ray.get(h.get_pg.remote())
     assert pg != new_pg
     assert len(get_all_live_placement_group_names()) == 1
 
@@ -200,7 +200,7 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
 
     h = serve.run(D.bind(), name="pg_test")
 
-    prev_pg = h.get_pg.remote().result()
+    prev_pg = ray.get(h.get_pg.remote())
     assert len(get_all_live_placement_group_names()) == 1
 
     # Kill the controller and the replica immediately after.
@@ -208,11 +208,11 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     # should still detect the leaked placement group and clean it up.
     ray.kill(_get_global_client()._controller, no_restart=False)
     with pytest.raises(ray.exceptions.RayActorError):
-        h.die.remote().result()
+        ray.get(h.die.remote())
 
     def leaked_pg_cleaned_up():
         try:
-            new_pg = h.get_pg.remote().result()
+            new_pg = ray.get(h.get_pg.remote())
         except ray.exceptions.RayActorError:
             return False
 
@@ -302,7 +302,7 @@ def test_coschedule_actors_and_tasks(serve_instance):
             )
 
     h = serve.run(Parent.bind())
-    h.run_test.remote().result()
+    ray.get(h.run_test.remote())
 
 
 if __name__ == "__main__":
