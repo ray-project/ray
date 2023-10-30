@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class PPOConfig(PGConfig):
+class PPOConfig(AlgorithmConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
     .. testcode::
@@ -112,6 +112,11 @@ class PPOConfig(PGConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
+        self.lr_schedule = None
+        self.lr = 5e-5
+        self.rollout_fragment_length = "auto"
+        self.train_batch_size = 4000
+
         # PPO specific settings:
         self.use_critic = True
         self.use_gae = True
@@ -129,12 +134,9 @@ class PPOConfig(PGConfig):
         self.vf_clip_param = 10.0
         self.grad_clip = None
 
-        # Override some of PG/AlgorithmConfig's default values with PPO-specific values.
+        # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_rollout_workers = 2
-        self.train_batch_size = 4000
-        self.lr = 5e-5
         self.model["vf_share_layers"] = False
-        self._disable_preprocessor_api = False
         # __sphinx_doc_end__
         # fmt: on
 
@@ -265,13 +267,6 @@ class PPOConfig(PGConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if vf_share_layers != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="PPOConfig().vf_share_layers",
-                new="PPOConfig().training(model={'vf_share_layers': ...})",
-                error=True,
-            )
-
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
@@ -317,6 +312,13 @@ class PPOConfig(PGConfig):
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
+
+        # Synchronous sampling, on-policy/PPO algos -> Check mismatches between
+        # `rollout_fragment_length` and `train_batch_size` to avoid user confusion.
+        # TODO (sven): Make rollout_fragment_length a property and create a private
+        #  attribute to store (possibly) user provided value (or "auto") in. Deprecate
+        #  `self.get_rollout_fragment_length()`.
+        self.validate_train_batch_size_vs_rollout_fragment_length()
 
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for

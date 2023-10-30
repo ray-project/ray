@@ -15,7 +15,7 @@ from ray.tune.registry import (
     registry_contains_input,
 )
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import (
     IOContext,
@@ -54,7 +54,7 @@ class AgentIOTest(unittest.TestCase):
 
     def write_outputs(self, output, fw, output_config=None):
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .framework(fw)
             .training(train_batch_size=250)
@@ -95,7 +95,7 @@ class AgentIOTest(unittest.TestCase):
 
     def test_agent_input_dir(self):
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .evaluation(off_policy_estimation_methods={})
         )
@@ -120,7 +120,7 @@ class AgentIOTest(unittest.TestCase):
 
     def test_agent_input_postprocessing_enabled(self):
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
@@ -162,14 +162,14 @@ class AgentIOTest(unittest.TestCase):
 
     def test_agent_input_eval_sampler(self):
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
             )
             .evaluation(
                 evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(input_="sampler"),
+                evaluation_config=PPOConfig.overrides(input_="sampler"),
             )
         )
 
@@ -188,7 +188,7 @@ class AgentIOTest(unittest.TestCase):
 
     def test_agent_input_list(self):
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .training(train_batch_size=99)
             .evaluation(off_policy_estimation_methods={})
@@ -204,7 +204,7 @@ class AgentIOTest(unittest.TestCase):
             algo.stop()
 
     def test_agent_input_dict(self):
-        config = PGConfig().environment("CartPole-v1").training(train_batch_size=2000)
+        config = PPOConfig().environment("CartPole-v1").training(train_batch_size=2000)
         for fw in framework_iterator(config):
             self.write_outputs(self.test_dir, fw)
             config.offline_data(
@@ -224,7 +224,7 @@ class AgentIOTest(unittest.TestCase):
         )
 
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("multi_agent_cartpole")
             .rollouts(num_rollout_workers=0)
             .multi_agent(
@@ -246,7 +246,7 @@ class AgentIOTest(unittest.TestCase):
             config2.output = None
             config2.evaluation(
                 evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(input_="sampler"),
+                evaluation_config=PPOConfig.overrides(input_="sampler"),
             )
             config2.training(train_batch_size=2000)
             config2.offline_data(input_=self.test_dir + fw)
@@ -279,7 +279,7 @@ class AgentIOTest(unittest.TestCase):
         for input_procedure in test_input_procedure:
 
             config = (
-                PGConfig()
+                PPOConfig()
                 .environment("CartPole-v1")
                 .offline_data(input_=input_procedure)
                 .evaluation(off_policy_estimation_methods={})
@@ -299,7 +299,7 @@ class AgentIOTest(unittest.TestCase):
         ray.init(num_cpus=4, ignore_reinit_error=True)
 
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=2)
             .training(train_batch_size=500)
