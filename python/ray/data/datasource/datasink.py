@@ -27,7 +27,7 @@ class Datasink:
         """Write blocks. This is used by a single write task.
 
         Args:
-            blocks: List of data blocks.
+            blocks: Generator of data blocks.
             ctx: ``TaskContext`` for the write task.
             _: Forward-compatibility placeholder.
 
