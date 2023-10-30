@@ -46,6 +46,8 @@ class FilenameProvider:
         """Generate a filename for a block of data.
 
         .. note::
+            A block consists of multiple rows and corresponds to a single output file. Each task may produce a different number of blocks.
+
             Filenames must be unique and deterministic for a given task and block index.
 
         Args:
