@@ -3,8 +3,6 @@ from typing import Any, Iterable, List
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block
 
-WriteResult = Any
-
 
 class Datasink:
     def on_write_start(self, **_) -> None:
@@ -23,7 +21,7 @@ class Datasink:
         blocks: Iterable[Block],
         ctx: TaskContext,
         **_,
-    ) -> WriteResult:
+    ) -> Any:
         """Write blocks. This is used by a single write task.
 
         Args:
@@ -32,11 +30,12 @@ class Datasink:
             _: Forward-compatibility placeholder.
 
         Returns:
-            The output of the write task.
+            A user-defined output. Can be anything, and the returned value is passed to
+            :meth:`~Datasink.on_write_complete`.
         """
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[WriteResult], **_) -> None:
+    def on_write_complete(self, write_results: List[Any], **_) -> None:
         """Callback for when a write job completes.
 
         This can be used to "commit" a write output. This method must
@@ -44,7 +43,7 @@ class Datasink:
         method fails, then ``on_write_failed()`` is called.
 
         Args:
-            write_results: The list of results returned by all write tasks.
+            write_results: The objects returned by every :meth:`~Datasink.write` task.
             _: Forward-compatibility placeholder.
         """
         pass
