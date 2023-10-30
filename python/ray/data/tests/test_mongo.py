@@ -1,3 +1,5 @@
+import subprocess
+
 import pandas as pd
 import pyarrow as pa
 import pytest
@@ -11,13 +13,13 @@ from ray.tests.conftest import *  # noqa
 # To run tests locally, make sure you install mongodb
 # and start a local service:
 # sudo apt-get install -y mongodb
-# sudo service mongodb start
 
 
 @pytest.fixture
 def start_mongo():
     import pymongo
 
+    subprocess.check_call(["service", "mongodb", "start"])
     mongo_url = "mongodb://localhost:27017"
     client = pymongo.MongoClient(mongo_url)
     # Make sure a clean slate for each test by dropping
@@ -26,7 +28,9 @@ def start_mongo():
         # Keep the MongoDB default databases.
         if db not in ("admin", "local", "config"):
             client.drop_database(db)
-    return client, mongo_url
+    yield client, mongo_url
+
+    subprocess.check_call(["service", "mongodb", "stop"])
 
 
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):

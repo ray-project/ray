@@ -209,11 +209,6 @@ def test_num_errors_terminated(ray_start_2_cpus, tmp_path):
     assert isinstance(result_grid.errors[0], RuntimeError)
 
 
-def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
-    # TODO(justinvyu): [handle_moved_storage_path]
-    pytest.skip("Not implemented yet.")
-
-
 if __name__ == "__main__":
     import sys
 

@@ -3,6 +3,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Union
+from uuid import uuid4
 
 import numpy as np
 
@@ -143,6 +144,9 @@ class _StatsActor:
         self.max_stats = max_stats
         self.fifo_queue = []
 
+        # Assign dataset uuids with a global counter.
+        self.next_dataset_id = 0
+
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
         # a dataset's metrics to 0 after each finishes execution.
@@ -184,6 +188,22 @@ class _StatsActor:
             description="Bytes outputted by dataset operators",
             tag_keys=tags_keys,
         )
+        self.block_generation_time = Gauge(
+            "data_block_generation_seconds",
+            description="Time spent generating blocks.",
+            tag_keys=tags_keys,
+        )
+
+        self.iter_total_blocked_s = Gauge(
+            "data_iter_total_blocked_seconds",
+            description="Seconds user thread is blocked by iter_batches()",
+            tag_keys=tags_keys,
+        )
+        self.iter_user_s = Gauge(
+            "data_iter_user_seconds",
+            description="Seconds spent in user code",
+            tag_keys=tags_keys,
+        )
 
     def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
@@ -220,6 +240,11 @@ class _StatsActor:
     def _get_stats_dict_size(self):
         return len(self.start_time), len(self.last_time), len(self.metadata)
 
+    def get_dataset_id(self):
+        dataset_id = str(self.next_dataset_id)
+        self.next_dataset_id += 1
+        return dataset_id
+
     def update_metrics(self, stats: Dict[str, Union[int, float]], tags: Dict[str, str]):
         self.bytes_spilled.set(stats["obj_store_mem_spilled"], tags)
         self.bytes_allocated.set(stats["obj_store_mem_alloc"], tags)
@@ -228,6 +253,11 @@ class _StatsActor:
         self.bytes_outputted.set(stats["bytes_outputs_generated"], tags)
         self.cpu_usage.set(stats["cpu_usage"], tags)
         self.gpu_usage.set(stats["gpu_usage"], tags)
+        self.block_generation_time.set(stats["block_generation_time"], tags)
+
+    def update_iter_metrics(self, stats: "DatasetStats", tags):
+        self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.iter_user_s.set(stats.iter_user_s.get(), tags)
 
     def clear_metrics(self, tags: Dict[str, str]):
         self.bytes_spilled.set(0, tags)
@@ -237,6 +267,11 @@ class _StatsActor:
         self.bytes_outputted.set(0, tags)
         self.cpu_usage.set(0, tags)
         self.gpu_usage.set(0, tags)
+        self.block_generation_time.set(0, tags)
+
+    def clear_iter_metrics(self, tags: Dict[str, str]):
+        self.iter_total_blocked_s.set(0, tags)
+        self.iter_user_s.set(0, tags)
 
 
 def _get_or_create_stats_actor():
@@ -269,6 +304,8 @@ def _check_cluster_stats_actor():
     # Checks if global _stats_actor belongs to current cluster,
     # if not, creates a new one on the current cluster.
     global _stats_actor, _stats_actor_cluster_id
+    if ray._private.worker._global_node is None:
+        raise RuntimeError("Global node is not initialized.")
     current_cluster_id = ray._private.worker._global_node.cluster_id
     if _stats_actor is None or _stats_actor_cluster_id != current_cluster_id:
         _stats_actor = _get_or_create_stats_actor()
@@ -291,10 +328,36 @@ def update_stats_actor_metrics(
     _stats_actor.update_metrics.remote(stats, tags)
 
 
+def update_stats_actor_iter_metrics(stats: "DatasetStats", tags: Dict[str, str]):
+    global _stats_actor
+    _check_cluster_stats_actor()
+
+    _stats_actor.update_iter_metrics.remote(stats, tags)
+
+
 def clear_stats_actor_metrics(tags: Dict[str, str]):
     global _stats_actor
     _check_cluster_stats_actor()
+
     _stats_actor.clear_metrics.remote(tags)
+
+
+def clear_stats_actor_iter_metrics(tags: Dict[str, str]):
+    global _stats_actor
+    _check_cluster_stats_actor()
+
+    _stats_actor.clear_iter_metrics.remote(tags)
+
+
+def get_dataset_id_from_stats_actor() -> str:
+    global _stats_actor
+    try:
+        _check_cluster_stats_actor()
+        return ray.get(_stats_actor.get_dataset_id.remote())
+    except Exception:
+        # Getting dataset id from _StatsActor may fail, in this case
+        # fall back to uuid4
+        return uuid4().hex
 
 
 class DatasetStats:
