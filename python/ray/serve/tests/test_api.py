@@ -2,6 +2,8 @@ import asyncio
 import os
 import sys
 from typing import Dict, Optional
+import logging
+import re
 
 import pytest
 import requests
@@ -1018,6 +1020,113 @@ def test_deployment_handle_nested_in_obj(serve_instance):
     h = serve.run(MyDriver.bind(handle_wrapper)).options(use_new_handle_api=True)
     assert h.remote().result() == "hi"
 
+
+
+def check_log_file(log_file: str, expected_regex: list):
+    with open(log_file, "r") as f:
+        s = f.read()
+        for regex in expected_regex:
+            assert re.findall(regex, s) != []
+
+class TestDeploymentLoggingAPI:
+
+    @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
+    def test_encoding(self, serve_instance, encoding_type):
+        """Test serve.run logging API"""
+        logging_config = {
+            "encoding": encoding_type
+        }
+        logger = logging.getLogger("ray.serve")
+
+        @serve.deployment(logging_config=logging_config)
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                return {
+                    "log_file": logger.handlers[1].baseFilename,
+                    "replica": serve.get_replica_context().replica_tag,
+                }
+        
+        serve.run(Model.bind())
+        resp = requests.get("http://127.0.0.1:8000/").json()
+
+        if encoding_type == "JSON":
+            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+        else:
+            expected_log_regex = [f'.*{resp["replica"]}.*']
+        check_log_file(resp["log_file"], expected_log_regex)
+
+    def test_log_level(self, serve_instance):
+        logger = logging.getLogger("ray.serve")
+        @serve.deployment
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                logger.info("model_info_level")
+                logger.debug("model_debug_level")
+                return {
+                    "log_file": logger.handlers[1].baseFilename,
+                }
+        
+        serve.run(Model.bind())
+        resp = requests.get("http://127.0.0.1:8000/").json()
+        expected_log_regex = [f'.*model_info_level.*']
+        check_log_file(resp["log_file"], expected_log_regex)
+
+        serve.run(Model.options(logging_config={"log_level": "DEBUG"}).bind())
+        resp = requests.get("http://127.0.0.1:8000/").json()
+        expected_log_regex = [f'.*model_info_level.*',
+                              f'.*model_debug_level.*']
+        check_log_file(resp["log_file"], expected_log_regex)
+
+
+    def test_logs_dir(self, serve_instance):
+        
+        logger = logging.getLogger("ray.serve")
+        @serve.deployment
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                logger.info("model_info_level")
+                return {
+                    "logs_path": logger.handlers[1].baseFilename,
+                }
+        serve.run(Model.bind())
+        resp = requests.get("http://127.0.0.1:8000/").json()
+
+        paths = resp["logs_path"].split("/")
+        paths[-1] = "new_dir"
+        new_log_dir = "/".join(paths)
+
+        serve.run(Model.options(logging_config={"logs_dir": new_log_dir}).bind())
+        resp = requests.get("http://127.0.0.1:8000/").json()
+        assert "new_dir" in resp["logs_path"]
+
+        check_log_file(resp["logs_path"], [".*model_info_level.*"])
+    
+
+    @pytest.mark.parametrize("access_type", ["ALL", "FILE_ONLY", "STREAM_ONLY", "DISABLE"])
+    def test_access_log(self, serve_instance, access_type):
+        logger = logging.getLogger("ray.serve")
+        
+        @serve.deployment(logging_config={"access_log": access_type})
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                if access_type == "ALL":
+                    assert len(logger.handlers) == 2
+                    assert isinstance(logger.handlers[0], logging.StreamHandler)
+                    assert isinstance(logger.handlers[1], logging.handlers.RotatingFileHandler)
+                elif access_type == "FILE_ONLY":
+                    assert len(logger.handlers) == 1
+                    assert isinstance(logger.handlers[0], logging.handlers.RotatingFileHandler)
+                elif access_type == "STREAM_ONLY":
+                    assert len(logger.handlers) == 1
+                    assert isinstance(logger.handlers[0], logging.StreamHandler)
+                else:
+                    assert len(logger.handlers) == 0
+                return
+                
+        serve.run(Model.bind())
+        
+        resp = requests.get("http://127.0.0.1:8000/")
+        assert resp.status_code == 200
 
 if __name__ == "__main__":
     import sys
