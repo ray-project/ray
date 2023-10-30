@@ -268,6 +268,8 @@ Datasink API
 
    Dataset.write_datasink
    Datasink
+   RowBasedFileDatasink
+   BlockBasedFileDatasink
 
 Partitioning API
 ----------------
