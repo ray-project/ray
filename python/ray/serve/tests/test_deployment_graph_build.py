@@ -100,7 +100,7 @@ async def test_func_class_with_class_method_dag(serve_instance):
         deployment._deploy()
 
     assert ray.get(ray_dag.execute(1, 2, 3)) == 8
-    assert ray.get(await serve_executor_root_dag.execute(1, 2, 3)) == 8
+    assert await serve_executor_root_dag.execute(1, 2, 3) == 8
 
 
 def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
