@@ -4,6 +4,8 @@ import time
 import uuid
 from typing import Dict, Iterator, List, Optional
 
+import tqdm
+
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
@@ -291,8 +293,21 @@ class StreamingExecutor(Executor, threading.Thread):
         update_operator_states(topology)
 
         # Update the progress bar to reflect scheduling decisions.
-        for op_state in topology.values():
+        log_str = "Execution Progress Status:\n"
+        cur_time = time.perf_counter()
+        for op, op_state in topology.items():
             op_state.refresh_progress_bar()
+            log_str += (
+                tqdm.tqdm.format_meter(
+                    op_state.num_completed_tasks,
+                    op.num_outputs_total(),
+                    cur_time - self._start_time,
+                    prefix=op.name,
+                    bar_format="{desc:<35.34}{percentage:3.0f}%|{bar}{r_bar}",
+                )
+                + "\n"
+            )
+        logger.get_logger(log_to_stdout=False).info(log_str)
 
         update_stats_actor_metrics(
             [op.metrics for op in self._topology], {"dataset": self._dataset_tag}
