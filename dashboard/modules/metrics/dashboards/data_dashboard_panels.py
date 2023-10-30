@@ -93,6 +93,18 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=8,
+        title="Block Generation Time",
+        description="Time spent generating blocks.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_block_generation_seconds{{{global_filters}}}) by (dataset)",
+                legend="Block Generation Time: {{dataset}}",
+            )
+        ],
+    ),
+    Panel(
+        id=9,
         title="Iteration Blocked Time",
         description="Seconds user thread is blocked by iter_batches()",
         unit="seconds",
@@ -104,7 +116,7 @@ DATA_GRAFANA_PANELS = [
         ],
     ),
     Panel(
-        id=9,
+        id=10,
         title="Iteration User Time",
         description="Seconds spent in user code",
         unit="seconds",
