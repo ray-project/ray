@@ -118,7 +118,7 @@ from ray.data.datasource import (
     ParquetDatasource,
     ReadTask,
     SQLDatasource,
-    TFRecordDatasource,
+    TFRecordDatasink,
     WebDatasetDatasink,
 )
 from ray.data.iterator import DataIterator
@@ -3059,19 +3059,17 @@ class Dataset:
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
-
-        self.write_datasource(
-            TFRecordDatasource(),
-            ray_remote_args=ray_remote_args,
+        datasink = TFRecordDatasink(
             path=path,
-            dataset_uuid=self._uuid,
+            tf_schema=tf_schema,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            tf_schema=tf_schema,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasource(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
