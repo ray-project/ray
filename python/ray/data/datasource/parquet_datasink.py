@@ -24,14 +24,17 @@ class ParquetDatasink(BlockBasedFileDatasink):
         path: str,
         *,
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        arrow_parquet_args: Optional[Dict[str, Any]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
-        **arrow_parquet_args,
     ):
+        if arrow_parquet_args is None:
+            arrow_parquet_args = {}
+
         self.arrow_parquet_args_fn = arrow_parquet_args_fn
         self.arrow_parquet_args = arrow_parquet_args
 

@@ -38,6 +38,7 @@ from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.mongo_datasource import MongoDatasource
 from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.data.datasource.parquet_datasink import ParquetDatasink
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -79,6 +80,7 @@ __all__ = [
     "JSONDatasource",
     "NumpyDatasource",
     "ParquetBaseDatasource",
+    "ParquetDatasink",
     "ParquetDatasource",
     "ParquetMetadataProvider",
     "PartitionStyle",
