@@ -95,9 +95,6 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
 
             if self._result_callback is not None:
                 result = self._result_callback(result)
-        except Exception as e:
-            self._done = True
-            raise e from None
         except asyncio.CancelledError as e:
             # This cancellation can happen from client dropped connection before the
             # request is completed. If self._response is not already cancelled, we want
@@ -107,6 +104,9 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
                 self._response.cancel()
                 self._done = True
 
+            raise e from None
+        except Exception as e:
+            self._done = True
             raise e from None
 
         return result
