@@ -185,6 +185,7 @@ void SchedulerResourceReporter::FillPendingActorCountByShape(
     pending_count_by_shape[scheduling_class].second = queue.size();
   }
 
+  // TODO(vitsai) respond to gcs rpc with cluster full of actors info
   if (!pending_count_by_shape.empty()) {
     data.set_cluster_full_of_actors_detected(true);
     auto resource_load_by_shape =

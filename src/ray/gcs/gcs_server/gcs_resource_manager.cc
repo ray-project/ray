@@ -158,22 +158,9 @@ void GcsResourceManager::UpdateFromResourceView(const rpc::ResourcesData &data) 
   UpdateNodeResourceUsage(node_id, data);
 }
 
-void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
-  NodeID node_id = NodeID::FromBinary(data.node_id());
-  auto iter = node_resource_usages_.find(node_id);
-  if (iter == node_resource_usages_.end()) {
-    // It will happen when the node has been deleted or hasn't been added.
-    return;
-  }
-  if (data.resource_load_changed()) {
-    (*iter->second.mutable_resource_load()) = data.resource_load();
-    (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
-  }
-}
-
-const absl::flat_hash_map<NodeID, rpc::ResourcesData>
+const absl::flat_hash_map<NodeID, std::pair<absl::Time, rpc::ResourcesData>>
     &GcsResourceManager::NodeResourceReportView() const {
-  return node_resource_usages_;
+  return gcs_autoscaler_state_manager_.GetNodeResourceInfo();
 }
 
 void GcsResourceManager::HandleGetAllResourceUsage(
@@ -233,19 +220,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
 
-void GcsResourceManager::UpdateFromResourceCommand(const rpc::ResourcesData &data) {
-  const auto node_id = NodeID::FromBinary(data.node_id());
-  auto iter = node_resource_usages_.find(node_id);
-  if (iter == node_resource_usages_.end()) {
-    return;
-  }
-
-  // TODO(rickyx): We should change this to be part of RESOURCE_VIEW.
-  // This is being populated from NodeManager as part of COMMANDS
-  iter->second.set_cluster_full_of_actors_detected(
-      data.cluster_full_of_actors_detected());
-}
-
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
   // Note: This may be inconsistent with autoscaler state, which is
@@ -265,9 +239,10 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
       snapshot->set_state(rpc::NodeSnapshot::DRAINING);
     }
   }
+  auto node_resource_usages = gcs_autoscaler_state_manager_.GetNodeResourceInfo();
 
-  auto iter = node_resource_usages_.find(node_id);
-  if (iter == node_resource_usages_.end()) {
+  auto iter = node_resource_usages.find(node_id);
+  if (iter == node_resource_usages.end()) {
     // It will only happen when the node has been deleted.
     // If the node is not registered to GCS,
     // we are guaranteed that no resource usage will be reported.
@@ -308,16 +283,10 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   absl::flat_hash_map<std::string, std::string> labels(node.labels().begin(),
                                                        node.labels().end());
   cluster_resource_manager_.SetNodeLabels(scheduling_node_id, labels);
-
-  rpc::ResourcesData data;
-  data.set_node_id(node_id.Binary());
-  data.set_node_manager_address(node.node_manager_address());
-  node_resource_usages_.emplace(node_id, std::move(data));
   num_alive_nodes_++;
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
-  node_resource_usages_.erase(node_id);
   cluster_resource_manager_.RemoveNode(scheduling::NodeID(node_id.Binary()));
   num_alive_nodes_--;
 }

@@ -396,7 +396,6 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
                 //
                 // Once autoscaler is completely moved to the new mode of consistent
                 // per-node reporting, remove this if it is not needed anymore.
-                gcs_resource_manager_->UpdateResourceLoads(load_and_usage.resources());
                 gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(
                     load_and_usage.resources());
               } else {
