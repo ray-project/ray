@@ -1,23 +1,11 @@
 import { Grid } from "@material-ui/core";
 import dayjs from "dayjs";
 import React, { useState } from "react";
-import useSWR from "swr";
 import DataOverviewTable from "../../components/DataOverviewTable";
-import { getDataDatasets } from "../../service/data";
+import { DatasetMetrics } from "../../type/data";
 
-const DataOverview = () => {
+const DataOverview = ({ datasets = [] }: { datasets: DatasetMetrics[] }) => {
   const [timeStamp] = useState(dayjs());
-  const { data } = useSWR(
-    "useDataDatasets",
-    async () => {
-      const rsp = await getDataDatasets();
-
-      if (rsp) {
-        return rsp.data;
-      }
-    },
-    { refreshInterval: 1000 },
-  );
 
   return (
     <div>
@@ -26,7 +14,7 @@ const DataOverview = () => {
           Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
         </Grid>
       </Grid>
-      <DataOverviewTable datasets={data?.datasets || []} />
+      <DataOverviewTable datasets={datasets || []} />
     </div>
   );
 };

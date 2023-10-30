@@ -1,66 +1,50 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
-import { getDataDatasets } from "../../service/data";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import DataOverview from "./DataOverview";
 
-jest.mock("react-router-dom", () => ({
-  ...jest.requireActual("react-router-dom"),
-  useParams: jest.fn(),
-}));
-jest.mock("../../service/data");
-
-const mockGetDataDatasets = jest.mocked(getDataDatasets);
-
 describe("DataOverview", () => {
   it("renders table with dataset metrics", async () => {
-    mockGetDataDatasets.mockResolvedValue({
-      data: {
-        datasets: [
-          {
-            dataset: "test_ds1",
-            state: "RUNNING",
-            progress: 50,
-            total: 100,
-            start_time: 0,
-            end_time: undefined,
-            ray_data_output_bytes: {
-              max: 10,
-            },
-            ray_data_spilled_bytes: {
-              max: 20,
-            },
-            ray_data_current_bytes: {
-              value: 30,
-              max: 40,
-            },
-          },
-          {
-            dataset: "test_ds2",
-            state: "FINISHED",
-            progress: 200,
-            total: 200,
-            start_time: 1,
-            end_time: 2,
-            ray_data_output_bytes: {
-              max: 50,
-            },
-            ray_data_spilled_bytes: {
-              max: 60,
-            },
-            ray_data_current_bytes: {
-              value: 70,
-              max: 80,
-            },
-          },
-        ],
+    const datasets = [
+      {
+        dataset: "test_ds1",
+        state: "RUNNING",
+        progress: 50,
+        total: 100,
+        start_time: 0,
+        end_time: undefined,
+        ray_data_output_bytes: {
+          max: 10,
+        },
+        ray_data_spilled_bytes: {
+          max: 20,
+        },
+        ray_data_current_bytes: {
+          value: 30,
+          max: 40,
+        },
       },
-    } as any);
+      {
+        dataset: "test_ds2",
+        state: "FINISHED",
+        progress: 200,
+        total: 200,
+        start_time: 1,
+        end_time: 2,
+        ray_data_output_bytes: {
+          max: 50,
+        },
+        ray_data_spilled_bytes: {
+          max: 60,
+        },
+        ray_data_current_bytes: {
+          value: 70,
+          max: 80,
+        },
+      },
+    ];
 
-    render(<DataOverview />, { wrapper: TEST_APP_WRAPPER });
-
-    // Wait for "TOTALx 2" to show up
-    await screen.findByText("x 2");
+    render(<DataOverview datasets={datasets} />, { wrapper: TEST_APP_WRAPPER });
 
     // First Dataset
     expect(screen.getByText("test_ds1")).toBeVisible();
