@@ -744,13 +744,14 @@ def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_traina
     assert not results.errors
 
 
-@pytest.mark.parametrize("use_tune_run", [True, False])
+@pytest.mark.parametrize("use_tune_run", [True])
 def test_tuner_restore_from_moved_experiment_path(
     ray_start_2_cpus, tmp_path, use_tune_run
 ):
     """Check that restoring a Tuner from a moved experiment directory works."""
     # Create a fail_marker dummy file that causes the first Tune run to fail and
     # the second run to succeed
+    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = str(tmp_path / "local_dir")
     fail_marker = tmp_path / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 

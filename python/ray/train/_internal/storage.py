@@ -236,7 +236,6 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
 
     If the path doesn't exist, returns an empty list.
     """
-
     selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
     return [
         os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))

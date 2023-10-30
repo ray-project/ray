@@ -1,8 +1,8 @@
 from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple, Union
 
-import pyarrow
 import click
 import logging
 import os
@@ -11,7 +11,11 @@ import warnings
 
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import _join_path_or_uri
-from ray.train._internal.storage import StorageContext
+from ray.train._internal.storage import (
+    StorageContext,
+    _download_from_fs_path,
+    _list_at_fs_path,
+)
 from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 
@@ -341,26 +345,25 @@ class _ExperimentCheckpointManager:
 
     def sync_down_experiment_state(self) -> None:
         fs = self._storage.storage_filesystem
-        file_infos = fs.get_file_info(
-            pyarrow.fs.FileSelector(self._storage.experiment_fs_path)
-        )
+        filepaths = _list_at_fs_path(fs=fs, fs_path=self._storage.experiment_fs_path)
         # TODO(ekl) we should refactor our restore code to read the necessary data
         # directly from the storage context. As a temporary hack, restore all the
         # serialized files from the root dir where other modules expect them to be.
-        matches = []
-        for file_info in file_infos:
-            name = os.path.basename(file_info.path)
-            if name.endswith(".json") or name.endswith(".pkl"):
-                matches.append(name)
-        for name in matches:
-            remote_path = os.path.join(self._storage.experiment_fs_path, name)
-            local_path = os.path.join(self._storage.experiment_local_path, name)
-            pyarrow.fs.copy_files(
-                remote_path,
-                local_path,
-                source_filesystem=self._storage.storage_filesystem,
-            )
-        logger.debug(f"Copied {matches} from:\n{remote_path}\n-> {local_path}")
+        matches = [
+            path
+            for path in filepaths
+            if path.endswith(".json") or path.endswith(".pkl")
+        ]
+        for relpath in matches:
+            fs_path = Path(self._storage.experiment_fs_path, relpath).as_posix()
+            local_path = Path(self._storage.experiment_local_path, relpath).as_posix()
+            _download_from_fs_path(fs=fs, fs_path=fs_path, local_path=local_path)
+        logger.debug(
+            f"Copied {matches} from:\n(fs, path) = "
+            f"({self._storage.storage_filesystem.type_name}, "
+            f"{self._storage.experiment_fs_path})\n"
+            f"-> {self._storage.experiment_local_path}"
+        )
 
     def _resume_auto(self) -> bool:
         experiment_local_path = self._storage.experiment_local_path
