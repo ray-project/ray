@@ -93,6 +93,11 @@ class OperatorFusionRule(Rule):
     ) -> AllToAllOperator:
         """Starting at the given operator, traverses up the DAG of operators
         and recursively fuses compatible MapOperator -> AllToAllOperator pairs.
+
+        Also, sets the target block size of the immediately upstream map op to
+        match the shuffle block size. We use a larger block size for shuffles
+        because tiny blocks are bad for I/O performance.
+
         Returns the current (root) operator after completing upstream operator fusions.
         """
         upstream_ops = dag.input_dependencies
@@ -104,6 +109,7 @@ class OperatorFusionRule(Rule):
             if self._can_fuse(dag, upstream_ops[0]):
                 # Fuse operator with its upstream op.
                 dag = self._get_fused_all_to_all_operator(dag, upstream_ops[0])
+                upstream_ops = dag.input_dependencies
             else:
                 # Propagate target max block size to the upstream map op. This
                 # is necessary even when fusion is not allowed, so that the map
@@ -113,8 +119,7 @@ class OperatorFusionRule(Rule):
                 map_op._target_max_block_size = self._get_merged_target_max_block_size(
                     upstream_ops[0].target_max_block_size, dag.target_max_block_size
                 )
-
-            upstream_ops = dag.input_dependencies
+                break
 
         self._propagate_target_max_block_size_to_input(dag)
 

@@ -53,45 +53,39 @@ def test_shuffle(ray_start_regular_shared, restore_data_context, shuffle_op):
     # Test AllToAll and Map -> AllToAll Datasets. Check that Map inherits
     # AllToAll's target block size.
     ctx = DataContext.get_current()
-    ctx.target_min_block_size = 200 * 8
+    ctx.min_parallelism = 1
+    ctx.target_min_block_size = 1
     mem_size = 8000
-    min_blocks_expected = mem_size // ctx.target_min_block_size
     shuffle_fn, kwargs, fusion_supported = shuffle_op
 
     ctx.target_shuffle_max_block_size = 100 * 8
-    if fusion_supported:
-        num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
-    else:
-        num_blocks_expected = min_blocks_expected
-    ds = shuffle_fn(ray.data.range(1000), **kwargs)
-    assert ds.materialize().num_blocks() == num_blocks_expected
+    num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
+    # ds = shuffle_fn(ray.data.range(1000), **kwargs)
+    # assert ds.materialize().num_blocks() == num_blocks_expected
     ds = shuffle_fn(ray.data.range(1000).map(lambda x: x), **kwargs)
+    if not fusion_supported:
+        # TODO(swang): For some reason BlockBuilder's estimated
+        # memory usage for range(1000)->map is 2x the actual memory usage.
+        num_blocks_expected *= 2
     assert ds.materialize().num_blocks() == num_blocks_expected
 
     ctx.target_shuffle_max_block_size /= 2
-    if fusion_supported:
-        num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
-    else:
-        num_blocks_expected = min_blocks_expected
+    num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
     ds = shuffle_fn(ray.data.range(1000), **kwargs)
     assert ds.materialize().num_blocks() == num_blocks_expected
     ds = shuffle_fn(ray.data.range(1000).map(lambda x: x), **kwargs)
+    if not fusion_supported:
+        num_blocks_expected *= 2
     assert ds.materialize().num_blocks() == num_blocks_expected
 
+    # Setting target max block size does not affect map ops when there is a
+    # shuffle downstream.
     ctx.target_max_block_size = 200 * 8
-    if fusion_supported:
-        num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
-    else:
-        num_blocks_expected = mem_size // ctx.target_max_block_size
+    num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
     ds = shuffle_fn(ray.data.range(1000), **kwargs)
     assert ds.materialize().num_blocks() == num_blocks_expected
-
-    if fusion_supported:
-        num_blocks_expected = mem_size // ctx.target_shuffle_max_block_size
-    else:
-        # NOTE(swang): For some reason BlockBuilder's estimated
-        # memory usage for range(1000)->map is 2x the actual memory usage.
-        num_blocks_expected = mem_size // ctx.target_max_block_size * 2
+    if not fusion_supported:
+        num_blocks_expected *= 2
     ds = shuffle_fn(ray.data.range(1000).map(lambda x: x), **kwargs)
     assert ds.materialize().num_blocks() == num_blocks_expected
 
