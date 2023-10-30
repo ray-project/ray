@@ -151,7 +151,7 @@ class LoggingConfig(BaseModel):
                     f"{list(logging._levelToName.keys())}."
                 )
             return logging._levelToName[v]
-            
+
         if v not in logging._nameToLevel:
             raise ValueError(
                 f'Got "{v}" for log_level. log_level must be one of '

@@ -279,5 +279,6 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         check_log_file(resp["log_file"], user_method_log_regexes)
         check_log_file(resp2["log_file"], user_class_method_log_regexes)
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

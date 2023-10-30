@@ -8,6 +8,7 @@ import ray
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_CPU_PROFILING,
+    RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
@@ -21,7 +22,6 @@ from ray.serve._private.constants import (
     SERVE_LOG_ROUTE,
     SERVE_LOG_TIME,
     SERVE_LOGGER_NAME,
-    RAY_SERVE_ENABLE_JSON_LOGGING,
 )
 from ray.serve.schema import EncodingType, LoggingConfig
 
@@ -225,9 +225,14 @@ def configure_component_logger(
             backupCount=backup_count,
         )
         if RAY_SERVE_ENABLE_JSON_LOGGING:
-            logger.warning("'RAY_SERVE_ENABLE_JSON_LOGGING' is going to be deprecated, please use "
-                           "'LoggingConfig' to enable json format.") 
-        if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
+            logger.warning(
+                "'RAY_SERVE_ENABLE_JSON_LOGGING' is going to be deprecated, please use "
+                "'LoggingConfig' to enable json format."
+            )
+        if (
+            RAY_SERVE_ENABLE_JSON_LOGGING
+            or logging_config.encoding == EncodingType.JSON
+        ):
             file_handler.setFormatter(
                 ServeJSONFormatter(component_name, component_id, component_type)
             )
