@@ -1,5 +1,24 @@
 group: core tests
 steps:
+  # build
+  - name: corebuild
+    wanda: ci/docker/core.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
+  - name: minbuild-core
+    label: "wanda: minbuild-core-py{{matrix}}"
+    wanda: ci/docker/min.build.wanda.yaml
+    depends_on: oss-ci-base_build
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      EXTRA_DEPENDENCY: core
+
+  # test
   - label: ":ray: core: python tests"
     tags: python
     instance_type: large
@@ -34,6 +53,24 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --parallelism-per-worker 2
     depends_on: data12build
+    job_env: forge
+
+  - label: ":ray: core: doc tests"
+    tags: 
+      - python
+      - doc
+    instance_type: large
+    commands:
+      # doc tests
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
+        --only-tags doctest
+        --parallelism-per-worker 3
+      # doc examples
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
+        --except-tags gpu,post_wheel_build,xcommit,doctest
+        --parallelism-per-worker 3
+        --skip-ray-installation
+    depends_on: corebuild
     job_env: forge
 
   - label: ":ray: core: data tests"
@@ -140,16 +177,3 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... core --run-flaky-tests --parallelism-per-worker 3
     depends_on: corebuild
     job_env: forge
-
-  - name: minbuild-core
-    label: "wanda: minbuild-core-py{{matrix}}"
-    wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_build
-    matrix:
-      - "3.8"
-      - "3.9"
-      - "3.10"
-      - "3.11"
-    env:
-      PYTHON_VERSION: "{{matrix}}"
-      EXTRA_DEPENDENCY: core

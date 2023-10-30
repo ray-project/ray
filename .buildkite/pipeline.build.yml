@@ -58,7 +58,7 @@
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=doctest,-gpu
+      --test_tag_filters=doctest,-gpu,-team:core
       python/ray/... doc/...
 
 - label: ":kubernetes: operator"

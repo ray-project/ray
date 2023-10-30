@@ -135,10 +135,6 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
         # don't offer arbitrarily complex Models under the RLModules API without
         # preprocessors. Such input spaces require custom implementations of the
         # input space.
-        # TODO (Artur): Delete this test once we remove ModelV2 API.
-        config.rl_module(_enable_rl_module_api=False).training(
-            _enable_learner_api=False
-        )
 
         check_supported_spaces(
             "PPO",
