@@ -374,7 +374,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   void ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
     // Do it from the server side.
-    gcs_server_->GetGcsResourceManager().UpdateFromResourceView(*resources);
+    gcs_server_->GetMutableGcsResourceManager().UpdateFromResourceView(*resources);
   }
 
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {

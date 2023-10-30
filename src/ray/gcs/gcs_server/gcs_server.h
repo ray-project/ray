@@ -114,7 +114,11 @@ class GcsServer {
     return *gcs_autoscaler_state_manager_;
   }
 
-  GcsResourceManager &GetGcsResourceManager() {
+  GcsAutoscalerStateManager &GetMutableAutoscalerStateManager() {
+    return *gcs_autoscaler_state_manager_;
+  }
+
+  GcsResourceManager &GetMutableGcsResourceManager() {
     RAY_CHECK(gcs_resource_manager_ != nullptr);
     return *gcs_resource_manager_;
   }
