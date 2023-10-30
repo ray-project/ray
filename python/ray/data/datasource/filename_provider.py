@@ -21,7 +21,7 @@ class FilenameProvider:
 
     Example:
 
-        This snippets show you how to encode labels in written files. For example, if
+        This snippet shows you how to encode labels in written files. For example, if
         `"cat"` is a label, you might write a file named `cat_000000_000000_000000.png`.
 
         .. testcode::
