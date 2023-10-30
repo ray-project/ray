@@ -513,8 +513,9 @@ class _DeploymentResponseBase:
     def _to_object_ref_or_gen_sync(
         self,
         _record_telemetry: bool = True,
+        _allow_running_in_asyncio_loop: bool = False,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
-        if is_running_in_asyncio_loop():
+        if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
                 "loop. Use `await response` or `await response._to_object_ref()` "
@@ -668,7 +669,11 @@ class DeploymentResponse(_DeploymentResponseBase):
         return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
 
     @DeveloperAPI
-    def _to_object_ref_sync(self, _record_telemetry: bool = True) -> ray.ObjectRef:
+    def _to_object_ref_sync(
+        self,
+        _record_telemetry: bool = True,
+        _allow_running_in_asyncio_loop: bool = False,
+    ) -> ray.ObjectRef:
         """Advanced API to convert the response to a Ray `ObjectRef`.
 
         This is used to pass the output of a `DeploymentHandle` call to a Ray task or
@@ -681,7 +686,10 @@ class DeploymentResponse(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
+        return self._to_object_ref_or_gen_sync(
+            _record_telemetry=_record_telemetry,
+            _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
+        )
 
 
 @PublicAPI(stability="beta")
@@ -786,7 +794,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
     @DeveloperAPI
     def _to_object_ref_gen_sync(
-        self, _record_telemetry: bool = True
+        self,
+        _record_telemetry: bool = True,
+        _allow_running_in_asyncio_loop: bool = False,
     ) -> StreamingObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
 
@@ -797,7 +807,10 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref_gen` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
+        return self._to_object_ref_or_gen_sync(
+            _record_telemetry=_record_telemetry,
+            _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
+        )
 
 
 @PublicAPI(stability="beta")

@@ -2,7 +2,7 @@ import array
 import asyncio
 import os
 import sys
-from typing import TypeVar
+from typing import Dict, Union
 
 import pytest
 import requests
@@ -14,7 +14,6 @@ from ray.serve.deployment_graph import InputNode
 from ray.serve.drivers import DAGDriver
 from ray.serve.handle import DeploymentHandle
 
-RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
 
 
@@ -45,12 +44,14 @@ class Model:
 class Combine:
     def __init__(
         self,
-        m1: "RayHandleLike",
-        m2: "RayHandleLike" = None,
-        m2_nested: bool = False,
+        m1: DeploymentHandle,
+        m2: Union[DeploymentHandle, Dict[str, DeploymentHandle]],
     ):
         self.m1 = m1
-        self.m2 = m2.get(NESTED_HANDLE_KEY) if m2_nested else m2
+        if isinstance(m2, dict):
+            self.m2 = m2.get(NESTED_HANDLE_KEY)
+        else:
+            self.m2 = m2
 
     async def __call__(self, req):
         r1_ref = self.m1.forward.remote(req)
@@ -228,7 +229,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance, use
     with InputNode() as dag_input:
         m1 = Model.bind(2)
         m2 = Model.bind(3)
-        combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
+        combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2})
         output = combine.__call__.bind(dag_input)
         serve_dag = DAGDriver.bind(output, http_adapter=json_resolver)
 
@@ -314,7 +315,7 @@ class DictParent:
     def __init__(self, d: Dict[str, DeploymentHandle]):
         self._d = d
 
-   async def __call__(self, key: str):
+    async def __call__(self, key: str):
         return await self._d[key].remote()
 
 

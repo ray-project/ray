@@ -64,7 +64,6 @@ class DAGDriver(ASGIAppReplicaWrapper):
                 endpoint_create_func()
 
         else:
-            assert isinstance(dags, (RayServeDAGHandle, RayServeHandle))
             if isinstance(dags, RayServeHandle):
                 dags = dags.options(use_new_handle_api=True)
 
