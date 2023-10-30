@@ -518,8 +518,9 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
     assert error_message in rpc_error.details()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
-def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bool):
+async def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request client cancelled.
 
     When the request is canceled, gRPC proxy should cancel the underlying task.
@@ -553,35 +554,26 @@ def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bool):
             await self.wait_for_singal()
             yield serve_pb2.UserDefinedResponse(greeting="hello")
 
-    @serve.deployment
-    class Ingress:
-        async def __call__(self, *args):
-            # Send a request and wait for it to start executing.
-            channel = grpc.insecure_channel("localhost:9000")
-            stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-            metadata = (("application", "downstream"),)
-            request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-            if streaming:
-                r = stub.Streaming(request=request, metadata=metadata)
-            else:
-                r = stub.__call__.future(request=request, metadata=metadata)
-            await running_signal_actor.wait.remote()
-
-            # Cancel it and verify that it is cancelled via signal.
-            r.cancel()
-            await cancelled_signal_actor.wait.remote()
-
-            with pytest.raises(grpc.FutureCancelledError):
-                r.result()
-
     downstream = Downstream.bind()
     serve.run(target=downstream, name="downstream", route_prefix="/downstream")
 
-    ingress = Ingress.bind()
-    h = serve.run(target=ingress, name="ingress", route_prefix="/ingress").options(
-        use_new_handle_api=True
-    )
-    h.remote().result()
+    # Send a request and wait for it to start executing.
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    metadata = (("application", "downstream"),)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+    if streaming:
+        r = stub.Streaming(request=request, metadata=metadata)
+    else:
+        r = stub.__call__.future(request=request, metadata=metadata)
+    await running_signal_actor.wait.remote()
+
+    # Cancel it and verify that it is cancelled via signal.
+    r.cancel()
+    await cancelled_signal_actor.wait.remote()
+
+    with pytest.raises(grpc.FutureCancelledError):
+        r.result()
 
 
 if __name__ == "__main__":
