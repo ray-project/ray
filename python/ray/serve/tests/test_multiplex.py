@@ -460,12 +460,12 @@ def test_multiplexed_multiple_replicas(serve_instance):
             # return pid to check if the same model is used
             return os.getpid()
 
-    handle = serve.run(Model.bind())
-    pid1_response = handle.options(multiplexed_model_id="1").remote()
+    handle = serve.run(Model.bind()).options(multiplexed_model_id="1")
+    pid1_ref = handle.remote()._to_object_ref_sync()
     # Second request should be sent to the second replica
-    pid2_response = handle.options(multiplexed_model_id="1").remote()
+    pid2_ref = handle.remote()._to_object_ref_sync()
     signal.send.remote()
-    assert pid1_response.result() != pid2_response.result()
+    assert ray.get(pid1_ref) != ray.get(pid2_ref)
 
     wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="1")
 
@@ -490,8 +490,8 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
             model_id_before = serve.get_multiplexed_model_id()
 
             # Make a call with another model ID, verify it's set properly.
-            ref = await self._h.options(multiplexed_model_id="bar").remote()
-            assert await ref == "bar"
+            other_model_id = await self._h.options(multiplexed_model_id="bar").remote()
+            assert other_model_id == "bar"
 
             # Model ID shouldn't change after the handle call.
             model_id_after = serve.get_multiplexed_model_id()
