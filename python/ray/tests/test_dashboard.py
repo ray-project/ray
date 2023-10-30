@@ -209,9 +209,7 @@ def test_dashboard_grpc_port_conflict(listen_port, call_ray_stop_only, shutdown_
             stderr=subprocess.PIPE,
         )
     except subprocess.CalledProcessError as e:
-        assert (
-            f"Failed to bind to address 127.0.0.1:{conflict_port}".encode() in e.stderr
-        )
+        assert f"Failed to bind to address 0.0.0.0:{conflict_port}".encode() in e.stderr
 
 
 @pytest.mark.skipif(
