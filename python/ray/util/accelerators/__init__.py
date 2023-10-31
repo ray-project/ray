@@ -4,14 +4,16 @@ from ray.util.accelerators.accelerators import (
     NVIDIA_TESLA_T4,
     NVIDIA_TESLA_P4,
     NVIDIA_TESLA_K80,
-    NVIDIA_TESLA_A100,
     NVIDIA_TESLA_A10G,
+    NVIDIA_A100,
     INTEL_MAX_1550,
     INTEL_MAX_1100,
     AWS_NEURON_CORE,
     GOOGLE_TPU_V2,
     GOOGLE_TPU_V3,
     GOOGLE_TPU_V4,
+    # Deprecated
+    NVIDIA_TESLA_A100,
 )
 
 __all__ = [
@@ -20,12 +22,14 @@ __all__ = [
     "NVIDIA_TESLA_T4",
     "NVIDIA_TESLA_P4",
     "NVIDIA_TESLA_K80",
-    "NVIDIA_TESLA_A100",
     "NVIDIA_TESLA_A10G",
+    "NVIDIA_A100",
     "INTEL_MAX_1550",
     "INTEL_MAX_1100",
     "AWS_NEURON_CORE",
     "GOOGLE_TPU_V2",
     "GOOGLE_TPU_V3",
     "GOOGLE_TPU_V4",
+    # Deprecated
+    "NVIDIA_TESLA_A100",
 ]
