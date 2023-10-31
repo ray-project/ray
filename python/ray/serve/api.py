@@ -3,7 +3,7 @@ import inspect
 import logging
 import warnings
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from fastapi import APIRouter, FastAPI
 
@@ -257,8 +257,6 @@ def deployment(
     name: Default[str] = DEFAULT.VALUE,
     version: Default[str] = DEFAULT.VALUE,
     num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-    init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-    init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
@@ -293,8 +291,6 @@ def deployment(
             this deployment. Defaults to 1.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` cannot be set.
-        init_args: [DEPRECATED] These should be passed to `.bind()` instead.
-        init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
         route_prefix: [DEPRECATED] Route prefix should be set per-application
             through `serve.run()`.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
@@ -386,8 +382,8 @@ def deployment(
     def decorator(_func_or_class):
         replica_config = ReplicaConfig.create(
             _func_or_class,
-            init_args=(init_args if init_args is not DEFAULT.VALUE else None),
-            init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
+            init_args=None,
+            init_kwargs=None,
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
