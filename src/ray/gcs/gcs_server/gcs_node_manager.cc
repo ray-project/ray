@@ -53,17 +53,6 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id
                 << ", address = " << request.node_info().node_manager_address()
                 << ", node name = " << request.node_info().node_name();
-  if (request.node_info().is_head_node()) {
-    // mark the old head node as dead
-    auto head_node_it =
-        std::find_if(alive_nodes_.begin(), alive_nodes_.end(), [](const auto &node) {
-          return node.second->is_head_node();
-        });
-    if (head_node_it != alive_nodes_.end()) {
-      NodeID old_head_node_id = head_node_it->first;
-      OnNodeFailure(old_head_node_id);
-    }
-  }
   auto on_done = [this, node_id, request, reply, send_reply_callback](
                      const Status &status) {
     RAY_CHECK_OK(status);
@@ -74,8 +63,27 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-  RAY_CHECK_OK(
-      gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  if (request.node_info().is_head_node()) {
+    // mark the old head node as dead if exists:
+    // 1. should never happen when HA is not used
+    // 2. happens when a new GCS is started
+    auto head_node_it =
+        std::find_if(alive_nodes_.begin(), alive_nodes_.end(), [](const auto &node) {
+          return node.second->is_head_node();
+        });
+    if (head_node_it != alive_nodes_.end()) {
+      NodeID old_head_node_id = head_node_it->first;
+      OnNodeFailure(old_head_node_id,
+                    [this, node_id, request, on_done](const Status &status) {
+                      RAY_CHECK_OK(status);
+                      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+                          node_id, request.node_info(), on_done));
+                    });
+    }
+  } else {
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  }
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
@@ -262,7 +270,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   return removed_node;
 }
 
-void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
+void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
+                                   const StatusCallback &callback) {
   if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
@@ -276,6 +285,7 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
       RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     };
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
+    callback(Status::OK());
   }
 }
 

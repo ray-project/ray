@@ -82,7 +82,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                         rpc::CheckAliveReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 
-  void OnNodeFailure(const NodeID &node_id);
+  void OnNodeFailure(const NodeID &node_id, const StatusCallback &callback);
 
   /// Add an alive node.
   ///
