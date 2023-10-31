@@ -8,7 +8,7 @@ from google.cloud.bigquery import job
 from google.cloud.bigquery_storage_v1.types import stream as gcbqs_stream
 
 import ray
-from ray.data.datasource import BigQueryDatasource
+from ray.data.datasource import _BigQueryDatasource
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -115,7 +115,7 @@ class TestReadBigQuery:
         [1, 2, 3, 4, 10, 100],
     )
     def test_create_reader(self, parallelism):
-        bq_ds = BigQueryDatasource()
+        bq_ds = _BigQueryDatasource()
         reader = bq_ds.create_reader(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset=_TEST_BQ_DATASET,
@@ -129,7 +129,7 @@ class TestReadBigQuery:
         [1, 2, 3, 4, 10, 100],
     )
     def test_create_reader_query(self, parallelism, bq_query_result_mock):
-        bq_ds = BigQueryDatasource()
+        bq_ds = _BigQueryDatasource()
         reader = bq_ds.create_reader(
             project_id=_TEST_GCP_PROJECT_ID,
             parallelism=parallelism,
@@ -148,7 +148,7 @@ class TestReadBigQuery:
         parallelism,
         bq_query_result_mock_fail,
     ):
-        bq_ds = BigQueryDatasource()
+        bq_ds = _BigQueryDatasource()
         reader = bq_ds.create_reader(
             project_id=_TEST_GCP_PROJECT_ID,
             parallelism=parallelism,
@@ -160,7 +160,7 @@ class TestReadBigQuery:
 
     def test_dataset_query_kwargs_provided(self):
         parallelism = 4
-        bq_ds = BigQueryDatasource()
+        bq_ds = _BigQueryDatasource()
         with pytest.raises(ValueError) as exception:
             bq_ds.create_reader(
                 project_id=_TEST_GCP_PROJECT_ID,
@@ -176,7 +176,7 @@ class TestReadBigQuery:
 
     def test_create_reader_dataset_not_found(self):
         parallelism = 4
-        bq_ds = BigQueryDatasource()
+        bq_ds = _BigQueryDatasource()
         reader = bq_ds.create_reader(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset="nonexistentdataset.mocktable",
@@ -191,7 +191,7 @@ class TestReadBigQuery:
 
     def test_create_reader_table_not_found(self):
         parallelism = 4
-        bq_ds = BigQueryDatasource()
+        bq_ds = _BigQueryDatasource()
         reader = bq_ds.create_reader(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset="mockdataset.nonexistenttable",
@@ -210,7 +210,7 @@ class TestWriteBigQuery:
     """Tests for BigQuery Write."""
 
     def test_write(self):
-        bq_ds = BigQueryDatasource()
+        bq_ds = _BigQueryDatasource()
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
         status = bq_ds.write(
@@ -222,7 +222,7 @@ class TestWriteBigQuery:
         assert status == "ok"
 
     def test_write_dataset_exists(self, ray_remote_function_mock):
-        bq_ds = BigQueryDatasource()
+        bq_ds = _BigQueryDatasource()
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
         status = bq_ds.write(

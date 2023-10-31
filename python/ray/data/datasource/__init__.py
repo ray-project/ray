@@ -1,5 +1,5 @@
 from ray.data.datasource.bigquery_datasink import _BigQueryDatasink
-from ray.data.datasource.bigquery_datasource import BigQueryDatasource
+from ray.data.datasource.bigquery_datasource import _BigQueryDatasource
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.block_path_provider import (
     BlockWritePathProvider,
@@ -43,7 +43,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
 )
 from ray.data.datasource.sql_datasink import _SQLDatasink
-from ray.data.datasource.sql_datasource import Connection, SQLDatasource
+from ray.data.datasource.sql_datasource import Connection, _SQLDatasource
 from ray.data.datasource.text_datasource import TextDatasource
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data.datasource.torch_datasource import TorchDatasource
@@ -56,14 +56,14 @@ __all__ = [
     "BaseFileMetadataProvider",
     "BinaryDatasource",
     "_BigQueryDatasink",
-    "BigQueryDatasource",
+    "_BigQueryDatasource",
     "BlockWritePathProvider",
     "Connection",
     "CSVDatasource",
     "Datasink",
     "Datasource",
     "_SQLDatasink",
-    "SQLDatasource",
+    "_SQLDatasource",
     "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
     "DefaultParquetMetadataProvider",

@@ -47,7 +47,6 @@ from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
-    BigQueryDatasource,
     BinaryDatasource,
     Connection,
     CSVDatasource,
@@ -61,11 +60,12 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
-    SQLDatasource,
     TextDatasource,
     TFRecordDatasource,
     TorchDatasource,
     WebDatasetDatasource,
+    _BigQueryDatasource,
+    _SQLDatasource,
 )
 from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
@@ -565,13 +565,9 @@ def read_bigquery(
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
         on the specified BigQuery dataset.
     """
+    datasource = _BigQueryDatasource(project_id, dataset=dataset, query=query)
     return read_datasource(
-        BigQueryDatasource(),
-        parallelism=parallelism,
-        project_id=project_id,
-        dataset=dataset,
-        query=query,
-        ray_remote_args=ray_remote_args,
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -1807,10 +1803,9 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    datasource = SQLDatasource(connection_factory)
+    datasource = _SQLDatasource(sql, connection_factory)
     return read_datasource(
         datasource,
-        sql=sql,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
     )
