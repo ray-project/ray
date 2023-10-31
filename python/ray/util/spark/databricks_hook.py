@@ -67,13 +67,6 @@ DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES = (
 )
 
 
-def _get_db_api_entry():
-    """
-    Get databricks API entry point.
-    """
-    return get_dbutils().entry_point
-
-
 _DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
 
 
@@ -87,18 +80,6 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         )
 
     def on_cluster_created(self, ray_cluster_handler):
-        db_api_entry = _get_db_api_entry()
-        try:
-            db_api_entry.registerBackgroundSparkJobGroup(
-                ray_cluster_handler.spark_job_group_id
-            )
-        except Exception:
-            _logger.warning(
-                "Registering Ray cluster spark job as background job failed. "
-                "You need to manually call `ray.util.spark.shutdown_ray_cluster()` "
-                "before detaching your Databricks notebook."
-            )
-
         if ray_cluster_handler.autoscale:
             # Disable auto shutdown if autoscaling enabled.
             # because in autoscaling mode, background spark job will be killed
