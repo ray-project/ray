@@ -1,0 +1,54 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [[ "${ANYSCALE_BYOR:-}" == "true" ]]; then
+    # User explicitly wants to use their own ray library, so skip injection.
+    # BYOR = Bring your own ray.
+    exit 0
+fi
+
+source /opt/anyscale/version-envs.sh
+
+if [[ "${ANYSCALE_RAY_SITE_PKG_DIR:-}" == "" ]]; then
+    echo "ANYSCALE_RAY_SITE_PKG_DIR is not set."
+    exit 1
+fi
+
+if [[ "${ANYSCALE_PY_VERSION_CODE:-}" == "" ]]; then
+    echo "ANYSCALE_PY_VERSION_CODE is not set."
+    exit 1
+fi
+
+if [[ "${ANYSCALE_RAY_VERSION:-}" == "" ]]; then
+    echo "ANYSCALE_RAY_VERSION is not set."
+    exit 1
+fi
+
+if [[ "${ANYSCALE_RAY_COMMIT:-}" == "" ]]; then
+    echo "ANYSCALE_RAY_COMMIT is not set."
+    exit 1
+fi
+
+readonly SERVICE_SOCK=/tmp/anyscale/anyscaled/sockets/dataplane_service.sock
+
+if [[ ! -S "${SERVICE_SOCK}" ]]; then
+    echo "Dataplane service socket not found: ${SERVICE_SOCK}"
+    exit 1
+fi
+
+
+mv "${ANYSCALE_RAY_SITE_PKG_DIR}/ray" "${ANYSCALE_RAY_SITE_PKG_DIR}/ray.bak"
+mv "${ANYSCALE_RAY_SITE_PKG_DIR}/ray-${ANYSCALE_RAY_VERSION}.dist-info" \
+    "${ANYSCALE_RAY_SITE_PKG_DIR}/ray-${ANYSCALE_RAY_VERSION}.dist-info.bak"
+
+if [[ -f /opt/anyscale/ray-opt.tgz ]]; then
+    # This is for non-release builds only.
+    tar -xvf /opt/anyscale/ray-opt.tgz -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
+else
+    SITE_PKG_PATH="common/ray-opt/${ANYSCALE_RAY_VERSION}/${ANYSCALE_RAY_COMMIT}/ray-opt-${ANYSCALE_PY_VERSION_CODE}.tar.gz"
+    /opt/anyscale/download_anyscale_data "${SITE_PKG_PATH}" | tar -xzf - -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
+fi
+
+rm -rf "${ANYSCALE_RAY_SITE_PKG_DIR}/ray.bak"
+rm -rf "${ANYSCALE_RAY_SITE_PKG_DIR}/ray-${ANYSCALE_RAY_VERSION}.dist-info.bak"

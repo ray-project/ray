@@ -12,3 +12,11 @@ export DOCKER_BUILDKIT=1
 # Default cuda is also tagged as "gpu".
 readonly ML_CUDA_VERSION="cu118"
 export ML_CUDA_VERSION
+
+if [[ "${RAY_RELEASE_BUILD:-}" == "" ]]; then
+    if [[ "${RAY_VERSION:-}" =~ dev ]]; then
+        export RAY_RELEASE_BUILD="false"
+    else
+        export RAY_RELEASE_BUILD="true"
+    fi
+fi

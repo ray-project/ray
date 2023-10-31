@@ -17,6 +17,13 @@ ARG RAY_SITE_PKG_TGZ
 ARG RAY_VERSION="3.0.0.dev0"
 
 COPY requirements_compiled.txt ./
+COPY \
+    version-envs.sh \
+    download_anyscale_data \
+    ray-prestart \
+    runtime-requirements.txt \
+    ray-opt*.tgz \
+    /opt/anyscale/
 
 RUN \
     --mount=type=bind,source=$WHEEL_PATH,target=$WHEEL_PATH \
@@ -45,6 +52,9 @@ tar -xzf "$RAY_SITE_PKG_TGZ" -C "${SITE_PKG_DIR}"
 
 # Makes sure the ray still works, and also will generate the pyc files.
 python -c "import ray; print(ray.__version__)"
+
+echo ": \${ANYSCALE_RAY_SITE_PKG_DIR:=$SITE_PKG_DIR}" | sudo tee -a /opt/anyscale/version-envs.sh
+echo "export ANYSCALE_RAY_SITE_PKG_DIR" | sudo tee -a /opt/anyscale/version-envs.sh
 
 EOF
 

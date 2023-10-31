@@ -85,15 +85,19 @@ function docker_push_as {
     local DEST_IMG="$2"
     docker tag "${SRC_IMG}" "${DEST_IMG}"
     docker push "${DEST_IMG}"
-    buildkite-agent annotate --style=info \
-        --context="${PY_VERSION_CODE}-images" --append "${DEST_IMG}<br/>"
+    if [[ "${BUILDKITE:-}" == "true" ]]; then
+        buildkite-agent annotate --style=info \
+            --context="${PY_VERSION_CODE}-images" --append "${DEST_IMG}<br/>"
+    fi
 }
 
 function docker_push {
     local IMG="$1"
     docker push "${IMG}"
-    buildkite-agent annotate --style=info \
-        --context="${PY_VERSION_CODE}-images" --append "${IMG}<br/>"
+    if [[ "${BUILDKITE:-}" == "true" ]]; then
+        buildkite-agent annotate --style=info \
+            --context="${PY_VERSION_CODE}-images" --append "${IMG}<br/>"
+    fi
 }
 
 if [[ "${PUSH_COMMIT_TAGS:-}" == "" ]]; then
@@ -229,11 +233,28 @@ cp anyscale/docker/Dockerfile.ray "${CONTEXT_TMP}/Dockerfile"
 cp anyscale/docker/runtime-requirements.txt "${CONTEXT_TMP}/runtime-requirements.txt"
 cp python/requirements_compiled.txt "${CONTEXT_TMP}/."
 cp anyscale/docker/NOTICE "${CONTEXT_TMP}/."
+cp anyscale/docker/ray-prestart "${CONTEXT_TMP}/."
 cp LICENSE.runtime "${CONTEXT_TMP}/LICENSE"
+aws s3 cp "${S3_TEMP}/download_anyscale_data" "${CONTEXT_TMP}/download_anyscale_data"
+chmod +x "${CONTEXT_TMP}/download_anyscale_data"
 
-# TODO(aslonnie): replace this with ray-oss.tgz when Anyscale has support
-# to inject ray-opt.tgz into the image.
-cp "${BUILD_TMP}/ray-opt.tgz" "${CONTEXT_TMP}/ray.tgz"
+# Generates a version stamp file.
+{
+    echo "#!/bin/bash"
+    echo ": \${ANYSCALE_PY_VERSION_CODE:=${PY_VERSION_CODE}}"
+    echo ": \${ANYSCALE_RAY_VERSION:=${RAY_VERSION}}"
+    echo ": \${ANYSCALE_RAY_COMMIT:=${FULL_COMMIT}}"
+    echo "export ANYSCALE_PY_VERSION_CODE ANYSCALE_RAY_VERSION ANYSCALE_RAY_COMMIT"
+} > "${CONTEXT_TMP}/version-envs.sh"
+
+# In release build, we place in the oss site package.
+cp "${BUILD_TMP}/ray-oss.tgz" "${CONTEXT_TMP}/ray.tgz"
+
+if [[ "${RAY_RELEASE_BUILD}" != "true" ]]; then
+    # In dev builds, we copy in the runtime site package, so that we do not
+    # need to upload a dev version of site package to org data S3.
+    cp "${BUILD_TMP}/ray-opt.tgz" "${CONTEXT_TMP}/ray-opt.tgz"
+fi
 
 (
     cd "${CONTEXT_TMP}"
@@ -264,7 +285,7 @@ docker_push "${ANYSCALE_IMG}"
 if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
     SHORT_COMMIT="${FULL_COMMIT:0:6}"  # Use 6 chars to be consistent with Ray upstream
     # During branch cut, do not modify ray version in this script
-    if [[ ! "${RAY_VERSION:-}" =~ dev ]]; then
+    if [[ "${RAY_RELEASE_BUILD:-}" == "true" ]]; then
         SHORT_COMMIT="${RAY_VERSION}.${SHORT_COMMIT}"
     fi
 

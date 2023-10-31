@@ -95,8 +95,21 @@ steps:
 
   - wait: ~
 
-  - label: ":tapioca: check and upload runtime site package tarball"
+  - label: ":tapioca: check runtime site package tarball"
     commands:
-      - bash anyscale/ci/publish-ray-site-pkg.sh
+      - bash anyscale/ci/check-ray-site-pkg.sh
     instance_type: small
     job_env: forge
+
+  - wait: ~
+
+  - label: ":tapioca: upload runtime site package tarball {{matrix}}"
+    commands:
+      - bash anyscale/ci/upload-ray-site-pkg.sh {{matrix}}
+    instance_type: small
+    job_env: forge
+    matrix:
+      # We skip production and predeploy; will copy them on final image
+      # building. We need to copy to staging for release tests to run.
+      - development
+      - staging
