@@ -159,6 +159,13 @@ def _autodetect_parallelism(
             min_safe_parallelism,
             avail_cpus * 2,
         )
+        print(
+            "PARALLELISM",
+            min(ctx.min_parallelism, max_reasonable_parallelism),
+            min_safe_parallelism,
+            avail_cpus * 2,
+            parallelism,
+        )
 
         if parallelism == ctx.min_parallelism:
             reason = f"DataContext.get_current().min_parallelism={ctx.min_parallelism}"
