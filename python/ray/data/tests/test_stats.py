@@ -1192,7 +1192,10 @@ def test_stats_actor_metrics():
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
 
-    assert "dataset" + ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+    tags = update_fn.call_args_list[-1].args[1]
+    assert all([tag["dataset"] == "dataset" + ds._uuid for tag in tags])
+    assert tags[0]["operator"] == "Input0"
+    assert tags[1]["operator"] == "ReadRange->MapBatches(<lambda>)1"
 
     def sleep_three(x):
         import time
@@ -1231,7 +1234,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
+    assert update_fn.call_args_list[-1].args[1][0]["dataset"] == "test_ds" + mds._uuid
 
     # Names persist after an execution
     ds = ds.random_shuffle()
@@ -1239,7 +1242,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds" + mds._uuid
+    assert update_fn.call_args_list[-1].args[1][0]["dataset"] == "test_ds" + mds._uuid
 
     ds._set_name("test_ds_two")
     ds = ds.map_batches(lambda x: x)
@@ -1247,7 +1250,9 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == "test_ds_two" + mds._uuid
+    assert (
+        update_fn.call_args_list[-1].args[1][0]["dataset"] == "test_ds_two" + mds._uuid
+    )
 
     ds._set_name(None)
     ds = ds.map_batches(lambda x: x)
@@ -1255,7 +1260,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == "dataset" + mds._uuid
+    assert update_fn.call_args_list[-1].args[1][0]["dataset"] == "dataset" + mds._uuid
 
     ds = ray.data.range(100, parallelism=20)
     ds._set_name("very_loooooooong_name")
