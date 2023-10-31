@@ -91,7 +91,6 @@ def test_e2e(serve_instance):
     class A:
         def __call__(self):
             ray.get(signal.wait.remote())
-            # time.sleep(0.1)
 
     handle = serve.run(A.bind())
     dep_id = DeploymentID("A", "default")
