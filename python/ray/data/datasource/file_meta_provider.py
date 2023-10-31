@@ -544,7 +544,7 @@ def _fetch_metadata_parallel(
     # dominates the Ray task overhead while ensuring good parallelism.
     # Always launch at least 2 parallel fetch tasks.
     parallelism = max(len(uris) // desired_uris_per_task, 2)
-    import datetime
+    from datetime import datetime
 
     metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
     fetch_tasks = []
