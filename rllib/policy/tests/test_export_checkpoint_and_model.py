@@ -155,10 +155,6 @@ class TestExportCheckpointAndModel(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_export_a3c(self):
-        for fw in framework_iterator():
-            export_test("A3C", fw)
-
     def test_export_appo(self):
         for fw in framework_iterator():
             export_test("APPO", fw)

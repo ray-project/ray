@@ -223,7 +223,9 @@ class TestRolloutWorker(unittest.TestCase):
             results2 = algo.workers.foreach_worker_with_id(
                 lambda i, w: (i, w.total_rollout_fragment_length)
             )
-            results3 = algo.workers.foreach_worker(lambda w: w.foreach_env(lambda env: 1))
+            results3 = algo.workers.foreach_worker(
+                lambda w: w.foreach_env(lambda env: 1)
+            )
             self.assertEqual(results, [10, 10, 10])
             self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
             self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])

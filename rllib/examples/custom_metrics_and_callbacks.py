@@ -129,7 +129,9 @@ class MyCallbacks(DefaultCallbacks):
 
     def on_sample_end(self, *, worker: RolloutWorker, samples: SampleBatch, **kwargs):
         # We can also do our own sanity checks here.
-        assert samples.count == 200, "I was expecting 200 here!"
+        assert samples.count == 2000, (
+            f"I was expecting 2000 here, but got {samples.count}!"
+        )
 
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
         # you can mutate the result dict to add new fields to return

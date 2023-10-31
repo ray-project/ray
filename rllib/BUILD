@@ -1814,7 +1814,7 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "large",
     srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentPG"]
+    args = ["TestSupportedMultiAgentPPO"]
 )
 
 py_test(
@@ -1842,16 +1842,7 @@ py_test(
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesIMPALA"]
- )
-
-py_test(
-     name = "tests/test_supported_spaces_a3c",
-     main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
-     size = "large",
-     srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesA3C"]
- )
+)
 
 py_test(
      name = "tests/test_supported_spaces_ppo",
@@ -2000,24 +1991,6 @@ py_test(
     size = "large",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--framework=torch", "--run=DQN", "--stop-reward=70", "--stop-time=400"]
-)
-
-py_test(
-    name = "examples/batch_norm_model_ddpg_tf",
-    main = "examples/batch_norm_model.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=DDPG", "--framework=tf", "--stop-iters=1"]
-)
-
-py_test(
-    name = "examples/batch_norm_model_ddpg_torch",
-    main = "examples/batch_norm_model.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/batch_norm_model.py"],
-    args = ["--framework=torch", "--run=DDPG", "--stop-iters=1"]
 )
 
 py_test(
@@ -2253,15 +2226,6 @@ py_test(
     size = "medium",
     srcs = ["examples/custom_fast_model.py"],
     args = ["--stop-iters=1", "--framework=torch"]
-)
-
-py_test(
-    name = "examples/custom_keras_model_a2c",
-    main = "examples/custom_keras_model.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/custom_keras_model.py"],
-    args = ["--run=A2C", "--stop=50", "--num-cpus=4"]
 )
 
 py_test(
@@ -2882,16 +2846,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/inference_and_serving/policy_inference_after_training_with_dt_torch",
-    main = "examples/inference_and_serving/policy_inference_after_training_with_dt.py",
-    tags = ["team:rllib", "exclusive", "examples", "ray_data"],
-    size = "medium",
-    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_dt.py"],
-    data = ["tests/data/cartpole/large.json"],
-    args = ["--input-files=tests/data/cartpole/large.json"]
-)
-
-py_test(
     name = "examples/inference_and_serving/policy_inference_after_training_with_lstm_tf",
     main = "examples/inference_and_serving/policy_inference_after_training_with_lstm.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -3163,39 +3117,6 @@ py_test(
     size = "small",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
-)
-
-
-py_test(
-    name = "examples/bandit/lin_ts_train_wheel_env",
-    main = "examples/bandit/lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/bandit/lin_ts_train_wheel_env.py"],
-)
-
-py_test(
-    name = "examples/bandit/tune_lin_ts_train_wheel_env",
-    main = "examples/bandit/tune_lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/bandit/tune_lin_ts_train_wheel_env.py"],
-)
-
-py_test(
-    name = "examples/bandit/tune_lin_ucb_train_recommendation",
-    main = "examples/bandit/tune_lin_ucb_train_recommendation.py",
-    tags = ["team:rllib","exclusive",  "examples"],
-    size = "small",
-    srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
-)
-
-py_test(
-    name = "examples/bandit/tune_lin_ucb_train_recsim_env",
-    main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
 
 py_test(

@@ -94,7 +94,7 @@ class NestedActionSpacesTest(unittest.TestCase):
                     # or not).
                     reader = JsonReader(
                         inputs=config["output"],
-                        ioctx=pg.workers.local_worker().io_context,
+                        ioctx=algo.workers.local_worker().io_context,
                     )
                     sample_batch = reader.next()
                     sample_batch = convert_ma_batch_to_sample_batch(sample_batch)

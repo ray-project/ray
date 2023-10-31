@@ -26,35 +26,34 @@ class TestAlgorithm(unittest.TestCase):
         ray.shutdown()
 
     def test_add_delete_policy(self):
-        config = ppo.PPOConfig()
-        config.environment(
-            env=MultiAgentCartPole,
-            env_config={
-                "config": {
-                    "num_agents": 4,
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                env=MultiAgentCartPole,
+                env_config={
+                    "config": {
+                        "num_agents": 4,
+                    },
                 },
-            },
-        ).rollouts(num_rollout_workers=2, rollout_fragment_length=50).resources(
-            num_cpus_per_worker=0.1
-        ).training(
-            train_batch_size=100,
-        ).multi_agent(
-            # Start with a single policy.
-            policies={"p0"},
-            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
-            # And only two policies that can be stored in memory at a
-            # time.
-            policy_map_capacity=2,
-        ).evaluation(
-            evaluation_num_workers=1,
-            evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_worker=0.1),
-        )
-        # Don't override existing model settings.
-        config.model.update(
-            {
+            )
+            .rollouts(num_rollout_workers=2)
+            .resources(num_cpus_per_worker=0.1)
+            .training(train_batch_size=100, model={
                 "fcnet_hiddens": [5],
                 "fcnet_activation": "linear",
-            }
+            })
+            .multi_agent(
+                # Start with a single policy.
+                policies={"p0"},
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
+                # And only two policies that can be stored in memory at a
+                # time.
+                policy_map_capacity=2,
+            )
+            .evaluation(
+                evaluation_num_workers=1,
+                evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_worker=0.1),
+            )
         )
 
         obs_space = gym.spaces.Box(-2.0, 2.0, (4,))
@@ -64,11 +63,11 @@ class TestAlgorithm(unittest.TestCase):
             # Pre-generate a policy instance to test adding these directly to an
             # existing algorithm.
             if fw == "tf":
-                policy_obj = pg.PGTF1Policy(obs_space, act_space, config.to_dict())
+                policy_obj = ppo.PPOTF1Policy(obs_space, act_space, config.to_dict())
             elif fw == "tf2":
-                policy_obj = pg.PGTF2Policy(obs_space, act_space, config.to_dict())
+                policy_obj = ppo.PPOTF2Policy(obs_space, act_space, config.to_dict())
             else:
-                policy_obj = pg.PGTorchPolicy(obs_space, act_space, config.to_dict())
+                policy_obj = ppo.PPOTorchPolicy(obs_space, act_space, config.to_dict())
 
             # Construct the Algorithm with a single policy in it.
             algo = config.build()
@@ -160,7 +159,7 @@ class TestAlgorithm(unittest.TestCase):
                     def new_mapping_fn(agent_id, episode, worker, **kwargs):
                         return f"p{choice([0, 2])}"
 
-                    test2 = pg.PG.from_checkpoint(
+                    test2 = ppo.PPO.from_checkpoint(
                         checkpoint=checkpoint,
                         policy_ids=["p0", "p2"],
                         policy_mapping_fn=new_mapping_fn,

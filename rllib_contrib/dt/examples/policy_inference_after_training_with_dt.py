@@ -11,8 +11,10 @@ import os
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.dt import DTConfig
 from ray.tune.utils.log import Verbosity
+
+from rllib_dt.dt import DTConfig
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -20,12 +22,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input-files",
         nargs="+",
-        default=[
-            os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "../../tests/data/cartpole/large.json",
-            )
-        ],
+        default=["s3://anonymous@air-example-data/rllib/cartpole/large.json"],
         help="List of paths to offline json files/zips for training.",
     )
     parser.add_argument(
@@ -43,7 +40,7 @@ if __name__ == "__main__":
     # Look for them here.
     input_files = []
     for input_file in args.input_files:
-        if not os.path.exists(input_file):
+        if not os.path.exists(input_file) and not input_file.startswith("s3"):
             # This script runs in the ray/rllib/examples/inference_and_serving dir.
             rllib_dir = Path(__file__).parent.parent.parent
             input_dir = rllib_dir.absolute().joinpath(input_file)

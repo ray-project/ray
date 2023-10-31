@@ -1,32 +1,15 @@
-""" Example of using LinUCB on a recommendation environment with parametric
-    actions. """
+"""Example of using LinUCB on a RecSim environment. """
 
 import argparse
 from matplotlib import pyplot as plt
-import os
 import pandas as pd
 import time
 
-import ray
 from ray import air, tune
-from ray.rllib.algorithms.bandit import BanditLinUCBConfig
-from ray.tune import register_env
-from ray.rllib.env.wrappers.recsim import (
-    MultiDiscreteToDiscreteActionWrapper,
-    RecSimObservationBanditWrapper,
-)
-from ray.rllib.examples.env.bandit_envs_recommender_system import (
-    ParametricRecSys,
-)
+import ray.rllib.examples.env.recommender_system_envs_with_recsim  # noqa
 
-# Because ParametricRecSys follows RecSim's API, we have to wrap it before
-# it can work with our Bandits agent.
-register_env(
-    "ParametricRecSysEnv",
-    lambda cfg: MultiDiscreteToDiscreteActionWrapper(
-        RecSimObservationBanditWrapper(ParametricRecSys(**cfg))
-    ),
-)
+from rllib_bandit.bandit import BanditLinUCBConfig
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -39,37 +22,30 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
 
-    # Temp fix to avoid OMP conflict.
-    os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
-
     ray.init()
 
     config = (
         BanditLinUCBConfig()
+        # "RecSim-v1" is a pre-registered RecSim env.
+        # Alternatively, you can do:
+        # `from ray.rllib.examples.env.recommender_system_envs_with_recsim import ...`
+        # - LongTermSatisfactionRecSimEnv
+        # - InterestExplorationRecSimEnv
+        # - InterestEvolutionRecSimEnv
+        # Then: "env": [the imported RecSim class]
         .environment(
-            "ParametricRecSysEnv",
+            "RecSim-v1",
             env_config={
-                "embedding_size": 20,
-                "num_docs_to_select_from": 10,
+                "num_candidates": 10,
                 "slate_size": 1,
-                "num_docs_in_db": 100,
-                "num_users_in_db": 1,
-                "user_time_budget": 1.0,
+                "convert_to_discrete_action_space": True,
+                "wrap_for_bandits": True,
             },
-        )
-        .framework(args.framework)
-        # Test with batched inference.
-        .rollouts(num_envs_per_worker=2)
-        .evaluation(
-            evaluation_interval=20,
-            evaluation_duration=100,
-            evaluation_duration_unit="episodes",
-        )
+        ).framework(args.framework)
     )
-    config.simple_optimizer = True
 
     # Actual env timesteps per `train()` call will be
-    # 10 * min_sample_timesteps_per_iteration (100 by default) = 1,000.
+    # 10 * min_sample_timesteps_per_iteration (100 by default) = 1000
     training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)
@@ -85,7 +61,7 @@ if __name__ == "__main__":
             ),
         ),
         tune_config=tune.TuneConfig(
-            num_samples=2,
+            num_samples=1,
         ),
     )
     results = tuner.fit()

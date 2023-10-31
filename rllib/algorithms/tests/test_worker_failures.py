@@ -388,12 +388,11 @@ class TestWorkerFailures(unittest.TestCase):
             .reporting(min_sample_timesteps_per_iteration=1)
         )
 
-    def test_multi_g_p_u(self):
+    def test_multi_gpu(self):
         self._do_test_fault_ignore(
             PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
-                rollout_fragment_length=5,
             )
             .training(
                 train_batch_size=10,
@@ -491,7 +490,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
-                rollout_fragment_length=16,
             )
             .training(
                 train_batch_size=32,
@@ -545,7 +543,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
-                rollout_fragment_length=16,
             )
             .training(
                 train_batch_size=32,
@@ -640,7 +637,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
-                rollout_fragment_length=16,
             )
             .training(
                 train_batch_size=32,
@@ -703,7 +699,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=3,
-                rollout_fragment_length=16,
             )
             .training(
                 train_batch_size=32,
@@ -776,7 +771,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
-                rollout_fragment_length=16,
             )
             .training(
                 train_batch_size=32,
@@ -857,7 +851,6 @@ class TestWorkerFailures(unittest.TestCase):
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
-                rollout_fragment_length=16,
             )
             .training(
                 train_batch_size=32,

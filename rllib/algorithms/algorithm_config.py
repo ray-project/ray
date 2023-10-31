@@ -1779,14 +1779,6 @@ class AlgorithmConfig(_Config):
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
         if model is not NotProvided:
-            # Validate prev_a/r settings.
-            prev_a_r = model.get("lstm_use_prev_action_reward", DEPRECATED_VALUE)
-            if prev_a_r != DEPRECATED_VALUE:
-                deprecation_warning(
-                    "model.lstm_use_prev_action_reward",
-                    "model.lstm_use_prev_action and model.lstm_use_prev_reward",
-                    error=True,
-                )
             self.model.update(model)
             if (
                 model.get("_use_default_native_models", DEPRECATED_VALUE)

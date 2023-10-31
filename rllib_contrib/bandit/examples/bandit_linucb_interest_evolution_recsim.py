@@ -2,10 +2,9 @@ import argparse
 
 import ray
 from ray import air, tune
-
-# from rllib_bandit.bandit import BanditLinUCB, BanditLinUCBConfig
-from ray.rllib.algorithms.bandit import BanditLinUCB, BanditLinUCBConfig
 from ray.rllib.utils.test_utils import check_learning_achieved
+
+from rllib_bandit.bandit import BanditLinUCB, BanditLinUCBConfig
 
 
 def get_cli_args():
