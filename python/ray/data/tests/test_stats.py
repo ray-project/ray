@@ -1301,7 +1301,7 @@ def test_op_state_logging():
         logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
 
         for i, log in enumerate(logs):
-            if log == "vvv scheduling trace vvv":
+            if log == "Scheduling Trace:":
                 assert "Input" in logs[i + 1]
                 assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
 

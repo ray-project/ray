@@ -421,10 +421,10 @@ def _debug_dump_topology(topology: Topology, log_to_stdout: bool = True) -> None
     Args:
         topology: The topology to debug.
     """
-    logger.get_logger(log_to_stdout).info("vvv scheduling trace vvv")
+    logger.get_logger(log_to_stdout).info("Scheduling Trace:")
     for i, (op, state) in enumerate(topology.items()):
         logger.get_logger(log_to_stdout).info(
             f"{i}: {state.summary_str()}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
-    logger.get_logger(log_to_stdout).info("^^^ scheduling trace ^^^")
+    logger.get_logger(log_to_stdout).info("")
