@@ -19,9 +19,18 @@ TMP="$(mktemp -d)"
 if [[ "${DEPLOY_ENVIRONMENT}" == "staging" ]]; then
     readonly ORG_DATA_BUCKET=anyscale-staging-organization-data-us-west-2
     readonly DEPLOY_ROLE="arn:aws:iam::623395924981:role/buildkite-deploy-to-staging"
-else
+elif [[ "${DEPLOY_ENVIRONMENT}" == "predeploy" ]]; then
+    readonly ORG_DATA_BUCKET=anyscale-predeploy-organization-data-us-west-2
+    readonly DEPLOY_ROLE="arn:aws:iam::521861002309:role/buildkite-deploy-to-predeploy"
+elif [[ "${DEPLOY_ENVIRONMENT}" == "production" ]]; then
+    readonly ORG_DATA_BUCKET=anyscale-production-organization-data-us-west-2
+    readonly DEPLOY_ROLE="arn:aws:iam::525325868955:role/buildkite-deploy-to-production"
+elif [[ "${DEPLOY_ENVIRONMENT}" == "development" ]]; then
     readonly ORG_DATA_BUCKET=anyscale-dev-organization-data-us-west-2
     readonly DEPLOY_ROLE="arn:aws:iam::830883877497:role/buildkite-deploy-to-premerge"
+else
+    echo "Unknown deploy environment: ${DEPLOY_ENVIRONMENT}" >/dev/stderr
+    exit 1
 fi
 
 echo "--- Upload to org data for ${DEPLOY_ENVIRONMENT}"
