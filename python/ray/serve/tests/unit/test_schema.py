@@ -734,7 +734,7 @@ class TestLoggingConfig:
                 "access_log": "ALL",
             }
         )
-        assert schema.log_level == logging.DEBUG
+        assert schema.log_level == "DEBUG"
         assert schema.encoding == "JSON"
         assert schema.logs_dir == "/my_dir"
         assert schema.access_log == "ALL"
