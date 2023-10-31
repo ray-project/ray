@@ -128,7 +128,7 @@ def test_autoscaler_init(
     check that the removed node will die finally.
     """
     cluster = ray_start_cluster_head_with_external_redis
-    worker = cluster.add_node()
+    cluster.add_node()
     cluster.wait_for_nodes()
 
     # Make sure both head and worker node are alive.
