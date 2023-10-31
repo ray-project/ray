@@ -4,7 +4,6 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.sql_datasource import Connection, _connect
-from ray.util.annotations import PublicAPI
 
 
 class _SQLDatasink(Datasink):
