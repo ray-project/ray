@@ -1747,6 +1747,7 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
   cluster_task_manager_->FillResourceUsage(*resources_data, nullptr);
+  resources_data->set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2758,7 +2759,6 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 
   rpc::ResourcesData resources_data;
   resources_data.set_should_global_gc(true);
-  resources_data.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
   syncer::RaySyncMessage msg;
   msg.set_version(absl::GetCurrentTimeNanos());
   msg.set_node_id(self_node_id_.Binary());

@@ -71,6 +71,11 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
     return node_resource_info_;
   }
 
+  absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
+      &GetMutableNodeResourceInfo() {
+    return node_resource_info_;
+  }
+
   /// \brief Get the placement group load from GcsPlacementGroupManager
   ///
   /// \return The placement group load, nullptr if there is no placement group load.

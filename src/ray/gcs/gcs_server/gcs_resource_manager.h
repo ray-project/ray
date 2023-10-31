@@ -144,12 +144,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ///   syncer::MessageType::RESOURCE_VIEW.
   void UpdateFromResourceView(const rpc::ResourcesData &data);
 
-  /// Update the resource usage of a node from syncer COMMANDS
-  ///
-  /// This is currently used for setting cluster full of actors info from syncer.
-  /// \param data The resource report.
-  void UpdateFromResourceCommand(const rpc::ResourcesData &data);
-
   /// Update the resource loads.
   ///
   /// \param data The resource loads reported by raylet.
@@ -165,7 +159,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Returns the mapping from node id to latest resource report.
   ///
   /// \returns The mapping from node id to latest resource report.
-  const absl::flat_hash_map<NodeID, std::pair<absl::Time, rpc::ResourcesData>> &NodeResourceReportView() const;
+  const absl::flat_hash_map<NodeID, std::pair<absl::Time, rpc::ResourcesData>>
+      &NodeResourceReportView() const;
 
  private:
   /// io context. This is to ensure thread safety. Ideally, all public

@@ -50,7 +50,6 @@ void GcsResourceManager::ConsumeSyncMessage(
         resources.ParseFromString(message->sync_message());
         resources.set_node_id(message->node_id());
         if (message->message_type() == syncer::MessageType::COMMANDS) {
-          UpdateFromResourceCommand(resources);
         } else if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
           UpdateFromResourceView(resources);
         } else {
@@ -110,26 +109,14 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::AvailableResources resource;
     resource.set_node_id(node_resources_entry.first.Binary());
     const auto &node_resources = node_resources_entry.second.GetLocalView();
-    const auto node_id = NodeID::FromBinary(node_resources_entry.first.Binary());
-    bool using_resource_reports = RayConfig::instance().gcs_actor_scheduling_enabled() &&
-                                  node_resource_usages_.contains(node_id);
     for (const auto &resource_id : node_resources.available.ExplicitResourceIds()) {
       const auto &resource_name = resource_id.Binary();
       // Because gcs scheduler does not directly update the available resources of
       // `cluster_resource_manager_`, use the record from resource reports (stored in
       // `node_resource_usages_`) instead.
-      if (using_resource_reports) {
-        auto resource_iter =
-            node_resource_usages_[node_id].resources_available().find(resource_name);
-        if (resource_iter != node_resource_usages_[node_id].resources_available().end()) {
-          resource.mutable_resources_available()->insert(
-              {resource_name, resource_iter->second});
-        }
-      } else {
-        const auto &resource_value = node_resources.available.Get(resource_id);
-        resource.mutable_resources_available()->insert(
-            {resource_name, resource_value.Double()});
-      }
+      const auto &resource_value = node_resources.available.Get(resource_id);
+      resource.mutable_resources_available()->insert(
+          {resource_name, resource_value.Double()});
     }
     reply->add_resources_list()->CopyFrom(resource);
   }
@@ -184,12 +171,6 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);
       // Aggregate the load (pending actor info) of gcs.
       FillAggregateLoad(gcs_resources_data, &aggregate_load);
-      // We only export gcs's pending info without adding the corresponding
-      // `ResourcesData` to the `batch` list. So if gcs has detected cluster full of
-      // actors, set the dedicated field in reply.
-      if (gcs_resources_data.cluster_full_of_actors_detected()) {
-        reply->set_cluster_full_of_actors_detected_by_gcs(true);
-      }
     }
 
     for (const auto &demand : aggregate_load) {
@@ -249,13 +230,14 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     return;
   }
   if (resources.resources_total_size() > 0) {
-    (*iter->second.mutable_resources_total()) = resources.resources_total();
+    (*iter->second.second.mutable_resources_total()) = resources.resources_total();
   }
 
-  (*iter->second.mutable_resources_available()) = resources.resources_available();
+  (*iter->second.second.mutable_resources_available()) = resources.resources_available();
 
   if (resources.resources_normal_task_changed()) {
-    (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
+    (*iter->second.second.mutable_resources_normal_task()) =
+        resources.resources_normal_task();
   }
 }
 

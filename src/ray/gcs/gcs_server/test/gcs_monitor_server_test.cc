@@ -87,10 +87,6 @@ class GcsMonitorServerTest : public ::testing::Test {
                         mock_resource_manager_,
                         mock_placement_group_manager_) {}
 
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceUsages() {
-    return mock_resource_manager_->node_resource_usages_;
-  }
-
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &AliveNodes() {
     return mock_node_manager_.alive_nodes_;
   }
@@ -189,7 +185,8 @@ TEST_F(GcsMonitorServerTest, TestGetSchedulingStatus) {
             1,
             1,
             1));
-    NodeResourceUsages()[id_1] = data;
+    gcs_autoscaler_state_manager_.GetMutableNodeResourceInfo()[id_1] =
+        std::make_pair(absl::Now(), data);
   }
   {
     // Setup some placement group demand mocks.
