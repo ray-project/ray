@@ -103,8 +103,8 @@ def test_validate_resource_request_quantity(test_config):
 
 def test_check_accelerator_info():
 
-    if hpu.HPU_PACKAGE_AVAILABLE:
-        assert "GAUDI" in HPUAcceleratorManager.get_current_node_accelerator_type()
+    if HPUAcceleratorManager.is_initialized():
+        assert "Intel-GAUDI" in HPUAcceleratorManager.get_current_node_accelerator_type()
     else:
         assert HPUAcceleratorManager.get_current_node_accelerator_type() is None
 

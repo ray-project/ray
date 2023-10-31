@@ -66,21 +66,33 @@ class HPUAcceleratorManager(AcceleratorManager):
             return 0
 
     @staticmethod
-    def get_current_node_accelerator_type() -> Optional[str]:
-        """Attempt to HPU family type.
+    def is_initialized() -> bool:
+        """Attempt to check if HPU backend is initialized.
         Returns:
-            The device name (Gaudi, Gaudi2) if detected else None.
+            True if backend initialized else False.
         """
         if HPU_PACKAGE_AVAILABLE:
             import habana_frameworks.torch.hpu as torch_hpu
 
-            if torch_hpu.is_available():
-                if torch_hpu.is_initialized():
-                    return torch_hpu.get_device_name()
+            if torch_hpu.is_available() and torch_hpu.is_initialized():
+                return True
             else:
-                logging.info("HPU type cannot be detected")
-                return None
+                return False
         else:
+            return False
+
+    @staticmethod
+    def get_current_node_accelerator_type() -> Optional[str]:
+        """Attempt to detect the HPU family type.
+        Returns:
+            The device name (Gaudi, Gaudi2) if detected else None.
+        """
+        if HPUAcceleratorManager.is_initialized():
+            import habana_frameworks.torch.hpu as torch_hpu
+
+            return f"Intel-{torch_hpu.get_device_name()}"
+        else:
+            logging.info("HPU type cannot be detected")
             return None
 
     @staticmethod
