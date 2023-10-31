@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 from ray import available_resources as ray_available_resources
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -9,13 +9,13 @@ from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.util import _autodetect_parallelism
 from ray.data.context import WARN_PREFIX, DataContext
-from ray.data.datasource.datasource import Reader
+from ray.data.datasource.datasource import Datasource, Reader
 
 logger = DatasetLogger(__name__)
 
 
 def compute_additional_split_factor(
-    reader: Reader,
+    datasource_or_legacy_reader: Union[Datasource, Reader],
     parallelism: int,
     mem_size: int,
     target_max_block_size: int,
@@ -23,9 +23,9 @@ def compute_additional_split_factor(
 ) -> Tuple[int, str, int, Optional[int]]:
     ctx = DataContext.get_current()
     parallelism, reason, _, _ = _autodetect_parallelism(
-        parallelism, target_max_block_size, ctx, reader, mem_size
+        parallelism, target_max_block_size, ctx, datasource_or_legacy_reader, mem_size
     )
-    num_read_tasks = len(reader.get_read_tasks(parallelism))
+    num_read_tasks = len(datasource_or_legacy_reader.get_read_tasks(parallelism))
     expected_block_size = None
     if mem_size:
         expected_block_size = mem_size / num_read_tasks
@@ -90,7 +90,7 @@ class SplitReadOutputBlocksRule(Rule):
             estimated_num_blocks,
             k,
         ) = compute_additional_split_factor(
-            logical_op._reader,
+            logical_op._datasource_or_legacy_reader,
             logical_op._parallelism,
             logical_op._mem_size,
             op.actual_target_max_block_size,
