@@ -61,7 +61,6 @@ def get_step(
     test: Test,
     report: bool = False,
     smoke_test: bool = False,
-    ray_wheels: Optional[str] = None,
     env: Optional[Dict] = None,
     priority_val: int = 0,
     global_config: Optional[str] = None,
@@ -80,9 +79,6 @@ def get_step(
 
     if smoke_test:
         cmd += ["--smoke-test"]
-
-    if ray_wheels:
-        cmd += ["--ray-wheels", ray_wheels]
 
     step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
