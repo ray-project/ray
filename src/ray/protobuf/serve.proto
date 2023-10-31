@@ -69,6 +69,7 @@ enum EncodingType {
   JSON = 1;
 } 
 
+
 enum AccessLoggingType {
   // Enable both stream and file based log
   ALL = 0;
@@ -76,6 +77,7 @@ enum AccessLoggingType {
   STREAM_ONLY = 2;
   DISABLE = 3;
 }
+
 
 message LoggingConfig {
   EncodingType encoding = 1;
