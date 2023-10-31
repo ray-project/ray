@@ -1,3 +1,5 @@
+import warnings
+
 from ray.util.accelerators.accelerators import (
     NVIDIA_TESLA_V100,
     NVIDIA_TESLA_P100,
@@ -12,8 +14,6 @@ from ray.util.accelerators.accelerators import (
     GOOGLE_TPU_V2,
     GOOGLE_TPU_V3,
     GOOGLE_TPU_V4,
-    # Deprecated
-    NVIDIA_TESLA_A100,
 )
 
 __all__ = [
@@ -33,3 +33,16 @@ __all__ = [
     # Deprecated
     "NVIDIA_TESLA_A100",
 ]
+
+
+def __getattr__(name: str):
+    if name == "NVIDIA_TESLA_A100":
+        from ray.util.annotations import RayDeprecationWarning
+
+        warnings.warn(
+            "NVIDIA_TESLA_A100 is deprecated, use NVIDIA_A100 instead.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
+        return NVIDIA_A100
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
