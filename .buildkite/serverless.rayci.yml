@@ -1,5 +1,11 @@
 group: serverless tests
 steps:
+  # builds
+  - name: serverlessbuild
+    wanda: ci/docker/serverless.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
+  # tests
   - label: ":serverless: serverless: python tests"
     tags: python
     instance_type: medium
