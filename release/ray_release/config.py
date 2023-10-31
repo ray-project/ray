@@ -40,11 +40,13 @@ RELEASE_TEST_SCHEMA_FILE = bazel_runfile("release/ray_release/schema.json")
 
 
 def read_and_validate_release_test_collection(
-    config_file: str, schema_file: Optional[str] = None
+    config_files: List[str], schema_file: Optional[str] = None
 ) -> List[Test]:
     """Read and validate test collection from config file"""
-    with open(config_file, "rt") as fp:
-        tests = parse_test_definition(yaml.safe_load(fp))
+    tests = []
+    for config_file in config_files:
+        with open(config_file, "rt") as fp:
+            tests += parse_test_definition(yaml.safe_load(fp))
 
     validate_release_test_collection(tests, schema_file=schema_file)
     return tests
