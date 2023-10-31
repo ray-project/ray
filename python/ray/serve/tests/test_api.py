@@ -34,6 +34,7 @@ def serve_and_ray_shutdown():
     ray.shutdown()
     yield
 
+
 @serve.deployment()
 def sync_d():
     return "sync!"
