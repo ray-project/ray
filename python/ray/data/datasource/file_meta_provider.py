@@ -395,12 +395,16 @@ def _expand_paths(
     ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     """Get the file sizes for all provided file paths."""
+    from datetime import datetime
+
     from pyarrow.fs import LocalFileSystem
 
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     )
     from ray.data.datasource.path_util import _unwrap_protocol
+
+    print("_expand_paths()", datetime.now())
 
     # We break down our processing paths into a few key cases:
     # 1. If len(paths) < threshold, fetch the file info for the individual files/paths
@@ -423,6 +427,10 @@ def _expand_paths(
         # If parent directory (or base directory, if using partitioning) is common to
         # all paths, fetch all file infos at that prefix and filter the response to the
         # provided paths.
+        print(
+            f"all(str(pathlib.Path(path).parent) == {common_path} for path in paths)",
+            datetime.now(),
+        )
         if (
             partitioning is not None
             and common_path == _unwrap_protocol(partitioning.base_dir)
@@ -536,12 +544,16 @@ def _fetch_metadata_parallel(
     # dominates the Ray task overhead while ensuring good parallelism.
     # Always launch at least 2 parallel fetch tasks.
     parallelism = max(len(uris) // desired_uris_per_task, 2)
+    import datetime
+
     metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
     fetch_tasks = []
+    print("remote_fetch_func.remote(uri_chunk)", datetime.now())
     for uri_chunk in np.array_split(uris, parallelism):
         if len(uri_chunk) == 0:
             continue
         fetch_tasks.append(remote_fetch_func.remote(uri_chunk))
+    print("metadata_fetch_bar.fetch_until_complete(fetch_tasks)", datetime.now())
     results = metadata_fetch_bar.fetch_until_complete(fetch_tasks)
     yield from itertools.chain.from_iterable(results)
 
