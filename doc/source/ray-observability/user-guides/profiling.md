@@ -144,7 +144,7 @@ Find profiling results under the `/tmp/ray/session_*/logs/{profiler_name}` direc
 
 ![Nsight System Profiler folder](../images/nsight-profiler-folder.png)
 
-To visualize the results, install the [Nsight System GUI](https://developer.nvidia.com/nsight-systems/get-started#latest-Platforms) on your laptop, which becomes the host. Transfer the .nsys-rep file to your host and open it using the GUI. You can now view the visual profiling info.
+To visualize the results, install the [Nsight System 2023.3 or later GUI](https://developer.nvidia.com/nsight-systems/get-started#latest-Platforms) on your laptop, which becomes the host. Transfer the .nsys-rep file to your host and open it using the GUI. You can now view the visual profiling info.
 
 **Note**: The Nsight System Profiler output (-o, --output) option allows you to set the path to a filename. Ray uses the logs directory as the base and appends the output option to it. For example: 
 ```
