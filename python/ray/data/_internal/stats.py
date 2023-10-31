@@ -188,6 +188,12 @@ class _StatsActor:
             description="Bytes outputted by dataset operators",
             tag_keys=tags_keys,
         )
+        self.block_generation_time = Gauge(
+            "data_block_generation_seconds",
+            description="Time spent generating blocks.",
+            tag_keys=tags_keys,
+        )
+
         self.iter_total_blocked_s = Gauge(
             "data_iter_total_blocked_seconds",
             description="Seconds user thread is blocked by iter_batches()",
@@ -247,6 +253,7 @@ class _StatsActor:
         self.bytes_outputted.set(stats["bytes_outputs_generated"], tags)
         self.cpu_usage.set(stats["cpu_usage"], tags)
         self.gpu_usage.set(stats["gpu_usage"], tags)
+        self.block_generation_time.set(stats["block_generation_time"], tags)
 
     def update_iter_metrics(self, stats: "DatasetStats", tags):
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
@@ -260,6 +267,7 @@ class _StatsActor:
         self.bytes_outputted.set(0, tags)
         self.cpu_usage.set(0, tags)
         self.gpu_usage.set(0, tags)
+        self.block_generation_time.set(0, tags)
 
     def clear_iter_metrics(self, tags: Dict[str, str]):
         self.iter_total_blocked_s.set(0, tags)
