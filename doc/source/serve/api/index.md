@@ -362,14 +362,14 @@ Content-Type: application/json
    schema.ReplicaDetails
 ```
 
-```{eval-rst}
+<!-- ```{eval-rst}
 .. autosummary::
    :nosignatures:
    :template: autosummary/class_with_inherited_members.rst
    :toctree: doc/
 
    schema.ReadDeploymentModel
-```
+``` -->
 
 
 ```{eval-rst}
