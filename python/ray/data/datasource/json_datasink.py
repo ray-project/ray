@@ -9,7 +9,7 @@ from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
 
 
-class JSONDatasink(BlockBasedFileDatasink):
+class _JSONDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,

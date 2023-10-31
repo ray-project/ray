@@ -36,7 +36,7 @@ from ray.data.datasource.file_meta_provider import (
 from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.image_datasink import _ImageDatasink
 from ray.data.datasource.image_datasource import ImageDatasource
-from ray.data.datasource.json_datasink import JSONDatasink
+from ray.data.datasource.json_datasink import _JSONDatasink
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.mongo_datasource import MongoDatasource
 from ray.data.datasource.numpy_datasink import _NumpyDatasink
@@ -83,7 +83,7 @@ __all__ = [
     "FilenameProvider",
     "_ImageDatasink",
     "ImageDatasource",
-    "JSONDatasink",
+    "_JSONDatasink",
     "JSONDatasource",
     "_NumpyDatasink",
     "NumpyDatasource",

@@ -111,12 +111,12 @@ from ray.data.datasource import (
     Datasink,
     Datasource,
     FilenameProvider,
-    JSONDatasink,
     ParquetDatasource,
     ReadTask,
     SQLDatasource,
     _CSVDatasink,
     _ImageDatasink,
+    _JSONDatasink,
     _NumpyDatasink,
     _TFRecordDatasink,
     _WebDatasetDatasink,
@@ -2823,7 +2823,7 @@ class Dataset:
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
         """
-        datasink = JSONDatasink(
+        datasink = _JSONDatasink(
             path,
             pandas_json_args_fn=pandas_json_args_fn,
             pandas_json_args=pandas_json_args,
