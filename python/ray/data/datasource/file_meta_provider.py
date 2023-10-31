@@ -162,7 +162,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
             num_rows = len(paths) * rows_per_file
         return BlockMetadata(
             num_rows=num_rows,
-            size_bytes=None if None in file_sizes else sum(file_sizes),
+            size_bytes=None if None in file_sizes else int(sum(file_sizes)),
             schema=schema,
             input_files=paths,
             exec_stats=None,
