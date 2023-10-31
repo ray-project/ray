@@ -7,7 +7,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.bc import BC
-from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
@@ -59,7 +59,7 @@ class NestedActionSpacesTest(unittest.TestCase):
         ray.shutdown()
 
     def test_nested_action_spaces(self):
-        config = PGConfig()
+        config = PPOConfig()
         config["env"] = RandomEnv
         # Write output to check, whether actions are written correctly.
         tmp_dir = os.popen("mktemp -d").read()[:-1]
@@ -86,9 +86,9 @@ class NestedActionSpacesTest(unittest.TestCase):
                     print(f"A={action_space} flatten={flatten}")
                     shutil.rmtree(config["output"])
                     config["_disable_action_flattening"] = not flatten
-                    pg = config.build()
-                    pg.train()
-                    pg.stop()
+                    algo = config.build()
+                    algo.train()
+                    algo.stop()
 
                     # Check actions in output file (whether properly flattened
                     # or not).
@@ -104,7 +104,7 @@ class NestedActionSpacesTest(unittest.TestCase):
                         assert sample_batch["actions"].shape[0] == len(sample_batch)
                     else:
                         tree.assert_same_structure(
-                            pg.get_policy().action_space_struct,
+                            algo.get_policy().action_space_struct,
                             sample_batch["actions"],
                         )
 

@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.algorithms.pg as pg
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import check, framework_iterator
 
@@ -19,7 +19,7 @@ class TestTimeSteps(unittest.TestCase):
     def test_timesteps(self):
         """Test whether PG can be built with both frameworks."""
         config = (
-            pg.PGConfig()
+            ppo.PPOConfig()
             .environment(RandomEnv)
             .rollouts(num_rollout_workers=0)
             .training(

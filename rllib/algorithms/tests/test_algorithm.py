@@ -7,10 +7,9 @@ import time
 import unittest
 
 import ray
-import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BCConfig
-import ray.rllib.algorithms.pg as pg
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -27,7 +26,7 @@ class TestAlgorithm(unittest.TestCase):
         ray.shutdown()
 
     def test_add_delete_policy(self):
-        config = pg.PGConfig()
+        config = ppo.PPOConfig()
         config.environment(
             env=MultiAgentCartPole,
             env_config={
@@ -48,7 +47,7 @@ class TestAlgorithm(unittest.TestCase):
             policy_map_capacity=2,
         ).evaluation(
             evaluation_num_workers=1,
-            evaluation_config=pg.PGConfig.overrides(num_cpus_per_worker=0.1),
+            evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_worker=0.1),
         )
         # Don't override existing model settings.
         config.model.update(
@@ -131,7 +130,7 @@ class TestAlgorithm(unittest.TestCase):
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
-                test = pg.PG.from_checkpoint(checkpoint)
+                test = ppo.PPO.from_checkpoint(checkpoint)
 
                 # Make sure evaluation worker also got the restored, added policy.
                 def _has_policies(w):
@@ -297,7 +296,7 @@ class TestAlgorithm(unittest.TestCase):
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation.
         config = (
-            a3c.A3CConfig()
+            ppo.PPOConfig()
             .environment(env="CartPole-v1")
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -331,7 +330,7 @@ class TestAlgorithm(unittest.TestCase):
         env = gym.make("CartPole-v1")
 
         config = (
-            pg.PGConfig()
+            ppo.PPOConfig()
             .rollouts(num_rollout_workers=1, validate_workers_after_construction=False)
             .environment(env="CartPole-v1")
         )
@@ -370,7 +369,7 @@ class TestAlgorithm(unittest.TestCase):
 
     def test_worker_validation_time(self):
         """Tests the time taken by `validate_workers_after_construction=True`."""
-        config = pg.PGConfig().environment(env="CartPole-v1")
+        config = ppo.PPOConfig().environment(env="CartPole-v1")
         config.validate_workers_after_construction = True
 
         # Test, whether validating one worker takes just as long as validating
@@ -425,7 +424,7 @@ class TestAlgorithm(unittest.TestCase):
     def test_counters_after_checkpoint(self):
         # We expect algorithm to no start counters from zero after loading a
         # checkpoint on a fresh Algorithm instance
-        config = pg.PGConfig().environment(env="CartPole-v1")
+        config = ppo.PPOConfig().environment(env="CartPole-v1")
         algo = config.build()
 
         self.assertTrue(all(c == 0 for c in algo._counters.values()))

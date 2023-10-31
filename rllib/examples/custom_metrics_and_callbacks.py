@@ -16,11 +16,11 @@ import os
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import Episode, RolloutWorker
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.algorithms.pg.pg import PGConfig
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = (
-        PGConfig()
+        PPOConfig()
         .environment(CustomCartPole)
         .framework(args.framework)
         .callbacks(MyCallbacks)
@@ -191,7 +191,7 @@ if __name__ == "__main__":
 
     ray.init(local_mode=True)
     tuner = tune.Tuner(
-        "PG",
+        "PPO",
         run_config=air.RunConfig(
             stop={
                 "training_iteration": args.stop_iters,

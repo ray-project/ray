@@ -2,14 +2,8 @@
 
 import importlib
 import re
-import traceback
-from typing import Tuple, Type, TYPE_CHECKING, Union
 
 from ray.rllib.utils.deprecation import Deprecated
-
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 def _import_appo():

@@ -300,48 +300,6 @@ py_test(
     args = ["--dir=tuned_examples/impala"]
 )
 
-# PG
-# TODO (sven): Move these PG tests for crashing workers/envs to be done by PPO as PG will be moved into `rllib_contrib`.
-py_test(
-    name = "learning_tests_cartpole_crashing_pg",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/cartpole-crashing-pg.yaml"],
-    args = ["--dir=tuned_examples/pg"]
-)
-
-py_test(
-    name = "learning_tests_cartpole_crashing_with_remote_envs_pg",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/cartpole-crashing-with-remote-envs-pg.yaml"],
-    args = ["--dir=tuned_examples/pg"]
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_restart_sub_envs_pg",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-restart-sub-envs-pg.yaml"],
-    args = ["--dir=tuned_examples/pg"]
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_with_remote_envs_pg",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-with-remote-envs-pg.yaml"],
-    args = ["--dir=tuned_examples/pg", "--num-cpus=14"]
-)
-
 # PPO
 # w/ new EnvRunner
 py_test(
@@ -774,20 +732,6 @@ py_test(
     srcs = ["env/tests/test_env_with_subprocess.py"]
 )
 
-py_test(
-    name = "env/tests/test_external_env",
-    tags = ["team:rllib", "env"],
-    size = "large",
-    srcs = ["env/tests/test_external_env.py"]
-)
-
-py_test(
-    name = "env/tests/test_external_multi_agent_env",
-    tags = ["team:rllib", "env"],
-    size = "small",
-    srcs = ["env/tests/test_external_multi_agent_env.py"]
-)
-
 sh_test(
     name = "env/tests/test_local_inference_cartpole",
     tags = ["team:rllib", "env"],
@@ -861,13 +805,6 @@ sh_test(
 #     args = ["remote", "unity3d", "8860"],
 #     data = glob(["examples/serving/*.py"]),
 # )
-
-py_test(
-    name = "env/tests/test_remote_worker_envs",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_remote_worker_envs.py"]
-)
 
 py_test(
     name = "env/wrappers/tests/test_exception_wrapper",
@@ -1451,13 +1388,6 @@ py_test(
 )
 
 py_test(
-    name = "test_parameter_noise",
-    tags = ["team:rllib", "utils"],
-    size = "medium",
-    srcs = ["utils/exploration/tests/test_parameter_noise.py"]
-)
-
-py_test(
     name = "test_random_encoder",
     tags = ["team:rllib", "utils"],
     size = "large",
@@ -1662,24 +1592,6 @@ py_test(
     size = "large",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreOffPolicy"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_evolution_algos",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "medium",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreEvolutionAlgos"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_evolution_algos_gpu",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
-    size = "medium",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreEvolutionAlgos"]
 )
 
 py_test(
@@ -1968,15 +1880,6 @@ py_test(
     size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesOffPolicy"]
-)
-
-py_test(
-    name = "tests/test_supported_spaces_evolution_algos",
-    main = "tests/test_supported_spaces.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_supported_spaces.py"],
-    args = ["TestSupportedSpacesEvolutionAlgos"]
 )
 
 py_test(

@@ -7,15 +7,12 @@ import unittest
 import ray
 from ray.util.state import list_actors
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.a3c import A3CConfig
-from ray.rllib.algorithms.apex_dqn import ApexDQNConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
-from ray.rllib.algorithms.pg import PGConfig
-from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
-from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
-from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
+from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.env.random_env import RandomEnv
@@ -220,9 +217,9 @@ class AddPolicyCallback(DefaultCallbacks):
         algorithm.add_policy(
             policy_id="test_policy",
             policy_cls=(
-                PGTorchPolicy
+                PPOTorchPolicy
                 if algorithm.config.framework_str == "torch"
-                else PGTF2Policy
+                else PPOTF2Policy
             ),
             observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
             action_space=gym.spaces.Discrete(2),
@@ -375,36 +372,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def test_fatal(self):
         # Test the case where all workers fail (w/o recovery).
-        self._do_test_fault_fatal(PGConfig().training(optimizer={}))
-
-    def test_async_grads(self):
-        self._do_test_fault_ignore(
-            A3CConfig()
-            .training(optimizer={"grads_per_step": 1})
-            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
-        )
-
-    def test_async_replay(self):
-        config = (
-            ApexDQNConfig()
-            .training(
-                optimizer={
-                    "num_replay_buffer_shards": 1,
-                },
-            )
-            .rollouts(
-                env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
-            )
-            .reporting(
-                min_sample_timesteps_per_iteration=1000,
-                min_time_s_per_iteration=1,
-            )
-            .resources(num_gpus=0)
-            .exploration(explore=False)
-        )
-        config.target_network_update_freq = 100
-        self._do_test_fault_ignore(config=config)
+        self._do_test_fault_fatal(PPOConfig().training(optimizer={}))
 
     def test_async_samples(self):
         self._do_test_fault_ignore(
@@ -436,14 +404,14 @@ class TestWorkerFailures(unittest.TestCase):
 
     def test_sync_samples(self):
         self._do_test_fault_ignore(
-            PGConfig()
+            PPOConfig()
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(optimizer={})
         )
 
     def test_async_sampling_option(self):
         self._do_test_fault_ignore(
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 sample_async=True,
@@ -454,7 +422,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_eval_workers_failing_ignore(self):
         # Test the case where one eval worker fails, but we chose to ignore.
         self._do_test_fault_ignore(
-            PGConfig()
+            PPOConfig()
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(model={"fcnet_hiddens": [4]}),
             fail_eval=True,
@@ -463,7 +431,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_recreate_eval_workers_parallel_to_training_w_actor_manager(self):
         # Test the case where all eval workers fail, but we chose to recover.
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .evaluation(
                 evaluation_num_workers=1,
@@ -483,7 +451,7 @@ class TestWorkerFailures(unittest.TestCase):
         # different `policy_mapping_fn` in eval- vs train workers, but we chose
         # to recover.
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .multi_agent(
                 policies={"main", "p0", "p1"},
@@ -509,7 +477,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_eval_workers_failing_fatal(self):
         # Test the case where all eval workers fail (w/o recovery).
         self._do_test_fault_fatal(
-            PGConfig().training(model={"fcnet_hiddens": [4]}),
+            PPOConfig().training(model={"fcnet_hiddens": [4]}),
             fail_eval=True,
         )
 
@@ -519,7 +487,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -573,7 +541,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -596,7 +564,7 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=1,
                 evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(
+                evaluation_config=PPOConfig.overrides(
                     recreate_failed_workers=True,
                     # Restart the entire eval worker.
                     restart_failed_sub_environments=False,
@@ -668,7 +636,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -682,7 +650,7 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(
+                evaluation_config=PPOConfig.overrides(
                     env_config={
                         "evaluation": True,
                         "p_terminated": 0.0,
@@ -803,7 +771,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("fault_env")
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
@@ -827,7 +795,7 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(
+                evaluation_config=PPOConfig.overrides(
                     recreate_failed_workers=True,
                     # Now instead of recreating failed workers,
                     # we want to recreate the failed sub env instead.
@@ -885,7 +853,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
@@ -911,7 +879,7 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(
+                evaluation_config=PPOConfig.overrides(
                     # Now instead of recreating failed workers,
                     # we want to recreate the failed sub env instead.
                     restart_failed_sub_environments=True,
@@ -960,7 +928,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=1,
@@ -985,7 +953,7 @@ class TestWorkerFailures(unittest.TestCase):
             .evaluation(
                 evaluation_num_workers=1,
                 evaluation_interval=1,
-                evaluation_config=PGConfig.overrides(
+                evaluation_config=PPOConfig.overrides(
                     env_config={
                         "evaluation": True,
                     }
@@ -1022,7 +990,7 @@ class TestWorkerFailures(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = (
-            PGConfig()
+            PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=1,
@@ -1091,7 +1059,7 @@ class TestWorkerFailures(unittest.TestCase):
         # auto-terminate the episode). However, in the eval workers, don't set a
         # horizon -> Expect warning and no proper evaluation results.
         config = (
-            PGConfig()
+            PPOConfig()
             .environment(env=RandomEnv, env_config={"p_terminated": 0.0})
             .rollouts(num_rollout_workers=2)
             .reporting(metrics_episode_collection_timeout_s=5.0)

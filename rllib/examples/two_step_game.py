@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run", type=str, default="PG", help="The RLlib-registered algorithm to use."
+    "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
 )
 parser.add_argument(
     "--framework",

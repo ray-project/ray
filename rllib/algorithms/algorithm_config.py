@@ -74,7 +74,6 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
-from ray.util import log_once
 
 gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
@@ -209,9 +208,9 @@ class AlgorithmConfig(_Config):
         .. testcode::
 
             from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-            from ray.rllib.algorithms.pg import PGConfig
+            from ray.rllib.algorithms.ppo import PPOConfig
             config = (
-                PGConfig()
+                PPOConfig()
                 .evaluation(
                     evaluation_num_workers=1,
                     evaluation_interval=1,
