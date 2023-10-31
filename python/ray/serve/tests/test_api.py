@@ -11,18 +11,21 @@ import starlette.responses
 from fastapi import FastAPI
 
 import ray
+import ray.util.state as state_api
 from ray import serve
 from ray._private.pydantic_compat import BaseModel, ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_CONTROLLER_NAME, SERVE_NAMESPACE, SERVE_PROXY_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.logging_utils import (
+    get_component_log_file_name,
+    get_serve_logs_dir,
+)
 from ray.serve.deployment import Application
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, RayServeHandle
-from ray.serve._private.logging_utils import get_component_log_file_name, get_serve_logs_dir
-import ray.util.state as state_api
 
 
 @serve.deployment()
@@ -1031,7 +1034,6 @@ def check_log_file(log_file: str, expected_regex: list):
 
 
 class TestLoggingAPI:
-
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
     def test_encoding(self, serve_instance, encoding_type):
         """Test serve.run logging API"""
@@ -1133,10 +1135,11 @@ class TestLoggingAPI:
 
         resp = requests.get("http://127.0.0.1:8000/")
         assert resp.status_code == 200
-    
+
     def test_application_logging_overwrite(self, serve_instance):
 
         logger = logging.getLogger("ray.serve")
+
         @serve.deployment
         class Model:
             def __call__(self, req: starlette.requests.Request):
@@ -1161,17 +1164,20 @@ class TestLoggingAPI:
             print(actor["name"])
             if "SERVE_CONTROLLER_ACTOR" == actor["name"]:
                 controller_pid = actor["pid"]
-        controller_log_file_name = get_component_log_file_name("controller", controller_pid, component_type=None, suffix=".log")
+        controller_log_file_name = get_component_log_file_name(
+            "controller", controller_pid, component_type=None, suffix=".log"
+        )
         controller_log_path = os.path.join(serve_log_dir, controller_log_file_name)
         check_log_file(controller_log_path, expected_log_regex)
 
         # Check proxy log
         nodes = state_api.list_nodes()
         node_ip_address = nodes[0].node_ip
-        proxy_log_file_name = get_component_log_file_name("proxy", node_ip_address, component_type=None, suffix=".log")
+        proxy_log_file_name = get_component_log_file_name(
+            "proxy", node_ip_address, component_type=None, suffix=".log"
+        )
         proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
         check_log_file(proxy_log_path, expected_log_regex)
-
 
 
 if __name__ == "__main__":
