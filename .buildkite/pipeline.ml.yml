@@ -71,6 +71,9 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel,-team:core
       doc/...
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=xcommit,-gpu
+      doc/...
 
 - label: ":book: Doc tests and examples with time series libraries"
   conditions:
