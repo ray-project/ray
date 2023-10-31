@@ -70,10 +70,10 @@ enum EncodingType {
 } 
 
 enum AccessLoggingType {
-    ALL = 0;
-    FILE_ONLY = 1;
-    STREAM_ONLY = 2;
-    DISABLE = 3;
+  ALL = 0;
+  FILE_ONLY = 1;
+  STREAM_ONLY = 2;
+  DISABLE = 3;
 }
 
 message LoggingConfig {
