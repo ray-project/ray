@@ -700,21 +700,6 @@ py_test(
 )
 
 py_test(
-    name = "test_template",
-    size = "small",
-    srcs = ["ray_release/tests/test_template.py"],
-    exec_compatible_with = ["//:hermetic_python"],
-    tags = [
-        "release_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":ray_release",
-        bk_require("pytest"),
-    ],
-)
-
-py_test(
     name = "test_test",
     size = "small",
     srcs = ["ray_release/tests/test_test.py"],

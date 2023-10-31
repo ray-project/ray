@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -122,7 +123,7 @@ def test_pg_removed_on_replica_crash(serve_instance):
     )
     class D:
         def die(self):
-            sys.exit()
+            os._exit(1)
 
         def get_pg(self) -> PlacementGroup:
             return get_current_placement_group()
@@ -193,7 +194,7 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     )
     class D:
         def die(self):
-            sys.exit()
+            os._exit(1)
 
         def get_pg(self) -> PlacementGroup:
             return get_current_placement_group()
