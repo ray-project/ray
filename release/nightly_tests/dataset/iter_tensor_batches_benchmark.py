@@ -36,6 +36,8 @@ def iter_torch_batches(
         "num_batches:",
         num_batches,
     )
+    print(f"iter_torch_batches batch_size={batch_size}, prefetch_batches={prefetch_batches}")
+    print(ds.stats())
     return ds
 
 
@@ -100,12 +102,18 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
             ds=ds,
             batch_size=batch_size,
         )
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.target_max_block_size = 512 * 1024 * 1024
+    ds = ray.data.read_images(
+        f"s3://anonymous@air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
+    )
+    ds = ds.map_batches(add_label, batch_format="pandas").materialize()
+    # Test with varying batch sizes for iter_torch_batches() and to_tf().
+    for batch_size in batch_sizes:
         benchmark.run_materialize_ds(
-            f"to-tf-{batch_size}",
-            to_tf,
+            f"iter-torch-batches-{batch_size}-block-size-512mb",
+            iter_torch_batches,
             ds=ds,
-            feature_columns="image",
-            label_columns="label",
             batch_size=batch_size,
         )
 
