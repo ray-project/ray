@@ -32,7 +32,10 @@ from ray.serve.handle import DeploymentHandle, RayServeHandle
 def serve_and_ray_shutdown():
     serve.shutdown()
     ray.shutdown()
-    yield
+    yield ray.init()
+
+    serve.shutdown()
+    ray.shutdown()
 
 
 @serve.deployment()
@@ -1185,9 +1188,6 @@ class TestLoggingAPI:
         )
         proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
         check_log_file(proxy_log_path, expected_log_regex)
-
-        serve.shutdown()
-        ray.shutdown()
 
 
 if __name__ == "__main__":
