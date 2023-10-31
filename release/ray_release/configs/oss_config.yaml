@@ -9,6 +9,3 @@ state_machine:
   aws_bucket: ray-ci-results
 credentials:
   aws2gce: release/aws2gce_iam.json
-test_collections:
-  # relative path to release directory
-  - release_tests.yaml

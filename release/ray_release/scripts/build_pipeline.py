@@ -2,7 +2,7 @@ import json
 import os
 import shutil
 import sys
-from typing import Optional
+from typing import Tuple
 from pathlib import Path
 
 import click
@@ -35,9 +35,9 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 @click.command()
 @click.option(
     "--test-collection-file",
-    default=None,
     type=str,
-    help="File containing test configurations",
+    multiple=True,
+    help="Test collection file, relative path to ray repo.",
 )
 @click.option(
     "--run-jailed-tests",
@@ -62,7 +62,7 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     help="Global config to use for test execution.",
 )
 def main(
-    test_collection_file: Optional[str] = None,
+    test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
     global_config: str = "oss_config.yaml",
@@ -76,10 +76,6 @@ def main(
     tmpdir = None
 
     env = {}
-    test_collection_file = test_collection_file or os.path.join(
-        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-    )
-
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
     test_attr_regex_filters = settings["test_attr_regex_filters"]
@@ -100,7 +96,7 @@ def main(
 
     try:
         test_collection = read_and_validate_release_test_collection(
-            test_collection_file
+            test_collection_file or ["release/release_tests.yaml"]
         )
     except ReleaseTestConfigError as e:
         raise ReleaseTestConfigError(
@@ -187,6 +183,7 @@ def main(
                 env.update({"RAY_COMMIT_OF_WHEEL": ray_commit})
             step = get_step(
                 test,
+                test_collection_file,
                 report=report,
                 smoke_test=smoke_test,
                 ray_wheels=this_ray_wheels_url,
