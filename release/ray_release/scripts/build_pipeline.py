@@ -26,9 +26,9 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 @click.command()
 @click.option(
     "--test-collection-file",
-    multiple=True,
     type=str,
-    help="Files containing test configurations",
+    multiple=True,
+    help="Test collection file, relative path to ray repo.",
 )
 @click.option(
     "--run-jailed-tests",
@@ -67,13 +67,6 @@ def main(
     tmpdir = None
 
     env = {}
-    if test_collection_file:
-        test_collection_file = list(test_collection_file)
-    else:
-        test_collection_file = [
-            os.path.join(os.path.dirname(__file__), "..", "..", "release_tests.yaml")
-        ]
-
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
     test_attr_regex_filters = settings["test_attr_regex_filters"]
@@ -92,7 +85,7 @@ def main(
 
     try:
         test_collection = read_and_validate_release_test_collection(
-            test_collection_file
+            test_collection_file or ["release/release_tests.yaml"]
         )
     except ReleaseTestConfigError as e:
         raise ReleaseTestConfigError(
@@ -160,6 +153,7 @@ def main(
         for test, smoke_test in tests:
             step = get_step(
                 test,
+                test_collection_file,
                 report=report,
                 smoke_test=smoke_test,
                 env=env,
