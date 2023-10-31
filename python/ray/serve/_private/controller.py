@@ -231,8 +231,8 @@ class ServeController:
     def reconfigure_system_logging_config(self, logging_config: LoggingConfig):
         if self.logging_config.version == logging_config.version:
             return
-        self.logging_config = logging_config
         self.kv.put(LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(logging_config))
+        self.logging_config = logging_config
 
         self.long_poll_host.notify_changed(
             LongPollNamespace.SYSTEM_LOGGING_CONFIG,
