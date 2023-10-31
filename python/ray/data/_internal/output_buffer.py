@@ -72,7 +72,7 @@ class BlockOutputBuffer:
         block_to_yield = self._buffer.build()
         block_remainder = None
         block = BlockAccessor.for_block(block_to_yield)
-        if block.size_bytes() > self._target_max_block_size:
+        if block.size_bytes() >= 1.5 * self._target_max_block_size:
             num_bytes_per_row = block.size_bytes() // block.num_rows()
             target_num_rows = self._target_max_block_size // num_bytes_per_row
             target_num_rows = max(1, target_num_rows)

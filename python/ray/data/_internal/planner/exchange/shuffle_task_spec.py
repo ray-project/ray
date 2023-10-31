@@ -62,7 +62,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             del mapped_block
             block = builder.build()
         block = BlockAccessor.for_block(block)
-        if block.size_bytes() >= 1.5 * target_shuffle_max_block_size:
+        if block.size_bytes() > 1.5 * target_shuffle_max_block_size:
             logger.get_logger().warn(
                 "Input block to map task has size "
                 f"{block.size_bytes() // (1024 * 1024)}MiB, which exceeds "
