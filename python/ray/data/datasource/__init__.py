@@ -1,3 +1,4 @@
+from ray.data.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.block_path_provider import (
@@ -5,6 +6,7 @@ from ray.data.datasource.block_path_provider import (
     DefaultBlockWritePathProvider,
 )
 from ray.data.datasource.csv_datasource import CSVDatasource
+from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import (
     Datasource,
     DummyOutputDatasource,
@@ -40,6 +42,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
+from ray.data.datasource.sql_datasink import SQLDatasink
 from ray.data.datasource.sql_datasource import Connection, SQLDatasource
 from ray.data.datasource.text_datasource import TextDatasource
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
@@ -52,11 +55,14 @@ from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 __all__ = [
     "BaseFileMetadataProvider",
     "BinaryDatasource",
+    "BigQueryDatasink",
     "BigQueryDatasource",
     "BlockWritePathProvider",
     "Connection",
     "CSVDatasource",
+    "Datasink",
     "Datasource",
+    "SQLDatasink",
     "SQLDatasource",
     "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
