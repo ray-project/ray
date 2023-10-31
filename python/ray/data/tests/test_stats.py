@@ -1302,8 +1302,8 @@ def test_op_state_logging():
 
         for i, log in enumerate(logs):
             if log == "vvv scheduling trace vvv":
-                assert "Input" in logs[i+1]
-                assert "ReadRange->MapBatches(<lambda>)" in logs[i+2]
+                assert "Input" in logs[i + 1]
+                assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
 
 
 if __name__ == "__main__":
