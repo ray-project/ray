@@ -78,7 +78,6 @@ __all__ = [
     "DummyOutputDatasource",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
-    "FileDatasink",
     "FileExtensionFilter",
     "FileMetadataProvider",
     "FilenameProvider",
