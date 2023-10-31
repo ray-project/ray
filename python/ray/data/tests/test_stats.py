@@ -1292,23 +1292,18 @@ def test_op_metrics_logging():
         assert sum([log == map_str for log in logs]) == 1
 
 
-def test_progress_bar_logging():
-    def _test_progress_bar_logging():
-        logger = DatasetLogger(
-            "ray.data._internal.execution.streaming_executor"
-        ).get_logger()
-        with patch.object(logger, "info") as mock_logger:
-            ray.data.range(100).map_batches(lambda x: x).materialize()
-            logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
+def test_op_state_logging():
+    logger = DatasetLogger(
+        "ray.data._internal.execution.streaming_executor"
+    ).get_logger()
+    with patch.object(logger, "info") as mock_logger:
+        ray.data.range(100).map_batches(lambda x: x).materialize()
+        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
 
-            for log in logs:
-                if log.startswith("Execution Progress Status:"):
-                    assert "Input" in log
-                    assert "ReadRange->MapBatches(<lambda>)" in log
-
-    _test_progress_bar_logging()
-    with patch("ray.data._internal.execution.streaming_executor.tqdm", new=None):
-        _test_progress_bar_logging()
+        for i, log in enumerate(logs):
+            if log == "vvv scheduling trace vvv":
+                assert "Input" in logs[i+1]
+                assert "ReadRange->MapBatches(<lambda>)" in logs[i+2]
 
 
 if __name__ == "__main__":

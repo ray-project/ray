@@ -41,14 +41,10 @@ from ray.data._internal.stats import (
 )
 from ray.data.context import DataContext
 
-try:
-    import tqdm
-except ImportError:
-    tqdm = None
-
 logger = DatasetLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
+# If not set, execution state will still be logged after each scheduling loop.
 DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
 
 # Force a progress bar update after this many events processed . This avoids the
@@ -296,27 +292,11 @@ class StreamingExecutor(Executor, threading.Thread):
         update_operator_states(topology)
 
         # Update the progress bar to reflect scheduling decisions.
-        log_str = "Execution Progress Status:\n"
-        cur_time = time.perf_counter()
-        for op, op_state in topology.items():
+        for op_state in topology.values():
             op_state.refresh_progress_bar()
-            if tqdm is not None:
-                log_str += (
-                    tqdm.tqdm.format_meter(
-                        op_state.num_completed_tasks,
-                        op.num_outputs_total(),
-                        cur_time - self._start_time,
-                        prefix=op.name,
-                        bar_format="{desc:<35.34}{percentage:3.0f}%|{bar}{r_bar}",
-                    )
-                    + "\n"
-                )
-            else:
-                log_str += (
-                    f"{op.name}: "
-                    f"{op_state.num_completed_tasks}/{op.num_outputs_total()}\n"
-                )
-        logger.get_logger(log_to_stdout=False).info(log_str)
+
+        if not DEBUG_TRACE_SCHEDULING:
+            _debug_dump_topology(topology, log_to_stdout=False)
 
         update_stats_actor_metrics(
             [op.metrics for op in self._topology], {"dataset": self._dataset_tag}
@@ -435,13 +415,16 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
         raise ValueError(error_message.strip())
 
 
-def _debug_dump_topology(topology: Topology) -> None:
+def _debug_dump_topology(topology: Topology, log_to_stdout: bool = True) -> None:
     """Print out current execution state for the topology for debugging.
 
     Args:
         topology: The topology to debug.
     """
-    logger.get_logger().info("vvv scheduling trace vvv")
+    logger.get_logger(log_to_stdout).info("vvv scheduling trace vvv")
     for i, (op, state) in enumerate(topology.items()):
-        logger.get_logger().info(f"{i}: {state.summary_str()}")
-    logger.get_logger().info("^^^ scheduling trace ^^^")
+        logger.get_logger(log_to_stdout).info(
+            f"{i}: {state.summary_str()}, "
+            f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
+        )
+    logger.get_logger(log_to_stdout).info("^^^ scheduling trace ^^^")
