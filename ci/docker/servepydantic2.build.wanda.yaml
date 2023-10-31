@@ -6,6 +6,6 @@ srcs:
   - python/requirements_compiled.txt
   - python/requirements/test-requirements.txt
 build_args:
-  - PYDANTIC_VERSION=2.4.2
+  - BUILD_PYDANTIC_NIGHTLY=1
 tags:
   - cr.ray.io/rayproject/servepydantic2build
