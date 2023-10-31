@@ -20,6 +20,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import DeploymentHandle
+from ray.serve.tests.common.remote_uris import TEST_DAG_REMOTE_URI
 from ray.serve.tests.common.utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
@@ -390,10 +391,7 @@ def test_run_runtime_env(ray_start_stop):
                 '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
             ),
             "--working-dir",
-            (
-                "https://github.com/ray-project/test_dag/archive/"
-                "e85f0754d1d033b3153b71bd4aabd655e07c29b9.zip"
-            ),
+            TEST_DAG_REMOTE_URI,
         ]
     )
     wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
