@@ -1,11 +1,10 @@
 from collections import deque
 import copy
 from typing import Any, Dict, List, Optional, Union
-import uuid
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
@@ -101,12 +100,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         return self.get_num_timesteps()
 
     @override(ReplayBufferInterface)
-    def add(self, episodes: Union[List["_Episode"], "_Episode"]):
-        """Converts the incoming SampleBatch into a number of _Episode objects.
+    def add(self, episodes: Union[List["SingleAgentEpisode"], "SingleAgentEpisode"]):
+        """Converts the incoming SampleBatch into a number of SingleAgentEpisode objects.
 
         Then adds these episodes to the internal deque.
         """
-        if isinstance(episodes, _Episode):
+        if isinstance(episodes, SingleAgentEpisode):
             episodes = [episodes]
 
         for eps in episodes:
@@ -350,7 +349,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
     @override(ReplayBufferInterface)
     def set_state(self, state) -> None:
         self.episodes = deque(
-            [_Episode.from_state(eps_data) for eps_data in state["episodes"]]
+            [SingleAgentEpisode.from_state(eps_data) for eps_data in state["episodes"]]
         )
         self.episode_id_to_index = dict(state["episode_id_to_index"])
         self._num_episodes_evicted = state["_num_episodes_evicted"]
@@ -358,318 +357,3 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self._num_timesteps = state["_num_timesteps"]
         self._num_timesteps_added = state["_num_timesteps_added"]
         self.sampled_timesteps = state["sampled_timesteps"]
-
-
-# TODO (sven): Make this EpisodeV3 - replacing EpisodeV2 - to reduce all the
-#  information leakage we currently have in EpisodeV2 (policy_map, worker, etc.. are
-#  all currently held by EpisodeV2 for no good reason).
-class _Episode:
-    def __init__(
-        self,
-        id_: Optional[str] = None,
-        *,
-        observations=None,
-        actions=None,
-        rewards=None,
-        infos=None,
-        states=None,
-        t: int = 0,
-        is_terminated: bool = False,
-        is_truncated: bool = False,
-        render_images=None,
-        extra_model_outputs=None,
-    ):
-        self.id_ = id_ or uuid.uuid4().hex
-        # Observations: t0 (initial obs) to T.
-        self.observations = [] if observations is None else observations
-        # Actions: t1 to T.
-        self.actions = [] if actions is None else actions
-        # Rewards: t1 to T.
-        self.rewards = [] if rewards is None else rewards
-        # Infos: t0 (initial info) to T.
-        self.infos = [] if infos is None else infos
-        # h-states: t0 (in case this episode is a continuation chunk, we need to know
-        # about the initial h) to T.
-        self.states = states
-        # The global last timestep of the episode and the timesteps when this chunk
-        # started.
-        self.t = self.t_started = t
-        # obs[-1] is the final observation in the episode.
-        self.is_terminated = is_terminated
-        # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
-        # observations in following chunks for this episode).
-        self.is_truncated = is_truncated
-        # RGB uint8 images from rendering the env; the images include the corresponding
-        # rewards.
-        assert render_images is None or observations is not None
-        self.render_images = [] if render_images is None else render_images
-        # Extra model outputs, e.g. `action_dist_input` needed in the batch.
-        self.extra_model_outputs = (
-            {} if extra_model_outputs is None else extra_model_outputs
-        )
-
-    def concat_episode(self, episode_chunk: "_Episode"):
-        """Adds the given `episode_chunk` to the right side of self."""
-        assert episode_chunk.id_ == self.id_
-        assert not self.is_done
-        # Make sure the timesteps match.
-        assert self.t == episode_chunk.t_started
-
-        episode_chunk.validate()
-
-        # Make sure, end matches other episode chunk's beginning.
-        assert np.all(episode_chunk.observations[0] == self.observations[-1])
-        # Make sure the timesteps match (our last t should be the same as their first).
-        assert self.t == episode_chunk.t_started
-        # Pop out our last observations and infos (as these are identical
-        # to the first obs and infos in the next episode).
-        self.observations.pop()
-        self.infos.pop()
-
-        # Extend ourselves. In case, episode_chunk is already terminated (and numpyfied)
-        # we need to convert to lists (as we are ourselves still filling up lists).
-        self.observations.extend(list(episode_chunk.observations))
-        self.actions.extend(list(episode_chunk.actions))
-        self.rewards.extend(list(episode_chunk.rewards))
-        self.infos.extend(list(episode_chunk.infos))
-        self.t = episode_chunk.t
-        self.states = episode_chunk.states
-
-        if episode_chunk.is_terminated:
-            self.is_terminated = True
-        elif episode_chunk.is_truncated:
-            self.is_truncated = True
-
-        for k, v in episode_chunk.extra_model_outputs.items():
-            self.extra_model_outputs[k].extend(list(v))
-        # Validate.
-        self.validate()
-
-    def add_initial_observation(
-        self,
-        *,
-        initial_observation,
-        initial_info=None,
-        initial_state=None,
-        initial_render_image=None,
-    ):
-        assert not self.is_done
-        assert len(self.observations) == 0
-        # Assume that this episode is completely empty and has not stepped yet.
-        # Leave self.t (and self.t_started) at 0.
-        assert self.t == self.t_started == 0
-
-        initial_info = initial_info or {}
-
-        self.observations.append(initial_observation)
-        self.infos.append(initial_info)
-        self.states = initial_state
-        if initial_render_image is not None:
-            self.render_images.append(initial_render_image)
-        self.validate()
-
-    def add_timestep(
-        self,
-        observation,
-        action,
-        reward,
-        *,
-        info=None,
-        state=None,
-        is_terminated=False,
-        is_truncated=False,
-        render_image=None,
-        extra_model_output=None,
-    ):
-        # Cannot add data to an already done episode.
-        assert not self.is_done
-
-        info = info or {}
-
-        self.observations.append(observation)
-        self.actions.append(action)
-        self.rewards.append(reward)
-        self.infos.append(info)
-        self.states = state
-        self.t += 1
-        if render_image is not None:
-            self.render_images.append(render_image)
-        if extra_model_output is not None:
-            for k, v in extra_model_output.items():
-                if k not in self.extra_model_outputs:
-                    self.extra_model_outputs[k] = [v]
-                else:
-                    self.extra_model_outputs[k].append(v)
-        self.is_terminated = is_terminated
-        self.is_truncated = is_truncated
-        self.validate()
-
-    def validate(self):
-        # Make sure we always have one more obs stored than rewards (and actions)
-        # due to the reset and last-obs logic of an MDP.
-        assert len(self.observations) == len(self.rewards) + 1 == len(self.actions) + 1
-        assert len(self.rewards) == (self.t - self.t_started)
-        # Convert all lists to numpy arrays, if we are terminated.
-        if self.is_done:
-            self.convert_lists_to_numpy()
-
-    @property
-    def is_done(self):
-        """Whether the episode is actually done (terminated or truncated).
-
-        A done episode cannot be continued via `self.add_timestep()` or being
-        concatenated on its right-side with another episode chunk or being
-        succeeded via `self.create_successor()`.
-        """
-        return self.is_terminated or self.is_truncated
-
-    def convert_lists_to_numpy(self):
-        """Converts list attributes to numpy arrays."""
-
-        self.observations = np.array(self.observations)
-        self.actions = np.array(self.actions)
-        self.rewards = np.array(self.rewards)
-        self.infos = np.array(self.infos)
-        self.render_images = np.array(self.render_images, dtype=np.uint8)
-        for k, v in self.extra_model_outputs.items():
-            self.extra_model_outputs[k] = np.array(v)
-
-    def create_successor(self) -> "_Episode":
-        """Returns a successor episode chunk (of len=0) continuing with this one.
-
-        The successor will have the same ID and state as self and its only observation
-        will be the last observation in self. Its length will therefore be 0 (no
-        steps taken yet).
-
-        This method is useful if you would like to discontinue building an episode
-        chunk (b/c you have to return it from somewhere), but would like to have a new
-        episode (chunk) instance to continue building the actual env episode at a later
-        time.
-
-        Returns:
-            The successor Episode chunk of this one with the same ID and state and the
-            only observation being the last observation in self.
-        """
-        assert not self.is_done
-
-        return _Episode(
-            # Same ID.
-            id_=self.id_,
-            # First (and only) observation of successor is this episode's last obs.
-            observations=[self.observations[-1]],
-            # In addition, first (and only) info of successor is the episode's last
-            # info.
-            infos=[self.infos[-1]],
-            # Same state.
-            states=self.states,
-            # Continue with self's current timestep.
-            t=self.t,
-        )
-
-    def to_sample_batch(self):
-        """Converts an episode to a SampleBatch object."""
-
-        # If the episode is not done, yet, we need to convert
-        # to arrays first.
-        if not self.is_done:
-            self.convert_lists_to_numpy()
-
-        # Return the sample batch.
-        return SampleBatch(
-            {
-                SampleBatch.EPS_ID: np.array([self.id_] * len(self)),
-                SampleBatch.OBS: self.observations[:-1],
-                SampleBatch.NEXT_OBS: self.observations[1:],
-                SampleBatch.ACTIONS: self.actions,
-                SampleBatch.REWARDS: self.rewards,
-                SampleBatch.TERMINATEDS: np.array(
-                    [False] * (len(self) - 1) + [self.is_terminated]
-                ),
-                SampleBatch.TRUNCATEDS: np.array(
-                    [False] * (len(self) - 1) + [self.is_truncated]
-                ),
-                SampleBatch.INFOS: self.infos[:-1],
-                **self.extra_model_outputs,
-            }
-        )
-
-    @staticmethod
-    def from_sample_batch(batch):
-        # TODO (simon): This is very ugly, but right now
-        #  we can only do it according to the exclusion principle.
-        extra_model_output_keys = []
-        for k in batch.keys():
-            if k not in [
-                SampleBatch.EPS_ID,
-                SampleBatch.AGENT_INDEX,
-                SampleBatch.ENV_ID,
-                SampleBatch.AGENT_INDEX,
-                SampleBatch.T,
-                SampleBatch.SEQ_LENS,
-                SampleBatch.OBS,
-                SampleBatch.NEXT_OBS,
-                SampleBatch.ACTIONS,
-                SampleBatch.PREV_ACTIONS,
-                SampleBatch.REWARDS,
-                SampleBatch.PREV_REWARDS,
-                SampleBatch.TERMINATEDS,
-                SampleBatch.TRUNCATEDS,
-                SampleBatch.UNROLL_ID,
-                SampleBatch.DONES,
-                SampleBatch.CUR_OBS,
-            ]:
-                extra_model_output_keys.append(k)
-        return _Episode(
-            id_=batch[SampleBatch.EPS_ID][0],
-            observations=np.concatenate(
-                [batch[SampleBatch.OBS], batch[SampleBatch.NEXT_OBS][None, -1]]
-            ),
-            actions=batch[SampleBatch.ACTIONS],
-            rewards=batch[SampleBatch.REWARDS],
-            is_terminated=batch[SampleBatch.TERMINATEDS][-1],
-            is_truncated=batch[SampleBatch.TRUNCATEDS][-1],
-            infos=batch[SampleBatch.INFOS],
-            extra_model_outputs={k: batch[k] for k in extra_model_output_keys},
-        )
-
-    def get_return(self):
-        return sum(self.rewards)
-
-    def get_state(self):
-        return list(
-            {
-                "id_": self.id_,
-                "observations": self.observations,
-                "actions": self.actions,
-                "rewards": self.rewards,
-                "states": self.states,
-                "t_started": self.t_started,
-                "t": self.t,
-                "is_terminated": self.is_terminated,
-                "is_truncated": self.is_truncated,
-                **self.extra_model_outputs,
-            }.items()
-        )
-
-    @staticmethod
-    def from_state(state):
-        eps = _Episode(id_=state[0][1])
-        eps.observations = state[1][1]
-        eps.actions = state[2][1]
-        eps.rewards = state[3][1]
-        eps.infos = state[4][1]
-        eps.states = state[5][1]
-        eps.t_started = state[6][1]
-        eps.t = state[7][1]
-        eps.is_terminated = state[8][1]
-        eps.is_truncated = state[9][1]
-        eps.extra_model_outputs = {*state[10:][1]}
-        return eps
-
-    def __len__(self):
-        assert len(self.observations) > 0, (
-            "ERROR: Cannot determine length of episode that hasn't started yet! "
-            "Call `_Episode.add_initial_observation(initial_observation=...)` first "
-            "(after which `len(_Episode)` will be 0)."
-        )
-        return len(self.observations) - 1

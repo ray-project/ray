@@ -49,7 +49,8 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     ALL_MODULES,
 )
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -443,17 +444,19 @@ class PPO(Algorithm):
             # New Episode-returning EnvRunner API.
             else:
                 if self.workers.num_remote_workers() <= 0:
-                    episodes = [self.workers.local_worker().sample()]
+                    episodes: List[SingleAgentEpisode] = [
+                        self.workers.local_worker().sample()
+                    ]
                 else:
-                    episodes = self.workers.foreach_worker(
+                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
                         lambda w: w.sample(), local_worker=False
                     )
                 # Perform PPO postprocessing on a (flattened) list of Episodes.
-                postprocessed_episodes = self.postprocess_episodes(
-                    tree.flatten(episodes)
-                )
+                postprocessed_episodes: List[
+                    SingleAgentEpisode
+                ] = self.postprocess_episodes(tree.flatten(episodes))
                 # Convert list of postprocessed Episodes into a single sample batch.
-                train_batch = postprocess_episodes_to_sample_batch(
+                train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
                     postprocessed_episodes
                 )
 
@@ -610,7 +613,9 @@ class PPO(Algorithm):
 
         return train_results
 
-    def postprocess_episodes(self, episodes: List[Episode]) -> List[Episode]:
+    def postprocess_episodes(
+        self, episodes: List[SingleAgentEpisode]
+    ) -> List[SingleAgentEpisode]:
         """Calculate advantages and value targets."""
         from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
 
