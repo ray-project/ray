@@ -28,6 +28,12 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 
 
+@pytest.fixture
+def serve_and_ray_shutdown():
+    serve.shutdown()
+    ray.shutdown()
+    yield
+
 @serve.deployment()
 def sync_d():
     return "sync!"
@@ -1154,7 +1160,7 @@ class TestLoggingAPI:
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
-    def test_start_serve_with_logging_config(self, ray_shutdown):
+    def test_start_serve_with_logging_config(self, serve_and_ray_shutdown):
         serve.start(logging_config={"log_level": "DEBUG", "encoding": "JSON"})
         serve_log_dir = get_serve_logs_dir()
         # Check controller log
