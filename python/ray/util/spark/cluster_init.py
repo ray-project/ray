@@ -566,8 +566,8 @@ def _setup_ray_cluster(
                         "object_store_memory": object_store_memory_worker_node,
                     },
                     "node_config": {},
-                    "min_workers": 0,
-                    "max_workers": num_worker_nodes,
+                    "min_worker_nodes": 0,
+                    "max_worker_nodes": num_worker_nodes,
                 },
             },
             extra_provider_config={
@@ -1442,7 +1442,7 @@ class AutoscalingCluster:
         custom_config["available_node_types"]["ray.head.default"] = {
             "resources": head_resources,
             "node_config": {},
-            "max_workers": 0,
+            "max_worker_nodes": 0,
         }
         custom_config["provider"].update(extra_provider_config)
 

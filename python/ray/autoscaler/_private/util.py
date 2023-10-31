@@ -27,12 +27,12 @@ from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 REQUIRED, OPTIONAL = True, False
 
 
-HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = (
-    "Setting `max_workers` for node type"
-    " `{node_type}` to the global `max_workers` value of {max_workers}. To"
+HEAD_TYPE_MAX_WORKER_NODES_WARN_TEMPLATE = (
+    "Setting `max_worker_nodes` for node type"
+    " `{node_type}` to the global `max_worker_nodes` value of {max_worker_nodes}. To"
     " avoid spawning worker nodes of type `{node_type}`, explicitly set"
-    " `max_workers: 0` for `{node_type}`.\n"
-    "Note that `max_workers: 0` was the default value prior to Ray 1.3.0."
+    " `max_worker_nodes: 0` for `{node_type}`.\n"
+    "Note that `max_worker_nodes: 0` was the default value prior to Ray 1.3.0."
     " Your current version is Ray {version}.\n"
     "See the docs for more information:\n"
     "https://docs.ray.io/en/master/cluster/config.html"
@@ -52,7 +52,7 @@ NodeType = str
 # e.g., head, worker, unmanaged
 NodeKind = str
 
-# e.g., {"resources": ..., "max_workers": ...}.
+# e.g., {"resources": ..., "max_worker_nodes": ...}.
 NodeTypeConfigDict = Dict[str, Any]
 
 # e.g., {"GPU": 1}.
@@ -182,14 +182,14 @@ def validate_config(config: Dict[str, Any]) -> None:
         if config["head_node_type"] not in config["available_node_types"]:
             raise ValueError("`head_node_type` must be one of `available_node_types`.")
 
-        sum_min_workers = sum(
-            config["available_node_types"][node_type].get("min_workers", 0)
+        sum_min_worker_nodes = sum(
+            config["available_node_types"][node_type].get("min_worker_nodes", 0)
             for node_type in config["available_node_types"]
         )
-        if sum_min_workers > config["max_workers"]:
+        if sum_min_worker_nodes > config["max_worker_nodes"]:
             raise ValueError(
-                "The specified global `max_workers` is smaller than the "
-                "sum of `min_workers` of all the available node types."
+                "The specified global `max_worker_nodes` is smaller than the "
+                "sum of `min_worker_nodes` of all the available node types."
             )
 
 
@@ -236,7 +236,7 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
-    fill_node_type_min_max_workers(with_defaults)
+    fill_node_type_min_max_worker_nodes(with_defaults)
     return with_defaults
 
 
@@ -280,7 +280,7 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
         merged_config = merge_legacy_yaml_with_defaults(merged_config)
     # Take care of this here, in case a config does not specify any of head,
     # workers, node types, but does specify min workers:
-    merged_config.pop("min_workers", None)
+    merged_config.pop("min_worker_nodes", None)
 
     translate_trivial_legacy_config(merged_config)
 
@@ -314,8 +314,8 @@ def merge_legacy_yaml_with_defaults(merged_config: Dict[str, Any]) -> Dict[str, 
         head_node_info = {
             "node_config": merged_config["head_node"],
             "resources": merged_config["head_node"].get("resources") or {},
-            "min_workers": 0,
-            "max_workers": 0,
+            "min_worker_nodes": 0,
+            "max_worker_nodes": 0,
         }
     else:
         # Use default data for the head's node type.
@@ -326,8 +326,8 @@ def merge_legacy_yaml_with_defaults(merged_config: Dict[str, Any]) -> Dict[str, 
         worker_node_info = {
             "node_config": merged_config["worker_nodes"],
             "resources": merged_config["worker_nodes"].get("resources") or {},
-            "min_workers": merged_config.get("min_workers", 0),
-            "max_workers": merged_config["max_workers"],
+            "min_worker_nodes": merged_config.get("min_workers", 0),
+            "max_worker_nodes": merged_config["max_worker_nodes"],
         }
     else:
         # Use default data for the workers' node type.
@@ -357,30 +357,30 @@ def merge_setup_commands(config):
     return config
 
 
-def fill_node_type_min_max_workers(config):
-    """Sets default per-node max workers to global max_workers.
+def fill_node_type_min_max_worker_nodes(config):
+    """Sets default per-node max workers to global max_worker_nodes.
     This equivalent to setting the default per-node max workers to infinity,
-    with the only upper constraint coming from the global max_workers.
+    with the only upper constraint coming from the global max_worker_nodes.
     Sets default per-node min workers to zero.
-    Also sets default max_workers for the head node to zero.
+    Also sets default max_worker_nodes for the head node to zero.
     """
-    assert "max_workers" in config, "Global max workers should be set."
+    assert "max_worker_nodes" in config, "Global max workers should be set."
     node_types = config["available_node_types"]
     for node_type_name in node_types:
         node_type_data = node_types[node_type_name]
 
-        node_type_data.setdefault("min_workers", 0)
-        if "max_workers" not in node_type_data:
+        node_type_data.setdefault("min_worker_nodes", 0)
+        if "max_worker_nodes" not in node_type_data:
             if node_type_name == config["head_node_type"]:
                 logger.info("setting max workers for head node type to 0")
-                node_type_data.setdefault("max_workers", 0)
+                node_type_data.setdefault("max_worker_nodes", 0)
             else:
-                global_max_workers = config["max_workers"]
+                global_max_worker_nodes = config["max_worker_nodes"]
                 logger.info(
                     f"setting max workers for {node_type_name} to "
-                    f"{global_max_workers}"
+                    f"{global_max_worker_nodes}"
                 )
-                node_type_data.setdefault("max_workers", global_max_workers)
+                node_type_data.setdefault("max_worker_nodes", global_max_worker_nodes)
 
 
 def with_envs(cmds: List[str], kv: Dict[str, str]) -> str:

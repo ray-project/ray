@@ -33,7 +33,7 @@ class ThreadedRayInstaller(InstanceUpdatedSuscriber):
         self._max_install_attempts = max_install_attempts
         self._install_retry_interval = install_retry_interval
         self._ray_installation_executor = ThreadPoolExecutor(
-            max_workers=self._max_concurrent_installs
+            max_worker_nodes=self._max_concurrent_installs
         )
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:

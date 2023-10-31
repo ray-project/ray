@@ -40,8 +40,8 @@ schema = {
         "collect_timestamp_ms": {"type": "integer"},
         "session_start_timestamp_ms": {"type": "integer"},
         "cloud_provider": {"type": ["null", "string"]},
-        "min_workers": {"type": ["null", "integer"]},
-        "max_workers": {"type": ["null", "integer"]},
+        "min_worker_nodes": {"type": ["null", "integer"]},
+        "max_worker_nodes": {"type": ["null", "integer"]},
         "head_node_instance_type": {"type": ["null", "string"]},
         "libc_version": {"type": ["null", "string"]},
         "worker_node_instance_types": {
@@ -862,7 +862,7 @@ def test_usage_lib_get_cluster_config_to_report(
     cluster_config_file_path.write_text(
         """
 cluster_name: minimal
-max_workers: 1
+max_worker_nodes: 1
 provider:
     type: aws
     region: us-west-2
@@ -873,15 +873,15 @@ provider:
         cluster_config_file_path
     )
     assert cluster_config_to_report.cloud_provider == "aws"
-    assert cluster_config_to_report.min_workers is None
-    assert cluster_config_to_report.max_workers == 1
+    assert cluster_config_to_report.min_worker_nodes is None
+    assert cluster_config_to_report.max_worker_nodes == 1
     assert cluster_config_to_report.head_node_instance_type is None
     assert cluster_config_to_report.worker_node_instance_types is None
 
     cluster_config_file_path.write_text(
         """
 cluster_name: full
-min_workers: 1
+min_worker_nodes: 1
 provider:
     type: gcp
 head_node_type: head_node
@@ -889,13 +889,13 @@ available_node_types:
     head_node:
         node_config:
             InstanceType: m5.large
-        min_workers: 0
-        max_workers: 0
+        min_worker_nodes: 0
+        max_worker_nodes: 0
     aws_worker_node:
         node_config:
             InstanceType: m3.large
-        min_workers: 0
-        max_workers: 0
+        min_worker_nodes: 0
+        max_worker_nodes: 0
     azure_worker_node:
         node_config:
             azure_arm_parameters:
@@ -909,8 +909,8 @@ available_node_types:
         cluster_config_file_path
     )
     assert cluster_config_to_report.cloud_provider == "gcp"
-    assert cluster_config_to_report.min_workers == 1
-    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.min_worker_nodes == 1
+    assert cluster_config_to_report.max_worker_nodes is None
     assert cluster_config_to_report.head_node_instance_type == "m5.large"
     assert set(cluster_config_to_report.worker_node_instance_types) == {
         "m3.large",
@@ -937,8 +937,8 @@ available_node_types:
         cluster_config_file_path
     )
     assert cluster_config_to_report.cloud_provider is None
-    assert cluster_config_to_report.min_workers is None
-    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.min_worker_nodes is None
+    assert cluster_config_to_report.max_worker_nodes is None
     assert cluster_config_to_report.head_node_instance_type is None
     assert cluster_config_to_report.worker_node_instance_types == ["m5.large"]
 
@@ -958,8 +958,8 @@ available_node_types:
         tmp_path / "does_not_exist.yaml"
     )
     assert cluster_config_to_report.cloud_provider == "kubernetes"
-    assert cluster_config_to_report.min_workers is None
-    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.min_worker_nodes is None
+    assert cluster_config_to_report.max_worker_nodes is None
     assert cluster_config_to_report.head_node_instance_type is None
     assert cluster_config_to_report.worker_node_instance_types is None
 
@@ -991,7 +991,7 @@ def test_usage_lib_report_data(
         cluster_config_file_path.write_text(
             """
 cluster_name: minimal
-max_workers: 1
+max_worker_nodes: 1
 provider:
     type: aws
     region: us-west-2
@@ -1065,7 +1065,7 @@ def test_usage_report_e2e(
     cluster_config_file_path.write_text(
         """
 cluster_name: minimal
-max_workers: 1
+max_worker_nodes: 1
 provider:
     type: aws
     region: us-west-2
@@ -1168,8 +1168,8 @@ provider:
 
         assert payload["source"] == "OSS"
         assert payload["cloud_provider"] == "aws"
-        assert payload["min_workers"] is None
-        assert payload["max_workers"] == 1
+        assert payload["min_worker_nodes"] is None
+        assert payload["max_worker_nodes"] == 1
         assert payload["head_node_instance_type"] is None
         assert payload["worker_node_instance_types"] is None
         assert payload["total_num_cpus"] == 3

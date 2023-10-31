@@ -263,7 +263,7 @@ class LogAgent(dashboard_utils.DashboardAgentModule):
 
 
 _task_log_search_worker_pool = concurrent.futures.ThreadPoolExecutor(
-    max_workers=RAY_DASHBOARD_LOG_TASK_LOG_SEARCH_MAX_WORKER_COUNT
+    max_worker_nodes=RAY_DASHBOARD_LOG_TASK_LOG_SEARCH_MAX_WORKER_COUNT
 )
 
 

@@ -22,8 +22,8 @@ head_node_type:
 worker_node_types:
    - name: worker_node
      instance_type: n2-standard-16
-     min_workers: 4
-     max_workers: 4
+     min_worker_nodes: 4
+     max_worker_nodes: 4
      use_spot: false
      resources:
       custom_resources:

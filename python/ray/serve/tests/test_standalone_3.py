@@ -261,7 +261,7 @@ def test_autoscaler_shutdown_node_http_everynode(
                     "IS_WORKER": 100,
                 },
                 "node_config": {},
-                "max_workers": 1,
+                "max_worker_nodes": 1,
             },
         },
         idle_timeout_minutes=0.05,

@@ -88,12 +88,12 @@ class MultiNodeSyncTest(unittest.TestCase):
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": 4},
-                        "min_workers": 0,  # No minimum nodes
-                        "max_workers": 2,
+                        "min_worker_nodes": 0,  # No minimum nodes
+                        "max_worker_nodes": 2,
                     },
                     "ray.worker.gpu": {
-                        "min_workers": 0,
-                        "max_workers": 0,  # No GPU nodes
+                        "min_worker_nodes": 0,
+                        "max_worker_nodes": 0,  # No GPU nodes
                     },
                 },
             }
@@ -123,12 +123,12 @@ class MultiNodeSyncTest(unittest.TestCase):
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": 4},
-                        "min_workers": 0,  # No minimum nodes
-                        "max_workers": 2,
+                        "min_worker_nodes": 0,  # No minimum nodes
+                        "max_worker_nodes": 2,
                     },
                     "ray.worker.gpu": {
-                        "min_workers": 0,
-                        "max_workers": 0,  # No GPU nodes
+                        "min_worker_nodes": 0,
+                        "max_worker_nodes": 0,  # No GPU nodes
                     },
                 },
             }
@@ -172,12 +172,12 @@ class MultiNodeSyncTest(unittest.TestCase):
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": num_cpu_per_node},
-                        "min_workers": num_workers,
-                        "max_workers": num_workers,
+                        "min_worker_nodes": num_workers,
+                        "max_worker_nodes": num_workers,
                     },
                     "ray.worker.gpu": {
-                        "min_workers": 0,
-                        "max_workers": 0,  # No GPU nodes
+                        "min_worker_nodes": 0,
+                        "max_worker_nodes": 0,  # No GPU nodes
                     },
                 },
             }

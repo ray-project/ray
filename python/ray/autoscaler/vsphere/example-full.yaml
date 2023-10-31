@@ -3,7 +3,7 @@ cluster_name: default
 
 # The maximum number of workers nodes to launch in addition to the head
 # node.
-max_workers: 2
+max_worker_nodes: 2
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
 # E.g., if the task requires adding more nodes then autoscaler will gradually
@@ -91,7 +91,7 @@ available_node_types:
     worker:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
-        min_workers: 1
+        min_worker_nodes: 1
         # The node type's CPU and Memory resources are by default the same as the frozen VM.
         # You can override the resources here. For GPU, currently only Nvidia GPU is supported. If no ESXi host can
         # fulfill the requirement, the Ray node creation will fail. The number of created nodes may not meet the desired

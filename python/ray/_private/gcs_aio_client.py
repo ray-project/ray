@@ -57,7 +57,7 @@ class GcsAioClient:
             loop = ray._private.utils.get_or_create_event_loop()
         if executor is None:
             executor = ThreadPoolExecutor(
-                max_workers=GCS_AIO_CLIENT_DEFAULT_THREAD_COUNT,
+                max_worker_nodes=GCS_AIO_CLIENT_DEFAULT_THREAD_COUNT,
                 thread_name_prefix="gcs_aio_client",
             )
 

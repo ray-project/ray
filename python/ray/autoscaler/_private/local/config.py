@@ -38,16 +38,16 @@ def prepare_coordinator(config: Dict[str, Any]) -> Dict[str, Any]:
     config = copy.deepcopy(config)
     # User should explicitly set the max number of workers for the coordinator
     # to allocate.
-    if "max_workers" not in config:
+    if "max_worker_nodes" not in config:
         cli_logger.abort(
-            "The field `max_workers` is required when using an "
+            "The field `max_worker_nodes` is required when using an "
             "automatically managed on-premise cluster."
         )
     node_type = config["available_node_types"][LOCAL_CLUSTER_NODE_TYPE]
-    # The autoscaler no longer uses global `min_workers`.
-    # Move `min_workers` to the node_type config.
-    node_type["min_workers"] = config.pop("min_workers", 0)
-    node_type["max_workers"] = config["max_workers"]
+    # The autoscaler no longer uses global `min_worker_nodes`.
+    # Move `min_worker_nodes` to the node_type config.
+    node_type["min_worker_nodes"] = config.pop("min_worker_nodes", 0)
+    node_type["max_worker_nodes"] = config["max_worker_nodes"]
     return config
 
 
@@ -55,55 +55,55 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
     """Validates and sets defaults for configs of manually managed on-prem
     clusters.
 
-    - Checks for presence of required `worker_ips` and `head_ips` fields.
-    - Defaults min and max workers to the number of `worker_ips`.
-    - Caps min and max workers at the number of `worker_ips`.
+    - Checks for presence of required `worker_node_ips` and `head_ips` fields.
+    - Defaults min and max workers to the number of `worker_node_ips`.
+    - Caps min and max workers at the number of `worker_node_ips`.
     - Writes min and max worker info into the single worker node type.
     """
     config = copy.deepcopy(config)
-    if ("worker_ips" not in config["provider"]) or (
+    if ("worker_node_ips" not in config["provider"]) or (
         "head_ip" not in config["provider"]
     ):
         cli_logger.abort(
-            "Please supply a `head_ip` and list of `worker_ips`. "
+            "Please supply a `head_ip` and list of `worker_node_ips`. "
             "Alternatively, supply a `coordinator_address`."
         )
-    num_ips = len(config["provider"]["worker_ips"])
+    num_ips = len(config["provider"]["worker_node_ips"])
     node_type = config["available_node_types"][LOCAL_CLUSTER_NODE_TYPE]
     # Default to keeping all provided ips in the cluster.
-    config.setdefault("max_workers", num_ips)
+    config.setdefault("max_worker_nodes", num_ips)
 
-    # The autoscaler no longer uses global `min_workers`.
-    # We will move `min_workers` to the node_type config.
-    min_workers = config.pop("min_workers", num_ips)
-    max_workers = config["max_workers"]
+    # The autoscaler no longer uses global `min_worker_nodes`.
+    # We will move `min_worker_nodes` to the node_type config.
+    min_worker_nodes = config.pop("min_worker_nodes", num_ips)
+    max_worker_nodes = config["max_worker_nodes"]
 
-    if min_workers > num_ips:
+    if min_worker_nodes > num_ips:
         cli_logger.warning(
-            f"The value of `min_workers` supplied ({min_workers}) is greater"
+            f"The value of `min_worker_nodes` supplied ({min_worker_nodes}) is greater"
             f" than the number of available worker ips ({num_ips})."
-            f" Setting `min_workers={num_ips}`."
+            f" Setting `min_worker_nodes={num_ips}`."
         )
-        node_type["min_workers"] = num_ips
+        node_type["min_worker_nodes"] = num_ips
     else:
-        node_type["min_workers"] = min_workers
+        node_type["min_worker_nodes"] = min_worker_nodes
 
-    if max_workers > num_ips:
+    if max_worker_nodes > num_ips:
         cli_logger.warning(
-            f"The value of `max_workers` supplied ({max_workers}) is greater"
+            f"The value of `max_worker_nodes` supplied ({max_worker_nodes}) is greater"
             f" than the number of available worker ips ({num_ips})."
-            f" Setting `max_workers={num_ips}`."
+            f" Setting `max_worker_nodes={num_ips}`."
         )
-        node_type["max_workers"] = num_ips
-        config["max_workers"] = num_ips
+        node_type["max_worker_nodes"] = num_ips
+        config["max_worker_nodes"] = num_ips
     else:
-        node_type["max_workers"] = max_workers
+        node_type["max_worker_nodes"] = max_worker_nodes
 
-    if max_workers < num_ips:
+    if max_worker_nodes < num_ips:
         cli_logger.warning(
-            f"The value of `max_workers` supplied ({max_workers}) is less"
+            f"The value of `max_worker_nodes` supplied ({max_worker_nodes}) is less"
             f" than the number of available worker ips ({num_ips})."
-            f" At most {max_workers} Ray worker nodes will connect to the cluster."
+            f" At most {max_worker_nodes} Ray worker nodes will connect to the cluster."
         )
 
     return config

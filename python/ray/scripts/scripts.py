@@ -1258,8 +1258,8 @@ def stop(force: bool, grace_period: int):
 @PublicAPI
 def up(
     cluster_config_file,
-    min_workers,
-    max_workers,
+    min_worker_nodes,
+    max_worker_nodes,
     no_restart,
     restart_only,
     yes,
@@ -1297,8 +1297,8 @@ def up(
             cli_logger.warning("Could not download remote cluster configuration file.")
     create_or_update_cluster(
         config_file=cluster_config_file,
-        override_min_workers=min_workers,
-        override_max_workers=max_workers,
+        override_min_worker_nodes=min_worker_nodes,
+        override_max_worker_nodes=max_worker_nodes,
         no_restart=no_restart,
         restart_only=restart_only,
         yes=yes,
@@ -1332,10 +1332,10 @@ def up(
 )
 @add_click_logging_options
 @PublicAPI
-def down(cluster_config_file, yes, workers_only, cluster_name, keep_min_workers):
+def down(cluster_config_file, yes, workers_only, cluster_name, keep_min_worker_nodes):
     """Tear down a Ray cluster."""
     teardown_cluster(
-        cluster_config_file, yes, workers_only, cluster_name, keep_min_workers
+        cluster_config_file, yes, workers_only, cluster_name, keep_min_worker_nodes
     )
 
 
@@ -1618,8 +1618,8 @@ def submit(
 
         create_or_update_cluster(
             config_file=cluster_config_file,
-            override_min_workers=None,
-            override_max_workers=None,
+            override_min_worker_nodes=None,
+            override_max_worker_nodes=None,
             no_restart=False,
             restart_only=False,
             yes=True,
@@ -1772,10 +1772,10 @@ def get_head_ip(cluster_config_file, cluster_name):
     type=str,
     help="Override the configured cluster name.",
 )
-def get_worker_ips(cluster_config_file, cluster_name):
+def get_worker_node_ips(cluster_config_file, cluster_name):
     """Return the list of worker IPs of a Ray cluster."""
-    worker_ips = get_worker_node_ips(cluster_config_file, cluster_name)
-    click.echo("\n".join(worker_ips))
+    worker_node_ips = get_worker_node_ips(cluster_config_file, cluster_name)
+    click.echo("\n".join(worker_node_ips))
 
 
 @cli.command()
@@ -2448,7 +2448,7 @@ cli.add_command(down)
 add_command_alias(down, name="teardown", hidden=True)
 cli.add_command(kill_random_node)
 add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
-cli.add_command(get_worker_ips)
+cli.add_command(get_worker_node_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(status)

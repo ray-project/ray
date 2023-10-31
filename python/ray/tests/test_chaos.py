@@ -44,8 +44,8 @@ def set_kill_interval(request):
                 "node_config": {
                     "object_store_memory": int(200e6),
                 },
-                "min_workers": 0,
-                "max_workers": 3,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 3,
             },
         },
     }

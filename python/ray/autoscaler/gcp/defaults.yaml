@@ -3,7 +3,7 @@ cluster_name: default
 
 # The maximum number of workers nodes to launch in addition to the head
 # node.
-max_workers: 2
+max_worker_nodes: 2
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
 # E.g., if the task requires adding more nodes then autoscaler will gradually
@@ -71,7 +71,7 @@ available_node_types:
     ray_worker_small:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
-        min_workers: 0
+        min_worker_nodes: 0
         # The resources provided by this node type.
         resources: {"CPU": 2}
         # Provider-specific config for this node type, e.g. instance type. By default

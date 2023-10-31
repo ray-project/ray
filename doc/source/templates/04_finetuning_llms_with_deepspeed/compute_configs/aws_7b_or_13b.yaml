@@ -8,8 +8,8 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: g5.4xlarge
-      min_workers: 0
-      max_workers: 16
+      min_worker_nodes: 0
+      max_worker_nodes: 16
       use_spot: false
 
 aws:

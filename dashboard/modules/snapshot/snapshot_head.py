@@ -83,7 +83,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._job_info_client = None
         # For offloading CPU intensive work.
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="api_head"
+            max_worker_nodes=2, thread_name_prefix="api_head"
         )
 
     @routes.get("/api/actors/kill")

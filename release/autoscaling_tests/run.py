@@ -20,8 +20,8 @@ def setup_cluster():
             "type-1": {
                 "resources": {"CPU": 4},
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 10,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 10,
             },
         },
         idle_timeout_minutes=1 * 0.1,

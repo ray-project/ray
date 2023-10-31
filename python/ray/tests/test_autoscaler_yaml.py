@@ -21,7 +21,7 @@ from ray.autoscaler._private._azure.config import (
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.util import (
-    fill_node_type_min_max_workers,
+    fill_node_type_min_max_worker_nodes,
     merge_setup_commands,
     prepare_config,
     validate_config,
@@ -37,7 +37,7 @@ cluster_name: minimal-manual
 provider:
   head_ip: xxx.yyy
   type: local
-  worker_ips:
+  worker_node_ips:
   - aaa.bbb
   - ccc.ddd
   - eee.fff
@@ -45,11 +45,11 @@ auth:
   ssh_private_key: ~/.ssh/id_rsa
   ssh_user: user
 docker: {}
-max_workers: 3
+max_worker_nodes: 3
 available_node_types:
   local.cluster.node:
-    max_workers: 3
-    min_workers: 3
+    max_worker_nodes: 3
+    min_worker_nodes: 3
     node_config: {}
     resources: {}
 head_node_type: local.cluster.node
@@ -124,12 +124,12 @@ class AutoscalingConfigTest(unittest.TestCase):
         except Exception:
             self.fail("Config did not pass validation test!")
 
-        config["max_workers"] = 0  # the sum of min_workers is 1.
+        config["max_worker_nodes"] = 0  # the sum of min_worker_nodes is 1.
         with pytest.raises(ValueError):
             validate_config(config)
 
         # make sure edge case of exactly 1 passes too.
-        config["max_workers"] = 1
+        config["max_worker_nodes"] = 1
         try:
             validate_config(config)
         except Exception:
@@ -153,7 +153,7 @@ class AutoscalingConfigTest(unittest.TestCase):
                     "InstanceType": "inf2.xlarge",
                     "ImageId": "latest_dlami",
                 },
-                "max_workers": 2,
+                "max_worker_nodes": 2,
             },
         }
         orig_new_config = copy.deepcopy(new_config)
@@ -177,9 +177,9 @@ class AutoscalingConfigTest(unittest.TestCase):
             "neuron_cores": 2,
             "accelerator_type:aws-neuron-core": 1,
         }
-        expected_available_node_types["cpu_16_spot"]["min_workers"] = 0
-        expected_available_node_types["gpu_8_ondemand"]["min_workers"] = 0
-        expected_available_node_types["neuron_core_inf_1_ondemand"]["min_workers"] = 0
+        expected_available_node_types["cpu_16_spot"]["min_worker_nodes"] = 0
+        expected_available_node_types["gpu_8_ondemand"]["min_worker_nodes"] = 0
+        expected_available_node_types["neuron_core_inf_1_ondemand"]["min_worker_nodes"] = 0
 
         boto3_dict = {
             "InstanceTypes": [
@@ -244,7 +244,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         )
         base_config = yaml.safe_load(open(local_config_path).read())
         base_config["provider"]["head_ip"] = "xxx.yyy"
-        base_config["provider"]["worker_ips"] = ["aaa.bbb", "ccc.ddd", "eee.fff"]
+        base_config["provider"]["worker_node_ips"] = ["aaa.bbb", "ccc.ddd", "eee.fff"]
         base_config["auth"]["ssh_user"] = "user"
         base_config["auth"]["ssh_private_key"] = "~/.ssh/id_rsa"
 
@@ -258,7 +258,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         assert prepared_config == expected_prepared
 
         no_worker_config = copy.deepcopy(base_config)
-        del no_worker_config["provider"]["worker_ips"]
+        del no_worker_config["provider"]["worker_node_ips"]
         with pytest.raises(ClickException):
             prepare_config(no_worker_config)
         no_head_config = copy.deepcopy(base_config)
@@ -274,8 +274,8 @@ class AutoscalingConfigTest(unittest.TestCase):
         too_many_workers_config = copy.deepcopy(base_config)
 
         # More workers requested than the three available ips.
-        too_many_workers_config["max_workers"] = 10
-        too_many_workers_config["min_workers"] = 10
+        too_many_workers_config["max_worker_nodes"] = 10
+        too_many_workers_config["min_worker_nodes"] = 10
         prepared_config = prepare_config(too_many_workers_config)
 
         # Check that worker config numbers were clipped to 3.
@@ -285,26 +285,26 @@ class AutoscalingConfigTest(unittest.TestCase):
 
         # Max workers is less than than the three available ips.
         # The user is probably has probably made an error. Make sure we log a warning.
-        not_enough_workers_config["max_workers"] = 0
-        not_enough_workers_config["min_workers"] = 0
+        not_enough_workers_config["max_worker_nodes"] = 0
+        not_enough_workers_config["min_worker_nodes"] = 0
         with mock.patch(
             "ray.autoscaler._private.local.config.cli_logger.warning"
         ) as warning:
             prepared_config = prepare_config(not_enough_workers_config)
             warning.assert_called_with(
-                "The value of `max_workers` supplied (0) is less"
+                "The value of `max_worker_nodes` supplied (0) is less"
                 " than the number of available worker ips (3)."
                 " At most 0 Ray worker nodes will connect to the cluster."
             )
         expected_prepared = yaml.safe_load(EXPECTED_LOCAL_CONFIG_STR)
         # We logged a warning.
         # However, prepare_config does not repair the strange config setting:
-        expected_prepared["max_workers"] = 0
+        expected_prepared["max_worker_nodes"] = 0
         expected_prepared["available_node_types"]["local.cluster.node"][
-            "max_workers"
+            "max_worker_nodes"
         ] = 0
         expected_prepared["available_node_types"]["local.cluster.node"][
-            "min_workers"
+            "min_worker_nodes"
         ] = 0
         assert prepared_config == expected_prepared
 
@@ -375,57 +375,57 @@ class AutoscalingConfigTest(unittest.TestCase):
             self.fail("Failed to validate config with security group name!")
 
     def testMaxWorkerDefault(self):
-        # Load config, call prepare config, check that default max_workers
+        # Load config, call prepare config, check that default max_worker_nodes
         # is filled correctly for node types that don't specify it.
-        # Check that max_workers is untouched for node types
+        # Check that max_worker_nodes is untouched for node types
         # that do specify it.
         config = load_test_config("test_multi_node.yaml")
         node_types = config["available_node_types"]
 
         # Max workers initially absent for this node type.
-        assert "max_workers" not in node_types["worker_node_max_unspecified"]
+        assert "max_worker_nodes" not in node_types["worker_node_max_unspecified"]
         # Max workers specified for this node type.
-        assert "max_workers" in node_types["worker_node_max_specified"]
+        assert "max_worker_nodes" in node_types["worker_node_max_specified"]
 
         prepared_config = prepare_config(config)
         prepared_node_types = prepared_config["available_node_types"]
         # Max workers unchanged.
         assert (
-            node_types["worker_node_max_specified"]["max_workers"]
-            == prepared_node_types["worker_node_max_specified"]["max_workers"]
+            node_types["worker_node_max_specified"]["max_worker_nodes"]
+            == prepared_node_types["worker_node_max_specified"]["max_worker_nodes"]
             == 3
         )
         # Max workers auto-filled with specified cluster-wide value of 5.
         assert (
-            config["max_workers"]
-            == prepared_node_types["worker_node_max_unspecified"]["max_workers"]
+            config["max_worker_nodes"]
+            == prepared_node_types["worker_node_max_unspecified"]["max_worker_nodes"]
             == 5
         )
 
         # Repeat with a config that doesn't specify global max workers.
         # Default value of 2 should be pulled in for global max workers.
         config = load_test_config("test_multi_node.yaml")
-        # Delete global max_workers so it can be autofilled with default of 2.
-        del config["max_workers"]
+        # Delete global max_worker_nodes so it can be autofilled with default of 2.
+        del config["max_worker_nodes"]
         node_types = config["available_node_types"]
 
         # Max workers initially absent for this node type.
-        assert "max_workers" not in node_types["worker_node_max_unspecified"]
+        assert "max_worker_nodes" not in node_types["worker_node_max_unspecified"]
         # Max workers specified for this node type.
-        assert "max_workers" in node_types["worker_node_max_specified"]
+        assert "max_worker_nodes" in node_types["worker_node_max_specified"]
 
         prepared_config = prepare_config(config)
         prepared_node_types = prepared_config["available_node_types"]
         # Max workers unchanged.
         assert (
-            node_types["worker_node_max_specified"]["max_workers"]
-            == prepared_node_types["worker_node_max_specified"]["max_workers"]
+            node_types["worker_node_max_specified"]["max_worker_nodes"]
+            == prepared_node_types["worker_node_max_specified"]["max_worker_nodes"]
             == 3
         )
         # Max workers auto-filled with default cluster-wide value of 2.
         assert (
-            prepared_config["max_workers"]
-            == prepared_node_types["worker_node_max_unspecified"]["max_workers"]
+            prepared_config["max_worker_nodes"]
+            == prepared_node_types["worker_node_max_unspecified"]["max_worker_nodes"]
             == 2
         )
 
@@ -442,7 +442,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             config = yaml.safe_load(open(path).read())
             config_copy = copy.deepcopy(config)
             merge_setup_commands(config_copy)
-            fill_node_type_min_max_workers(config_copy)
+            fill_node_type_min_max_worker_nodes(config_copy)
             assert config_copy == prepare_config(config)
 
     @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")

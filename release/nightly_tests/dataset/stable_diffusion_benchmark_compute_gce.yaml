@@ -10,6 +10,6 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: n1-standard-16-nvidia-tesla-t4-1 # g4dn.4xlarge
-      min_workers: 16
-      max_workers: 16
+      min_worker_nodes: 16
+      max_worker_nodes: 16
       use_spot: false

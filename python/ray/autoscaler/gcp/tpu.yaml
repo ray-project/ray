@@ -2,7 +2,7 @@
 cluster_name: tputest
 
 # The maximum number of worker nodes to launch in addition to the head node.
-max_workers: 7
+max_worker_nodes: 7
 
 available_node_types:
     ray_head_default:
@@ -16,7 +16,7 @@ available_node_types:
                 # Set to false to use non-preemptible TPUs
                 preemptible: false
     ray_tpu:
-        min_workers: 1
+        min_worker_nodes: 1
         resources: {"TPU": 1}  # use TPU custom resource in your code
         node_config:
             acceleratorType: v2-8

@@ -18,6 +18,6 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: n2-standard-16 # aws m5.4xlarge
-      min_workers: 19
-      max_workers: 19
+      min_worker_nodes: 19
+      max_worker_nodes: 19
       use_spot: false

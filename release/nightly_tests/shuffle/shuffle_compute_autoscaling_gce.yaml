@@ -17,6 +17,6 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: n2-highmem-16 # i3.4xlarge
-      min_workers: 0
-      max_workers: 19
+      min_worker_nodes: 0
+      max_worker_nodes: 19
       use_spot: false

@@ -3,7 +3,7 @@
 # ray start --autoscaling-config=default.yaml --head --block
 #
 cluster_name: spark
-max_workers: 8
+max_worker_nodes: 8
 provider:
     type: spark
     # This must be true since the nodes share the same ip!
@@ -20,14 +20,14 @@ available_node_types:
             CPU: 8   # <-- set this to num CPUs used/detected in `ray start`
             GPU: 0   # <-- set this to num GPUs used/detected in `ray start`
         node_config: {}
-        max_workers: 0
+        max_worker_nodes: 0
     ray.worker:
         resources:
             CPU: 1
             object_store_memory: 1000000000
         node_config: {}
-        min_workers: 0
-        max_workers: 4
+        min_worker_nodes: 0
+        max_worker_nodes: 4
 head_node_type: ray.head.default
 upscaling_speed: 1.0
 idle_timeout_minutes: 1.0

@@ -774,7 +774,7 @@ def serve(connection_str, ray_connect_handler=None):
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
         futures.ThreadPoolExecutor(
-            max_workers=CLIENT_SERVER_MAX_THREADS,
+            max_worker_nodes=CLIENT_SERVER_MAX_THREADS,
             thread_name_prefix="ray_client_server",
         ),
         options=GRPC_OPTIONS,

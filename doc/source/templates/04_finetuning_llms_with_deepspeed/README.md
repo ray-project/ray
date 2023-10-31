@@ -159,8 +159,8 @@ head_node_type:
 worker_node_types:
 - name: gpu_worker
   instance_type: g5.4xlarge
-  min_workers: 0
-  max_workers: 16
+  min_worker_nodes: 0
+  max_worker_nodes: 16
   use_spot: false
 ```
 
@@ -175,8 +175,8 @@ head_node_type:
 worker_node_types:
 - name: gpu_worker
   instance_type: g5.12xlarge
-  min_workers: 0
-  max_workers: 4
+  min_worker_nodes: 0
+  max_worker_nodes: 4
   use_spot: false
 ```
 
@@ -190,8 +190,8 @@ head_node_type:
 worker_node_types:
 - name: gpu_worker
   instance_type: g5.48xlarge
-  min_workers: 0
-  max_workers: 4
+  min_worker_nodes: 0
+  max_worker_nodes: 4
   use_spot: false
 ```
 

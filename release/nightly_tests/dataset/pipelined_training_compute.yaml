@@ -3,7 +3,7 @@ region: us-west-2
 allowed_azs:
   - us-west-2a
 
-max_workers: 999
+max_worker_nodes: 999
 
 aws:
     BlockDeviceMappings:
@@ -19,11 +19,11 @@ head_node_type:
 worker_node_types:
     - name: memory_node
       instance_type: m6i.16xlarge
-      min_workers: 10
-      max_workers: 10
+      min_worker_nodes: 10
+      max_worker_nodes: 10
       use_spot: false
     - name: gpu_node
       instance_type: p3.8xlarge
-      min_workers: 4
-      max_workers: 4
+      min_worker_nodes: 4
+      max_worker_nodes: 4
       use_spot: false

@@ -37,8 +37,8 @@ def create_or_update_cluster(
     with _as_config_file(cluster_config) as config_file:
         return commands.create_or_update_cluster(
             config_file=config_file,
-            override_min_workers=None,
-            override_max_workers=None,
+            override_min_worker_nodes=None,
+            override_max_worker_nodes=None,
             no_restart=no_restart,
             restart_only=restart_only,
             yes=True,
@@ -53,7 +53,7 @@ def create_or_update_cluster(
 def teardown_cluster(
     cluster_config: Union[dict, str],
     workers_only: bool = False,
-    keep_min_workers: bool = False,
+    keep_min_worker_nodes: bool = False,
 ) -> None:
     """Destroys all nodes of a Ray cluster described by a config json.
 
@@ -62,7 +62,7 @@ def teardown_cluster(
             cluster, or a path pointing to a file containing the config.
         workers_only: Whether to keep the head node running and only
             teardown worker nodes.
-        keep_min_workers: Whether to keep min_workers (as specified
+        keep_min_worker_nodes: Whether to keep min_worker_nodes (as specified
             in the YAML) still running.
     """
     with _as_config_file(cluster_config) as config_file:
@@ -71,7 +71,7 @@ def teardown_cluster(
             yes=True,
             workers_only=workers_only,
             override_cluster_name=None,
-            keep_min_workers=keep_min_workers,
+            keep_min_worker_nodes=keep_min_worker_nodes,
         )
 
 

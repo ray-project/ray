@@ -586,8 +586,8 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
                 "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
+                "min_worker_nodes": 1,
+                "max_worker_nodes": 1,
             },
         },
     )
@@ -664,8 +664,8 @@ def test_demand_report_when_scale_up(shutdown_only):
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
                 "node_config": {},
-                "min_workers": 10,
-                "max_workers": 10,
+                "min_worker_nodes": 10,
+                "max_worker_nodes": 10,
             },
         },
     )

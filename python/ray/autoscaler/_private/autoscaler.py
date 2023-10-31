@@ -159,8 +159,8 @@ class NonTerminatedNodes:
         self.all_node_ids = list(filter(not_terminating, self.all_node_ids))
 
 
-# Whether a worker should be kept based on the min_workers and
-# max_workers constraints.
+# Whether a worker should be kept based on the min_worker_nodes and
+# max_worker_nodes constraints.
 #
 # keep: should keep the worker
 # terminate: should terminate the worker
@@ -476,7 +476,7 @@ class StandardAutoscaler:
         """Terminates nodes to enforce constraints defined by the autoscaling
         config.
 
-        (1) Terminates nodes in excess of `max_workers`.
+        (1) Terminates nodes in excess of `max_worker_nodes`.
         (2) Terminates nodes idle for longer than `idle_timeout_minutes`.
         (3) Terminates outdated nodes,
                 namely nodes whose configs don't match `node_config` for the
@@ -492,8 +492,8 @@ class StandardAutoscaler:
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
-        # Sort based on last used to make sure to keep min_workers that
-        # were most recently used. Otherwise, _keep_min_workers_of_node_type
+        # Sort based on last used to make sure to keep min_worker_nodes that
+        # were most recently used. Otherwise, _keep_min_worker_nodes_of_node_type
         # might keep a node that should be terminated.
         sorted_node_ids = self._sort_based_on_last_used(
             self.non_terminated_nodes.worker_ids, last_used
@@ -522,7 +522,7 @@ class StandardAutoscaler:
 
         for node_id in sorted_node_ids:
             # Make sure to not kill idle node types if the number of workers
-            # of that type is lower/equal to the min_workers of that type
+            # of that type is lower/equal to the min_worker_nodes of that type
             # or it is needed for request_resources().
             should_keep_or_terminate, reason = self._keep_worker_of_node_type(
                 node_id, node_type_counts
@@ -555,7 +555,7 @@ class StandardAutoscaler:
         # Terminate nodes if there are too many
         num_workers = len(self.non_terminated_nodes.worker_ids)
         num_extra_nodes_to_terminate = (
-            num_workers - len(self.nodes_to_terminate) - self.config["max_workers"]
+            num_workers - len(self.nodes_to_terminate) - self.config["max_worker_nodes"]
         )
 
         if num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
@@ -568,7 +568,7 @@ class StandardAutoscaler:
             num_extra_nodes_to_terminate = len(nodes_we_could_terminate)
 
         # If num_extra_nodes_to_terminate is negative or zero,
-        # we would have less than max_workers nodes after terminating
+        # we would have less than max_worker_nodes nodes after terminating
         # nodes_to_terminate and we do not need to terminate anything else.
         if num_extra_nodes_to_terminate > 0:
             extra_nodes_to_terminate = nodes_we_could_terminate[
@@ -952,19 +952,19 @@ class StandardAutoscaler:
     def _keep_worker_of_node_type(
         self, node_id: NodeID, node_type_counts: Dict[NodeType, int]
     ) -> Tuple[KeepOrTerminate, Optional[str]]:
-        """Determines if a worker should be kept based on the min_workers
-        and max_workers constraint of the worker's node_type.
+        """Determines if a worker should be kept based on the min_worker_nodes
+        and max_worker_nodes constraint of the worker's node_type.
 
         Returns KeepOrTerminate.keep when both of the following hold:
         (a) The worker's node_type is present among the keys of the current
             config's available_node_types dict.
-        (b) Deleting the node would violate the min_workers constraint for that
+        (b) Deleting the node would violate the min_worker_nodes constraint for that
             worker's node_type.
 
         Returns KeepOrTerminate.terminate when both the following hold:
         (a) The worker's node_type is not present among the keys of the current
             config's available_node_types dict.
-        (b) Keeping the node would violate the max_workers constraint for that
+        (b) Keeping the node would violate the max_worker_nodes constraint for that
             worker's node_type.
 
         Return KeepOrTerminate.decide_later otherwise.
@@ -986,11 +986,11 @@ class StandardAutoscaler:
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
 
-            min_workers = self.available_node_types.get(node_type, {}).get(
-                "min_workers", 0
+            min_worker_nodes = self.available_node_types.get(node_type, {}).get(
+                "min_worker_nodes", 0
             )
-            max_workers = self.available_node_types.get(node_type, {}).get(
-                "max_workers", 0
+            max_worker_nodes = self.available_node_types.get(node_type, {}).get(
+                "max_worker_nodes", 0
             )
             if node_type not in self.available_node_types:
                 # The node type has been deleted from the cluster config.
@@ -1001,10 +1001,10 @@ class StandardAutoscaler:
                     f"not in available_node_types: {available_node_types}",
                 )
             new_count = node_type_counts[node_type] + 1
-            if new_count <= min(min_workers, max_workers):
+            if new_count <= min(min_worker_nodes, max_worker_nodes):
                 return KeepOrTerminate.keep, None
-            if new_count > max_workers:
-                return KeepOrTerminate.terminate, "max_workers_per_type"
+            if new_count > max_worker_nodes:
+                return KeepOrTerminate.terminate, "max_worker_nodes_per_type"
 
         return KeepOrTerminate.decide_later, None
 
@@ -1098,7 +1098,7 @@ class StandardAutoscaler:
                 self.resource_demand_scheduler.reset_config(
                     self.provider,
                     self.available_node_types,
-                    self.config["max_workers"],
+                    self.config["max_worker_nodes"],
                     self.config["head_node_type"],
                     upscaling_speed,
                 )
@@ -1106,7 +1106,7 @@ class StandardAutoscaler:
                 self.resource_demand_scheduler = ResourceDemandScheduler(
                     self.provider,
                     self.available_node_types,
-                    self.config["max_workers"],
+                    self.config["max_worker_nodes"],
                     self.config["head_node_type"],
                     upscaling_speed,
                 )

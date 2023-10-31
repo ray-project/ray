@@ -6,7 +6,7 @@ cluster_name: minimal-manual
 provider:
     type: local
     head_ip: YOUR_HEAD_NODE_HOSTNAME
-    worker_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
+    worker_node_ips: [WORKER_NODE_1_HOSTNAME, WORKER_NODE_2_HOSTNAME, ... ]
 
 # How Ray will authenticate with newly launched nodes.
 auth:

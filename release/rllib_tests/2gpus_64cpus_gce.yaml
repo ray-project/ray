@@ -3,7 +3,7 @@ region: us-west1
 allowed_azs:
     - us-west1-b
 
-max_workers: 1
+max_worker_nodes: 1
 
 # This head node was intentionally chosen to be larger than 2GPUs (has 4GPUs).
 # This makes sure we can safely migrate the 2GPU testcases to GCE without having
@@ -16,8 +16,8 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: n2-standard-32 # m5.8xlarge
-      min_workers: 1
-      max_workers: 1
+      min_worker_nodes: 1
+      max_worker_nodes: 1
       use_spot: false
 
 gcp_advanced_configurations_json:

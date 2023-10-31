@@ -11,6 +11,6 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: t3.large
-      min_workers: 0
-      max_workers: 0
+      min_worker_nodes: 0
+      max_worker_nodes: 0
       use_spot: false

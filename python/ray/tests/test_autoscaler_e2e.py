@@ -23,14 +23,14 @@ def test_ray_status_activity(shutdown_only, enable_v2):
             "type-i": {
                 "resources": {"CPU": 4, "fun": 1},
                 "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
+                "min_worker_nodes": 1,
+                "max_worker_nodes": 1,
             },
             "type-ii": {
                 "resources": {"CPU": 3, "fun": 100},
                 "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
+                "min_worker_nodes": 1,
+                "max_worker_nodes": 1,
             },
         },
     )
@@ -94,14 +94,14 @@ def test_ray_status_e2e(shutdown_only, enable_v2):
             "type-i": {
                 "resources": {"CPU": 1, "fun": 1},
                 "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
+                "min_worker_nodes": 1,
+                "max_worker_nodes": 1,
             },
             "type-ii": {
                 "resources": {"CPU": 1, "fun": 100},
                 "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
+                "min_worker_nodes": 1,
+                "max_worker_nodes": 1,
             },
         },
     )
@@ -142,14 +142,14 @@ def test_metrics(shutdown_only):
             "type-i": {
                 "resources": {"CPU": 1},
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 1,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 1,
             },
             "type-ii": {
                 "resources": {"CPU": 1},
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 1,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 1,
             },
         },
     )

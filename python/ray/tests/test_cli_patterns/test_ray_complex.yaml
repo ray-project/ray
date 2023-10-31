@@ -10,14 +10,14 @@ file_mounts:
 available_node_types:
     head_node:
         resources: {}
-        max_workers: 0
+        max_worker_nodes: 0
         node_config:
             ImageId: latest_dlami
             InstanceType: t1.micro
     worker_nodes:
         resources: {}
-        max_workers: 2
-        min_workers: 1
+        max_worker_nodes: 2
+        min_worker_nodes: 1
         node_config:
             ImageId: latest_dlami
             InstanceType: t1.micro
@@ -26,8 +26,8 @@ available_node_types:
     worker_nodes1:
         resources:
             CPU: 2
-        max_workers: 2
-        min_workers: 1
+        max_worker_nodes: 2
+        min_worker_nodes: 1
         node_config:
             ImageId: latest_dlami
             InstanceType: t1.micro

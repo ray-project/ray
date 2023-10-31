@@ -104,14 +104,14 @@ class ResourceDemandScheduler:
         self,
         provider: NodeProvider,
         node_types: Dict[NodeType, NodeTypeConfigDict],
-        max_workers: int,
+        max_worker_nodes: int,
         head_node_type: NodeType,
         upscaling_speed: float,
     ) -> None:
         self.provider = provider
         self.node_types = copy.deepcopy(node_types)
         self.node_resource_updated = set()
-        self.max_workers = max_workers
+        self.max_worker_nodes = max_worker_nodes
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
 
@@ -141,7 +141,7 @@ class ResourceDemandScheduler:
         self,
         provider: NodeProvider,
         node_types: Dict[NodeType, NodeTypeConfigDict],
-        max_workers: int,
+        max_worker_nodes: int,
         head_node_type: NodeType,
         upscaling_speed: float = 1,
     ) -> None:
@@ -153,13 +153,13 @@ class ResourceDemandScheduler:
         self.provider = provider
         self.node_types = copy.deepcopy(node_types)
         self.node_resource_updated = set()
-        self.max_workers = max_workers
+        self.max_worker_nodes = max_worker_nodes
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
 
     def is_feasible(self, bundle: ResourceDict) -> bool:
         for node_type, config in self.node_types.items():
-            max_of_type = config.get("max_workers", 0)
+            max_of_type = config.get("max_worker_nodes", 0)
             node_resources = config["resources"]
             if (node_type == self.head_node_type or max_of_type > 0) and _fits(
                 node_resources, bundle
@@ -182,7 +182,7 @@ class ResourceDemandScheduler:
 
         This method:
             (1) calculates the resources present in the cluster.
-            (2) calculates the remaining nodes to add to respect min_workers
+            (2) calculates the remaining nodes to add to respect min_worker_nodes
                 constraint per node type.
             (3) for each strict spread placement group, reserve space on
                 available nodes and launch new nodes if necessary.
@@ -221,16 +221,16 @@ class ResourceDemandScheduler:
 
         logger.debug("Cluster resources: {}".format(node_resources))
         logger.debug("Node counts: {}".format(node_type_counts))
-        # Step 2: add nodes to add to satisfy min_workers for each type
+        # Step 2: add nodes to add to satisfy min_worker_nodes for each type
         (
             node_resources,
             node_type_counts,
-            adjusted_min_workers,
-        ) = _add_min_workers_nodes(
+            adjusted_min_worker_nodes,
+        ) = _add_min_worker_nodes_nodes(
             node_resources,
             node_type_counts,
             self.node_types,
-            self.max_workers,
+            self.max_worker_nodes,
             self.head_node_type,
             ensure_min_cluster_size,
             utilization_scorer=utilization_scorer,
@@ -281,7 +281,7 @@ class ResourceDemandScheduler:
             placement_group_demand_vector,
         )
         # Add 1 to account for the head node.
-        max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
+        max_to_add = self.max_worker_nodes + 1 - sum(node_type_counts.values())
         pg_demands_nodes_max_launch_limit, _ = get_nodes_for(
             self.node_types,
             node_type_counts,
@@ -311,13 +311,13 @@ class ResourceDemandScheduler:
         )
         logger.debug("Final unfulfilled: {}".format(final_unfulfilled))
         # Merge nodes to add based on demand and nodes to add based on
-        # min_workers constraint. We add them because nodes to add based on
-        # demand was calculated after the min_workers constraint was respected.
+        # min_worker_nodes constraint. We add them because nodes to add based on
+        # demand was calculated after the min_worker_nodes constraint was respected.
         total_nodes_to_add = {}
 
         for node_type in self.node_types:
             nodes_to_add = (
-                adjusted_min_workers.get(node_type, 0)
+                adjusted_min_worker_nodes.get(node_type, 0)
                 + spread_pg_nodes_to_add.get(node_type, 0)
                 + nodes_to_add_based_on_demand.get(node_type, 0)
             )
@@ -330,7 +330,7 @@ class ResourceDemandScheduler:
             unused_resources_by_ip.keys(),
             nodes,
             launching_nodes,
-            adjusted_min_workers,
+            adjusted_min_worker_nodes,
             placement_groups_nodes_max_limit,
         )
 
@@ -390,7 +390,7 @@ class ResourceDemandScheduler:
         connected_nodes: List[NodeIP],
         non_terminated_nodes: List[NodeID],
         pending_launches_nodes: Dict[NodeType, int],
-        adjusted_min_workers: Dict[NodeType, int],
+        adjusted_min_worker_nodes: Dict[NodeType, int],
         placement_group_nodes: Dict[NodeType, int],
     ) -> Dict[NodeType, int]:
         """Updates the max concurrent resources to launch for each node type.
@@ -414,8 +414,8 @@ class ResourceDemandScheduler:
             connected_nodes: Running nodes (from LoadMetrics).
             non_terminated_nodes: Non terminated nodes (pending/running).
             pending_launches_nodes: Nodes that are in the launch queue.
-            adjusted_min_workers: Nodes to launch to satisfy
-                min_workers and request_resources(). This overrides the launch
+            adjusted_min_worker_nodes: Nodes to launch to satisfy
+                min_worker_nodes and request_resources(). This overrides the launch
                 limits since the user is hinting to immediately scale up to
                 this size.
             placement_group_nodes: Nodes to launch for placement groups.
@@ -442,9 +442,9 @@ class ResourceDemandScheduler:
 
             upper_bound = max(
                 max_allowed_pending_nodes - total_pending_nodes,
-                # Allow more nodes if this is to respect min_workers or
+                # Allow more nodes if this is to respect min_worker_nodes or
                 # request_resources() or placement groups.
-                adjusted_min_workers.get(node_type, 0)
+                adjusted_min_worker_nodes.get(node_type, 0)
                 + placement_group_nodes.get(node_type, 0),
             )
 
@@ -571,7 +571,7 @@ class ResourceDemandScheduler:
             unfulfilled, node_resources = get_bin_pack_residual(
                 node_resources, bundles, strict_spread=True
             )
-            max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
+            max_to_add = self.max_worker_nodes + 1 - sum(node_type_counts.values())
             # Allocate new nodes for the remaining bundles that don't fit.
             to_launch, _ = get_nodes_for(
                 self.node_types,
@@ -627,42 +627,42 @@ def _node_type_counts_to_node_resources(
     return resources
 
 
-def _add_min_workers_nodes(
+def _add_min_worker_nodes_nodes(
     node_resources: List[ResourceDict],
     node_type_counts: Dict[NodeType, int],
     node_types: Dict[NodeType, NodeTypeConfigDict],
-    max_workers: int,
+    max_worker_nodes: int,
     head_node_type: NodeType,
     ensure_min_cluster_size: List[ResourceDict],
     utilization_scorer: Callable[
         [NodeResources, ResourceDemands, str], Optional[UtilizationScore]
     ],
 ) -> (List[ResourceDict], Dict[NodeType, int], Dict[NodeType, int]):
-    """Updates resource demands to respect the min_workers and
+    """Updates resource demands to respect the min_worker_nodes and
     request_resources() constraints.
 
     Args:
         node_resources: Resources of exisiting nodes already launched/pending.
         node_type_counts: Counts of existing nodes already launched/pending.
         node_types: Node types config.
-        max_workers: global max_workers constaint.
+        max_worker_nodes: global max_worker_nodes constaint.
         ensure_min_cluster_size: resource demands from request_resources().
         utilization_scorer: A function that, given a node
             type, its resources, and resource demands, returns what its
             utilization would be.
 
     Returns:
-        node_resources: The updated node resources after adding min_workers
+        node_resources: The updated node resources after adding min_worker_nodes
             and request_resources() constraints per node type.
-        node_type_counts: The updated node counts after adding min_workers
+        node_type_counts: The updated node counts after adding min_worker_nodes
             and request_resources() constraints per node type.
-        total_nodes_to_add_dict: The nodes to add to respect min_workers and
+        total_nodes_to_add_dict: The nodes to add to respect min_worker_nodes and
             request_resources() constraints.
     """
     total_nodes_to_add_dict = {}
     for node_type, config in node_types.items():
         existing = node_type_counts.get(node_type, 0)
-        target = min(config.get("min_workers", 0), config.get("max_workers", 0))
+        target = min(config.get("min_worker_nodes", 0), config.get("max_worker_nodes", 0))
         if node_type == head_node_type:
             # Add 1 to account for head node.
             target = target + 1
@@ -677,7 +677,7 @@ def _add_min_workers_nodes(
             )
 
     if ensure_min_cluster_size:
-        max_to_add = max_workers + 1 - sum(node_type_counts.values())
+        max_to_add = max_worker_nodes + 1 - sum(node_type_counts.values())
         max_node_resources = []
         # Fit request_resources() on all the resources as if they are idle.
         for node_type in node_type_counts:
@@ -753,13 +753,13 @@ def get_nodes_for(
     while resources and sum(nodes_to_add.values()) < max_to_add:
         utilization_scores = []
         for node_type in node_types:
-            max_workers_of_node_type = node_types[node_type].get("max_workers", 0)
+            max_worker_nodes_of_node_type = node_types[node_type].get("max_worker_nodes", 0)
             if head_node_type == node_type:
                 # Add 1 to account for head node.
-                max_workers_of_node_type = max_workers_of_node_type + 1
+                max_worker_nodes_of_node_type = max_worker_nodes_of_node_type + 1
             if (
                 existing_nodes.get(node_type, 0) + nodes_to_add.get(node_type, 0)
-                >= max_workers_of_node_type
+                >= max_worker_nodes_of_node_type
             ):
                 continue
             node_resources = node_types[node_type]["resources"]

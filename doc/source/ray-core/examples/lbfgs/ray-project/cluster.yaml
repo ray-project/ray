@@ -4,8 +4,8 @@
 cluster_name: ray-example-lbfgs
 
 # The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers. min_workers defaults to 0.
-max_workers: 1
+# node. This takes precedence over min_worker_nodes. min_worker_nodes defaults to 0.
+max_worker_nodes: 1
 
 # Cloud-provider specific configuration.
 provider:

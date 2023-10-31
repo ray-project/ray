@@ -23,21 +23,21 @@ Cluster Config Parameters
 The following options are available in your cluster config file.
 It is recommended that you set these before launching your cluster, but you can also modify them at run-time by updating the cluster config.
 
-`max_workers[default_value=2, min_value=0]`: The max number of cluster worker nodes to launch. Note that this does not include the head node.
+`max_worker_nodes[default_value=2, min_value=0]`: The max number of cluster worker nodes to launch. Note that this does not include the head node.
 
-`min_workers[default_value=0, min_value=0]`: The min number of cluster worker nodes to launch, regardless of utilization. Note that this does not include the head node. This number must be less than the ``max_workers``.
+`min_worker_nodes[default_value=0, min_value=0]`: The min number of cluster worker nodes to launch, regardless of utilization. Note that this does not include the head node. This number must be less than the ``max_worker_nodes``.
 
 .. note::
 
-  If `max_workers` is modified at runtime, the autoscaler will immediately remove nodes until this constraint
+  If `max_worker_nodes` is modified at runtime, the autoscaler will immediately remove nodes until this constraint
   is satisfied. This may disrupt running workloads.
 
 If you are using more than one node type, you can also set min and max workers for each individual type:
 
-`available_node_types.<node_type_name>.max_workers[default_value=cluster max_workers, min_value=0]`: The maximum number of worker nodes of a given type to launch. This number must be less than or equal to the `max_workers` for the cluster.
+`available_node_types.<node_type_name>.max_worker_nodes[default_value=cluster max_worker_nodes, min_value=0]`: The maximum number of worker nodes of a given type to launch. This number must be less than or equal to the `max_worker_nodes` for the cluster.
 
 
-`available_node_types.<node_type_name>.min_workers[default_value=0, min_value=0]`: The minimum number of worker nodes of a given type to launch, regardless of utilization. The sum of `min_workers` across all node types must be less than or equal to the `max_workers` for the cluster.
+`available_node_types.<node_type_name>.min_worker_nodes[default_value=0, min_value=0]`: The minimum number of worker nodes of a given type to launch, regardless of utilization. The sum of `min_worker_nodes` across all node types must be less than or equal to the `max_worker_nodes` for the cluster.
 
 Upscaling and downscaling speed
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

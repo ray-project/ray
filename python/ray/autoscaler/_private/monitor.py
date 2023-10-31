@@ -94,7 +94,7 @@ def parse_resource_demands(resource_load_by_shape):
 # Readonly provider config (e.g., for laptop mode, manually setup clusters).
 BASE_READONLY_CONFIG = {
     "cluster_name": "default",
-    "max_workers": 0,
+    "max_worker_nodes": 0,
     "upscaling_speed": 1.0,
     "docker": {},
     "idle_timeout_minutes": 0,
@@ -104,7 +104,7 @@ BASE_READONLY_CONFIG = {
     },
     "auth": {},
     "available_node_types": {
-        "ray.head.default": {"resources": {}, "node_config": {}, "max_workers": 0}
+        "ray.head.default": {"resources": {}, "node_config": {}, "max_worker_nodes": 0}
     },
     "head_node_type": "ray.head.default",
     "file_mounts": {},
@@ -273,7 +273,7 @@ class Monitor:
                 mirror_node_types[node_type] = {
                     "resources": resources,
                     "node_config": {},
-                    "max_workers": 1,
+                    "max_worker_nodes": 1,
                 }
             if (
                 hasattr(resource_message, "cluster_full_of_actors_detected")
@@ -530,7 +530,7 @@ class Monitor:
                     yes=True,  # Non-interactive.
                     workers_only=True,  # Retain head node for logs.
                     override_cluster_name=None,
-                    keep_min_workers=True,  # Retain minimal amount of workers.
+                    keep_min_worker_nodes=True,  # Retain minimal amount of workers.
                 )
                 clean = True
                 logger.info("Monitor: Workers taken down.")

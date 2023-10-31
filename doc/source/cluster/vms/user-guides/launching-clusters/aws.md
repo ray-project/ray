@@ -222,7 +222,7 @@ Getting started
                 IamInstanceProfile:
                     Name: ray-autoscaler-cloudwatch-v1
             resources: {}
-            min_workers: 0
+            min_worker_nodes: 0
 
 2. Download CloudWatch Agent and Dashboard config.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

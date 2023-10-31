@@ -74,8 +74,8 @@ TagKey = usage_pb2.TagKey
 @dataclass(init=True)
 class ClusterConfigToReport:
     cloud_provider: Optional[str] = None
-    min_workers: Optional[int] = None
-    max_workers: Optional[int] = None
+    min_worker_nodes: Optional[int] = None
+    max_worker_nodes: Optional[int] = None
     head_node_instance_type: Optional[str] = None
     worker_node_instance_types: Optional[List[str]] = None
 
@@ -112,10 +112,10 @@ class UsageStatsToReport:
     session_start_timestamp_ms: int
     #: The cloud provider found in the cluster.yaml file (e.g., aws).
     cloud_provider: Optional[str]
-    #: The min_workers found in the cluster.yaml file.
-    min_workers: Optional[int]
-    #: The max_workers found in the cluster.yaml file.
-    max_workers: Optional[int]
+    #: The min_worker_nodes found in the cluster.yaml file.
+    min_worker_nodes: Optional[int]
+    #: The max_worker_nodes found in the cluster.yaml file.
+    max_worker_nodes: Optional[int]
     #: The head node instance type found in the cluster.yaml file (e.g., i3.8xlarge).
     head_node_instance_type: Optional[str]
     #: The worker node instance types found in the cluster.yaml file (e.g., i3.8xlarge).
@@ -647,10 +647,10 @@ def get_cluster_config_to_report(
         with open(cluster_config_file_path) as f:
             config = yaml.safe_load(f)
             result = ClusterConfigToReport()
-            if "min_workers" in config:
-                result.min_workers = config["min_workers"]
-            if "max_workers" in config:
-                result.max_workers = config["max_workers"]
+            if "min_worker_nodes" in config:
+                result.min_worker_nodes = config["min_worker_nodes"]
+            if "max_worker_nodes" in config:
+                result.max_worker_nodes = config["max_worker_nodes"]
 
             if "provider" in config and "type" in config["provider"]:
                 result.cloud_provider = config["provider"]["type"]
@@ -762,8 +762,8 @@ def generate_report_data(
         collect_timestamp_ms=int(time.time() * 1000),
         session_start_timestamp_ms=cluster_metadata["session_start_timestamp_ms"],
         cloud_provider=cluster_config_to_report.cloud_provider,
-        min_workers=cluster_config_to_report.min_workers,
-        max_workers=cluster_config_to_report.max_workers,
+        min_worker_nodes=cluster_config_to_report.min_worker_nodes,
+        max_worker_nodes=cluster_config_to_report.max_worker_nodes,
         head_node_instance_type=cluster_config_to_report.head_node_instance_type,
         worker_node_instance_types=cluster_config_to_report.worker_node_instance_types,
         total_num_cpus=cluster_status_to_report.total_num_cpus,

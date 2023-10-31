@@ -32,7 +32,7 @@ from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
 from ray.autoscaler._private.resource_demand_scheduler import (
     ResourceDemandScheduler,
-    _add_min_workers_nodes,
+    _add_min_worker_nodes_nodes,
     _resource_based_utilization_scorer,
     _default_utilization_scorer,
     get_bin_pack_residual,
@@ -271,14 +271,14 @@ def test_node_packing_gpu_cpu_bundles():
             "resources": {
                 "CPU": 16,
             },
-            "max_workers": 10,
+            "max_worker_nodes": 10,
         },
         "gpu": {
             "resources": {
                 "CPU": 16,
                 "GPU": 1,
             },
-            "max_workers": 10,
+            "max_worker_nodes": 10,
         },
     }
     nodes = get_nodes_for(
@@ -313,14 +313,14 @@ def test_gpu_node_avoid_cpu_task():
     types = {
         "cpu": {
             "resources": {"CPU": 1},
-            "max_workers": 10,
+            "max_worker_nodes": 10,
         },
         "gpu": {
             "resources": {
                 "GPU": 1,
                 "CPU": 100,
             },
-            "max_workers": 10,
+            "max_worker_nodes": 10,
         },
     }
     r1 = [{"CPU": 1}] * 100
@@ -333,7 +333,7 @@ def test_gpu_node_avoid_cpu_task():
         r1,
     ) == {"cpu": 10}
     # max_to_add eleven nodes allowed. First ten chosen to be "cpu",
-    # last chosen to be "gpu" due max_workers constraint on "cpu".
+    # last chosen to be "gpu" due max_worker_nodes constraint on "cpu".
     assert get_nodes_for(
         types,
         {},
@@ -363,11 +363,11 @@ def test_get_nodes_respects_max_limit():
     types = {
         "m4.large": {
             "resources": {"CPU": 2},
-            "max_workers": 10,
+            "max_worker_nodes": 10,
         },
         "gpu": {
             "resources": {"GPU": 1},
-            "max_workers": 99999,
+            "max_worker_nodes": 99999,
         },
     }
     assert get_nodes_for(
@@ -410,34 +410,34 @@ def test_get_nodes_respects_max_limit():
     ) == {"m4.large": 2}
 
 
-def test_add_min_workers_nodes():
+def test_add_min_worker_nodes_nodes():
     types = {
         "m2.large": {
             "resources": {"CPU": 2},
-            "min_workers": 50,
-            "max_workers": 100,
+            "min_worker_nodes": 50,
+            "max_worker_nodes": 100,
         },
         "m4.large": {
             "resources": {"CPU": 2},
-            "min_workers": 0,
-            "max_workers": 10,
+            "min_worker_nodes": 0,
+            "max_worker_nodes": 10,
         },
         "gpu": {
             "resources": {"GPU": 1},
-            "min_workers": 99999,
-            "max_workers": 99999,
+            "min_worker_nodes": 99999,
+            "max_worker_nodes": 99999,
         },
         "gpubla": {
             "resources": {"GPU": 1},
-            "min_workers": 10,
-            "max_workers": 0,
+            "min_worker_nodes": 10,
+            "max_worker_nodes": 0,
         },
     }
     # Formatting is disabled to prevent Black from erroring while formatting
     # this file. See https://github.com/ray-project/ray/issues/21313 for more
     # information.
     # fmt: off
-    assert _add_min_workers_nodes(
+    assert _add_min_worker_nodes_nodes(
         [],
         {},
         types,
@@ -451,7 +451,7 @@ def test_add_min_workers_nodes():
             {"m2.large": 50, "gpu": 99999}
          )
 
-    assert _add_min_workers_nodes(
+    assert _add_min_worker_nodes_nodes(
         [{"CPU": 2}]*5,
         {"m2.large": 5},
         types,
@@ -465,7 +465,7 @@ def test_add_min_workers_nodes():
         {"m2.large": 45, "gpu": 99999}
     )
 
-    assert _add_min_workers_nodes(
+    assert _add_min_worker_nodes_nodes(
         [{"CPU": 2}]*60,
         {"m2.large": 60},
         types,
@@ -479,7 +479,7 @@ def test_add_min_workers_nodes():
         {"gpu": 99999}
     )
 
-    assert _add_min_workers_nodes(
+    assert _add_min_worker_nodes_nodes(
         [{"CPU": 2}] * 50 + [{"GPU": 1}] * 99999,
         {"m2.large": 50, "gpu": 99999},
         types,
@@ -492,7 +492,7 @@ def test_add_min_workers_nodes():
         {"m2.large": 50, "gpu": 99999}, {}
     )
 
-    assert _add_min_workers_nodes(
+    assert _add_min_worker_nodes_nodes(
         [],
         {},
         {"gpubla": types["gpubla"]},
@@ -502,8 +502,8 @@ def test_add_min_workers_nodes():
         utilization_scorer=utilization_scorer,
     ) == ([], {}, {})
 
-    types["gpubla"]["max_workers"] = 10
-    assert _add_min_workers_nodes(
+    types["gpubla"]["max_worker_nodes"] = 10
+    assert _add_min_worker_nodes_nodes(
         [],
         {},
         {"gpubla": types["gpubla"]},
@@ -515,10 +515,10 @@ def test_add_min_workers_nodes():
     # fmt: on
 
 
-def test_get_nodes_to_launch_with_min_workers():
+def test_get_nodes_to_launch_with_min_worker_nodes():
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
-    new_types["p2.8xlarge"]["min_workers"] = 2
+    new_types["p2.8xlarge"]["min_worker_nodes"] = 2
     scheduler = ResourceDemandScheduler(
         provider,
         new_types,
@@ -569,10 +569,10 @@ def test_get_nodes_to_launch_with_min_workers():
     assert rem == [{"GPU": 8}, {"GPU": 8}]
 
 
-def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
+def test_get_nodes_to_launch_with_min_worker_nodes_and_bin_packing():
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
-    new_types["p2.8xlarge"]["min_workers"] = 2
+    new_types["p2.8xlarge"]["min_worker_nodes"] = 2
     scheduler = ResourceDemandScheduler(
         provider,
         new_types,
@@ -617,10 +617,10 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     assert to_launch == {"p2.xlarge": 1}
     assert not rem
 
-    # 3 min_workers + 1 head of p2.8xlarge covers the 3 p2.8xlarge + 1
+    # 3 min_worker_nodes + 1 head of p2.8xlarge covers the 3 p2.8xlarge + 1
     # p2.xlarge demand. 3 p2.8xlarge are running/pending. So we need 1 more
-    # p2.8xlarge only tomeet the min_workers constraint and the demand.
-    new_types["p2.8xlarge"]["min_workers"] = 3
+    # p2.8xlarge only tomeet the min_worker_nodes constraint and the demand.
+    new_types["p2.8xlarge"]["min_worker_nodes"] = 3
     scheduler = ResourceDemandScheduler(
         provider,
         new_types,
@@ -737,13 +737,13 @@ def test_request_resources_gpu_no_gpu_nodes():
         "m5.8xlarge": {
             "node_config": {},
             "resources": {"CPU": 32},
-            "max_workers": 40,
+            "max_worker_nodes": 40,
         },
     }
     scheduler = ResourceDemandScheduler(
         provider,
         TYPES,
-        max_workers=100,
+        max_worker_nodes=100,
         head_node_type="empty_node",
         upscaling_speed=1,
     )
@@ -801,13 +801,13 @@ def test_request_resources_existing_usage():
         "p2.8xlarge": {
             "node_config": {},
             "resources": {"CPU": 32, "GPU": 8},
-            "max_workers": 40,
+            "max_worker_nodes": 40,
         },
     }
     scheduler = ResourceDemandScheduler(
         provider,
         TYPES,
-        max_workers=100,
+        max_worker_nodes=100,
         head_node_type="empty_node",
         upscaling_speed=1,
     )
@@ -943,8 +943,8 @@ def test_request_resources_existing_usage():
 
 def test_backlog_queue_impact_on_binpacking_time():
     new_types = copy.deepcopy(TYPES_A)
-    new_types["p2.8xlarge"]["max_workers"] = 1000
-    new_types["m4.16xlarge"]["max_workers"] = 1000
+    new_types["p2.8xlarge"]["max_worker_nodes"] = 1000
+    new_types["m4.16xlarge"]["max_worker_nodes"] = 1000
 
     def test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes, time_to_assert, demand_request_shape
@@ -953,7 +953,7 @@ def test_backlog_queue_impact_on_binpacking_time():
         scheduler = ResourceDemandScheduler(
             provider,
             new_types,
-            max_workers=10000,
+            max_worker_nodes=10000,
             head_node_type="m4.16xlarge",
             upscaling_speed=1,
         )
@@ -1198,10 +1198,10 @@ class TestPlacementGroupScaling:
 
 def test_get_concurrent_resource_demand_to_launch():
     node_types = copy.deepcopy(TYPES_A)
-    node_types["p2.8xlarge"]["min_workers"] = 1
-    node_types["p2.8xlarge"]["max_workers"] = 10
-    node_types["m4.large"]["min_workers"] = 2
-    node_types["m4.large"]["max_workers"] = 100
+    node_types["p2.8xlarge"]["min_worker_nodes"] = 1
+    node_types["p2.8xlarge"]["max_worker_nodes"] = 10
+    node_types["m4.large"]["min_worker_nodes"] = 2
+    node_types["m4.large"]["max_worker_nodes"] = 100
     provider = MockProvider()
     scheduler = ResourceDemandScheduler(
         provider,
@@ -1248,13 +1248,13 @@ def test_get_concurrent_resource_demand_to_launch():
     # 0 running gpu, and 0 running cpus.
     assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 2}
 
-    # Test min_workers bypass max launch limit.
+    # Test min_worker_nodes bypass max launch limit.
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch,
         connected_nodes,
         non_terminated_nodes,
         pending_launches_nodes,
-        adjusted_min_workers={"m4.large": 40},
+        adjusted_min_worker_nodes={"m4.large": 40},
         placement_group_nodes={},
     )
     assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 40}
@@ -1268,13 +1268,13 @@ def test_get_concurrent_resource_demand_to_launch():
         placement_group_nodes={"m4.large": 40},
     )
     assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 40}
-    # Test combining min_workers and placement groups bypass max launch limit.
+    # Test combining min_worker_nodes and placement groups bypass max launch limit.
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch,
         connected_nodes,
         non_terminated_nodes,
         pending_launches_nodes,
-        adjusted_min_workers={"m4.large": 25},
+        adjusted_min_worker_nodes={"m4.large": 25},
         placement_group_nodes={"m4.large": 15},
     )
     assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 40}
@@ -1365,10 +1365,10 @@ def test_get_concurrent_resource_demand_to_launch():
 
 def test_get_concurrent_resource_demand_to_launch_with_upscaling_speed():
     node_types = copy.deepcopy(TYPES_A)
-    node_types["p2.8xlarge"]["min_workers"] = 1
-    node_types["p2.8xlarge"]["max_workers"] = 10
-    node_types["m4.large"]["min_workers"] = 2
-    node_types["m4.large"]["max_workers"] = 100
+    node_types["p2.8xlarge"]["min_worker_nodes"] = 1
+    node_types["p2.8xlarge"]["max_worker_nodes"] = 10
+    node_types["m4.large"]["min_worker_nodes"] = 2
+    node_types["m4.large"]["max_worker_nodes"] = 100
 
     def create_provider():
         provider = MockProvider()
@@ -1451,8 +1451,8 @@ def test_get_concurrent_resource_demand_to_launch_with_upscaling_speed():
 def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
-    new_types["p2.8xlarge"]["min_workers"] = 10
-    new_types["p2.8xlarge"]["max_workers"] = 40
+    new_types["p2.8xlarge"]["min_worker_nodes"] = 10
+    new_types["p2.8xlarge"]["max_worker_nodes"] = 40
 
     scheduler = ResourceDemandScheduler(
         provider,
@@ -1470,7 +1470,7 @@ def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
         )
     ]
     # placement groups should bypass max launch limit.
-    # Note that 25 = max(placement group resources=25, min_workers=10).
+    # Note that 25 = max(placement group resources=25, min_worker_nodes=10).
     to_launch, rem = scheduler.get_nodes_to_launch(
         [],
         {},
@@ -1539,11 +1539,11 @@ def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
         [],
         EMPTY_AVAILABILITY_SUMMARY,
     )
-    # make sure it still respects max_workers of p2.8xlarge.
+    # make sure it still respects max_worker_nodes of p2.8xlarge.
     assert to_launch == {"p2.8xlarge": 40}
     assert rem == [{"GPU": 6.0}] * 20
 
-    scheduler.node_types["p2.8xlarge"]["max_workers"] = 60
+    scheduler.node_types["p2.8xlarge"]["max_worker_nodes"] = 60
     to_launch, rem = scheduler.get_nodes_to_launch(
         [],
         {},
@@ -1554,8 +1554,8 @@ def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
         [],
         EMPTY_AVAILABILITY_SUMMARY,
     )
-    # make sure it still respects global max_workers constraint.
-    # 50 + 1 is global max_workers + head node.ß
+    # make sure it still respects global max_worker_nodes constraint.
+    # 50 + 1 is global max_worker_nodes + head node.ß
     assert to_launch == {"p2.8xlarge": 51}
     assert rem == [{"GPU": 6.0}] * 9
 
@@ -1563,8 +1563,8 @@ def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
 def test_get_nodes_to_launch_max_launch_concurrency():
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
-    new_types["p2.8xlarge"]["min_workers"] = 10
-    new_types["p2.8xlarge"]["max_workers"] = 40
+    new_types["p2.8xlarge"]["min_worker_nodes"] = 10
+    new_types["p2.8xlarge"]["max_worker_nodes"] = 40
 
     scheduler = ResourceDemandScheduler(
         provider,
@@ -1584,10 +1584,10 @@ def test_get_nodes_to_launch_max_launch_concurrency():
         [],
         EMPTY_AVAILABILITY_SUMMARY,
     )
-    # Respects min_workers despite max launch limit.
+    # Respects min_worker_nodes despite max launch limit.
     assert to_launch == {"p2.8xlarge": 10}
     assert not rem
-    scheduler.node_types["p2.8xlarge"]["min_workers"] = 4
+    scheduler.node_types["p2.8xlarge"]["min_worker_nodes"] = 4
     provider.create_node(
         {},
         {
@@ -1920,8 +1920,8 @@ class AutoscalingTest(unittest.TestCase):
 
     def testSummary(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["m4.large"]["min_workers"] = 2
-        config["max_workers"] = 10
+        config["available_node_types"]["m4.large"]["min_worker_nodes"] = 2
+        config["max_worker_nodes"] = 10
         config["docker"] = {}
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -2039,7 +2039,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinSanity(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["m4.large"]["min_workers"] = 2
+        config["available_node_types"]["m4.large"]["min_worker_nodes"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2067,11 +2067,11 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
 
     def testScaleUpMinSanityWithHeadNode(self):
-        """Make sure when min_workers is used with head node it does not count
-        head_node in min_workers."""
+        """Make sure when min_worker_nodes is used with head node it does not count
+        head_node in min_worker_nodes."""
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["empty_node"]["min_workers"] = 2
-        config["available_node_types"]["empty_node"]["max_workers"] = 2
+        config["available_node_types"]["empty_node"]["min_worker_nodes"] = 2
+        config["available_node_types"]["empty_node"]["max_worker_nodes"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2102,8 +2102,8 @@ class AutoscalingTest(unittest.TestCase):
         # Note this is mostly an integration test. See
         # testPlacementGroupScaling for more comprehensive tests.
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["min_workers"] = 0
-        config["max_workers"] = 999
+        config["min_worker_nodes"] = 0
+        config["max_worker_nodes"] = 999
         config["head_node_type"] = "m4.4xlarge"
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -2185,10 +2185,10 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinWorkers(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["max_workers"] = 50
+        config["max_worker_nodes"] = 50
         config["idle_timeout_minutes"] = 1
-        config["available_node_types"]["m4.large"]["min_workers"] = 1
-        config["available_node_types"]["p2.8xlarge"]["min_workers"] = 1
+        config["available_node_types"]["m4.large"]["min_worker_nodes"] = 1
+        config["available_node_types"]["p2.8xlarge"]["min_worker_nodes"] = 1
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2264,7 +2264,7 @@ class AutoscalingTest(unittest.TestCase):
     def testScaleUpIgnoreUsed(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         # Commenting out this line causes the test case to fail?!?!
-        config["min_workers"] = 0
+        config["min_worker_nodes"] = 0
         config["target_utilization_fraction"] = 1.0
         config["head_node_type"] = "p2.xlarge"
         config_path = self.write_config(config)
@@ -2311,8 +2311,8 @@ class AutoscalingTest(unittest.TestCase):
     def testRequestBundlesAccountsForHeadNode(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["head_node_type"] = "p2.8xlarge"
-        config["min_workers"] = 0
-        config["max_workers"] = 50
+        config["min_worker_nodes"] = 0
+        config["max_worker_nodes"] = 50
         config_path = self.write_config(config)
         self.provider = MockProvider()
         self.provider.create_node(
@@ -2355,8 +2355,8 @@ class AutoscalingTest(unittest.TestCase):
 
     def testRequestBundles(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["min_workers"] = 0
-        config["max_workers"] = 50
+        config["min_worker_nodes"] = 0
+        config["max_worker_nodes"] = 50
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2398,8 +2398,8 @@ class AutoscalingTest(unittest.TestCase):
 
     def testResourcePassing(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["min_workers"] = 0
-        config["max_workers"] = 50
+        config["min_worker_nodes"] = 0
+        config["max_worker_nodes"] = 50
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2450,8 +2450,8 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpLoadMetrics(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["min_workers"] = 0
-        config["max_workers"] = 50
+        config["min_worker_nodes"] = 0
+        config["max_worker_nodes"] = 50
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2504,8 +2504,8 @@ class AutoscalingTest(unittest.TestCase):
         ]
         config["available_node_types"]["p2.xlarge"]["resources"][t] = 1
         # Commenting out this line causes the test case to fail?!?!
-        config["min_workers"] = 0
-        config["max_workers"] = 10
+        config["min_worker_nodes"] = 0
+        config["max_worker_nodes"] = 10
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2577,8 +2577,8 @@ class AutoscalingTest(unittest.TestCase):
         config["docker"]["image"] = "default-image:nightly"
         config["docker"]["worker_image"] = "default-image:nightly"
         # Commenting out this line causes the test case to fail?!?!
-        config["min_workers"] = 0
-        config["max_workers"] = 10
+        config["min_worker_nodes"] = 0
+        config["max_worker_nodes"] = 10
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2672,7 +2672,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testUpdateConfig(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["m4.large"]["min_workers"] = 2
+        config["available_node_types"]["m4.large"]["min_worker_nodes"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2697,7 +2697,7 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 1
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-        config["available_node_types"]["m4.large"]["min_workers"] = 0
+        config["available_node_types"]["m4.large"]["min_worker_nodes"] = 0
         config["available_node_types"]["m4.large"]["node_config"]["field_changed"] = 1
         config_path = self.write_config(config)
         fill_in_raylet_ids(self.provider, lm)
@@ -2707,8 +2707,8 @@ class AutoscalingTest(unittest.TestCase):
     def testEmptyDocker(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         del config["docker"]
-        config["min_workers"] = 0
-        config["max_workers"] = 10
+        config["min_worker_nodes"] = 0
+        config["max_worker_nodes"] = 10
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2744,18 +2744,18 @@ class AutoscalingTest(unittest.TestCase):
     def testRequestResourcesIdleTimeout(self):
         """Test request_resources() with and without idle timeout."""
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["max_workers"] = 4
+        config["max_worker_nodes"] = 4
         config["idle_timeout_minutes"] = 0
         config["available_node_types"] = {
             "empty_node": {
                 "node_config": {},
                 "resources": {"CPU": 2},
-                "max_workers": 1,
+                "max_worker_nodes": 1,
             },
             "def_worker": {
                 "node_config": {},
                 "resources": {"CPU": 2, "WORKER": 1},
-                "max_workers": 3,
+                "max_worker_nodes": 3,
             },
         }
         config_path = self.write_config(config)
@@ -2845,26 +2845,26 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
     def testRequestResourcesRaceConditionsLong(self):
-        """Test request_resources(), race conditions & demands/min_workers.
+        """Test request_resources(), race conditions & demands/min_worker_nodes.
 
         Tests when request_resources() is called simultaneously with resource
-        demands and min_workers constraint in multiple orders upscaling and
+        demands and min_worker_nodes constraint in multiple orders upscaling and
         downscaling.
         """
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["max_workers"] = 4
+        config["max_worker_nodes"] = 4
         config["idle_timeout_minutes"] = 0
         config["available_node_types"] = {
             "empty_node": {
                 "node_config": {},
                 "resources": {"CPU": 2},
-                "max_workers": 1,
+                "max_worker_nodes": 1,
             },
             "def_worker": {
                 "node_config": {},
                 "resources": {"CPU": 2, "WORKER": 1},
-                "max_workers": 3,
-                "min_workers": 1,
+                "max_worker_nodes": 3,
+                "min_worker_nodes": 1,
             },
         }
         config_path = self.write_config(config)
@@ -2959,23 +2959,23 @@ class AutoscalingTest(unittest.TestCase):
         assert autoscaler.provider.mock_nodes[node_id].state == "unterminatable"
 
     def testRequestResourcesRaceConditionWithMinWorker(self):
-        """Test request_resources() with min_workers.
+        """Test request_resources() with min_worker_nodes.
 
         Tests when request_resources() is called simultaneously with adding
-        min_workers constraint.
+        min_worker_nodes constraint.
         """
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["available_node_types"] = {
             "empty_node": {
                 "node_config": {},
                 "resources": {"CPU": 2},
-                "max_workers": 1,
+                "max_worker_nodes": 1,
             },
             "def_worker": {
                 "node_config": {},
                 "resources": {"CPU": 2, "WORKER": 1},
-                "max_workers": 3,
-                "min_workers": 1,
+                "max_worker_nodes": 3,
+                "min_worker_nodes": 1,
             },
         }
         config_path = self.write_config(config)
@@ -3017,12 +3017,12 @@ class AutoscalingTest(unittest.TestCase):
                 "empty_node": {
                     "node_config": {},
                     "resources": {"CPU": 2, "GPU": 1},
-                    "max_workers": 1,
+                    "max_worker_nodes": 1,
                 },
                 "def_worker": {
                     "node_config": {},
                     "resources": {"CPU": 2, "GPU": 1, "WORKER": 1},
-                    "max_workers": 3,
+                    "max_worker_nodes": 3,
                 },
             }
         )

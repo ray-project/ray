@@ -1,6 +1,6 @@
 # Experimental: an example of configuring a mixed-node-type cluster.
 cluster_name: multi_node_type
-max_workers: 40
+max_worker_nodes: 40
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
 # E.g., if the task requires adding more nodes then autoscaler will gradually
@@ -25,8 +25,8 @@ available_node_types:
         # For AWS instances, autoscaler will automatically add the available
         # CPUs/GPUs/accelerator_type ({"CPU": 4} for m4.xlarge) in "resources".
         # resources: {"CPU": 4}
-        min_workers: 1
-        max_workers: 5
+        min_worker_nodes: 1
+        max_worker_nodes: 5
     cpu_16_spot:
         node_config:
             InstanceType: m4.4xlarge
@@ -35,14 +35,14 @@ available_node_types:
                 MarketType: spot
         # Autoscaler will auto fill the CPU resources below.
         resources: {"Custom1": 1, "is_spot": 1}
-        max_workers: 10
+        max_worker_nodes: 10
     gpu_1_ondemand:
         node_config:
             InstanceType: p2.xlarge
             ImageId: latest_dlami
         # Autoscaler will auto fill the CPU/GPU resources below.
         resources: {"Custom2": 2}
-        max_workers: 4
+        max_worker_nodes: 4
         worker_setup_commands:
             - pip install tensorflow-gpu  # Example command.
     gpu_8_ondemand:
@@ -51,7 +51,7 @@ available_node_types:
             ImageId: latest_dlami
         # Autoscaler autofills the "resources" below.
         # resources: {"CPU": 32, "GPU": 4, "accelerator_type:V100": 1}
-        max_workers: 2
+        max_worker_nodes: 2
         worker_setup_commands:
             - pip install tensorflow-gpu  # Example command.
 

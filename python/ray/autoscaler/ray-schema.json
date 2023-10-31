@@ -23,8 +23,8 @@
             "description": "A unique identifier for the head node and workers of this cluster.",
             "type": "string"
         },
-        "max_workers": {
-            "description": "The maximum number of workers nodes to launch in addition to the head node. This takes precedence over min_workers.",
+        "max_worker_nodes": {
+            "description": "The maximum number of workers nodes to launch in addition to the head node. This takes precedence over min_worker_nodes.",
             "type": "integer",
             "minimum": 0
         },
@@ -60,7 +60,7 @@
                     "type": "string",
                     "description": "gcp project id, if using gcp"
                 },
-                "worker_ips": {
+                "worker_node_ips": {
                     "type": "array",
                     "description": "local cluster head node"
                 },
@@ -343,8 +343,8 @@
                            "type": "object",
                            "description": "Provider-specific config for the node, e.g. instance type."
                        },
-                       "min_workers": {"type": "integer"},
-                       "max_workers": {"type": "integer"},
+                       "min_worker_nodes": {"type": "integer"},
+                       "max_worker_nodes": {"type": "integer"},
                        "resources": {
 						   "type": "object",
 						   "patternProperties": {

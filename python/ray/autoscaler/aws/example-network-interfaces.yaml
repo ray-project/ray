@@ -1,6 +1,6 @@
 cluster_name: network_interfaces
 
-max_workers: 2
+max_worker_nodes: 2
 
 provider:
     type: aws
@@ -76,8 +76,8 @@ available_node_types:
       InstanceType: m5.large
 
   ray.worker.efa:
-    min_workers: 0
-    max_workers: 1
+    min_worker_nodes: 0
+    max_worker_nodes: 1
     resources: {}
     node_config:
       # Worker node network interfaces should always use auto-assigned private
@@ -111,8 +111,8 @@ available_node_types:
       InstanceType: p3dn.24xlarge
 
   ray.worker.default:
-    min_workers: 0
-    max_workers: 1
+    min_worker_nodes: 0
+    max_worker_nodes: 1
     resources: {}
     node_config:
       NetworkInterfaces:

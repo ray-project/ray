@@ -2,9 +2,9 @@
 cluster_name: horovod-cluster
 
 # The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers. min_workers default to 0.
-min_workers: 3
-max_workers: 3
+# node. This takes precedence over min_worker_nodes. min_worker_nodes default to 0.
+min_worker_nodes: 3
+max_worker_nodes: 3
 
 # Cloud-provider specific configuration.
 provider:
@@ -17,8 +17,8 @@ auth:
 
 available_node_types:
     ray.head.default:
-        min_workers: 0
-        max_workers: 0
+        min_worker_nodes: 0
+        max_worker_nodes: 0
         resources: {}
         node_config:
             InstanceType: g3.8xlarge
@@ -32,8 +32,8 @@ available_node_types:
 
 
     ray.worker.default:
-        min_workers: 3
-        max_workers: 3
+        min_worker_nodes: 3
+        max_worker_nodes: 3
         resources: {}
         node_config:
             InstanceType: g3.8xlarge

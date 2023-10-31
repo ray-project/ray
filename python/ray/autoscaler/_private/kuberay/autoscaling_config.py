@@ -99,8 +99,8 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
 
     # The autoscaler expects a global max workers field. We set it to the sum of
     # node type max workers.
-    global_max_workers = sum(
-        node_type["max_workers"] for node_type in available_node_types.values()
+    global_max_worker_nodes = sum(
+        node_type["max_worker_nodes"] for node_type in available_node_types.values()
     )
 
     # Legacy autoscaling fields carry no information but are required for compatibility.
@@ -129,7 +129,7 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
         "cluster_name": ray_cr["metadata"]["name"],
         "head_node_type": _HEAD_GROUP_NAME,
         "available_node_types": available_node_types,
-        "max_workers": global_max_workers,
+        "max_worker_nodes": global_max_worker_nodes,
         # Should consider exposing `idleTimeoutMinutes` in the RayCluster CRD,
         # under an `autoscaling` field.
         "idle_timeout_minutes": idle_timeout_minutes,
@@ -208,17 +208,17 @@ def _node_type_from_group_spec(
     """Converts CR group spec to autoscaler node type."""
     if is_head:
         # The head node type has no workers because the head is not a worker.
-        min_workers = max_workers = 0
+        min_worker_nodes = max_worker_nodes = 0
     else:
         # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec
-        min_workers = group_spec["minReplicas"]
-        max_workers = group_spec["maxReplicas"]
+        min_worker_nodes = group_spec["minReplicas"]
+        max_worker_nodes = group_spec["maxReplicas"]
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
 
     return {
-        "min_workers": min_workers,
-        "max_workers": max_workers,
+        "min_worker_nodes": min_workers,
+        "max_worker_nodes": max_worker_nodes,
         # `node_config` is a legacy field required for compatibility.
         # Pod config data is required by the operator but not by the autoscaler.
         "node_config": {},

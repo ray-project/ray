@@ -135,8 +135,8 @@ def test_fake_batching_autoscaler_e2e(shutdown_only):
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 2,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 2,
             },
             "gpu_node": {
                 "resources": {
@@ -145,8 +145,8 @@ def test_fake_batching_autoscaler_e2e(shutdown_only):
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
                 "node_config": {},
-                "min_workers": 0,
-                "max_workers": 2,
+                "min_worker_nodes": 0,
+                "max_worker_nodes": 2,
             },
         },
     )

@@ -3,7 +3,7 @@ region: us-west1
 allowed_azs: 
     - us-west1-c
 
-max_workers: 5
+max_worker_nodes: 5
 
 #aws:
 #    BlockDeviceMappings:
@@ -21,8 +21,8 @@ head_node_type:
 worker_node_types:
    - name: worker_node
      instance_type: n2-standard-2 # aws m4.large
-     min_workers: 5
-     max_workers: 5
+     min_worker_nodes: 5
+     max_worker_nodes: 5
      use_spot: false
      resources:
       cpu: 2 

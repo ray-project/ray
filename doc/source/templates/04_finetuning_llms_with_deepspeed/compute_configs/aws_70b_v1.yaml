@@ -10,8 +10,8 @@ head_node_type:
 worker_node_types:
   - name: gpu_worker
     instance_type: g5.48xlarge
-    min_workers: 3
-    max_workers: 3
+    min_worker_nodes: 3
+    max_worker_nodes: 3
     use_spot: false
 
 aws:

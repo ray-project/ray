@@ -441,11 +441,11 @@ class Simulator:
 
 
 SAMPLE_CLUSTER_CONFIG = copy.deepcopy(MULTI_WORKER_CLUSTER)
-SAMPLE_CLUSTER_CONFIG["min_workers"] = 0
-SAMPLE_CLUSTER_CONFIG["max_workers"] = 9999
+SAMPLE_CLUSTER_CONFIG["min_worker_nodes"] = 0
+SAMPLE_CLUSTER_CONFIG["max_worker_nodes"] = 9999
 SAMPLE_CLUSTER_CONFIG["target_utilization_fraction"] = 0.5
-SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"]["max_workers"] = 100
-SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"]["max_workers"] = 10000
+SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.16xlarge"]["max_worker_nodes"] = 100
+SAMPLE_CLUSTER_CONFIG["available_node_types"]["m4.4xlarge"]["max_worker_nodes"] = 10000
 
 
 class AutoscalingPolicyTest(unittest.TestCase):
