@@ -132,7 +132,7 @@ def do_test_log_likelihood(
 
                 # The expected logp computation logic is overfitted to the ModelV2
                 # stack and does not generalize to RLModule API.
-                if not config._enable_rl_module_api:
+                if not config._enable_new_api_stack:
                     expected_logp = _get_expected_logp(
                         fw, vars, obs_batch, a, layer_key, logp_func
                     )
@@ -150,7 +150,7 @@ def do_test_log_likelihood(
                     in_training=False,
                 )
 
-                if not config._enable_rl_module_api:
+                if not config._enable_new_api_stack:
                     check(np.exp(logp), expected_prob, atol=0.2)
 
 

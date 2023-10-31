@@ -2,7 +2,7 @@ import os
 import threading
 import time
 import uuid
-from typing import Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -83,6 +83,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._backpressure_policies: List[BackpressurePolicy] = []
 
         self._dataset_tag = dataset_tag
+        # Stores if an operator is completed,
+        # used for marking when an op has just completed.
+        self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -113,6 +116,8 @@ class StreamingExecutor(Executor, threading.Thread):
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
         self._backpressure_policies = get_backpressure_policies(self._topology)
+
+        self._has_op_completed = {op: False for op in self._topology}
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
@@ -292,6 +297,16 @@ class StreamingExecutor(Executor, threading.Thread):
         update_stats_actor_metrics(
             [op.metrics for op in self._topology], {"dataset": self._dataset_tag}
         )
+
+        # Log metrics of newly completed operators.
+        for op in topology:
+            if op.completed() and not self._has_op_completed[op]:
+                log_str = (
+                    f"Operator {op} completed. "
+                    f"Operator Metrics:\n{op._metrics.as_dict()}"
+                )
+                logger.get_logger(log_to_stdout=False).info(log_str)
+                self._has_op_completed[op] = True
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)

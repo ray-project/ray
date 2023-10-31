@@ -1796,7 +1796,7 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
+    should_dedup = data.get("pid") not in ["autoscaler"]
 
     if data["is_err"]:
         if should_dedup:
@@ -1914,9 +1914,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         else:
             res = "pid="
             if data.get("actor_name"):
-                res = data["actor_name"] + " " + res
+                res = f"{data['actor_name']} {res}"
             elif data.get("task_name"):
-                res = data["task_name"] + " " + res
+                res = f"{data['task_name']} {res}"
             return res
 
     def message_for(data: Dict[str, str], line: str) -> str:
@@ -2072,7 +2072,13 @@ def listen_error_messages(worker, threads_stopped):
                 # the separate unhandled exception handler.
                 pass
             else:
-                logger.warning(error_message)
+                print_to_stdstream(
+                    {
+                        "lines": [error_message],
+                        "pid": "raylet",
+                        "is_err": False,
+                    }
+                )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
 

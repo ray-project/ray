@@ -49,7 +49,8 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     ALL_MODULES,
 )
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -150,10 +151,6 @@ class PPOConfig(PGConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
-
-        # Enable the rl module api by default.
-        self.rl_module(_enable_rl_module_api=True)
-        self.training(_enable_learner_api=True)
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -319,11 +316,6 @@ class PPOConfig(PGConfig):
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
-        # Can not use Tf with learner api.
-        if self.framework_str == "tf":
-            self.rl_module(_enable_rl_module_api=False)
-            self.training(_enable_learner_api=False)
-
         # Call super's validation method.
         super().validate()
 
@@ -358,7 +350,7 @@ class PPOConfig(PGConfig):
             )
 
         # Entropy coeff schedule checking.
-        if self._enable_learner_api:
+        if self._enable_new_api_stack:
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -431,12 +423,14 @@ class PPO(Algorithm):
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
+        use_rollout_worker = self.config.env_runner_cls is None or issubclass(
+            self.config.env_runner_cls, RolloutWorker
+        )
+
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             # Old RolloutWorker based APIs (returning SampleBatch/MultiAgentBatch).
-            if self.config.env_runner_cls is None or issubclass(
-                self.config.env_runner_cls, RolloutWorker
-            ):
+            if use_rollout_worker:
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
@@ -450,17 +444,19 @@ class PPO(Algorithm):
             # New Episode-returning EnvRunner API.
             else:
                 if self.workers.num_remote_workers() <= 0:
-                    episodes = [self.workers.local_worker().sample()]
+                    episodes: List[SingleAgentEpisode] = [
+                        self.workers.local_worker().sample()
+                    ]
                 else:
-                    episodes = self.workers.foreach_worker(
+                    episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
                         lambda w: w.sample(), local_worker=False
                     )
                 # Perform PPO postprocessing on a (flattened) list of Episodes.
-                postprocessed_episodes = self.postprocess_episodes(
-                    tree.flatten(episodes)
-                )
+                postprocessed_episodes: List[
+                    SingleAgentEpisode
+                ] = self.postprocess_episodes(tree.flatten(episodes))
                 # Convert list of postprocessed Episodes into a single sample batch.
-                train_batch = postprocess_episodes_to_sample_batch(
+                train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
                     postprocessed_episodes
                 )
 
@@ -471,7 +467,7 @@ class PPO(Algorithm):
         # Standardize advantages.
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             # TODO (Kourosh) Clearly define what train_batch_size
             #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
             # TODO (Kourosh) Do this inside the Learner so that we don't have to do
@@ -500,7 +496,7 @@ class PPO(Algorithm):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             # The train results's loss keys are pids to their loss values. But we also
             # return a total_loss key at the same level as the pid keys. So we need to
             # subtract that to get the total set of pids to update.
@@ -512,8 +508,8 @@ class PPO(Algorithm):
             policies_to_update = list(train_results.keys())
 
         # TODO (Kourosh): num_grad_updates per each policy should be accessible via
-        # train_results
-        if self.config._enable_learner_api:
+        #  train_results.
+        if not use_rollout_worker:
             global_vars = None
         else:
             global_vars = {
@@ -529,7 +525,7 @@ class PPO(Algorithm):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
                 from_worker_or_learner_group = None
-                if self.config._enable_learner_api:
+                if self.config._enable_new_api_stack:
                     # sync weights from learner_group to all rollout workers
                     from_worker_or_learner_group = self.learner_group
                 self.workers.sync_weights(
@@ -537,11 +533,11 @@ class PPO(Algorithm):
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
-            elif self.config._enable_learner_api:
+            elif self.config._enable_new_api_stack:
                 weights = self.learner_group.get_weights()
                 self.workers.local_worker().set_weights(weights)
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
 
             kl_dict = {}
             if self.config.use_kl_loss:
@@ -617,7 +613,9 @@ class PPO(Algorithm):
 
         return train_results
 
-    def postprocess_episodes(self, episodes: List[Episode]) -> List[Episode]:
+    def postprocess_episodes(
+        self, episodes: List[SingleAgentEpisode]
+    ) -> List[SingleAgentEpisode]:
         """Calculate advantages and value targets."""
         from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
 
