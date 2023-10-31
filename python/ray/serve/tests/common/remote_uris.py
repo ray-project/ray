@@ -1,1 +1,10 @@
-TEST_DAG_REMOTE_URI = "https://github.com/ray-project/test_dag/archive/1a0ca74268de85affc6ead99121e2de7a01fa360.zip"
+# flake8: noqa
+
+"""
+This file contains links to pinned versions of remote URIs used in testing.
+All tests should use pinned versions to avoid accidental breakages.
+"""
+
+TEST_DAG_PINNED_URI = "https://github.com/ray-project/test_dag/archive/1a0ca74268de85affc6ead99121e2de7a01fa360.zip"
+TEST_DEPLOY_GROUP_PINNED_URI = "https://github.com/ray-project/test_deploy_group/archive/67971777e225600720f91f618cdfe71fc47f60ee.zip"
+TEST_MODULE_PINNED_URI = "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"

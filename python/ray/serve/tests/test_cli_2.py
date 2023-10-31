@@ -20,7 +20,10 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import DeploymentHandle
-from ray.serve.tests.common.remote_uris import TEST_DAG_REMOTE_URI
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_DEPLOY_GROUP_PINNED_URI,
+)
 from ray.serve.tests.common.utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
@@ -385,13 +388,14 @@ def test_run_runtime_env(ray_start_stop):
                 "missing_runtime_env.yaml",
             ),
             "--runtime-env-json",
-            (
-                '{"py_modules": ["https://github.com/ray-project/test_deploy_group'
-                '/archive/67971777e225600720f91f618cdfe71fc47f60ee.zip"],'
-                '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
+            json.dumps(
+                {
+                    "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
+                    "working_dir": "http://nonexistentlink-q490123950ni34t",
+                }
             ),
             "--working-dir",
-            TEST_DAG_REMOTE_URI,
+            TEST_DAG_PINNED_URI,
         ]
     )
     wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
