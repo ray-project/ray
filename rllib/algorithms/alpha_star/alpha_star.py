@@ -13,18 +13,12 @@ class AlphaStarConfig(appo.APPOConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
-
-        # AlphaStar specific settings:
         self.replay_buffer_capacity = 20
         self.replay_buffer_replay_ratio = 0.5
         self.max_requests_in_flight_per_sampler_worker = 2
         self.max_requests_in_flight_per_learner_worker = 2
-
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_learner_manager = 0.0
-
-        # League-building parameters.
-        # The LeagueBuilder class to be used for league building logic.
         self.league_builder_config = {
             "type": None,
             "num_random_policies": 2,
@@ -37,7 +31,6 @@ class AlphaStarConfig(appo.APPOConfig):
             "prob_main_exploiter_playing_against_learning_main": 0.5,
         }
         self.max_num_policies_to_train = None
-
         self.min_time_s_per_iteration = 2
         self.policies = None
         self.simple_optimizer = True
