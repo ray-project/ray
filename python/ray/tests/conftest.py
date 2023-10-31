@@ -1001,6 +1001,7 @@ def listen_port(request):
         for i in range(MAX_RETRY):
             try:
                 sock.bind(("127.0.0.1", port))
+                break
             except OSError as e:
                 if i == MAX_RETRY - 1:
                     raise e
