@@ -366,7 +366,6 @@ Content-Type: application/json
 .. autoclass:: schema.ReadDeploymentModel
    :members:
    :show-inheritance:
-   :toctree: doc/
 ```
 
 ## Metrics API
