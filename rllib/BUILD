@@ -719,13 +719,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "env/tests/test_single_agent_gym_env_runner",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_single_agent_gym_env_runner.py"]
-)
-
-py_test(
     name = "env/tests/test_env_with_subprocess",
     tags = ["team:rllib", "env"],
     size = "medium",
@@ -805,6 +798,20 @@ sh_test(
 #     args = ["remote", "unity3d", "8860"],
 #     data = glob(["examples/serving/*.py"]),
 # )
+
+py_test(
+    name = "env/tests/test_single_agent_gym_env_runner",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_single_agent_gym_env_runner.py"]
+)
+
+py_test(
+    name = "env/tests/test_single_agent_episode",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_single_agent_episode.py"]
+)
 
 py_test(
     name = "env/wrappers/tests/test_exception_wrapper",
