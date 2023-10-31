@@ -21,6 +21,57 @@ def _cursor_to_block(cursor) -> Block:
     return pa.Table.from_pydict(pydict)
 
 
+def _check_connection_is_dbapi2_compliant(connection) -> None:
+    for attr in "close", "commit", "cursor":
+        if not hasattr(connection, attr):
+            raise ValueError(
+                "Your `connection_factory` created a `Connection` object without a "
+                f"{attr!r} method, but this method is required by the Python DB API2 "
+                "specification. Check that your database connector is DB API2-"
+                "compliant. To learn more, read https://peps.python.org/pep-0249/."
+            )
+
+
+def _check_cursor_is_dbapi2_compliant(cursor) -> None:
+    # These aren't all the methods required by the specification, but it's all the ones
+    # we care about.
+    for attr in "execute", "executemany", "fetchone", "fetchall", "description":
+        if not hasattr(cursor, attr):
+            raise ValueError(
+                "Your database connector created a `Cursor` object without a "
+                f"{attr!r} method, but this method is required by the Python DB API2 "
+                "specification. Check that your database connector is DB API2-"
+                "compliant. To learn more, read https://peps.python.org/pep-0249/."
+            )
+
+
+@contextmanager
+def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
+    connection = connection_factory()
+    _check_connection_is_dbapi2_compliant(connection)
+
+    try:
+        cursor = connection.cursor()
+        _check_cursor_is_dbapi2_compliant(cursor)
+        yield cursor
+        connection.commit()
+    except Exception:
+        # `rollback` is optional since not all databases provide transaction support.
+        try:
+            connection.rollback()
+        except Exception as e:
+            # Each connector implements its own `NotSupportError` class, so we check
+            # the exception's name instead of using `isinstance`.
+            if (
+                isinstance(e, AttributeError)
+                or e.__class__.__name__ == "NotSupportedError"
+            ):
+                pass
+        raise
+    finally:
+        connection.close()
+
+
 class _SQLDatasource(Datasource):
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
@@ -126,54 +177,3 @@ class SQLDatasource(Datasource):
             "`SQLDatasource` has been deprecated in Ray 2.9. Call `ray.data.read_sql` "
             "or `Dataset.write_sql` instead."
         )
-
-
-def _check_connection_is_dbapi2_compliant(connection) -> None:
-    for attr in "close", "commit", "cursor":
-        if not hasattr(connection, attr):
-            raise ValueError(
-                "Your `connection_factory` created a `Connection` object without a "
-                f"{attr!r} method, but this method is required by the Python DB API2 "
-                "specification. Check that your database connector is DB API2-"
-                "compliant. To learn more, read https://peps.python.org/pep-0249/."
-            )
-
-
-def _check_cursor_is_dbapi2_compliant(cursor) -> None:
-    # These aren't all the methods required by the specification, but it's all the ones
-    # we care about.
-    for attr in "execute", "executemany", "fetchone", "fetchall", "description":
-        if not hasattr(cursor, attr):
-            raise ValueError(
-                "Your database connector created a `Cursor` object without a "
-                f"{attr!r} method, but this method is required by the Python DB API2 "
-                "specification. Check that your database connector is DB API2-"
-                "compliant. To learn more, read https://peps.python.org/pep-0249/."
-            )
-
-
-@contextmanager
-def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
-    connection = connection_factory()
-    _check_connection_is_dbapi2_compliant(connection)
-
-    try:
-        cursor = connection.cursor()
-        _check_cursor_is_dbapi2_compliant(cursor)
-        yield cursor
-        connection.commit()
-    except Exception:
-        # `rollback` is optional since not all databases provide transaction support.
-        try:
-            connection.rollback()
-        except Exception as e:
-            # Each connector implements its own `NotSupportError` class, so we check
-            # the exception's name instead of using `isinstance`.
-            if (
-                isinstance(e, AttributeError)
-                or e.__class__.__name__ == "NotSupportedError"
-            ):
-                pass
-        raise
-    finally:
-        connection.close()
