@@ -96,8 +96,6 @@ if TYPE_CHECKING:
     import torch
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.util.placement_group import PlacementGroup
-
 
 T = TypeVar("T")
 
@@ -344,16 +342,9 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        (
-            requested_parallelism,
-            min_safe_parallelism,
-            inmemory_size,
-            datasource_or_legacy_reader,
-        ) = _get_datasource_or_legacy_reader(
+        datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
             datasource,
             ctx,
-            parallelism,
-            ctx.target_max_block_size,
             local_uri,
             read_args,
         )
@@ -365,27 +356,27 @@ def read_datasource(
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-        get_datasource_or_legacyy_reader = cached_remote_fn(
+        get_datasource_or_legacy_reader = cached_remote_fn(
             _get_datasource_or_legacy_reader, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
         cur_pg = ray.util.get_current_placement_group()
-        (
-            requested_parallelism,
-            min_safe_parallelism,
-            inmemory_size,
-            datasource_or_legacy_reader,
-        ) = ray.get(
-            get_datasource_or_legacyy_reader.remote(
+        datasource_or_legacy_reader = ray.get(
+            get_datasource_or_legacy_reader.remote(
                 datasource,
                 ctx,
-                parallelism,
-                ctx.target_max_block_size,
                 local_uri,
                 _wrap_arrow_serialization_workaround(read_args),
-                placement_group=cur_pg,
             )
         )
+
+    requested_parallelism, _, _, inmemory_size = _autodetect_parallelism(
+        parallelism,
+        ctx.target_max_block_size,
+        DataContext.get_current(),
+        datasource_or_legacy_reader,
+        placement_group=cur_pg,
+    )
 
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
@@ -2502,49 +2493,38 @@ def from_torch(
 def _get_datasource_or_legacy_reader(
     ds: Datasource,
     ctx: DataContext,
-    parallelism: int,
-    target_max_block_size: int,
     local_uri: bool,
     kwargs: dict,
-    placement_group: Optional["PlacementGroup"] = None,
-) -> Tuple[int, int, Optional[int], Reader]:
+) -> Union[Datasource, Reader]:
     """Generates reader.
 
     Args:
         ds: Datasource to read from.
         ctx: Dataset config to use.
-        parallelism: The user-requested parallelism, or -1 for autodetection.
-        target_max_block_size: Target max output block size.
-        placement_group: The placement group that this Dataset
-            will execute inside, if any.
-        kwargs: Additional kwargs to pass to the reader.
+        local_uri:
+        kwargs: Additional kwargs to pass to the legacy reader if
+            `Datasource.create_reader` is implemented.
 
     Returns:
-        Request parallelism from the datasource, the min safe parallelism to avoid
-        OOM, the estimated inmemory data size, and the reader generated.
+        The datasource or a generated legacy reader.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
+
     # NOTE: `ParquetDatasource` has separate steps to fetch metadata and sample rows,
     # so it needs `local_uri` parameter for now.
     # TODO(chengsu): stop passing `local_uri` parameter to
     # `ParquetDatasource.create_reader()`.
     if local_uri and isinstance(ds, ParquetDatasource):
         kwargs["local_uri"] = local_uri
+
     DataContext._set_current(ctx)
-    reader = ds.create_reader(**kwargs)
-    requested_parallelism, _, min_safe_parallelism, mem_size = _autodetect_parallelism(
-        parallelism,
-        target_max_block_size,
-        DataContext.get_current(),
-        reader,
-        placement_group=placement_group,
-    )
-    return (
-        requested_parallelism,
-        min_safe_parallelism,
-        mem_size,
-        reader,
-    )
+
+    try:
+        datasource_or_legacy_reader = ds.create_reader(**kwargs)
+    except NotImplementedError:
+        datasource_or_legacy_reader = ds
+
+    return datasource_or_legacy_reader
 
 
 def _resolve_parquet_args(
