@@ -17,6 +17,7 @@ from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle
+from ray.serve.schema import ServeDeploySchema
 
 
 def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
@@ -42,6 +43,15 @@ def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
     return pids
 
 
+@serve.deployment(health_check_period_s=1, max_concurrent_queries=1)
+def pid():
+    time.sleep(0.1)
+    return os.getpid()
+
+
+pid_app = pid.bind()
+
+
 def test_scale_up(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
@@ -49,40 +59,40 @@ def test_scale_up(ray_cluster):
     # By default, Serve controller and proxy actors use 0 CPUs,
     # so initially there should only be room for 1 replica.
 
-    @serve.deployment(
-        version="1", num_replicas=1, health_check_period_s=1, max_concurrent_queries=1
-    )
-    def D(*args):
-        time.sleep(0.1)
-        return os.getpid()
-
+    app_config = {
+        "name": "default",
+        "import_path": "ray.serve.tests.test_cluster.pid_app",
+        "deployments": [{"name": "pid", "num_replicas": 1}],
+    }
     serve.start()
     client = serve.context._connect()
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
-    D.deploy()
-    pids1 = get_pids(1, app_name="")
+    client._wait_for_application_running("default")
+    pids1 = get_pids(1, deployment_name="pid", app_name="default")
 
-    D.options(num_replicas=3).deploy(_blocking=False)
+    app_config["deployments"][0]["num_replicas"] = 3
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
     # Check that a new replica has not started in 1.0 seconds.  This
     # doesn't guarantee that a new replica won't ever be started, but
     # 1.0 seconds is a reasonable upper bound on replica startup time.
     with pytest.raises(TimeoutError):
-        client._wait_for_deployment_healthy(D.name, timeout_s=1)
-    assert get_pids(1, app_name="") == pids1
+        client._wait_for_application_running("default", timeout_s=1)
+    assert get_pids(1, deployment_name="pid", app_name="default") == pids1
 
     # Add a node with another CPU, another replica should get placed.
     cluster.add_node(num_cpus=1)
     with pytest.raises(TimeoutError):
-        client._wait_for_deployment_healthy(D.name, timeout_s=1)
-    pids2 = get_pids(2, app_name="")
+        client._wait_for_application_running("default", timeout_s=1)
+    pids2 = get_pids(2, deployment_name="pid", app_name="default")
     assert pids1.issubset(pids2)
 
     # Add a node with another CPU, the final replica should get placed
     # and the deploy goal should be done.
     cluster.add_node(num_cpus=1)
-    client._wait_for_deployment_healthy(D.name)
-    pids3 = get_pids(3, app_name="")
+    client._wait_for_application_running("default")
+    pids3 = get_pids(3, deployment_name="pid", app_name="default")
     assert pids2.issubset(pids3)
 
 
@@ -146,12 +156,14 @@ def test_replica_startup_status_transitions(ray_cluster):
         async def __init__(self):
             await signal.wait.remote()
 
-    E.deploy(_blocking=False)
+    serve.run(E.bind(), _blocking=False)
 
     def get_replicas(replica_state):
         controller = client._controller
         replicas = ray.get(
-            controller._dump_replica_states_for_testing.remote(DeploymentID(E.name, ""))
+            controller._dump_replica_states_for_testing.remote(
+                DeploymentID(E.name, "default")
+            )
         )
         return replicas.get([replica_state])
 
@@ -181,6 +193,14 @@ def test_replica_startup_status_transitions(ray_cluster):
     )
 
 
+@serve.deployment
+def f():
+    pass
+
+
+f_app = f.bind()
+
+
 def test_intelligent_scale_down(ray_cluster):
     cluster = ray_cluster
     # Head node
@@ -189,10 +209,7 @@ def test_intelligent_scale_down(ray_cluster):
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=2)
     serve.start()
-
-    @serve.deployment(version="1")
-    def f():
-        pass
+    client = _get_global_client()
 
     def get_actor_distributions():
         actors = ray._private.state.actors()
@@ -206,10 +223,24 @@ def test_intelligent_scale_down(ray_cluster):
 
         return set(map(len, node_to_actors.values()))
 
-    f.options(num_replicas=3).deploy()
+    def check_app_running_with_replicas(num_replicas):
+        status = serve.status().applications["default"]
+        assert status.status == "RUNNING"
+        assert status.deployments["f"].replica_states["RUNNING"] == num_replicas
+        return True
+
+    app_config = {
+        "name": "default",
+        "import_path": "ray.serve.tests.test_cluster.f_app",
+        "deployments": [{"name": "f", "num_replicas": 3}],
+    }
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(check_app_running_with_replicas, num_replicas=3)
     assert get_actor_distributions() == {2, 1}
 
-    f.options(num_replicas=2).deploy()
+    app_config["deployments"][0]["num_replicas"] = 2
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(check_app_running_with_replicas, num_replicas=2)
     assert get_actor_distributions() == {2}
 
 

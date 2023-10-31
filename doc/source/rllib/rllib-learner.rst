@@ -56,14 +56,13 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 
     config = (
         PPOConfig()
+        .experimental(_enable_new_api_stack=True)
         .resources(
             num_gpus_per_learner_worker=0,  # Set this to 1 to enable GPU training.
             num_cpus_per_learner_worker=1,
             num_learner_workers=0  # Set this to greater than 0 to allow for DDP style 
                                # updates.
         )
-        .training(_enable_learner_api=True)
-        .rl_module(_enable_rl_module_api=True)
     )
 
 .. testcode::
@@ -77,8 +76,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 .. note::
     
     This features is in alpha. If you migrate to this algorithm, enable the feature by 
-    setting `_enable_learner_api` and `_enable_rl_module_api` flags in the 
-    `AlgorithmConfig`.
+    via `AlgorithmConfig.experimental(_enable_new_api_stack=True)`.
 
     The following algorithms support :py:class:`~ray.rllib.core.learner.learner.Learner` out of the box. Implement
     an algorithm with a custom :py:class:`~ray.rllib.core.learner.learner.Learner` to leverage this API for other algorithms.

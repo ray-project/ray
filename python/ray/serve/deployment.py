@@ -8,9 +8,8 @@ from ray.dag.class_node import ClassNode
 from ray.dag.dag_node import DAGNodeBase
 from ray.dag.function_node import FunctionNode
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import MIGRATION_MESSAGE, SERVE_LOGGER_NAME
-from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
@@ -252,21 +251,11 @@ class Deployment:
 
         return Application._from_internal_dag_node(dag_node)
 
-    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-    @Deprecated(message=MIGRATION_MESSAGE)
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
-        """Deploy or update this deployment.
+        raise ValueError(
+            "This API has been fully deprecated. Please use serve.run() instead."
+        )
 
-        Args:
-            init_args: args to pass to the class __init__
-                method. Not valid if this deployment wraps a function.
-            init_kwargs: kwargs to pass to the class __init__
-                method. Not valid if this deployment wraps a function.
-        """
-        ServeUsageTag.API_VERSION.record("v1")
-        self._deploy(*init_args, _blocking=_blocking, **init_kwargs)
-
-    # TODO(Sihan) Promote the _deploy to deploy after we fully deprecate the API
     def _deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
 
@@ -301,38 +290,25 @@ class Deployment:
             _blocking=_blocking,
         )
 
-    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-    @Deprecated(message=MIGRATION_MESSAGE)
     def delete(self):
-        """Delete this deployment."""
+        raise ValueError(
+            "This API has been fully deprecated. Please use serve.run() and "
+            "serve.delete() instead."
+        )
 
-        return self._delete()
-
-    # TODO(Sihan) Promote the _delete to delete after we fully deprecate the API
     def _delete(self):
         """Delete this deployment."""
 
         return _get_global_client().delete_deployments([self._name])
 
-    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-    @Deprecated(message=MIGRATION_MESSAGE)
     def get_handle(
         self, sync: Optional[bool] = True
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """Get a ServeHandle to this deployment to invoke it from Python.
+        raise ValueError(
+            "This API has been fully deprecated. Please use serve.get_app_handle() or "
+            "serve.get_deployment_handle() instead."
+        )
 
-        Args:
-            sync: If true, then Serve will return a ServeHandle that
-                works everywhere. Otherwise, Serve will return an
-                asyncio-optimized ServeHandle that's only usable in an asyncio
-                loop.
-
-        Returns:
-            ServeHandle
-        """
-        return self._get_handle(sync)
-
-    # TODO(Sihan) Promote the _get_handle to get_handle after we fully deprecate the API
     def _get_handle(
         self,
         sync: Optional[bool] = True,

@@ -7,7 +7,11 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS,
+)
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,
@@ -623,17 +627,21 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
     pg = ray.util.placement_group([{"CPU": 1}])
     ray.get(pg.ready())
 
-    # Wait until the usage is updated, which is
+    # Wait until the usage is updated to the expected, which is
     # when the demand is also updated.
     def is_usage_updated():
         demand_output = get_ray_status_output(cluster.address)
-        return demand_output["usage"] != ""
+        cpu_usage = demand_output["usage"]
+        if cpu_usage == "":
+            return False
+        cpu_usage = cpu_usage.split("\n")[0]
+        expected = "0.0/4.0 CPU (0.0 used of 1.0 reserved in placement groups)"
+        if cpu_usage != expected:
+            assert cpu_usage == "0.0/4.0 CPU"
+            return False
+        return True
 
-    wait_for_condition(is_usage_updated)
-    demand_output = get_ray_status_output(cluster.address)
-    cpu_usage = demand_output["usage"].split("\n")[0]
-    expected = "0.0/4.0 CPU (0.0 used of 1.0 reserved in placement groups)"
-    assert cpu_usage == expected
+    wait_for_condition(is_usage_updated, AUTOSCALER_UPDATE_INTERVAL_S)
 
     # 2 CPU + 1 PG CPU == 3.0/4.0 CPU (1 used by pg)
     actors = [A.remote() for _ in range(2)]
@@ -647,7 +655,7 @@ def test_placement_group_status(ray_start_cluster, enable_v2):
     ray.get([actor.ready.remote() for actor in actors])
     ray.get([actor.ready.remote() for actor in actors_in_pg])
     # Wait long enough until the usage is propagated to GCS.
-    time.sleep(5)
+    time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
     demand_output = get_ray_status_output(cluster.address)
     cpu_usage = demand_output["usage"].split("\n")[0]
     expected = "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"

@@ -129,8 +129,9 @@ void MetricPointExporter::addGlobalTagsToGrpcMetric(MetricPoint &metric) {
 OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
                                                  instrumented_io_context &io_service,
                                                  const std::string address,
-                                                 const WorkerID &worker_id)
-    : client_call_manager_(io_service), worker_id_(worker_id) {
+                                                 const WorkerID &worker_id,
+                                                 size_t report_batch_size)
+    : client_call_manager_(io_service), worker_id_(worker_id), report_batch_size_(report_batch_size) {
   absl::MutexLock l(&mu_);
   client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
 };
@@ -159,99 +160,119 @@ void OpenCensusProtoExporter::ExportViewData(
   // https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto
   rpc::ReportOCMetricsRequest request_proto;
   request_proto.set_worker_id(worker_id_.Binary());
+  size_t data_batched = 0;
 
   for (const auto &datum : data) {
-    // Unpack the fields we need for in memory data structure.
-    auto &view_descriptor = datum.first;
-    auto &view_data = datum.second;
-    auto &measure_descriptor = view_descriptor.measure_descriptor();
+    UpdateMetricsData(datum, request_proto);
+    data_batched += 1;
 
-    // Create one metric `Point` in protobuf.
-    auto request_point_proto = request_proto.add_metrics();
-
-    // Write the `MetricDescriptor`.
-    auto metric_descriptor_proto = request_point_proto->mutable_metric_descriptor();
-    metric_descriptor_proto->set_name(measure_descriptor.name());
-    metric_descriptor_proto->set_description(measure_descriptor.description());
-    metric_descriptor_proto->set_unit(measure_descriptor.units());
-    for (const auto &tag_key : view_descriptor.columns()) {
-      metric_descriptor_proto->add_label_keys()->set_key(tag_key.name());
-    };
-
-    // Helpers for writing the actual `TimeSeries`.
-    auto start_time = absl::ToUnixSeconds(view_data.start_time());
-    auto end_time = absl::ToUnixSeconds(view_data.end_time());
-    auto make_new_data_point_proto = [&request_point_proto, start_time, end_time](
-                                         const std::vector<std::string> &tag_values) {
-      auto metric_timeseries_proto = request_point_proto->add_timeseries();
-      metric_timeseries_proto->mutable_start_timestamp()->set_seconds(start_time);
-
-      for (const auto &value : tag_values) {
-        metric_timeseries_proto->add_label_values()->set_value(value);
-      };
-
-      auto point_proto = metric_timeseries_proto->add_points();
-      point_proto->mutable_timestamp()->set_seconds(end_time);
-      return point_proto;
-    };
-
-    // Write the `TimeSeries` for the given aggregated data type.
-    switch (view_data.type()) {
-    case opencensus::stats::ViewData::Type::kDouble:
-      for (const auto &row : view_data.double_data()) {
-        auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
-        point_proto->set_double_value(row.second);
-      }
-      break;
-    case opencensus::stats::ViewData::Type::kInt64:
-      for (const auto &row : view_data.int_data()) {
-        auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
-        point_proto->set_int64_value(row.second);
-      }
-      break;
-    case opencensus::stats::ViewData::Type::kDistribution:
-      for (const auto &row : view_data.distribution_data()) {
-        opencensus::stats::Distribution dist_value = row.second;
-
-        auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
-
-        // Copy in memory data into `DistributionValue` protobuf.
-        auto distribution_proto = point_proto->mutable_distribution_value();
-        distribution_proto->set_count(dist_value.count());
-        distribution_proto->set_sum(dist_value.count() * dist_value.mean());
-        distribution_proto->set_sum_of_squared_deviation(
-            dist_value.sum_of_squared_deviation());
-
-        // Write the `BucketOption` and `Bucket` data.
-        auto bucket_opt_proto =
-            distribution_proto->mutable_bucket_options()->mutable_explicit_();
-        for (const auto &bound : dist_value.bucket_boundaries().lower_boundaries()) {
-          bucket_opt_proto->add_bounds(bound);
-        }
-        for (const auto &count : dist_value.bucket_counts()) {
-          distribution_proto->add_buckets()->set_count(count);
-        }
-      }
-      break;
-    default:
-      RAY_LOG(FATAL) << "Unknown view data type.";
-      break;
+    /// If it exceeds the batch size, send data.
+    if (data_batched >= report_batch_size_) {
+      SendData(request_proto);
+      request_proto = rpc::ReportOCMetricsRequest();
+      request_proto.set_worker_id(worker_id_.Binary());
+      data_batched = 0;
     }
-    addGlobalTagsToGrpcMetric(*request_point_proto);
   }
 
-  {
-    absl::MutexLock l(&mu_);
-    client_->ReportOCMetrics(
-        request_proto, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
-          RAY_UNUSED(reply);
-          if (!status.ok()) {
-            RAY_LOG_EVERY_N(WARNING, 10000)
-                << "Export metrics to agent failed: " << status
-                << ". This won't affect Ray, but you can lose metrics from the cluster.";
-          }
-        });
+  if (data_batched > 0) {
+    SendData(request_proto);
   }
+}
+
+void OpenCensusProtoExporter::SendData(rpc::ReportOCMetricsRequest &request) {
+  RAY_LOG(DEBUG) << "Exproting metrics. request_proto numbers: " << request.metrics_size() << ", request_proto size bytes: " << request.ByteSizeLong();
+  absl::MutexLock l(&mu_);
+  client_->ReportOCMetrics(
+      request, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
+        RAY_UNUSED(reply);
+        if (!status.ok()) {
+          RAY_LOG_EVERY_N(WARNING, 10000)
+              << "Export metrics to agent failed: " << status
+              << ". This won't affect Ray, but you can lose metrics from the cluster.";
+        }
+      });
+}
+
+void OpenCensusProtoExporter::UpdateMetricsData(const std::pair<opencensus::stats::ViewDescriptor,
+                                opencensus::stats::ViewData> &datum, rpc::ReportOCMetricsRequest &request_proto) {
+  // Unpack the fields we need for in memory data structure.
+  auto &view_descriptor = datum.first;
+  auto &view_data = datum.second;
+  auto &measure_descriptor = view_descriptor.measure_descriptor();
+
+  // Create one metric `Point` in protobuf.
+  auto request_point_proto = request_proto.add_metrics();
+
+  // Write the `MetricDescriptor`.
+  auto metric_descriptor_proto = request_point_proto->mutable_metric_descriptor();
+  metric_descriptor_proto->set_name(measure_descriptor.name());
+  metric_descriptor_proto->set_description(measure_descriptor.description());
+  metric_descriptor_proto->set_unit(measure_descriptor.units());
+  for (const auto &tag_key : view_descriptor.columns()) {
+    metric_descriptor_proto->add_label_keys()->set_key(tag_key.name());
+  };
+
+  // Helpers for writing the actual `TimeSeries`.
+  auto start_time = absl::ToUnixSeconds(view_data.start_time());
+  auto end_time = absl::ToUnixSeconds(view_data.end_time());
+  auto make_new_data_point_proto = [&request_point_proto, start_time, end_time](
+                                        const std::vector<std::string> &tag_values) {
+    auto metric_timeseries_proto = request_point_proto->add_timeseries();
+    metric_timeseries_proto->mutable_start_timestamp()->set_seconds(start_time);
+
+    for (const auto &value : tag_values) {
+      metric_timeseries_proto->add_label_values()->set_value(value);
+    };
+
+    auto point_proto = metric_timeseries_proto->add_points();
+    point_proto->mutable_timestamp()->set_seconds(end_time);
+    return point_proto;
+  };
+
+  // Write the `TimeSeries` for the given aggregated data type.
+  switch (view_data.type()) {
+  case opencensus::stats::ViewData::Type::kDouble:
+    for (const auto &row : view_data.double_data()) {
+      auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
+      point_proto->set_double_value(row.second);
+    }
+    break;
+  case opencensus::stats::ViewData::Type::kInt64:
+    for (const auto &row : view_data.int_data()) {
+      auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
+      point_proto->set_int64_value(row.second);
+    }
+    break;
+  case opencensus::stats::ViewData::Type::kDistribution:
+    for (const auto &row : view_data.distribution_data()) {
+      opencensus::stats::Distribution dist_value = row.second;
+
+      auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
+
+      // Copy in memory data into `DistributionValue` protobuf.
+      auto distribution_proto = point_proto->mutable_distribution_value();
+      distribution_proto->set_count(dist_value.count());
+      distribution_proto->set_sum(dist_value.count() * dist_value.mean());
+      distribution_proto->set_sum_of_squared_deviation(
+          dist_value.sum_of_squared_deviation());
+
+      // Write the `BucketOption` and `Bucket` data.
+      auto bucket_opt_proto =
+          distribution_proto->mutable_bucket_options()->mutable_explicit_();
+      for (const auto &bound : dist_value.bucket_boundaries().lower_boundaries()) {
+        bucket_opt_proto->add_bounds(bound);
+      }
+      for (const auto &count : dist_value.bucket_counts()) {
+        distribution_proto->add_buckets()->set_count(count);
+      }
+    }
+    break;
+  default:
+    RAY_LOG(FATAL) << "Unknown view data type.";
+    break;
+  }
+  addGlobalTagsToGrpcMetric(*request_point_proto);
 }
 
 }  // namespace stats

@@ -1,4 +1,9 @@
+from ray.data.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data.datasource.binary_datasource import BinaryDatasource
+from ray.data.datasource.block_path_provider import (
+    BlockWritePathProvider,
+    DefaultBlockWritePathProvider,
+)
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import (
     Datasource,
@@ -10,8 +15,6 @@ from ray.data.datasource.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
-    BlockWritePathProvider,
-    DefaultBlockWritePathProvider,
     FileBasedDatasource,
     FileExtensionFilter,
     _S3FileSystemWrapper,
@@ -24,6 +27,7 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
     ParquetMetadataProvider,
 )
+from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.mongo_datasource import MongoDatasource
@@ -48,6 +52,7 @@ from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 __all__ = [
     "BaseFileMetadataProvider",
     "BinaryDatasource",
+    "BigQueryDatasource",
     "BlockWritePathProvider",
     "Connection",
     "CSVDatasource",
@@ -61,6 +66,7 @@ __all__ = [
     "FileBasedDatasource",
     "FileExtensionFilter",
     "FileMetadataProvider",
+    "FilenameProvider",
     "ImageDatasource",
     "JSONDatasource",
     "NumpyDatasource",

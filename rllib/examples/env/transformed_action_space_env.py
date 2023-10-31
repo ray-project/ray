@@ -31,13 +31,18 @@ def transform_action_space(env_name_or_creator) -> Type[gym.Env]:
         range (default -1.0 to 1.0). The reset of the config dict will be
         passed on to the underlying/wrapped env's constructor.
 
-    Examples:
-         >>> # By gym string:
-         >>> pendulum_300_to_500_cls = transform_action_space("Pendulum-v1")
-         >>> # Create a transformed pendulum env.
-         >>> pendulum_300_to_500 = pendulum_300_to_500_cls({"_low": -15.0})
-         >>> pendulum_300_to_500.action_space
-         ... gym.spaces.Box(-15.0, 1.0, (1, ), "float32")
+    .. testcode::
+        :skipif: True
+
+        # By gym string:
+        pendulum_300_to_500_cls = transform_action_space("Pendulum-v1")
+        # Create a transformed pendulum env.
+        pendulum_300_to_500 = pendulum_300_to_500_cls({"_low": -15.0})
+        pendulum_300_to_500.action_space
+
+    .. testoutput::
+
+        gym.spaces.Box(-15.0, 1.0, (1, ), "float32")
     """
 
     def transformed_action_space_env(config):

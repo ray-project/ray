@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.train.constants import _DEPRECATED_VALUE
 from ray.util import log_once
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI
 from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
@@ -487,11 +487,3 @@ class _BackgroundSyncer(Syncer):
         state = self.__dict__.copy()
         state["_sync_process"] = None
         return state
-
-
-# TODO(justinvyu): [code_removal]
-@DeveloperAPI
-def get_node_to_storage_syncer(
-    sync_config: SyncConfig, upload_dir: Optional[str] = None
-) -> Optional[Syncer]:
-    raise DeprecationWarning

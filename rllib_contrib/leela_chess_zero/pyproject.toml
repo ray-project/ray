@@ -12,7 +12,7 @@ version = "0.1.0"
 description = ""
 readme = "README.md"
 requires-python = ">=3.7, <3.11"
-dependencies = ["gymnasium==0.26.3", "pettingzoo==1.23.1", "chess==1.9.4", "ray[rllib]==2.5.0"]
+dependencies = ["gymnasium==0.26.3", "pettingzoo==1.22.4", "chess==1.10.0", "ray[rllib]==2.5.0", "pygame"]
 
 [project.optional-dependencies]
 development = ["pytest>=7.2.2", "pre-commit==2.21.0", "torch==1.12.0"]

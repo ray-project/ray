@@ -16,14 +16,12 @@
 # ==== Ray core ====
 
 # API compatibility
-/src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
-/src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
-/src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @ray-project/ray-core
-/dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
-/python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
+/src/ray/protobuf/common.proto @ericl @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/gcs.proto @ericl @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/gcs_service.proto @ericl @pcmoritz @raulchen @ray-project/ray-core
 
 # Autoscaler
-/python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl @ray-project/ray-core @architkulkarni
+/python/ray/autoscaler/ @ericl @ray-project/ray-core @architkulkarni
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
@@ -45,8 +43,8 @@
 /ci/lint/format.sh @richardliaw @ericl @edoakes
 
 # Docker image and build scripts.
-/ci/build/build-docker-images.py @krfricke @ray-project/ray-core @aslonnie @can-anyscale
-/ci/docker @aslonnie @can-anyscale @krfricke
+/ci/build/build-docker-images.py @ray-project/ray-core @aslonnie @can-anyscale
+/ci/docker @aslonnie @can-anyscale
 
 # Python worker.
 #/python/ray/ @ray-project/ray-core
@@ -64,7 +62,7 @@
 /cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core
 
 # Ray Client
-/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017
+/src/ray/protobuf/ray_client.proto @ameerhajali @ckw017
 
 # Runtime Env
 # TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.
@@ -74,19 +72,19 @@
 # ==== Libraries and frameworks ====
 
 # Ray data.
-/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @stephanie-wang
-/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @stephanie-wang
+/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @stephanie-wang @Zandew
+/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @stephanie-wang @Zandew
 
 # Ray workflows.
 /python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark
 /doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark @maxpumperla @ray-project/ray-docs
 
 # RLlib.
-/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke
-/doc/source/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke @ray-project/ray-docs
+/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha
+/doc/source/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @ray-project/ray-docs
 
 # Cluster (docs)
-/doc/source/cluster/ @architkulkarni @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
+/doc/source/cluster/ @architkulkarni @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
 
 # Tune (docs)
 /doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @justinvyu @woshiyyya @ray-project/ray-docs
@@ -98,8 +96,8 @@
 /doc/source/serve/ @edoakes @shrekris-anyscale @sihanwang41 @zcin @architkulkarni @ray-project/ray-docs
 
 # ML Docker Dependencies
-/python/requirements/ml/dl-cpu-requirements.txt @amogkam @krfricke @richardliaw @matthewdeng
-/python/requirements/ml/dl-gpu-requirements.txt @amogkam @krfricke @richardliaw @matthewdeng
+/python/requirements/ml/dl-cpu-requirements.txt @amogkam @richardliaw @matthewdeng
+/python/requirements/ml/dl-gpu-requirements.txt @amogkam @richardliaw @matthewdeng
 
 # Ray symbol export
 /src/ray/ray_version_script.lds @iycheng @ericl @scv119

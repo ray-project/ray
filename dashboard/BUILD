@@ -34,7 +34,6 @@ py_test_run_all_subdirectory(
         "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
         "modules/job/tests/backwards_compatibility_scripts/script.py",
         "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
-        "modules/snapshot/snapshot_schema.json",
         "modules/tests/test_config_files/basic_runtime_env.yaml",
     ] + glob([
         "modules/job/tests/subprocess_driver_scripts/*.py",
@@ -59,7 +58,6 @@ py_test(
         "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
         "modules/job/tests/backwards_compatibility_scripts/script.py",
         "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
-        "modules/snapshot/snapshot_schema.json",
         "modules/tests/test_config_files/basic_runtime_env.yaml",
     ] + glob([
         "modules/job/tests/subprocess_driver_scripts/*.py",
@@ -81,7 +79,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_dashboard.py"],
     deps = [":conftest"],
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "minimal"],
 )
 
 py_test(

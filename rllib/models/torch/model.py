@@ -13,9 +13,11 @@ from ray.rllib.models.base_model import RecurrentModel, Model, ModelIO
 class TorchModelIO(ModelIO):
     """Save/Load mixin for torch models
 
-    Examples:
-        >>> model.save("/tmp/model_weights.cpt")
-        >>> model.load("/tmp/model_weights.cpt")
+    .. testcode::
+        :skipif: True
+
+        model.save("/tmp/model_weights.cpt")
+        model.load("/tmp/model_weights.cpt")
     """
 
     @DeveloperAPI
@@ -84,47 +86,49 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         # Load model weights from path
         load(self, path: str) -> None
 
-    Examples:
-        >>> class MyCustomModel(TorchRecurrentModel):
-        ...     def __init__(self, config):
-        ...         super().__init__(config)
-        ...
-        ...         self.lstm = nn.LSTM(
-        ...             input_size, recurrent_size, batch_first=True
-        ...         )
-        ...         self.project = nn.Linear(recurrent_size, output_size)
-        ...
-        ...     @property
-        ...     def input_specs(self):
-        ...         return SpecDict(
-        ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
-        ...         )
-        ...
-        ...     @property
-        ...     def output_specs(self):
-        ...         return SpecDict(
-        ...             {"logits": "batch time logits"}, logits=self.config.output_size
-        ...         )
-        ...
-        ...     @property
-        ...     def prev_state_spec(self):
-        ...         return SpecDict(
-        ...             {"input_state": "batch recur"}, recur=self.config.recurrent_size
-        ...         )
-        ...
-        ...     @property
-        ...     def next_state_spec(self):
-        ...         return SpecDict(
-        ...             {"output_state": "batch recur"},
-        ...             recur=self.config.recurrent_size
-        ...         )
-        ...
-        ...     def _unroll(self, inputs, prev_state, **kwargs):
-        ...         output, state = self.lstm(inputs["obs"], prev_state["input_state"])
-        ...         output = self.project(output)
-        ...         return TensorDict(
-        ...             {"logits": output}), TensorDict({"output_state": state}
-        ...         )
+    .. testcode::
+        :skipif: True
+
+        class MyCustomModel(TorchRecurrentModel):
+            def __init__(self, config):
+                super().__init__(config)
+
+                self.lstm = nn.LSTM(
+                    input_size, recurrent_size, batch_first=True
+                )
+                self.project = nn.Linear(recurrent_size, output_size)
+
+            @property
+            def input_specs(self):
+                return SpecDict(
+                    {"obs": "batch time hidden"}, hidden=self.config.input_size
+                )
+
+            @property
+            def output_specs(self):
+                return SpecDict(
+                    {"logits": "batch time logits"}, logits=self.config.output_size
+                )
+
+            @property
+            def prev_state_spec(self):
+                return SpecDict(
+                    {"input_state": "batch recur"}, recur=self.config.recurrent_size
+                )
+
+            @property
+            def next_state_spec(self):
+                return SpecDict(
+                    {"output_state": "batch recur"},
+                    recur=self.config.recurrent_size
+                )
+
+            def _unroll(self, inputs, prev_state, **kwargs):
+                output, state = self.lstm(inputs["obs"], prev_state["input_state"])
+                output = self.project(output)
+                return TensorDict(
+                    {"logits": output}), TensorDict({"output_state": state}
+                )
 
     """
 
@@ -184,33 +188,35 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         # Load model weights from path
         load(self, path: str) -> None
 
-    Examples:
-        >>> class MyCustomModel(TorchModel):
-        ...     def __init__(self, config):
-        ...         super().__init__(config)
-        ...         self.mlp = nn.Sequential(
-        ...             nn.Linear(input_size, hidden_size),
-        ...             nn.ReLU(),
-        ...             nn.Linear(hidden_size, hidden_size),
-        ...             nn.ReLU(),
-        ...             nn.Linear(hidden_size, output_size)
-        ...         )
-        ...
-        ...     @property
-        ...     def input_specs(self):
-        ...         return SpecDict(
-        ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
-        ...         )
-        ...
-        ...     @property
-        ...     def output_specs(self):
-        ...         return SpecDict(
-        ...             {"logits": "batch time logits"}, logits=self.config.output_size
-        ...         )
-        ...
-        ...     def _forward(self, inputs, **kwargs):
-        ...         output = self.mlp(inputs["obs"])
-        ...         return TensorDict({"logits": output})
+    .. testcode::
+        :skipif: True
+
+        class MyCustomModel(TorchModel):
+            def __init__(self, config):
+                super().__init__(config)
+                self.mlp = nn.Sequential(
+                    nn.Linear(input_size, hidden_size),
+                    nn.ReLU(),
+                    nn.Linear(hidden_size, hidden_size),
+                    nn.ReLU(),
+                    nn.Linear(hidden_size, output_size)
+                )
+
+            @property
+            def input_specs(self):
+                return SpecDict(
+                    {"obs": "batch time hidden"}, hidden=self.config.input_size
+                )
+
+            @property
+            def output_specs(self):
+                return SpecDict(
+                    {"logits": "batch time logits"}, logits=self.config.output_size
+                )
+
+            def _forward(self, inputs, **kwargs):
+                output = self.mlp(inputs["obs"])
+                return TensorDict({"logits": output})
 
     """
 

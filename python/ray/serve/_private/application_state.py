@@ -345,12 +345,20 @@ class ApplicationState:
                 self._check_routes(overrided_infos)
                 self._set_target_state_deployment_infos(overrided_infos)
             except (TypeError, ValueError, RayServeException):
-                self._set_target_state_deployment_infos(None)
+                self._set_target_state(
+                    deployment_infos=None,
+                    code_version=None,
+                    target_config=self._target_state.config,
+                )
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED, traceback.format_exc()
                 )
             except Exception:
-                self._set_target_state_deployment_infos(None)
+                self._set_target_state(
+                    deployment_infos=None,
+                    code_version=None,
+                    target_config=self._target_state.config,
+                )
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED,
                     (
@@ -368,7 +376,11 @@ class ApplicationState:
                 ray.cancel(self._build_app_task_info.obj_ref)
 
             # Halt reconciliation of target deployments
-            self._set_target_state_deployment_infos(None)
+            self._set_target_state(
+                deployment_infos=None,
+                code_version=None,
+                target_config=self._target_state.config,
+            )
 
             # Kick off new build app task
             logger.info(f"Building application '{self._name}'.")

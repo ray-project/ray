@@ -5,6 +5,7 @@ from ray.rllib.algorithms.bandit.bandit import (
     BanditLinUCBConfig,
 )
 
+
 __all__ = [
     "BanditLinTS",
     "BanditLinUCB",

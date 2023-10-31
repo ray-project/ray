@@ -962,7 +962,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertEqual(test_trainable.state["hi"], 1)
         else:
             # Cannot re-use function trainable, create new
-            tune.trainable.session._shutdown()
             test_trainable = trainable(storage=storage)
             test_trainable.restore(checkpoint_path)
 

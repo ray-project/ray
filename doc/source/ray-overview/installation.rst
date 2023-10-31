@@ -138,6 +138,8 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. note::
 
+  .. If you change the list of wheel links below, remember to update `get_wheel_filename()` in  `https://github.com/ray-project/ray/blob/master/python/ray/_private/utils.py`.
+  
   Python 3.11 support is experimental.
 
 .. _`Linux Python 3.11 (x86_64) (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_x86_64.whl
@@ -520,12 +522,12 @@ Docker images for Python 3.9.
 
     .. group-tab:: ray (Python 3.9)
 
-        Ray version: nightly (`fd227e2 <https://github.com/ray-project/ray/commit/fd227e29c41a9650fbe847e4815f58fb67ecc86f>`_)
+        Ray version: nightly (`c83377e <https://github.com/ray-project/ray/commit/c83377ea73b453fea797550a96d580c67c6dd301>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
     .. group-tab:: ray-ml (Python 3.9)
 
-        Ray version: nightly (`fd227e2 <https://github.com/ray-project/ray/commit/fd227e29c41a9650fbe847e4815f58fb67ecc86f>`_)
+        Ray version: nightly (`c83377e <https://github.com/ray-project/ray/commit/c83377ea73b453fea797550a96d580c67c6dd301>`_)
 
         .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt

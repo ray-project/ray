@@ -124,9 +124,9 @@ sphinx_tabs_disable_tab_closing = True
 # Special mocking of packaging.version.Version is required when using sphinx;
 # we can't just add this to autodoc_mock_imports, as packaging is imported by
 # sphinx even before it can be mocked. Instead, we patch it here.
-import packaging
+import packaging.version as packaging_version
 
-Version = packaging.version.Version
+Version = packaging_version.Version
 
 
 class MockVersion(Version):
@@ -137,7 +137,7 @@ class MockVersion(Version):
             super().__init__("0")
 
 
-packaging.version.Version = MockVersion
+packaging_version.Version = MockVersion
 
 # This is used to suppress warnings about explicit "toctree" directives.
 suppress_warnings = ["etoc.toctree"]
@@ -183,7 +183,7 @@ author = "The Ray Team"
 # mocking of certain external dependencies.
 from setup import find_version
 
-release = find_version("ray", "__init__.py")
+release = find_version("ray", "_version.py")
 
 language = None
 

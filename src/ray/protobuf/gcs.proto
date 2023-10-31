@@ -262,15 +262,26 @@ message TaskEvents {
   bytes job_id = 6;
 }
 
+message TaskAttempt {
+  // The task id of the task attempt.
+  bytes task_id = 1;
+  // The attempt number of the task attempt.
+  int32 attempt_number = 2;
+}
+
 // Represents a compact list of task state events by different tasks,
 // where each task has a list of state change events.
 message TaskEventData {
   // A batch of task state change events.
   repeated TaskEvents events_by_task = 1;
-  // Number of dropped profile task events due to buffer size limit on workers.
-  int32 num_profile_task_events_dropped = 3;
-  // Number of dropped status task events due to buffer size limit on workers.
-  int32 num_status_task_events_dropped = 4;
+  // A list of task attempts that were dropped on the worker.
+  // We only drop task attempts if task state update is lost on the worker
+  // due to too many events being generated.
+  repeated TaskAttempt dropped_task_attempts = 2;
+  // Number of profile events dropped on the worker.
+  int32 num_profile_events_dropped = 3;
+  // Current job the worker is reporting data for.
+  bytes job_id = 4;
 }
 
 message ResourceTableData {
