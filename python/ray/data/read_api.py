@@ -360,7 +360,6 @@ def read_datasource(
             _get_datasource_or_legacy_reader, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        cur_pg = ray.util.get_current_placement_group()
         datasource_or_legacy_reader = ray.get(
             get_datasource_or_legacy_reader.remote(
                 datasource,
@@ -370,6 +369,7 @@ def read_datasource(
             )
         )
 
+    cur_pg = ray.util.get_current_placement_group()
     requested_parallelism, _, _, inmemory_size = _autodetect_parallelism(
         parallelism,
         ctx.target_max_block_size,
