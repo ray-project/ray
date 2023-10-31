@@ -556,12 +556,10 @@ def read_bigquery(
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
         on the specified BigQuery dataset.
     """
+    datasource = BigQueryDatasource(project_id=project_id, dataset=dataset, query=query)
     return read_datasource(
-        BigQueryDatasource(),
+        datasource,
         parallelism=parallelism,
-        project_id=project_id,
-        dataset=dataset,
-        query=query,
         ray_remote_args=ray_remote_args,
     )
 
@@ -1798,10 +1796,9 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    datasource = SQLDatasource(connection_factory)
+    datasource = SQLDatasource(sql=sql, connection_factory=connection_factory)
     return read_datasource(
         datasource,
-        sql=sql,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
     )
