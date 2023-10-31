@@ -114,6 +114,6 @@ class AlphaZeroConfig(AlgorithmConfig):
 )
 class AlphaZero(Algorithm):
     @classmethod
-    @override(AlgorithmConfig)
+    @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
         return AlphaZeroConfig()
