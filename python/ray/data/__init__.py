@@ -62,6 +62,7 @@ __all__ = [
     "DataIterator",
     "DatasetIterator",  # Backwards compatibility alias.
     "DatasetPipeline",
+    "Datasink",
     "Datasource",
     "ExecutionOptions",
     "ExecutionResources",
