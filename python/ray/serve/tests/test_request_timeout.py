@@ -268,7 +268,7 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
             )
         )
 
-    assert get_num_running_tasks() == 0
+    wait_for_condition(lambda: get_num_running_tasks() == 0)
 
     # Send a number of requests that all will be timed out.
     results = ray.get([do_request.remote() for _ in range(10)])
