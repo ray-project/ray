@@ -2736,7 +2736,7 @@ class Dataset:
             block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
-        self.write_datasource(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_json(
