@@ -222,7 +222,7 @@ class RemoteFunction:
                return 1, 2
             # Task g will require 2 gpus instead of 1.
             g = f.options(num_gpus=2)
-        """
+        """ #noqa: E501
 
         func_cls = self
 
