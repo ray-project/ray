@@ -1,5 +1,7 @@
 import ray
 import requests
+import sys
+import pytest
 
 DATA_HEAD_URLS = {"GET": "http://localhost:8265/api/data/datasets"}
 
@@ -40,3 +42,7 @@ def test_get_datasets():
     assert dataset["dataset"].startswith("data_head_test")
     assert dataset["state"] == "FINISHED"
     assert dataset["end_time"] is not None
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
