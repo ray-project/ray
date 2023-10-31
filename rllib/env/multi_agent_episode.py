@@ -974,11 +974,13 @@ class MultiAgentEpisode:
 
             agent_is_terminated = (
                 is_terminateds[agent_id]
-                if type(is_terminateds, dict)
+                if isinstance(is_terminateds, dict)
                 else is_terminateds
             )
             agent_is_truncated = (
-                is_truncateds[agent_id] if type(is_truncateds, dict) else is_truncateds
+                is_truncateds[agent_id]
+                if isinstance(is_truncateds, dict)
+                else is_truncateds
             )
             return SingleAgentEpisode(
                 id_=episode_id,

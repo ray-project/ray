@@ -124,8 +124,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
         rewards = []
         actions = []
         infos = []
-        terminateds = []
-        truncateds = []
         extra_model_outputs = []
         states = []
         # Initialize observation and info.
@@ -142,8 +140,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
             actions.append(action)
             rewards.append(reward)
             infos.append(info)
-            terminateds.append(is_terminated)
-            truncateds.append(is_truncated)
             states.append({agent_id: np.random.random() for agent_id in agents_stepped})
             extra_model_outputs.append(
                 {
@@ -159,13 +155,50 @@ class TestMultiAgentEpisode(unittest.TestCase):
             rewards=rewards,
             infos=infos,
             states=states,
-            is_terminated=terminateds,
-            is_truncated=truncateds,
+            is_terminated=is_terminated,
+            is_truncated=is_truncated,
             extra_model_outputs=extra_model_outputs,
         )
 
-        # The starting point and count should now be at `len(observations) - 1`.
+        # The starting point and count should now be at `len(observations) - 1`.+
         self.assertTrue(episode.t == episode.t_started == (len(observations) - 1))
+        # Assert that agent 1 and agent 5 are both terminated.
+        self.assertTrue(episode.agent_episodes["agent_1"].is_terminated)
+        self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
+        # Assert that the other agents are all truncated.
+        for agent_id in env.get_agent_ids():
+            if agent_id != "agent_1" and agent_id != "agent_5":
+                self.assertFalse(episode.agent_episodes[agent_id].is_truncated)
+                self.assertFalse(episode.agent_episodes[agent_id].is_terminated)
+
+        # Test now intiializing an episode and setting the starting timestep at once.
+        episode = MultiAgentEpisode(
+            agent_ids=env.get_agent_ids(),
+            observations=observations[-11:],
+            actions=actions[-10:],
+            rewards=rewards[-10:],
+            infos=infos[-11:],
+            t_started=100,
+            states=states,
+            is_terminated=is_terminated,
+            is_truncated=is_truncated,
+            extra_model_outputs=extra_model_outputs[-10:],
+        )
+
+        # Assert that the episode starts indeed at 100.
+        self.assertEqual(episode.t, episode.t_started, 100)
+        # Assert that the highest index in the timestep mapping is indeed 10.
+        highest_index = max(
+            [
+                max(timesteps)
+                for timesteps in episode.global_t_to_local_t.values()
+                if len(timesteps) > 0
+            ]
+        )
+        self.assertGreaterEqual(10, highest_index)
+        # Assert that agent 1 and agent 5 are both terminated.
+        self.assertTrue(episode.agent_episodes["agent_1"].is_terminated)
+        self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
 
 
 if __name__ == "__main__":
