@@ -3413,7 +3413,7 @@ class Dataset:
             write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
         """  # noqa: E501
         warnings.warn(
-            "`write_datasource` is deprecated in Ray 2.8. Create a `Datasink` and use "
+            "`write_datasource` is deprecated in Ray 2.9. Create a `Datasink` and use "
             "`write_datasink` instead.",
             DeprecationWarning,
         )

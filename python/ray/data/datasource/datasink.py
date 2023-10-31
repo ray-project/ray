@@ -67,12 +67,12 @@ class Datasink:
         This is used as the names of the write tasks.
         """
         name = type(self).__name__
-        datasource_suffix = "Datasink"
-        if name.endswith(datasource_suffix):
-            name = name[: -len(datasource_suffix)]
+        datasink_suffix = "Datasink"
+        if name.endswith(datasink_suffix):
+            name = name[: -len(datasink_suffix)]
         return name
 
     @property
     def supports_distributed_writes(self) -> bool:
-        """If ``False``, only launch writes tasks on the driver's node."""
+        """If ``False``, only launch write tasks on the driver's node."""
         return True
