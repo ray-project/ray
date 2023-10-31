@@ -200,6 +200,36 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.agent_episodes["agent_1"].is_terminated)
         self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
 
+    def test_add_initial_observation(self):
+
+        # Generate an enviornment.
+        env = MultiAgentTestEnv()
+        # Generate an empty multi-agent episode. Note. we have to provide the
+        # agent ids.
+        episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
+
+        # Generate initial observations and infos and add them to the episode.
+        obs, infos = env.reset(seed=0)
+        episode.add_initial_observation(
+            initial_observation=obs,
+            initial_info=infos,
+            initial_state={agent_id: np.random.random(10) for agent_id in obs},
+        )
+
+        # Assert that timestep is at zero.
+        self.assertTrue(episode.t == episode.t_started == 0)
+        # Assert that the agents with initial observations have their single-agent
+        # episodes in place.
+        for agent_id in obs:
+            self.assertGreater(len(episode.agent_episodes[agent_id].observations), 0)
+            self.assertGreater(len(episode.agent_episodes[agent_id].infos), 0)
+            self.assertIsNotNone(episode.agent_episodes[agent_id].states)
+            self.assertEqual(episode.agent_episodes[agent_id].states.shape[0], 10)
+            # Furthermore, esnure that all agents have an entry in the global timestep
+            # mapping.
+            self.assertEqual(len(episode.global_t_to_local_t[agent_id]), 1)
+            self.assertEqual(episode.global_t_to_local_t[agent_id][0], 0)
+
 
 if __name__ == "__main__":
     import pytest

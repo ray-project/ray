@@ -852,7 +852,7 @@ class MultiAgentEpisode:
             global_t_to_local_t = {agent: _IndexMapping() for agent in self._agent_ids}
 
             # We need the observations to create the timestep mapping.
-            if len(observations) > 0:
+            if observations:
                 for t, agent_map in enumerate(observations):
                     for agent_id in agent_map:
                         # If agent stepped add the timestep to the timestep mapping.
