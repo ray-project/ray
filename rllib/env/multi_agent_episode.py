@@ -33,12 +33,11 @@ class MultiAgentEpisode:
         rewards: Optional[List[MultiAgentDict]] = None,
         states: Optional[List[MultiAgentDict]] = None,
         infos: Optional[List[MultiAgentDict]] = None,
-        t_started: int = 0,
-        is_terminated: Optional[bool] = False,
-        is_truncated: Optional[bool] = False,
+        t_started: Optional[int] = None,
+        is_terminated: Union[MultiAgentDict, bool] = False,
+        is_truncated: Union[MultiAgentDict, bool] = False,
         render_images: Optional[List[np.ndarray]] = None,
         extra_model_outputs: Optional[List[MultiAgentDict]] = None,
-        # TODO (simon): Also allow to receive `extra_model_outputs`.
         # TODO (simon): Validate terminated/truncated for env/agents.
     ) -> "MultiAgentEpisode":
         """Initializes a `MultiAgentEpisode`.
@@ -103,7 +102,10 @@ class MultiAgentEpisode:
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
         self.t = self.t_started = (
-            t_started if t_started is not None else max(len(observations) - 1, 0)
+            t_started
+            if t_started is not None
+            else (len(observations) - 1 if observations is not None else 0)
+            # t_started if t_started is not None else max(len(observations) - 1, 0)
         )
         # Keeps track of the correspondence between agent steps and environment steps.
         # This is a mapping from agents to `IndexMapping`. The latter keeps
@@ -122,18 +124,30 @@ class MultiAgentEpisode:
                 "actions": Queue(maxsize=1),
                 "rewards": Queue(maxsize=1),
                 "states": Queue(maxsize=1),
-                "extra_mdoel_outputs": Queue(maxsize=1),
+                "extra_model_outputs": Queue(maxsize=1),
             }
             for agent_id in self._agent_ids
         }
         # Initialize buffers.
-        for buffer in self.agent_buffers:
+        for buffer in self.agent_buffers.values():
             # Default reward for accumulation is zero.
             buffer["rewards"].put_nowait(0.0)
             # Default state is None.
             buffer["states"].put_nowait(None)
             # Default extra_mdoel_output is None.
-            buffer["extra_model_output"].put_nowait(None)
+            buffer["extra_model_outputs"].put_nowait(None)
+
+        # obs[-1] is the final observation in the episode.
+        self.is_terminated: bool = (
+            is_terminated
+            if isinstance(is_terminated, bool)
+            else is_terminated["__all__"]
+        )
+        # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
+        # observations in following chunks for this episode).
+        self.is_truncated: bool = (
+            is_truncated if isinstance(is_truncated, bool) else is_truncated["__all__"]
+        )
 
         # Note that all attributes will be recorded along the global timestep
         # in an multi-agent environment. `SingleAgentEpisodes`
@@ -145,17 +159,14 @@ class MultiAgentEpisode:
                 actions,
                 rewards,
                 infos,
+                is_terminated,
+                is_truncated,
                 states,
                 extra_model_outputs,
             )
             for agent_id in self._agent_ids
         }
 
-        # obs[-1] is the final observation in the episode.
-        self.is_terminated: bool = is_terminated
-        # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
-        # observations in following chunks for this episode).
-        self.is_truncated: bool = is_truncated
         # RGB uint8 images from rendering the env; the images include the corresponding
         # rewards.
         assert render_images is None or observations is not None
@@ -866,6 +877,8 @@ class MultiAgentEpisode:
         actions: Optional[List[MultiAgentDict]] = None,
         rewards: Optional[List[MultiAgentDict]] = None,
         infos: Optional[List[MultiAgentDict]] = None,
+        is_terminateds: Union[MultiAgentDict, bool] = False,
+        is_truncateds: Union[MultiAgentDict, bool] = False,
         states: Optional[MultiAgentDict] = None,
         extra_model_outputs: Optional[MultiAgentDict] = None,
     ) -> SingleAgentEpisode:
@@ -948,23 +961,33 @@ class MultiAgentEpisode:
                 None
                 if states is None
                 else self._get_single_agent_data(
-                    agent_id, states, start_index=1, shift=-1
+                    agent_id, states, end_index=-1, shift=0
                 )
             )
             agent_extra_model_outputs = (
                 None
                 if extra_model_outputs is None
                 else self._get_single_agent_data(
-                    agent_id, extra_model_outputs, start_index=1, shift=-1
+                    agent_id, extra_model_outputs, end_index=-1, shift=0
                 )
             )
 
+            agent_is_terminated = (
+                is_terminateds[agent_id]
+                if type(is_terminateds, dict)
+                else is_terminateds
+            )
+            agent_is_truncated = (
+                is_truncateds[agent_id] if type(is_truncateds, dict) else is_truncateds
+            )
             return SingleAgentEpisode(
                 id_=episode_id,
                 observations=agent_observations,
                 actions=agent_actions,
                 rewards=agent_rewards,
                 infos=agent_infos,
+                is_terminated=agent_is_terminated,
+                is_truncated=agent_is_truncated,
                 states=agent_states,
                 extra_model_outputs=agent_extra_model_outputs,
             )
