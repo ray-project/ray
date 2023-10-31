@@ -1,8 +1,6 @@
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
-import pyarrow
-
 from ray.data.block import BlockAccessor
 from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
