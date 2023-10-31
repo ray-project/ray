@@ -131,7 +131,7 @@ export const JobDetailChartsPage = () => {
       )}
 
       <CollapsibleSection
-        title="Tasks/actor overview (beta)"
+        title="Ray Core Overview"
         startExpanded
         className={classes.section}
       >
