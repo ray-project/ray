@@ -363,9 +363,20 @@ Content-Type: application/json
 ```
 
 ```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :template: autosummary/class_with_inherited_members.rst
+   :toctree: doc/
+
+   schema.ReadDeploymentModel
+```
+
+
+```{eval-rst}
 .. autoclass:: ray.serve.schema.ReadDeploymentModel
    :members:
    :show-inheritance:
+   :inherited-members:
 ```
 
 ## Metrics API
