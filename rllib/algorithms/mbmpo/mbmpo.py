@@ -117,7 +117,6 @@ class MBMPOConfig(AlgorithmConfig):
     error=True,
 )
 class MBMPO(Algorithm):
-
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:

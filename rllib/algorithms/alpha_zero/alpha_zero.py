@@ -1,44 +1,13 @@
-import logging
-from typing import List, Optional, Type, Union
+from typing import List, Optional, Union
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
-from ray.rllib.execution.train_ops import (
-    multi_gpu_train_one_step,
-    train_one_step,
-)
-from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.modelv2 import restore_original_dimensions
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     Deprecated,
     ALGO_DEPRECATION_WARNING,
 )
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import (
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-    SYNCH_WORKER_WEIGHTS_TIMER,
-    SAMPLE_TIMER,
-)
-from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
-from ray.rllib.utils.typing import ResultDict
-
-from ray.rllib.algorithms.alpha_zero.alpha_zero_policy import AlphaZeroPolicy
-from ray.rllib.algorithms.alpha_zero.mcts import MCTS
-from ray.rllib.algorithms.alpha_zero.ranked_rewards import get_r2_env_wrapper
-
-torch, nn = try_import_torch()
-
-logger = logging.getLogger(__name__)
 
 
 class AlphaZeroConfig(AlgorithmConfig):
@@ -77,7 +46,6 @@ class AlphaZeroConfig(AlgorithmConfig):
         }
 
         self.framework_str = "torch"
-        self.callbacks_class = AlphaZeroDefaultCallbacks
         self.lr = 5e-5
         self.num_rollout_workers = 2
         self.rollout_fragment_length = 200
@@ -137,16 +105,6 @@ class AlphaZeroConfig(AlgorithmConfig):
 
         return self
 
-    @override(AlgorithmConfig)
-    def update_from_dict(self, config_dict) -> "AlphaZeroConfig":
-        config_dict = config_dict.copy()
-
-        if "ranked_rewards" in config_dict:
-            value = config_dict.pop("ranked_rewards")
-            self.training(ranked_rewards=value)
-
-        return super().update_from_dict(config_dict)
-
 
 @Deprecated(
     old="rllib/algorithms/alpha_zero/",
@@ -159,4 +117,3 @@ class AlphaZero(Algorithm):
     @override(AlgorithmConfig)
     def get_default_config(cls) -> AlgorithmConfig:
         return AlphaZeroConfig()
-

@@ -5,8 +5,8 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 
-class ARSConfig(AlgorithmConfig):
 
+class ARSConfig(AlgorithmConfig):
     def __init__(self):
         super().__init__(algo_class=ARS)
 
@@ -90,4 +90,3 @@ class ARS(Algorithm):
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
         return ARSConfig()
-

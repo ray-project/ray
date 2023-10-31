@@ -1,11 +1,8 @@
-import logging
 from typing import List, Optional, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.replay_buffers import PrioritizedReplayBuffer
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,

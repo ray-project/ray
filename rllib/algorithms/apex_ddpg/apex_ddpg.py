@@ -79,4 +79,3 @@ class ApexDDPG(DDPG):
     @override(DDPG)
     def get_default_config(cls) -> AlgorithmConfig:
         return ApexDDPGConfig()
-

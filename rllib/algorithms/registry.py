@@ -5,10 +5,6 @@ import re
 
 from ray.rllib.utils.deprecation import Deprecated
 
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
 
 def _import_a2c():
     import ray.rllib.algorithms.a2c as a2c

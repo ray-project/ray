@@ -96,4 +96,3 @@ class ApexDQN(DQN):
     @override(DQN)
     def get_default_config(cls) -> ApexDQNConfig:
         return ApexDQNConfig()
-

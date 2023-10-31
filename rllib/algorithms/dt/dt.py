@@ -116,7 +116,6 @@ class DTConfig(AlgorithmConfig):
     error=True,
 )
 class DT(Algorithm):
-
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:

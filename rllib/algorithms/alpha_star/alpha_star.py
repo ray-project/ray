@@ -106,6 +106,5 @@ class AlphaStarConfig(appo.APPOConfig):
 class AlphaStar(appo.APPO):
     @classmethod
     @override(appo.APPO)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> AlphaStarConfig:
         return AlphaStarConfig()
-

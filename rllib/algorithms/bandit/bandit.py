@@ -7,7 +7,6 @@ from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 
 
 class BanditConfig(AlgorithmConfig):
-
     def __init__(self, algo_class: Union["BanditLinTS", "BanditLinUCB"] = None):
         super().__init__(algo_class=algo_class)
         # fmt: off
@@ -21,7 +20,6 @@ class BanditConfig(AlgorithmConfig):
 
 
 class BanditLinTSConfig(BanditConfig):
-
     def __init__(self):
         super().__init__(algo_class=BanditLinTS)
         # fmt: off
@@ -65,4 +63,3 @@ class BanditLinUCB(Algorithm):
     @override(Algorithm)
     def get_default_config(cls) -> BanditLinUCBConfig:
         return BanditLinUCBConfig()
-
