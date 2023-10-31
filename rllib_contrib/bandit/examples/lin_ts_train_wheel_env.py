@@ -3,13 +3,13 @@
 """
 
 import argparse
+
 import numpy as np
 from matplotlib import pyplot as plt
+from rllib_bandit.bandit import BanditLinTSConfig
 
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-
-from rllib_bandit.bandit import BanditLinTSConfig
 
 
 def plot_model_weights(means, covs):

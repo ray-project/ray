@@ -2,24 +2,21 @@
     actions. """
 
 import argparse
-from matplotlib import pyplot as plt
 import os
-import pandas as pd
 import time
+
+import pandas as pd
+from matplotlib import pyplot as plt
+from rllib_bandit.bandit import BanditLinUCBConfig
 
 import ray
 from ray import air, tune
-from ray.tune import register_env
 from ray.rllib.env.wrappers.recsim import (
     MultiDiscreteToDiscreteActionWrapper,
     RecSimObservationBanditWrapper,
 )
-from ray.rllib.examples.env.bandit_envs_recommender_system import (
-    ParametricRecSys,
-)
-
-from rllib_bandit.bandit import BanditLinUCBConfig
-
+from ray.rllib.examples.env.bandit_envs_recommender_system import ParametricRecSys
+from ray.tune import register_env
 
 # Because ParametricRecSys follows RecSim's API, we have to wrap it before
 # it can work with our Bandits agent.

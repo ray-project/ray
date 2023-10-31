@@ -3,18 +3,16 @@ Example showing how you can use your trained Decision Transformer (DT) policy fo
 inference (computing actions) in an environment.
 """
 import argparse
+import os
 from pathlib import Path
 
 import gymnasium as gym
-import os
+from rllib_dt.dt import DTConfig
 
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.tune.utils.log import Verbosity
-
-from rllib_dt.dt import DTConfig
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

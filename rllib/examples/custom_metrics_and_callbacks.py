@@ -66,7 +66,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         episode: Episode,
         env_index: int,
-        **kwargs
+        **kwargs,
     ):
         # Make sure this episode has just been started (only initial obs
         # logged so far).
@@ -86,7 +86,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         episode: Episode,
         env_index: int,
-        **kwargs
+        **kwargs,
     ):
         # Make sure this episode is ongoing.
         assert episode.length > 0, (
@@ -111,7 +111,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         episode: Episode,
         env_index: int,
-        **kwargs
+        **kwargs,
     ):
         # Check if there are multiple episodes in a batch, i.e.
         # "batch_mode": "truncate_episodes".
@@ -129,9 +129,9 @@ class MyCallbacks(DefaultCallbacks):
 
     def on_sample_end(self, *, worker: RolloutWorker, samples: SampleBatch, **kwargs):
         # We can also do our own sanity checks here.
-        assert samples.count == 2000, (
-            f"I was expecting 2000 here, but got {samples.count}!"
-        )
+        assert (
+            samples.count == 2000
+        ), f"I was expecting 2000 here, but got {samples.count}!"
 
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
         # you can mutate the result dict to add new fields to return
@@ -171,7 +171,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         postprocessed_batch: SampleBatch,
         original_batches: Dict[str, Tuple[Policy, SampleBatch]],
-        **kwargs
+        **kwargs,
     ):
         if "num_batches" not in episode.custom_metrics:
             episode.custom_metrics["num_batches"] = 0
