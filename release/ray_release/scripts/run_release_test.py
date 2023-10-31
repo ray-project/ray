@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Optional
+from typing import Optional, Tuple
 from pathlib import Path
 
 import click
@@ -26,9 +26,9 @@ from ray_release.result import Result
 @click.argument("test_name", required=True, type=str)
 @click.option(
     "--test-collection-file",
-    default=None,
+    multiple=True,
     type=str,
-    help="File containing test configurations",
+    help="Test collection file, relative path to ray repo.",
 )
 @click.option(
     "--smoke-test",
@@ -85,7 +85,7 @@ from ray_release.result import Result
 )
 def main(
     test_name: str,
-    test_collection_file: Optional[str] = None,
+    test_collection_file: Tuple[str],
     smoke_test: bool = False,
     report: bool = False,
     cluster_id: Optional[str] = None,
@@ -98,10 +98,9 @@ def main(
         os.path.dirname(__file__), "..", "configs", global_config
     )
     init_global_config(global_config_file)
-    test_collection_file = test_collection_file or os.path.join(
-        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
+    test_collection = read_and_validate_release_test_collection(
+        test_collection_file or ["release/release_tests.yaml"]
     )
-    test_collection = read_and_validate_release_test_collection(test_collection_file)
     test = find_test(test_collection, test_name)
 
     if not test:

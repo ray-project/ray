@@ -1,6 +1,6 @@
 import copy
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
@@ -59,6 +59,7 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
 
 def get_step(
     test: Test,
+    test_collection_file: List[str] = None,
     report: bool = False,
     smoke_test: bool = False,
     env: Optional[Dict] = None,
@@ -70,6 +71,9 @@ def get_step(
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
     cmd = ["./release/run_release_test.sh", test["name"]]
+
+    for file in test_collection_file or []:
+        cmd += ["--test-collection-file", file]
 
     if global_config:
         cmd += ["--global-config", global_config]
