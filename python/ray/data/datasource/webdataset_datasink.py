@@ -17,7 +17,7 @@ from ray.data.datasource.webdataset_datasource import (
 )
 
 
-class WebDatasetDatasink(BlockBasedFileDatasink):
+class _WebDatasetDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,

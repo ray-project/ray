@@ -9,7 +9,7 @@ from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
 
 
-class NumpyDatasink(BlockBasedFileDatasink):
+class _NumpyDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,

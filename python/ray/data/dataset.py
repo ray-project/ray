@@ -108,18 +108,18 @@ from ray.data.datasource import (
     BigQueryDatasource,
     BlockWritePathProvider,
     Connection,
-    CSVDatasink,
     Datasink,
     Datasource,
     FilenameProvider,
-    ImageDatasink,
     JSONDatasink,
-    NumpyDatasink,
     ParquetDatasource,
     ReadTask,
     SQLDatasource,
-    TFRecordDatasink,
-    WebDatasetDatasink,
+    _CSVDatasink,
+    _ImageDatasink,
+    _NumpyDatasink,
+    _TFRecordDatasink,
+    _WebDatasetDatasink,
 )
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -2883,7 +2883,7 @@ class Dataset:
                 opening the file to write to.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """  # noqa: E501
-        datasink = ImageDatasink(
+        datasink = _ImageDatasink(
             path,
             column,
             file_format,
@@ -2975,7 +2975,7 @@ class Dataset:
                     #pyarrow.csv.write_csv>`_
                 when writing each block to a file.
         """
-        datasink = CSVDatasink(
+        datasink = _CSVDatasink(
             path,
             arrow_csv_args_fn=arrow_csv_args_fn,
             arrow_csv_args=arrow_csv_args,
@@ -3059,7 +3059,7 @@ class Dataset:
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
-        datasink = TFRecordDatasink(
+        datasink = _TFRecordDatasink(
             path=path,
             tf_schema=tf_schema,
             filesystem=filesystem,
@@ -3069,7 +3069,7 @@ class Dataset:
             block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
-        self.write_datasource(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3130,7 +3130,7 @@ class Dataset:
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
 
         """
-        datasink = WebDatasetDatasink(
+        datasink = _WebDatasetDatasink(
             path,
             encoder=encoder,
             filesystem=filesystem,
@@ -3204,7 +3204,7 @@ class Dataset:
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
 
-        datasink = NumpyDatasink(
+        datasink = _NumpyDatasink(
             path,
             column,
             filesystem=filesystem,

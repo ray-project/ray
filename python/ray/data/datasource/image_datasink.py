@@ -8,7 +8,7 @@ from ray.data.datasource.file_datasink import RowBasedFileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
 
 
-class ImageDatasink(RowBasedFileDatasink):
+class _ImageDatasink(RowBasedFileDatasink):
     def __init__(
         self,
         path: str,
