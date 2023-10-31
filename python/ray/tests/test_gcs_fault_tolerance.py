@@ -143,7 +143,7 @@ def test_autoscaler_init(
     cluster.head_node.kill_gcs_server()
     # Wait to prevent the gcs server process becoming zombie.
     gcs_server_process.wait()
-    wait_for_pid_to_exit(gcs_server_pid, 1000)
+    wait_for_pid_to_exit(gcs_server_pid, 300)
 
     # Restart gcs server process.
     cluster.head_node.start_gcs_server()
