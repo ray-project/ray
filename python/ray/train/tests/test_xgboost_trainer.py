@@ -1,18 +1,16 @@
-import pytest
 import json
-import pandas as pd
 
+import pandas as pd
+import pytest
 import xgboost as xgb
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
 
 import ray
 from ray import train, tune
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
-
 from ray.train.xgboost import XGBoostTrainer
-
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
 
 
 @pytest.fixture
@@ -222,7 +220,8 @@ def test_xgboost_trainer_resources():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

@@ -2558,10 +2558,11 @@ triton==2.0.0 \
     # via
     #   openai-whisper
     #   torch
-typepy[datetime]==1.3.1 \
-    --hash=sha256:892566bff279368d63f02901aba0a3ce78cd7a319ec1f2bf6c8baab3520207a3 \
-    --hash=sha256:dfc37b888d6eed8542208389efa60ec8454e06fd84b276b45b2e33897f9d7825
+typepy[datetime]==1.3.2 \
+    --hash=sha256:b69fd48b9f50cdb3809906eef36b855b3134ff66c8893a4f8580abddb0b39517 \
+    --hash=sha256:d5d1022a424132622993800f1d2cd16cfdb691ac4e3b9c325f0fcb37799db1ae
     # via
+    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   dataproperty
     #   pytablewriter
     #   tabledata

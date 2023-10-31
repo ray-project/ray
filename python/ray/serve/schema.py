@@ -1,10 +1,17 @@
 import json
+import logging
 from collections import Counter
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List, Optional, Set, Union
 
-from pydantic import BaseModel, Extra, Field, root_validator, validator
-
+from ray._private.pydantic_compat import (
+    BaseModel,
+    Extra,
+    Field,
+    root_validator,
+    validator,
+)
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     ApplicationStatus,
@@ -56,6 +63,74 @@ def _route_prefix_format(cls, v):
         )
 
     return v
+
+
+@PublicAPI(stability="alpha")
+class EncodingType(str, Enum):
+    """Encoding type for the serve logs."""
+
+    TEXT = "TEXT"
+    JSON = "JSON"
+
+
+@PublicAPI(stability="alpha")
+class LoggingConfig(BaseModel):
+    """Logging config schema for configuring serve components logs."""
+
+    class Config:
+        extra = Extra.forbid
+
+    encoding: Union[str, EncodingType] = Field(
+        default="TEXT",
+        description=(
+            "Encoding type for the serve logs. Default to 'TEXT'. 'JSON' is also "
+            "supported to format all serve logs into json structure."
+        ),
+    )
+    log_level: Union[int, str] = Field(
+        default=logging.INFO,
+        description=(
+            "Log level for the serve logs. Defaults to INFO. You can set it to "
+            "'DEBUG' to get more detailed debug logs."
+        ),
+    )
+    logs_dir: Union[str, None] = Field(
+        default=None,
+        description=(
+            "Directory to store the logs. Default to None, which means "
+            "logs will be stored in the default directory "
+            "('/tmp/ray/session_latest/logs/serve/...')."
+        ),
+    )
+    enable_access_log: bool = Field(
+        default=True,
+        description=(
+            "Whether to enable access logs for each request. Default to True."
+        ),
+    )
+
+    @validator("encoding")
+    def valid_encoding_format(cls, v):
+
+        if v not in list(EncodingType):
+            raise ValueError(
+                f"Got '{v}' for encoding. Encoding must be one "
+                f"of {set(EncodingType)}."
+            )
+
+        return v
+
+    @validator("log_level")
+    def valid_log_level(cls, v):
+        if isinstance(v, int):
+            return v
+
+        if v not in logging._nameToLevel:
+            raise ValueError(
+                f'Got "{v}" for log_level. log_level must be one of '
+                f"{list(logging._nameToLevel.keys())}."
+            )
+        return logging._nameToLevel[v]
 
 
 @PublicAPI(stability="stable")
@@ -259,6 +334,10 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             "Defaults to no limitation."
         ),
     )
+    logging_config: LoggingConfig = Field(
+        default=DEFAULT.VALUE,
+        description="Logging config for configuring serve deployment logs.",
+    )
 
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
@@ -383,6 +462,10 @@ class ServeApplicationSchema(BaseModel):
     args: Dict = Field(
         default={},
         description="Arguments that will be passed to the application builder.",
+    )
+    logging_config: LoggingConfig = Field(
+        default=None,
+        description="Logging config for configuring serve application logs.",
     )
 
     @property
@@ -598,6 +681,10 @@ class ServeDeploySchema(BaseModel):
     )
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
+    )
+    logging_config: LoggingConfig = Field(
+        default=None,
+        description="Logging config for configuring serve components logs.",
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."

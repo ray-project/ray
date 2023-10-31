@@ -6,14 +6,9 @@ import pyarrow.fs
 
 import ray
 from ray.air.config import RunConfig
-from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
-from ray.train._internal.storage import (
-    _exists_at_fs_path,
-    _use_storage_context,
-    get_fs_and_path,
-)
+from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
 from ray.tune import TuneError
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.experimental.output import (
@@ -212,12 +207,26 @@ class Tuner:
         their latest checkpoints. The latter will restart errored trials from
         scratch and prevent loading their last checkpoints.
 
+        .. note::
+
+            Restoring an experiment from a path that's pointing to a *different*
+            location than the original experiment path is supported.
+            However, Ray Tune assumes that the full experiment directory is available
+            (including checkpoints) so that it's possible to resume trials from their
+            latest state.
+
+            For example, if the original experiment path was run locally,
+            then the results are uploaded to cloud storage, Ray Tune expects the full
+            contents to be available in cloud storage if attempting to resume
+            via ``Tuner.restore("s3://...")``. The restored run will continue
+            writing results to the same cloud storage location.
+
         Args:
-            path: The path where the previous failed run is checkpointed.
+            path: The local or remote path of the experiment directory
+                for an interrupted or failed run.
+                Note that an experiment where all trials finished will not be resumed.
                 This information could be easily located near the end of the
                 console output of previous run.
-                Note: depending on whether ray client mode is used or not,
-                this path may or may not exist on your local machine.
             trainable: The trainable to use upon resuming the experiment.
                 This should be the same trainable that was used to initialize
                 the original Tuner.
@@ -235,6 +244,9 @@ class Tuner:
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them from scratch (no checkpoint will be loaded).
+            storage_filesystem: Custom ``pyarrow.fs.FileSystem``
+                corresponding to the ``path``. This may be necessary if the original
+                experiment passed in a custom filesystem.
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
@@ -314,11 +326,8 @@ class Tuner:
         Returns:
             bool: True if this path exists and contains the Tuner state to resume from
         """
-        if _use_storage_context():
-            fs, fs_path = get_fs_and_path(path, storage_filesystem)
-            return _exists_at_fs_path(fs, os.path.join(fs_path, _TUNER_PKL))
-
-        return _TUNER_PKL in list_at_uri(str(path))
+        fs, fs_path = get_fs_and_path(path, storage_filesystem)
+        return _exists_at_fs_path(fs, os.path.join(fs_path, _TUNER_PKL))
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
         run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())

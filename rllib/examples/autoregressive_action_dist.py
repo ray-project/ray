@@ -139,14 +139,13 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        # Batch-norm models have not been migrated to the RL Module API yet.
+        .experimental(_enable_new_api_stack=False)
         .environment(CorrelatedActionsEnv)
         .framework(args.framework)
         .training(gamma=0.5)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        # Batch-norm models have not been migrated to the RL Module API yet.
-        .training(_enable_learner_api=False)
-        .rl_module(_enable_rl_module_api=False)
     )
 
     # Use registered model and dist in config.

@@ -3,8 +3,8 @@ import time
 import pytest
 
 import ray
-from ray.train._internal.worker_group import WorkerGroup, Worker, WorkerMetadata
 import ray._private.ray_constants as ray_constants
+from ray.train._internal.worker_group import Worker, WorkerGroup, WorkerMetadata
 
 
 @pytest.fixture

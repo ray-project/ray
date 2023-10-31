@@ -135,9 +135,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         model_config: ModelConfigDict,
         name: str,
     ):
-        if log_once("lstm_wrapper_torch"):
-            deprecation_warning(old="ray.rllib.models.tf.recurrent_net.LSTMWrapper")
-
         nn.Module.__init__(self)
         super(LSTMWrapper, self).__init__(
             obs_space, action_space, None, model_config, name

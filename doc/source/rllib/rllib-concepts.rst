@@ -208,7 +208,7 @@ The ``postprocess_advantages()`` function above uses calls RLlib's ``compute_adv
 
 You might be wondering how RLlib makes the advantages placeholder automatically available as ``train_batch[Postprocessing.ADVANTAGES]``. When building your policy, RLlib will create a "dummy" trajectory batch where all observations, actions, rewards, etc. are zeros. It then calls your ``postprocess_fn``, and generates TF placeholders based on the numpy shapes of the postprocessed batch. RLlib tracks which placeholders that ``loss_fn`` and ``stats_fn`` access, and then feeds the corresponding sample data into those placeholders during loss optimization. You can also access these placeholders via ``policy.get_placeholder(<name>)`` after loss initialization.
 
-**Example 1: Proximal Policy Optimization**
+**Example: Proximal Policy Optimization**
 
 In the above section you saw how to compose a simple policy gradient algorithm with RLlib.
 In this example, we'll dive into how PPO is defined within RLlib and how you can modify it.
@@ -360,73 +360,6 @@ Now let's look at each PPO policy definition:
 
 In PPO we run ``setup_mixins`` before the loss function is called (i.e., ``before_loss_init``), but other callbacks you can use include ``before_init`` and ``after_init``.
 
-**Example 2: Deep Q Networks**
-
-Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/simple_q/simple_q_tf_policy.py>`__:
-
-.. code-block:: python
-
-    SimpleQPolicy = build_tf_policy(
-        name="SimpleQPolicy",
-        get_default_config=lambda: ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG,
-        make_model=build_q_models,
-        action_sampler_fn=build_action_sampler,
-        loss_fn=build_q_losses,
-        extra_action_feed_fn=exploration_setting_inputs,
-        extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
-        extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
-        before_init=setup_early_mixins,
-        after_init=setup_late_mixins,
-        obs_include_prev_action_reward=False,
-        mixins=[
-            ExplorationStateMixin,
-            TargetNetworkMixin,
-        ])
-
-The biggest difference from the policy gradient policies you saw previously is that SimpleQPolicy defines its own ``make_model`` and ``action_sampler_fn``. This means that the policy builder will not internally create a model and action distribution, rather it will call ``build_q_models`` and ``build_action_sampler`` to get the output action tensors.
-
-The model creation function actually creates two different models for DQN: the base Q network, and also a target network. It requires each model to be of type ``SimpleQModel``, which implements a ``get_q_values()`` method. The model catalog will raise an error if you try to use a custom ModelV2 model that isn't a subclass of SimpleQModel. Similarly, the full DQN policy requires models to subclass ``DistributionalQModel``, which implements ``get_q_value_distributions()`` and ``get_state_value()``:
-
-.. code-block:: python
-
-    def build_q_models(policy, obs_space, action_space, config):
-        ...
-
-        policy.q_model = ModelCatalog.get_model_v2(
-            obs_space,
-            action_space,
-            num_outputs,
-            config["model"],
-            framework="tf",
-            name=Q_SCOPE,
-            model_interface=SimpleQModel,
-            q_hiddens=config["hiddens"])
-
-        policy.target_q_model = ModelCatalog.get_model_v2(
-            obs_space,
-            action_space,
-            num_outputs,
-            config["model"],
-            framework="tf",
-            name=Q_TARGET_SCOPE,
-            model_interface=SimpleQModel,
-            q_hiddens=config["hiddens"])
-
-        return policy.q_model
-
-The action sampler is straightforward, it just takes the q_model, runs a forward pass, and returns the argmax over the actions:
-
-.. code-block:: python
-
-    def build_action_sampler(policy, q_model, input_dict, obs_space, action_space,
-                             config):
-        # do max over Q values...
-        ...
-        return action, action_logp
-
-The remainder of DQN is similar to other algorithms. Target updates are handled by a ``after_optimizer_step`` callback that periodically copies the weights of the Q network to the target.
-
-Finally, note that you do not have to use ``build_tf_policy`` to define a TensorFlow policy. You can alternatively subclass ``Policy``, ``TFPolicy``, or ``DynamicTFPolicy`` as convenient.
 
 Building Policies in TensorFlow Eager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

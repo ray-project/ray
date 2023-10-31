@@ -26,15 +26,6 @@ from ray.serve.tests.common.utils import (
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 
 
-@pytest.fixture
-def ray_cluster():
-    cluster = Cluster()
-    yield Cluster()
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
-
-
 def test_serving_request_through_grpc_proxy(ray_cluster):
     """Test serving request through gRPC proxy.
 
@@ -472,7 +463,7 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
             stub.__call__(request=request)
 
     rpc_error = exception_info.value
-    assert rpc_error.code() == grpc.StatusCode.CANCELLED
+    assert rpc_error.code() == grpc.StatusCode.DEADLINE_EXCEEDED
     assert timeout_response in rpc_error.details()
 
     # Unblock the handlers to avoid graceful shutdown time.

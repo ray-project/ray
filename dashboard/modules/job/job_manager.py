@@ -547,6 +547,7 @@ class JobManager:
         except Exception:
             self.event_logger = None
 
+        self._recover_running_jobs_event = asyncio.Event()
         run_background_task(self._recover_running_jobs())
 
     async def _recover_running_jobs(self):
@@ -555,10 +556,16 @@ class JobManager:
         For each job, we will spawn a coroutine to monitor it.
         Each will be added to self._running_jobs and reconciled.
         """
-        all_jobs = await self._job_info_client.get_all_jobs()
-        for job_id, job_info in all_jobs.items():
-            if not job_info.status.is_terminal():
-                run_background_task(self._monitor_job(job_id))
+        try:
+            all_jobs = await self._job_info_client.get_all_jobs()
+            for job_id, job_info in all_jobs.items():
+                if not job_info.status.is_terminal():
+                    run_background_task(self._monitor_job(job_id))
+        finally:
+            # This event is awaited in `submit_job` to avoid race conditions between
+            # recovery and new job submission, so it must always get set even if there
+            # are exceptions.
+            self._recover_running_jobs_event.set()
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
@@ -671,7 +678,7 @@ class JobManager:
                             JobStatus.FAILED,
                             message=(
                                 "Unexpected error occurred: "
-                                "Failed to get job supervisor."
+                                "failed to get job supervisor."
                             ),
                         )
                         is_alive = False
@@ -690,6 +697,7 @@ class JobManager:
                         "`Job` page or the state API `ray list jobs`."
                     )
 
+                job_error_message = ""
                 if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
@@ -708,10 +716,13 @@ class JobManager:
                         f"Failed to schedule job {job_id} because the supervisor actor "
                         f"could not be scheduled: {e}"
                     )
+                    job_error_message = (
+                        f"Job supervisor actor could not be scheduled: {e}"
+                    )
                     await self._job_info_client.put_status(
                         job_id,
                         JobStatus.FAILED,
-                        message=(f"Job supervisor actor could not be scheduled: {e}"),
+                        message=job_error_message,
                     )
                 else:
                     logger.warning(
@@ -724,6 +735,13 @@ class JobManager:
                         job_status,
                         message=job_error_message,
                     )
+
+                # Log error message to the job driver file for easy access.
+                if job_error_message:
+                    log_path = self._log_client.get_log_file_path(job_id)
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, "a") as log_file:
+                        log_file.write(job_error_message)
 
                 # Log events
                 if self.event_logger:
@@ -904,6 +922,10 @@ class JobManager:
         if submission_id is None:
             submission_id = generate_job_id()
 
+        # Wait for `_recover_running_jobs` to run before accepting submissions to
+        # avoid duplicate monitoring of the same job.
+        await self._recover_running_jobs_event.wait()
+
         logger.info(f"Starting job with submission_id: {submission_id}")
         job_info = JobInfo(
             entrypoint=entrypoint,
@@ -968,10 +990,13 @@ class JobManager:
                 self._monitor_job(submission_id, job_supervisor=supervisor)
             )
         except Exception as e:
+            logger.warning(
+                f"Failed to start supervisor actor for job {submission_id}: '{e}'"
+            )
             await self._job_info_client.put_status(
                 submission_id,
                 JobStatus.FAILED,
-                message=f"Failed to start Job Supervisor actor: {e}.",
+                message=f"Failed to start supervisor actor {submission_id}: '{e}'",
             )
 
         return submission_id

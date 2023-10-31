@@ -236,7 +236,6 @@ py_test(
     srcs = test_srcs,
     env = {
         "IS_SMOKE_TEST": "1",
-        "RAY_AIR_NEW_PERSISTENCE_MODE": "1",
     },
     main = "golden_notebook_tests/workloads/torch_tune_serve_test.py",
     tags = [
@@ -269,24 +268,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "air_benchmark_data_smoke_test",
-    size = "small",
-    srcs = test_srcs,
-    args = [
-        "--dataset-size-gb=1",
-        "--num-workers=1",
-    ],
-    main = "air_tests/air_benchmarks/workloads/data_benchmark.py",
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/air:ml_lib",
-    ],
-)
 
 py_test(
     name = "air_benchmark_gpu_batch_inference_parquet_smoke_test",
@@ -297,7 +278,7 @@ py_test(
         "--data-format=parquet",
         "--smoke-test",
     ],
-    main = "air_tests/air_benchmarks/workloads/gpu_batch_inference.py",
+    main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
         "team:data",
@@ -317,7 +298,7 @@ py_test(
         "--data-format=raw",
         "--smoke-test",
     ],
-    main = "air_tests/air_benchmarks/workloads/gpu_batch_inference.py",
+    main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
         "team:data",
@@ -593,6 +574,7 @@ py_test(
     ) + [
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
+        "ray_release/tests/test_collection_data.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [

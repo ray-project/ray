@@ -242,11 +242,12 @@ def assert_gang_requests(
 
 
 def test_request_cluster_resources_basic(shutdown_only):
-    ray.init(num_cpus=1)
+    ctx = ray.init(num_cpus=1)
     stub = _autoscaler_state_service_stub()
+    gcs_address = ctx.address_info["gcs_address"]
 
     # Request one
-    request_cluster_resources([{"CPU": 1}])
+    request_cluster_resources(gcs_address, [{"CPU": 1}])
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -256,7 +257,7 @@ def test_request_cluster_resources_basic(shutdown_only):
     wait_for_condition(verify)
 
     # Request another overrides the previous request
-    request_cluster_resources([{"CPU": 2, "GPU": 1}, {"CPU": 1}])
+    request_cluster_resources(gcs_address, [{"CPU": 2, "GPU": 1}, {"CPU": 1}])
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -266,7 +267,7 @@ def test_request_cluster_resources_basic(shutdown_only):
         return True
 
     # Request multiple is aggregated by shape.
-    request_cluster_resources([{"CPU": 1}] * 100)
+    request_cluster_resources(gcs_address, [{"CPU": 1}] * 100)
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -611,7 +612,7 @@ def test_get_cluster_status_resources(ray_start_cluster):
     actor.loop.remote()
 
     def verify_cpu_resources_all_used():
-        cluster_status = get_cluster_status()
+        cluster_status = get_cluster_status(cluster.address)
         total_cluster_resources = get_total_resources(
             cluster_status.cluster_resource_usage
         )
@@ -629,7 +630,7 @@ def test_get_cluster_status_resources(ray_start_cluster):
     [loop.remote() for _ in range(2)]
 
     def verify_task_demands():
-        resource_demands = get_cluster_status().resource_demands
+        resource_demands = get_cluster_status(cluster.address).resource_demands
         assert len(resource_demands.ray_task_actor_demand) == 1
         assert resource_demands.ray_task_actor_demand[0].bundles_by_count == [
             ResourceRequestByCount(
@@ -642,10 +643,12 @@ def test_get_cluster_status_resources(ray_start_cluster):
     wait_for_condition(verify_task_demands)
 
     # Request resources through SDK
-    request_cluster_resources(to_request=[{"GPU": 1, "CPU": 2}])
+    request_cluster_resources(
+        gcs_address=cluster.address, to_request=[{"GPU": 1, "CPU": 2}]
+    )
 
     def verify_cluster_constraint_demand():
-        resource_demands = get_cluster_status().resource_demands
+        resource_demands = get_cluster_status(cluster.address).resource_demands
         assert len(resource_demands.cluster_constraint_demand) == 1
         assert resource_demands.cluster_constraint_demand[0].bundles_by_count == [
             ResourceRequestByCount(
@@ -661,7 +664,7 @@ def test_get_cluster_status_resources(ray_start_cluster):
     pg1 = ray.util.placement_group([{"CPU": 1}] * 3)
 
     def verify_pg_demands():
-        resource_demands = get_cluster_status().resource_demands
+        resource_demands = get_cluster_status(cluster.address).resource_demands
         assert len(resource_demands.placement_group_demand) == 1
         assert resource_demands.placement_group_demand[0].bundles_by_count == [
             ResourceRequestByCount(
@@ -691,7 +694,7 @@ def test_get_cluster_status(ray_start_cluster):
     head_node_id, worker_node_ids = get_node_ids()
 
     def verify_nodes():
-        cluster_status = get_cluster_status()
+        cluster_status = get_cluster_status(cluster.address)
         assert_nodes(
             cluster_status.idle_nodes,
             [
@@ -724,7 +727,7 @@ def test_get_cluster_status(ray_start_cluster):
     f.remote()
 
     def verify_nodes_busy():
-        cluster_status = get_cluster_status()
+        cluster_status = get_cluster_status(cluster.address)
         assert_nodes(
             cluster_status.idle_nodes,
             [
@@ -784,7 +787,7 @@ def test_get_cluster_status(ray_start_cluster):
     def verify_autoscaler_state():
         # TODO(rickyx): Add infeasible asserts.
 
-        cluster_status = get_cluster_status()
+        cluster_status = get_cluster_status(cluster.address)
         assert len(cluster_status.pending_launches) == 1
         assert_launches(
             cluster_status,

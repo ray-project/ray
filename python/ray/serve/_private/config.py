@@ -3,7 +3,10 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.json_format import MessageToDict
-from pydantic import (
+
+from ray import cloudpickle
+from ray._private import ray_option_utils
+from ray._private.pydantic_compat import (
     BaseModel,
     Field,
     NonNegativeFloat,
@@ -11,9 +14,6 @@ from pydantic import (
     PositiveFloat,
     validator,
 )
-
-from ray import cloudpickle
-from ray._private import ray_option_utils
 from ray._private.serialization import pickle_dumps
 from ray._private.utils import resources_from_ray_options
 from ray.serve._private.constants import (

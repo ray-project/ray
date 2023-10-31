@@ -2,18 +2,17 @@ import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray.data import Dataset
 from ray._private.ray_constants import env_integer
+from ray.data import Dataset
 from ray.exceptions import RayActorError
-from ray.train import DataConfig
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint, DataConfig
 from ray.train._internal.session import (
-    _TrainingResult,
     TrialInfo,
+    _TrainingResult,
     get_session,
     init_session,
     shutdown_session,
@@ -25,9 +24,9 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
-    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -153,16 +152,21 @@ class BackendExecutor:
         trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
         self.worker_group.group_workers_by_ip(trial_driver_ip)
 
-        worker_locs = [
-            f"{w.metadata.pid} ({w.metadata.node_ip})"
-            for w in self.worker_group.workers
-        ]
-        logger.info(f"Starting distributed worker processes: {worker_locs}")
-
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
+
+            # Always propagate the driver's DataContext to each worker in the group.
+            from ray.data import DataContext
+
+            def _set_driver_dataset_context(ctx: DataContext):
+                DataContext._set_current(ctx)
+
+            self.worker_group.execute(
+                _set_driver_dataset_context,
+                DataContext.get_current(),
+            )
 
             share_cuda_visible_devices_enabled = bool(
                 env_integer(
@@ -418,6 +422,16 @@ class BackendExecutor:
             worker = self.worker_group.workers[world_rank]
             node_ip = worker.metadata.node_ip
             local_world_size_map[world_rank] = ip_dict[node_ip]
+
+        workers_info = "\n".join(
+            [
+                f"- (ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
+                f"world_rank={i}, local_rank={local_rank_map[i]}, "
+                f"node_rank={node_rank_map[i]}"
+                for i, w in enumerate(self.worker_group.workers)
+            ]
+        )
+        logger.info(f"Started distributed worker processes: \n{workers_info}")
 
         return local_rank_map, local_world_size_map, node_rank_map
 

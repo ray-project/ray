@@ -35,12 +35,12 @@ class Caller:
         self._num_trials = num_trials
         self._trial_runtime = trial_runtime
 
-    async def do_single_batch(self):
+    async def _do_single_batch(self):
         await asyncio.gather(*[self._h.hi.remote() for _ in range(self._batch_size)])
 
-    async def run_throughput_benchmark(self) -> Tuple[float, float]:
+    async def run_benchmark(self) -> Tuple[float, float]:
         return await run_throughput_benchmark(
-            fn=self.do_single_batch,
+            fn=self._do_single_batch,
             multiplier=self._batch_size,
             num_trials=self._num_trials,
             trial_runtime=self._trial_runtime,

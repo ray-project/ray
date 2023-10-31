@@ -105,7 +105,7 @@ static inline void Init(const TagsType &global_tags,
 
   MetricPointExporter::Register(exporter, metrics_report_batch_size);
   OpenCensusProtoExporter::Register(
-      metrics_agent_port, (*metrics_io_service), "127.0.0.1", worker_id);
+      metrics_agent_port, (*metrics_io_service), "127.0.0.1", worker_id, RayConfig::instance().metrics_report_batch_size());
   StatsConfig::instance().SetGlobalTags(global_tags);
   for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();

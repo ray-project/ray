@@ -6,8 +6,8 @@ from ray import serve
 from ray.tests.conftest import *  # noqa: F401,F403
 from ray._private.test_utils import generate_system_config_map
 
-DEPLOYMENTS_URL = "http://localhost:52365/api/serve/deployments/"
-STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
+DEPLOYMENTS_URL = "http://localhost:8265/api/serve/deployments/"
+STATUS_URL = "http://localhost:8265/api/serve/deployments/status"
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")

@@ -1,19 +1,16 @@
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
-from ray._private.thirdparty.tabulate.tabulate import tabulate
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
 
 import ray
-from ray import air
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
-from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train import BackendConfig, Checkpoint, TrainingIterator
 from ray.train._internal import session
-from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
-from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
+from ray.train._internal.data_config import DataConfig
+from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.utils import construct_train_func
-from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
@@ -243,47 +240,15 @@ class DataParallelTrainer(BaseTrainer):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
 
-        if isinstance(dataset_config, dict) or self._dataset_config or preprocessor:
-            # Warn about deprecated cases (will raise error in future).
-            if isinstance(dataset_config, dict):
-                logger.warning(
-                    "The dict form of `dataset_config` is deprecated. Use the "
-                    "DataConfig class instead. Support for this will be dropped "
-                    "in a future release."
-                )
-            # If using the new API, hard-disallow deprecated features.
-            if isinstance(dataset_config, DataConfig):
-                if self._dataset_config:
-                    raise ValueError(
-                        "The DataConfig class is not compatible with the "
-                        "Trainer._dataset_config field. Remove `_dataset_config` "
-                        "from your trainer subclass to use DataConfig."
-                    )
-                elif preprocessor:
-                    raise ValueError(
-                        "The DataConfig class is not compatible with the "
-                        "Trainer preprocessor arg. Remove the `preprocessor` arg "
-                        "to use DataConfig."
-                    )
-            if self._dataset_config is None:
-                base_dataset_config = {
-                    TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
-                    WILDCARD_KEY: DatasetConfig(split=False),
-                }
-            else:
-                base_dataset_config = self._dataset_config
-            self._data_config = _LegacyDataConfigWrapper(
-                base_dataset_config, dataset_config, datasets
-            )
-        elif isinstance(dataset_config, DataConfig):
-            self._data_config = dataset_config
-        elif dataset_config is None:
-            self._data_config = DataConfig()
-        else:
+        if dataset_config is None:
+            dataset_config = DataConfig()
+
+        if not isinstance(dataset_config, DataConfig):
             raise ValueError(
                 "`dataset_config` must be an instance of ray.train.DataConfig, "
                 f"was: {dataset_config}"
             )
+        self._data_config = dataset_config
 
         backend_config = (
             backend_config if backend_config is not None else BackendConfig()
@@ -411,6 +376,14 @@ class DataParallelTrainer(BaseTrainer):
                 result.checkpoint for result in results if result.checkpoint is not None
             ]
             at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
+
+            if at_least_one_reported_checkpoint:
+                # Update the coordinator's checkpoint index to the latest.
+                # This is what keeps the checkpoint index in line with the workers.
+                tune_session.storage._update_checkpoint_index(
+                    first_worker_result.metrics
+                )
+
             # Make sure that all workers uploaded to the same location.
             assert all(
                 checkpoint.path == tune_session.storage.checkpoint_fs_path
@@ -420,14 +393,12 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint = (
                 Checkpoint(
                     filesystem=tune_session.storage.storage_filesystem,
-                    # NOTE: The checkpoint index has not been incremented yet
-                    # at this point, which is why `checkpoint_fs_path` points
-                    # to the most recent checkpoint.
                     path=tune_session.storage.checkpoint_fs_path,
                 )
                 if at_least_one_reported_checkpoint
                 else None
             )
+
             tracked_training_result = _TrainingResult(
                 checkpoint=checkpoint,
                 metrics=first_worker_result.metrics,
@@ -497,10 +468,8 @@ class DataParallelTrainer(BaseTrainer):
         Returns:
             The merged default + user-supplied dataset config.
         """
-        if isinstance(self._data_config, _LegacyDataConfigWrapper):
-            return self._data_config._dataset_config
-        else:
-            return self._data_config
+
+        return self._data_config
 
     @repr_with_fallback(["ipywidgets", "8"])
     def _repr_mimebundle_(self, **kwargs):
@@ -516,7 +485,7 @@ class DataParallelTrainer(BaseTrainer):
         Returns:
             A mimebundle containing an ipywidget repr and a simple text repr.
         """
-        from ipywidgets import HTML, VBox, Tab, Layout
+        from ipywidgets import HTML, Layout, Tab, VBox
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
 
@@ -588,7 +557,7 @@ class DataParallelTrainer(BaseTrainer):
         return Template("rendered_html_common.html.j2").render(content=content)
 
     def _datasets_repr_(self) -> str:
-        from ipywidgets import HTML, VBox, Layout
+        from ipywidgets import HTML, Layout, VBox
 
         content = []
         if self.datasets:
@@ -605,31 +574,3 @@ class DataParallelTrainer(BaseTrainer):
                     content.append(config._tab_repr_())
 
         return VBox(content, layout=Layout(width="100%"))
-
-
-def _load_checkpoint_dict(
-    checkpoint: air.Checkpoint, trainer_name: str
-) -> Tuple[Any, Optional["Preprocessor"]]:
-    """Loads a Ray Train Checkpoint (dict based).
-
-    This is a private API.
-
-    Args:
-        checkpoint: The checkpoint to load the weights and
-            preprocessor from.
-        trainer_name: Trainer class name to use in error
-            message.
-
-    Returns:
-        The model or weights and preprocessor contained within.
-    """
-    checkpoint_dict = checkpoint.to_dict()
-    preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
-    if MODEL_KEY not in checkpoint_dict:
-        raise RuntimeError(
-            f"No item with key: {MODEL_KEY} is found in the "
-            f"Checkpoint. Make sure this key exists when saving the "
-            f"checkpoint in ``{trainer_name}``."
-        )
-    model = checkpoint_dict[MODEL_KEY]
-    return model, preprocessor

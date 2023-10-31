@@ -127,10 +127,10 @@ def test_scheduling_placement_groups_during_draining(ray_start_cluster):
     """Test that the draining node is unschedulable for new pgs."""
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, resources={"node1": 1})
+    ray.init(address=cluster.address)
     cluster.add_node(num_cpus=1, resources={"node2": 1})
     cluster.add_node(num_cpus=2, resources={"node3": 1})
     cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
 
     @ray.remote
     def get_node_id():
