@@ -68,6 +68,8 @@ class Datasink:
         """
         name = type(self).__name__
         datasink_suffix = "Datasink"
+        if name.startswith("_"):
+            name = name[1:]
         if name.endswith(datasink_suffix):
             name = name[: -len(datasink_suffix)]
         return name
