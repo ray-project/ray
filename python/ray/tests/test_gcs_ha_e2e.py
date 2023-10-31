@@ -33,7 +33,11 @@ print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
     head.restart()
     # When GCS restarts, a new raylet is added
     # GCS mark the old raylet as dead so the alive nodes will be 2
-    wait_for_condition(check_alive, timeout=30, n=2)
+    num_retries = 5
+    while num_retries > 0:
+        num_retries -= 1
+        assert check_alive(2)
+        sleep(0.1)
 
 
 if __name__ == "__main__":

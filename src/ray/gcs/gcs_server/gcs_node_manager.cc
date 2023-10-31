@@ -59,13 +59,16 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id
                   << ", address = " << request.node_info().node_manager_address()
                   << ", node name = " << request.node_info().node_name();
-    if(request.node_info().is_head_node()){
-      RAY_LOG(INFO) << "Registering head node:" << node_id << " and is_alive: " << (request.node_info().state() == rpc::GcsNodeInfo::ALIVE);
+    if (request.node_info().is_head_node()) {
+      RAY_LOG(INFO) << "Registering head node:" << node_id << " and is_alive: "
+                    << (request.node_info().state() == rpc::GcsNodeInfo::ALIVE);
 
       // mark the old head node as dead
-      auto head_node_it = std::find_if(alive_nodes_.begin(), alive_nodes_.end(),
-                                    [](const auto &node) { return node.second->is_head_node(); });
-      if(head_node_it != alive_nodes_.end()){
+      auto head_node_it =
+          std::find_if(alive_nodes_.begin(), alive_nodes_.end(), [](const auto &node) {
+            return node.second->is_head_node();
+          });
+      if (head_node_it != alive_nodes_.end()) {
         NodeID old_head_node_id = head_node_it->first;
         OnNodeFailure(old_head_node_id);
       }
