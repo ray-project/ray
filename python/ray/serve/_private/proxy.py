@@ -1116,6 +1116,10 @@ class ProxyActor:
             f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
             f"starting on node {node_id}."
         )
+        logger.debug(
+            f"Congiure Porxy actor {ray.get_runtime_context().get_actor_id()} "
+            f"logger with logging config: {logging_config}"
+        )
 
         configure_component_memory_profiler(
             component_name="proxy", component_id=node_ip_address

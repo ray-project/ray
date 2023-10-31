@@ -64,6 +64,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
+    logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -118,6 +119,7 @@ def start(
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
+        logging_config=logging_config,
         **kwargs,
     )
 
@@ -517,6 +519,10 @@ def run(
                 )
 
             deployment._route_prefix = route_prefix
+        if deployment._deployment_config.logging_config is None and logging_config:
+            if isinstance(logging_config, LoggingConfig):
+                logging_config = logging_config.dict()
+            deployment._deployment_config.logging_config = logging_config
         deployment_parameters = {
             "name": deployment._name,
             "replica_config": deployment._replica_config,

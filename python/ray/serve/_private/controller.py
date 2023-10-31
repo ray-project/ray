@@ -141,6 +141,7 @@ class ServeController:
             component_id=str(os.getpid()),
             logging_config=self.logging_config,
         )
+        logger.debug(f"Configure the serve controller logger with logging config: {self.logging_config}")
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
