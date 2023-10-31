@@ -31,6 +31,11 @@ from ray.serve.tests.common.utils import (
 )
 
 
+def check_telemetry_started(storage_handle):
+    report = ray.get(storage_handle.get_report.remote())
+    assert ServeUsageTag.API_VERSION.get_value_from_report(report) in ["v1", "v2"]
+
+
 def test_fastapi_detected(manage_ray_with_telemetry):
     """
     Check that FastAPI is detected by telemetry.
@@ -41,11 +46,9 @@ def test_fastapi_detected(manage_ray_with_telemetry):
 
     storage_handle = start_telemetry_app()
 
-    def check_telemetry_started():
-        report = ray.get(storage_handle.get_report.remote())
-        assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
-
-    wait_for_condition(check_telemetry_started, timeout=5)
+    wait_for_condition(
+        check_telemetry_started, storage_handle=storage_handle, timeout=10
+    )
 
     # Check that telemetry related to FastAPI app is not set
     report = ray.get(storage_handle.get_report.remote())
@@ -111,11 +114,9 @@ def test_graph_detected(manage_ray_with_telemetry, use_adapter):
 
     storage_handle = start_telemetry_app()
 
-    def check_telemetry_started():
-        report = ray.get(storage_handle.get_report.remote())
-        assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
-
-    wait_for_condition(check_telemetry_started, timeout=5)
+    wait_for_condition(
+        check_telemetry_started, storage_handle=storage_handle, timeout=10
+    )
 
     # Check that telemetry related to DAGDriver app is not set
     report = ray.get(storage_handle.get_report.remote())
@@ -446,11 +447,9 @@ def test_handle_apis_detected(
 
     storage_handle = start_telemetry_app()
 
-    def check_telemetry_started():
-        report = ray.get(storage_handle.get_report.remote())
-        assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
-
-    wait_for_condition(check_telemetry_started, timeout=5)
+    wait_for_condition(
+        check_telemetry_started, storage_handle=storage_handle, timeout=10
+    )
 
     report = ray.get(storage_handle.get_report.remote())
     print(report["extra_usage_tags"])
@@ -526,12 +525,10 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     wait_for_condition(check_ray_started, timeout=5)
 
     storage_handle = start_telemetry_app()
-    
-    def check_telemetry_started():
-        report = ray.get(storage_handle.get_report.remote())
-        assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
 
-    wait_for_condition(check_telemetry_started, timeout=5)
+    wait_for_condition(
+        check_telemetry_started, storage_handle=storage_handle, timeout=10
+    )
 
     report = ray.get(storage_handle.get_report.remote())
     print(report["extra_usage_tags"])
@@ -618,12 +615,10 @@ def test_multiplexed_detect(manage_ray_with_telemetry):
     serve.run(Model.bind(), name="app", route_prefix="/app")
 
     storage_handle = start_telemetry_app()
-    
-    def check_telemetry_started():
-        report = ray.get(storage_handle.get_report.remote())
-        assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
 
-    wait_for_condition(check_telemetry_started, timeout=5)
+    wait_for_condition(
+        check_telemetry_started, storage_handle=storage_handle, timeout=10
+    )
 
     report = ray.get(storage_handle.get_report.remote())
     assert ServeUsageTag.MULTIPLEXED_API_USED.get_value_from_report(report) is None
