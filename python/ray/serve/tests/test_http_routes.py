@@ -7,6 +7,7 @@ from starlette.responses import RedirectResponse
 
 import ray
 from ray import serve
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.drivers import DAGDriver
 
 
@@ -36,62 +37,13 @@ def test_path_validation(serve_instance):
     class D4:
         pass
 
-    D4.deploy()
-
-    # Allow duplicate route.
-    D4.options(name="test2").deploy()
+    serve.run(D4.bind())
 
 
 def test_routes_healthz(serve_instance):
     resp = requests.get("http://localhost:8000/-/healthz")
     assert resp.status_code == 200
     assert resp.content == b"success"
-
-
-def test_routes_endpoint_legacy(serve_instance):
-    @serve.deployment
-    class D1:
-        pass
-
-    @serve.deployment(route_prefix="/hello/world")
-    class D2:
-        pass
-
-    D1.deploy()
-    D2.deploy()
-
-    routes = requests.get("http://localhost:8000/-/routes").json()
-
-    assert len(routes) == 2, routes
-    assert "/D1" in routes, routes
-    assert routes["/D1"] == "D1", routes
-    assert "/hello/world" in routes, routes
-    assert routes["/hello/world"] == "D2", routes
-
-    D1.delete()
-
-    routes = requests.get("http://localhost:8000/-/routes").json()
-    assert len(routes) == 1, routes
-    assert "/hello/world" in routes, routes
-    assert routes["/hello/world"] == "D2", routes
-
-    D2.delete()
-    routes = requests.get("http://localhost:8000/-/routes").json()
-    assert len(routes) == 0, routes
-
-    app = FastAPI()
-
-    @serve.deployment(route_prefix="/hello")
-    @serve.ingress(app)
-    class D3:
-        pass
-
-    D3.deploy()
-
-    routes = requests.get("http://localhost:8000/-/routes").json()
-    assert len(routes) == 1, routes
-    assert "/hello" in routes, routes
-    assert routes["/hello"] == "D3", routes
 
 
 def test_routes_endpoint(serve_instance):
@@ -125,38 +77,29 @@ def test_deployment_without_route(serve_instance):
         def __call__(self, *args):
             return "1"
 
-    D.deploy()
+    serve.run(D.bind(), route_prefix=None)
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 0
 
     # make sure the deployment is not exposed under the default route
-    r = requests.get(f"http://localhost:8000/{D.name}")
+    r = requests.get("http://localhost:8000/")
     assert r.status_code == 404
 
 
 def test_deployment_options_default_route(serve_instance):
-    @serve.deployment(name="1")
+    @serve.deployment
     class D1:
         pass
 
-    D1.deploy()
+    serve.run(D1.bind())
 
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1
-    assert "/1" in routes, routes
-    assert routes["/1"] == "1"
-
-    D1.options(name="2").deploy()
-
-    routes = requests.get("http://localhost:8000/-/routes").json()
-    assert len(routes) == 2
-    assert "/1" in routes, routes
-    assert routes["/1"] == "1"
-    assert "/2" in routes, routes
-    assert routes["/2"] == "2"
+    assert "/" in routes, routes
+    assert routes["/"] == SERVE_DEFAULT_APP_NAME
 
 
-def test_path_prefixing(serve_instance):
+def test_path_prefixing_1(serve_instance):
     def check_req(subpath, text=None, status=None):
         r = requests.get(f"http://localhost:8000{subpath}")
         if text is not None:
@@ -166,23 +109,23 @@ def test_path_prefixing(serve_instance):
 
         return r
 
-    @serve.deployment(route_prefix="/hello")
+    @serve.deployment
     class D1:
         def __call__(self, *args):
             return "1"
 
-    D1.deploy()
+    serve.run(D1.bind(), route_prefix="/hello", name="app1")
     check_req("/", status=404)
     check_req("/hello", text="1")
     check_req("/hello/", text="1")
     check_req("/hello/a", text="1")
 
-    @serve.deployment(route_prefix="/")
+    @serve.deployment
     class D2:
         def __call__(self, *args):
             return "2"
 
-    D2.deploy()
+    serve.run(D2.bind(), route_prefix="/", name="app2")
     check_req("/hello/", text="1")
     check_req("/hello/a", text="1")
     check_req("/", text="2")
@@ -193,14 +136,14 @@ def test_path_prefixing(serve_instance):
         def __call__(self, *args):
             return "3"
 
-    D3.deploy()
+    serve.run(D3.bind(), route_prefix="/hello/world", name="app3")
     check_req("/hello/", text="1")
     check_req("/", text="2")
     check_req("/hello/world/", text="3")
 
     app = FastAPI()
 
-    @serve.deployment(route_prefix="/hello/world/again")
+    @serve.deployment
     @serve.ingress(app)
     class D4:
         @app.get("/")
@@ -211,7 +154,7 @@ def test_path_prefixing(serve_instance):
         def subpath(self, p: str):
             return p
 
-    D4.deploy()
+    serve.run(D4.bind(), route_prefix="/hello/world/again", name="app4")
     check_req("/hello/") == "1"
     check_req("/") == "2"
     check_req("/hello/world/") == "3"
@@ -246,7 +189,7 @@ def test_redirect(serve_instance, base_path):
 
     route_prefix = f"/{base_path}"
 
-    @serve.deployment(route_prefix=route_prefix)
+    @serve.deployment()
     @serve.ingress(app)
     class D:
         @app.get("/")
@@ -267,7 +210,7 @@ def test_redirect(serve_instance, base_path):
                 root_path = root_path[:-1]
             return RedirectResponse(url=root_path + app.url_path_for("redirect_root"))
 
-    D.deploy()
+    serve.run(D.bind(), route_prefix=route_prefix)
 
     if route_prefix != "/":
         route_prefix += "/"

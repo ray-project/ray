@@ -83,6 +83,7 @@ class WorkerLeaseInterface {
   virtual ray::Status ReturnWorker(int worker_port,
                                    const WorkerID &worker_id,
                                    bool disconnect_worker,
+                                   const std::string &disconnect_worker_error_detail,
                                    bool worker_exiting) = 0;
 
   /// Notify raylets to release unused workers.
@@ -413,6 +414,7 @@ class RayletClient : public RayletClientInterface {
   ray::Status ReturnWorker(int worker_port,
                            const WorkerID &worker_id,
                            bool disconnect_worker,
+                           const std::string &disconnect_worker_error_detail,
                            bool worker_exiting) override;
 
   void GetTaskFailureCause(

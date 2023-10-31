@@ -31,8 +31,10 @@ KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
 KUBERAY_LABEL_KEY_TYPE = "ray.io/group"
 # Kind label value indicating the pod is the head.
 KUBERAY_KIND_HEAD = "head"
-# Group name (node type) to use for the  head.
+# Group name (node type) to use for the head.
 KUBERAY_TYPE_HEAD = "head-group"
+# KubeRay CRD version
+KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
@@ -162,7 +164,7 @@ def url_from_resource(namespace: str, path: str) -> str:
     if path.startswith("pods"):
         api_group = "/api/v1"
     elif path.startswith("rayclusters"):
-        api_group = "/apis/ray.io/v1alpha1"
+        api_group = "/apis/ray.io/" + KUBERAY_CRD_VER
     else:
         raise NotImplementedError("Tried to access unknown entity at {}".format(path))
     return (
@@ -398,7 +400,7 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         if path.startswith("pods"):
             api_group = "/api/v1"
         elif path.startswith("rayclusters"):
-            api_group = "/apis/ray.io/v1alpha1"
+            api_group = "/apis/ray.io/" + KUBERAY_CRD_VER
         else:
             raise NotImplementedError(
                 "Tried to access unknown entity at {}".format(path)

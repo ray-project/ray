@@ -24,33 +24,25 @@ class MixInMultiAgentReplayBuffer:
     in between, all newly added batches are returned (plus some older samples
     according to the "replay ratio").
 
-    Examples:
-        >>> from ray.rllib.execution.replay_buffer import MixInMultiAgentReplayBuffer
+    .. testcode::
+
+        from ray.rllib.execution.buffers.mixin_replay_buffer import (
+            MixInMultiAgentReplayBuffer)
+        from ray.rllib.policy.sample_batch import SampleBatch
         # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
-        >>> buffer = MixInMultiAgentReplayBuffer(capacity=100, # doctest: +SKIP
-        ...                                      replay_ratio=0.66) # doctest: +SKIP
-        >>> A, B, C, D = ... # doctest: +SKIP
-        >>> buffer.add(A) # doctest: +SKIP
-        >>> buffer.add(B) # doctest: +SKIP
-        >>> buffer.replay() # doctest: +SKIP
-        [A, B, B]
-        >>> buffer.add(C) # doctest: +SKIP
-        >>> buffer.replay() # doctest: +SKIP
-        [C, A, B]
-        >>> # or: [C, A, A] or [C, B, B], but always C as it
-        >>> # is the newest sample
-        >>> buffer.add(D) # doctest: +SKIP
-        >>> buffer.replay() # doctest: +SKIP
-        [D, A, C]
-        >>> # replay proportion 0.0 -> replay disabled:
-        >>> from ray.rllib.execution import MixInReplay
-        >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0) # doctest: +SKIP
-        >>> buffer.add(A) # doctest: +SKIP
-        >>> buffer.replay() # doctest: +SKIP
-        [A]
-        >>> buffer.add(B) # doctest: +SKIP
-        >>> buffer.replay() # doctest: +SKIP
-        [B]
+        buffer = MixInMultiAgentReplayBuffer(capacity=100,
+                                             replay_ratio=0.66)
+        A, B, C = (SampleBatch({"obs": [1]}), SampleBatch({"obs": [2]}),
+            SampleBatch({"obs": [3]}))
+        buffer.add(A)
+        buffer.add(B)
+        buffer.add(B)
+        print(buffer.replay()["obs"])
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(

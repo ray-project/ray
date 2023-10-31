@@ -37,10 +37,7 @@ from urllib.parse import urlparse
 import colorama
 import setproctitle
 
-if sys.version_info >= (3, 8):
-    from typing import Literal, Protocol
-else:
-    from typing_extensions import Literal, Protocol
+from typing import Literal, Protocol
 
 import ray
 import ray._private.node
@@ -58,7 +55,10 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import (
+    StreamingObjectRefGenerator,
+    raise_sys_exit_with_custom_error_message,
+)
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -427,10 +427,10 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
-        # environment variables.
-        self.original_gpu_and_accelerator_runtime_ids = (
-            ray._private.utils.get_gpu_and_accelerator_runtime_ids()
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
+        # TPU_VISIBLE_CHIPS, ..) environment variables.
+        self.original_visible_accelerator_ids = (
+            ray._private.utils.get_visible_accelerator_ids()
         )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -788,8 +788,10 @@ class Worker:
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
-            shutdown(True)
-            sys.exit(1)
+            raise_sys_exit_with_custom_error_message(
+                "The process receives a SIGTERM.", exit_code=1
+            )
+            # Note: shutdown() function is called from atexit handler.
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
@@ -848,24 +850,22 @@ class Worker:
             # Close the pubsub client to avoid leaking file descriptors.
             subscriber.close()
 
-    def get_resource_ids_for_resource(
+    def get_accelerator_ids_for_accelerator_resource(
         self, resource_name: str, resource_regex: str
-    ) -> Union[List[str], List[int]]:
-        """Get the resource IDs that are assigned to the given resource.
+    ) -> List[str]:
+        """Get the accelerator IDs that are assigned to the given accelerator resource.
 
         Args:
             resource_name: The name of the resource.
             resource_regex: The regex of the resource.
 
         Returns:
-            (List[str]) The IDs that are assigned to the given resource pre-configured.
-            (List[int]) The IDs that are assigned to the given resource.
-
+            (List[str]) The IDs that are assigned to the given resource.
         """
         resource_ids = self.core_worker.resource_ids()
         assigned_ids = set()
-        # Handle both normal and placement group GPU, accelerator resources.
-        # Note: We should only get the GPU, accelerator ids from the placement
+        # Handle both normal and placement group accelerator resources.
+        # Note: We should only get the accelerator ids from the placement
         # group resource that does not contain the bundle index!
         import re
 
@@ -875,26 +875,24 @@ class Worker:
                     assigned_ids.add(resource_id)
 
         # If the user had already set the environment variables
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
-        # respect that in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
+        # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
+        # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
-        if (
-            self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
-            is not None
-        ):
-            runtime_ids = self.original_gpu_and_accelerator_runtime_ids[resource_name]
-            assigned_ids = [str(runtime_ids[i]) for i in assigned_ids]
-            # Give all accelerator ids local_mode.
+        if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
+            original_ids = self.original_visible_accelerator_ids[resource_name]
+            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            # Give all accelerator ids in local_mode.
             if self.mode == LOCAL_MODE:
                 if resource_name == ray_constants.GPU:
-                    max_runtime_ids = self.node.get_resource_spec().num_gpus
+                    max_accelerators = self.node.get_resource_spec().num_gpus
                 else:
-                    max_runtime_ids = self.node.get_resource_spec().resources.get(
+                    max_accelerators = self.node.get_resource_spec().resources.get(
                         resource_name, None
                     )
-                if max_runtime_ids:
-                    assigned_ids = runtime_ids[:max_runtime_ids]
-        return list(assigned_ids)
+                if max_accelerators:
+                    assigned_ids = original_ids[:max_accelerators]
+        return [str(assigned_id) for assigned_id in assigned_ids]
 
 
 @PublicAPI
@@ -912,9 +910,12 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return worker.get_resource_ids_for_resource(
-        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-    )
+    return [
+        int(i)
+        for i in worker.get_accelerator_ids_for_accelerator_resource(
+            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+        )
+    ]
 
 
 @Deprecated(
@@ -1746,7 +1747,8 @@ def shutdown(_exiting_interpreter: bool = False):
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
-        global_worker.core_worker.shutdown()
+        if global_worker.mode == SCRIPT_MODE or global_worker.mode == LOCAL_MODE:
+            global_worker.core_worker.shutdown_driver()
         del global_worker.core_worker
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)
@@ -1794,7 +1796,7 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
+    should_dedup = data.get("pid") not in ["autoscaler"]
 
     if data["is_err"]:
         if should_dedup:
@@ -1912,9 +1914,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         else:
             res = "pid="
             if data.get("actor_name"):
-                res = data["actor_name"] + " " + res
+                res = f"{data['actor_name']} {res}"
             elif data.get("task_name"):
-                res = data["task_name"] + " " + res
+                res = f"{data['task_name']} {res}"
             return res
 
     def message_for(data: Dict[str, str], line: str) -> str:
@@ -1932,9 +1934,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
-                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+                return colorama.Fore.YELLOW
             else:
-                return colorama.Style.BRIGHT + colorama.Fore.CYAN
+                return colorama.Fore.CYAN
         elif os.getenv("RAY_COLOR_PREFIX") == "1":
             colors = [
                 # colorama.Fore.BLUE, # Too dark
@@ -1974,8 +1976,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,
@@ -1991,8 +1992,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}, ip={}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}, ip={}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,
@@ -2072,7 +2072,13 @@ def listen_error_messages(worker, threads_stopped):
                 # the separate unhandled exception handler.
                 pass
             else:
-                logger.warning(error_message)
+                print_to_stdstream(
+                    {
+                        "lines": [error_message],
+                        "pid": "raylet",
+                        "is_err": False,
+                    }
+                )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
 

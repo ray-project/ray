@@ -134,11 +134,7 @@ def _get_execution_dag(
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    if (
-        DataContext.get_current().optimizer_enabled
-        # TODO(scottjlee): remove this once we remove DatasetPipeline.
-        and not plan._generated_from_pipeline
-    ):
+    if DataContext.get_current().optimizer_enabled:
         dag = get_execution_plan(plan._logical_plan).dag
         stats = _get_initial_stats_from_plan(plan)
     else:
@@ -246,6 +242,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             create_map_transformer_from_block_fn(do_read),
             inputs,
             name=task_name,
+            target_max_block_size=None,
             ray_remote_args=remote_args,
         )
     else:
@@ -311,8 +308,9 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             create_map_transformer_from_block_fn(do_map, init_fn),
             input_op,
             name=stage.name,
+            target_max_block_size=None,
             compute_strategy=compute,
-            min_rows_per_bundle=stage.target_block_size,
+            min_rows_per_bundle=stage.min_rows_per_block,
             ray_remote_args=stage.ray_remote_args,
         )
     elif isinstance(stage, LimitStage):
@@ -343,6 +341,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         return AllToAllOperator(
             bulk_fn,
             input_op,
+            target_max_block_size=None,
             name=stage.name,
             num_outputs=stage.num_blocks,
             sub_progress_bar_names=stage.sub_stage_names,

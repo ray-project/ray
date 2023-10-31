@@ -3,7 +3,6 @@ import tempfile
 import time
 from typing import Any, List, Optional
 
-import numpy as np
 import pytest
 import requests
 import starlette.responses
@@ -20,15 +19,16 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.routing import Route
 
 import ray
 from ray import serve
+from ray._private.pydantic_compat import BaseModel, Field
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.http_util import make_fastapi_class_based_view
 from ray.serve._private.utils import DEFAULT
 from ray.serve.exceptions import RayServeException
@@ -41,19 +41,20 @@ def test_fastapi_function(serve_instance):
     def func(a: int):
         return {"result": a}
 
-    @serve.deployment(name="f")
+    @serve.deployment
     @serve.ingress(app)
     class FastAPIApp:
         pass
 
-    FastAPIApp.deploy()
+    serve.run(FastAPIApp.bind())
 
-    resp = requests.get("http://localhost:8000/f/100")
+    resp = requests.get("http://localhost:8000/100")
     assert resp.json() == {"result": 100}
 
-    resp = requests.get("http://localhost:8000/f/not-number")
+    resp = requests.get("http://localhost:8000/not-number")
     assert resp.status_code == 422  # Unprocessable Entity
-    assert resp.json()["detail"][0]["type"] == "type_error.integer"
+    # Pydantic 1.X returns `type_error.integer`, 2.X returns `int_parsing`.
+    assert resp.json()["detail"][0]["type"] in {"type_error.integer", "int_parsing"}
 
 
 def test_ingress_prefix(serve_instance):
@@ -63,12 +64,12 @@ def test_ingress_prefix(serve_instance):
     def func(a: int):
         return {"result": a}
 
-    @serve.deployment(route_prefix="/api")
+    @serve.deployment
     @serve.ingress(app)
     class App:
         pass
 
-    App.deploy()
+    serve.run(App.bind(), route_prefix="/api")
 
     resp = requests.get("http://localhost:8000/api/100")
     assert resp.json() == {"result": 100}
@@ -81,7 +82,7 @@ def test_class_based_view(serve_instance):
     def hello():
         return "hello"
 
-    @serve.deployment(name="f")
+    @serve.deployment
     @serve.ingress(app)
     class A:
         def __init__(self):
@@ -98,21 +99,21 @@ def test_class_based_view(serve_instance):
         def other(self, msg: str):
             return msg
 
-    A.deploy()
+    serve.run(A.bind())
 
     # Test HTTP calls.
-    resp = requests.get("http://localhost:8000/f/calc/41")
+    resp = requests.get("http://localhost:8000/calc/41")
     assert resp.json() == 42
-    resp = requests.post("http://localhost:8000/f/calc/41")
+    resp = requests.post("http://localhost:8000/calc/41")
     assert resp.json() == 40
-    resp = requests.get("http://localhost:8000/f/other")
+    resp = requests.get("http://localhost:8000/other")
     assert resp.json() == "hello"
 
     # Test handle calls.
-    handle = A.get_handle()
-    assert ray.get(handle.b.remote(41)) == 42
-    assert ray.get(handle.c.remote(41)) == 40
-    assert ray.get(handle.other.remote("world")) == "world"
+    handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    assert handle.b.remote(41).result() == 42
+    assert handle.c.remote(41).result() == 40
+    assert handle.other.remote("world").result() == "world"
 
 
 @pytest.mark.parametrize("websocket", [False, True])
@@ -246,14 +247,14 @@ def test_fastapi_features(serve_instance):
 
     app.include_router(router)
 
-    @serve.deployment(name="fastapi")
+    @serve.deployment
     @serve.ingress(app)
     class Worker:
         pass
 
-    Worker.deploy()
+    serve.run(Worker.bind())
 
-    url = "http://localhost:8000/fastapi"
+    url = "http://localhost:8000"
     resp = requests.get(f"{url}/")
     assert resp.status_code == 404
     assert "x-process-time" in resp.headers
@@ -335,12 +336,12 @@ def test_fast_api_mounted_app(serve_instance):
 
     app.mount("/mounted", subapp)
 
-    @serve.deployment(route_prefix="/api")
+    @serve.deployment
     @serve.ingress(app)
     class A:
         pass
 
-    A.deploy()
+    serve.run(A.bind(), route_prefix="/api")
 
     assert requests.get("http://localhost:8000/api/mounted/hi").json() == "world"
 
@@ -358,10 +359,10 @@ def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
         def f(self):
             return 1
 
-    A.deploy()
+    handle = serve.run(A.bind()).options(use_new_handle_api=True)
     # Without a proper fix, the actor won't be initialized correctly.
     # Because it will crash on each startup.
-    assert ray.get(A.get_handle().f.remote()) == 1
+    assert handle.f.remote().result() == 1
 
 
 def test_fastapi_lifespan_startup_failure_crashes_actor(serve_instance):
@@ -378,20 +379,20 @@ def test_fastapi_lifespan_startup_failure_crashes_actor(serve_instance):
         pass
 
     with pytest.raises(RuntimeError):
-        A.deploy()
+        serve.run(A.bind())
 
 
 def test_fastapi_duplicate_routes(serve_instance):
     app = FastAPI()
 
-    @serve.deployment(route_prefix="/api/v1")
+    @serve.deployment
     @serve.ingress(app)
     class App1:
         @app.get("/")
         def func_v1(self):
             return "first"
 
-    @serve.deployment(route_prefix="/api/v2")
+    @serve.deployment
     @serve.ingress(app)
     class App2:
         @app.get("/")
@@ -402,8 +403,8 @@ def test_fastapi_duplicate_routes(serve_instance):
     def ignored():
         pass
 
-    App1.deploy()
-    App2.deploy()
+    serve.run(App1.bind(), name="app1", route_prefix="/api/v1")
+    serve.run(App2.bind(), name="app2", route_prefix="/api/v2")
 
     resp = requests.get("http://localhost:8000/api/v1")
     assert resp.json() == "first"
@@ -427,41 +428,39 @@ def test_asgi_compatible(serve_instance):
     class MyApp:
         pass
 
-    MyApp.deploy()
+    serve.run(MyApp.bind())
 
-    resp = requests.get("http://localhost:8000/MyApp/")
+    resp = requests.get("http://localhost:8000/")
     assert resp.json() == {"hello": "world"}
 
 
-@pytest.mark.parametrize("route_prefix", [DEFAULT.VALUE, "/", "/subpath"])
-def test_doc_generation(serve_instance, route_prefix):
+@pytest.mark.parametrize(
+    "input_route_prefix,expected_route_prefix",
+    [(DEFAULT.VALUE, "/"), ("/", "/"), ("/subpath", "/subpath/")],
+)
+def test_doc_generation(serve_instance, input_route_prefix, expected_route_prefix):
     app = FastAPI()
 
-    @serve.deployment(route_prefix=route_prefix)
+    @serve.deployment
     @serve.ingress(app)
     class App:
         @app.get("/")
         def func1(self, arg: str):
             return "hello"
 
-    App.deploy()
+    serve.run(App.bind(), route_prefix=input_route_prefix)
 
-    prefix = App.route_prefix
-
-    if not prefix.endswith("/"):
-        prefix += "/"
-
-    r = requests.get(f"http://localhost:8000{prefix}openapi.json")
+    r = requests.get(f"http://localhost:8000{expected_route_prefix}openapi.json")
     assert r.status_code == 200
     assert len(r.json()["paths"]) == 1
     assert "/" in r.json()["paths"]
     assert len(r.json()["paths"]["/"]) == 1
     assert "get" in r.json()["paths"]["/"]
 
-    r = requests.get(f"http://localhost:8000{prefix}docs")
+    r = requests.get(f"http://localhost:8000{expected_route_prefix}docs")
     assert r.status_code == 200
 
-    @serve.deployment(route_prefix=route_prefix)
+    @serve.deployment
     @serve.ingress(app)
     class App:
         @app.get("/")
@@ -472,9 +471,9 @@ def test_doc_generation(serve_instance, route_prefix):
         def func2(self, arg: int):
             return "hello"
 
-    App.deploy()
+    serve.run(App.bind(), route_prefix=input_route_prefix)
 
-    r = requests.get(f"http://localhost:8000{prefix}openapi.json")
+    r = requests.get(f"http://localhost:8000{expected_route_prefix}openapi.json")
     assert r.status_code == 200
     assert len(r.json()["paths"]) == 2
     assert "/" in r.json()["paths"]
@@ -484,7 +483,7 @@ def test_doc_generation(serve_instance, route_prefix):
     assert len(r.json()["paths"]["/hello"]) == 1
     assert "post" in r.json()["paths"]["/hello"]
 
-    r = requests.get(f"http://localhost:8000{prefix}docs")
+    r = requests.get(f"http://localhost:8000{expected_route_prefix}docs")
     assert r.status_code == 200
 
 
@@ -498,14 +497,14 @@ def test_fastapi_multiple_headers(serve_instance):
         resp.set_cookie(key="c", value="d")
         return "hello"
 
-    @serve.deployment(name="f")
+    @serve.deployment
     @serve.ingress(app)
     class FastAPIApp:
         pass
 
-    FastAPIApp.deploy()
+    serve.run(FastAPIApp.bind())
 
-    resp = requests.get("http://localhost:8000/f")
+    resp = requests.get("http://localhost:8000/")
     assert resp.cookies.get_dict() == {"a": "b", "c": "d"}
 
 
@@ -522,7 +521,7 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
         test_model = TestModel(a="a", b=["b"])
         return test_model
 
-    @serve.deployment(route_prefix="/")
+    @serve.deployment
     @serve.ingress(app)
     class TestDeployment:
         # https://github.com/ray-project/ray/issues/17363
@@ -537,7 +536,7 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
             test_model = TestModel(a="a", b=["b"])
             return [test_model]
 
-    TestDeployment.deploy()
+    serve.run(TestDeployment.bind())
 
     resp = requests.get("http://localhost:8000/")
     assert resp.json() == {"a": "a", "b": ["b"]}
@@ -564,7 +563,7 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
     def startup_event():
         ray.get(signal.send.remote())
 
-    @serve.deployment(route_prefix="/")
+    @serve.deployment
     @serve.ingress(app)
     class TestDeployment:
         def __init__(self):
@@ -579,7 +578,7 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
         def root(self):
             return self.test_passed
 
-    TestDeployment.deploy()
+    serve.run(TestDeployment.bind())
     resp = requests.get("http://localhost:8000/")
     assert resp.json()
 
@@ -601,8 +600,8 @@ def test_fastapi_shutdown_hook(serve_instance):
         def __del__(self):
             del_signal.send.remote()
 
-    A.deploy()
-    A.delete()
+    serve.run(A.bind())
+    serve.delete(SERVE_DEFAULT_APP_NAME)
     ray.get(shutdown_signal.wait.remote(), timeout=20)
     ray.get(del_signal.wait.remote(), timeout=20)
 
@@ -610,7 +609,7 @@ def test_fastapi_shutdown_hook(serve_instance):
 def test_fastapi_method_redefinition(serve_instance):
     app = FastAPI()
 
-    @serve.deployment(route_prefix="/a")
+    @serve.deployment
     @serve.ingress(app)
     class A:
         @app.get("/")
@@ -621,7 +620,7 @@ def test_fastapi_method_redefinition(serve_instance):
         def method(self):  # noqa: F811 method redefinition
             return "hi post"
 
-    A.deploy()
+    serve.run(A.bind(), route_prefix="/a")
     assert requests.get("http://localhost:8000/a/").json() == "hi get"
     assert requests.post("http://localhost:8000/a/").json() == "hi post"
 
@@ -652,45 +651,26 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
         def decr2(self):
             return "decr2"
 
-    CounterDeployment1.deploy()
-
-    CounterDeployment2.deploy()
+    serve.run(CounterDeployment1.bind(), name="app1", route_prefix="/app1")
+    serve.run(CounterDeployment2.bind(), name="app2", route_prefix="/app2")
 
     should_work = [
-        ("/CounterDeployment1/incr", "incr"),
-        ("/CounterDeployment1/decr", "decr"),
-        ("/CounterDeployment2/incr2", "incr2"),
-        ("/CounterDeployment2/decr2", "decr2"),
+        ("/app1/incr", "incr"),
+        ("/app1/decr", "decr"),
+        ("/app2/incr2", "incr2"),
+        ("/app2/decr2", "decr2"),
     ]
     for path, resp in should_work:
         assert requests.get("http://localhost:8000" + path).json() == resp, (path, resp)
 
     should_404 = [
-        "/CounterDeployment2/incr",
-        "/CounterDeployment2/decr",
-        "/CounterDeployment1/incr2",
-        "/CounterDeployment1/decr2",
+        "/app2/incr",
+        "/app2/decr",
+        "/app1/incr2",
+        "/app1/decr2",
     ]
     for path in should_404:
         assert requests.get("http://localhost:8000" + path).status_code == 404, path
-
-
-def test_fastapi_custom_serializers(serve_instance):
-    app = FastAPI()
-
-    @serve.deployment
-    @serve.ingress(app)
-    class D:
-        @app.get("/np_array")
-        def incr(self):
-            return np.zeros(2)
-
-    D.deploy()
-
-    resp = requests.get(D.url + "/np_array")
-    print(resp.text)
-    resp.raise_for_status()
-    assert resp.json() == [0, 0]
 
 
 @pytest.mark.parametrize("two_fastapi", [True, False])

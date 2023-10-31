@@ -13,13 +13,14 @@ from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.proxy import DRAINED_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import TimerBase
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
 
 
-class MockTimer:
+class MockTimer(TimerBase):
     def __init__(self, start_time=None):
         if start_time is None:
             start_time = time.time()
@@ -178,11 +179,11 @@ def ping_grpc_call_method(channel, app_name, test_not_found=False):
         with pytest.raises(grpc.RpcError) as exception_info:
             _, _ = stub.__call__.with_call(request=request, metadata=metadata)
         rpc_error = exception_info.value
-        assert rpc_error.code() == grpc.StatusCode.NOT_FOUND
+        assert rpc_error.code() == grpc.StatusCode.NOT_FOUND, rpc_error.code()
         assert f"Application '{app_name}' not found." in rpc_error.details()
     else:
         response, call = stub.__call__.with_call(request=request, metadata=metadata)
-        assert call.code() == grpc.StatusCode.OK
+        assert call.code() == grpc.StatusCode.OK, call.code()
         assert response.greeting == "Hello foo from bar", response.greeting
 
 
@@ -231,3 +232,23 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
         await asyncio.sleep(100000)
     except asyncio.CancelledError:
         await signal_actor.send.remote()
+
+
+class FakeGrpcContext:
+    def __init__(self):
+        self.code = None
+        self.details = None
+        self._trailing_metadata = None
+        self._invocation_metadata = []
+
+    def set_code(self, code):
+        self.code = code
+
+    def set_details(self, details):
+        self.details = details
+
+    def set_trailing_metadata(self, trailing_metadata):
+        self._trailing_metadata = trailing_metadata
+
+    def invocation_metadata(self):
+        return self._invocation_metadata

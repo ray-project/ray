@@ -306,3 +306,14 @@ message ModelOutput {
 service RayServeBenchmarkService {
   rpc grpc_call(RawData) returns (ModelOutput);
 }
+
+// The required deployment parameters when deploying an application.
+message DeploymentArgs {
+  string deployment_name = 1;
+  bytes deployment_config = 2;
+  bytes replica_config = 3;
+  string deployer_job_id = 4;
+  optional string route_prefix = 5;
+  bool ingress = 6;
+  optional string docs_path = 7;
+}

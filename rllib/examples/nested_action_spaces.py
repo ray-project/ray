@@ -63,6 +63,7 @@ if __name__ == "__main__":
                         ),
                         "b": Box(-10.0, 10.0, (2,)),
                         "c": MultiDiscrete([3, 3]),
+                        "d": Discrete(2),
                     }
                 ),
             },

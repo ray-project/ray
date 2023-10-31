@@ -1,9 +1,14 @@
-.. _generators:
+.. _dynamic_generators:
 
-Generators
-==========
+.. warning::
 
-Python generators are functions that behave like an iterator, yielding one
+    ``num_returns="dynamic"`` :ref:`generator API <dynamic_generators>` is soft deprecated as of Ray 2.8 due to its :ref:`limitation <dynamic-generators-limitation>`. It is hard deprecated as of Ray 2.9.
+    Use the :ref:`streaming generator API<generators>` instead.
+
+Dynamic generators
+==================
+
+Python generators are functions that behave like iterators, yielding one
 value per iteration. Ray supports remote generators for two use cases:
 
 1. To reduce max heap memory usage when returning multiple values from a remote
@@ -93,6 +98,8 @@ Note that there is currently a known bug where exceptions will not be propagated
     :language: python
     :start-after: __generator_errors_unsupported_start__
     :end-before: __generator_errors_unsupported_end__
+
+.. _dynamic-generators-limitation:
 
 Limitations
 -----------

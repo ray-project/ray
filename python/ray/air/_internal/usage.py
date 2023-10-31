@@ -15,11 +15,8 @@ if TYPE_CHECKING:
 
 
 AIR_TRAINERS = {
-    "AccelerateTrainer",
     "HorovodTrainer",
-    "TransformersTrainer",
     "LightGBMTrainer",
-    "LightningTrainer",
     "MosaicTrainer",
     "SklearnTrainer",
     "TensorflowTrainer",

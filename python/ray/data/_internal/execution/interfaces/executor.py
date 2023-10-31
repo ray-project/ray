@@ -41,7 +41,6 @@ class Executor:
     """Abstract class for executors, which implement physical operator execution.
 
     Subclasses:
-        BulkExecutor
         StreamingExecutor
     """
 

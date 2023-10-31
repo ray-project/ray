@@ -699,6 +699,36 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
+    def set_storage(self, new_storage: StorageContext):
+        """Updates the storage context of the trial.
+
+        If the `storage_path` or `experiment_dir_name` has changed, then this setter
+        also updates the paths of all checkpoints tracked by the checkpoint manager.
+        This enables restoration from a checkpoint if the user moves the directory.
+        """
+        original_storage = self.storage
+
+        checkpoint_manager = self.run_metadata.checkpoint_manager
+
+        for checkpoint_result in checkpoint_manager.best_checkpoint_results:
+            checkpoint_result.checkpoint = Checkpoint(
+                path=checkpoint_result.checkpoint.path.replace(
+                    original_storage.trial_fs_path, new_storage.trial_fs_path, 1
+                ),
+                filesystem=new_storage.storage_filesystem,
+            )
+        latest_checkpoint_result = checkpoint_manager.latest_checkpoint_result
+        if latest_checkpoint_result:
+            latest_checkpoint_result.checkpoint = Checkpoint(
+                path=latest_checkpoint_result.checkpoint.path.replace(
+                    original_storage.trial_fs_path, new_storage.trial_fs_path, 1
+                ),
+                filesystem=new_storage.storage_filesystem,
+            )
+
+        self.storage = new_storage
+        self.invalidate_json_state()
+
     @property
     def num_failures(self):
         return self.run_metadata.num_failures

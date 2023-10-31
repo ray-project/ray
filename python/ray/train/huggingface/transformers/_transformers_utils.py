@@ -230,13 +230,21 @@ class TrainReportCallback(TrainerCallback):
 class RayTrainReportCallback(TrainerCallback):
     """A simple callback to report checkpoints and metrics to Ray Tarin.
 
-    This callback overrides the `TrainerCallback.on_save()` method. After
+    This callback is a subclass of `transformers.TrainerCallback
+    <https://huggingface.co/docs/transformers/main/en/main_classes/callback#transformers.TrainerCallback>`_
+    and overrides the `TrainerCallback.on_save()` method. After
     a new checkpoint get saved, it fetches the latest metric dictionary
     from `TrainerState.log_history` and reports it with the latest checkpoint
     to Ray Train.
 
-    If you want more customized reporting logics, please implement your own
-    callbacks following the Transformers integration user guides.
+    Checkpoints will be saved in the following structure::
+
+        checkpoint_00000*/   Ray Train Checkpoint
+        └─ checkpoint/       Hugging Face Transformers Checkpoint
+
+    For customized reporting and checkpointing logic, implement your own
+    `transformers.TrainerCallback` following this user
+    guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
 
     Note that users should ensure that the logging, evaluation, and saving frequencies
     are properly configured so that the monitoring metric is always up-to-date
@@ -251,9 +259,6 @@ class RayTrainReportCallback(TrainerCallback):
     Some invalid configurations:
         - evaluation_strategy != save_strategy
         - evaluation_strategy == save_strategy == "steps", save_steps % eval_steps != 0
-
-    For more info, see:
-    :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
 
     """
 

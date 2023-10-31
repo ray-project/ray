@@ -4,8 +4,6 @@ from copy import copy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
 
-import pytorch_lightning as pl
-
 from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.data.preprocessor import Preprocessor
@@ -17,6 +15,7 @@ from ray.train.lightning._lightning_utils import (
     RayFSDPStrategy,
     RayLightningEnvironment,
     RayModelCheckpoint,
+    import_lightning,
     prepare_trainer,
 )
 from ray.train.torch import TorchTrainer
@@ -26,70 +25,25 @@ from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
+pl = import_lightning()
+
 
 LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE = (
     "The LightningConfigBuilder will be hard deprecated in Ray 2.8. "
-    "Use TorchTrainer instead. "
+    "Use `ray.train.TorchTrainer` instead. "
     "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
     "for more details."
 )
 
 
-@Deprecated(message=LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE, warning=True)
+@Deprecated
 class LightningConfigBuilder:
-    """Configuration Class to pass into LightningTrainer.
-
-    Example:
-        .. testcode::
-
-            import torch
-            import torch.nn as nn
-            import pytorch_lightning as pl
-            from ray.train.lightning import LightningConfigBuilder
-
-            class LinearModule(pl.LightningModule):
-                def __init__(self, input_dim, output_dim) -> None:
-                    super().__init__()
-                    self.linear = nn.Linear(input_dim, output_dim)
-
-                def forward(self, input):
-                    return self.linear(input)
-
-                def training_step(self, batch):
-                    output = self.forward(batch)
-                    loss = torch.sum(output)
-                    self.log("loss", loss)
-                    return loss
-
-                def predict_step(self, batch, batch_idx):
-                    return self.forward(batch)
-
-                def configure_optimizers(self):
-                    return torch.optim.SGD(self.parameters(), lr=0.1)
-
-            class MyDataModule(pl.LightningDataModule):
-                def __init__(self, *args, **kwargs):
-                    super().__init__(*args, **kwargs)
-                    # ...
-
-            lightning_config = (
-                LightningConfigBuilder()
-                .module(
-                    cls=LinearModule,
-                    input_dim=32,
-                    output_dim=4,
-                )
-                .trainer(max_epochs=5, accelerator="gpu")
-                .fit_params(datamodule=MyDataModule())
-                .strategy(name="ddp")
-                .checkpointing(monitor="loss", save_top_k=2, mode="min")
-                .build()
-            )
-
-    """
+    """Configuration Class to pass into LightningTrainer."""
 
     def __init__(self) -> None:
         """Initialize the configurations with default values."""
+        raise DeprecationWarning(LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE)
+
         self._module_class = None
         self._module_init_config = {}
         self._trainer_init_config = {}
@@ -226,14 +180,14 @@ class LightningConfigBuilder:
 
 
 LIGHTNING_TRAINER_DEPRECATION_MESSAGE = (
-    "The LightningTrainer will be hard deprecated in Ray 2.8. "
-    "Use TorchTrainer instead. "
+    "The LightningTrainer is hard deprecated in Ray 2.8. "
+    "Use `ray.train.TorchTrainer` instead. "
     "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
     "for more details."
 )
 
 
-@Deprecated(message=LIGHTNING_TRAINER_DEPRECATION_MESSAGE, warning=True)
+@Deprecated
 class LightningTrainer(TorchTrainer):
     """A Trainer for data parallel PyTorch Lightning training.
 
@@ -264,106 +218,6 @@ class LightningTrainer(TorchTrainer):
     Then, the training function will initialize an instance of ``pl.Trainer``
     using the arguments provided in ``LightningConfigBuilder.fit_params()`` and then
     run ``pytorch_lightning.Trainer.fit``.
-
-    Example:
-        .. testcode::
-
-            import torch
-            import torch.nn.functional as F
-            from torchmetrics import Accuracy
-            from torch.utils.data import DataLoader, Subset
-            from torchvision.datasets import MNIST
-            from torchvision import transforms
-            import pytorch_lightning as pl
-            from ray.air.config import ScalingConfig
-            from ray.train.lightning import LightningTrainer, LightningConfigBuilder
-
-
-            class MNISTClassifier(pl.LightningModule):
-                def __init__(self, lr, feature_dim):
-                    super(MNISTClassifier, self).__init__()
-                    self.fc1 = torch.nn.Linear(28 * 28, feature_dim)
-                    self.fc2 = torch.nn.Linear(feature_dim, 10)
-                    self.lr = lr
-                    self.accuracy = Accuracy(task="multiclass", num_classes=10, top_k=1)
-                    self.val_loss = []
-                    self.val_acc = []
-
-                def forward(self, x):
-                    x = x.view(-1, 28 * 28)
-                    x = torch.relu(self.fc1(x))
-                    x = self.fc2(x)
-                    return x
-
-                def training_step(self, batch, batch_idx):
-                    x, y = batch
-                    y_hat = self(x)
-                    loss = torch.nn.functional.cross_entropy(y_hat, y)
-                    self.log("train_loss", loss)
-                    return loss
-
-                def validation_step(self, val_batch, batch_idx):
-                    x, y = val_batch
-                    logits = self.forward(x)
-                    loss = F.nll_loss(logits, y)
-                    acc = self.accuracy(logits, y)
-                    self.val_loss.append(loss)
-                    self.val_acc.append(acc)
-                    return {"val_loss": loss, "val_accuracy": acc}
-
-                def on_validation_epoch_end(self):
-                    avg_loss = torch.stack(self.val_loss).mean()
-                    avg_acc = torch.stack(self.val_acc).mean()
-                    self.log("ptl/val_loss", avg_loss)
-                    self.log("ptl/val_accuracy", avg_acc)
-                    self.val_acc.clear()
-                    self.val_loss.clear()
-
-                def configure_optimizers(self):
-                    optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-                    return optimizer
-
-            # Prepare MNIST Datasets
-            transform = transforms.Compose(
-                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-            )
-            mnist_train = MNIST(
-                './data', train=True, download=True, transform=transform
-            )
-            mnist_val = MNIST(
-                './data', train=False, download=True, transform=transform
-            )
-
-            # Take small subsets for smoke test
-            # Please remove these two lines if you want to train the full dataset
-            mnist_train = Subset(mnist_train, range(1000))
-            mnist_train = Subset(mnist_train, range(500))
-
-            train_loader = DataLoader(mnist_train, batch_size=128, shuffle=True)
-            val_loader = DataLoader(mnist_val, batch_size=128, shuffle=False)
-
-            lightning_config = (
-                LightningConfigBuilder()
-                .module(cls=MNISTClassifier, lr=1e-3, feature_dim=128)
-                .trainer(max_epochs=3, accelerator="cpu")
-                .fit_params(train_dataloaders=train_loader, val_dataloaders=val_loader)
-                .build()
-            )
-
-            scaling_config = ScalingConfig(
-                num_workers=4, use_gpu=False, resources_per_worker={"CPU": 1}
-            )
-            trainer = LightningTrainer(
-                lightning_config=lightning_config,
-                scaling_config=scaling_config,
-            )
-            result = trainer.fit()
-            result
-
-        .. testoutput::
-            :hide:
-
-            ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
@@ -411,6 +265,7 @@ class LightningTrainer(TorchTrainer):
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ):
+        raise DeprecationWarning(LIGHTNING_TRAINER_DEPRECATION_MESSAGE)
 
         run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()

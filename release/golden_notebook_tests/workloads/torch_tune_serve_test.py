@@ -175,9 +175,11 @@ def setup_serve(model, use_gpu: bool = False):
     serve.start(
         http_options={"location": "EveryNode"}
     )  # Start on every node so `predict` can hit localhost.
-    MnistDeployment.options(
-        num_replicas=2, ray_actor_options={"num_gpus": bool(use_gpu)}
-    ).deploy(model)
+    serve.run(
+        MnistDeployment.options(
+            num_replicas=2, ray_actor_options={"num_gpus": bool(use_gpu)}
+        ).bind(model)
+    )
 
 
 @ray.remote

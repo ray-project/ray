@@ -135,7 +135,7 @@ def test_with_rest_api(ray_start_stop):
             }
         ],
     }
-    ServeSubmissionClient("http://localhost:52365").deploy_applications(config)
+    ServeSubmissionClient("http://localhost:8265").deploy_applications(config)
 
     def application_running():
         response = requests.get(
@@ -155,7 +155,7 @@ def test_with_rest_api(ray_start_stop):
     response = requests.get("http://localhost:8000")
     assert response.status_code == 200
     print("Requests succeeded! Deleting application.")
-    ServeSubmissionClient("http://localhost:52365").delete_applications()
+    ServeSubmissionClient("http://localhost:8265").delete_applications()
 
 
 @pytest.mark.parametrize(

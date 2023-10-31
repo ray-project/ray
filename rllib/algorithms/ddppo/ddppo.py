@@ -121,8 +121,7 @@ class DDPPOConfig(PPOConfig):
         self.kl_coeff = 0.0
         self.kl_target = 0.0
         # TODO (Kourosh) RLModule and Learner API is not supported yet
-        self._enable_learner_api = False
-        self._enable_rl_module_api = False
+        self._enable_new_api_stack = False
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.

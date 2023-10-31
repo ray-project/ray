@@ -108,7 +108,7 @@ class ProgressBar:
     def update(self, i: int = 0, total: Optional[int] = None) -> None:
         if self._bar and (i != 0 or self._bar.total != total):
             self._progress += i
-            if total is not None and total > self._bar.total:
+            if total is not None:
                 self._bar.total = total
             if self._bar.total is not None and self._progress > self._bar.total:
                 # If the progress goes over 100%, update the total.

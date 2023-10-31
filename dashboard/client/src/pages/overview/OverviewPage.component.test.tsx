@@ -74,6 +74,7 @@ const Wrapper =
               default: "rayDefaultDashboard",
               serve: "rayServeDashboard",
               serveDeployment: "rayServeDeploymentDashboard",
+              data: "rayDataDashboard",
             },
             prometheusHealth: true,
             sessionName: "session-name",

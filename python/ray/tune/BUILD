@@ -38,7 +38,6 @@ py_library(
 #
 # Tags:
 # "team:ml": Tag indicating this test is owned by the ML team.
-# "client": Test uses the ray client.
 # "example": Test runs a tune example script.
 # "exclusive": ???
 # "soft_imports": Tests checking whether Tune runs without any of its soft dependencies.
@@ -75,14 +74,6 @@ py_test(
     srcs = ["tests/test_callbacks.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_client",
-    size = "large",
-    srcs = ["tests/test_client.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "client", "exclusive"]
 )
 
 py_test(
@@ -321,9 +312,9 @@ py_test(
 )
 
 py_test(
-    name = "test_trial_relative_logdir",
-    size = "medium",
-    srcs = ["tests/test_trial_relative_logdir.py"],
+    name = "test_trial",
+    size = "small",
+    srcs = ["tests/test_trial.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
