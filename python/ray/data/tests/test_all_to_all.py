@@ -361,6 +361,27 @@ def test_groupby_multiple_keys_tabular_count(
     ]
 
 
+def test_groupby_multikey_map_groups_with_different_types(ray_start_regular_shared):
+    ds = ray.data.from_items(
+        [
+            {"A": 1, "B": 1, "value": 1},
+            {"A": 1, "B": 1, "value": 2},
+            {"A": 1, "B": 2, "value": 3},
+            {"A": 1, "B": 2, "value": 4},
+            {"A": 2, "B": 2, "value": 5},
+            {"A": 2, "B": 2, "value": 6},
+        ]
+    )
+
+    def func(group):
+        # Test output type is Python list, different from input type.
+        value = int(group["value"][0])
+        return {"out": np.array([value])}
+
+    ds = ds.groupby(["A", "B"]).map_groups(func)
+    assert sorted([x["out"] for x in ds.take()]) == [1, 3, 5]
+
+
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_groupby_tabular_sum(
