@@ -2,7 +2,7 @@ import json
 import os
 import shutil
 import sys
-from typing import Optional
+from typing import Tuple
 from pathlib import Path
 
 import click
@@ -35,9 +35,9 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 @click.command()
 @click.option(
     "--test-collection-file",
-    default=None,
+    multiple=True,
     type=str,
-    help="File containing test configurations",
+    help="Files containing test configurations",
 )
 @click.option(
     "--run-jailed-tests",
@@ -62,7 +62,7 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     help="Global config to use for test execution.",
 )
 def main(
-    test_collection_file: Optional[str] = None,
+    test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
     global_config: str = "oss_config.yaml",
@@ -76,9 +76,12 @@ def main(
     tmpdir = None
 
     env = {}
-    test_collection_file = test_collection_file or os.path.join(
-        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-    )
+    if test_collection_file:
+        test_collection_file = list(test_collection_file)
+    else:
+        test_collection_file = [
+            os.path.join(os.path.dirname(__file__), "..", "..", "release_tests.yaml")
+        ]
 
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
