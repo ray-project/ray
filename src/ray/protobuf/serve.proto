@@ -70,6 +70,7 @@ enum EncodingType {
 } 
 
 enum AccessLoggingType {
+  // Enable both stream and file based log
   ALL = 0;
   FILE_ONLY = 1;
   STREAM_ONLY = 2;
