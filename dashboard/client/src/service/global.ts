@@ -17,6 +17,7 @@ export type ClusterMetadataResponse = {
     clientPort?: string;
     dashboardPort?: string;
     clusterName?: string;
+    bytedScmVersion: string;
   };
 };
 

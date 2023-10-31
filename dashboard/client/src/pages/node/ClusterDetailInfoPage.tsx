@@ -124,6 +124,15 @@ export const ClusterDetailInfoPage = () => {
                   }
                 : { value: "-" },
             },
+            {
+              label: "SCM Version",
+              content: clusterDetail.data.bytedScmVersion
+                ? {
+                    value: clusterDetail.data.bytedScmVersion,
+                    copyableValue: clusterDetail.data.bytedScmVersion,
+                  }
+                : { value: "-" },
+            },
           ]}
         />
       </TitleCard>
