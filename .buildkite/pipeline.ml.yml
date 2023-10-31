@@ -54,22 +54,6 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/modin/...
 
-- label: ":potable_water: Dataset datasource integration tests"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-java.sh
-    # TODO(scottjlee): upgrade ARROW_VERSION to 12.* and ARROW_MONGO_VERSION to 1.0.*
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=9.* ARROW_MONGO_VERSION=0.5.* ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - sudo apt-get purge -y mongodb*
-    - sudo apt-get install -y mongodb
-    - sudo rm -rf /var/lib/mongodb/mongod.lock
-    - sudo service mongodb start
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=data_integration,-doctest python/ray/data/...
-    - sudo service mongodb stop
-    - sudo apt-get purge -y mongodb*
-
 - label: ":book: Doc tests and examples (excluding Ray AIR examples)"
   # Todo: check if we can modify the examples to use Ray with fewer CPUs.
   conditions:
@@ -85,7 +69,10 @@
     - pip install "transformers==4.30.2" "datasets==2.14.0"
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel
+      --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel,-team:core
+      doc/...
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=xcommit,-gpu
       doc/...
 
 - label: ":book: Doc tests and examples with time series libraries"

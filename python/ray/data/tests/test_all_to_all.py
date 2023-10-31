@@ -16,6 +16,8 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import column_udf, named_values
 from ray.tests.conftest import *  # noqa
 
+RANDOM_SEED = 123
+
 
 def test_zip(ray_start_regular_shared):
     ds1 = ray.data.range(5, parallelism=5)
@@ -328,6 +330,34 @@ def test_groupby_tabular_count(
         {"A": 0, "count()": 34},
         {"A": 1, "count()": 33},
         {"A": 2, "count()": 33},
+    ]
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
+def test_groupby_multiple_keys_tabular_count(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
+    # Test built-in count aggregation
+    print(f"Seeding RNG for test_groupby_arrow_count with: {RANDOM_SEED}")
+    random.seed(RANDOM_SEED)
+    xs = list(range(100))
+    random.shuffle(xs)
+
+    ds = ray.data.from_items([{"A": (x % 2), "B": (x % 3)} for x in xs]).repartition(
+        num_parts
+    )
+    ds = ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
+
+    agg_ds = ds.groupby(["A", "B"]).count()
+    assert agg_ds.count() == 6
+    assert list(agg_ds.sort(["A", "B"]).iter_rows()) == [
+        {"A": 0, "B": 0, "count()": 17},
+        {"A": 0, "B": 1, "count()": 16},
+        {"A": 0, "B": 2, "count()": 17},
+        {"A": 1, "B": 0, "count()": 17},
+        {"A": 1, "B": 1, "count()": 17},
+        {"A": 1, "B": 2, "count()": 16},
     ]
 
 

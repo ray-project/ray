@@ -115,7 +115,7 @@ class APPOConfig(ImpalaConfig):
         self.broadcast_interval = 1
 
         self.grad_clip = 40.0
-        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
         # configured by the user. On the old API stack, RLlib will always clip by
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
@@ -185,8 +185,8 @@ class APPOConfig(ImpalaConfig):
                 samples to be trained on by the learner group before updating the target
                 networks and tuned the kl loss coefficients that are used during
                 training.
-                NOTE: this parameter is only applicable when using the learner api
-                (_enable_learner_api=True and _enable_rl_module_api=True).
+                NOTE: This parameter is only applicable when using the Learner API
+                (_enable_new_api_stack=True).
 
 
         Returns:
@@ -288,7 +288,7 @@ class APPO(Impala):
 
         # TODO(avnishn):
         # does this need to happen in __init__? I think we can move it to setup()
-        if not self.config._enable_rl_module_api:
+        if not self.config._enable_new_api_stack:
             self.workers.local_worker().foreach_policy_to_train(
                 lambda p, _: p.update_target()
             )
@@ -300,7 +300,7 @@ class APPO(Impala):
         # TODO(avnishn):
         # this attribute isn't used anywhere else in the code. I think we can safely
         # delete it.
-        if not self.config._enable_rl_module_api:
+        if not self.config._enable_new_api_stack:
             self.update_kl = UpdateKL(self.workers)
 
     def after_train_step(self, train_results: ResultDict) -> None:
@@ -316,7 +316,7 @@ class APPO(Impala):
                 training step.
         """
 
-        if self.config._enable_learner_api:
+        if self.config._enable_new_api_stack:
             if NUM_TARGET_UPDATES in train_results:
                 self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
                 self._counters[LAST_TARGET_UPDATE_TS] = train_results[
@@ -400,7 +400,7 @@ class APPO(Impala):
 
             return APPOTorchPolicy
         elif config["framework"] == "tf":
-            if config._enable_rl_module_api:
+            if config._enable_new_api_stack:
                 raise ValueError(
                     "RLlib's RLModule and Learner API is not supported for"
                     " tf1. Use "

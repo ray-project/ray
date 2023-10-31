@@ -44,6 +44,7 @@ def gen_expected_metrics(
             "'obj_store_mem_cur': Z",
             "'obj_store_mem_peak': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
+            "'block_generation_time': N",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
         ]
@@ -73,7 +74,7 @@ LARGE_ARGS_EXTRA_METRICS = gen_expected_metrics(
     is_map=True,
     spilled=False,
     extra_metrics=[
-        "'ray_remote_args': {'num_cpus': Z.N, 'scheduling_strategy': 'DEFAULT'}"
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'DEFAULT'}"
     ],
 )
 
@@ -106,17 +107,19 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     s1 = re.sub("[0-9\.]+(ms|us|s)", "T", s0)
     # Memory expressions.
     s2 = re.sub("[0-9\.]+(B|MB|GB)", "M", s1)
+    # Handle floats in (0, 1)
+    s3 = re.sub(" (0\.0*[1-9][0-9]*)", " N", s2)
     # Handle zero values specially so we can check for missing values.
-    s3 = re.sub(" [0]+(\.[0]+)?", " Z", s2)
+    s4 = re.sub(" [0]+(\.[0])?", " Z", s3)
     # Other numerics.
-    s4 = re.sub("[0-9]+(\.[0-9]+)?", "N", s3)
+    s5 = re.sub("[0-9]+(\.[0-9]+)?", "N", s4)
     # Replace tabs with spaces.
-    s5 = re.sub("\t", "    ", s4)
+    s6 = re.sub("\t", "    ", s5)
     if filter_global_stats:
-        s6 = s5.replace(CLUSTER_MEMORY_STATS, "")
-        s7 = s6.replace(DATASET_MEMORY_STATS, "")
-        return s7
-    return s5
+        s7 = s6.replace(CLUSTER_MEMORY_STATS, "")
+        s8 = s7.replace(DATASET_MEMORY_STATS, "")
+        return s8
+    return s6
 
 
 def dummy_map_batches(x):
@@ -491,7 +494,7 @@ def test_dataset__repr__(ray_start_regular_shared):
 
     expected_stats = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=None,\n"
         "   number=N,\n"
         "   extra_metrics={},\n"
@@ -547,7 +550,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     assert len(ds2.take_all()) == n
     expected_stats2 = (
         "DatasetStatsSummary(\n"
-        "   dataset_uuid=U,\n"
+        "   dataset_uuid=N,\n"
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
         "   extra_metrics={\n"
@@ -570,6 +573,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      obj_store_mem_cur: Z,\n"
         "      obj_store_mem_peak: N,\n"
         "      obj_store_mem_spilled: Z,\n"
+        "      block_generation_time: N,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
@@ -604,7 +608,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   dataset_bytes_spilled=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
-        "         dataset_uuid=U,\n"
+        "         dataset_uuid=N,\n"
         "         base_name=None,\n"
         "         number=N,\n"
         "         extra_metrics={},\n"
@@ -1188,7 +1192,19 @@ def test_stats_actor_metrics():
     # There should be nothing in object store at the end of execution.
     assert final_metric.obj_store_mem_cur == 0
 
-    assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+    assert "dataset" + ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+
+    def sleep_three(x):
+        import time
+
+        time.sleep(3)
+        return x
+
+    with patch_update_stats_actor() as update_fn:
+        ds = ray.data.range(3).map_batches(sleep_three, batch_size=1).materialize()
+
+    final_metric = update_fn.call_args_list[-1].args[0][-1]
+    assert final_metric.block_generation_time >= 9
 
 
 def test_stats_actor_iter_metrics():
@@ -1239,7 +1255,7 @@ def test_dataset_name():
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[1]["dataset"] == mds._uuid
+    assert update_fn.call_args_list[-1].args[1]["dataset"] == "dataset" + mds._uuid
 
     ds = ray.data.range(100, parallelism=20)
     ds._set_name("very_loooooooong_name")
