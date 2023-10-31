@@ -47,32 +47,6 @@ class PyvmomiSdkProvider:
             raise ValueError("Could not connect to the specified host")
         atexit.register(Disconnect, self.pyvmomi_sdk_client)
 
-    def get_pyvmomi_obj_by_moid(self, vimtype, moid):
-        """
-        This function finds the vSphere object by the object moid and the object type.
-        The object type can be "VM", "Host", "Datastore", etc.
-        The object moid is a unique id for this object type under the vCenter server.
-        To check all such object information, you can go to the managed object board
-        page of your vCenter Server, such as: https://<your_vc_ip/mob
-        """
-        obj = None
-        if self.pyvmomi_sdk_client is None:
-            raise RuntimeError("Must init pyvmomi_sdk_client first.")
-
-        if not moid:
-            raise ValueError("Invalid argument for moid")
-
-        container = self.pyvmomi_sdk_client.content.viewManager.CreateContainerView(
-            self.pyvmomi_sdk_client.content.rootFolder, vimtype, True
-        )
-
-        for c in container.view:
-            if moid in str(c):
-                obj = c
-                break
-
-        return obj
-
     def get_pyvmomi_obj(self, vimtype, name=None, obj_id=None):
         """
         This function will return the vSphere object.
@@ -97,7 +71,7 @@ class PyvmomiSdkProvider:
                     return c
         elif obj_id:
             for c in container.view:
-                if str(c) == obj_id:
+                if obj_id in str(c):
                     return c
         raise ValueError(
             f"Cannot find the object with type {vimtype} on vSphere with"

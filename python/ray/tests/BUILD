@@ -122,6 +122,7 @@ py_test_module_list(
     "accelerators/test_neuron.py",
     "accelerators/test_tpu.py",
     "accelerators/test_nvidia_gpu.py",
+    "accelerators/test_intel_gpu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",

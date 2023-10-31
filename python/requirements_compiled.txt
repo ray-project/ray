@@ -143,7 +143,7 @@ autorom==0.6.1 ; platform_machine != "arm64"
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 autorom-accept-rom-license==0.6.1
     # via autorom
-aws-sam-translator==1.78.0
+aws-sam-translator==1.79.0
     # via cfn-lint
 aws-xray-sdk==2.12.1
     # via moto
@@ -177,7 +177,7 @@ azure-mgmt-network==19.0.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 azure-mgmt-resource==20.0.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-babel==2.13.0
+babel==2.13.1
     # via
     #   jupyterlab-server
     #   sphinx
@@ -236,7 +236,7 @@ bracex==2.4
     # via wcmatch
 cached-property==1.5.2
     # via orbax-checkpoint
-cachetools==5.3.1
+cachetools==5.3.2
     # via
     #   aim
     #   google-auth
@@ -257,9 +257,9 @@ cffi==1.16.0
     #   pymunk
     #   pynacl
     #   soundfile
-cfn-lint==0.82.1
+cfn-lint==0.83.0
     # via moto
-charset-normalizer==3.3.0
+charset-normalizer==3.3.1
     # via
     #   aiohttp
     #   requests
@@ -449,7 +449,7 @@ ecdsa==0.18.0
     #   moto
     #   python-jose
     #   sshpubkeys
-email-validator==2.0.0.post2
+email-validator==2.1.0.post1
     # via fastapi
 entrypoints==0.4
     # via
@@ -574,9 +574,9 @@ gin-config==0.5.0
     # via
     #   dopamine-rl
     #   recsim
-gitdb==4.0.10
+gitdb==4.0.11
     # via gitpython
-gitpython==3.1.38
+gitpython==3.1.40
     # via
     #   mlflow
     #   nbdime
@@ -661,7 +661,7 @@ graphql-core==3.2.3
     # via moto
 graphviz==0.20.1
     # via catboost
-greenlet==3.0.0
+greenlet==3.0.1
     # via sqlalchemy
 grpcio==1.59.0 ; sys_platform != "darwin"
     # via
@@ -678,7 +678,7 @@ grpcio==1.59.0 ; sys_platform != "darwin"
     #   tensorflow
 grpcio-status==1.48.2
     # via google-api-core
-gsutil==5.26
+gsutil==5.27
     # via -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
     # via mlflow
@@ -791,7 +791,7 @@ importlib-resources==5.13.0
     #   tensorflow-datasets
 iniconfig==2.0.0
     # via pytest
-ipykernel==6.25.2
+ipykernel==6.26.0
     # via
     #   nbclassic
     #   notebook
@@ -1000,7 +1000,7 @@ linear-operator==0.4.0
     #   gpytorch
 linkify-it-py==1.0.3
     # via markdown-it-py
-llvmlite==0.39.1 ; python_version < "3.11"
+llvmlite==0.41.1
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   numba
@@ -1208,7 +1208,7 @@ notebook-shim==0.2.3
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk
-numba==0.56.4
+numba==0.58.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 numexpr==2.8.4
     # via
@@ -1217,6 +1217,7 @@ numexpr==2.8.4
 numpy==1.23.5 ; python_version < "3.9"
     # via
     #   -r /ray/ci/../python/requirements.txt
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   accelerate
     #   aim
     #   ale-py
@@ -1849,7 +1850,7 @@ querystring-parser==1.2.4
     #   raydp
     #   tune-sklearn
     #   xgboost-ray
-raydp==1.7.0b20231017.dev0
+raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 recsim==0.2.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version >= "3.8"
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
@@ -1949,7 +1950,7 @@ rsa==4.7.2
     #   google-auth
     #   oauth2client
     #   python-jose
-ruamel-yaml==0.17.35
+ruamel-yaml==0.17.40
     # via semgrep
 ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
@@ -2203,7 +2204,7 @@ tabulate==0.9.0
     # via
     #   databricks-cli
     #   knack
-tblib==2.0.0
+tblib==3.0.0
     # via
     #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
     #   distributed
@@ -2369,7 +2370,7 @@ tqdm==4.64.1
     #   torch-geometric
     #   torchtext
     #   transformers
-traitlets==5.11.2
+traitlets==5.12.0
     # via
     #   comm
     #   ipykernel
@@ -2464,7 +2465,7 @@ uvicorn==0.22.0
     #   aim
     #   fastapi
     #   gradio
-uvloop==0.18.0
+uvloop==0.19.0
     # via
     #   pymars
     #   uvicorn

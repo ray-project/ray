@@ -1096,15 +1096,22 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
       if (!worker_id.IsNil()) {
         // If the failed worker was a leased worker's owner, then kill the leased worker.
         if (owner_worker_id == worker_id) {
-          RAY_LOG(INFO) << "Owner process " << owner_worker_id
-                        << " died, killing leased worker " << worker->WorkerId();
+          std::ostringstream stream;
+          stream << "The leased worker " << worker->WorkerId()
+                 << " is killed because the owner process " << owner_worker_id
+                 << " died.";
+          const auto &err_msg = stream.str();
+          RAY_LOG(INFO) << err_msg;
           KillWorker(worker);
         }
       } else if (owner_node_id == node_id) {
         // If the leased worker's owner was on the failed node, then kill the leased
         // worker.
-        RAY_LOG(INFO) << "Owner node " << owner_node_id << " died, killing leased worker "
-                      << worker->WorkerId();
+        std::ostringstream stream;
+        stream << "The leased worker " << worker->WorkerId()
+               << " is killed because the owner node " << owner_node_id << " died.";
+        const auto &err_msg = stream.str();
+        RAY_LOG(INFO) << err_msg;
         KillWorker(worker);
       }
     }
@@ -1912,10 +1919,12 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   if (worker) {
     if (request.disconnect_worker()) {
       // The worker should be destroyed.
-      DisconnectClient(worker->Connection(),
-                       rpc::WorkerExitType::SYSTEM_ERROR,
-                       "The leased worker has unrecoverable failure. Worker is requested "
-                       "to be destroyed when it is returned.");
+      DisconnectClient(
+          worker->Connection(),
+          rpc::WorkerExitType::SYSTEM_ERROR,
+          absl::StrCat("The leased worker has unrecoverable failure. Worker is requested "
+                       "to be destroyed when it is returned. ",
+                       request.disconnect_worker_error_detail()));
     } else {
       if (worker->IsBlocked()) {
         // Handle the edge case where the worker was returned before we got the
@@ -2715,6 +2724,8 @@ void NodeManager::TriggerGlobalGC() {
 }
 
 void NodeManager::Stop() {
+  // This never fails.
+  RAY_CHECK_OK(store_client_.Disconnect());
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();

@@ -1,18 +1,5 @@
 #ci:group=ML tests
 
-- label: ":train: :key: Train examples with authentication"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_BRANCH_BUILD"]
-  instance_size: medium
-  commands:
-    - if [[ "$BUILDKITE_PIPELINE_ID" != "0183465b-c6fb-479b-8577-4cfd743b545d" ]]; then exit 0; fi
-    - trap ./ci/build/upload_build_info.sh EXIT
-    - TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - $(python ci/env/setup_credentials.py)
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials 
-      --test_env=WANDB_API_KEY --test_env=COMET_API_KEY
-      python/ray/train/...
-
 - label: ":brain: RLlib: Memory leak tests TF2-eager-tracing"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   instance_size: medium
@@ -58,15 +45,6 @@
 #    - INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
 #    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/ludwig/...
 
-- label: ":tropical_fish: ML Libraries w/ Ray Client."
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
-
 - label: ":potable_water: Dataset library integrations tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
@@ -74,25 +52,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/modin/...
-    # Dask tests and examples.
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/dask/...
-
-- label: ":potable_water: Dataset datasource integration tests"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/install-java.sh
-    # TODO(scottjlee): upgrade ARROW_VERSION to 12.* and ARROW_MONGO_VERSION to 1.0.*
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=9.* ARROW_MONGO_VERSION=0.5.* ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - sudo apt-get purge -y mongodb*
-    - sudo apt-get install -y mongodb
-    - sudo rm -rf /var/lib/mongodb/mongod.lock
-    - sudo service mongodb start
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=data_integration,-doctest python/ray/data/...
-    - sudo service mongodb stop
-    - sudo apt-get purge -y mongodb*
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/modin/...
 
 - label: ":book: Doc tests and examples (excluding Ray AIR examples)"
   # Todo: check if we can modify the examples to use Ray with fewer CPUs.
@@ -109,7 +69,10 @@
     - pip install "transformers==4.30.2" "datasets==2.14.0"
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel
+      --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel,-team:core
+      doc/...
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=xcommit,-gpu
       doc/...
 
 - label: ":book: Doc tests and examples with time series libraries"
@@ -154,8 +117,12 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/a2c && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/a2c/tests/
-    - python rllib_contrib/a2c/examples/a2c_cartpole_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/a2c/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/a2c/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/a2c/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests,-no_tf_eager_tracing --test_arg=--framework=tf2 rllib_contrib/a2c/...
 
 - label: ":exploding_death_star: RLlib Contrib: A3C Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -166,7 +133,12 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/a3c && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/a3c/tests/test_a3c.py
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/a3c/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/a3c/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/a3c/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=tf2 rllib_contrib/a3c/...
 
 - label: ":exploding_death_star: RLlib Contrib: AlphaStar Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -177,8 +149,12 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/alpha_star && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/alpha_star/tests/
-    - python rllib_contrib/alpha_star/examples/multi-agent-cartpole-alpha-star.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/alpha_star/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/alpha_star/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/alpha_star/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=tf2 rllib_contrib/alpha_star/...
 
 - label: ":exploding_death_star: RLlib Contrib: AlphaZero Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -189,8 +165,11 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/alpha_zero && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/alpha_zero/tests/
-    - python rllib_contrib/alpha_zero/examples/alpha_zero_cartpole_sparse_rewards.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/alpha_zero/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-learning_tests rllib_contrib/alpha_zero/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/alpha_zero/...
 
 - label: ":exploding_death_star: RLlib Contrib: APEX DDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -201,8 +180,10 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/apex_ddpg && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/apex_ddpg/tests/
-    - python rllib_contrib/apex_ddpg/examples/apex_ddpg_pendulum_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/apex_ddpg/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/apex_ddpg/...
 
 - label: ":exploding_death_star: RLlib Contrib: APEX DQN Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -213,8 +194,10 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/apex_dqn && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/apex_dqn/tests/
-    - python rllib_contrib/apex_dqn/examples/apex_dqn_cartpole_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/apex_dqn/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/apex_dqn/...
 
 - label: ":exploding_death_star: RLlib Contrib: ARS Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -225,8 +208,12 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/ars && pip install -r requirements.txt && pip install -e ".[development"])
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/ars/tests/
-    - python rllib_contrib/ars/examples/ars_cartpole_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/ars/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/ars/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/ars/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=tf2 rllib_contrib/ars/...
 
 - label: ":exploding_death_star: RLlib Contrib: Bandit Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -237,8 +224,10 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/bandit && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/bandit/tests/
-    - python rllib_contrib/bandit/examples/bandit_linucb_interest_evolution_recsim.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/bandit/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/bandit/...
 
 - label: ":exploding_death_star: RLlib Contrib: CRR Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -249,8 +238,11 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/crr && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/crr/tests/
-    - python rllib_contrib/crr/examples/crr_cartpole_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/crr/
+    - wget https://raw.githubusercontent.com/ray-project/ray/master/rllib/tests/data/pendulum/pendulum_replay_v1.1.0.zip -P rllib_contrib/crr/tuned_examples/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-learning_tests rllib_contrib/crr/...
 
 - label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -261,8 +253,11 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/ddpg/tests/
-    - python rllib_contrib/ddpg/examples/ddpg_pendulum_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/ddpg/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/ddpg/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/ddpg/...
 
 - label: ":exploding_death_star: RLlib Contrib: DDPPO Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -273,10 +268,13 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/ddppo && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/ddppo/tests/
-    - python rllib_contrib/ddppo/examples/ddppo_pendulum_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/ddppo/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-learning_tests rllib_contrib/ddppo/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/ddppo/...
 
-- label: ":exploding_death_star: RLlib Contrib: Decision Transformer Tests"
+- label: ":exploding_death_star: RLlib Contrib: Decision Transformer (DT) Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -285,8 +283,12 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/dt && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/dt/tests/
-    - python rllib_contrib/dt/examples/dt_cartpole_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/dt/
+    - wget https://github.com/ray-project/ray/raw/releases/2.5.1/rllib/tests/data/pendulum/pendulum_expert_sac_50eps.zip -P rllib_contrib/dt/tuned_examples/
+    - wget https://github.com/ray-project/ray/raw/releases/2.5.1/rllib/tests/data/pendulum/pendulum_medium_sac_50eps.zip -P rllib_contrib/dt/tuned_examples/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-learning_tests rllib_contrib/dt/...
 
 - label: ":exploding_death_star: RLlib Contrib: ES Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -297,8 +299,10 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/es && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/es/tests/
-    - python rllib_contrib/es/examples/es_cartpole_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/es/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/es/...
 
 - label: ":exploding_death_star: RLlib Contrib: Leela Chess Zero Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -309,8 +313,10 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/leela_chess_zero && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/leela_chess_zero/tests/
-    - python rllib_contrib/leela_chess_zero/examples/leela_chess_zero_connect_4.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/leela_chess_zero/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/leela_chess_zero/...
 
 - label: ":exploding_death_star: RLlib Contrib: MADDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -321,8 +327,11 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/maddpg && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/maddpg/tests/
-    - python rllib_contrib/maddpg/examples/two_step_game.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/maddpg/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-learning_tests rllib_contrib/maddpg/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=tf rllib_contrib/maddpg/...
 
 - label: ":exploding_death_star: RLlib Contrib: MAML Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -342,7 +351,11 @@
 
     - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/maml/tests/test_maml.py
+
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/maml/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/maml/...
 
 - label: ":exploding_death_star: RLlib Contrib: MBMPO Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -360,8 +373,11 @@
 
     - (cd rllib_contrib/mbmpo && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/mbmpo/tests/
-    - python rllib_contrib/mbmpo/examples/mbmpo_cartpole_v1_model_based.py --run-as-test
+
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/mbmpo/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/mbmpo/...
 
 - label: ":exploding_death_star: RLlib Contrib: PG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -372,8 +388,12 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/pg && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/pg/tests/
-    - python rllib_contrib/pg/examples/pg_cartpole_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/pg/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/pg/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/pg/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests,-no_tf_eager_tracing --test_arg=--framework=tf2 rllib_contrib/pg/...
 
 - label: ":exploding_death_star: RLlib Contrib: QMIX Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -384,8 +404,11 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/qmix && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/qmix/tests/
-    - python rllib_contrib/qmix/examples/qmix_two_step_game.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/qmix/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-learning_tests rllib_contrib/qmix/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/qmix/...
 
 - label: ":exploding_death_star: RLlib Contrib: R2D2 Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -396,8 +419,12 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/r2d2/tests/
-    - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/r2d2/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/r2d2/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/r2d2/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests,-no_tf_eager_tracing --test_arg=--framework=tf2 rllib_contrib/r2d2/...
 
 - label: ":exploding_death_star: RLlib Contrib: SimpleQ Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -408,8 +435,12 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/simple_q && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/simple_q/tests/
-    - python rllib_contrib/simple_q/examples/simple_q_cartpole_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/simple_q/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/simple_q/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/simple_q/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests,-no_tf_eager_tracing --test_arg=--framework=tf2 rllib_contrib/simple_q/...
 
 - label: ":exploding_death_star: RLlib Contrib: SlateQ Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -420,8 +451,11 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/slate_q && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/slate_q/tests/
-    - python rllib_contrib/slate_q/examples/recommender_system_with_recsim_and_slateq.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/slate_q/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/slate_q/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,learning_tests --test_arg=--framework=torch rllib_contrib/slate_q/...
 
 - label: ":exploding_death_star: RLlib Contrib: TD3 Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
@@ -432,5 +466,7 @@
     - conda activate rllib_contrib
     - (cd rllib_contrib/td3 && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/td3/tests/
-    - python rllib_contrib/td3/examples/td3_pendulum_v1.py --run-as-test
+    # Download files needed for running the bazel tests.
+    - wget https://raw.githubusercontent.com/ray-project/ray/releases/2.5.1/rllib/tests/run_regression_tests.py -P rllib_contrib/td3/
+    # BAZEL (learning and compilation) tests:
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/td3/...

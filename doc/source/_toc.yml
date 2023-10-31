@@ -285,7 +285,9 @@ parts:
                 sections:
                   - file: cluster/kubernetes/user-guides/rayservice.md
                     title: Deploy Ray Serve Apps
+                  - file: cluster/kubernetes/user-guides/rayservice-high-availability.md
                   - file: cluster/kubernetes/user-guides/observability.md
+                  - file: cluster/kubernetes/user-guides/upgrade-guide.md
                   - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
                     sections:
                       - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md

@@ -70,7 +70,7 @@ class AgentCollector:
         intial_states: Optional[List[TensorType]] = None,
         is_policy_recurrent: bool = False,
         is_training: bool = True,
-        _enable_rl_module_api: bool = False,
+        _enable_new_api_stack: bool = False,
     ):
         """Initialize an AgentCollector.
 
@@ -93,7 +93,7 @@ class AgentCollector:
         self.initial_states = intial_states if intial_states is not None else []
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
-        self._enable_rl_module_api = _enable_rl_module_api
+        self._enable_new_api_stack = _enable_new_api_stack
 
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
@@ -284,7 +284,7 @@ class AgentCollector:
             )
             # Note (Artur) RL Modules's states need no flattening
             should_flatten_state_key = (
-                k.startswith("state_out") and not self._enable_rl_module_api
+                k.startswith("state_out") and not self._enable_new_api_stack
             )
             if (
                 k == SampleBatch.INFOS
@@ -568,7 +568,7 @@ class AgentCollector:
             )
             # Note (Artur) RL Modules's states need no flattening
             should_flatten_state_key = (
-                col.startswith("state_out") and not self._enable_rl_module_api
+                col.startswith("state_out") and not self._enable_new_api_stack
             )
             if (
                 col == SampleBatch.INFOS
@@ -651,7 +651,7 @@ class AgentCollector:
         # add them to the buffer in case they don't exist yet
         is_state = True
         if data_col.startswith("state_out"):
-            if self._enable_rl_module_api:
+            if self._enable_new_api_stack:
                 self._build_buffers({data_col: self.initial_states})
             else:
                 if not self.is_policy_recurrent:

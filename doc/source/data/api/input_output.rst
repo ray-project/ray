@@ -258,6 +258,7 @@ Datasource API
    Datasource
    ReadTask
    datasource.Reader
+   datasource.FilenameProvider
 
 Partitioning API
 ----------------

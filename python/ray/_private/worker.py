@@ -55,7 +55,10 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import (
+    StreamingObjectRefGenerator,
+    raise_sys_exit_with_custom_error_message,
+)
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -424,8 +427,8 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
-        # environment variables.
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
+        # TPU_VISIBLE_CHIPS, ..) environment variables.
         self.original_visible_accelerator_ids = (
             ray._private.utils.get_visible_accelerator_ids()
         )
@@ -785,8 +788,10 @@ class Worker:
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
-            shutdown(True)
-            sys.exit(1)
+            raise_sys_exit_with_custom_error_message(
+                "The process receives a SIGTERM.", exit_code=1
+            )
+            # Note: shutdown() function is called from atexit handler.
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
@@ -870,8 +875,9 @@ class Worker:
                     assigned_ids.add(resource_id)
 
         # If the user had already set the environment variables
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
-        # respect that in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
+        # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
+        # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
@@ -1741,7 +1747,8 @@ def shutdown(_exiting_interpreter: bool = False):
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
-        global_worker.core_worker.shutdown()
+        if global_worker.mode == SCRIPT_MODE or global_worker.mode == LOCAL_MODE:
+            global_worker.core_worker.shutdown_driver()
         del global_worker.core_worker
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)

@@ -9,8 +9,6 @@ from ray.rllib.execution.common import (
     _get_shared_metrics,
 )
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
 
 
 class CollectMetrics:
@@ -50,8 +48,6 @@ class CollectMetrics:
         self.keep_custom_metrics = keep_per_episode_custom_metrics
         self.selected_workers = selected_workers
         self.by_steps_trained = by_steps_trained
-        if log_once("learner-thread-deprecation-warning"):
-            deprecation_warning(old="ray.rllib.execution.metric_ops.CollectMetrics")
 
     def __call__(self, _: Any) -> Dict:
         # Collect worker metrics.

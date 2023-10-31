@@ -302,20 +302,6 @@ struct Mocker {
     return data;
   }
 
-  static rpc::TaskEventData GenTaskEventsDataLoss(
-      const std::vector<TaskAttempt> &drop_tasks, int job_id = 0) {
-    rpc::TaskEventData data;
-    for (const auto &task_attempt : drop_tasks) {
-      rpc::TaskAttempt rpc_task_attempt;
-      rpc_task_attempt.set_task_id(task_attempt.first.Binary());
-      rpc_task_attempt.set_attempt_number(task_attempt.second);
-      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
-    }
-    data.set_job_id(JobID::FromInt(job_id).Binary());
-
-    return data;
-  }
-
   static rpc::ResourceDemand GenResourceDemand(
       const absl::flat_hash_map<std::string, double> &resource_demands,
       int64_t num_ready_queued,

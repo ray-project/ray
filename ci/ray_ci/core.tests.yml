@@ -2,7 +2,6 @@ flaky_tests:
   - //python/ray/tests:test_actor_advanced
   - //python/ray/tests:test_actor_cancel
   - //python/ray/tests:test_gcs_fault_tolerance
-  - //python/ray/tests:test_object_manager
   - //python/ray/tests:test_placement_group
   - //python/ray/tests:test_placement_group_3
   - //python/ray/tests:test_placement_group_5
@@ -14,3 +13,4 @@ flaky_tests:
   - //python/ray/tests:test_unhandled_error
   - //python/ray/tests:test_state_api_log
   - //python/ray/tests:test_ray_init_2
+  - //python/ray/workflow:tests/test_http_events_2
