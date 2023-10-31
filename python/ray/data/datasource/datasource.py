@@ -293,7 +293,7 @@ class _RangeDatasourceReader(Reader):
         else:
             raise ValueError("Unsupported block type", block_format)
         if block_format == "tensor":
-            element_size = np.product(tensor_shape)
+            element_size = int(np.product(tensor_shape))
         else:
             element_size = 1
 
