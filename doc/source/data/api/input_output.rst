@@ -257,6 +257,7 @@ Datasource API
    Datasource
    ReadTask
    datasource.Reader
+   datasource.FilenameProvider
 
 Datasink API
 ------------

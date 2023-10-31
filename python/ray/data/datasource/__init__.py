@@ -29,6 +29,7 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
     ParquetMetadataProvider,
 )
+from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.mongo_datasource import MongoDatasource
@@ -71,6 +72,7 @@ __all__ = [
     "FileBasedDatasource",
     "FileExtensionFilter",
     "FileMetadataProvider",
+    "FilenameProvider",
     "ImageDatasource",
     "JSONDatasource",
     "NumpyDatasource",
