@@ -12,7 +12,6 @@ from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +19,7 @@ MAX_RETRY_CNT = 10
 RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
 
 
-@PublicAPI(stability="alpha")
-class BigQueryDatasink(Datasink):
+class _BigQueryDatasink(Datasink):
     def __init__(self, project_id: str, dataset: str) -> None:
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")

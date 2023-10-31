@@ -4,11 +4,9 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.sql_datasource import Connection, _connect
-from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="alpha")
-class SQLDatasink(Datasink):
+class _SQLDatasink(Datasink):
 
     _MAX_ROWS_PER_WRITE = 128
 
