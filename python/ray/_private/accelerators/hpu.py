@@ -85,7 +85,7 @@ class HPUAcceleratorManager(AcceleratorManager):
     def get_current_node_accelerator_type() -> Optional[str]:
         """Attempt to detect the HPU family type.
         Returns:
-            The device name (Gaudi, Gaudi2) if detected else None.
+            The device name (GAUDI, GAUDI2) if detected else None.
         """
         if HPUAcceleratorManager.is_initialized():
             import habana_frameworks.torch.hpu as torch_hpu
