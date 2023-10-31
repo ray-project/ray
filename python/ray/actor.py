@@ -661,7 +661,7 @@ class ActorClass:
             # Class Bar will require 1 cpu instead of 2.
             # It will also require no custom resources.
             Bar = Foo.options(num_cpus=1, resources=None)
-        """ #noqa: E501
+        """  # noqa: E501
 
         actor_cls = self
 
