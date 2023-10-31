@@ -8,6 +8,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 :::
 
 * {ref}`kuberay-rayservice`
+* {ref}`kuberay-rayservice-ha`
 * {ref}`kuberay-observability`
 * {ref}`kuberay-upgrade-guide`
 * {ref}`kuberay-k8s-setup`
@@ -20,6 +21,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-dev-serve`
 * {ref}`kuberay-pod-command`
 * {ref}`kuberay-pod-security`
+* {ref}`kuberay-helm-chart-rbac`
 * {ref}`kuberay-tls`
 * {ref}`kuberay-gke-bucket`
 * {ref}`ray-k8s-autoscaler-comparison`

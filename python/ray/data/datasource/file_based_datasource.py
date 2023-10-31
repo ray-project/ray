@@ -1,5 +1,6 @@
-import os
 import pathlib
+import posixpath
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -21,14 +22,15 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_pyarrow_version, make_async_gen
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.block_path_provider import (
-    BlockWritePathProvider,
-    DefaultBlockWritePathProvider,
-)
+from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
+)
+from ray.data.datasource.filename_provider import (
+    FilenameProvider,
+    _DefaultFilenameProvider,
 )
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -209,7 +211,8 @@ class FileBasedDatasource(Datasource):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,  # Deprecated
+        filename_provider: Optional[FilenameProvider] = None,
         write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         file_format: Optional[str] = None,
         _block_udf: Optional[Callable[[Block], Block]] = None,
@@ -232,8 +235,18 @@ class FileBasedDatasource(Datasource):
         if open_stream_args is None:
             open_stream_args = {}
 
-        if not block_path_provider:
-            block_path_provider = DefaultBlockWritePathProvider()
+        if block_path_provider is not None:
+            warnings.warn(
+                "`block_path_provider` has been deprecated in favor of "
+                "`filename_provider`. For more information, see "
+                "https://docs.ray.io/en/master/data/api/doc/ray.data.datasource.FilenameProvider.html",  # noqa: E501
+                DeprecationWarning,
+            )
+
+        if filename_provider is None and block_path_provider is None:
+            filename_provider = _DefaultFilenameProvider(
+                dataset_uuid=dataset_uuid, file_format=file_format
+            )
 
         num_rows_written = 0
         block_idx = 0
@@ -248,15 +261,18 @@ class FileBasedDatasource(Datasource):
             fs = _unwrap_s3_serialization_workaround(filesystem)
 
             if self._WRITE_FILE_PER_ROW:
-                for row_index, row in enumerate(
-                    block.iter_rows(public_row_format=False)
-                ):
-                    # TODO: Refactor `BlockWritePathProvider` to support rows.
-                    filename = (
-                        f"{dataset_uuid}_{ctx.task_idx:06}_{block_idx:06}_"
-                        f"{row_index:06}.{file_format}"
-                    )
-                    write_path = os.path.join(path, filename)
+                for row_idx, row in enumerate(block.iter_rows(public_row_format=False)):
+                    if filename_provider is not None:
+                        filename = filename_provider.get_filename_for_row(
+                            row, ctx.task_idx, block_idx, row_idx
+                        )
+                    else:  # Legacy code path
+                        filename = (
+                            f"{dataset_uuid}_{ctx.task_idx:06}_{block_idx:06}_"
+                            f"{row_idx:06}.{file_format}"
+                        )
+                    write_path = posixpath.join(path, filename)
+
                     logger.get_logger().debug(f"Writing {write_path} file.")
                     with _open_file_with_retry(
                         write_path,
@@ -270,14 +286,21 @@ class FileBasedDatasource(Datasource):
                             **write_args,
                         )
             else:
-                write_path = block_path_provider(
-                    path,
-                    filesystem=filesystem,
-                    dataset_uuid=dataset_uuid,
-                    task_index=ctx.task_idx,
-                    block_index=block_idx,
-                    file_format=file_format,
-                )
+                if filename_provider is not None:
+                    filename = filename_provider.get_filename_for_block(
+                        block, ctx.task_idx, block_idx
+                    )
+                    write_path = posixpath.join(path, filename)
+                else:  # Legacy code path
+                    write_path = block_path_provider(
+                        path,
+                        filesystem=filesystem,
+                        dataset_uuid=dataset_uuid,
+                        task_index=ctx.task_idx,
+                        block_index=block_idx,
+                        file_format=file_format,
+                    )
+
                 logger.get_logger().debug(f"Writing {write_path} file.")
                 with _open_file_with_retry(
                     write_path,
