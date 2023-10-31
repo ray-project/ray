@@ -9,7 +9,7 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 """
 
 import argparse
-from gymnasium.spaces import Dict, Discrete, Tuple, MultiDiscrete
+from gymnasium.spaces import Dict, Tuple, MultiDiscrete
 import logging
 import os
 
@@ -18,7 +18,6 @@ from ray import air, tune
 from ray.tune import register_env
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
-from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls
 
