@@ -39,12 +39,16 @@ class DockerContainer(Container):
     def _get_image_version_tags(self) -> List[str]:
         branch = os.environ.get("BUILDKITE_BRANCH")
         sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
+        pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
         if branch == "master":
             return [sha_tag, "nightly"]
 
         if branch and branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
             return [f"{release_name}.{sha_tag}"]
+
+        if pr != "false":
+            return [f"pr-{pr}.{sha_tag}"]
 
         return [sha_tag]
 
