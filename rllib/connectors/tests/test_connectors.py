@@ -14,15 +14,15 @@ from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 
 class TestConnectorPipeline(unittest.TestCase):
     class Tom(Connector):
-        def serialize(self):
+        def to_state():
             return "tom"
 
     class Bob(Connector):
-        def serialize(self):
+        def to_state():
             return "bob"
 
     class Mary(Connector):
-        def serialize(self):
+        def to_state():
             return "mary"
 
     class MockConnectorPipeline(ConnectorPipeline):
@@ -30,7 +30,7 @@ class TestConnectorPipeline(unittest.TestCase):
             # Real connector pipelines should keep a list of
             # Connectors.
             # Use strings here for simple unit tests.
-            super().__init__(ctx, connectors)
+            self.connectors = connectors
 
     def test_sanity_check(self):
         ctx = {}

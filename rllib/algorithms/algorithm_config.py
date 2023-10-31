@@ -328,6 +328,7 @@ class AlgorithmConfig(_Config):
         # TODO (sven): Deprecate as soon as A3C moves to `rllib_contrib`.
         self.sample_async = False
         self.enable_connectors = True
+        self.connector_creator = None
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_env_batch_wait_ms = 0
@@ -1471,6 +1472,12 @@ class AlgorithmConfig(_Config):
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
         sample_async: Optional[bool] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
+        connector_creator: Optional[
+            Callable[
+                [EnvType, "RLModule"],
+                Tuple["ConnectorV2", "ConnectorV2", "ConnectorContextV2"],
+            ]
+        ] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
@@ -1518,6 +1525,10 @@ class AlgorithmConfig(_Config):
             enable_connectors: Use connector based environment runner, so that all
                 preprocessing of obs and postprocessing of actions are done in agent
                 and action connectors.
+            connector_creator: A callable taking an Env and RLModule as input args
+                and returning a tuple consisting of an env-to-module ConnectorV2
+                (might be a pipeline), a module-to-env ConnectorV2 (might be a pipeline),
+                and an initial ConnectorContextV2 object.
             use_worker_filter_stats: Whether to use the workers in the WorkerSet to
                 update the central filters (held by the local worker). If False, stats
                 from the workers will not be used and discarded.

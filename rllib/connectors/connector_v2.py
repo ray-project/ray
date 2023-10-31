@@ -25,7 +25,13 @@ class ConnectorV2(abc.ABC):
     input_type = INPUT_OUTPUT_TYPES.DATA
     output_type = INPUT_OUTPUT_TYPES.DATA
 
-    def __init__(self, *, ctx: ConnectorContextV2):
+    def __init__(self, *, ctx: ConnectorContextV2, **kwargs):
+        """Initializes a ConnectorV2 instance.
+        
+        Args:
+            ctx: The current ConnectorContextV2.
+            **kwargs: Forward API-compatibility kwargs.
+        """
         self.ctx = ctx
 
     @abc.abstractmethod
@@ -35,6 +41,7 @@ class ConnectorV2(abc.ABC):
         input_: Any,
         episodes: List[EpisodeType],
         ctx: ConnectorContextV2,
+        **kwargs,
     ) -> Any:
         """Method for transforming input data into output data.
 
@@ -47,6 +54,7 @@ class ConnectorV2(abc.ABC):
                 should always be considered read-only and not be altered.
             ctx: The ConnectorContext that might be used to pass along other important
                 information in between connector pieces (even across pipelines).
+            kwargs: Forward API-compatibility kwargs.
 
         Returns:
             The transformed connector output abiding to `self.output_type`.
@@ -71,7 +79,7 @@ class ConnectorV2(abc.ABC):
 
     @staticmethod
     @abc.abstractmethod
-    def from_state(ctx: ConnectorContextV2, params: Any) -> "Connector":
+    def from_state(ctx: ConnectorContextV2, params: Any) -> "ConnectorV2":
         """De-serialize a JSON params back into a Connector.
 
         `from_state()` is required, so that all Connectors are serializable.

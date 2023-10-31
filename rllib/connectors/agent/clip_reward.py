@@ -8,7 +8,6 @@ from ray.rllib.connectors.connector import (
 )
 from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import AgentConnectorDataType
 from ray.util.annotations import PublicAPI
 
@@ -43,8 +42,7 @@ class ClipRewardAgentConnector(AgentConnector):
             )
         return ac_data
 
-    @override(AgentConnector)
-    def serialize(self):
+    def to_state(self):
         return ClipRewardAgentConnector.__name__, {
             "sign": self.sign,
             "limit": self.limit,

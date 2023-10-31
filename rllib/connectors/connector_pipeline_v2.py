@@ -3,9 +3,10 @@ import logging
 from typing import Any, List, Union
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import  ConnectorContextV2
-#from ray.rllib.connectors.registry import get_connector
+from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
+from ray.rllib.connectors.env_to_module.default_env_to_module import DefaultEnvToModule
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 from ray.util.timer import _Timer
 
@@ -16,10 +17,14 @@ logger = logging.getLogger(__name__)
 class ConnectorPipelineV2(ConnectorV2):
     """Utility class for quick manipulation of a connector pipeline."""
 
-    def __init__(self, ctx: ConnectorContextV2, connectors: List[ConnectorV2]):
-        assert len(connectors) > 0
-
-        super().__init__(ctx=ctx)
+    def __init__(
+        self,
+        *,
+        ctx: ConnectorContextV2,
+        connectors: List[ConnectorV2],
+        **kwargs,
+    ):
+        super().__init__(ctx=ctx, **kwargs)
 
         self.connectors = connectors
 
@@ -118,7 +123,12 @@ class ConnectorPipelineV2(ConnectorV2):
             f"{self.__class__.__name__}."
         )
 
-    def __call__(self, input_: Any, ctx: ConnectorContext) -> Any:
+    def __call__(
+        self,
+        input_: Any,
+        episodes: List[EpisodeType],
+        ctx: ConnectorContextV2,
+    ) -> Any:
         ret = input_
         for c in self.connectors:
             timer = self.timers[str(c)]
@@ -207,3 +217,30 @@ class ConnectorPipelineV2(ConnectorV2):
         else:
             self.input_type = None
             self.output_type = None
+
+
+class EnvToModulePipeline(ConnectorPipelineV2):
+    def __init__(self, *, ctx, connectors, **kwargs):
+        super().__init__(ctx=ctx, connectors=connectors, **kwargs)
+        # Add the default final connector piece for env-to-module pipelines:
+        # Extracting last obs from episodes and add them to input, iff this has not
+        # happened in any connector piece in this pipeline before.
+        if (
+            len(self.connectors) == 0
+            or not isinstance(self.connectors[-1], DefaultEnvToModule)
+        ):
+            self.append(DefaultEnvToModule(ctx=ctx))
+
+
+class ModuleToEnvPipeline(ConnectorPipelineV2):
+    def __init__(self, *, ctx, connectors, **kwargs):
+        super().__init__(ctx=ctx, connectors=connectors, **kwargs)
+
+        # Add the default final connector piece for env-to-module pipelines:
+        # Sampling actions from action_dist_inputs and add them to input, iff this has
+        # not happened in any connector piece in this pipeline before.
+        if (
+                len(self.connectors) == 0
+                or not isinstance(self.connectors[-1], DefaultModuleToEnv)
+        ):
+            self.append(DefaultModuleToEnv(ctx=ctx))

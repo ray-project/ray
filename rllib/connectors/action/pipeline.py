@@ -6,10 +6,9 @@ from ray.rllib.connectors.connector import (
     ActionConnector,
     Connector,
     ConnectorContext,
+    ConnectorPipeline,
 )
-from ray.rllib.connectors.connector_pipeline import ConnectorPipeline
 from ray.rllib.connectors.registry import get_connector, register_connector
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import ActionConnectorDataType
 from ray.util.annotations import PublicAPI
 from ray.util.timer import _Timer
@@ -31,11 +30,10 @@ class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
                 ac_data = c(ac_data)
         return ac_data
 
-    @override(ActionConnector)
-    def serialize(self):
+    def to_state(self):
         children = []
         for c in self.connectors:
-            state = c.serialize()
+            state = c.to_state()
             assert isinstance(state, tuple) and len(state) == 2, (
                 "Serialized connector state must be in the format of "
                 f"Tuple[name: str, params: Any]. Instead we got {state}"

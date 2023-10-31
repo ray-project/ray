@@ -1,51 +1,38 @@
 from typing import Any
 
-from ray.rllib.connectors.connector import Connector, ConnectorContextV2
-from ray.rllib.connectors.input_output_types import INPUT_OUTPUT_TYPE
+from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_context_v2 import  ConnectorContextV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import clip_action, get_base_struct_from_space
-from ray.rllib.utils.typing import ActionConnectorDataType
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class SampleActions(Connector):
+class DefaultModuleToEnv(ConnectorV2):
     """A connector that samples actions given action dist. inputs and a dist. class.
 
     The connector will only sample from the distribution, if the ACTIONS key
     cannot be found in the connector's input. Otherwise, it'll behave simply as pass
-    through. If ACTIONS is not present, but ACTION_DIST_INPUTS are, will create
+    through (noop). If ACTIONS is not present, but ACTION_DIST_INPUTS are, will create
     a distribution from the RLModule and sample from it (deterministically, if
     we are not exploring, stochastically, if we are).
 
-    input_type: INPUT_OUTPUT_TYPE.DICT_OF_MODULE_TO_DATA
+    input_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA
         Operates per RLModule as it will have to pull the action distribution from each
         in order to sample actions if necessary. Searches for the ACTIONS and
         ACTION_DIST_INPUTS keys in a module's outputs and - should ACTIONS not be found -
         sample actions from the module's action distribution.
-    output_type: INPUT_OUTPUT_TYPE.DICT_OF_MODULE_TO_DATA (same as input: data in, data out, however, data
+    output_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA (same as input: data in, data out, however, data
         out might contain an additional ACTIONS key if it was not previously present
         in the input).
     """
 
-    def __init__(self, ctx=None, **kwargs):
-        super().__init__(
-            input_type=INPUT_OUTPUT_TYPE.DICT_OF_MODULE_TO_DATA,
-            output_type=INPUT_OUTPUT_TYPE.DICT_OF_MODULE_TO_DATA,
-            **kwargs,
-        )
-
-    @override(Connector)
+    @override(ConnectorV2)
     def __call__(self, input_: Any, episodes, ctx: ConnectorContextV2) -> Any:
-
-        # Get the RLModule from the ctx:
-        marl_module = ctx.get_data("marl_module")
-        explore = ctx.get_data("explore")
 
         # Loop through all modules that created some output.
         for mid in input_.keys():
-            sa_module = marl_module.get_module(module_id=mid)
+            sa_module = ctx.rl_module.get_module(module_id=mid)
 
             # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
             # Create a distribution object.
@@ -56,12 +43,12 @@ class SampleActions(Connector):
                 and SampleBatch.ACTION_LOGP not in input_[mid]
             ):
                 dist_inputs = input_[mid][SampleBatch.ACTION_DIST_INPUTS]
-                if explore:
+                if ctx.explore:
                     action_dist_class = sa_module.get_exploration_action_dist_cls()
                 else:
                     action_dist_class = sa_module.get_inference_action_dist_cls()
                 action_dist = action_dist_class.from_logits(dist_inputs)
-                if not explore:
+                if not ctx.explore:
                     action_dist = action_dist.to_deterministic()
 
             # If `forward_...()` returned actions, use them here as-is.

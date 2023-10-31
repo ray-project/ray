@@ -21,7 +21,7 @@ class TestActionConnector(unittest.TestCase):
         ctx = ConnectorContext()
         connectors = [ConvertToNumpyConnector(ctx)]
         pipeline = ActionConnectorPipeline(ctx, connectors)
-        name, params = pipeline.serialize()
+        name, params = pipeline.to_state()
         restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ActionConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ConvertToNumpyConnector))
@@ -35,7 +35,7 @@ class TestActionConnector(unittest.TestCase):
         ctx = ConnectorContext()
         c = ConvertToNumpyConnector(ctx)
 
-        name, params = c.serialize()
+        name, params = c.to_state()
 
         self.assertEqual(name, "ConvertToNumpyConnector")
 
@@ -56,7 +56,7 @@ class TestActionConnector(unittest.TestCase):
         )
         c = NormalizeActionsConnector(ctx)
 
-        name, params = c.serialize()
+        name, params = c.to_state()
         self.assertEqual(name, "NormalizeActionsConnector")
 
         restored = get_connector(name, ctx, params)
@@ -73,7 +73,7 @@ class TestActionConnector(unittest.TestCase):
         )
         c = ClipActionsConnector(ctx)
 
-        name, params = c.serialize()
+        name, params = c.to_state()
         self.assertEqual(name, "ClipActionsConnector")
 
         restored = get_connector(name, ctx, params)
@@ -90,7 +90,7 @@ class TestActionConnector(unittest.TestCase):
         )
         c = ImmutableActionsConnector(ctx)
 
-        name, params = c.serialize()
+        name, params = c.to_state()
         self.assertEqual(name, "ImmutableActionsConnector")
 
         restored = get_connector(name, ctx, params)

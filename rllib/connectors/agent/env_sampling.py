@@ -5,7 +5,6 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
 )
 from ray.rllib.connectors.registry import register_connector
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import AgentConnectorDataType
 from ray.util.annotations import PublicAPI
 
@@ -20,8 +19,7 @@ class EnvSamplingAgentConnector(AgentConnector):
         # EnvSamplingAgentConnector is a no-op connector.
         return ac_data
 
-    @override(AgentConnector)
-    def serialize(self):
+    def to_state(self):
         return EnvSamplingAgentConnector.__name__, {}
 
     @staticmethod

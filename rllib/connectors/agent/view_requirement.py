@@ -7,7 +7,6 @@ from ray.rllib.connectors.connector import (
 )
 from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
@@ -123,8 +122,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         )
         return return_data
 
-    @override(AgentConnector)
-    def serialize(self):
+    def to_state(self):
         return ViewRequirementAgentConnector.__name__, None
 
     @staticmethod

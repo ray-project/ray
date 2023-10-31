@@ -83,8 +83,8 @@ class SingleAgentEnvRunner(EnvRunner):
         self.module: RLModule = module_spec.build()
 
         # Create the two connector pipelines: env-to-module and module-to-env.
-        self.env_to_module, self.module_to_env = (
-            self.config.get_connector_pipelines(env=self.env, rl_module=self.module)
+        self.env_to_module, self.module_to_env, self.connector_ctx = (
+            self.config.connector_creator(env=self.env, rl_module=self.module)
         )
 
         # This should be the default.
@@ -156,13 +156,13 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Get initial states for all 'batch_size_B` rows in the forward batch,
         # i.e. for all vector sub_envs.
-        if hasattr(self.module, "get_initial_state"):
-            initial_states = tree.map_structure(
-                lambda s: np.repeat(s, self.num_envs, axis=0),
-                self.module.get_initial_state(),
-            )
-        else:
-            initial_states = {}
+        #if hasattr(self.module, "get_initial_state"):
+        #    initial_states = tree.map_structure(
+        #        lambda s: np.repeat(s, self.num_envs, axis=0),
+        #        self.module.get_initial_state(),
+        #    )
+        #else:
+        #    initial_states = {}
 
         # Have to reset the env (on all vector sub_envs).
         if force_reset or self._needs_initial_reset:
@@ -180,7 +180,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     initial_info=infos[i],
                     # TODO (simon): Check, if this works for the default
                     # stateful encoders.
-                    initial_state={k: s[i] for k, s in states.items()},
+                    #initial_state={k: s[i] for k, s in states.items()},
                 )
         # Do not reset envs, but instead continue in already started episodes.
         else:
@@ -189,15 +189,15 @@ class SingleAgentEnvRunner(EnvRunner):
             # Compile the initial state for each batch row (vector sub_env):
             # If episode just started, use the model's initial state, in the
             # other case use the state stored last in the Episode.
-            states = {
-                k: np.stack(
-                    [
-                        initial_states[k][i] if eps.states is None else eps.states[k]
-                        for i, eps in enumerate(self._episodes)
-                    ]
-                )
-                for k in initial_states.keys()
-            }
+            #states = {
+            #    k: np.stack(
+            #        [
+            #            initial_states[k][i] if eps.states is None else eps.states[k]
+            #            for i, eps in enumerate(self._episodes)
+            #        ]
+            #    )
+            #    for k in initial_states.keys()
+            #}
 
         # Loop through env in enumerate.(self._episodes):
         ts = 0
@@ -210,32 +210,36 @@ class SingleAgentEnvRunner(EnvRunner):
                 # TODO (simon): Add action_logp for smapled actions.
             # Compute an action using the RLModule.
             else:
-                # Note, RLModule `forward()` methods expect `NestedDict`s.
-                batch = {
-                    STATE_IN: tree.map_structure(
-                        lambda s: self._convert_from_numpy(s),
-                        states,
-                    ),
-                    SampleBatch.OBS: self._convert_from_numpy(obs),
-                }
+                to_module = self.env_to_module(self.connector_ctx)
+                #batch = {
+                #    STATE_IN: tree.map_structure(
+                #        lambda s: self._convert_from_numpy(s),
+                #        states,
+                #    ),
+                #    SampleBatch.OBS: self._convert_from_numpy(obs),
+                #}
                 from ray.rllib.utils.nested_dict import NestedDict
 
-                batch = NestedDict(batch)
+                # Note, RLModule `forward()` methods expect `NestedDict`s.
+                to_module = NestedDict(to_module)
 
                 # Explore or not.
                 if explore:
-                    fwd_out = self.module.forward_exploration(batch)
+                    to_env = self.module.forward_exploration(to_module)
                 else:
-                    fwd_out = self.module.forward_inference(batch)
+                    to_env = self.module.forward_inference(to_module)
 
-                actions, action_logp = self._sample_actions_if_necessary(
-                    fwd_out, explore
-                )
+                to_env = self.module_to_env(to_env)
+                actions = from_module[SampleBatch.ACTIONS]
 
-                fwd_out = convert_to_numpy(fwd_out)
+                #actions, action_logp = self._sample_actions_if_necessary(
+                #    fwd_out, explore
+                #)
 
-                if STATE_OUT in fwd_out:
-                    states = fwd_out[STATE_OUT]
+                #fwd_out = convert_to_numpy(fwd_out)
+
+                #if STATE_OUT in fwd_out:
+                #    states = fwd_out[STATE_OUT]
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs

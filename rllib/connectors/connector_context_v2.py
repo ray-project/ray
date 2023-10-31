@@ -1,11 +1,14 @@
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.utils.typing import EnvType
+from ray.rllib.utils.typing import AgentID, EnvType
 from ray.util.annotations import PublicAPI
 
 
+
 @PublicAPI(stability="alpha")
+@dataclass
 class ConnectorContextV2:
     """Information needed by pieces of connector pipeline to communicate with each other.
 
@@ -20,49 +23,45 @@ class ConnectorContextV2:
      - agent_to_policy_mappings need to be stored as they might be stochastic. Then the
      to_env pipeline can properly map back from module (formerly known as policy) IDs
      to agent IDs.
+
+    Attributes:
+        env: The Env object used to reset/step through in the current Env -> Module
+            setup.
+        rl_module: The RLModule used for forward passes in the current Env -> Module
+            setup.
+        explore: Whether `explore` is currently on. Per convention, if True, the
+            RLModule's `forward_exploration` method should be called, if False, the
+            EnvRunner should call `forward_inference` instead.
+        agent_id: The (optional) current agent ID that the connector should be
+            creating/extracting data for.
+        episode_index: The (optional) index within the list of SingleAgentEpisodes or
+            MultiAgentEpisodes, which each connector is given in a call, that belongs
+            to the given agent_id.
+        data: Optional additional context data that needs to be exchanged between
+            different Connector pieces and -pipelines.
     """
 
-    def __init__(
-        self,
-        rl_module: Optional[RLModule] = None,
-        env: Optional[EnvType] = None,
-        explore: Optional[bool] = None,
-        *,
-        data: Optional[Any] = None,
-    ):
-        """Initializes a ConnectorContextV2 instance.
+    env: Optional[EnvType] = None
+    rl_module: Optional[RLModule] = None
+    explore: Optional[bool] = None
+    data: Optional[Any] = None
 
-        Args:
-            rl_module: The RLModule used for forward passes in the current Env -> Module
-                setup.
-            env: The Env object used to reset/step through in the current Env -> Module
-                setup.
-            explore: Whether `explore` is currently on. Per convention, if True, the
-                RLModule's `forward_exploration` method should be called, if False, the
-                EnvRunner should call `forward_inference` instead.
-            data: Optional additional context data that needs to be exchanged between
-                different Connector pieces and -pipelines.
-        """
-
-        self.rl_module = rl_module
-        self.env = env
-        self.explore = explore
-
-        self._data = data or {}
+    # TODO (sven): Do these have to be here??
+    agent_id: Optional[AgentID] = None
+    episode_index: Optional[int] = None
 
     def add_data(self, key, value):
-        assert key not in self._data
-        self._data[key] = value
+        assert key not in self.data
+        self.data[key] = value
 
     def get_data(self, key):
-        assert key in self._data
-        return self._data[key]
+        assert key in self.data
+        return self.data[key]
 
     def override_data(self, key, value):
-        assert key in self._data
-        self._data[key] = value
+        assert key in self.data
+        self.data[key] = value
 
     def del_data(self, key):
-        assert key in self._data
-        del self._data[key]
-
+        assert key in self.data
+        del self.data[key]

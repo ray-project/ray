@@ -3,7 +3,6 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
 )
 from ray.util.annotations import PublicAPI
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import Filter
 
 

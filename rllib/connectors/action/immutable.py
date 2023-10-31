@@ -7,7 +7,6 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
 )
 from ray.rllib.connectors.registry import register_connector
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import make_action_immutable
 from ray.rllib.utils.typing import ActionConnectorDataType
 from ray.util.annotations import PublicAPI
@@ -30,8 +29,7 @@ class ImmutableActionsConnector(ActionConnector):
             (actions, states, fetches),
         )
 
-    @override(ActionConnector)
-    def serialize(self):
+    def to_state(self):
         return ImmutableActionsConnector.__name__, None
 
     @staticmethod

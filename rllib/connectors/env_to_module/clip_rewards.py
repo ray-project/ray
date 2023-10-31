@@ -14,9 +14,9 @@ from ray.util.annotations import PublicAPI
 class ClipRewards(ConnectorV2):
     def __init__(self, ctx: ConnectorContextV2, sign=False, limit=None):
         super().__init__(ctx)
-        assert not sign or not limit, (
-            "Should not enable both sign and limit reward clipping!"
-        )
+        assert (
+            not sign or not limit
+        ), "Should not enable both sign and limit reward clipping!"
         self.sign = sign
         self.limit = limit
 

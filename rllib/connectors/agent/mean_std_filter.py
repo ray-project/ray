@@ -11,7 +11,6 @@ from ray.rllib.connectors.connector import (
 )
 from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.filter import MeanStdFilter, ConcurrentMeanStdFilter
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
@@ -66,8 +65,7 @@ class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
 
         return ac_data
 
-    @override(AgentConnector)
-    def serialize(self):
+    def to_state(self):
         # Flattening is deterministic
         flattened_rs = tree.flatten(self.filter.running_stats)
         flattened_buffer = tree.flatten(self.filter.buffer)

@@ -31,7 +31,7 @@ class TestAgentConnector(unittest.TestCase):
         ctx = ConnectorContext()
         connectors = [ClipRewardAgentConnector(ctx, False, 1.0)]
         pipeline = AgentConnectorPipeline(ctx, connectors)
-        name, params = pipeline.serialize()
+        name, params = pipeline.to_state()
         restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ClipRewardAgentConnector))
@@ -48,7 +48,7 @@ class TestAgentConnector(unittest.TestCase):
         ctx = ConnectorContext(config={}, observation_space=obs_space)
 
         c = ObsPreprocessorConnector(ctx)
-        name, params = c.serialize()
+        name, params = c.to_state()
 
         restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, ObsPreprocessorConnector))
@@ -76,7 +76,7 @@ class TestAgentConnector(unittest.TestCase):
         ctx = ConnectorContext()
 
         c = ClipRewardAgentConnector(ctx, limit=2.0)
-        name, params = c.serialize()
+        name, params = c.to_state()
 
         self.assertEqual(name, "ClipRewardAgentConnector")
         self.assertAlmostEqual(params["limit"], 2.0)
@@ -101,7 +101,7 @@ class TestAgentConnector(unittest.TestCase):
 
         c = FlattenDataAgentConnector(ctx)
 
-        name, params = c.serialize()
+        name, params = c.to_state()
         restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, FlattenDataAgentConnector))
 
@@ -186,7 +186,7 @@ class TestAgentConnector(unittest.TestCase):
                 filter_connector.transform(ac)
 
             # Create another connector to set state to
-            _, state = filter_connector.serialize()
+            _, state = filter_connector.to_state()
             another_filter_connector = (
                 MeanStdObservationFilterAgentConnector.from_state(ctx, state)
             )
@@ -502,11 +502,11 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         ]
         agent_connector = AgentConnectorPipeline(ctx, connectors)
 
-        name, params = agent_connector.serialize()
+        name, params = agent_connector.to_state()
         restored = get_connector(name, ctx, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         for cidx, c in enumerate(connectors):
-            check(restored.connectors[cidx].serialize(), c.serialize())
+            check(restored.connectors[cidx].to_state(), c.to_state())
 
         # simulate a rollout
         n_steps = 10

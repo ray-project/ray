@@ -6,10 +6,9 @@ from ray.rllib.connectors.connector import (
     AgentConnector,
     Connector,
     ConnectorContext,
+    ConnectorPipeline,
 )
-from ray.rllib.connectors.connector_pipeline import ConnectorPipeline
 from ray.rllib.connectors.registry import get_connector, register_connector
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
 from ray.util.annotations import PublicAPI
 from ray.util.timer import _Timer
@@ -42,11 +41,10 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
                 ret = c(ret)
         return ret
 
-    @override(AgentConnector)
-    def serialize(self):
+    def to_state(self):
         children = []
         for c in self.connectors:
-            state = c.serialize()
+            state = c.to_state()
             assert isinstance(state, tuple) and len(state) == 2, (
                 "Serialized connector state must be in the format of "
                 f"Tuple[name: str, params: Any]. Instead we got {state}"
@@ -55,7 +53,6 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
             children.append(state)
         return AgentConnectorPipeline.__name__, children
 
-    @override(AgentConnector)
     @staticmethod
     def from_state(ctx: ConnectorContext, params: List[Any]):
         assert (

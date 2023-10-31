@@ -5,7 +5,6 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
 )
 from ray.rllib.connectors.registry import register_connector
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
@@ -49,8 +48,7 @@ def register_lambda_action_connector(
                 fn(actions, states, fetches),
             )
 
-        @override(ActionConnector)
-        def serialize(self):
+        def to_state(self):
             return name, None
 
         @staticmethod

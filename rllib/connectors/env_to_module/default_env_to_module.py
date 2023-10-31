@@ -27,6 +27,7 @@ class DefaultEnvToModule(ConnectorV2):
         input_: Any,
         episodes: List[EpisodeType],
         ctx: ConnectorContextV2,
+        **kwargs,
     ):
         # If obs are not already part of the input, add the most recent ones (from all
         # single-agent episodes).
