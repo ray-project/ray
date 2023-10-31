@@ -155,4 +155,8 @@ class AlphaZeroConfig(AlgorithmConfig):
     error=True,
 )
 class AlphaZero(Algorithm):
-    pass
+    @classmethod
+    @override(AlgorithmConfig)
+    def get_default_config(cls) -> AlgorithmConfig:
+        return AlphaZeroConfig()
+

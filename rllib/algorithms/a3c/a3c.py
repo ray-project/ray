@@ -98,4 +98,8 @@ class A3CConfig(AlgorithmConfig):
     error=True,
 )
 class A3C(Algorithm):
-    pass
+    @classmethod
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfig:
+        return A3CConfig()
+

@@ -104,4 +104,8 @@ class AlphaStarConfig(appo.APPOConfig):
     error=True,
 )
 class AlphaStar(appo.APPO):
-    pass
+    @classmethod
+    @override(appo.APPO)
+    def get_default_config(cls) -> AlgorithmConfig:
+        return AlphaStarConfig()
+
