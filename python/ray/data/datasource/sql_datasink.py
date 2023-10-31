@@ -7,8 +7,7 @@ from ray.data.datasource.sql_datasource import Connection, _connect
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="alpha")
-class SQLDatasink(Datasink):
+class _SQLDatasink(Datasink):
 
     _MAX_ROWS_PER_WRITE = 128
 

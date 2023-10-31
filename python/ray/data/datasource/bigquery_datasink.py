@@ -20,8 +20,7 @@ MAX_RETRY_CNT = 10
 RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
 
 
-@PublicAPI(stability="alpha")
-class BigQueryDatasink(Datasink):
+class _BigQueryDatasink(Datasink):
     def __init__(self, project_id: str, dataset: str) -> None:
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")
