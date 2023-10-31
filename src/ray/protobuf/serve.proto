@@ -67,8 +67,7 @@ message AutoscalingConfig {
 enum EncodingType {
   TEXT = 0;
   JSON = 1;
-} 
-
+}
 
 enum AccessLoggingType {
   // Enable both stream and file based log
@@ -78,12 +77,11 @@ enum AccessLoggingType {
   DISABLE = 3;
 }
 
-
 message LoggingConfig {
   EncodingType encoding = 1;
   string log_level = 2;
   string logs_dir = 3;
-  AccessLoggingType access_log = 4; 
+  AccessLoggingType access_log = 4;
 }
 
 //[End] Logging Config
