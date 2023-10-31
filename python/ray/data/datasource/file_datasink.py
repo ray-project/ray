@@ -20,8 +20,6 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
-WriteResult = Any
-
 logger = DatasetLogger(__name__)
 
 
@@ -87,7 +85,7 @@ class _FileDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> WriteResult:
+    ) -> Any:
         num_rows_written = 0
 
         block_index = 0
@@ -115,7 +113,7 @@ class _FileDatasink(Datasink):
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[WriteResult]) -> None:
+    def on_write_complete(self, write_results: List[Any]) -> None:
         if not self.has_created_dir:
             return
 

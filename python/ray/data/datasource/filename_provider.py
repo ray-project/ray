@@ -21,11 +21,12 @@ class FilenameProvider:
 
     Example:
 
-        This snippets show you how to encode labels in written files. For example, if
+        This snippet shows you how to encode labels in written files. For example, if
         `"cat"` is a label, you might write a file named `cat_000000_000000_000000.png`.
 
         .. testcode::
 
+            import ray
             from ray.data.datasource import FilenameProvider
 
             class ImageFilenameProvider(FilenameProvider):
@@ -38,6 +39,13 @@ class FilenameProvider:
                         f"{row['label']}_{task_index:06}_{block_index:06}"
                         f"_{row_index:06}.{self.file_format}"
                     )
+
+            ds = ray.data.read_parquet("s3://anonymous@ray-example-data/images.parquet")
+            ds.write_images(
+                "/tmp/results",
+                column="image",
+                filename_provider=ImageFilenameProvider("png")
+            )
     """  # noqa: E501
 
     def get_filename_for_block(
@@ -47,6 +55,9 @@ class FilenameProvider:
 
         .. note::
             Filenames must be unique and deterministic for a given task and block index.
+
+            A block consists of multiple rows and corresponds to a single output file.
+            Each task might produce a different number of blocks.
 
         Args:
             block: The block that will be written to a file.
@@ -63,6 +74,15 @@ class FilenameProvider:
         .. note::
             Filenames must be unique and deterministic for a given task, block, and row
             index.
+
+            A block consists of multiple rows, and each row corresponds to a single
+            output file. Each task might produce a different number of blocks, and each
+            block might contain a different number of rows.
+
+        .. tip::
+            If you require a contiguous row index into the global dataset, use
+            :meth:`~Dataset.iter_rows`. This method is single-threaded and isn't
+            recommended for large datasets.
 
         Args:
             row: The row that will be written to a file.
