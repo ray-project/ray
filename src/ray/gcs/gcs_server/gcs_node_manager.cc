@@ -60,9 +60,6 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                   << ", address = " << request.node_info().node_manager_address()
                   << ", node name = " << request.node_info().node_name();
     if (request.node_info().is_head_node()) {
-      RAY_LOG(INFO) << "Registering head node:" << node_id << " and is_alive: "
-                    << (request.node_info().state() == rpc::GcsNodeInfo::ALIVE);
-
       // mark the old head node as dead
       auto head_node_it =
           std::find_if(alive_nodes_.begin(), alive_nodes_.end(), [](const auto &node) {
