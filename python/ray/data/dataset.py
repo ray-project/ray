@@ -115,10 +115,10 @@ from ray.data.datasource import (
     ImageDatasource,
     JSONDatasource,
     NumpyDatasource,
-    ParquetDatasink,
     ReadTask,
     SQLDatasource,
     TFRecordDatasource,
+    _ParquetDatasink,
 )
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -2725,7 +2725,7 @@ class Dataset:
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
         """
-        datasink = ParquetDatasink(
+        datasink = _ParquetDatasink(
             path,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
             arrow_parquet_args=arrow_parquet_args,

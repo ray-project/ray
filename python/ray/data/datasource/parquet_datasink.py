@@ -8,7 +8,6 @@ from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
-from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -17,8 +16,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
-class ParquetDatasink(BlockBasedFileDatasink):
+class _ParquetDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,
