@@ -363,7 +363,7 @@ Content-Type: application/json
 ```
 
 ```{eval-rst}
-.. autoclass:: schema.ReadDeploymentModel
+.. autoclass:: ray.serve.schema.ReadDeploymentModel
    :members:
    :show-inheritance:
 ```
