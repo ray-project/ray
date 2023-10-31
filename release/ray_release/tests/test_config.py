@@ -2,7 +2,6 @@ import sys
 import yaml
 import pytest
 
-from ray_release.bazel import bazel_runfile
 from ray_release.test import Test
 from ray_release.config import (
     read_and_validate_release_test_collection,
@@ -14,8 +13,8 @@ from ray_release.config import (
 from ray_release.exception import ReleaseTestConfigError
 
 _TEST_COLLECTION_FILES = [
-    bazel_runfile("release/release_tests.yaml"),
-    bazel_runfile("release/ray_release/tests/test_collection_data.yaml"),
+    "release/release_tests.yaml",
+    "release/ray_release/tests/test_collection_data.yaml",
 ]
 
 VALID_TEST = Test(
