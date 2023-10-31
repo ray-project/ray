@@ -2,12 +2,14 @@ import argparse
 import os
 
 import numpy as np
-import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
-from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_pipeline_v2 import (
+    EnvToModulePipeline,
+    ModuleToEnvPipeline,
+)
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -47,6 +49,7 @@ class PrevRewardPrevActionConnector(ConnectorV2):
         super().__init__(ctx=ctx)
         self.prev_r = prev_r
         self.prev_a = prev_a
+        self.action_space = self.ctx.env.single_action_space
 
     # Only need to override the __call__ method to implement the extraction of
     # state, reward, and action data from the ongoing episodes.
@@ -66,9 +69,9 @@ class PrevRewardPrevActionConnector(ConnectorV2):
         prev_a = []
         for episode in episodes:
             if self.prev_r:
-                prev_r.append(episode.rewards[-1])
+                prev_r.append(episode.rewards[-1] if len(episode) > 0 else 0.0)
             if self.prev_a:
-                prev_a.append(episode.actions[-1])
+                prev_a.append(episode.actions[-1] if len(episode) > 0 else self.action_space.sample())
 
         input_[SampleBatch.PREV_REWARDS] = np.array(prev_r)
         # Support nested action structures.
@@ -82,7 +85,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init()
+    ray.init(local_mode=True)#TODO
 
     # Define our custom connector pipelines.
     def connector_creator(env, rl_module):
@@ -94,8 +97,8 @@ if __name__ == "__main__":
             connectors=[
                 PrevRewardPrevActionConnector(
                     ctx=ctx,
-                    prev_r=args.prev_r,
-                    prev_a=args.prev_a,
+                    prev_r=args.use_prev_reward,
+                    prev_a=args.use_prev_action,
                 ),
             ],
         )
@@ -125,7 +128,7 @@ if __name__ == "__main__":
                 "use_lstm": True,
                 "lstm_cell_size": 32,
                 "vf_share_layers": True,
-            }
+            },
         )
     )
 

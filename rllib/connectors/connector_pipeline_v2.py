@@ -1,10 +1,11 @@
 from collections import defaultdict
 import logging
-from typing import Any, List, Union
+from typing import Any, List, Optional, Union
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.connectors.env_to_module.default_env_to_module import DefaultEnvToModule
+from ray.rllib.connectors.module_to_env.default_module_to_env import DefaultModuleToEnv
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
@@ -21,15 +22,13 @@ class ConnectorPipelineV2(ConnectorV2):
         self,
         *,
         ctx: ConnectorContextV2,
-        connectors: List[ConnectorV2],
+        connectors: Optional[List[ConnectorV2]] = None,
         **kwargs,
     ):
         super().__init__(ctx=ctx, **kwargs)
 
-        self.connectors = connectors
-
-        self.input_type = self.connectors[0].input_type
-        self.output_type = self.connectors[-1].output_type
+        self.connectors = connectors or []
+        self._fix_input_output_types()
 
         self.timers = defaultdict(_Timer)
 
@@ -130,40 +129,40 @@ class ConnectorPipelineV2(ConnectorV2):
         ctx: ConnectorContextV2,
     ) -> Any:
         ret = input_
-        for c in self.connectors:
-            timer = self.timers[str(c)]
+        for connector in self.connectors:
+            timer = self.timers[str(connector)]
             with timer:
-                ret = c(ret)
+                ret = connector(input_=ret, episodes=episodes, ctx=ctx)
         return ret
 
-    @override(ConnectorV2)
-    def serialize(self):
-        children = []
-        for c in self.connectors:
-            state = c.serialize()
-            assert isinstance(state, tuple) and len(state) == 2, (
-                "Serialized connector state must be in the format of "
-                f"Tuple[name: str, params: Any]. Instead we got {state}"
-                f"for connector {c.__name__}."
-            )
-            children.append(state)
-        return ConnectorPipelineV2.__name__, children
-
-    @override(ConnectorV2)
-    @staticmethod
-    def from_state(ctx: ConnectorContextV2, params: List[Any]):
-        assert (
-            type(params) == list
-        ), "AgentConnectorPipeline takes a list of connector params."
-        connectors = []
-        for state in params:
-            try:
-                name, subparams = state
-                connectors.append(get_connector(name, ctx, subparams))
-            except Exception as e:
-                logger.error(f"Failed to de-serialize connector state: {state}")
-                raise e
-        return ConnectorPipelineV2(ctx, connectors)
+    #@override(ConnectorV2)
+    #def serialize(self):
+    #    children = []
+    #    for c in self.connectors:
+    #        state = c.serialize()
+    #        assert isinstance(state, tuple) and len(state) == 2, (
+    #            "Serialized connector state must be in the format of "
+    #            f"Tuple[name: str, params: Any]. Instead we got {state}"
+    #            f"for connector {c.__name__}."
+    #        )
+    #        children.append(state)
+    #    return ConnectorPipelineV2.__name__, children
+    #
+    #@override(ConnectorV2)
+    #@staticmethod
+    #def from_state(ctx: ConnectorContextV2, params: List[Any]):
+    #    assert (
+    #        type(params) == list
+    #    ), "AgentConnectorPipeline takes a list of connector params."
+    #    connectors = []
+    #    for state in params:
+    #        try:
+    #            name, subparams = state
+    #            connectors.append(get_connector(name, ctx, subparams))
+    #        except Exception as e:
+    #            logger.error(f"Failed to de-serialize connector state: {state}")
+    #            raise e
+    #    return ConnectorPipelineV2(ctx, connectors)
 
     def __str__(self, indentation: int = 0):
         return "\n".join(
@@ -220,27 +219,34 @@ class ConnectorPipelineV2(ConnectorV2):
 
 
 class EnvToModulePipeline(ConnectorPipelineV2):
-    def __init__(self, *, ctx, connectors, **kwargs):
+    def __init__(self, *, ctx, connectors: Optional[List[ConnectorV2]] = None, **kwargs):
         super().__init__(ctx=ctx, connectors=connectors, **kwargs)
         # Add the default final connector piece for env-to-module pipelines:
         # Extracting last obs from episodes and add them to input, iff this has not
         # happened in any connector piece in this pipeline before.
-        if (
-            len(self.connectors) == 0
-            or not isinstance(self.connectors[-1], DefaultEnvToModule)
+        if len(self.connectors) == 0 or not isinstance(
+            self.connectors[-1], DefaultEnvToModule
         ):
             self.append(DefaultEnvToModule(ctx=ctx))
 
+    def __call__(self, *, input_: Optional[Any] = None, episodes, ctx, **kwargs):
+        # Make sure user does not necessarily send initial input into this pipeline.
+        # Might just be empty and to be populated from `episodes`.
+        return super().__call__(
+            input_=input_ or {},
+            episodes=episodes,
+            ctx=ctx,
+            **kwargs,
+        )
 
 class ModuleToEnvPipeline(ConnectorPipelineV2):
-    def __init__(self, *, ctx, connectors, **kwargs):
+    def __init__(self, *, ctx, connectors: Optional[List[ConnectorV2]] = None, **kwargs):
         super().__init__(ctx=ctx, connectors=connectors, **kwargs)
 
         # Add the default final connector piece for env-to-module pipelines:
         # Sampling actions from action_dist_inputs and add them to input, iff this has
         # not happened in any connector piece in this pipeline before.
-        if (
-                len(self.connectors) == 0
-                or not isinstance(self.connectors[-1], DefaultModuleToEnv)
+        if len(self.connectors) == 0 or not isinstance(
+            self.connectors[-1], DefaultModuleToEnv
         ):
             self.append(DefaultModuleToEnv(ctx=ctx))

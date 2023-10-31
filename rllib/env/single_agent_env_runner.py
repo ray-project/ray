@@ -49,7 +49,10 @@ class SingleAgentEnvRunner(EnvRunner):
                 _global_registry.get(ENV_CREATOR, self.config.env),
                 self.config.env_config,
             )
-            if _global_registry.contains(ENV_CREATOR, self.config.env)
+            if (
+                isinstance(self.config.env, str)
+                and _global_registry.contains(ENV_CREATOR, self.config.env)
+            )
             else partial(
                 _gym_env_creator,
                 env_context=self.config.env_config,
@@ -83,9 +86,11 @@ class SingleAgentEnvRunner(EnvRunner):
         self.module: RLModule = module_spec.build()
 
         # Create the two connector pipelines: env-to-module and module-to-env.
-        self.env_to_module, self.module_to_env, self.connector_ctx = (
-            self.config.connector_creator(env=self.env, rl_module=self.module)
-        )
+        (
+            self.env_to_module,
+            self.module_to_env,
+            self.connector_ctx,
+        ) = self.config.connector_creator(env=self.env, rl_module=self.module)
 
         # This should be the default.
         self._needs_initial_reset: bool = True
@@ -156,12 +161,12 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Get initial states for all 'batch_size_B` rows in the forward batch,
         # i.e. for all vector sub_envs.
-        #if hasattr(self.module, "get_initial_state"):
+        # if hasattr(self.module, "get_initial_state"):
         #    initial_states = tree.map_structure(
         #        lambda s: np.repeat(s, self.num_envs, axis=0),
         #        self.module.get_initial_state(),
         #    )
-        #else:
+        # else:
         #    initial_states = {}
 
         # Have to reset the env (on all vector sub_envs).
@@ -169,7 +174,7 @@ class SingleAgentEnvRunner(EnvRunner):
             obs, infos = self.env.reset()
 
             self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
-            states = initial_states
+            #states = initial_states
 
             # Set initial obs and states in the episodes.
             for i in range(self.num_envs):
@@ -180,7 +185,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     initial_info=infos[i],
                     # TODO (simon): Check, if this works for the default
                     # stateful encoders.
-                    #initial_state={k: s[i] for k, s in states.items()},
+                    # initial_state={k: s[i] for k, s in states.items()},
                 )
         # Do not reset envs, but instead continue in already started episodes.
         else:
@@ -189,7 +194,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Compile the initial state for each batch row (vector sub_env):
             # If episode just started, use the model's initial state, in the
             # other case use the state stored last in the Episode.
-            #states = {
+            # states = {
             #    k: np.stack(
             #        [
             #            initial_states[k][i] if eps.states is None else eps.states[k]
@@ -197,12 +202,11 @@ class SingleAgentEnvRunner(EnvRunner):
             #        ]
             #    )
             #    for k in initial_states.keys()
-            #}
+            # }
 
         # Loop through env in enumerate.(self._episodes):
         ts = 0
 
-        # print(f"EnvRunner {self.worker_index}: {self.module.weights[0][0][0]}")
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
@@ -210,14 +214,17 @@ class SingleAgentEnvRunner(EnvRunner):
                 # TODO (simon): Add action_logp for smapled actions.
             # Compute an action using the RLModule.
             else:
-                to_module = self.env_to_module(self.connector_ctx)
-                #batch = {
+                to_module = self.env_to_module(
+                    episodes=self._episodes,
+                    ctx=self.connector_ctx,
+                )
+                # batch = {
                 #    STATE_IN: tree.map_structure(
                 #        lambda s: self._convert_from_numpy(s),
                 #        states,
                 #    ),
                 #    SampleBatch.OBS: self._convert_from_numpy(obs),
-                #}
+                # }
                 from ray.rllib.utils.nested_dict import NestedDict
 
                 # Note, RLModule `forward()` methods expect `NestedDict`s.
@@ -229,16 +236,20 @@ class SingleAgentEnvRunner(EnvRunner):
                 else:
                     to_env = self.module.forward_inference(to_module)
 
-                to_env = self.module_to_env(to_env)
-                actions = from_module[SampleBatch.ACTIONS]
+                to_env = self.module_to_env(
+                    input_=to_env,
+                    episodes=self._episodes,
+                    ctx=self.connector_ctx,
+                )
+                actions = to_env[SampleBatch.ACTIONS]
 
-                #actions, action_logp = self._sample_actions_if_necessary(
+                # actions, action_logp = self._sample_actions_if_necessary(
                 #    fwd_out, explore
-                #)
+                # )
 
-                #fwd_out = convert_to_numpy(fwd_out)
+                # fwd_out = convert_to_numpy(fwd_out)
 
-                #if STATE_OUT in fwd_out:
+                # if STATE_OUT in fwd_out:
                 #    states = fwd_out[STATE_OUT]
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)

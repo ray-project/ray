@@ -27,7 +27,7 @@ class ConnectorV2(abc.ABC):
 
     def __init__(self, *, ctx: ConnectorContextV2, **kwargs):
         """Initializes a ConnectorV2 instance.
-        
+
         Args:
             ctx: The current ConnectorContextV2.
             **kwargs: Forward API-compatibility kwargs.
@@ -63,31 +63,31 @@ class ConnectorV2(abc.ABC):
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    @abc.abstractmethod
-    def serialize(self) -> Tuple[str, Any]:
-        """Serialize a connector into a JSON serializable Tuple.
+    #@abc.abstractmethod
+    #def serialize(self) -> Tuple[str, Any]:
+    #    """Serialize a connector into a JSON serializable Tuple.
 
-        `serialize()` is required, so that all Connectors are serializable.
+    #    `serialize()` is required, so that all Connectors are serializable.
 
-        Returns:
-            A tuple of connector's name and its serialized states.
-            String should match the name used to register the connector,
-            while state can be any single data structure that contains the
-            serialized state of the connector. If a connector is stateless,
-            state can simply be None.
-        """
+    #    Returns:
+    #        A tuple of connector's name and its serialized states.
+    #        String should match the name used to register the connector,
+    #        while state can be any single data structure that contains the
+    #        serialized state of the connector. If a connector is stateless,
+    #        state can simply be None.
+    #    """
 
-    @staticmethod
-    @abc.abstractmethod
-    def from_state(ctx: ConnectorContextV2, params: Any) -> "ConnectorV2":
-        """De-serialize a JSON params back into a Connector.
+    #@staticmethod
+    #@abc.abstractmethod
+    #def from_state(ctx: ConnectorContextV2, params: Any) -> "ConnectorV2":
+    #    """De-serialize a JSON params back into a Connector.
 
-        `from_state()` is required, so that all Connectors are serializable.
+    #    `from_state()` is required, so that all Connectors are serializable.
 
-        Args:
-            ctx: ConnectorContextV2 for constructing this connector.
-            params: Serialized states of the connector to be recovered.
+    #    Args:
+    #        ctx: ConnectorContextV2 for constructing this connector.
+    #        params: Serialized states of the connector to be recovered.
 
-        Returns:
-            De-serialized connector.
-        """
+    #    Returns:
+    #        De-serialized connector.
+    #    """

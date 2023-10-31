@@ -1,7 +1,7 @@
 from typing import Any
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.connector_context_v2 import  ConnectorContextV2
+from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.util.annotations import PublicAPI
@@ -22,7 +22,8 @@ class DefaultModuleToEnv(ConnectorV2):
         in order to sample actions if necessary. Searches for the ACTIONS and
         ACTION_DIST_INPUTS keys in a module's outputs and - should ACTIONS not be found -
         sample actions from the module's action distribution.
-    output_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA (same as input: data in, data out, however, data
+    output_type: INPUT_OUTPUT_TYPES.DICT_OF_MODULE_IDS_TO_DATA (same as input: data in,
+        data out, however, data
         out might contain an additional ACTIONS key if it was not previously present
         in the input).
     """

@@ -1618,6 +1618,8 @@ class AlgorithmConfig(_Config):
             self.sample_async = sample_async
         if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
+        if connector_creator is not NotProvided:
+            self.connector_creator = connector_creator
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:

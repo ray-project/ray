@@ -6,7 +6,6 @@ from ray.rllib.utils.typing import AgentID, EnvType
 from ray.util.annotations import PublicAPI
 
 
-
 @PublicAPI(stability="alpha")
 @dataclass
 class ConnectorContextV2:

@@ -25,26 +25,33 @@ class INPUT_OUTPUT_TYPES(Enum):
         connector: auto-action-sampling: dict[ModuleID, Data] -> dict[ModuleID, Data]
         connector: action-clipping: Data -> Data
             under the hood: dict[ModuleID, Data] -> dict[ModuleID, Data]
-        connector: auto-policy-unmapping: dict[ModuleID, Data] -> dict[AgentID, Data] (using information stored in connector ctx)
-        connector: auto-action-sorting (using information stored in connector ctx): dict[AgentID, Data] -> List[Data]
+        connector: auto-policy-unmapping: dict[ModuleID, Data] -> dict[AgentID, Data]
+            (using information stored in connector ctx)
+        connector: auto-action-sorting (using information stored in connector ctx):
+            dict[AgentID, Data] -> List[Data]
 
         env.step(List[Data]) ... repeats
 
     Typical training pipeline:
 
 
-    Default env-module-env pipeline picked by RLlib if no connector defined by user AND module is RNN:
+    Default env-module-env pipeline picked by RLlib if no connector defined by user AND
+    module is RNN:
         env.step(List[Data]) -> List[MultiAgentEpisode]
 
         connector: auto-agent-extraction: List[MultiAgentEpisode] -> dict[AgentID, Data]
         connector: auto-policy-mapping: dict[AgentID, Data] -> dict[ModuleID, Data]
-        connector: auto-state-handling: dict[ModuleID, Data] -> dict[ModuleID, Data + state] (using information stored in connector ctx)
+        connector: auto-state-handling: dict[ModuleID, Data] ->
+            dict[ModuleID, Data + state] (using information stored in connector ctx)
 
         module.forward_exploration() -> dict[ModuleID, Data + state]
 
-        connector: auto-state-handling: dict[ModuleID, Data + state] -> dict[ModuleID, Data] (state was stored in ctx)
-        connector: auto-policy-unmapping: dict[ModuleID, Data] -> dict[AgentID, Data] (using information stored in connector ctx)
-        connector: auto-action-sorting (using information stored in connector ctx): dict[AgentID, Data] -> List[Data]
+        connector: auto-state-handling: dict[ModuleID, Data + state] ->
+            dict[ModuleID, Data] (state was stored in ctx)
+        connector: auto-policy-unmapping: dict[ModuleID, Data] ->
+            dict[AgentID, Data] (using information stored in connector ctx)
+        connector: auto-action-sorting (using information stored in connector ctx):
+            dict[AgentID, Data] -> List[Data]
 
         env.step(List[Data]) ... repeats
     """
