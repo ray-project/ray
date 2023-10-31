@@ -351,12 +351,10 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _get_metrics_tags(self):
         """Returns a list of tags for operator-level metrics."""
-        return (
-            [
-                {"dataset": self._dataset_tag, "operator": f"{op.name}{i}"}
-                for i, op in enumerate(self._topology)
-            ],
-        )
+        return [
+            {"dataset": self._dataset_tag, "operator": f"{op.name}{i}"}
+            for i, op in enumerate(self._topology)
+        ]
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
