@@ -1096,10 +1096,11 @@ class ProxyActor:
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
         keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
         grpc_options: Optional[gRPCOptions] = None,
+        long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
 
-        self.long_poll_client = LongPollClient(
+        self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.SYSTEM_LOGGING_CONFIG: self._update_logging_config,

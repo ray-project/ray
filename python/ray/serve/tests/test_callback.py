@@ -167,6 +167,7 @@ def test_callback_fail(ray_instance):
         node_ip_address="127.0.0.1",
         node_id="123",
         logging_config=LoggingConfig(),
+        long_poll_client="fake_client",
     )
     with pytest.raises(RayActorError, match="this is from raise_error_callback"):
         ray.get(handle.ready.remote())
@@ -175,6 +176,7 @@ def test_callback_fail(ray_instance):
     handle = actor_def.remote(
         "controller",
         http_config={},
+        logging_config=LoggingConfig(),
     )
     with pytest.raises(RayActorError, match="cannot be imported"):
         ray.get(handle.check_alive.remote())
@@ -201,6 +203,7 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
         node_ip_address="127.0.0.1",
         node_id="123",
         logging_config=LoggingConfig(),
+        long_poll_client="fake_client",
     )
     with pytest.raises(
         RayActorError, match="must return a list of Starlette middlewares"
