@@ -263,7 +263,7 @@ py_test_module_list(
     "test_top_level_api.py",
     "test_unhandled_error.py",
     "test_widgets.py",
-    "test_accelerators.py",
+    "accelerators/test_accelerators.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
