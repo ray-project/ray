@@ -1,6 +1,5 @@
 import {
   Box,
-  InputAdornment,
   Table,
   TableBody,
   TableCell,
@@ -23,6 +22,36 @@ import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 
+const columns = [
+  { label: "Dataset" },
+  {
+    label: "Progress",
+    helpInfo: <Typography>Blocks outputted by output operator.</Typography>,
+  },
+  { label: "State" },
+  { label: "Start Time" },
+  { label: "End Time" },
+  { label: "Bytes Outputted" },
+  {
+    label: "Memory Usage (Current / Max)",
+    helpInfo: (
+      <Typography>
+        Amount of object store memory used by a dataset. Includes spilled
+        objects.
+      </Typography>
+    ),
+  },
+  {
+    label: "Bytes Spilled",
+    helpInfo: (
+      <Typography>
+        Set "enable_get_object_locations_for_metrics" in DataContext to True to
+        collect spill stats.
+      </Typography>
+    ),
+  },
+];
+
 const DataOverviewTable = ({
   datasets = [],
 }: {
@@ -30,42 +59,13 @@ const DataOverviewTable = ({
 }) => {
   const [pageNo, setPageNo] = useState(1);
   const { changeFilter, filterFunc } = useFilter();
-  const [pageSize, setPageSize] = useState(10);
+  const pageSize = 10;
   const datasetList = datasets.filter(filterFunc);
 
   const list = datasetList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
 
   const classes = rowStyles();
 
-  const columns = [
-    { label: "Dataset" },
-    {
-      label: "Progress",
-      helpInfo: <Typography>Blocks outputted by output operator.</Typography>,
-    },
-    { label: "State" },
-    { label: "Start Time" },
-    { label: "End Time" },
-    { label: "Bytes Outputted" },
-    {
-      label: "Memory Usage (Current / Max)",
-      helpInfo: (
-        <Typography>
-          Amount of object store memory used by a dataset. Includes spilled
-          objects.
-        </Typography>
-      ),
-    },
-    {
-      label: "Bytes Spilled",
-      helpInfo: (
-        <Typography>
-          Set "enable_get_object_locations_for_metrics" in DataContext to True
-          to collect spill stats.
-        </Typography>
-      ),
-    },
-  ];
   return (
     <div>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
@@ -78,19 +78,6 @@ const DataOverviewTable = ({
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="Dataset" />
           )}
-        />
-        <TextField
-          style={{ margin: 8, width: 120 }}
-          label="Page Size"
-          size="small"
-          InputProps={{
-            onChange: ({ target: { value } }) => {
-              setPageSize(Math.min(Number(value), 500) || 10);
-            },
-            endAdornment: (
-              <InputAdornment position="end">Per Page</InputAdornment>
-            ),
-          }}
         />
       </div>
       <div style={{ display: "flex", alignItems: "center" }}>

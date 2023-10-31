@@ -65,7 +65,7 @@ export const JobDetailChartsPage = () => {
         return rsp.data;
       }
     },
-    { refreshInterval: 1000 },
+    { refreshInterval: 5000 },
   );
 
   if (!job) {
