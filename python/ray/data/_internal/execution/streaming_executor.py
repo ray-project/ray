@@ -421,7 +421,7 @@ def _debug_dump_topology(topology: Topology, log_to_stdout: bool = True) -> None
     Args:
         topology: The topology to debug.
     """
-    logger.get_logger(log_to_stdout).info("Scheduling Trace:")
+    logger.get_logger(log_to_stdout).info("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
         logger.get_logger(log_to_stdout).info(
             f"{i}: {state.summary_str()}, "

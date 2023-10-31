@@ -1300,10 +1300,13 @@ def test_op_state_logging():
         ray.data.range(100).map_batches(lambda x: x).materialize()
         logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
 
+        times_asserted = 0
         for i, log in enumerate(logs):
-            if log == "Scheduling Trace:":
+            if log == "Execution Progress:":
+                times_asserted += 1
                 assert "Input" in logs[i + 1]
                 assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
+        assert times_asserted > 0
 
 
 if __name__ == "__main__":
