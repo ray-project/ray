@@ -228,7 +228,7 @@ class _RangeDatasourceReader(Reader):
         tensor_shape: Tuple = (1,),
         column_name: Optional[str] = None,
     ):
-        self._n = n
+        self._n = int(n)
         self._block_format = block_format
         self._tensor_shape = tensor_shape
         self._column_name = column_name
