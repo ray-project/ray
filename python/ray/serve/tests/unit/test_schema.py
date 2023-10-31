@@ -745,7 +745,7 @@ class TestLoggingConfig:
                 "log_level": "DEBUG",
             }
         )
-        assert schema.log_level == logging.DEBUG
+        assert schema.log_level == "DEBUG"
 
     def test_wrong_encoding_type(self):
         with pytest.raises(ValidationError):
