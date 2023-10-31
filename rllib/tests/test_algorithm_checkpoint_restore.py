@@ -54,7 +54,7 @@ algorithms_and_configs = {
 }
 
 
-class TestCheckpointRestorePG(unittest.TestCase):
+class TestCheckpointRestorePPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init(num_cpus=6)

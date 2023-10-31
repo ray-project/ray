@@ -36,10 +36,11 @@ class TestAlgorithm(unittest.TestCase):
                     },
                 },
             )
-            .rollouts(num_rollout_workers=2)
             .resources(num_cpus_per_worker=0.1)
             .training(
                 train_batch_size=100,
+                sgd_minibatch_size=50,
+                num_sgd_iter=1,
                 model={
                     "fcnet_hiddens": [5],
                     "fcnet_activation": "linear",

@@ -8,7 +8,6 @@ import ray
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import convert_to_base_env
-from ray.rllib.env.tests.test_external_env import SimpleServing
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -469,12 +468,6 @@ class TestNestedObservationSpaces(unittest.TestCase):
             lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedDictEnv())
         )
 
-    def test_nested_dict_serving(self):
-        # TODO: (Artur) Enable this test again for connectors if discrepancies
-        #  between EnvRunnerV2 and ExternalEnv are resolved
-        if not PPOConfig().enable_connectors:
-            self.do_test_nested_dict(lambda _: SimpleServing(NestedDictEnv()))
-
     def test_nested_dict_async(self):
         self.do_test_nested_dict(lambda _: convert_to_base_env(NestedDictEnv()))
 
@@ -485,12 +478,6 @@ class TestNestedObservationSpaces(unittest.TestCase):
         self.do_test_nested_tuple(
             lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedTupleEnv())
         )
-
-    def test_nested_tuple_serving(self):
-        # TODO: (Artur) Enable this test again for connectors if discrepancies
-        #  between EnvRunnerV2 and ExternalEnv are resolved
-        if not PPOConfig().enable_connectors:
-            self.do_test_nested_tuple(lambda _: SimpleServing(NestedTupleEnv()))
 
     def test_nested_tuple_async(self):
         self.do_test_nested_tuple(lambda _: convert_to_base_env(NestedTupleEnv()))

@@ -41,7 +41,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
             ).fit()
 
 
-class TestEagerSupportPG(unittest.TestCase):
+class TestEagerSupportPolicyGradient(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4)
 

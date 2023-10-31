@@ -47,7 +47,7 @@ def check_support_multiagent(alg: str, config: AlgorithmConfig):
         a.stop()
 
 
-class TestSupportedMultiAgentPPO(unittest.TestCase):
+class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init(num_cpus=4)

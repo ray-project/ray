@@ -74,7 +74,7 @@ class TestGPUs(unittest.TestCase):
                             if num_gpus == 0:
                                 print("via ray.tune.Tuner().fit()")
                                 tune.Tuner(
-                                    "A2C",
+                                    "PPO",
                                     param_space=config,
                                     run_config=air.RunConfig(
                                         stop={"training_iteration": 0}
@@ -103,7 +103,7 @@ class TestGPUs(unittest.TestCase):
                     algo.stop()
                     print("via ray.tune.Tuner().fit()")
                     tune.Tuner(
-                        "A2C",
+                        "PPO",
                         param_space=config,
                         run_config=air.RunConfig(stop={"training_iteration": 0}),
                     ).fit()

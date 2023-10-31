@@ -1564,22 +1564,22 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_checkpoint_restore_pg",
+    name = "tests/test_checkpoint_restore_ppo",
     main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePG"]
+    args = ["TestCheckpointRestorePPO"]
 )
 
 
 py_test(
-    name = "tests/test_checkpoint_restore_pg_gpu",
+    name = "tests/test_checkpoint_restore_ppo_gpu",
     main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir", "gpu"],
     size = "large",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePG"]
+    args = ["TestCheckpointRestorePPO"]
 )
 
 py_test(
@@ -1634,12 +1634,12 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_eager_support_pg",
+    name = "tests/test_eager_support_policy_gradient",
     main = "tests/test_eager_support.py",
     tags = ["team:rllib", "tests_dir"],
     size = "small",
     srcs = ["tests/test_eager_support.py"],
-    args = ["TestEagerSupportPG"]
+    args = ["TestEagerSupportPolicyGradient"]
 )
 
 py_test(
@@ -1776,16 +1776,6 @@ py_test(
     args = ["TestEvaluate3"]
 )
 
-py_test(
-    name = "test_rllib_evaluate_4",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate4"]
-)
-
 # Test [train|evaluate].py scripts (and confirm `rllib evaluate` performance is same
 # as the final one from the `rllib train` run).
 py_test(
@@ -1809,12 +1799,12 @@ py_test(
 
 
 py_test(
-    name = "tests/test_supported_multi_agent_pg",
+    name = "tests/test_supported_multi_agent_policy_gradient",
     main = "tests/test_supported_multi_agent.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
     srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentPPO"]
+    args = ["TestSupportedMultiAgentPolicyGradient"]
 )
 
 py_test(
@@ -2303,7 +2293,7 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PG", "--stop-iters=1", "--framework=tf", "--input-files=tests/data/cartpole"]
+    args = ["--stop-iters=1", "--framework=tf", "--input-files=tests/data/cartpole"]
 )
 
 py_test(
@@ -2314,7 +2304,7 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PG", "--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
+    args = [--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
 )
 
 py_test(
@@ -2765,30 +2755,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/parametric_actions_cartpole_pg_tf",
-    main = "examples/parametric_actions_cartpole.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--as-test", "--stop-reward=60.0", "--run=PG"]
-)
-
-py_test(
     name = "examples/parametric_actions_cartpole_dqn_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--framework=tf", "--stop-reward=60.0", "--run=DQN"]
-)
-
-py_test(
-    name = "examples/parametric_actions_cartpole_pg_torch",
-    main = "examples/parametric_actions_cartpole.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=60.0", "--run=PG"]
 )
 
 py_test(
@@ -3102,21 +3074,21 @@ py_test(
 )
 
 py_test(
-    name = "examples/two_step_game_pg_tf",
+    name = "examples/two_step_game_ppo_tf",
     main = "examples/two_step_game.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=7", "--run=PG"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=7"]
 )
 
 py_test(
-    name = "examples/two_step_game_pg_torch",
+    name = "examples/two_step_game_ppo_torch",
     main = "examples/two_step_game.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=7"]
 )
 
 py_test(

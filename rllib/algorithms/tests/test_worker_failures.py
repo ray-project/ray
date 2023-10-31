@@ -489,10 +489,11 @@ class TestWorkerFailures(unittest.TestCase):
             PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
             )
             .training(
-                train_batch_size=32,
+                train_batch_size=100,
+                sgd_minibatch_size=50,
+                num_sgd_iter=1,
                 model={"fcnet_hiddens": [4]},
             )
             .environment(
@@ -542,10 +543,11 @@ class TestWorkerFailures(unittest.TestCase):
             PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
             )
             .training(
-                train_batch_size=32,
+                train_batch_size=100,
+                sgd_minibatch_size=50,
+                num_sgd_iter=1,
                 model={"fcnet_hiddens": [4]},
             )
             .environment(
@@ -636,10 +638,11 @@ class TestWorkerFailures(unittest.TestCase):
             PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
             )
             .training(
-                train_batch_size=32,
+                train_batch_size=100,
+                sgd_minibatch_size=50,
+                num_sgd_iter=1,
                 model={"fcnet_hiddens": [4]},
             )
             .environment(env="fault_env")
@@ -701,7 +704,9 @@ class TestWorkerFailures(unittest.TestCase):
                 num_rollout_workers=3,
             )
             .training(
-                train_batch_size=32,
+                train_batch_size=120,
+                sgd_minibatch_size=60,
+                num_sgd_iter=1,
                 model={"fcnet_hiddens": [4]},
             )
             .reporting(
@@ -770,10 +775,11 @@ class TestWorkerFailures(unittest.TestCase):
             .environment("fault_env")
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
             )
             .training(
-                train_batch_size=32,
+                train_batch_size=100,
+                sgd_minibatch_size=50,
+                num_sgd_iter=1,
                 model={"fcnet_hiddens": [4]},
             )
             .environment(
@@ -850,10 +856,11 @@ class TestWorkerFailures(unittest.TestCase):
             PPOConfig()
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
             )
             .training(
-                train_batch_size=32,
+                train_batch_size=100,
+                sgd_minibatch_size=50,
+                num_sgd_iter=1,
                 model={"fcnet_hiddens": [4]},
             )
             .environment(
@@ -994,8 +1001,10 @@ class TestWorkerFailures(unittest.TestCase):
                 sampler_perf_stats_ema_coef=0.5,
             )
             .training(
+                train_batch_size=100,
+                sgd_minibatch_size=50,
+                num_sgd_iter=1,
                 model={"fcnet_hiddens": [4]},
-                train_batch_size=10,
             )
             .environment(
                 env="fault_env",
@@ -1054,7 +1063,6 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PPOConfig()
             .environment(env=RandomEnv, env_config={"p_terminated": 0.0})
-            .rollouts(num_rollout_workers=2)
             .reporting(metrics_episode_collection_timeout_s=5.0)
             .evaluation(
                 evaluation_num_workers=2,
