@@ -9,6 +9,7 @@ from fastapi import APIRouter, FastAPI
 
 import ray
 from ray import cloudpickle
+from ray._private.serialization import pickle_dumps
 from ray.dag import DAGNode
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
@@ -222,7 +223,9 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
         # this ingress deployment. We don't use copy.copy here to avoid
         # recursion issue.
         ensure_serialization_context()
-        frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+        frozen_app = cloudpickle.loads(
+            pickle_dumps(app, error_msg="Failed to serialize the FastAPI app.")
+        )
 
         class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
             def __init__(self, *args, **kwargs):
