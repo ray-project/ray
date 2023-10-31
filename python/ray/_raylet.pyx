@@ -250,6 +250,19 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 # It is thread-safe.
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
 
+class TimerContextManager:
+    def __init__(self, name):
+        self.name = self.name = name
+
+    def __enter__(self):
+        self.start_time = time.time()
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        end_time = time.time()
+        elapsed_time = end_time - self.start_time
+        print(f"{self.name} Time taken: {elapsed_time * 1000} ms")
+
 
 class ObjectRefGenerator:
     def __init__(self, refs):
@@ -385,11 +398,18 @@ class StreamingObjectRefGenerator:
 
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
-        # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait(
-            [asyncio.create_task(self.suppress_exceptions(ref))],
-            timeout=timeout_s
-        )
+        # asyncio has high overhead. So if we can avoid
+        # avoid it.
+        ready, unready = ray.wait(
+            [ref], timeout=0, fetch_local=False)
+        
+        if len(unready) > 0:
+            t = asyncio.create_task(self.suppress_exceptions(ref))
+            # TODO(swang): Avoid fetching the value.
+            ready, unready = await asyncio.wait(
+                [t],
+                timeout=timeout_s
+            )
         if len(unready) > 0:
             return ObjectRef.nil()
 
