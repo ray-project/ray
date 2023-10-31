@@ -603,15 +603,6 @@ def test_input_validation():
 
     with pytest.raises(TypeError):
 
-        @serve.deployment(init_args={1, 2, 3})
-        class BadInitArgs:
-            pass
-
-    with pytest.raises(TypeError):
-        Base.options(init_args="hi")
-
-    with pytest.raises(TypeError):
-
         @serve.deployment(ray_actor_options=[1, 2, 3])
         class BadActorOpts:
             pass
@@ -653,7 +644,6 @@ def test_deployment_properties():
 
     D = serve.deployment(
         name="name",
-        init_args=("hello", 123),
         version="version",
         num_replicas=2,
         user_config="hi",
@@ -663,7 +653,6 @@ def test_deployment_properties():
     )(DClass)
 
     assert D.name == "name"
-    assert D.init_args == ("hello", 123)
     assert D.version == "version"
     assert D.num_replicas == 2
     assert D.user_config == "hi"

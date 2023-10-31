@@ -358,7 +358,7 @@ class GraphVisualizer:
             # Add event listeners that resolve object refs for each of the nodes
             for node, block in self.node_to_block.items():
                 trigger.change(
-                    self._get_result, gr.Variable(node.get_stable_uuid()), block
+                    self._get_result, gr.State(node.get_stable_uuid()), block
                 )
 
             # Resets all blocks if Clear button is clicked

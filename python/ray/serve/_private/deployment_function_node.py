@@ -50,9 +50,9 @@ class DeploymentFunctionNode(DAGNode):
             self._deployment = deployment_shell.options(
                 func_or_class=func_body,
                 name=self._deployment_name,
-                init_args=(),
-                init_kwargs={},
                 route_prefix=route_prefix,
+                _init_args=(),
+                _init_kwargs={},
                 _internal=True,
             )
         else:
