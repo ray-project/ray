@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-import pyarrow
-
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockAccessor
 from ray.data.datasource.block_path_provider import BlockWritePathProvider
@@ -14,7 +12,6 @@ from ray.data.datasource.tfrecords_datasource import (
 
 if TYPE_CHECKING:
     import pyarrow
-    import tensorflow as tf
     from tensorflow_metadata.proto.v0 import schema_pb2
 
 
