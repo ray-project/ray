@@ -207,7 +207,7 @@ class BlockMetadata:
         if self.input_files is None:
             self.input_files = []
         if self.size_bytes is not None:
-            self.size_bytes = int(self.size_bytes)
+            assert isinstance(self.size_bytes, int)
 
 
 @DeveloperAPI
