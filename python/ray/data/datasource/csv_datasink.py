@@ -23,6 +23,9 @@ class CSVDatasink(BlockBasedFileDatasink):
         block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
     ):
+        if arrow_csv_args is None:
+            arrow_csv_args = {}
+
         self.arrow_csv_args_fn = arrow_csv_args_fn
         self.arrow_csv_args = arrow_csv_args
 

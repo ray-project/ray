@@ -23,6 +23,9 @@ class JSONDatasink(BlockBasedFileDatasink):
         block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
     ):
+        if pandas_json_args is None:
+            pandas_json_args = {}
+
         self.pandas_json_args_fn = pandas_json_args_fn
         self.pandas_json_args = pandas_json_args
 
