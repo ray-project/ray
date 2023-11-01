@@ -174,12 +174,6 @@ def _import_r2d2():
     return r2d2.R2D2, r2d2.R2D2.get_default_config()
 
 
-def _import_random_agent():
-    import ray.rllib.algorithms.random_agent as random_agent
-
-    return random_agent.RandomAgent, random_agent.RandomAgent.get_default_config()
-
-
 def _import_rnnsac():
     from ray.rllib.algorithms import sac
 
@@ -245,7 +239,6 @@ ALGORITHMS = {
     "PPO": _import_ppo,
     "QMIX": _import_qmix,
     "R2D2": _import_r2d2,
-    "Random": _import_random_agent,
     "RNNSAC": _import_rnnsac,
     "SAC": _import_sac,
     "SimpleQ": _import_simple_q,
@@ -284,7 +277,6 @@ ALGORITHMS_CLASS_TO_NAME = {
     "PPO": "PPO",
     "QMix": "QMIX",
     "R2D2": "R2D2",
-    "RandomAgent": "Random",
     "RNNSAC": "RNNSAC",
     "SAC": "SAC",
     "SimpleQ": "SimpleQ",
