@@ -23,11 +23,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
             agent_id: gym.spaces.Discrete(200) for agent_id in self._agent_ids
         }
 
-        self.last_terminateds = {"__all__": False}
-        self.last_terminateds.update({agent_id: False for agent_id in self._agent_ids})
-        self.last_truncateds = {"__all__": False}
-        self.agents_alive = self._agent_ids
-        self.last_truncateds.update({agent_id: False for agent_id in self._agent_ids})
+        self.agents_alive = set(self._agent_ids)
 
     def reset(
         self,
@@ -35,6 +31,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
         seed: Optional[int] = None,
         options: Optional[dict] = None,
     ) -> Tuple[MultiAgentDict, MultiAgentDict]:
+        super().reset(seed=seed)
         self.t = 0
         # The number of agents that are ready at this timestep.
         num_agents_step = np.random.randint(1, len(self._agent_ids))
@@ -45,6 +42,9 @@ class MultiAgentTestEnv(MultiAgentEnv):
         # Initialize observations.
         init_obs = {agent_id: 0 for agent_id in agents_step}
         init_info = {agent_id: {} for agent_id in agents_step}
+
+        # Reset all alive agents to all agents.
+        self.agents_alive = set(self._agent_ids)
 
         return init_obs, init_info
 
@@ -66,29 +66,30 @@ class MultiAgentTestEnv(MultiAgentEnv):
         reward = {agent_id: 1.0 for agent_id in agents_step}
 
         # Use tha last terminateds/truncateds.
-        is_truncated = self.last_truncateds
-        is_terminated = self.last_terminateds
-        if self.t >= 50:
+        is_truncated = {"__all__": False}
+        is_truncated.update({agent_id: False for agent_id in agents_step})
+        is_terminated = {"__all__": False}
+        is_terminated.update({agent_id: False for agent_id in agents_step})
+        if self.t == 50:
             # Let agent 1 die.
             is_terminated["agent_1"] = True
-        if self.t >= 100:
+            is_truncated["agent_1"] = False
+            self.agents_alive -= {"agent_1"}
+            obs.update({"agent_1": self.t})
+            reward.update({"agent_1": 1.0})
+            info.update({"agent_1": {}})
+        if self.t == 100 and "agent_5":
             # Let agent 5 die.
             is_terminated["agent_5"] = True
-
+            is_truncated["agent_5"] = False
+            self.agents_alive -= {"agent_5"}
+            obs.update({"agent_5": self.t})
+            reward.update({"agent_5": 1.0})
+            info.update({"agent_5": {}})
         # Truncate the episode if too long.
         if self.t >= 200:
             is_truncated["__all__"] = True
-
-        # Keep the last changes (e.g. an agent died).
-        self.last_terminateds = is_terminated
-        self.last_truncateds = is_truncated
-        self.agents_alive = [
-            agent_id
-            for agent_id in is_terminated
-            if agent_id != "__all__"
-            and not is_terminated[agent_id]
-            and not is_truncated[agent_id]
-        ]
+            is_truncated.update({agent_id: True for agent_id in agents_step})
 
         return obs, reward, is_terminated, is_truncated, info
 
@@ -124,6 +125,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         rewards = []
         actions = []
         infos = []
+        is_terminateds = []
+        is_truncateds = []
         extra_model_outputs = []
         states = []
         # Initialize observation and info.
@@ -140,6 +143,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             actions.append(action)
             rewards.append(reward)
             infos.append(info)
+            is_terminateds.append(is_terminated)
+            is_truncateds.append(is_truncated)
             states.append({agent_id: np.random.random() for agent_id in agents_stepped})
             extra_model_outputs.append(
                 {
@@ -155,8 +160,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             rewards=rewards,
             infos=infos,
             states=states,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
+            is_terminated=is_terminateds,
+            is_truncated=is_truncateds,
             extra_model_outputs=extra_model_outputs,
         )
 
@@ -165,23 +170,22 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Assert that agent 1 and agent 5 are both terminated.
         self.assertTrue(episode.agent_episodes["agent_1"].is_terminated)
         self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
-        # Assert that the other agents are all truncated.
+        # Assert that the other agents are neither terminated nor truncated.
         for agent_id in env.get_agent_ids():
             if agent_id != "agent_1" and agent_id != "agent_5":
-                self.assertFalse(episode.agent_episodes[agent_id].is_truncated)
-                self.assertFalse(episode.agent_episodes[agent_id].is_terminated)
+                self.assertFalse(episode.agent_episodes[agent_id].is_done)
 
         # Test now intiializing an episode and setting the starting timestep at once.
         episode = MultiAgentEpisode(
-            agent_ids=env.get_agent_ids(),
+            agent_ids=list(env.agents_alive) + ["agent_5"],
             observations=observations[-11:],
             actions=actions[-10:],
             rewards=rewards[-10:],
             infos=infos[-11:],
             t_started=100,
             states=states,
-            is_terminated=is_terminated,
-            is_truncated=is_truncated,
+            is_terminated=is_terminateds[-10:],
+            is_truncated=is_truncateds[-10:],
             extra_model_outputs=extra_model_outputs[-10:],
         )
 
@@ -196,12 +200,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
             ]
         )
         self.assertGreaterEqual(10, highest_index)
-        # Assert that agent 1 and agent 5 are both terminated.
-        self.assertTrue(episode.agent_episodes["agent_1"].is_terminated)
+        # Assert that agent 5 is terminated.
         self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
 
     def test_add_initial_observation(self):
-
         # Generate an enviornment.
         env = MultiAgentTestEnv()
         # Generate an empty multi-agent episode. Note. we have to provide the
@@ -229,6 +231,110 @@ class TestMultiAgentEpisode(unittest.TestCase):
             # mapping.
             self.assertEqual(len(episode.global_t_to_local_t[agent_id]), 1)
             self.assertEqual(episode.global_t_to_local_t[agent_id][0], 0)
+
+    def test_add_timestep(self):
+        # Create an environment and add the initial observations, infos, and states.
+        env = MultiAgentTestEnv()
+        episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
+
+        obs, infos = env.reset(seed=0)
+        states = {agent_id: np.random.random(10) for agent_id in obs}
+        episode.add_initial_observation(
+            initial_observation=obs,
+            initial_info=infos,
+            initial_state=states,
+        )
+
+        # Sample 100 timesteps and add them to the episode.
+        for i in range(100):
+            action = {
+                agent_id: i + 1 for agent_id in obs if agent_id in env.agents_alive
+            }
+            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            if i == 99:
+                episode.add_timestep(
+                    observation=obs,
+                    action=action,
+                    reward=reward,
+                    info=info,
+                    is_terminated=is_terminated,
+                    is_truncated=is_truncated,
+                    state={agent_id: np.random.random(10) for agent_id in action},
+                    extra_model_output={
+                        agent_id: {"extra": np.random.random()} for agent_id in action
+                    },
+                )
+            elif i == 49:
+                episode.add_timestep(
+                    observation=obs,
+                    action=action,
+                    reward=reward,
+                    info=info,
+                    is_terminated=is_terminated,
+                    is_truncated=is_truncated,
+                    state={agent_id: np.random.random(10) for agent_id in action},
+                    extra_model_output={
+                        agent_id: {"extra": np.random.random()} for agent_id in action
+                    },
+                )
+            else:
+                episode.add_timestep(
+                    observation=obs,
+                    action=action,
+                    reward=reward,
+                    info=info,
+                    is_terminated=is_terminated,
+                    is_truncated=is_truncated,
+                    state={agent_id: np.random.random(10) for agent_id in action},
+                    extra_model_output={
+                        agent_id: {"extra": np.random.random()} for agent_id in action
+                    },
+                )
+
+        # Assert that the timestep is at 100.
+        self.assertEqual(episode.t, 100)
+        # Ensure that the episode is not done yet.
+        self.assertFalse(episode.is_done)
+        # Ensure that agent 1 and agent 5 are indeed done.
+        self.assertTrue(episode.agent_episodes["agent_1"].is_done)
+        self.assertTrue(episode.agent_episodes["agent_5"].is_done)
+        # Also ensure that their buffers are all empty:
+        for agent_id in ["agent_1", "agent_5"]:
+            self.assertTrue(episode.agent_buffers[agent_id]["actions"].empty())
+            self.assertTrue(episode.agent_buffers[agent_id]["rewards"].empty())
+            self.assertTrue(episode.agent_buffers[agent_id]["states"].empty())
+            self.assertTrue(
+                episode.agent_buffers[agent_id]["extra_model_outputs"].empty()
+            )
+        # Ensure that the maximum timestep in the global timestep mapping
+        # is 100.
+        highest_timestep = max(
+            [max(timesteps) for timesteps in episode.global_t_to_local_t.values()]
+        )
+        self.assertGreaterEqual(100, highest_timestep)
+
+        # Run another 100 timesteps.
+        for i in range(100, 200):
+            action = {
+                agent_id: i + 1 for agent_id in obs if agent_id in env.agents_alive
+            }
+            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            episode.add_timestep(
+                observation=obs,
+                action=action,
+                reward=reward,
+                info=info,
+                is_terminated=is_terminated,
+                is_truncated=is_truncated,
+                state={agent_id: np.random.random(10) for agent_id in action},
+                extra_model_output={
+                    agent_id: {"extra": np.random.random()} for agent_id in action
+                },
+            )
+
+        # Assert that the environment is done.
+        self.assertTrue(is_truncated["__all__"])
+        # Assert that each agent is done.
 
 
 if __name__ == "__main__":
