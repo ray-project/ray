@@ -252,7 +252,7 @@ class _StatsActor:
         self,
         op_metrics: List[Dict[str, Union[int, float]]],
         tags_list: List[Dict[str, str]],
-         state: Dict[str, Any],
+        state: Dict[str, Any],
     ):
         for stats, tags in zip(op_metrics, tags_list):
             self.bytes_spilled.set(stats.get("obj_store_mem_spilled", 0), tags)
@@ -340,7 +340,9 @@ def _check_cluster_stats_actor():
 
 
 def update_stats_actor_metrics(
-    op_metrics: List[OpRuntimeMetrics], tags_list: List[Dict[str, str]], state: Dict[str, Any],
+    op_metrics: List[OpRuntimeMetrics],
+    tags_list: List[Dict[str, str]],
+    state: Dict[str, Any],
 ):
     global _stats_actor
     _check_cluster_stats_actor()
