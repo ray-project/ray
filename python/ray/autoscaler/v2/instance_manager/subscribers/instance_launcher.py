@@ -37,7 +37,7 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
         self._max_instances_per_request = max_instances_per_request
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._launch_instance_executor = ThreadPoolExecutor(
-            max_worker_nodes=self._max_concurrent_requests
+            max_workers=self._max_concurrent_requests
         )
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
