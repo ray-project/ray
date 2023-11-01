@@ -1763,6 +1763,11 @@ def get_head_ip(cluster_config_file, cluster_name):
     click.echo(get_head_node_ip(cluster_config_file, cluster_name))
 
 
+def _get_worker_node_ips(cluster_config_file, cluster_name):
+    worker_node_ips = autoscaler_get_worker_node_ips(cluster_config_file, cluster_name)
+    click.echo("\n".join(worker_node_ips))
+
+
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
@@ -1774,8 +1779,7 @@ def get_head_ip(cluster_config_file, cluster_name):
 )
 def get_worker_node_ips(cluster_config_file, cluster_name):
     """Return the list of worker IPs of a Ray cluster."""
-    worker_node_ips = autoscaler_get_worker_node_ips(cluster_config_file, cluster_name)
-    click.echo("\n".join(worker_node_ips))
+    _get_worker_node_ips(cluster_config_file, cluster_name)
 
 
 @cli.command()
@@ -1794,14 +1798,11 @@ def get_worker_ips(cluster_config_file, cluster_name):
     """
     # print deprecation warning and recommend using get_worker_node_ips
     cli_logger.warning(
-        "`{}` is deprecated and will be removed in the future.",
+        "`{}` is deprecated and will be removed in the future. Please use `{}` instead.",
         cf.bold("ray get-worker-ips"),
-    )
-    cli_logger.warning(
-        "Please use `{}` instead. It has identical functionality.",
         cf.bold("ray get-worker-node-ips"),
     )
-    get_worker_node_ips(cluster_config_file, cluster_name)
+    _get_worker_node_ips(cluster_config_file, cluster_name)
 
 
 @cli.command()
