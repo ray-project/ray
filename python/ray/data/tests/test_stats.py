@@ -1208,7 +1208,7 @@ def test_stats_actor_metrics():
 
 
 def test_stats_actor_iter_metrics():
-    ds = ray.data.range(100).map_batches(lambda x: x)
+    ds = ray.data.range(1e6).map_batches(lambda x: x)
     with patch_update_stats_actor_iter() as update_fn:
         ds.take_all()
 
