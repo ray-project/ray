@@ -2,9 +2,8 @@
 
 set -euo pipefail
 
-if [[ "${ANYSCALE_BYOR:-}" == "true" ]]; then
-    # User explicitly wants to use their own ray library, so skip injection.
-    # BYOR = Bring your own ray.
+if [[ "${ANYSCALE_DISABLE_OPTIMIZED_RAY:-}" == "true" || "${ANYSCALE_DISABLE_OPTIMIZED_RAY:-}" == "1" ]]; then
+    # User explicitly wants to disable optimized ray, then just exit there.
     exit 0
 fi
 
