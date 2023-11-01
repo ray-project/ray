@@ -179,7 +179,9 @@ class AutoscalingConfigTest(unittest.TestCase):
         }
         expected_available_node_types["cpu_16_spot"]["min_worker_nodes"] = 0
         expected_available_node_types["gpu_8_ondemand"]["min_worker_nodes"] = 0
-        expected_available_node_types["neuron_core_inf_1_ondemand"]["min_worker_nodes"] = 0
+        expected_available_node_types["neuron_core_inf_1_ondemand"][
+            "min_worker_nodes"
+        ] = 0
 
         boto3_dict = {
             "InstanceTypes": [

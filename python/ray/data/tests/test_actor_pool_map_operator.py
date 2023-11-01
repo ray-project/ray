@@ -514,7 +514,9 @@ class TestAutoscalingConfig:
     def test_max_tasks_in_flight_validation(self):
         # Test max_tasks_in_flight positivity validation.
         with pytest.raises(ValueError):
-            AutoscalingConfig(min_worker_nodes=1, max_worker_nodes=2, max_tasks_in_flight=0)
+            AutoscalingConfig(
+                min_worker_nodes=1, max_worker_nodes=2, max_tasks_in_flight=0
+            )
 
     def test_full_specification(self):
         # Basic regression test for full specification.

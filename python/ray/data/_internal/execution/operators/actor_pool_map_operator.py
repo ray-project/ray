@@ -407,8 +407,13 @@ class AutoscalingConfig:
 
     def __post_init__(self):
         if self.min_worker_nodes < 1:
-            raise ValueError("min_worker_nodes must be >= 1, got: ", self.min_worker_nodes)
-        if self.max_worker_nodes is not None and self.min_worker_nodes > self.max_worker_nodes:
+            raise ValueError(
+                "min_worker_nodes must be >= 1, got: ", self.min_worker_nodes
+            )
+        if (
+            self.max_worker_nodes is not None
+            and self.min_worker_nodes > self.max_worker_nodes
+        ):
             raise ValueError(
                 "min_worker_nodes must be <= max_worker_nodes, got: ",
                 self.min_worker_nodes,

@@ -662,7 +662,9 @@ def _add_min_worker_nodes_nodes(
     total_nodes_to_add_dict = {}
     for node_type, config in node_types.items():
         existing = node_type_counts.get(node_type, 0)
-        target = min(config.get("min_worker_nodes", 0), config.get("max_worker_nodes", 0))
+        target = min(
+            config.get("min_worker_nodes", 0), config.get("max_worker_nodes", 0)
+        )
         if node_type == head_node_type:
             # Add 1 to account for head node.
             target = target + 1
@@ -753,7 +755,9 @@ def get_nodes_for(
     while resources and sum(nodes_to_add.values()) < max_to_add:
         utilization_scores = []
         for node_type in node_types:
-            max_worker_nodes_of_node_type = node_types[node_type].get("max_worker_nodes", 0)
+            max_worker_nodes_of_node_type = node_types[node_type].get(
+                "max_worker_nodes", 0
+            )
             if head_node_type == node_type:
                 # Add 1 to account for head node.
                 max_worker_nodes_of_node_type = max_worker_nodes_of_node_type + 1

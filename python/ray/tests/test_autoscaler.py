@@ -1603,7 +1603,9 @@ class AutoscalingTest(unittest.TestCase):
 
         # Check the scale-down event is generated.
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 1 nodes of type worker " "(max_worker_nodes_per_type)." in events
+        assert (
+            "Removing 1 nodes of type worker " "(max_worker_nodes_per_type)." in events
+        )
         assert mock_metrics.stopped_nodes.inc.call_count == 1
 
         # Update the config to increase the cluster size
@@ -2402,8 +2404,12 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(8, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert autoscaler.pending_launches.value == 0
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 1 nodes of type m4.large (max_worker_nodes_per_type)." in events
-        assert "Removing 2 nodes of type p2.8xlarge (max_worker_nodes_per_type)." in events
+        assert (
+            "Removing 1 nodes of type m4.large (max_worker_nodes_per_type)." in events
+        )
+        assert (
+            "Removing 2 nodes of type p2.8xlarge (max_worker_nodes_per_type)." in events
+        )
 
         # We should not be starting/stopping empty_node at all.
         for event in events:
@@ -3307,7 +3313,9 @@ class AutoscalingTest(unittest.TestCase):
         but does not try to terminate node 0 again.
         """
         cluster_config = copy.deepcopy(MOCK_DEFAULT_CONFIG)
-        cluster_config["available_node_types"]["ray.worker.default"]["min_worker_nodes"] = 2
+        cluster_config["available_node_types"]["ray.worker.default"][
+            "min_worker_nodes"
+        ] = 2
         cluster_config["worker_start_ray_commands"] = ["ray_start_cmd"]
 
         # Don't need the extra node type or a docker config.
