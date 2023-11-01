@@ -8,7 +8,7 @@ import pyarrow
 import requests
 
 from ray.data.block import BlockMetadata
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
