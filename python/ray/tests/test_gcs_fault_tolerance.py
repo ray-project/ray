@@ -121,11 +121,8 @@ def test_gcs_server_restart_during_actor_creation(
 def test_autoscaler_init(
     ray_start_cluster_head_with_external_redis,
 ):
-    """Checks that the node failure detector is correct when gcs server restart.
-
-    We set the cluster to timeout nodes after 2 seconds of heartbeats. We then
-    kill gcs server and remove the worker node and restart gcs server again to
-    check that the removed node will die finally.
+    """
+    Checks that autoscaler initializes properly after GCS restarts.
     """
     cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node()
