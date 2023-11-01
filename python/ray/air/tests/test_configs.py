@@ -1,5 +1,7 @@
 import pytest
 
+import pyarrow.fs
+
 from ray.train import (
     ScalingConfig,
     FailureConfig,
@@ -21,6 +23,7 @@ from ray.air.constants import MAX_REPR_LENGTH
         RunConfig(),
         RunConfig(name="experiment"),
         RunConfig(failure_config=FailureConfig()),
+        RunConfig(storage_filesystem=pyarrow.fs.S3FileSystem()),
     ],
 )
 def test_repr(config):
