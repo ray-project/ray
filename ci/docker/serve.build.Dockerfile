@@ -2,7 +2,7 @@ ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG PYTHON_VERSION
-ARG BUILD_PYDANTIC_NIGHTLY
+ARG PYDANTIC_BUILD_COMMIT
 
 # Unset dind settings; we are using the host's docker daemon.
 ENV DOCKER_TLS_CERTDIR=
@@ -26,8 +26,8 @@ RUN pip install -U --ignore-installed \
 
 RUN git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
 
-# Install nightly Pydantic version if requested.
-RUN if [[ -z $BUILD_PYDANTIC_NIGHTLY ]] ; \
-    then echo Not installing nightly Pydantic version ; \
-    else git clone https://github.com/pydantic/pydantic && pushd pydantic && pip install -e . && popd ; \
+# Install Pydantic from source if requested.
+RUN if [[ -z $PYDANTIC_BUILD_COMMIT ]] ; \
+    then echo "Not installing Pydantic from source." ; \
+    else git clone https://github.com/pydantic/pydantic && pushd pydantic && git checkout $PYDANTIC_BUILD_COMMIT && pip install -e . && popd ; \
 fi
