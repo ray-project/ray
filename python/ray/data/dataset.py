@@ -87,7 +87,12 @@ from ray.data._internal.stats import (
     DatasetStatsSummary,
     get_dataset_id_from_stats_actor,
 )
-from ray.data._internal.util import AllToAllAPI, ConsumptionAPI, _is_local_scheme, validate_compute
+from ray.data._internal.util import (
+    AllToAllAPI,
+    ConsumptionAPI,
+    _is_local_scheme,
+    validate_compute,
+)
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,

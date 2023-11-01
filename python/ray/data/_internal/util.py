@@ -456,10 +456,14 @@ def _all_to_all_api(*args, **kwargs):
     """Annotate the function with an indication that it's a all to all API, and that it
     is an operation that requires all inputs to be materialized in-memory to execute.
     """
+
     def wrap(obj):
         _insert_doc_at_pattern(
             obj,
-            message="This operation requires all inputs to be materialized in object store for it to execute.",
+            message=(
+                "This operation requires all inputs to be "
+                "materialized in object store for it to execute.",
+            ),
             pattern="Examples:",
             insert_after=False,
             directive="note",
@@ -473,9 +477,9 @@ def AllToAllAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a all to all API, and that it
     is an operation that requires all inputs to be materialized in-memory to execute.
     """
-    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return _all_to_all_api()(args[0])
-    return _all_to_all_api(*args, **kwargs)
+    # This should only be used as a decorator for dataset methods.
+    assert len(args) == 1 and len(kwargs) == 0 and callable(args[0])
+    return _all_to_all_api()(args[0])
 
 
 def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
