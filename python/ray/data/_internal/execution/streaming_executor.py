@@ -44,6 +44,7 @@ from ray.data.context import DataContext
 logger = DatasetLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
+# If not set, execution state will still be logged after each scheduling loop.
 DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
 
 # Force a progress bar update after this many events processed . This avoids the
@@ -294,6 +295,9 @@ class StreamingExecutor(Executor, threading.Thread):
         for op_state in topology.values():
             op_state.refresh_progress_bar()
 
+        if not DEBUG_TRACE_SCHEDULING:
+            _debug_dump_topology(topology, log_to_stdout=False)
+
         update_stats_actor_metrics(
             [op.metrics for op in self._topology],
             self._get_metrics_tags(),
@@ -419,13 +423,16 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
         raise ValueError(error_message.strip())
 
 
-def _debug_dump_topology(topology: Topology) -> None:
+def _debug_dump_topology(topology: Topology, log_to_stdout: bool = True) -> None:
     """Print out current execution state for the topology for debugging.
 
     Args:
         topology: The topology to debug.
     """
-    logger.get_logger().info("vvv scheduling trace vvv")
+    logger.get_logger(log_to_stdout).info("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
-        logger.get_logger().info(f"{i}: {state.summary_str()}")
-    logger.get_logger().info("^^^ scheduling trace ^^^")
+        logger.get_logger(log_to_stdout).info(
+            f"{i}: {state.summary_str()}, "
+            f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
+        )
+    logger.get_logger(log_to_stdout).info("")
