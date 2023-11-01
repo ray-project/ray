@@ -19,7 +19,7 @@ from ray.rllib.utils.checkpoints import (
     convert_to_msgpack_checkpoint,
     convert_to_msgpack_policy_checkpoint,
 )
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 from ray import tune
 
 
@@ -260,52 +260,57 @@ class TestCheckpointUtils(unittest.TestCase):
         pickle-checkpoint-recovered Policy (given same initial config).
         """
         # Base config used for both pickle-based checkpoint and msgpack-based one.
-        config = (
-            SimpleQConfig()
-            .environment(
-                RandomEnv,
-                env_config={
-                    "observation_space": gym.spaces.Dict({"a": gym.spaces.Discrete(3)}),
-                    "some_non_serializable_setting": gym.spaces.Discrete(8),
-                },
+        for algo in ["DQN", "PPO"]:
+            config = (
+                tune.registry.get_trainable_cls(algo)
+                .get_default_config()
+                .environment(
+                    RandomEnv,
+                    env_config={
+                        "observation_space": gym.spaces.Dict(
+                            {"a": gym.spaces.Discrete(3)}),
+                        "some_non_serializable_setting": gym.spaces.Discrete(8),
+                    },
+                )
+                .callbacks(DummyCallbacks)
             )
-            .callbacks(DummyCallbacks)
-        )
-        # Build algorithm/policy objects.
-        algo1 = config.build()
-        pol1 = algo1.get_policy()
-        # Get its state.
-        pickle_state = pol1.get_state()
+            for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+                # Build algorithm/policy objects.
+                algo1 = config.build()
+                algo1.train()
+                pol1 = algo1.get_policy()
+                # Get its state.
+                pickle_state = pol1.get_state()
 
-        # Create standard (pickle-based) checkpoint.
-        with tempfile.TemporaryDirectory() as pickle_cp_dir:
-            pol1.export_checkpoint(pickle_cp_dir)
-            # Now convert pickle checkpoint to msgpack using the provided
-            # utility function.
-            with tempfile.TemporaryDirectory() as msgpack_cp_dir:
-                convert_to_msgpack_policy_checkpoint(pickle_cp_dir, msgpack_cp_dir)
-                msgpack_cp_info = get_checkpoint_info(msgpack_cp_dir)
-                self.assertTrue(msgpack_cp_info["type"] == "Policy")
-                self.assertTrue(msgpack_cp_info["format"] == "msgpack")
-                self.assertTrue(msgpack_cp_info["policy_ids"] is None)
-                # Try recreating a new policy object from the msgpack checkpoint.
-                pol2 = Policy.from_checkpoint(msgpack_cp_dir, config=config)
-        # Get the state of the policy recovered from msgpack.
-        msgpack_state = pol2.get_state()
-        # The following args get changed/added inside the config dict when a policy is
-        # a) constructed and b) within a rollout worker, so we take them out here.
-        # Note: We will not fix this as we are moving away from the Policy API (and
-        # their config dicts) anyways.
-        for key in [
-            "tf_session_args",
-            "simple_optimizer",
-            "replay_buffer_config",
-            "worker_index",
-            "__policy_id",
-        ]:
-            pickle_state["policy_spec"]["config"].pop(key, None)
-            msgpack_state["policy_spec"]["config"].pop(key, None)
-        check(pickle_state, msgpack_state)
+                # Create standard (pickle-based) checkpoint.
+                with tempfile.TemporaryDirectory() as pickle_cp_dir:
+                    pol1.export_checkpoint(pickle_cp_dir)
+                    # Now convert pickle checkpoint to msgpack using the provided
+                    # utility function.
+                    with tempfile.TemporaryDirectory() as msgpack_cp_dir:
+                        convert_to_msgpack_policy_checkpoint(pickle_cp_dir, msgpack_cp_dir)
+                        msgpack_cp_info = get_checkpoint_info(msgpack_cp_dir)
+                        self.assertTrue(msgpack_cp_info["type"] == "Policy")
+                        self.assertTrue(msgpack_cp_info["format"] == "msgpack")
+                        self.assertTrue(msgpack_cp_info["policy_ids"] is None)
+                        # Try recreating a new policy object from the msgpack checkpoint.
+                        pol2 = Policy.from_checkpoint(msgpack_cp_dir, config=config)
+                # Get the state of the policy recovered from msgpack.
+                msgpack_state = pol2.get_state()
+                # The following args get changed/added inside the config dict when a policy is
+                # a) constructed and b) within a rollout worker, so we take them out here.
+                # Note: We will not fix this as we are moving away from the Policy API (and
+                # their config dicts) anyways.
+                for key in [
+                    "tf_session_args",
+                    "simple_optimizer",
+                    "replay_buffer_config",
+                    "worker_index",
+                    "__policy_id",
+                ]:
+                    pickle_state["policy_spec"].config.pop(key, None)
+                    msgpack_state["policy_spec"].config.pop(key, None)
+                check(pickle_state, msgpack_state)
 
 
 if __name__ == "__main__":

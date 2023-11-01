@@ -685,28 +685,6 @@ class AlgorithmConfig(_Config):
 
         return self
 
-    # TODO(sven): We might want to have a `deserialize` method as well. Right now,
-    #  simply using the from_dict() API works in this same (deserializing) manner,
-    #  whether the dict used is actually code-free (already serialized) or not
-    #  (i.e. a classic RLlib config dict with e.g. "callbacks" key still pointing to
-    #  a class).
-    def serialize(self) -> Mapping[str, Any]:
-        """Returns a mapping from str to JSON'able values representing this config.
-
-        The resulting values will not have any code in them.
-        Classes (such as `callbacks_class`) will be converted to their full
-        classpath, e.g. `ray.rllib.algorithms.callbacks.DefaultCallbacks`.
-        Actual code such as lambda functions will be written as their source
-        code (str) plus any closure information for properly restoring the
-        code inside the AlgorithmConfig object made from the returned dict data.
-        Dataclass objects get converted to dicts.
-
-        Returns:
-            A mapping from str to JSON'able values.
-        """
-        config = self.to_dict()
-        return self._serialize_dict(config)
-
     def copy(self, copy_frozen: Optional[bool] = None) -> "AlgorithmConfig":
         """Creates a deep copy of this config and (un)freezes if necessary.
 
@@ -3558,45 +3536,6 @@ class AlgorithmConfig(_Config):
     def items(self):
         """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
-
-    @staticmethod
-    def _serialize_dict(config: Dict):
-        # Serialize all found spaces to their serialized structs.
-        # Note: We cannot use `tree.map_structure` here b/c it doesn't play
-        # nice with gym Dicts or Tuples (crashes).
-        config = deep_transform(
-            lambda s: gym_space_to_dict(s) if isinstance(s, gym.Space) else s, config
-        )
-        # Serialize all found classes (types) to their classpaths:
-        config = tree.map_structure(
-            lambda s: serialize_type(s) if isinstance(s, type) else s, config
-        )
-        # List'ify sets.
-        config = tree.map_structure(
-            lambda s: list(s) if isinstance(s, set) else s, config
-        )
-        # List'ify `policies`, iff a tuple (these types are not JSON'able).
-        ma_config = config.get("multiagent")
-        if ma_config is not None:
-            if isinstance(ma_config.get("policies"), tuple):
-                ma_config["policies"] = list(ma_config["policies"])
-        # However, if these "multiagent" settings have been provided directly
-        # on the top-level (as they should), we override the settings under
-        # "multiagent". Note that the "multiagent" key should no longer be used anyways.
-        if isinstance(config.get("policies"), tuple):
-            config["policies"] = list(config["policies"])
-
-        # Non-JSON'able items will be masked out via NOT_SERIALIZABLE.
-        def _serialize_item(item):
-            try:
-                json.dumps(item)
-            except TypeError:
-                return NOT_SERIALIZABLE
-            return item
-
-        config = tree.map_structure(_serialize_item, config)
-
-        return config
 
     @staticmethod
     def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:

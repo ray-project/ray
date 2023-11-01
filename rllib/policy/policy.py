@@ -45,6 +45,7 @@ from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
     get_checkpoint_info,
     try_import_msgpack,
+    try_serialize_for_msgpack,
 )
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -57,7 +58,6 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import (
     deserialize_type,
-    serialize_type,
     space_from_dict,
     space_to_dict,
 )
@@ -136,20 +136,20 @@ class PolicySpec:
         # Try to figure out a durable name for this policy.
         cls = get_policy_class_name(self.policy_class)
         if cls is None:
-            cls = serialize_type(self.policy_class)
-
-        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-
-        if isinstance(self.config, AlgorithmConfig):
-            config = self.config.serialize()
-        else:
-            config = AlgorithmConfig._serialize_dict(self.config)
+            logger.warning(
+                f"Can not figure out a durable policy name for {self.policy_class}. "
+                f"You are probably trying to checkpoint a custom policy. "
+                f"Raw policy class may cause problems when the checkpoint needs to "
+                "be loaded in the future. To fix this, make sure you add your "
+                "custom policy in rllib.algorithms.registry.POLICIES."
+            )
+            cls = self.policy_class
 
         return {
             "policy_class": cls,
             "observation_space": space_to_dict(self.observation_space),
             "action_space": space_to_dict(self.action_space),
-            "config": config,
+            "config": self.config,
         }
 
     @classmethod
@@ -354,9 +354,20 @@ class Policy(metaclass=ABCMeta):
                 else:
                     state = pickle.load(f)
 
+            # If msgpack OR checkpoint version is <=1.2, `policy_spec` will be
+            # serialized -> deserialize it first.
+            if (
+                state.get("policy_spec")
+                and (
+                    msgpack
+                    or checkpoint_info["checkpoint_version"] <= version.Version("1.2")
+                )
+            ):
+                state["policy_spec"] = PolicySpec.deserialize(state["policy_spec"])
+
             # If config is explicitly provided, use it instead of stored config.
             if config is not None and state.get("policy_spec"):
-                state["policy_spec"]["config"] = (
+                state["policy_spec"].config = (
                     config if isinstance(config, dict) else config.to_dict()
                 )
 
@@ -378,19 +389,18 @@ class Policy(metaclass=ABCMeta):
         Returns:
             A new Policy instance.
         """
-        serialized_pol_spec: Optional[dict] = state.get("policy_spec")
-        if serialized_pol_spec is None:
+        policy_spec: Optional[dict] = state.get("policy_spec")
+        if policy_spec is None:
             raise ValueError(
                 "No `policy_spec` key was found in given `state`! "
                 "Cannot create new Policy."
             )
-        pol_spec = PolicySpec.deserialize(serialized_pol_spec)
         actual_class = get_tf_eager_cls_if_necessary(
-            pol_spec.policy_class,
-            pol_spec.config,
+            policy_spec.policy_class,
+            policy_spec.config,
         )
 
-        if pol_spec.config["framework"] == "tf":
+        if policy_spec.config["framework"] == "tf":
             from ray.rllib.policy.tf_policy import TFPolicy
 
             return TFPolicy._tf1_from_state_helper(state)
@@ -400,9 +410,9 @@ class Policy(metaclass=ABCMeta):
             # Note: We are intentionally not using keyward arguments here
             # because some policies name the observation space parameter obs_space,
             # and some others name it observation_space.
-            pol_spec.observation_space,
-            pol_spec.action_space,
-            pol_spec.config,
+            policy_spec.observation_space,
+            policy_spec.action_space,
+            policy_spec.config,
         )
 
         # Set the new policy's state (weights, optimizer vars, exploration state,
@@ -1019,13 +1029,12 @@ class Policy(metaclass=ABCMeta):
 
         # Add this Policy's spec so it can be retreived w/o access to the original
         # code.
-        policy_spec = PolicySpec(
+        state["policy_spec"] = PolicySpec(
             policy_class=type(self),
             observation_space=self.observation_space,
             action_space=self.action_space,
             config=self.config,
         )
-        state["policy_spec"] = policy_spec.serialize()
 
         if self.config.get("enable_connectors", False):
             # Checkpoint connectors state as well if enabled.
@@ -1077,7 +1086,7 @@ class Policy(metaclass=ABCMeta):
                 obtained by calling `self.get_state()`.
         """
         if "policy_spec" in state:
-            policy_spec = PolicySpec.deserialize(state["policy_spec"])
+            policy_spec = state["policy_spec"]
             # Assert spaces remained the same.
             if (
                 policy_spec.observation_space is not None
@@ -1205,9 +1214,8 @@ class Policy(metaclass=ABCMeta):
             msgpack = try_import_msgpack(error=True)
             policy_state["checkpoint_version"] = str(CHECKPOINT_VERSION)
             # Serialize the config for msgpack dump'ing.
-            policy_state["policy_spec"]["config"] = AlgorithmConfig._serialize_dict(
-                policy_state["policy_spec"]["config"]
-            )
+            policy_state["policy_spec"] = policy_state["policy_spec"].serialize()
+            policy_state = try_serialize_for_msgpack(policy_state)
             state_file = "policy_state.msgpck"
             with open(os.path.join(export_dir, state_file), "w+b") as f:
                 msgpack.dump(policy_state, f)
