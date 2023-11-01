@@ -34,7 +34,7 @@ def test_expected_pydantic_version():
     actual_pydantic_version = pydantic.__version__
     assert expected_pydantic_version == actual_pydantic_version, (
         f"expected_pydantic_version={expected_pydantic_version}, "
-        f"actual_pydantic_version={actual_version}"
+        f"actual_pydantic_version={actual_pydantic_version}"
     )
 
 
