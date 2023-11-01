@@ -217,7 +217,7 @@ def _node_type_from_group_spec(
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
 
     return {
-        "min_worker_nodes": min_workers,
+        "min_worker_nodes": min_worker_nodes,
         "max_worker_nodes": max_worker_nodes,
         # `node_config` is a legacy field required for compatibility.
         # Pod config data is required by the operator but not by the autoscaler.

@@ -39,7 +39,7 @@ from ray.autoscaler._private.commands import (
     get_cluster_dump_archive,
     get_head_node_ip,
     get_local_dump_archive,
-    get_worker_node_ips,
+    autoscaler_get_worker_node_ips,
     kill_node,
     monitor_cluster,
     rsync,
@@ -1774,7 +1774,7 @@ def get_head_ip(cluster_config_file, cluster_name):
 )
 def get_worker_node_ips(cluster_config_file, cluster_name):
     """Return the list of worker IPs of a Ray cluster."""
-    worker_node_ips = get_worker_node_ips(cluster_config_file, cluster_name)
+    worker_node_ips = autoscaler_get_worker_node_ips(cluster_config_file, cluster_name)
     click.echo("\n".join(worker_node_ips))
 
 
