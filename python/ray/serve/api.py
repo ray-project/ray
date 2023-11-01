@@ -518,10 +518,10 @@ def run(
                 )
 
             deployment._route_prefix = route_prefix
-        if deployment._deployment_config.logging_config is None and logging_config:
+        if deployment.logging_config is None and logging_config:
             if isinstance(logging_config, LoggingConfig):
                 logging_config = logging_config.dict()
-            deployment._deployment_config.logging_config = logging_config
+            deployment.set_logging_config(logging_config)
         deployment_parameters = {
             "name": deployment._name,
             "replica_config": deployment._replica_config,

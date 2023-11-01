@@ -912,8 +912,8 @@ def build_serve_application(
             is_ingress = deployment.name == ingress.name
             # If deployment logging config is not set and use application logging
             # config if it is set.
-            if deployment._deployment_config.logging_config is None and logging_config:
-                deployment._deployment_config.logging_config = logging_config.dict()
+            if deployment.logging_config is None and logging_config:
+                deployment.set_logging_config(logging_config.dict())
             deploy_args_list.append(
                 get_deploy_args(
                     name=deployment._name,

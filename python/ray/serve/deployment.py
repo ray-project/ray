@@ -211,6 +211,13 @@ class Deployment:
 
         return _get_global_client().root_url + self.route_prefix
 
+    @property
+    def logging_config(self) -> Dict:
+        return self._deployment_config.logging_config
+
+    def set_logging_config(self, logging_config: Dict):
+        self._deployment_config.logging_config = logging_config
+
     def __call__(self):
         raise RuntimeError(
             "Deployments cannot be constructed directly. "
