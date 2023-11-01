@@ -24,7 +24,6 @@ from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
 )
 from ray.data.datasource.file_meta_provider import (
-    _get_file_infos_common_path_prefix,
     _get_file_infos_parallel,
     _get_file_infos_serial,
 )
@@ -269,8 +268,8 @@ def test_default_file_metadata_provider_many_files_basic(
         )
     else:
         patcher = patch(
-            "ray.data.datasource.file_meta_provider._get_file_infos_common_path_prefix",
-            wraps=_get_file_infos_common_path_prefix,
+            "ray.data.datasource.file_meta_provider._get_file_infos_parallel",
+            wraps=_get_file_infos_parallel,
         )
     with caplog.at_level(logging.WARNING), patcher as mock_get:
         file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
@@ -339,8 +338,8 @@ def test_default_file_metadata_provider_many_files_partitioned(
         )
     else:
         patcher = patch(
-            "ray.data.datasource.file_meta_provider._get_file_infos_common_path_prefix",
-            wraps=_get_file_infos_common_path_prefix,
+            "ray.data.datasource.file_meta_provider._get_file_infos_parallel",
+            wraps=_get_file_infos_parallel,
         )
     with caplog.at_level(logging.WARNING), patcher as mock_get:
         file_paths, file_sizes = map(
