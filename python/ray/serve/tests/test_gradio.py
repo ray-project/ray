@@ -30,19 +30,20 @@ def test_gradio_ingress_correctness(serve_start_shutdown, use_user_defined_class
     def greet(name):
         return f"Good morning {name}!"
 
-    def make_interface() -> gr.Interface:
-        return gr.Interface(fn=greet, inputs="text", outputs="text")
-
     if use_user_defined_class:
 
         @serve.deployment
         class UserDefinedGradioServer(GradioIngress):
             def __init__(self):
-                super().__init__(make_interface)
+                super().__init__(
+                    lambda: gr.Interface(fn=greet, inputs="text", outputs="text")
+                )
 
         app = UserDefinedGradioServer.bind()
     else:
-        app = GradioServer.bind(make_interface)
+        app = GradioServer.bind(
+            lambda: gr.Interface(fn=greet, inputs="text", outputs="text")
+        )
 
     serve.run(app)
 
