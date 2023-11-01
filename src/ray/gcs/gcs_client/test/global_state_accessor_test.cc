@@ -192,9 +192,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   std::promise<bool> promise1;
   auto resources1 = std::make_shared<rpc::ResourcesData>();
   resources1->set_node_id(node_table_data->node_id());
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-      resources1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
-  WaitReady(promise1.get_future(), timeout_ms_);
+  gcs_server_->UpdateGcsResourceManagerInTest(*resources1);
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
@@ -208,9 +206,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   (*heartbeat2->mutable_resources_total())["GPU"] = 10;
   (*heartbeat2->mutable_resources_available())["CPU"] = 1;
   (*heartbeat2->mutable_resources_available())["GPU"] = 5;
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-      heartbeat2, [&promise2](Status status) { promise2.set_value(status.ok()); }));
-  WaitReady(promise2.get_future(), timeout_ms_);
+  gcs_server_->UpdateGcsResourceManagerInTest(*heartbeat2);
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
