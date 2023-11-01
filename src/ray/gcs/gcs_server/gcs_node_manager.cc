@@ -64,22 +64,31 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   if (request.node_info().is_head_node()) {
-    // mark the old head node as dead if exists:
+    // mark the all old head nodes as dead if exists:
     // 1. should never happen when HA is not used
     // 2. happens when a new GCS is started
-    auto head_node_it =
-        std::find_if(alive_nodes_.begin(), alive_nodes_.end(), [](const auto &node) {
-          return node.second->is_head_node();
-        });
-    if (head_node_it != alive_nodes_.end()) {
-      NodeID old_head_node_id = head_node_it->first;
-      OnNodeFailure(old_head_node_id,
-                    [this, node_id, request, on_done](const Status &status) {
-                      RAY_CHECK_OK(status);
-                      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-                          node_id, request.node_info(), on_done));
-                    });
-    }
+    std::function<void(
+        absl::flat_hash_map<ray::NodeID,
+                            std::shared_ptr<rpc::GcsNodeInfo>>::iterator)>
+        mark_node_chain_callback =
+            [&mark_node_chain_callback, this, on_done, request, node_id](auto node_it) {
+              if (node_it != alive_nodes_.end()) {
+                if (node_it->second->is_head_node()) {
+                  OnNodeFailure(
+                      node_it->first,
+                      [&mark_node_chain_callback, node_it](const Status &status) {
+                        RAY_CHECK_OK(status);
+                        mark_node_chain_callback(std::next(node_it));
+                      });
+                } else {
+                  mark_node_chain_callback(std::next(node_it));
+                }
+              } else {
+                RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+                    node_id, request.node_info(), on_done));
+              }
+            };
+    mark_node_chain_callback(alive_nodes_.begin());
   } else {
     RAY_CHECK_OK(
         gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
@@ -281,10 +290,11 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
     node_info_delta->set_state(node->state());
     node_info_delta->set_end_time_ms(node->end_time_ms());
 
-    auto on_done = [this, node_id, node_info_delta](const Status &status) {
-      RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
+    auto on_done = [this, node_id, callback, node_info_delta](const Status &status) {
+      gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, callback);
     };
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
+  } else {
     callback(Status::OK());
   }
 }
