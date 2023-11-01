@@ -279,7 +279,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       //    - Setup subscription
       // With this, it means we only need to ask the node registered to do resubscription.
       // And for the node failed to register, they will crash on the client side due to
-      // registeration failure.
+      // registration failure.
       rpc::Address remote_address;
       remote_address.set_raylet_id(node_info.node_id());
       remote_address.set_ip_address(node_info.node_manager_address());
