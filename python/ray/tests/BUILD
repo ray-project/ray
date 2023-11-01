@@ -14,6 +14,15 @@ py_library(
 
 py_test_module_list(
   files = [
+    "test_dashboard.py",
+  ],
+  size = "large",
+  tags = ["exclusive", "manual", "team:serverless"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
     "test_actor_pool.py",
     "test_async.py",
     "test_asyncio.py",
@@ -369,7 +378,6 @@ py_test_module_list(
     "test_placement_group_3.py",
     "test_placement_group_5.py",
     "test_cancel.py",
-    "test_dashboard.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_0", "team:core"],
