@@ -318,9 +318,6 @@ def read_datasource(
 
     local_uri = False
     paths = read_args.get("paths", None)
-    from datetime import datetime
-
-    print(f"_is_local_scheme(paths)", datetime.now())
     if paths and _is_local_scheme(paths):
         if ray.util.client.ray.is_connected():
             raise ValueError(

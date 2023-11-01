@@ -471,16 +471,12 @@ def _fetch_metadata_parallel(
     # dominates the Ray task overhead while ensuring good parallelism.
     # Always launch at least 2 parallel fetch tasks.
     parallelism = max(len(uris) // desired_uris_per_task, 2)
-    from datetime import datetime
-
     metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
     fetch_tasks = []
-    print("remote_fetch_func.remote(uri_chunk)", datetime.now())
     for uri_chunk in np.array_split(uris, parallelism):
         if len(uri_chunk) == 0:
             continue
         fetch_tasks.append(remote_fetch_func.remote(uri_chunk))
-    print("metadata_fetch_bar.fetch_until_complete(fetch_tasks)", datetime.now())
     results = metadata_fetch_bar.fetch_until_complete(fetch_tasks)
     yield from itertools.chain.from_iterable(results)
 
