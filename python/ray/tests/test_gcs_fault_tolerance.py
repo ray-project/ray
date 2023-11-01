@@ -113,6 +113,53 @@ def test_gcs_server_restart_during_actor_creation(
             health_check_initial_delay_ms=0,
             health_check_period_ms=1000,
             health_check_failure_threshold=3,
+            enable_autoscaler_v2=True,
+        ),
+    ],
+    indirect=True,
+)
+def test_autoscaler_init(
+    ray_start_cluster_head_with_external_redis,
+):
+    """
+    Checks that autoscaler initializes properly after GCS restarts.
+    """
+    cluster = ray_start_cluster_head_with_external_redis
+    cluster.add_node()
+    cluster.wait_for_nodes()
+
+    # Make sure both head and worker node are alive.
+    nodes = ray.nodes()
+    assert len(nodes) == 2
+    assert nodes[0]["alive"] and nodes[1]["alive"]
+
+    head_node = cluster.head_node
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+    # Kill gcs server.
+    cluster.head_node.kill_gcs_server()
+    # Wait to prevent the gcs server process becoming zombie.
+    gcs_server_process.wait()
+    wait_for_pid_to_exit(gcs_server_pid, 300)
+
+    # Restart gcs server process.
+    cluster.head_node.start_gcs_server()
+
+    from ray.autoscaler.v2.sdk import get_cluster_status
+
+    status = get_cluster_status(ray.get_runtime_context().gcs_address)
+    assert len(status.idle_nodes) == 2
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=2,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=3,
         ),
     ],
     indirect=True,
