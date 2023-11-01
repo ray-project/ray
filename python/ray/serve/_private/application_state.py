@@ -907,25 +907,20 @@ def build_serve_application(
         deployments = pipeline_build(app._get_internal_dag_node(), name)
         ingress = get_and_validate_ingress_deployment(deployments)
 
-        # Set code version and runtime env for each deployment
+        deploy_args_list = []
         for deployment in deployments:
-            deployment.set_options(version=code_version, _internal=True)
-
+            is_ingress = deployment.name == ingress.name
             # If deployment logging config is not set and use application logging
             # config if it is set.
             if deployment._deployment_config.logging_config is None and logging_config:
                 deployment._deployment_config.logging_config = logging_config.dict()
-
-        deploy_args_list = []
-        for deployment in deployments:
-            is_ingress = deployment.name == ingress.name
             deploy_args_list.append(
                 get_deploy_args(
                     name=deployment._name,
                     replica_config=deployment._replica_config,
                     ingress=is_ingress,
                     deployment_config=deployment._deployment_config,
-                    version=deployment.version,
+                    version=code_version,
                     route_prefix=deployment.route_prefix,
                     docs_path=deployment._docs_path,
                 )
