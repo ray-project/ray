@@ -577,7 +577,7 @@ ray::Status NodeManager::RegisterGcs() {
 }
 
 void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force) {
-  RAY_LOG(INFO) << "Worker is requested to be killed. force: " << force;
+  RAY_LOG(INFO) << "Worker is requested to be killed. force: " << force << ". pid: " << worker->GetProcess().GetId() <<". WorkerId: " << worker->WorkerId();
   if (force) {
     worker->GetProcess().Kill();
     return;
