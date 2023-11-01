@@ -64,12 +64,11 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   if (request.node_info().is_head_node()) {
-    // mark the all old head nodes as dead if exists:
+    // mark all old head nodes as dead if exists:
     // 1. should never happen when HA is not used
     // 2. happens when a new GCS is started
     std::function<void(
-        absl::flat_hash_map<ray::NodeID,
-                            std::shared_ptr<rpc::GcsNodeInfo>>::iterator)>
+        absl::flat_hash_map<ray::NodeID, std::shared_ptr<rpc::GcsNodeInfo>>::iterator)>
         mark_node_chain_callback =
             [&mark_node_chain_callback, this, on_done, request, node_id](auto node_it) {
               if (node_it != alive_nodes_.end()) {
@@ -280,7 +279,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 }
 
 void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
-                                   const StatusCallback &callback) {
+                                   const StatusCallback &node_table_updated_callback) {
   if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
@@ -290,12 +289,16 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
     node_info_delta->set_state(node->state());
     node_info_delta->set_end_time_ms(node->end_time_ms());
 
-    auto on_done = [this, node_id, callback, node_info_delta](const Status &status) {
-      gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, callback);
+    auto on_done = [this, node_id, node_table_updated_callback, node_info_delta](
+                       const Status &status) {
+      if (node_table_updated_callback != nullptr) {
+        node_table_updated_callback(Status::OK());
+      }
+      RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     };
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
-  } else {
-    callback(Status::OK());
+  } else if (node_table_updated_callback != nullptr) {
+    node_table_updated_callback(Status::OK());
   }
 }
 
