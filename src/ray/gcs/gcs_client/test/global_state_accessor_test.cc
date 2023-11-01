@@ -192,7 +192,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   std::promise<bool> promise1;
   auto resources1 = std::make_shared<rpc::ResourcesData>();
   resources1->set_node_id(node_table_data->node_id());
-  gcs_server_->GetGcsResourceManager().UpdateFromResourceView(*resources1);
+  gcs_server_->UpdateGcsResourceManagerInTest(*resources1);
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
@@ -206,7 +206,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   (*heartbeat2->mutable_resources_total())["GPU"] = 10;
   (*heartbeat2->mutable_resources_available())["CPU"] = 1;
   (*heartbeat2->mutable_resources_available())["GPU"] = 5;
-  gcs_server_->GetGcsResourceManager().UpdateFromResourceView(*heartbeat2);
+  gcs_server_->UpdateGcsResourceManagerInTest(*heartbeat2);
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
