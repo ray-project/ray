@@ -2,7 +2,7 @@ ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG PYTHON_VERSION
-ARG PYDANTIC_VERSION
+ARG BUILD_PYDANTIC_NIGHTLY
 
 # Unset dind settings; we are using the host's docker daemon.
 ENV DOCKER_TLS_CERTDIR=
