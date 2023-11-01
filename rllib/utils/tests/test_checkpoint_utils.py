@@ -92,7 +92,7 @@ class TestCheckpointUtils(unittest.TestCase):
         pickle-checkpoint-recovered Algorithm (given same initial config).
         """
         # Base config used for both pickle-based checkpoint and msgpack-based one.
-        config = PPOConfig().environment("CartPole-v1")
+        config = DQNConfig().environment("CartPole-v1")
         # Build algorithm object.
         algo1 = config.build()
         # Fake one result for the checkpoint saving to succeed
