@@ -376,7 +376,6 @@ Content-Type: application/json
 .. autoclass:: ray.serve.schema.ReadDeploymentModel
    :members:
    :show-inheritance:
-   :inherited-members:
 ```
 
 ## Metrics API
