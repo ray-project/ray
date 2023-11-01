@@ -5919,6 +5919,31 @@
       cluster:
         cluster_compute: multi_node_benchmark_compute_gce.yaml
 
+- name: iter_tensor_batches_benchmark_multi_node_512
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: multi_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py --data-size-gb=10 --block-size-mb=512
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: multi_node_benchmark_compute_gce.yaml
+
 - name: iter_batches_benchmark_single_node
   group: data-tests
   working_dir: nightly_tests/dataset

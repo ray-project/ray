@@ -63,7 +63,10 @@ def to_tf(
     return ds
 
 
-def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
+def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int, block_size_mb: int):
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.target_max_block_size = block_size_mb * 1024 * 1024
+
     ds = ray.data.read_images(
         f"s3://anonymous@air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
     )
@@ -99,21 +102,7 @@ def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int):
     # Test with varying batch sizes for iter_torch_batches() and to_tf().
     for batch_size in batch_sizes:
         benchmark.run_materialize_ds(
-            f"iter-torch-batches-{batch_size}",
-            iter_torch_batches,
-            ds=ds,
-            batch_size=batch_size,
-        )
-    ctx = ray.data.context.DataContext.get_current()
-    ctx.target_max_block_size = 512 * 1024 * 1024
-    ds = ray.data.read_images(
-        f"s3://anonymous@air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
-    )
-    ds = ds.map_batches(add_label, batch_format="pandas").materialize()
-    # Test with varying batch sizes for iter_torch_batches() and to_tf().
-    for batch_size in batch_sizes:
-        benchmark.run_materialize_ds(
-            f"iter-torch-batches-{batch_size}-block-size-512mb",
+            f"iter-torch-batches-{batch_size}-block-size-{block_size_mb}",
             iter_torch_batches,
             ds=ds,
             batch_size=batch_size,
@@ -168,11 +157,17 @@ if __name__ == "__main__":
         default=1,
         help="The data size to use for the dataset.",
     )
+    parser.add_argument(
+        "--block-size-mb",
+        type=int,
+        default=128,
+        help="The data size to use for the dataset.",
+    )
 
     args = parser.parse_args()
 
     benchmark = Benchmark("iter-tensor-batches")
 
-    run_iter_tensor_batches_benchmark(benchmark, args.data_size_gb)
+    run_iter_tensor_batches_benchmark(benchmark, args.data_size_gb, args.block_size_mb)
 
     benchmark.write_result()
