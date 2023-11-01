@@ -39,7 +39,7 @@ from ray.autoscaler._private.commands import (
     get_cluster_dump_archive,
     get_head_node_ip,
     get_local_dump_archive,
-    autoscaler_get_worker_node_ips,
+    get_worker_node_ips as autoscaler_get_worker_node_ips,
     kill_node,
     monitor_cluster,
     rsync,
