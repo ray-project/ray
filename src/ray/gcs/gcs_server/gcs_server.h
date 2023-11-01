@@ -150,7 +150,7 @@ class GcsServer {
   void InitGcsTaskManager();
 
   /// Initialize gcs autoscaling manager.
-  void InitGcsAutoscalerStateManager();
+  void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
 
   /// Initialize usage stats client.
   void InitUsageStatsClient();
