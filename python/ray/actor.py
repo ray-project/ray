@@ -352,8 +352,8 @@ class _ActorClassMetadata:
         memory: The heap memory quota for this actor.
         resources: The default resources required by the actor creation task.
         accelerator_type: The specified type of accelerator required for the
-            node on which this actor runs. See 
-            :ref:`accelerator types <accelerator_types>`.
+            node on which this actor runs.
+            See :ref:`accelerator types <accelerator_types>`.
         runtime_env: The runtime environment for this actor.
         scheduling_strategy: Strategy about how to schedule this actor.
         last_export_session_and_job: A pair of the last exported session
