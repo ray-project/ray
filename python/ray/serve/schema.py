@@ -185,6 +185,7 @@ class RayActorOptionsSchema(BaseModel):
         default=None,
         description=(
             "Forces replicas to run on nodes with the specified accelerator type."
+            " See :ref:`accelerator types <accelerator_types>`."
         ),
     )
 

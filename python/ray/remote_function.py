@@ -173,8 +173,8 @@ class RemoteFunction:
                 to reserve for this task or for the lifetime of the actor.
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
-                on a node with the specified type of accelerator.
-                See `ray.util.accelerators <https://github.com/ray-project/ray/blob/master/python/ray/util/accelerators/accelerators.py>`_ for accelerator types.
+                on a node with the specified type of accelerator. See 
+                :ref:`accelerator types <accelerator_types>`.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
