@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
+from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
