@@ -1,3 +1,5 @@
+:orphan:
+
 .. _accelerator_types:
 
 Accelerator Types
