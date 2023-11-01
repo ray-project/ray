@@ -68,11 +68,7 @@ class AsyncCounter:
 
 
 class TestLoggingAPI:
-
-
     def test_start_serve_with_logging_config(self, serve_and_ray_shutdown):
-        serve.start(logging_config={"log_level": "DEBUG", "encoding": "JSON"})
-        '''
         serve.start(logging_config={"log_level": "DEBUG", "encoding": "JSON"})
         serve_log_dir = get_serve_logs_dir()
         # Check controller log
@@ -96,7 +92,6 @@ class TestLoggingAPI:
         )
         proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
         check_log_file(proxy_log_path, expected_log_regex)
-        '''
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
     def test_encoding(self, serve_instance, encoding_type):

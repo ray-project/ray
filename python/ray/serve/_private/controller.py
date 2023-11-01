@@ -125,16 +125,15 @@ class ServeController:
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
 
-        
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
         self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
-        
+
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
-        
+
         # Try to read config from checkpoint
         self.logging_config = None
         log_config_checkpoint = self.kv_store.get(LOGGING_CONFIG_CHECKPOINT_KEY)
@@ -223,7 +222,10 @@ class ServeController:
         ).inc()
 
     def reconfigure_system_logging_config(self, logging_config: LoggingConfig):
-        if self.logging_config and self.logging_config.version == logging_config.version:
+        if (
+            self.logging_config
+            and self.logging_config.version == logging_config.version
+        ):
             return
         self.kv_store.put(LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(logging_config))
         self.logging_config = logging_config
