@@ -213,7 +213,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._output_node.outqueue.append(None)
             # Clears metrics for this dataset so that they do
             # not persist in the grafana dashboard after execution
-            clear_stats_actor_metrics({"dataset": self._dataset_tag})
+            clear_stats_actor_metrics(self._get_metrics_tags())
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -295,7 +295,8 @@ class StreamingExecutor(Executor, threading.Thread):
             op_state.refresh_progress_bar()
 
         update_stats_actor_metrics(
-            [op.metrics for op in self._topology], {"dataset": self._dataset_tag}
+            [op.metrics for op in self._topology],
+            self._get_metrics_tags(),
         )
 
         # Log metrics of newly completed operators.
@@ -347,6 +348,13 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         if self._global_info:
             self._global_info.set_description(resources_status)
+
+    def _get_metrics_tags(self):
+        """Returns a list of tags for operator-level metrics."""
+        return [
+            {"dataset": self._dataset_tag, "operator": f"{op.name}{i}"}
+            for i, op in enumerate(self._topology)
+        ]
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
