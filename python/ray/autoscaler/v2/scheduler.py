@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from google.protobuf.json_format import MessageToDict
 
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
-from ray.autoscaler._private.util import NodeType
+from ray.autoscaler.v2.schema import NodeType
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
@@ -144,27 +144,15 @@ class SchedulingNode:
     """
 
     # Class level node id counter.
-    _next_node_id = 0
+    _next_id = 0
 
-    # A unique id simply for differentiating nodes. Not the same as a normal ray node
-    # id.
-    node_id: int
-    # Node type name.
-    node_type: NodeType
-    # Requests committed to be placed on this node.
-    sched_requests: List[ResourceRequest] = field(default_factory=list)
-    # The node's current resource capacity.
-    total_resources: Dict[str, float] = field(default_factory=dict)
-    # The node's available resources.
-    available_resources: Dict[str, float] = field(default_factory=dict)
-    # Node's labels, including static or dynamic labels.
-    labels: Dict[str, str] = field(default_factory=dict)
-    # Status
-    status: SchedulingNodeStatus = SchedulingNodeStatus.TO_LAUNCH
-    # Observability descriptive message for why the node was launched in the
-    # first place.
-    # TODO
-    launch_reason: Optional[str] = None
+    @classmethod
+    def next_id(cls) -> int:
+        """
+        Return the next id to be used for creating a new scheduling node id.
+        """
+        cls._next_id += 1
+        return cls._next_id
 
     @classmethod
     def from_node_config(
@@ -183,6 +171,26 @@ class SchedulingNode:
             labels=dict(node_config.labels),
             status=status,
         )
+
+    # A unique id simply for differentiating nodes. Not the same as a normal ray node
+    # id.
+    id: int
+    # Node type name.
+    node_type: NodeType
+    # Requests committed to be placed on this node.
+    sched_requests: List[ResourceRequest] = field(default_factory=list)
+    # The node's current resource capacity.
+    total_resources: Dict[str, float] = field(default_factory=dict)
+    # The node's available resources.
+    available_resources: Dict[str, float] = field(default_factory=dict)
+    # Node's labels, including static or dynamic labels.
+    labels: Dict[str, str] = field(default_factory=dict)
+    # Status
+    status: SchedulingNodeStatus = SchedulingNodeStatus.TO_LAUNCH
+    # Observability descriptive message for why the node was launched in the
+    # first place.
+    # TODO
+    launch_reason: Optional[str] = None
 
     def try_schedule(self, requests: List[ResourceRequest]) -> List[ResourceRequest]:
         """
@@ -235,24 +243,16 @@ class SchedulingNode:
         """
         pass
 
-    @classmethod
-    def next_node_id(cls) -> int:
-        """
-        Return the next id to be used for creating a new scheduling node id.
-        """
-        cls._next_node_id += 1
-        return cls._next_node_id
-
     def __repr__(self) -> str:
         return (
-            "SchedulingNode(id={node_id},node_type={node_type}, "
+            "SchedulingNode(id={id},node_type={node_type}, "
             "status={status}, "
             "total_resources={total_resources}, "
             "available_resources={available_resources}, "
             "labels={labels}, launch_reason={launch_reason}), "
             "sched_requests={sched_requests})"
         ).format(
-            node_id=self.node_id,
+            id=self.id,
             node_type=self.node_type,
             status=self.status,
             total_resources=self.total_resources,

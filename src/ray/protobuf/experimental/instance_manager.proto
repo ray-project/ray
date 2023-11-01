@@ -17,8 +17,6 @@ option cc_enable_arenas = true;
 
 package ray.rpc.autoscaler;
 
-import "src/ray/protobuf/autoscaler.proto";
-
 enum RayNodeKind {
   UNKNOWN = 0;
   HEAD = 1;
