@@ -31,10 +31,12 @@ def test_repr(config):
     assert eval(representation) == config
     assert len(representation) < MAX_REPR_LENGTH
 
+
 def test_storage_filesystem_repr():
     config = RunConfig(storage_filesystem=pyarrow.fs.S3FileSystem())
     representation = repr(config)
     assert len(representation) < MAX_REPR_LENGTH
+
 
 def test_failure_config_init():
     FailureConfig(fail_fast=True)
