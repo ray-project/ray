@@ -2,7 +2,6 @@ import os
 import sys
 
 import pydantic
-
 import pytest
 
 
@@ -21,7 +20,6 @@ def test_expected_python_version():
         f"expected_python_version={expected_python_version}, "
         f"actual_version={actual_version}"
     )
-
 
 
 @pytest.mark.skipif(
