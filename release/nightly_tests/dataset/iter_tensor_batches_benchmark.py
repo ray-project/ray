@@ -36,7 +36,9 @@ def iter_torch_batches(
         "num_batches:",
         num_batches,
     )
-    print(f"iter_torch_batches batch_size={batch_size}, prefetch_batches={prefetch_batches}")
+    print(
+        f"iter_torch_batches batch_size={batch_size}, prefetch_batches={prefetch_batches}"
+    )
     print(ds.stats())
     return ds
 

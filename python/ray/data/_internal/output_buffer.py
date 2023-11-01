@@ -73,14 +73,29 @@ class BlockOutputBuffer:
         block_remainder = None
         block = BlockAccessor.for_block(block_to_yield)
         if block.size_bytes() >= 1.5 * self._target_max_block_size:
+            # Slice a block to respect the target max block size.  We only do
+            # this if we are more than 50% above the target block size, because
+            # this ensures that the last block produced will be at least half
+            # the block size.
             num_bytes_per_row = block.size_bytes() // block.num_rows()
             target_num_rows = self._target_max_block_size // num_bytes_per_row
             target_num_rows = max(1, target_num_rows)
 
-            num_rows = min(target_num_rows, block.num_rows())
-            # Use copy=True to avoid holding the entire block in memory.
-            block_to_yield = block.slice(0, num_rows, copy=True)
-            block_remainder = block.slice(num_rows, block.num_rows(), copy=True)
+            # If the buffer has received all rows, then try to divide the row
+            # remainder evenly across the output blocks. This reduces chance of
+            # slicing and favors producing even blocks over always staying
+            # under the target_max_block_size.
+            if self._finalized:
+                num_rows_remainder = block.num_rows() % target_num_rows
+                num_whole_blocks = block.num_rows() // target_num_rows
+                target_num_rows += num_rows_remainder // num_whole_blocks
+
+            if target_num_rows < block.num_rows():
+                # Use copy=True to avoid holding the entire block in memory.
+                block_to_yield = block.slice(0, target_num_rows, copy=True)
+                block_remainder = block.slice(
+                    target_num_rows, block.num_rows(), copy=True
+                )
 
         self._buffer = DelegatingBlockBuilder()
         if block_remainder is not None:
