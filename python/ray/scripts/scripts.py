@@ -1777,6 +1777,7 @@ def get_worker_node_ips(cluster_config_file, cluster_name):
     worker_node_ips = autoscaler_get_worker_node_ips(cluster_config_file, cluster_name)
     click.echo("\n".join(worker_node_ips))
 
+
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
@@ -1788,7 +1789,7 @@ def get_worker_node_ips(cluster_config_file, cluster_name):
 )
 def get_worker_ips(cluster_config_file, cluster_name):
     """Return the list of worker IPs of a Ray cluster.
-    
+
     Deprecated in favor of get_worker_node_ips.
     """
     # print deprecation warning and recommend using get_worker_node_ips
@@ -1801,6 +1802,7 @@ def get_worker_ips(cluster_config_file, cluster_name):
         cf.bold("ray get-worker-node-ips"),
     )
     get_worker_node_ips(cluster_config_file, cluster_name)
+
 
 @cli.command()
 def disable_usage_stats():
