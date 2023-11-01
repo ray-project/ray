@@ -125,26 +125,23 @@ class ServeController:
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
 
-        # Try to read config from checkpoint
+        
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
         self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        
+        self.long_poll_host = LongPollHost()
+        self.done_recovering_event = asyncio.Event()
+        
+        # Try to read config from checkpoint
+        self.logging_config = None
         log_config_checkpoint = self.kv_store.get(LOGGING_CONFIG_CHECKPOINT_KEY)
         if log_config_checkpoint is not None:
             logging_config = pickle.loads(log_config_checkpoint)
-        self.logging_config: LoggingConfig = logging_config
+        self.reconfigure_system_logging_config(logging_config)
 
-        configure_component_logger(
-            component_name="controller",
-            component_id=str(os.getpid()),
-            logging_config=self.logging_config,
-        )
-        logger.debug(
-            "Configure the serve controller logger "
-            f"with logging config: {self.logging_config}"
-        )
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
@@ -161,9 +158,6 @@ class ServeController:
         # Used to read/write checkpoints.
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
-
-        self.long_poll_host = LongPollHost()
-        self.done_recovering_event = asyncio.Event()
 
         self.proxy_state_manager = ProxyStateManager(
             controller_name,
@@ -229,9 +223,9 @@ class ServeController:
         ).inc()
 
     def reconfigure_system_logging_config(self, logging_config: LoggingConfig):
-        if self.logging_config.version == logging_config.version:
+        if self.logging_config and self.logging_config.version == logging_config.version:
             return
-        self.kv.put(LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(logging_config))
+        self.kv_store.put(LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(logging_config))
         self.logging_config = logging_config
 
         self.long_poll_host.notify_changed(
@@ -242,6 +236,10 @@ class ServeController:
             component_name="controller",
             component_id=str(os.getpid()),
             logging_config=logging_config,
+        )
+        logger.debug(
+            "Configure the serve controller logger "
+            f"with logging config: {self.logging_config}"
         )
 
     def check_alive(self) -> None:
