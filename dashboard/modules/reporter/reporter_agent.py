@@ -6,7 +6,6 @@ import os
 import socket
 import sys
 import traceback
-import warnings
 
 import psutil
 
@@ -29,13 +28,13 @@ from prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.util.debug import log_once
+from ray._private.accelerators import get_all_accelerator_managers
+
 from ray.dashboard import k8s_utils
 from ray._raylet import WorkerID
 
 logger = logging.getLogger(__name__)
 
-enable_gpu_usage_check = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
@@ -47,25 +46,6 @@ ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") ==
 IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
 # Using existence of /sys/fs/cgroup as the criterion is consistent with
 # Ray's existing resource logic, see e.g. ray._private.utils.get_num_cpus().
-
-try:
-    import gpustat.core as gpustat
-except ModuleNotFoundError:
-    gpustat = None
-    if log_once("gpustat_import_warning"):
-        warnings.warn(
-            "`gpustat` package is not installed. GPU monitoring is "
-            "not available. To have full functionality of the "
-            "dashboard please install `pip install ray["
-            "default]`.)"
-        )
-except ImportError as e:
-    gpustat = None
-    if log_once("gpustat_import_warning"):
-        warnings.warn(
-            "Importing gpustat failed, fix this to have full "
-            "functionality of the dashboard. The original error was:\n\n" + e.msg
-        )
 
 
 def recursive_asdict(o):
@@ -120,30 +100,6 @@ METRICS_GAUGES = {
         "Total shared memory usage on a ray node",
         "bytes",
         ["ip", "SessionName"],
-    ),
-    "node_gpus_available": Gauge(
-        "node_gpus_available",
-        "Total GPUs available on a ray node",
-        "percentage",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
-    ),
-    "node_gpus_utilization": Gauge(
-        "node_gpus_utilization",
-        "Total GPUs usage on a ray node",
-        "percentage",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
-    ),
-    "node_gram_used": Gauge(
-        "node_gram_used",
-        "Total GPU RAM usage on a ray node",
-        "bytes",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
-    ),
-    "node_gram_available": Gauge(
-        "node_gram_available",
-        "Total GPU RAM available on a ray node",
-        "bytes",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_disk_io_read": Gauge(
         "node_disk_io_read", "Total read from disk", "bytes", ["ip", "SessionName"]
@@ -392,35 +348,6 @@ class ReporterAgent(
             return psutil.cpu_percent()
 
     @staticmethod
-    def _get_gpu_usage():
-        global enable_gpu_usage_check
-        if gpustat is None or not enable_gpu_usage_check:
-            return []
-        gpu_utilizations = []
-        gpus = []
-        try:
-            gpus = gpustat.new_query().gpus
-        except Exception as e:
-            logger.debug(f"gpustat failed to retrieve GPU information: {e}")
-
-            # gpustat calls pynvml.nvmlInit()
-            # On machines without GPUs, this can run subprocesses that spew to
-            # stderr. Then with log_to_driver=True, we get log spew from every
-            # single raylet. To avoid this, disable the GPU usage check on
-            # certain errors.
-            # https://github.com/ray-project/ray/issues/14305
-            # https://github.com/ray-project/ray/pull/21686
-            if type(e).__name__ == "NVMLError_DriverNotLoaded":
-                enable_gpu_usage_check = False
-
-        for gpu in gpus:
-            # Note the keys in this dict have periods which throws
-            # off javascript so we change .s to _s
-            gpu_data = {"_".join(key.split(".")): val for key, val in gpu.entry.items()}
-            gpu_utilizations.append(gpu_data)
-        return gpu_utilizations
-
-    @staticmethod
     def _get_boot_time():
         if IN_KUBERNETES_POD:
             # Return start time of container entrypoint
@@ -652,7 +579,6 @@ class ReporterAgent(
             "disk": self._get_disk_usage(),
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
-            "gpus": self._get_gpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
@@ -911,74 +837,13 @@ class ReporterAgent(
             )
             records_reported.append(node_mem_shared)
 
-        # The output example of gpustats.
-        """
-        {'index': 0,
-        'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
-        'name': 'NVIDIA A10G',
-        'temperature_gpu': 20,
-        'fan_speed': 0,
-        'utilization_gpu': 1,
-        'utilization_enc': 0,
-        'utilization_dec': 0,
-        'power_draw': 51,
-        'enforced_power_limit': 300,
-        'memory_used': 0,
-        'memory_total': 22731,
-        'processes': []}
-        """
-        # -- GPU per node --
-        gpus = stats["gpus"]
-        gpus_available = len(gpus)
-
-        if gpus_available:
-            gpu_tags = {"ip": ip}
-            for gpu in gpus:
-                gpus_utilization, gram_used, gram_total = 0, 0, 0
-                # Consume GPU may not report its utilization.
-                if gpu["utilization_gpu"] is not None:
-                    gpus_utilization += gpu["utilization_gpu"]
-                gram_used += gpu["memory_used"]
-                gram_total += gpu["memory_total"]
-                gpu_index = gpu.get("index")
-                gpu_name = gpu.get("name")
-
-                gram_available = gram_total - gram_used
-
-                if gpu_index is not None:
-                    gpu_tags = {"ip": ip, "GpuIndex": str(gpu_index)}
-                    if gpu_name:
-                        gpu_tags["GpuDeviceName"] = gpu_name
-
-                    # There's only 1 GPU per each index, so we record 1 here.
-                    gpus_available_record = Record(
-                        gauge=METRICS_GAUGES["node_gpus_available"],
-                        value=1,
-                        tags=gpu_tags,
-                    )
-                    gpus_utilization_record = Record(
-                        gauge=METRICS_GAUGES["node_gpus_utilization"],
-                        value=gpus_utilization,
-                        tags=gpu_tags,
-                    )
-                    gram_used_record = Record(
-                        gauge=METRICS_GAUGES["node_gram_used"],
-                        value=gram_used,
-                        tags=gpu_tags,
-                    )
-                    gram_available_record = Record(
-                        gauge=METRICS_GAUGES["node_gram_available"],
-                        value=gram_available,
-                        tags=gpu_tags,
-                    )
-                    records_reported.extend(
-                        [
-                            gpus_available_record,
-                            gpus_utilization_record,
-                            gram_used_record,
-                            gram_available_record,
-                        ]
-                    )
+        # -- Accelerator per node --
+        for accelerator_manager in get_all_accelerator_managers():
+            for (
+                record
+            ) in accelerator_manager.get_current_node_accelerator_usage_metrics():
+                record.tags["ip"] = ip
+                records_reported.append(record)
 
         # -- Disk per node --
         disk_io_stats = stats["disk_io"]

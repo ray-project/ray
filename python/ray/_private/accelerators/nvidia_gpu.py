@@ -4,6 +4,7 @@ import sys
 import logging
 import subprocess
 import importlib
+import warnings
 from typing import Optional, List, Tuple
 
 try:
@@ -11,9 +12,49 @@ try:
 except ImportError:
     pass
 
+try:
+    import gpustat.core as gpustat
+except ModuleNotFoundError:
+    gpustat = None
+except ImportError:
+    gpustat = None
+
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.metrics_agent import Gauge, Record
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
+
+enable_gpu_usage_check = True
+
+node_gpus_available_gauge = Gauge(
+    "node_gpus_available",
+    "Total GPUs available on a ray node",
+    "percentage",
+    ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+)
+node_gpus_utilization_gauge = (
+    Gauge(
+        "node_gpus_utilization",
+        "Total GPUs usage on a ray node",
+        "percentage",
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+    ),
+)
+node_gram_used_gauge = (
+    Gauge(
+        "node_gram_used",
+        "Total GPU RAM usage on a ray node",
+        "bytes",
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+    ),
+)
+node_gram_available_guage = Gauge(
+    "node_gram_available",
+    "Total GPU RAM available on a ray node",
+    "bytes",
+    ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+)
 
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
@@ -157,3 +198,109 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             assert len(gpus) == 1
             return gpus[0]["Name"]
         return None
+
+    @staticmethod
+    def get_current_node_accelerator_usage_metrics() -> List[Record]:
+        if gpustat is None and log_once("gpustat_import_warning"):
+            warnings.warn(
+                "`gpustat` package is not installed or cannot be imported. "
+                "GPU monitoring is not available. "
+                "To have full functionality of the "
+                "dashboard please install `pip install ray["
+                "default]`."
+            )
+            return []
+
+        global enable_gpu_usage_check
+        if gpustat is None or not enable_gpu_usage_check:
+            return []
+
+        gpus = []
+        try:
+            gpus = gpustat.new_query().gpus
+        except Exception as e:
+            logger.debug(f"gpustat failed to retrieve GPU information: {e}")
+
+            # gpustat calls pynvml.nvmlInit()
+            # On machines without GPUs, this can run subprocesses that spew to
+            # stderr. Then with log_to_driver=True, we get log spew from every
+            # single raylet. To avoid this, disable the GPU usage check on
+            # certain errors.
+            # https://github.com/ray-project/ray/issues/14305
+            # https://github.com/ray-project/ray/pull/21686
+            if type(e).__name__ == "NVMLError_DriverNotLoaded":
+                enable_gpu_usage_check = False
+
+        gpu_stats = []
+        for gpu in gpus:
+            # Note the keys in this dict have periods which throws
+            # off javascript so we change .s to _s
+            gpu_data = {"_".join(key.split(".")): val for key, val in gpu.entry.items()}
+            gpu_stats.append(gpu_data)
+
+        # The output example of gpustats.
+        """
+        {'index': 0,
+        'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
+        'name': 'NVIDIA A10G',
+        'temperature_gpu': 20,
+        'fan_speed': 0,
+        'utilization_gpu': 1,
+        'utilization_enc': 0,
+        'utilization_dec': 0,
+        'power_draw': 51,
+        'enforced_power_limit': 300,
+        'memory_used': 0,
+        'memory_total': 22731,
+        'processes': []}
+        """
+        records = []
+        for gpu_stat in gpu_stats:
+            gpu_index = gpu_stat.get("index")
+            if gpu_index is None:
+                continue
+
+            gpu_utilization, gram_used, gram_total = 0, 0, 0
+            # Consume GPU may not report its utilization.
+            if gpu_stat["utilization_gpu"] is not None:
+                gpu_utilization = gpu_stat["utilization_gpu"]
+            gram_used = gpu_stat["memory_used"]
+            gram_total = gpu_stat["memory_total"]
+            gpu_name = gpu_stat.get("name")
+            gram_available = gram_total - gram_used
+
+            gpu_tags = {"GpuIndex": str(gpu_index)}
+            if gpu_name:
+                gpu_tags["GpuDeviceName"] = gpu_name
+
+            # There's only 1 GPU per each index, so we record 1 here.
+            records.append(
+                Record(
+                    gauge=node_gpus_available_gauge,
+                    value=1,
+                    tags=gpu_tags,
+                )
+            )
+            records.append(
+                Record(
+                    gauge=node_gpus_utilization_gauge,
+                    value=gpu_utilization,
+                    tags=gpu_tags,
+                )
+            )
+            records.append(
+                Record(
+                    gauge=node_gram_used_gauge,
+                    value=gram_used,
+                    tags=gpu_tags,
+                )
+            )
+            records.append(
+                Record(
+                    gauge=node_gram_available_guage,
+                    value=gram_available,
+                    tags=gpu_tags,
+                )
+            )
+
+        return records
