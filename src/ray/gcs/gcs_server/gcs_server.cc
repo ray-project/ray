@@ -234,7 +234,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InstallEventListeners();
 
   // Init autoscaling manager
-  InitGcsAutoscalerStateManager();
+  InitGcsAutoscalerStateManager(gcs_init_data);
 
   // Start RPC server when all tables have finished loading initial
   // data.
@@ -647,7 +647,7 @@ void GcsServer::InitGcsWorkerManager() {
   rpc_server_.RegisterService(*worker_info_service_);
 }
 
-void GcsServer::InitGcsAutoscalerStateManager() {
+void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
   auto v2_enabled = std::to_string(RayConfig::instance().enable_autoscaler_v2());
   RAY_LOG(INFO) << "Autoscaler V2 enabled: " << v2_enabled;
@@ -680,6 +680,7 @@ void GcsServer::InitGcsAutoscalerStateManager() {
                                                   *gcs_node_manager_,
                                                   *gcs_placement_group_manager_,
                                                   raylet_client_pool_);
+  gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
       main_service_, *gcs_autoscaler_state_manager_));
