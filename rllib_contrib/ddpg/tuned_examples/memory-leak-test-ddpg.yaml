@@ -1,0 +1,16 @@
+# Run this experiment by doing:
+# $ rllib train file [this very file]
+
+memory-leak-test-ddpg:
+    env:
+        ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnvContActions
+    run: DDPG
+    config:
+        # Works for both torch and tf.
+        framework: torch
+        # Switch off np.random, which is known to have memory leaks.
+        env_config:
+            config:
+                static_samples: true
+        replay_buffer_config:
+          capacity: 500  # use small buffer to catch memory leaks

@@ -1,4 +1,5 @@
 from ci.ray_ci.docker_container import DockerContainer
+from ci.ray_ci.container import _DOCKER_ECR_REPO
 
 
 class AnyscaleDockerContainer(DockerContainer):
@@ -10,15 +11,16 @@ class AnyscaleDockerContainer(DockerContainer):
         """
         Build and publish anyscale docker images
         """
+        ecr = _DOCKER_ECR_REPO.split("/")[0]
         tag = self._get_canonical_tag()
         ray_image = f"rayproject/{self.image_type}:{tag}"
-        anyscale_image = f"anyscale/{self.image_type}:{tag}"
+        anyscale_image = f"{ecr}/anyscale/{self.image_type}:{tag}"
         requirement = self._get_requirement_file()
 
         self.run_script(
             [
                 f"./ci/build/build-anyscale-docker.sh "
-                f"{ray_image} {anyscale_image} {requirement}",
+                f"{ray_image} {anyscale_image} {requirement} {ecr}",
             ]
         )
 

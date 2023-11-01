@@ -416,9 +416,10 @@ class Policy(metaclass=ABCMeta):
     def make_rl_module(self) -> "RLModule":
         """Returns the RL Module (only for when RLModule API is enabled.)
 
-        If RLModule API is enabled (self.config.rl_module(_enable_rl_module_api=True),
-        this method should be implemented and should return the RLModule instance to
-        use for this Policy. Otherwise, RLlib will error out.
+        If RLModule API is enabled
+        (self.config.experimental(_enable_new_api_stack=True), this method should be
+        implemented and should return the RLModule instance to use for this Policy.
+        Otherwise, RLlib will error out.
         """
         # if imported on top it creates circular dependency
         from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -538,7 +539,7 @@ class Policy(metaclass=ABCMeta):
         if input_dict is None:
             input_dict = {SampleBatch.OBS: obs}
             if state is not None:
-                if self.config.get("_enable_rl_module_api", False):
+                if self.config.get("_enable_new_api_stack", False):
                     input_dict["state_in"] = state
                 else:
                     for i, s in enumerate(state):
@@ -795,9 +796,11 @@ class Policy(metaclass=ABCMeta):
         Returns:
             Dictionary of extra metadata from `compute_gradients()`.
 
-        Examples:
-            >>> policy, sample_batch = ... # doctest: +SKIP
-            >>> policy.learn_on_batch(sample_batch) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            policy, sample_batch = ...
+            policy.learn_on_batch(sample_batch)
         """
         # The default implementation is simply a fused `compute_gradients` plus
         # `apply_gradients` call.
@@ -1166,10 +1169,12 @@ class Policy(metaclass=ABCMeta):
                 `self.get_state()` calls of its different Policies.
             checkpoint_format: Either one of 'cloudpickle' or 'msgpack'.
 
-        Example:
-            >>> from ray.rllib.algorithms.ppo import PPOTorchPolicy
-            >>> policy = PPOTorchPolicy(...) # doctest: +SKIP
-            >>> policy.export_checkpoint("/tmp/export_dir") # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.algorithms.ppo import PPOTorchPolicy
+            policy = PPOTorchPolicy(...)
+            policy.export_checkpoint("/tmp/export_dir")
         """
         # `filename_prefix` should not longer be used as new Policy checkpoints
         # contain more than one file with a fixed filename structure.
@@ -1295,7 +1300,7 @@ class Policy(metaclass=ABCMeta):
             # If we are on the new RLModule/Learner stack, `num_gpus` is deprecated.
             # so use `num_gpus_per_worker` for policy sampling
             # we need this .get() syntax here to ensure backwards compatibility.
-            if self.config.get("_enable_learner_api", False):
+            if self.config.get("_enable_new_api_stack", False):
                 num_gpus = self.config["num_gpus_per_worker"]
             else:
                 # If head node, take num_gpus.
@@ -1431,12 +1436,12 @@ class Policy(metaclass=ABCMeta):
         self._lazy_tensor_dict(self._dummy_batch)
         # With RL Modules you want the explore flag to be True for initialization
         # of the tensors and placeholder you'd need for training.
-        explore = self.config.get("_enable_rl_module_api", False)
+        explore = self.config.get("_enable_new_api_stack", False)
 
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )
-        if not self.config.get("_enable_rl_module_api", False):
+        if not self.config.get("_enable_new_api_stack", False):
             for key, view_req in self.view_requirements.items():
                 if key not in self._dummy_batch.accessed_keys:
                     view_req.used_for_compute_actions = False
@@ -1486,7 +1491,7 @@ class Policy(metaclass=ABCMeta):
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            if self.config.get("_enable_rl_module_api", False):
+            if self.config.get("_enable_new_api_stack", False):
                 sub_batch = postprocessed_batch[:B]
                 postprocessed_batch["state_in"] = sub_batch["state_in"]
                 postprocessed_batch["state_out"] = sub_batch["state_out"]
@@ -1506,7 +1511,7 @@ class Policy(metaclass=ABCMeta):
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
             postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
 
-        if not self.config.get("_enable_learner_api"):
+        if not self.config.get("_enable_new_api_stack"):
             # Switch on lazy to-tensor conversion on `postprocessed_batch`.
             train_batch = self._lazy_tensor_dict(postprocessed_batch)
             # Calling loss, so set `is_training` to True.
@@ -1546,7 +1551,7 @@ class Policy(metaclass=ABCMeta):
 
         # Add new columns automatically to view-reqs.
         if (
-            not self.config.get("_enable_learner_api")
+            not self.config.get("_enable_new_api_stack")
             and auto_remove_unneeded_view_reqs
         ):
             # Add those needed for postprocessing and training.
@@ -1648,7 +1653,7 @@ class Policy(metaclass=ABCMeta):
         # We need to check for hasattr(self, "model") because a dummy Policy may not
         # have a model.
         if (
-            self.config.get("_enable_rl_module_api", False)
+            self.config.get("_enable_new_api_stack", False)
             and hasattr(self, "model")
             and self.model.is_stateful()
         ):
