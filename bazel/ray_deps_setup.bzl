@@ -107,11 +107,8 @@ def ray_deps_setup():
         name = "com_github_antirez_redis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",
         patch_args = ["-p1"],
-        url = "https://github.com/redis/redis/archive/refs/tags/7.0.8.tar.gz",
-        sha256 = "0e439cbc19f6db5a4c63d355519ab73bf6ac2ecd47df806c14b19564b3d0c593",
-        patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
-        ],
+        url = "https://github.com/redis/redis/archive/refs/tags/7.2.2.tar.gz",
+        sha256 = "0eca4e7aa16f5f411242a2e082863dbb266c0263141fdfd571302b02adf62594",
         workspace_file_content = 'workspace(name = "com_github_antirez_redis")'
     )
 
@@ -128,8 +125,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_spdlog",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.spdlog",
-        urls = ["https://github.com/gabime/spdlog/archive/v1.7.0.zip"],
-        sha256 = "c8f1e1103e0b148eb8832275d8e68036f2fdd3975a1199af0e844908c56f6ea5",
+        urls = ["https://github.com/gabime/spdlog/archive/v1.12.0.zip"],
+        sha256 = "6174bf8885287422a6c6a0312eb8a30e8d22bcfcee7c48a6d02d1835d7769232",
     )
 
     auto_http_archive(
