@@ -462,7 +462,7 @@ def _all_to_all_api(*args, **kwargs):
             obj,
             message=(
                 "This operation requires all inputs to be "
-                "materialized in object store for it to execute.",
+                "materialized in object store for it to execute."
             ),
             pattern="Examples:",
             insert_after=False,
