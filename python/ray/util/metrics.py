@@ -16,7 +16,6 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 METRIC_NAME_RE = re.compile(r'^[a-zA-Z_:][a-zA-Z0-9_:]*$')
 
-
 @DeveloperAPI
 class Metric:
     """The parent class of custom metrics.
