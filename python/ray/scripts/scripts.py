@@ -1798,7 +1798,7 @@ def get_worker_ips(cluster_config_file, cluster_name):
     """
     # print deprecation warning and recommend using get_worker_node_ips
     cli_logger.warning(
-        "`{}` is deprecated and will be removed in the future. Please use `{}` instead.",
+        "`{}` is deprecated; please use `{}` instead.",
         cf.bold("ray get-worker-ips"),
         cf.bold("ray get-worker-node-ips"),
     )
