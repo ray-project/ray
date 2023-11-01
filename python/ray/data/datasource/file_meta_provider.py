@@ -1,7 +1,5 @@
 import itertools
 import logging
-import os
-import pathlib
 import re
 from typing import (
     TYPE_CHECKING,
@@ -162,7 +160,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
             num_rows = len(paths) * rows_per_file
         return BlockMetadata(
             num_rows=num_rows,
-            size_bytes=None if None in file_sizes else sum(file_sizes),
+            size_bytes=None if None in file_sizes else int(sum(file_sizes)),
             schema=schema,
             input_files=paths,
             exec_stats=None,
@@ -402,18 +400,11 @@ def _expand_paths(
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     )
-    from ray.data.datasource.path_util import _unwrap_protocol
 
-    print("_expand_paths()", datetime.now())
-
-    # We break down our processing paths into a few key cases:
+    # We break down our processing paths into a two cases:
     # 1. If len(paths) < threshold, fetch the file info for the individual files/paths
     #    serially.
-    # 2. If all paths are contained under the same parent directory (or base directory,
-    #    if using partitioning), fetch all file infos at this prefix and filter to the
-    #    provided paths on the client; this should be a single file info request.
-    # 3. If more than threshold requests required, parallelize them via Ray tasks.
-    # 1. Small # of paths case.
+    # 2. If more than threshold requests required, parallelize them via Ray tasks.
     if (
         len(paths) < FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
         # Local file systems are very fast to hit.
@@ -421,27 +412,8 @@ def _expand_paths(
     ):
         yield from _get_file_infos_serial(paths, filesystem, ignore_missing_paths)
     else:
-        # 2. Common path prefix case.
-        # Get longest common path of all paths.
-        common_path = os.path.commonpath(paths)
-        # If parent directory (or base directory, if using partitioning) is common to
-        # all paths, fetch all file infos at that prefix and filter the response to the
-        # provided paths.
-        print(
-            f"all(str(pathlib.Path(path).parent) == {common_path} for path in paths)",
-            datetime.now(),
-        )
-        if (
-            partitioning is not None
-            and common_path == _unwrap_protocol(partitioning.base_dir)
-        ) or all(str(pathlib.Path(path).parent) == common_path for path in paths):
-            yield from _get_file_infos_common_path_prefix(
-                paths, common_path, filesystem, ignore_missing_paths
-            )
-        # 3. Parallelization case.
-        else:
-            # Parallelize requests via Ray tasks.
-            yield from _get_file_infos_parallel(paths, filesystem, ignore_missing_paths)
+        # Parallelize requests via Ray tasks.
+        yield from _get_file_infos_parallel(paths, filesystem, ignore_missing_paths)
 
 
 def _get_file_infos_serial(
@@ -453,44 +425,6 @@ def _get_file_infos_serial(
         yield from _get_file_infos(path, filesystem, ignore_missing_paths)
 
 
-def _get_file_infos_common_path_prefix(
-    paths: List[str],
-    common_path: str,
-    filesystem: "pyarrow.fs.FileSystem",
-    ignore_missing_paths: bool = False,
-) -> Iterator[Tuple[str, int]]:
-    path_to_size = {path: None for path in paths}
-    for path, file_size in _get_file_infos(
-        common_path, filesystem, ignore_missing_paths
-    ):
-        if path in path_to_size:
-            path_to_size[path] = file_size
-
-    # Check if all `paths` have file size metadata.
-    # If any of paths has no file size, fall back to get files metadata in parallel.
-    # This can happen when path is a directory, but not a file.
-    have_missing_path = False
-    for path in paths:
-        if path_to_size[path] is None:
-            logger.debug(
-                f"Finding path {path} not have file size metadata. "
-                "Fall back to get files metadata in parallel for all paths."
-            )
-            have_missing_path = True
-            break
-
-    if have_missing_path:
-        # Parallelize requests via Ray tasks.
-        yield from _get_file_infos_parallel(paths, filesystem, ignore_missing_paths)
-    else:
-        # Iterate over `paths` to yield each path in original order.
-        # NOTE: do not iterate over `path_to_size` because the dictionary skips
-        # duplicated path, while `paths` might contain duplicated path if one wants
-        # to read same file multiple times.
-        for path in paths:
-            yield path, path_to_size[path]
-
-
 def _get_file_infos_parallel(
     paths: List[str],
     filesystem: "pyarrow.fs.FileSystem",
@@ -500,13 +434,6 @@ def _get_file_infos_parallel(
         PATHS_PER_FILE_SIZE_FETCH_TASK,
         _unwrap_s3_serialization_workaround,
         _wrap_s3_serialization_workaround,
-    )
-
-    logger.warning(
-        f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
-        f"operation on some cloud storage services. Moving all the "
-        "paths to a common parent directory will lead to faster "
-        "metadata fetching."
     )
 
     # Capture the filesystem in the fetcher func closure, but wrap it in our

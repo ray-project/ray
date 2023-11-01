@@ -56,6 +56,7 @@ class MobileNetTorchPPORLModule(PPOTorchRLModule):
 
 config = (
     PPOConfig()
+    .experimental(_enable_new_api_stack=True)
     .rl_module(
         rl_module_spec=SingleAgentRLModuleSpec(module_class=MobileNetTorchPPORLModule)
     )
