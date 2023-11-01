@@ -35,22 +35,22 @@ fi
 
 echo "--- Upload to org data for ${DEPLOY_ENVIRONMENT}"
 
+for PY_VERSION_CODE in "${PY_VERSION_CODES[@]}"; do
+    # All tar.gz's are the same, we only need to upload one of them.
+    # so just upload the basic ray:cpu one.
+    aws s3 cp "${S3_TEMP}/ray-opt/${PY_VERSION_CODE}/ray-${PY_VERSION_CODE}-cpu.tar.gz" \
+        "${TMP}/ray-${PY_VERSION_CODE}-cpu.tar.gz"
+done
+
 if [[ "${BUILDKITE:-}" == "true" ]]; then
     eval "$(aws sts assume-role \
         --role-arn "${DEPLOY_ROLE}" \
-        --role-session-name "runtime-sitepkg-${RAYCI_BUILD_ID}" \
+        --role-session-name "runtime-sitepkg-${RAYCI_BUILD_ID}-${DEPLOY_ENVIRONMENT}" \
         --duration-seconds 900 | python anyscale/ci/assume_role_envs.py)"
 fi
 
 RAY_COMMIT="$(git rev-parse HEAD)"
-
 for PY_VERSION_CODE in "${PY_VERSION_CODES[@]}"; do
-    # All tar.gz's are the same, we only need to upload one of them.
-    # so just upload the basic ray:cpu one.
-
-    aws s3 cp "${S3_TEMP}/ray-opt/${PY_VERSION_CODE}/ray-${PY_VERSION_CODE}-cpu.tar.gz" \
-        "${TMP}/ray-${PY_VERSION_CODE}-cpu.tar.gz"
-
     aws s3 cp "${TMP}/ray-${PY_VERSION_CODE}-cpu.tar.gz" \
         "s3://${ORG_DATA_BUCKET}/common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}.tar.gz"
 done
