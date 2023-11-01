@@ -131,11 +131,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Get the number of cpus on this node.
   uint64_t GetNumCpus() const;
 
-  /// Replace the local resources by the provided value.
-  ///
-  /// \param replacement: the new value.
-  void ResetLastReportResourceUsage(const NodeResources &replacement);
-
   /// Check whether the specific resource exists or not in local node.
   ///
   /// \param resource_name: the specific resource name.
@@ -214,8 +209,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// A map storing when the resource was last idle.
   absl::flat_hash_map<WorkArtifact, absl::optional<absl::Time>> last_idle_times_;
-  /// Cached resources, used to compare with newest one in light heartbeat mode.
-  std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
