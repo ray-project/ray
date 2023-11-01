@@ -670,6 +670,12 @@ class ServeDeploySchema(BaseModel):
           simply ignoring new parameters)
     """
 
+    target_capacity: Optional[int] = Field(
+        default=None,
+        description=(
+            "The target capacity for applications being deployed. Valid values are in the range [0, 100]. The target capacity for existing applications are implicitly set to (100 - target_capacity). If not set, the applications will be fully scaled up and any existing applications in the cluster will be fully terminated."
+        ),
+    )
     proxy_location: ProxyLocation = Field(
         default=ProxyLocation.EveryNode,
         description=(
