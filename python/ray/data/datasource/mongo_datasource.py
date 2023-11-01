@@ -30,43 +30,6 @@ class MongoDatasource(Datasource):
         ... ) # doctest: +SKIP
     """
 
-    def create_reader(self, **kwargs) -> Reader:
-        return _MongoDatasourceReader(**kwargs)
-
-    def write(
-        self,
-        blocks: Iterable[Block],
-        ctx: TaskContext,
-        uri: str,
-        database: str,
-        collection: str,
-    ) -> WriteResult:
-        import pymongo
-
-        _validate_database_collection_exist(
-            pymongo.MongoClient(uri), database, collection
-        )
-
-        def write_block(uri: str, database: str, collection: str, block: Block):
-            from pymongoarrow.api import write
-
-            block = BlockAccessor.for_block(block).to_arrow()
-            client = pymongo.MongoClient(uri)
-            write(client[database][collection], block)
-
-        builder = DelegatingBlockBuilder()
-        for block in blocks:
-            builder.add_block(block)
-        block = builder.build()
-
-        write_block(uri, database, collection, block)
-
-        # TODO: decide if we want to return richer object when the task
-        # succeeds.
-        return "ok"
-
-
-class _MongoDatasourceReader(Reader):
     def __init__(
         self,
         uri: str,
@@ -183,6 +146,38 @@ class _MongoDatasourceReader(Reader):
             read_tasks.append(read_task)
 
         return read_tasks
+
+    def write(
+        self,
+        blocks: Iterable[Block],
+        ctx: TaskContext,
+        uri: str,
+        database: str,
+        collection: str,
+    ) -> WriteResult:
+        import pymongo
+
+        _validate_database_collection_exist(
+            pymongo.MongoClient(uri), database, collection
+        )
+
+        def write_block(uri: str, database: str, collection: str, block: Block):
+            from pymongoarrow.api import write
+
+            block = BlockAccessor.for_block(block).to_arrow()
+            client = pymongo.MongoClient(uri)
+            write(client[database][collection], block)
+
+        builder = DelegatingBlockBuilder()
+        for block in blocks:
+            builder.add_block(block)
+        block = builder.build()
+
+        write_block(uri, database, collection, block)
+
+        # TODO: decide if we want to return richer object when the task
+        # succeeds.
+        return "ok"
 
 
 def _validate_database_collection_exist(client, database: str, collection: str):

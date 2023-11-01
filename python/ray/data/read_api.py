@@ -489,16 +489,16 @@ def read_mongo(
         ValueError: if ``database`` doesn't exist.
         ValueError: if ``collection`` doesn't exist.
     """
-    return read_datasource(
-        MongoDatasource(),
-        parallelism=parallelism,
+    datasource = MongoDatasource(
         uri=uri,
         database=database,
         collection=collection,
         pipeline=pipeline,
         schema=schema,
-        ray_remote_args=ray_remote_args,
         **mongo_args,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
