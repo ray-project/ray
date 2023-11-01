@@ -36,7 +36,6 @@ def docker_login(docker_ecr: str) -> None:
     """
     Login to docker with AWS credentials
     """
-    subprocess.run(["pip", "install", "awscli"])
     password = subprocess.check_output(
         ["aws", "ecr", "get-login-password", "--region", "us-west-2"],
         stderr=sys.stderr,

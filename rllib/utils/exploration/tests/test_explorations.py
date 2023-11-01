@@ -28,7 +28,7 @@ def do_test_explorations(config, dummy_obs, prev_a=None, expected_mean_action=No
         for exploration in [None, "Random"]:
             local_config = config.copy()
             if exploration == "Random":
-                if local_config._enable_rl_module_api:
+                if local_config._enable_new_api_stack:
                     # TODO(Artur): Support Random exploration with RL Modules.
                     continue
                 local_config.exploration(exploration_config={"type": "Random"})

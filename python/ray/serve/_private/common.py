@@ -213,7 +213,6 @@ class DeploymentInfo:
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
-        is_driver_deployment: Optional[bool] = False,
         route_prefix: str = None,
         docs_path: str = None,
         ingress: bool = False,
@@ -230,8 +229,6 @@ class DeploymentInfo:
 
         # ephermal state
         self._cached_actor_def = None
-
-        self.is_driver_deployment = is_driver_deployment
 
         self.route_prefix = route_prefix
         self.docs_path = docs_path
@@ -264,7 +261,6 @@ class DeploymentInfo:
         deployment_config: DeploymentConfig = None,
         replica_config: ReplicaConfig = None,
         version: str = None,
-        is_driver_deployment: bool = None,
         route_prefix: str = None,
     ) -> "DeploymentInfo":
         return DeploymentInfo(
@@ -275,9 +271,6 @@ class DeploymentInfo:
             actor_name=self.actor_name,
             version=version or self.version,
             end_time_ms=self.end_time_ms,
-            is_driver_deployment=is_driver_deployment
-            if is_driver_deployment is not None
-            else self.is_driver_deployment,
             route_prefix=route_prefix or self.route_prefix,
             docs_path=self.docs_path,
             ingress=self.ingress,

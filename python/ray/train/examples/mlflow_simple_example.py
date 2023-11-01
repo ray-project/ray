@@ -1,9 +1,10 @@
 from pathlib import Path
+
 from ray import train
-from ray.train import ScalingConfig, RunConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.tune.logger.mlflow import MLflowLoggerCallback
 from ray.tune.logger import TBXLoggerCallback
+from ray.tune.logger.mlflow import MLflowLoggerCallback
 
 
 def train_func():

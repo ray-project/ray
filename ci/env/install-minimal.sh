@@ -32,13 +32,11 @@ MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} "${WORKSPACE_DIR}/ci/env/install-depe
 
 # Re-install Ray wheels
 rm -rf "${WORKSPACE_DIR}/python/ray/thirdparty_files"
-rm -rf "${WORKSPACE_DIR}/python/ray/pickle5_files"
 eval "${WORKSPACE_DIR}/ci/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \
-  pytest==7.0.1 \
-  numpy
+  pytest==7.0.1
 
 # Train requirements.
 # TODO: make this dynamic

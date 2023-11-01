@@ -50,6 +50,7 @@ STATS_TEMPLATE = {
             ),
             "memory_full_info": Bunch(uss=51428381),
             "cpu_percent": 0.0,
+            "num_fds": 10,
             "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
             "create_time": 1614826391.338613,
             "pid": 7174,
@@ -64,6 +65,7 @@ STATS_TEMPLATE = {
     "raylet": {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "cpu_percent": 0.0,
+        "num_fds": 10,
         "cmdline": ["fake raylet cmdline"],
         "create_time": 1614826390.274854,
         "pid": 7153,
@@ -77,6 +79,7 @@ STATS_TEMPLATE = {
     "agent": {
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "cpu_percent": 0.0,
+        "num_fds": 10,
         "cmdline": ["fake raylet cmdline"],
         "create_time": 1614826390.274854,
         "pid": 7154,
@@ -229,6 +232,7 @@ def test_prometheus_physical_stats_record(
             "ray_node_mem_total" in metric_names,
             "ray_component_rss_mb" in metric_names,
             "ray_component_uss_mb" in metric_names,
+            "ray_component_num_fds" in metric_names,
             "ray_node_disk_io_read" in metric_names,
             "ray_node_disk_io_write" in metric_names,
             "ray_node_disk_io_read_count" in metric_names,
@@ -293,6 +297,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
             "ray_component_cpu_percentage",
             "ray_component_rss_mb",
             "ray_component_uss_mb",
+            "ray_component_num_fds",
         ]
         for metric in expected_metrics:
             if metric not in metric_names:
@@ -327,21 +332,21 @@ def test_report_stats():
             assert val == STATS_TEMPLATE["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 33
+    assert len(records) == 36
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 30
+    assert len(records) == 32
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 34
+    assert len(records) == 36
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 32
+    assert len(records) == 34
 
 
 def test_report_stats_gpu():
@@ -507,6 +512,7 @@ def test_report_per_component_stats():
         ),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 5.0,
+        "num_fds": 11,
         "cmdline": ["ray::IDLE", "", "", "", "", "", "", "", "", "", "", ""],
         "create_time": 1614826391.338613,
         "pid": 7174,
@@ -521,6 +527,7 @@ def test_report_per_component_stats():
         "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 6.0,
+        "num_fds": 12,
         "cmdline": ["ray::func", "", "", "", "", "", "", "", "", "", "", ""],
         "create_time": 1614826391.338613,
         "pid": 7175,
@@ -535,6 +542,7 @@ def test_report_per_component_stats():
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 4.0,
+        "num_fds": 13,
         "cmdline": ["fake raylet cmdline"],
         "create_time": 1614826390.274854,
         "pid": 7153,
@@ -549,6 +557,7 @@ def test_report_per_component_stats():
         "memory_info": Bunch(rss=18354176, vms=6921486336, pfaults=6206, pageins=3),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 6.0,
+        "num_fds": 14,
         "cmdline": ["fake raylet cmdline"],
         "create_time": 1614826390.274854,
         "pid": 7156,
@@ -573,9 +582,10 @@ def test_report_per_component_stats():
         }
     }
 
-    def get_uss_and_cpu_records(records):
+    def get_uss_and_cpu_and_num_fds_records(records):
         component_uss_mb_records = defaultdict(list)
         component_cpu_percentage_records = defaultdict(list)
+        component_num_fds_records = defaultdict(list)
         for record in records:
             name = record.gauge.name
             if name == "component_uss_mb":
@@ -584,22 +594,36 @@ def test_report_per_component_stats():
             if name == "component_cpu_percentage":
                 comp = record.tags["Component"]
                 component_cpu_percentage_records[comp].append(record)
-        return component_uss_mb_records, component_cpu_percentage_records
+            if name == "component_num_fds":
+                comp = record.tags["Component"]
+                component_num_fds_records[comp].append(record)
+        return (
+            component_uss_mb_records,
+            component_cpu_percentage_records,
+            component_num_fds_records,
+        )
 
     """
     Test basic case.
     """
     records = agent._record_stats(test_stats, cluster_stats)
-    uss_records, cpu_records = get_uss_and_cpu_records(records)
+    uss_records, cpu_records, num_fds_records = get_uss_and_cpu_and_num_fds_records(
+        records
+    )
 
-    def verify_metrics_values(uss_records, cpu_records, comp, uss, cpu_percent):
+    def verify_metrics_values(
+        uss_records, cpu_records, num_fds_records, comp, uss, cpu_percent, num_fds
+    ):
         """Verify the component exists and match the resource usage."""
         assert comp in uss_records
         assert comp in cpu_records
+        assert comp in num_fds_records
         uss_metrics = uss_records[comp][0].value
         cpu_percnet_metrics = cpu_records[comp][0].value
+        num_fds_metrics = num_fds_records[comp][0].value
         assert uss_metrics == uss
         assert cpu_percnet_metrics == cpu_percent
+        assert num_fds_metrics == num_fds
 
     stats_map = {
         "raylet": raylet_stast,
@@ -612,9 +636,11 @@ def test_report_per_component_stats():
         verify_metrics_values(
             uss_records,
             cpu_records,
+            num_fds_records,
             comp,
             float(stats["memory_full_info"].uss) / 1.0e6,
             stats["cpu_percent"],
+            stats["num_fds"],
         )
 
     """
@@ -624,13 +650,17 @@ def test_report_per_component_stats():
     # Verify the metrics are reset after ray::func is killed.
     test_stats["workers"] = [idle_stats]
     records = agent._record_stats(test_stats, cluster_stats)
-    uss_records, cpu_records = get_uss_and_cpu_records(records)
+    uss_records, cpu_records, num_fds_records = get_uss_and_cpu_and_num_fds_records(
+        records
+    )
     verify_metrics_values(
         uss_records,
         cpu_records,
+        num_fds_records,
         "ray::IDLE",
         float(idle_stats["memory_full_info"].uss) / 1.0e6,
         idle_stats["cpu_percent"],
+        idle_stats["num_fds"],
     )
 
     comp = "ray::func"
@@ -639,7 +669,9 @@ def test_report_per_component_stats():
     verify_metrics_values(
         uss_records,
         cpu_records,
+        num_fds_records,
         "ray::func",
+        0,
         0,
         0,
     )
@@ -652,6 +684,7 @@ def test_report_per_component_stats():
         "memory_info": Bunch(rss=55934976, vms=7026937856, pfaults=15354, pageins=0),
         "memory_full_info": Bunch(uss=51428381),
         "cpu_percent": 6.0,
+        "num_fds": 8,
         "cmdline": ["python mock", "", "", "", "", "", "", "", "", "", "", ""],
         "create_time": 1614826391.338613,
         "pid": 7175,
@@ -665,9 +698,12 @@ def test_report_per_component_stats():
     test_stats["workers"] = [idle_stats, unknown_stats]
 
     records = agent._record_stats(test_stats, cluster_stats)
-    uss_records, cpu_records = get_uss_and_cpu_records(records)
+    uss_records, cpu_records, num_fds_records = get_uss_and_cpu_and_num_fds_records(
+        records
+    )
     assert "python mock" not in uss_records
     assert "python mock" not in cpu_records
+    assert "python mock" not in num_fds_records
 
 
 @pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])

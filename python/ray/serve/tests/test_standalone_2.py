@@ -89,9 +89,8 @@ def test_memory_omitted_option(shutdown_ray_and_serve):
     assert ray.get(handle.remote()) == "world"
 
 
-@pytest.mark.parametrize("detached", [True, False])
 @pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
-def test_serve_namespace(shutdown_ray_and_serve, detached, ray_namespace):
+def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
 
     with ray.init(namespace=ray_namespace) as ray_context:
@@ -117,8 +116,7 @@ def test_serve_namespace(shutdown_ray_and_serve, detached, ray_namespace):
         assert requests.get("http://localhost:8000/f").text == "got f"
 
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_update_num_replicas(shutdown_ray_and_serve, detached):
+def test_update_num_replicas(shutdown_ray_and_serve):
     """Test updating num_replicas."""
 
     with ray.init() as ray_context:
@@ -153,13 +151,12 @@ def test_update_num_replicas(shutdown_ray_and_serve, detached):
         assert len(updated_actors) == len(actors) - 1
 
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_refresh_controller_after_death(shutdown_ray_and_serve, detached):
+def test_refresh_controller_after_death(shutdown_ray_and_serve):
     """Check if serve.start() refreshes the controller handle if it's dead."""
 
     ray.init(namespace="ray_namespace")
     serve.shutdown()  # Ensure serve isn't running before beginning the test
-    serve.start(detached=detached)
+    serve.start()
 
     old_handle = _get_global_client()._controller
     ray.kill(old_handle, no_restart=True)
@@ -174,7 +171,7 @@ def test_refresh_controller_after_death(shutdown_ray_and_serve, detached):
     wait_for_condition(controller_died, handle=old_handle, timeout=15)
 
     # Call start again to refresh handle
-    serve.start(detached=detached)
+    serve.start()
 
     new_handle = _get_global_client()._controller
     assert new_handle is not old_handle
@@ -209,15 +206,9 @@ def test_controller_deserialization_deployment_def(
         """Deploys a Serve application to the controller's Ray cluster."""
         from ray import serve
         from ray._private.utils import import_attr
-        from ray.serve.api import build
 
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")
-        app = build(graph, SERVE_DEFAULT_APP_NAME)
-
-        # Override options for each deployment
-        for name in app.deployments:
-            app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
 
         # Run the graph locally on the cluster
         serve.run(graph)
@@ -226,9 +217,7 @@ def test_controller_deserialization_deployment_def(
     ray.init(
         address="auto",
         namespace="serve",
-        runtime_env={
-            "working_dir": os.path.join(os.path.dirname(__file__), "storage_tests")
-        },
+        runtime_env={"working_dir": os.path.join(os.path.dirname(__file__), "common")},
     )
     serve.start()
     serve.context._global_client = None

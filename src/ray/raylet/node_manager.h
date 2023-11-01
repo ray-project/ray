@@ -285,9 +285,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
 
-  /// Fill out the normal task resource report.
-  void FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data);
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
 
@@ -364,6 +361,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleDirectCallTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Kill a worker.
+  ///
+  /// This shouldn't be directly used to kill a worker. If you use this API
+  /// the worker's crash cause is not correctly recorded (it will be either SIGTERM
+  /// or an unexpected failure). Use `DestroyWorker` instead.
   ///
   /// \param worker The worker to kill.
   /// \param force true to kill immediately, false to give time for the worker to

@@ -26,4 +26,4 @@ class Write(AbstractMap):
         # Always use task to write.
         self._compute = TaskPoolStrategy()
         # Take the input blocks unchanged while writing.
-        self._target_block_size = float("inf")
+        self._min_rows_per_block = float("inf")

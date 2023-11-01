@@ -229,10 +229,9 @@ def transform_ray_dag_to_serve_dag(
         deployment = deployment_shell.options(
             func_or_class=dag_node._body,
             name=deployment_name,
-            init_args=replaced_deployment_init_args,
-            init_kwargs=replaced_deployment_init_kwargs,
             route_prefix=route_prefix,
-            is_driver_deployment=deployment_shell._is_driver_deployment,
+            _init_args=replaced_deployment_init_args,
+            _init_kwargs=replaced_deployment_init_kwargs,
             _internal=True,
         )
 
@@ -408,9 +407,8 @@ def generate_executor_dag_driver_deployment(
     )
 
     return original_driver_deployment.options(
-        init_args=replaced_deployment_init_args,
-        init_kwargs=replaced_deployment_init_kwargs,
-        is_driver_deployment=original_driver_deployment._is_driver_deployment,
+        _init_args=replaced_deployment_init_args,
+        _init_kwargs=replaced_deployment_init_kwargs,
         _internal=True,
     )
 
@@ -459,7 +457,6 @@ def process_ingress_deployment_in_serve_dag(
         # didn't provide anything in particular.
         new_ingress_deployment = ingress_deployment.options(
             route_prefix="/",
-            is_driver_deployment=ingress_deployment._is_driver_deployment,
             _internal=True,
         )
         deployments[-1] = new_ingress_deployment

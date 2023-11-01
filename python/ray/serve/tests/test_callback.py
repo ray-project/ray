@@ -79,7 +79,7 @@ def ray_instance(request):
 
     os.environ.update(requested_env_vars)
     importlib.reload(ray.serve._private.constants)
-    importlib.reload(ray.serve.controller)
+    importlib.reload(ray.serve._private.controller)
     importlib.reload(ray.serve._private.proxy)
 
     yield ray.init()
@@ -170,7 +170,7 @@ def test_callback_fail(ray_instance):
     with pytest.raises(RayActorError, match="this is from raise_error_callback"):
         ray.get(handle.ready.remote())
 
-    actor_def = ray.serve.controller.ServeController
+    actor_def = ray.serve._private.controller.ServeController
     handle = actor_def.remote(
         "controller",
         http_config={},
@@ -219,7 +219,7 @@ def test_http_proxy_calllback_failures(ray_instance, capsys):
     """Test http proxy keeps restarting when callback function fails"""
 
     try:
-        serve.start(detached=True)
+        serve.start()
     except RayActorError:
         # serve.start will fail because the http proxy is not started successfully
         # and client use proxy handle to check the proxy readiness, so it will raise

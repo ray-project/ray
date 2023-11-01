@@ -20,6 +20,17 @@ public class DeploymentWrapper implements Serializable {
 
   private Map<String, String> config;
 
+  private String appName;
+
+  public String getAppName() {
+    return appName;
+  }
+
+  public DeploymentWrapper setAppName(String appName) {
+    this.appName = appName;
+    return this;
+  }
+
   public String getName() {
     return name;
   }

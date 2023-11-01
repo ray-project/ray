@@ -1,43 +1,38 @@
-import os
+import functools
 import logging
+import os
 import platform
 import queue
 import sys
 import threading
 import time
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum, auto
-import functools
-from pathlib import Path
-import shutil
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type, Union
-import warnings
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 
 import ray
 from ray.air._internal.session import _get_session
-from ray.air._internal.util import StartTraceback, RunnerThread
+from ray.air._internal.util import RunnerThread, StartTraceback
 from ray.air.constants import (
-    _RESULT_FETCH_TIMEOUT,
     _ERROR_FETCH_TIMEOUT,
+    _RESULT_FETCH_TIMEOUT,
     SESSION_MISUSE_LOG_ONCE_KEY,
-    TIMESTAMP,
     TIME_THIS_ITER_S,
+    TIMESTAMP,
 )
-from ray.data import Dataset, DatasetPipeline
+from ray.data import Dataset
 from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import StorageContext
 from ray.train.constants import (
-    CHECKPOINT_METADATA_KEY,
-    CHECKPOINT_RANK_KEY,
+    CHECKPOINT_DIR_NAME,
     DETAILED_AUTOFILLED_KEYS,
+    RAY_CHDIR_TO_TRIAL_DIR,
+    TIME_TOTAL_S,
     WORKER_HOSTNAME,
     WORKER_NODE_IP,
     WORKER_PID,
-    TIME_TOTAL_S,
-    LAZY_CHECKPOINT_MARKER_FILE,
-    RAY_CHDIR_TO_TRIAL_DIR,
 )
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -48,19 +43,9 @@ from ray.util.scheduling_strategies import (
     SchedulingStrategyT,
 )
 
-
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.tune.execution.placement_groups import PlacementGroupFactory
-
-
-_INDEX_FILE_EXTENSION = ".files"
-_INDEX_FILE = ".RANK_{0}" + _INDEX_FILE_EXTENSION
-
-
-class TrainingResultType(Enum):
-    REPORT = auto()
-    CHECKPOINT = auto()
 
 
 logger = logging.getLogger(__name__)
@@ -76,14 +61,6 @@ class TrialInfo:
     logdir: str
     driver_ip: str
     experiment_name: Optional[str] = None
-
-
-# TODO(justinvyu): [code_removal]
-@dataclass
-class TrainingResult:
-    type: TrainingResultType
-    data: Union[Dict, Checkpoint, str]
-    metadata: Optional[Dict] = None
 
 
 class _FutureTrainingResult:
@@ -140,20 +117,11 @@ class _TrainSession:
         node_rank: int,
         local_world_size: int,
         world_size: int,
-        # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
-        dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
+        dataset_shard: Optional[Dataset] = None,
         metadata: Dict[str, Any] = None,
-        # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
         detailed_autofilled_metrics: bool = False,
-        # Deprecated
-        # If True and the worker is on the same node as driver,
-        # will send over checkpoint path and metadata instead of
-        # the whole checkpoint to avoid unnecessary serialization.
-        enable_lazy_checkpointing: bool = True,
-        checkpoint_keep_all_ranks: bool = False,
-        checkpoint_upload_from_workers: bool = False,
         storage: Optional[StorageContext] = None,
         synchronous_result_reporting: bool = False,
     ):
@@ -180,17 +148,8 @@ class _TrainSession:
         self.local_world_size = local_world_size
         self.world_size = world_size
 
-        # Checkpoint configurations
-        # TODO(justinvyu): These should all be removed.
-        self.enable_lazy_checkpointing = enable_lazy_checkpointing
-        self.checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
-        self.checkpoint_upload_from_workers = checkpoint_upload_from_workers
-        # Only used if checkpoint_upload_from_workers is True.
-        self.legacy_checkpoint_uri = None
-
-        if _use_storage_context():
-            assert storage
-            logger.debug(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
+        assert storage
+        logger.debug(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
 
         # NOTE: `reset` will initialize many properties needed to start running the
         # training_func as a thread.
@@ -255,22 +214,15 @@ class _TrainSession:
         self.training_started = False
         self._first_report = True
 
-        if _use_storage_context():
-            # Change the working directory to the local trial directory.
-            # -> All workers on the same node share a working directory.
-            os.makedirs(storage.trial_local_path, exist_ok=True)
-            if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
-                logger.debug(
-                    "Switching the working directory to the trial directory: "
-                    f"{storage.trial_local_path}"
-                )
-                os.chdir(storage.trial_local_path)
-        else:
-            if trial_info:
-                # Change the working directory to `logdir`.
-                logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
-                os.makedirs(logdir, exist_ok=True)
-                os.chdir(logdir)
+        # Change the working directory to the local trial directory.
+        # -> All workers on the same node share a working directory.
+        os.makedirs(storage.trial_local_path, exist_ok=True)
+        if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+            logger.debug(
+                "Switching the working directory to the trial directory: "
+                f"{storage.trial_local_path}"
+            )
+            os.chdir(storage.trial_local_path)
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""
@@ -289,8 +241,7 @@ class _TrainSession:
         self.continue_lock.release()
 
         # Force a final (blocking) sync of artifacts in the trial path to storage.
-        if _use_storage_context():
-            self.storage.persist_artifacts(force=True)
+        self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
@@ -299,8 +250,8 @@ class _TrainSession:
         # If training finished successfully, then return results.
         return func_output
 
-    def get_next(self) -> Optional[TrainingResult]:
-        """Gets the next ``TrainingResult`` from the result queue.
+    def get_next(self) -> Optional[_TrainingResult]:
+        """Gets the next ``_TrainingResult`` from the result queue.
 
         If the result queue is empty, then this function returns ``None``.
         """
@@ -393,22 +344,6 @@ class _TrainSession:
         result.update(auto_filled_metrics)
         return result
 
-    def _report_legacy(self, **kwargs):
-        """Adds kwargs to the queue to be consumed by main thread."""
-        if self.ignore_report:
-            return
-
-        kwargs = self._auto_fill_metrics(kwargs)
-
-        result = TrainingResult(type=TrainingResultType.REPORT, data=kwargs)
-
-        # Add result to a thread-safe queue.
-        self.result_queue.put(result, block=True)
-
-        # Acquire lock to stop the training thread until main thread
-        # triggers resume.
-        self.continue_lock.acquire()
-
     def _auto_fill_checkpoint_metrics(self, result: dict) -> dict:
         """Add autofilled metrics and update attributes."""
         current_datetime = datetime.now()
@@ -427,122 +362,6 @@ class _TrainSession:
         except queue.Empty:
             pass
 
-    def _create_checkpoint_file_list(self, checkpoint: Checkpoint):
-        """Create an index of the folder contents
-
-        So we know which files belong to which rank.
-        """
-        root = checkpoint._local_path
-        ckpt_files = []
-        for dir, _, files in os.walk(root):
-            # Strip the root path from the path though, since
-            # we are only interested in the part relative to
-            # the root of this checkpoint.
-            dir = dir[len(root) :]
-            for fn in files:
-                ckpt_files.append(os.path.join(dir, fn))
-        # Write these files into the index file.
-        with open(os.path.join(root, _INDEX_FILE.format(self.world_rank)), "w") as f:
-            for fn in ckpt_files:
-                f.write(f"{fn}\n")
-
-    def _remove_uploaded_checkpoint_files(self, checkpoint: Checkpoint):
-        """Get rid of already uploaded large checkpoint files.
-
-        This is so they don't get shipped to the driver node.
-        """
-        root = checkpoint._local_path
-        for f in os.listdir(root):
-            if f.endswith(_INDEX_FILE_EXTENSION):
-                # We will leave the index file in there so local
-                # checkpoint has knowledge about the cloud files.
-                continue
-            fp = os.path.join(root, f)
-            if os.path.isfile(fp):
-                os.unlink(fp)
-            elif os.path.isdir(fp):
-                shutil.rmtree(fp)
-
-    def checkpoint(self, checkpoint: Checkpoint):
-        """Adds kwargs to the queue to be consumed by main thread.
-
-        Also stores the checkpoint in ``self.loaded_checkpoint``.
-        """
-        checkpoint_type, _ = checkpoint.get_internal_representation()
-
-        if checkpoint_type == "data_dict" and self.checkpoint_keep_all_ranks:
-            if log_once("keep_all_ranks_dict_checkpoint"):
-                logger.warning(
-                    "Saving checkpoints from all ranks does not work with "
-                    "dictionary checkpoints. Set `ray.train.CheckpointConfig"
-                    "(_checkpoint_keep_all_ranks=False)`, or write checkpoints "
-                    "to a directory and report directory checkpoints that "
-                    "contain unique files per worker rank. For example, "
-                    "use filenames that contain the unique rank. You can "
-                    "retrieve the rank with `session.get_world_rank()` within "
-                    "your training loop per worker."
-                )
-
-        upload_from_workers = (
-            checkpoint_type == "local_path"
-            and self.checkpoint_upload_from_workers
-            and self.legacy_checkpoint_uri
-        )
-        if upload_from_workers:
-            self._create_checkpoint_file_list(checkpoint)
-            logger.info(
-                f"Uploading checkpoint files from worker rank {self.world_rank} "
-                f"to cloud URI {self.legacy_checkpoint_uri}."
-            )
-            # We want to upload the files directly to cloud storage,
-            # so that they won't need to be shipped to the driver node
-            # via object store.
-            checkpoint.to_uri(self.legacy_checkpoint_uri)
-            logger.info("Done uploading checkpoint files.")
-            self._remove_uploaded_checkpoint_files(checkpoint)
-
-        # Update session checkpoint to latest checkpoint.
-        self.loaded_checkpoint = checkpoint
-
-        # Only store checkpoints on worker with rank 0.
-        if self.world_rank != 0 and not self.checkpoint_keep_all_ranks:
-            checkpoint = None
-
-        metadata = self._auto_fill_checkpoint_metrics({})
-
-        if (
-            checkpoint
-            and self.enable_lazy_checkpointing
-            and checkpoint._local_path
-            and (Path(self.trial_info.logdir) / LAZY_CHECKPOINT_MARKER_FILE).exists()
-        ):
-            metadata.update({CHECKPOINT_METADATA_KEY: checkpoint._metadata})
-            checkpoint = str(checkpoint._local_path)
-
-        # Save the rank of the worker that created this checkpoint.
-        metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
-
-        result = TrainingResult(
-            type=TrainingResultType.CHECKPOINT,
-            data=checkpoint,
-            metadata=metadata,
-        )
-
-        # Add result to a thread-safe queue.
-        self.result_queue.put(result, block=True)
-
-        # Acquire lock to stop the training thread until
-        # checkpoint has been processed.
-        self.continue_lock.acquire()
-
-    def _set_legacy_checkpoint_uri(self, uri: str):
-        """Tell session where to save the next directory checkpoint on the cloud.
-
-        Args:
-            uri: URI to the location where next checkpoint should be saved.
-        """
-        self.legacy_checkpoint_uri = uri
-
     def _report_training_result(self, training_result: _TrainingResult) -> None:
         """Place a training result on the result queue for the main thread to process,
         then block until the main thread signals that training should continue.
@@ -555,10 +374,6 @@ class _TrainSession:
         if training_result.checkpoint:
             # NOTE: This populates `train.get_checkpoint`
             self.loaded_checkpoint = training_result.checkpoint
-
-            # NOTE: This is where the coordinator AND workers increment their
-            # checkpoint index.
-            self.storage.current_checkpoint_index += 1
 
         # Add result to a thread-safe queue.
         self.result_queue.put(training_result, block=True)
@@ -575,16 +390,35 @@ class _TrainSession:
             self.stop_event.clear()
             sys.exit(0)
 
-    def new_report(
-        self, metrics: Dict, checkpoint: Optional[Checkpoint] = None
-    ) -> None:
+    def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
+        # Special case: early fail for Torch tensors
+        if "torch" in sys.modules:
+            from ray.air._internal.torch_utils import contains_tensor
+
+            if contains_tensor(metrics):
+                raise ValueError(
+                    "Passing objects containg Torch tensors as metrics "
+                    "is not supported as it will throw an exception on "
+                    "deserialization. You can either convert the tensors "
+                    "to Python objects or report a `train.Checkpoint` "
+                    "with `ray.train.report` to store your Torch objects."
+                )
+
         if self.ignore_report:
             return
 
+        metrics = self._auto_fill_metrics(metrics)
+
         persisted_checkpoint = None
         if checkpoint:
+            self.storage._update_checkpoint_index(metrics)
+
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+
+            metrics[CHECKPOINT_DIR_NAME] = self.storage.checkpoint_dir_name
+        else:
+            metrics[CHECKPOINT_DIR_NAME] = None
 
         # Persist trial artifacts to storage.
         force_artifact_sync = (
@@ -592,8 +426,6 @@ class _TrainSession:
             and self.storage.sync_config.sync_artifacts_on_checkpoint
         )
         self.storage.persist_artifacts(force=force_artifact_sync)
-
-        metrics = self._auto_fill_metrics(metrics)
 
         # Set additional user metadata from the Trainer.
         if persisted_checkpoint and self.metadata:
@@ -608,29 +440,6 @@ class _TrainSession:
         result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
 
         self._report_training_result(result)
-
-    def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
-        # TODO(xwjiang): tons of optimizations.
-
-        # Special case: early fail for Torch tensors
-        if "torch" in sys.modules:
-            from ray.air._internal.torch_utils import contains_tensor
-
-            if contains_tensor(metrics):
-                raise ValueError(
-                    "Passing objects containg Torch tensors as metrics "
-                    "is not supported as it will throw an exception on "
-                    "deserialization. You can either convert the tensors "
-                    "to Python objects or report a `train.Checkpoint` "
-                    "with `ray.train.report` to store your Torch objects."
-                )
-
-        if _use_storage_context():
-            return self.new_report(metrics, checkpoint=checkpoint)
-
-        if checkpoint:
-            self.checkpoint(checkpoint)
-        self._report_legacy(**metrics)
 
     @property
     def experiment_name(self) -> str:

@@ -31,7 +31,6 @@ parts:
             sections:
               - file: ray-core/examples/gentle_walkthrough
               - file: ray-core/examples/monte_carlo_pi
-              - file: ray-core/examples/plot_example-a3c
               - file: ray-core/examples/plot_example-lm
               - file: ray-core/examples/plot_hyperparameter
               - file: ray-core/examples/plot_parameter_server
@@ -286,7 +285,9 @@ parts:
                 sections:
                   - file: cluster/kubernetes/user-guides/rayservice.md
                     title: Deploy Ray Serve Apps
+                  - file: cluster/kubernetes/user-guides/rayservice-high-availability.md
                   - file: cluster/kubernetes/user-guides/observability.md
+                  - file: cluster/kubernetes/user-guides/upgrade-guide.md
                   - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
                     sections:
                       - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md
@@ -301,6 +302,7 @@ parts:
                   - file: cluster/kubernetes/user-guides/rayserve-dev-doc.md
                   - file: cluster/kubernetes/user-guides/pod-command.md
                   - file: cluster/kubernetes/user-guides/pod-security.md
+                  - file: cluster/kubernetes/user-guides/helm-chart-rbac.md
                   - file: cluster/kubernetes/user-guides/tls.md
                   - file: cluster/kubernetes/user-guides/k8s-autoscaler.md
                   - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
@@ -355,6 +357,7 @@ parts:
             title: Applications Guide
           - file: cluster/faq
           - file: cluster/package-overview
+          - file: cluster/usage-stats
 
       - file: ray-observability/index
         title: "Monitoring and Debugging"
@@ -385,14 +388,11 @@ parts:
               - file: ray-observability/reference/cli
               - file: ray-observability/reference/system-metrics
 
-      - file: ray-references/api
-        title: References
-        sections:
-          - file: cluster/usage-stats
-          - file: ray-references/glossary
-
       - file: ray-contribute/index
         title: Developer Guides
+
+      - file: ray-references/glossary
+        title: "Glossary"
 
       - file: ray-security/index
         title: "Security"

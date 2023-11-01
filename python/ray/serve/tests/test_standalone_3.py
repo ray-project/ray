@@ -15,10 +15,7 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.common import ProxyStatus
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_DEFAULT_APP_NAME,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeInstanceDetails
@@ -124,56 +121,6 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     assert ray.get(new_refs) == ["hello"] * 10
     assert ray.get(counter_actor.get.remote()) == 11
 
-    serve.shutdown()
-
-
-@pytest.mark.parametrize(
-    "ray_instance",
-    [
-        {
-            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
-            "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES": "5",
-        },
-    ],
-    indirect=True,
-)
-@pytest.mark.parametrize("crash", [True, False])
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="No retries w/ new behavior.",
-)
-def test_http_request_number_of_retries(ray_instance, crash):
-    """Test HTTP proxy retry requests."""
-
-    signal_actor = SignalActor.remote()
-
-    @serve.deployment
-    class Model:
-        async def __call__(self):
-            if crash:
-                # Trigger Actor Error
-                os._exit(0)
-            await signal_actor.wait.remote()
-            return "hello"
-
-    serve.run(Model.bind())
-    assert requests.get("http://127.0.0.1:8000/").status_code == 500
-
-    def verify_metrics():
-        resp = requests.get("http://127.0.0.1:9999").text
-        resp = resp.split("\n")
-        # Make sure http proxy retry 5 times
-        verfied = False
-        for metrics in resp:
-            if "# HELP" in metrics or "# TYPE" in metrics:
-                continue
-            if "serve_num_router_requests" in metrics:
-                assert "6.0" in metrics
-                verfied = True
-        return verfied
-
-    wait_for_condition(verify_metrics, timeout=60, retry_interval_ms=500)
-    signal_actor.send.remote()
     serve.shutdown()
 
 
@@ -411,9 +358,11 @@ def test_drain_and_undrain_http_proxy_actors(
             **ray.get(client._controller.get_serve_instance_details.remote())
         )
         proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
-        return {
+        print("all proxies!!!", [proxy for _, proxy in serve_details.proxies.items()])
+        current_status = {
             status: proxy_status_list.count(status) for status in proxy_status_list
-        } == proxy_status_to_count
+        }
+        return current_status == proxy_status_to_count, current_status
 
     wait_for_condition(
         condition_predictor=check_proxy_status,

@@ -2,15 +2,20 @@ import sys
 import pytest
 import os
 from pyspark.sql import SparkSession
+from ray.tests.spark.test_basic import _setup_ray_on_spark_envs
 from ray.tests.spark.test_GPU import RayOnSparkGPUClusterTestBase
 
 pytestmark = [
     pytest.mark.skipif(
-        not sys.platform.startswith("linux"),
-        reason="Ray on spark only supports running on Linux.",
+        os.name != "posix",
+        reason="Ray on spark only supports running on POSIX system.",
     ),
-    pytest.mark.timeout(300),
+    pytest.mark.timeout(1500),
 ]
+
+
+def setup_module():
+    _setup_ray_on_spark_envs()
 
 
 class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):

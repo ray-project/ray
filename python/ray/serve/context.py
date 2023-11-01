@@ -143,7 +143,6 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
     client = ServeControllerClient(
         controller,
         controller_name,
-        detached=True,
     )
     _set_global_client(client)
     return client

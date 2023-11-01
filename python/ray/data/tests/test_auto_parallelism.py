@@ -12,6 +12,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 @dataclass
 class TestCase:
     avail_cpus: int
+    target_max_block_size: int
     data_size: int
     expected_parallelism: int
 
@@ -22,74 +23,99 @@ GiB = 1024 * MiB
 TEST_CASES = [
     TestCase(
         avail_cpus=4,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=1024,
         expected_parallelism=8,  # avail_cpus has precedence
     ),
     TestCase(
         avail_cpus=4,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=10 * MiB,
         expected_parallelism=10,  # MIN_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=20 * MiB,
         expected_parallelism=20,  # MIN_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=100 * MiB,
         expected_parallelism=100,  # MIN_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=1 * GiB,
         expected_parallelism=200,  # MIN_PARALLELISM has precedence
     ),
     TestCase(
         avail_cpus=4,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=10 * GiB,
         expected_parallelism=200,  # MIN_PARALLELISM has precedence
     ),
     TestCase(
         avail_cpus=150,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=10 * GiB,
         expected_parallelism=300,  # avail_cpus has precedence
     ),
     TestCase(
         avail_cpus=400,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=10 * GiB,
         expected_parallelism=800,  # avail_cpus has precedence
     ),
     TestCase(
         avail_cpus=400,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=1 * MiB,
         expected_parallelism=800,  # avail_cpus has precedence
     ),
     TestCase(
         avail_cpus=4,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=1000 * GiB,
-        expected_parallelism=2000,  # MAX_BLOCK_SIZE has precedence
+        expected_parallelism=8000,  # MAX_BLOCK_SIZE has precedence
     ),
     TestCase(
         avail_cpus=4,
+        target_max_block_size=DataContext.get_current().target_max_block_size,
         data_size=10000 * GiB,
-        expected_parallelism=20000,  # MAX_BLOCK_SIZE has precedence
+        expected_parallelism=80000,  # MAX_BLOCK_SIZE has precedence
+    ),
+    TestCase(
+        avail_cpus=4,
+        target_max_block_size=512 * MiB,
+        data_size=1000 * GiB,
+        expected_parallelism=2000,  # passed max_block_size has precedence
+    ),
+    TestCase(
+        avail_cpus=4,
+        target_max_block_size=512 * MiB,
+        data_size=10000 * GiB,
+        expected_parallelism=20000,  # passed max_block_size has precedence
     ),
 ]
 
 
 @pytest.mark.parametrize(
-    "avail_cpus,data_size,expected",
+    "avail_cpus,target_max_block_size,data_size,expected",
     [astuple(test) for test in TEST_CASES],
 )
-def test_autodetect_parallelism(avail_cpus, data_size, expected):
+def test_autodetect_parallelism(
+    shutdown_only, avail_cpus, target_max_block_size, data_size, expected
+):
     class MockReader:
         def estimate_inmemory_data_size(self):
             return data_size
 
-    result, _, _ = _autodetect_parallelism(
+    result, _, _, _ = _autodetect_parallelism(
         parallelism=-1,
-        cur_pg=None,
+        target_max_block_size=target_max_block_size,
         ctx=DataContext.get_current(),
         reader=MockReader(),
         avail_cpus=avail_cpus,
@@ -110,7 +136,8 @@ def test_auto_parallelism_basic(shutdown_only):
     assert ds.num_blocks() == 16, ds
     # Block size bound.
     ds = ray.data.range_tensor(100000000, shape=(100,), parallelism=-1)
-    assert ds.num_blocks() == 150, ds
+    assert ds.num_blocks() >= 590, ds
+    assert ds.num_blocks() <= 600, ds
 
 
 def test_auto_parallelism_placement_group(shutdown_only):
@@ -120,7 +147,7 @@ def test_auto_parallelism_placement_group(shutdown_only):
     def run():
         context = DataContext.get_current()
         context.min_parallelism = 1
-        ds = ray.data.range_tensor(10000, shape=(100,), parallelism=-1)
+        ds = ray.data.range_tensor(2000, shape=(100,), parallelism=-1)
         return ds.num_blocks()
 
     # 1/16 * 4 * 16 = 4

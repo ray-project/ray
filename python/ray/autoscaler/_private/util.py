@@ -109,6 +109,7 @@ class LoadMetricsSummary:
     # Optional for deployment modes which have the concept of node types and
     # backwards compatibility.
     node_type_mapping: Optional[Dict[str, str]] = None
+    idle_time_map: Optional[Dict[str, int]] = None
 
 
 class ConcurrentCounter:
@@ -757,8 +758,14 @@ def get_per_node_breakdown(
         if node_id in node_type_mapping:
             node_type = node_type_mapping[node_id]
             node_string += f" ({node_type})"
-
         print(node_string, file=sio)
+        if (
+            lm_summary.idle_time_map
+            and node_id in lm_summary.idle_time_map
+            and lm_summary.idle_time_map[node_id] > 0
+        ):
+            print(f" Idle: {lm_summary.idle_time_map[node_id]} ms", file=sio)
+
         print(" Usage:", file=sio)
         for line in parse_usage(usage, verbose):
             print(f"  {line}", file=sio)

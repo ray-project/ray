@@ -85,9 +85,6 @@ RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
-#: Number of historically deleted deployments to store in the checkpoint.
-MAX_NUM_DELETED_DEPLOYMENTS = 1000
-
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
 MAX_CACHED_HANDLES = 100
@@ -159,14 +156,15 @@ MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-
-# [EXPERIMENTAL] Disable the proxy actor
-SERVE_EXPERIMENTAL_DISABLE_PROXY = "SERVE_EXPERIMENTAL_DISABLE_PROXY"
-
 # Message
 MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "
     "config files."
+)
+
+DAG_DEPRECATION_MESSAGE = (
+    "The DAG API is deprecated. Please use the recommended model composition pattern "
+    "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
 )
 
 # Jsonify the log messages
@@ -196,17 +194,6 @@ SERVE_LOG_RECORD_FORMAT = {
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
-
-# Feature flag to enable StreamingResponse support.
-# When turned on, *all* HTTP responses will use Ray streaming object refs.
-RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
-    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "1") == "1"
-)
-
-# Request ID used for logging. Can be provided as a request
-# header and will always be returned as a response header.
-# DEPRECATED: use `X-Request-Id` instead
-RAY_SERVE_REQUEST_ID_HEADER = "RAY_SERVE_REQUEST_ID"
 
 # Feature flag to enable new handle API.
 RAY_SERVE_ENABLE_NEW_HANDLE_API = (

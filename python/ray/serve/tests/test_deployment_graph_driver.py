@@ -3,12 +3,9 @@ import sys
 import pytest
 import requests
 import starlette.requests
-from pydantic import BaseModel
-from starlette.testclient import TestClient
 
 import ray
 from ray import serve
-from ray.serve.air_integrations import SimpleSchemaIngress
 from ray.serve.dag import InputNode
 from ray.serve.drivers import DAGDriver
 from ray.serve.drivers_utils import load_http_adapter
@@ -34,53 +31,6 @@ def test_loading_check():
     assert (loaded_my_resolver == my_resolver) or (
         loaded_my_resolver.__code__.co_code == my_resolver.__code__.co_code
     )
-
-
-class EchoIngress(SimpleSchemaIngress):
-    async def predict(self, inp):
-        return inp
-
-
-def test_unit_schema_injection():
-    async def resolver(my_custom_param: int):
-        return my_custom_param
-
-    server = EchoIngress(http_adapter=resolver)
-    client = TestClient(server.app)
-
-    response = client.post("/")
-    assert response.status_code == 422
-
-    response = client.post("/?my_custom_param=1")
-    assert response.status_code == 200
-    assert response.text == "1"
-
-    response = client.get("/openapi.json")
-    assert response.status_code == 200
-    assert response.json()["paths"]["/"]["get"]["parameters"][0] == {
-        "required": True,
-        "schema": {"title": "My Custom Param", "type": "integer"},
-        "name": "my_custom_param",
-        "in": "query",
-    }
-
-
-class MyType(BaseModel):
-    a: int
-    b: str
-
-
-def test_unit_pydantic_class_adapter():
-    server = EchoIngress(http_adapter=MyType)
-    client = TestClient(server.app)
-    response = client.get("/openapi.json")
-    assert response.status_code == 200
-    assert response.json()["paths"]["/"]["get"]["requestBody"] == {
-        "content": {
-            "application/json": {"schema": {"$ref": "#/components/schemas/MyType"}}
-        },
-        "required": True,
-    }
 
 
 @serve.deployment

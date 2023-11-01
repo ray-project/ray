@@ -1,18 +1,19 @@
 import argparse
-from filelock import FileLock
-import horovod.torch as hvd
 import os
+import tempfile
+
+import horovod.torch as hvd
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
+from filelock import FileLock
 from torchvision import datasets, transforms
-import tempfile
 
+import ray.train.torch
 from ray import train
 from ray.train import Checkpoint, ScalingConfig
 from ray.train.horovod import HorovodTrainer
-import ray.train.torch
 
 
 def metric_average(val, name):

@@ -186,6 +186,7 @@ class ClusterStatusFormatter:
 
         usage_by_node = {}
         node_type_mapping = {}
+        idle_time_map = {}
         for node in chain(data.active_nodes, data.idle_nodes):
             # TODO(rickyx): we should actually add node type info here.
             # TODO(rickyx): we could also show node idle time.
@@ -193,6 +194,7 @@ class ClusterStatusFormatter:
                 u.resource_name: (u.used, u.total) for u in node.resource_usage.usage
             }
             node_type_mapping[node.node_id] = node.ray_node_type_name
+            idle_time_map[node.node_id] = node.resource_usage.idle_time_ms
 
         return LoadMetricsSummary(
             usage=usage,
@@ -202,6 +204,7 @@ class ClusterStatusFormatter:
             node_types=None,  # NOTE: This is not needed in ray status.
             usage_by_node=usage_by_node,
             node_type_mapping=node_type_mapping,
+            idle_time_map=idle_time_map,
         )
 
 
