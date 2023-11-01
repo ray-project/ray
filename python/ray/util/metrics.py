@@ -1,3 +1,4 @@
+import re
 import logging
 
 from typing import Dict, Any, List, Optional, Tuple, Union
@@ -13,6 +14,7 @@ from ray._raylet import (
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+METRIC_NAME_RE = re.compile(r'^[a-zA-Z_:][a-zA-Z0-9_:]*$')
 
 
 @DeveloperAPI
@@ -31,6 +33,14 @@ class Metric:
     ):
         if len(name) == 0:
             raise ValueError("Empty name is not allowed. Please provide a metric name.")
+
+        if not METRIC_NAME_RE.match(name):
+            raise ValueError(
+                f"Metric name {name} is invalid. "
+                "Please use metric names that match the regex "
+                r"^[a-zA-Z_:][a-zA-Z0-9_:]*$"
+            )
+
         self._name = name
         self._description = description
         # The default tags key-value pair.
