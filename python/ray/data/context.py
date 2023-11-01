@@ -219,6 +219,9 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
+        # The additonal ray remote args that should be added to
+        # the task-pool-based data tasks.
+        self._task_pool_data_task_remote_args: Dict[str, Any] = {}
         # The extra key-value style configs.
         # These configs are managed by individual components or plugins via
         # `set_config`, `get_config` and `remove_config`.

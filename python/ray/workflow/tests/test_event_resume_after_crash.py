@@ -11,7 +11,7 @@ from ray.tests.conftest import *  # noqa
 from ray.workflow.tests import utils
 from ray.workflow.common import WorkflowStatus
 from ray.workflow import common, workflow_context
-from ray.serve._private import api as _private_api
+from ray._private.test_utils import wait_for_condition
 
 import requests
 
@@ -72,8 +72,12 @@ def test_cluster_crash_before_checkpoint(workflow_start_regular_shared_serve):
     )
 
     # wait until HTTPEventProvider is ready
-    while len(_private_api.list_deployments().keys()) < 1:
-        sleep(0.1)
+    def check_app_running():
+        status = serve.status().applications[common.HTTP_EVENT_PROVIDER_NAME]
+        assert status.status == "RUNNING"
+        return True
+
+    wait_for_condition(check_app_running)
 
     test_msg = "first_try"
 
@@ -92,7 +96,7 @@ def test_cluster_crash_before_checkpoint(workflow_start_regular_shared_serve):
 
     if utils.check_global_mark("simulate_cluster_crash"):
 
-        _private_api.get_deployment(common.HTTP_EVENT_PROVIDER_NAME)._delete()
+        serve.delete(common.HTTP_EVENT_PROVIDER_NAME)
         serve.shutdown()
         ray.shutdown()
         subprocess.check_output(["ray", "stop", "--force"])
@@ -108,8 +112,7 @@ def test_cluster_crash_before_checkpoint(workflow_start_regular_shared_serve):
             workflow_id="workflow_test_cluster_crash_before_checkpoint"
         )
 
-        while len(_private_api.list_deployments().keys()) < 1:
-            sleep(0.1)
+        wait_for_condition(check_app_running)
 
         assert status_after_resume == WorkflowStatus.RUNNING
 

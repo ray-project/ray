@@ -206,6 +206,8 @@ class BlockMetadata:
     def __post_init__(self):
         if self.input_files is None:
             self.input_files = []
+        if self.size_bytes is not None:
+            self.size_bytes = int(self.size_bytes)
 
 
 @DeveloperAPI

@@ -322,35 +322,6 @@
   alert: default
 
 
-- name: air_benchmark_data_bulk_ingest
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_data_20_nodes_aws.yaml
-
-  run:
-    timeout: 3600
-    script: python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
-
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_data_20_nodes_gce.yaml
-
-  alert: default
-
 # AIR benchmarks for XGBoost CUJ
 - name: air_benchmark_xgboost_cpu_10
   group: AIR tests
@@ -897,15 +868,6 @@
     timeout: 4500
     script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: gptj_deepspeed_compute_gce.yaml
-
-
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
   group: AIR examples
   working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
@@ -1054,6 +1016,30 @@
         cluster:
           cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
 
+- name: workspace_template_finetuning_llms_with_deepspeed_llama_2_7b_lora
+  group: Workspace templates
+  working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
+  python: "3.9"
+  frequency: nightly-3x
+  team: ml
+  cluster:
+    byod:
+      type: cu121
+      # This needs to be in sync with requirements under go/llm-forge.
+      post_build_script: byod_finetune_llvms.sh
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
+
+  run:
+    timeout: 1000
+    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --lora --as-test
+
+  variations:
+      - __suffix__: aws
+      - __suffix__: gce
+        env: gce
+        frequency: manual
+        cluster:
+          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
 
 
 #######################
@@ -3282,82 +3268,6 @@
 
 
 ########################
-# Alpa tests
-########################
-
-- name: alpa_opt_2_7b_sanity_check
-  group: Alpa tests
-  working_dir: alpa_tests
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_alpa_test.sh
-    cluster_compute: gpu_2x4_t4_aws.yaml
-
-  run:
-    timeout: 3600
-    script: bash run_train_opt_2_7b.sh --storage aws
-
-    wait_for_nodes:
-      num_nodes: 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: gpu_2x4_t4_gce.yaml
-      run:
-        timeout: 3600
-        script: bash run_train_opt_2_7b.sh --storage gcs
-
-        wait_for_nodes:
-          num_nodes: 2
-
-  alert: default
-
-- name: alpa_opt_30b_inference
-  group: Alpa tests
-  working_dir: alpa_tests
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_alpa_test.sh
-    cluster_compute: gpu_1x8_v100_aws.yaml
-
-  run:
-    timeout: 3600
-    script: bash run_inference_opt_30b.sh --storage aws
-
-    wait_for_nodes:
-      num_nodes: 1
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: gpu_1x8_v100_gce.yaml
-      run:
-        timeout: 3600
-        script: bash run_inference_opt_30b.sh --storage gcs
-
-        wait_for_nodes:
-          num_nodes: 1
-
-  alert: default
-
-########################
 # RLlib tests
 ########################
 
@@ -4718,7 +4628,7 @@
       cluster:
         cluster_compute: tpl_64_gce.yaml
     - __suffix__: aws.py311
-      frequency: weekly 
+      frequency: weekly
       python: "3.11"
 
 
@@ -4776,7 +4686,7 @@
   variations:
     - __suffix__: aws
     - __suffix__: aws.py311
-      frequency: weekly 
+      frequency: weekly
       python: "3.11"
     - __suffix__: gce
       env: gce
@@ -4858,7 +4768,7 @@
   variations:
     - __suffix__: aws
     - __suffix__: aws.py311
-      frequency: manual 
+      frequency: manual
       python: "3.11"
       smoke_test:
         frequency: nightly-3x
@@ -5045,10 +4955,6 @@
   frequency: nightly
   team: core
 
-  # Marking unstable because it's not working right now beyond ~3000 runtime envs.
-  # Tracking issue: https://github.com/ray-project/ray/issues/38662
-  stable: false
-
   cluster:
     byod: {}
     cluster_compute: stress_tests/smoke_test_compute.yaml
@@ -5057,7 +4963,7 @@
     timeout: 14400
     wait_for_nodes:
       num_nodes: 5
-    script: python stress_tests/test_many_runtime_envs_runner.py --num_runtime_envs=10000
+    script: python stress_tests/test_many_runtime_envs.py --num_runtime_envs=100 --num_tasks=10000
 
   variations:
     - __suffix__: aws
@@ -6482,7 +6388,7 @@
   working_dir: ../python/ray/autoscaler/
 
   frequency: nightly
-  team: core
+  team: clusters
 
   cluster:
     byod: {}
@@ -6498,7 +6404,7 @@
   working_dir: ../python/ray/autoscaler/
 
   frequency: nightly
-  team: core
+  team: clusters
   python: "3.8"
   cluster:
     byod: {}
@@ -6514,7 +6420,7 @@
   working_dir: ../python/ray/autoscaler/
 
   frequency: nightly
-  team: core
+  team: clusters
   python: "3.8"
   cluster:
     byod: {}
@@ -6530,7 +6436,7 @@
   working_dir: ../python/ray/autoscaler/
 
   frequency: manual
-  team: core
+  team: clusters
   python: "3.8"
   cluster:
     byod: {}
@@ -6547,7 +6453,7 @@
   working_dir: ../python/ray/autoscaler/
 
   frequency: nightly
-  team: core
+  team: clusters
   cluster:
     byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
@@ -6561,7 +6467,7 @@
   working_dir: ../python/ray/autoscaler/
 
   frequency: nightly
-  team: core
+  team: clusters
   cluster:
     byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
@@ -6578,7 +6484,7 @@
 
   env: gce
   frequency: nightly
-  team: core
+  team: clusters
   cluster:
     byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
@@ -6595,7 +6501,7 @@
 
   env: gce
   frequency: nightly
-  team: core
+  team: clusters
   cluster:
     byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
@@ -6613,14 +6519,14 @@
   env: gce
   python: "3.8"
   frequency: nightly
-  team: core
+  team: clusters
   cluster:
     byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
     timeout: 3600
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
 
 - name: gcp_cluster_launcher_nightly_image
   group: cluster-launcher-test
@@ -6631,14 +6537,14 @@
   env: gce
   python: "3.8"
   frequency: nightly
-  team: core
+  team: clusters
   cluster:
     byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
     timeout: 3600
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
 
 
 - name: gcp_cluster_launcher_release_image
@@ -6650,7 +6556,7 @@
   env: gce
   python: "3.8"
   frequency: manual
-  team: core
+  team: clusters
   cluster:
     byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
@@ -6667,7 +6573,7 @@
   stable: False
 
   frequency: nightly
-  team: core 
+  team: core
 
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
@@ -6676,8 +6582,8 @@
         - RAY_memory_monitor_refresh_ms=0
       pip:
         - ray[default]
-    cluster_compute: aws.yaml 
+    cluster_compute: aws.yaml
 
   run:
     timeout: 1800
-    script: python run.py 
+    script: python run.py

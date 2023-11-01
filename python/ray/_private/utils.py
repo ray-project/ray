@@ -333,23 +333,17 @@ def set_omp_num_threads_if_unset() -> bool:
     return True
 
 
-last_set_visible_accelerator_ids = {}
-
-
 def set_visible_accelerator_ids() -> None:
-    """Set (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS ,...)
-    environment variables based on the accelerator runtime.
+    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
+    TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...) environment variables based
+    on the accelerator runtime.
     """
-    global last_set_visible_accelerator_ids
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_resource_ids().items()
     ):
-        if last_set_visible_accelerator_ids.get(resource_name, None) == accelerator_ids:
-            continue  # optimization: already set
         ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
         ).set_current_process_visible_accelerator_ids(accelerator_ids)
-        last_set_visible_accelerator_ids[resource_name] = accelerator_ids
 
 
 def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -1216,12 +1210,13 @@ def get_wheel_filename(
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
-    if py_version_str in ["37", "38", "39"]:
-        darwin_os_string = "macosx_10_15_x86_64"
-    else:
-        darwin_os_string = "macosx_10_15_universal2"
 
     architecture = architecture or platform.processor()
+
+    if py_version_str in ["311", "310", "39", "38"] and architecture == "arm64":
+        darwin_os_string = "macosx_11_0_arm64"
+    else:
+        darwin_os_string = "macosx_10_15_x86_64"
 
     if architecture == "aarch64":
         linux_os_string = "manylinux2014_aarch64"

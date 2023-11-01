@@ -16,7 +16,6 @@ from ray.data.datasource import (
     DefaultParquetMetadataProvider,
     FileExtensionFilter,
 )
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
@@ -25,6 +24,7 @@ from ray.data.datasource.parquet_datasource import (
     _ParquetDatasourceReader,
     _SerializedFragment,
 )
+from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa

@@ -13,7 +13,9 @@ WORKDIR /rayci
 COPY . .
 
 RUN <<EOF
-#!/bin/bash
+#!/bin/bash -i
+
+set -euo pipefail
 
 (
   cd dashboard/client 
@@ -26,6 +28,9 @@ if [[ "$BUILD_TYPE" == "debug" ]]; then
 elif [[ "$BUILD_TYPE" == "asan" ]]; then
   pip install -v -e python/
   bazel build $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:ray_pkg
+elif [[ "$BUILD_TYPE" == "java" ]]; then
+  ./java/build-jar-multiplatform.sh linux
+  RAY_INSTALL_JAVA=1 pip install -v -e python/
 else
   pip install -v -e python/
 fi

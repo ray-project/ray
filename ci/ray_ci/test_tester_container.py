@@ -21,20 +21,47 @@ class MockPopen:
         return 1 if "bad_test" in self.test_targets or not self.test_targets else 0
 
 
+def test_enough_gpus() -> None:
+    # not enough gpus
+    try:
+        TesterContainer("team", shard_count=2, gpus=1, skip_ray_installation=True)
+    except AssertionError:
+        pass
+    else:
+        assert False, "Should raise an AssertionError"
+
+    # not enough gpus
+    try:
+        TesterContainer("team", shard_count=1, gpus=1, skip_ray_installation=True)
+    except AssertionError:
+        assert False, "Should not raise an AssertionError"
+
+
 def test_run_tests_in_docker() -> None:
+    inputs = []
+
     def _mock_popen(input: List[str]) -> None:
-        input_str = " ".join(input)
-        assert (
-            "bazel test --config=ci $(./ci/run/bazel_export_options) --config=ci-debug "
-            "--test_env v=k --test_arg flag t1 t2" in input_str
-        )
+        inputs.append(" ".join(input))
 
     with mock.patch("subprocess.Popen", side_effect=_mock_popen), mock.patch(
         "ci.ray_ci.tester_container.TesterContainer.install_ray",
         return_value=None,
     ):
-        container = TesterContainer("team", build_type="debug")
-        container._run_tests_in_docker(["t1", "t2"], ["v=k"], "flag")
+        TesterContainer(
+            "team", build_type="debug", test_envs=["ENV_01", "ENV_02"]
+        )._run_tests_in_docker(["t1", "t2"], [0, 1], ["v=k"], "flag")
+        input_str = inputs[-1]
+        assert "--env ENV_01 --env ENV_02 --env BUILDKITE_BUILD_URL" in input_str
+        assert '--gpus "device=0,1"' in input_str
+        assert (
+            "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
+            "--config=ci-debug --test_env v=k --test_arg flag t1 t2" in input_str
+        )
+
+        TesterContainer("team")._run_tests_in_docker(["t1", "t2"], [], ["v=k"])
+        input_str = inputs[-1]
+        assert "--env BUILDKITE_BUILD_URL" in input_str
+        assert "--gpus" not in input_str
 
 
 def test_run_script_in_docker() -> None:
@@ -97,6 +124,7 @@ def test_ray_installation() -> None:
 def test_run_tests() -> None:
     def _mock_run_tests_in_docker(
         test_targets: List[str],
+        gpu_ids: List[int],
         test_envs: List[str],
         test_arg: Optional[str] = None,
     ) -> MockPopen:

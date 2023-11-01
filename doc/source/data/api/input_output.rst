@@ -157,6 +157,7 @@ SQL Databases
    :toctree: doc/
 
    read_sql
+   Dataset.write_sql
 
 Databricks
 ----------
@@ -257,6 +258,7 @@ Datasource API
    Datasource
    ReadTask
    datasource.Reader
+   datasource.FilenameProvider
 
 Partitioning API
 ----------------

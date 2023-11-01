@@ -231,6 +231,25 @@ class BaseTrainer(abc.ABC):
         that the head node crashes (e.g., OOM or some other runtime error) or the
         entire cluster goes down (e.g., network error affecting all nodes).
 
+        A run that has already completed successfully will not be resumed from this API.
+        To continue training from a successful run, launch a new run with the
+        ``<Framework>Trainer(resume_from_checkpoint)`` API instead, passing in a
+        checkpoint from the previous run to start with.
+
+        .. note::
+
+            Restoring an experiment from a path that's pointing to a *different*
+            location than the original experiment path is supported. However, Ray Train
+            assumes that the full experiment directory is available
+            (including checkpoints) so that it's possible to resume trials from their
+            latest state.
+
+            For example, if the original experiment path was run locally, then the
+            results are uploaded to cloud storage, Ray Train expects the full contents
+            to be available in cloud storage if attempting to resume
+            via ``<Framework>Trainer.restore("s3://...")``. The restored run will
+            continue writing results to the same cloud storage location.
+
         The following example can be paired with implementing job retry using
         :ref:`Ray Jobs <jobs-overview>` to produce a Train experiment that will
         attempt to resume on both experiment-level and trial-level failures:
@@ -280,6 +299,9 @@ class BaseTrainer(abc.ABC):
             path: The path to the experiment directory of the training run to restore.
                 This can be a local path or a remote URI if the experiment was
                 uploaded to the cloud.
+            storage_filesystem: Custom ``pyarrow.fs.FileSystem``
+                corresponding to the ``path``. This may be necessary if the original
+                experiment passed in a custom filesystem.
             datasets: Re-specified datasets used in the original training run.
                 This must include all the datasets that were passed in the
                 original trainer constructor.

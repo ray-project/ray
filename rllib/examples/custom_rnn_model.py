@@ -60,6 +60,8 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        # TODO (Kourosh): Enable when LSTMs are supported.
+        .experimental(_enable_new_api_stack=False)
         .environment(args.env, env_config={"repeat_delay": 2})
         .framework(args.framework)
         .rollouts(num_rollout_workers=0, num_envs_per_worker=20)
@@ -72,12 +74,9 @@ if __name__ == "__main__":
                 },
             },
             gamma=0.9,
-            # TODO (Kourosh): Enable when LSTMs are supported.
-            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rl_module(_enable_rl_module_api=False)
     )
 
     if args.run == "PPO":

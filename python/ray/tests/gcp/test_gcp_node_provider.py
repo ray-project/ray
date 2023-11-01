@@ -47,6 +47,7 @@ def test_create_node_returns_dict():
         self.lock = RLock()
         self.cached_nodes: Dict[str, GCPNode] = {}
         self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.cache_stopped_nodes = False
         self.resources[GCPNodeType.COMPUTE] = mock_resource
 
     with patch.object(GCPNodeProvider, "__init__", __init__):
@@ -71,6 +72,7 @@ def test_terminate_nodes():
         self.lock = RLock()
         self.cached_nodes: Dict[str, GCPNode] = {}
         self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.cache_stopped_nodes = False
         self.resources[GCPNodeType.COMPUTE] = mock_resource
 
     with patch.object(GCPNodeProvider, "__init__", __init__):

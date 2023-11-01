@@ -51,28 +51,30 @@ class FaultInjectEnv(gym.Env):
     provided by a list (of ints) under the "bad_indices" key in the env's
     config.
 
-    Examples:
-        >>> from ray.rllib.env.env_context import EnvContext
-        >>> # This env will fail for workers 1 and 2 (not for the local worker
-        >>> # or any others with an index != [1|2]).
-        >>> bad_env = FaultInjectEnv(
-        ...     EnvContext(
-        ...         {"bad_indices": [1, 2]},
-        ...         worker_index=1,
-        ...         num_workers=3,
-        ...      )
-        ... )
+    .. testcode::
+        :skipif: True
 
-        >>> from ray.rllib.env.env_context import EnvContext
-        >>> # This env will fail only on the first evaluation worker, not on the first
-        >>> # regular rollout worker.
-        >>> bad_env = FaultInjectEnv(
-        ...     EnvContext(
-        ...         {"bad_indices": [1], "eval_only": True},
-        ...         worker_index=2,
-        ...         num_workers=5,
-        ...     )
-        ... )
+        from ray.rllib.env.env_context import EnvContext
+        # This env will fail for workers 1 and 2 (not for the local worker
+        # or any others with an index != [1|2]).
+        bad_env = FaultInjectEnv(
+            EnvContext(
+                {"bad_indices": [1, 2]},
+                worker_index=1,
+                num_workers=3,
+             )
+        )
+
+        from ray.rllib.env.env_context import EnvContext
+        # This env will fail only on the first evaluation worker, not on the first
+        # regular rollout worker.
+        bad_env = FaultInjectEnv(
+            EnvContext(
+                {"bad_indices": [1], "eval_only": True},
+                worker_index=2,
+                num_workers=5,
+            )
+        )
     """
 
     def __init__(self, config):

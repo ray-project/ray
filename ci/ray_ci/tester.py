@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 import yaml
 import click
@@ -77,6 +77,12 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Skip ray installation."),
 )
 @click.option(
+    "--gpus",
+    default=0,
+    type=int,
+    help=("Number of GPUs to use for the test."),
+)
+@click.option(
     "--test-env",
     multiple=True,
     type=str,
@@ -94,7 +100,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 )
 @click.option(
     "--build-type",
-    type=click.Choice(["optimized", "debug", "asan"]),
+    type=click.Choice(["optimized", "debug", "asan", "java"]),
     default="optimized",
 )
 def main(
@@ -107,7 +113,8 @@ def main(
     only_tags: str,
     run_flaky_tests: bool,
     skip_ray_installation: bool,
-    test_env: List[str],
+    gpus: int,
+    test_env: Tuple[str],
     test_arg: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
@@ -122,9 +129,11 @@ def main(
         workers,
         worker_id,
         parallelism_per_worker,
-        build_name,
-        build_type,
-        skip_ray_installation,
+        gpus,
+        test_env=list(test_env),
+        build_name=build_name,
+        build_type=build_type,
+        skip_ray_installation=skip_ray_installation,
     )
     test_targets = _get_test_targets(
         container,
@@ -134,7 +143,7 @@ def main(
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(test_targets, test_env, test_arg)
+    success = container.run_tests(test_targets, test_arg)
     sys.exit(0 if success else 1)
 
 
@@ -143,6 +152,8 @@ def _get_container(
     workers: int,
     worker_id: int,
     parallelism_per_worker: int,
+    gpus: int,
+    test_env: Optional[List[str]] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
     skip_ray_installation: bool = False,
@@ -153,11 +164,24 @@ def _get_container(
 
     return TesterContainer(
         build_name or f"{team}build",
+        test_envs=test_env,
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
+        gpus=gpus,
         skip_ray_installation=skip_ray_installation,
         build_type=build_type,
     )
+
+
+def _get_tag_matcher(tag: str) -> str:
+    """
+    Return a regular expression that matches the given bazel tag. This is required for
+    an exact tag match because bazel query uses regex to match tags.
+
+    The word boundary is escaped twice because it is used in a python string and then
+    used again as a string in bazel query.
+    """
+    return f"\\\\b{tag}\\\\b"
 
 
 def _get_all_test_query(
@@ -171,17 +195,23 @@ def _get_all_test_query(
     have the given tags
     """
     test_query = " union ".join([f"tests({target})" for target in targets])
-    query = f"attr(tags, 'team:{team}\\\\b', {test_query})"
+    query = f"attr(tags, '{_get_tag_matcher(f'team:{team}')}', {test_query})"
 
     if only_tags:
         only_query = " union ".join(
-            [f"attr(tags, {t}, {test_query})" for t in only_tags.split(",")]
+            [
+                f"attr(tags, '{_get_tag_matcher(t)}', {test_query})"
+                for t in only_tags.split(",")
+            ]
         )
         query = f"{query} intersect ({only_query})"
 
     if except_tags:
         except_query = " union ".join(
-            [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
+            [
+                f"attr(tags, '{_get_tag_matcher(t)}', {test_query})"
+                for t in except_tags.split(",")
+            ]
         )
         query = f"{query} except ({except_query})"
 
