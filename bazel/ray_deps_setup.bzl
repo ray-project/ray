@@ -107,8 +107,11 @@ def ray_deps_setup():
         name = "com_github_antirez_redis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",
         patch_args = ["-p1"],
-        url = "https://github.com/redis/redis/archive/refs/tags/7.2.2.tar.gz",
-        sha256 = "0eca4e7aa16f5f411242a2e082863dbb266c0263141fdfd571302b02adf62594",
+        url = "https://github.com/redis/redis/archive/refs/tags/7.2.3.tar.gz",
+        sha256 = "afd656dbc18a886f9a1cc08a550bf5eb89de0d431e713eba3ae243391fb008a6",
+        patches = [
+            "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
+        ],
         workspace_file_content = 'workspace(name = "com_github_antirez_redis")'
     )
 
