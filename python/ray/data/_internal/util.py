@@ -452,7 +452,7 @@ def ConsumptionAPI(*args, **kwargs):
     return _consumption_api(*args, **kwargs)
 
 
-def _all_to_all_api():
+def _all_to_all_api(*args, **kwargs):
     """Annotate the function with an indication that it's a all to all API, and that it
     is an operation that requires all inputs to be materialized in-memory to execute.
     """
@@ -473,7 +473,9 @@ def AllToAllAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a all to all API, and that it
     is an operation that requires all inputs to be materialized in-memory to execute.
     """
-    return _all_to_all_api()
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return _all_to_all_api()(args[0])
+    return _all_to_all_api(*args, **kwargs)
 
 
 def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
