@@ -393,8 +393,6 @@ def _expand_paths(
     ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
     """Get the file sizes for all provided file paths."""
-    from datetime import datetime
-
     from pyarrow.fs import LocalFileSystem
 
     from ray.data.datasource.file_based_datasource import (
