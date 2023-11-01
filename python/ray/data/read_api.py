@@ -1913,16 +1913,16 @@ def read_databricks_tables(
     if query is None:
         raise ValueError("One of 'query' and 'table_name' arguments should be set.")
 
-    return read_datasource(
-        datasource=DatabricksUCDatasource(),
-        parallelism=parallelism,
-        ray_remote_args=ray_remote_args,
+    datasource = DatabricksUCDatasource(
         host=host,
         token=token,
         warehouse_id=warehouse_id,
         catalog=catalog,
         schema=schema,
         query=query,
+    )
+    return read_datasource(
+        datasource=datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
