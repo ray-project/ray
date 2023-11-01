@@ -60,21 +60,14 @@ class HuggingFaceDatasource(Datasource):
     directly for faster performance.
     """  # noqa: E501
 
-    def create_reader(
-        self,
-        dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
-    ) -> "_HuggingFaceDatasourceReader":
-        if TRANSFORMERS_IMPORT_ERROR is not None:
-            raise TRANSFORMERS_IMPORT_ERROR
-        return _HuggingFaceDatasourceReader(dataset)
-
-
-class _HuggingFaceDatasourceReader(Reader):
     def __init__(
         self,
         dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
         batch_size: int = 4096,
     ):
+        if TRANSFORMERS_IMPORT_ERROR is not None:
+            raise TRANSFORMERS_IMPORT_ERROR
+
         self._dataset = dataset
         self._batch_size = batch_size
 

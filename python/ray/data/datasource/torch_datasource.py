@@ -19,14 +19,6 @@ class TorchDatasource(Datasource):
     This datasource implements a streaming read using a single read task.
     """
 
-    def create_reader(
-        self,
-        dataset: "torch.utils.data.Dataset",
-    ):
-        return _TorchDatasourceReader(dataset)
-
-
-class _TorchDatasourceReader(Reader):
     def __init__(
         self,
         dataset: "torch.utils.data.Dataset",
