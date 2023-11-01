@@ -29,5 +29,5 @@ RUN git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -
 # Install Pydantic from source if requested.
 RUN if [[ -z $PYDANTIC_BUILD_COMMIT ]] ; \
     then echo "Not installing Pydantic from source." ; \
-    else git clone https://github.com/pydantic/pydantic && pushd pydantic && git checkout $PYDANTIC_BUILD_COMMIT && pip install -e . && popd ; \
+    else pip install -U git+https://github.com/pydantic/pydantic@$PYDANTIC_BUILD_COMMIT ; \
 fi
