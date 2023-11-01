@@ -63,3 +63,6 @@ pandas>=1.3
 pydantic<2
 py-spy>=0.2.0
 watchfiles
+
+# ray[default]
+boto3
