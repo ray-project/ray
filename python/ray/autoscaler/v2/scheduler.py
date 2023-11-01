@@ -9,13 +9,105 @@ from google.protobuf.json_format import MessageToDict
 
 from ray.autoscaler._private.resource_demand_scheduler import UtilizationScore
 from ray.autoscaler._private.util import NodeType
-from ray.core.generated.autoscaler_pb2 import ResourceRequest
-from ray.core.generated.instance_manager_pb2 import (
-    NodeTypeConfig,
-    ResourceScheduleConfig,
-    ScheduleResourceBundlesReply,
-    ScheduleResourceBundlesRequest,
+from ray.core.generated.autoscaler_pb2 import (
+    ClusterResourceConstraint,
+    GangResourceRequest,
+    NodeState,
+    ResourceRequest,
+    ResourceRequestByCount,
 )
+from ray.core.generated.instance_manager_pb2 import Instance
+
+# ============= Resource Scheduling Service API =======================
+#
+#  ResourceSchedulerService is a service that schedules resource bundles
+#  to nodes. It's used by the autoscaler to schedule resource bundles
+#  to determine the desired cluster size to satisfy the current resource
+#  demands.
+#
+
+
+@dataclass
+class NodeTypeConfig:
+    # Node type name
+    name: NodeType
+    # The minimal number of workers to be launched for this node type.
+    min_workers: int
+    # The maximal number of workers can be launched for this node type.
+    max_workers: int
+    # The resources on the node.
+    resources: Dict[str, float] = field(default_factory=dict)
+    # The labels on the node.
+    labels: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class ResourceScheduleConfig:
+    # The node type configs.
+    node_type_configs: List[NodeTypeConfig] = field(default_factory=list)
+    # The max number of worker nodes to be launched for the entire cluster.
+    max_num_worker_nodes: Optional[int]
+
+
+@dataclass
+class ResourceScheduleRequest:
+    # TODO: This prob could be refactored into the ClusterStatus data class later.
+    # The current ray resource requests.
+    resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
+    # The Gang resource requests.
+    gang_resource_requests: List[GangResourceRequest] = field(default_factory=list)
+    # cluster resource constraints.
+    cluster_resource_constraints: List[ClusterResourceConstraint] = field(
+        default_factory=list
+    )
+    # The ray nodes
+    node_states: List[NodeState] = field(default_factory=list)
+    # The current list of instances.
+    current_instances: List[Instance] = field(default_factory=list)
+    # The resource schedule config.
+    schedule_config: ResourceScheduleConfig
+
+
+@dataclass
+class ResourceScheduleReply:
+    # The infeasible resource bundles.
+    infeasible_resource_requests: List[ResourceRequestByCount] = field(
+        default_factory=list
+    )
+    # The infeasible gang resource bundles.
+    infeasible_gang_resource_requests: List[GangResourceRequest] = field(
+        default_factory=list
+    )
+    # The infeasible cluster resource constraints.
+    infeasible_cluster_resource_constraints: List[ClusterResourceConstraint] = field(
+        default_factory=list
+    )
+    # The target cluster shape, given the current resource demands and instances.
+    # Key is the node type name, value is the number of nodes.
+    # Note this might be "smaller" than the current cluster shape, since there
+    # could be resource requests constraints enforced.
+    target_cluster_shape: Dict[NodeType, int]
+    # The current cluster shape.
+    current_cluster_shape: Dict[NodeType, int]
+
+
+class IResourceScheduler(metaclass=ABCMeta):
+    """
+    Interface for a resource scheduler.
+
+    Implements the `instance_manager.proto ResourceSchedulerService` interface.
+    """
+
+    @abstractmethod
+    def schedule_resource_bundles(
+        self, request: ResourceScheduleRequest
+    ) -> ResourceScheduleReply:
+        """
+        Given the resource requests and the current cluster state, calculate the
+        target cluster shape by trying to schedule the resource requests on the
+        nodes.
+        """
+        pass
 
 
 class SchedulingNodeStatus(Enum):
@@ -146,7 +238,7 @@ class SchedulingNode:
     @classmethod
     def next_node_id(cls) -> int:
         """
-        Return the next scheduling node id.
+        Return the next id to be used for creating a new scheduling node id.
         """
         cls._next_node_id += 1
         return cls._next_node_id
@@ -171,50 +263,31 @@ class SchedulingNode:
         )
 
 
-# TODO(rickyx): Move interface to a separate file.
-class IResourceScheduler(metaclass=ABCMeta):
+class ResourceDemandScheduler(IResourceScheduler):
     """
-    Interface for a resource scheduler.
-
-    Implements the `instance_manager.proto ResourceSchedulerService` interface.
-    """
-
-    @abstractmethod
-    def schedule_resource_bundles(
-        self, request: ScheduleResourceBundlesRequest
-    ) -> ScheduleResourceBundlesReply:
-        pass
-
-
-@dataclass
-class ScheduleContext:
-    """
-    A context object that holds the current scheduling context.
-    It contains:
-        1. existing nodes (including pending nodes and pending requests).
-        2. the number of nodes by node types available for launching based on the max
-            number of workers in the config. This takes into account any pending/running
-            nodes.
-        3. the resource schedule config.
-
-    The context should be updated during the scheduling process:
-    ```
-        ctx.update(new_nodes)
-    ```
-
-    Most of the getters return a copy of the internal state to prevent accidental
-    modification of the internal state.
+    A "simple" resource scheduler that schedules resource requests based on the
+    following rules:
+        1. Enforce the minimal count of nodes for each worker node type.
+        2. Enforce the cluster resource constraints.
+        3. Schedule the gang resource requests.
+        4. Schedule the tasks/actor resource requests
 
     """
 
-    # The current resource schedule config.
+    ############################
+    # Internal States
+    ############################
     config_: ResourceScheduleConfig
     # The current schedulable nodes (including pending nodes and pending requests).
-    nodes_: List[SchedulingNode] = field(default_factory=list)
-    # The number of nodes by node types available for launching based on the max
-    # number of workers in the config. This takes into account any pending/running
-    # nodes.
-    node_type_available_: Dict[NodeType, int] = field(default_factory=dict)
+    # One should try to access the nodes through _get_nodes().
+    nodes_: List[SchedulingNode]
+    # node types -> number of available nodes (max nodes - existing nodes)
+    node_type_available_: Dict[NodeType, int]
+
+    def schedule_resource_bundles(
+        self, request: ResourceScheduleRequest
+    ) -> ResourceScheduleReply:
+        pass
 
     def __init__(
         self,
@@ -226,55 +299,43 @@ class ScheduleContext:
         self._node_type_available = node_type_available
         self._config = config
 
-    @classmethod
-    def from_schedule_request(
-        cls, req: ScheduleResourceBundlesRequest
-    ) -> "ScheduleContext":
-        """
-        Create a schedule context from a schedule request.
-
-        It will populate the context with the existing nodes and the available node
-        types from the config.
-        """
-        pass
-
-    def get_nodes(self) -> List[SchedulingNode]:
+    def _get_nodes(self) -> List[SchedulingNode]:
         # NOTE: We do the deep copy here since the nodes are usually being updated
         # during the scheduling process. To prevent accidental modification of the
         # nodes, we return a copy, and callers should modify the context explicitly
         # with `ctx.update()`
         return copy.deepcopy(self._nodes)
 
-    def get_node_config(self, node_type: NodeType) -> Optional[NodeTypeConfig]:
+    def _get_node_config(self, node_type: NodeType) -> Optional[NodeTypeConfig]:
         c = self._config.node_type_configs.get(node_type, None)
         if c:
             return copy.deepcopy(c)
         return None
 
-    def get_sched_config(self) -> ResourceScheduleConfig:
+    def _get_sched_config(self) -> ResourceScheduleConfig:
         return copy.deepcopy(self._config)
 
-    def update(self, new_nodes: List[SchedulingNode]) -> None:
+    def _update(self, new_nodes: List[SchedulingNode]) -> None:
         """
         Update the context with the new nodes.
         """
         pass
 
-    def get_node_type_available(self) -> Dict[NodeType, int]:
+    def _get_node_type_available(self) -> Dict[NodeType, int]:
         return copy.deepcopy(self._node_type_available)
 
-    def get_cluster_shape(self) -> Dict[NodeType, int]:
+    def _get_cluster_shape(self) -> Dict[NodeType, int]:
         """
         Return the current cluster shape.
 
         The cluster shape is a dict of node types and the number of nodes of that type.
         """
         cluster_shape = defaultdict(int)
-        for node in self._nodes:
+        for node in self._get_nodes():
             cluster_shape[node.node_type] += 1
         return cluster_shape
 
-    def get_max_num_nodes(self) -> Optional[int]:
+    def _get_max_num_nodes(self) -> Optional[int]:
         """
         Return the max number of nodes allowed in the cluster.
         """
@@ -283,20 +344,3 @@ class ScheduleContext:
             if self._config.HasField("max_num_nodes")
             else None
         )
-
-
-class SimpleResourceScheduler(IResourceScheduler):
-    """
-    A "simple" resource scheduler that schedules resource requests based on the
-    following rules:
-        1. Enforce the minimal count of nodes for each worker node type.
-        2. Enforce the cluster resource constraints.
-        3. Schedule the gang resource requests.
-        4. Schedule the tasks/actor resource requests
-
-    """
-
-    def schedule_resource_bundles(
-        self, request: ScheduleResourceBundlesRequest
-    ) -> ScheduleResourceBundlesReply:
-        pass
