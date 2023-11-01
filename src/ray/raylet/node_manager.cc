@@ -635,20 +635,6 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   worker_pool_.HandleJobFinished(job_id);
 }
 
-void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
-  auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
-  auto normal_task_resources = local_task_manager_->CalcNormalTaskResources();
-  if (last_heartbeat_resources->normal_task_resources != normal_task_resources) {
-    RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.DebugString();
-    resources_data.set_resources_normal_task_changed(true);
-    auto resource_map = normal_task_resources.GetResourceMap();
-    resources_data.mutable_resources_normal_task()->insert(resource_map.begin(),
-                                                           resource_map.end());
-    resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-    last_heartbeat_resources->normal_task_resources = normal_task_resources;
-  }
-}
-
 void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
   auto all_workers = worker_pool_.GetAllRegisteredWorkers();
   for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {

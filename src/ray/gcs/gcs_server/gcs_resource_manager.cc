@@ -171,16 +171,6 @@ const absl::flat_hash_map<NodeID, rpc::ResourcesData>
   return node_resource_usages_;
 }
 
-void GcsResourceManager::HandleReportResourceUsage(
-    rpc::ReportResourceUsageRequest request,
-    rpc::ReportResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  UpdateFromResourceView(request.resources());
-
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
-}
-
 void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::GetAllResourceUsageRequest request,
     rpc::GetAllResourceUsageReply *reply,
@@ -339,8 +329,6 @@ std::string GcsResourceManager::DebugString() const {
          << counts_[CountType::GET_RESOURCES_REQUEST]
          << "\n- GetAllAvailableResources request count"
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
-         << "\n- ReportResourceUsage request count: "
-         << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
          << "\n- GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
   return stream.str();
