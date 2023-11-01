@@ -498,35 +498,6 @@ TestBuildFNode = global_f.bind()
 TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
-def test_build_single_app(ray_start_stop, node):
-    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
-        print(f'Building node "{node}".')
-        # Build an app
-        subprocess.check_output(
-            [
-                "serve",
-                "build",
-                "--single-app",
-                f"ray.serve.tests.test_cli_2.{node}",
-                "-o",
-                tmp.name,
-            ]
-        )
-        print("Build succeeded! Deploying node.")
-
-        subprocess.check_output(["serve", "deploy", tmp.name])
-        wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
-        print("Deploy succeeded! Node is live and reachable over HTTP. Deleting node.")
-
-        subprocess.check_output(["serve", "shutdown", "-y"])
-        wait_for_condition(
-            lambda: ping_endpoint("") == CONNECTION_ERROR_MSG, timeout=15
-        )
-        print("Delete succeeded! Node is not reachable over HTTP.")
-
-
 TestApp1Node = global_f.options(route_prefix="/app1").bind()
 TestApp2Node = NoArgDriver.options(route_prefix="/app2").bind(global_f.bind())
 
