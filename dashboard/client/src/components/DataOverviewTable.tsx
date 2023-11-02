@@ -29,8 +29,6 @@ const columns = [
     helpInfo: <Typography>Blocks outputted by output operator.</Typography>,
   },
   { label: "State" },
-  { label: "Start Time" },
-  { label: "End Time" },
   { label: "Bytes Outputted" },
   {
     label: "Memory Usage (Current / Max)",
@@ -51,6 +49,8 @@ const columns = [
       </Typography>
     ),
   },
+  { label: "Start Time" },
+  { label: "End Time" },
 ];
 
 const DataOverviewTable = ({
@@ -146,12 +146,6 @@ const DataOverviewTable = ({
                     <StatusChip type="task" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    {formatDateFromTimeMs(start_time * 1000)}
-                  </TableCell>
-                  <TableCell align="center">
-                    {end_time && formatDateFromTimeMs(end_time * 1000)}
-                  </TableCell>
-                  <TableCell align="center">
                     {memoryConverter(Number(ray_data_output_bytes.max))}
                   </TableCell>
                   <TableCell align="center">
@@ -160,6 +154,12 @@ const DataOverviewTable = ({
                   </TableCell>
                   <TableCell align="center">
                     {memoryConverter(Number(ray_data_spilled_bytes.max))}
+                  </TableCell>
+                  <TableCell align="center">
+                    {formatDateFromTimeMs(start_time * 1000)}
+                  </TableCell>
+                  <TableCell align="center">
+                    {end_time && formatDateFromTimeMs(end_time * 1000)}
                   </TableCell>
                 </TableRow>
               ),
