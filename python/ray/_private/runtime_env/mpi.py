@@ -5,7 +5,7 @@ from typing import List, Optional
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
-logger = logging.getLogger(__name__)
+default_logger = logging.getLogger(__name__)
 
 
 class MPIPlugin(RuntimeEnvPlugin):
@@ -40,7 +40,6 @@ class MPIPlugin(RuntimeEnvPlugin):
 
 
 if __name__ == "__main__":
-    print("MPI WORKERRRRRR")
     parser = argparse.ArgumentParser(description="Setup MPI worker")
     parser.add_argument("worker_entry_func")
     parser.add_argument("main_entry")
@@ -52,6 +51,8 @@ if __name__ == "__main__":
     comm = MPI.COMM_WORLD
 
     rank = comm.Get_rank()
+    import importlib
+
     if rank == 0:
         _, main_file = os.path.split(args.main_entry)
         module, _ = os.path.split(main_file)
@@ -62,8 +63,6 @@ if __name__ == "__main__":
         main(remaining_args)
     else:
         module, func = args.worker_entry_func.rsplit(".", 1)
-        import importlib
-
         module = importlib.import_module(module)
         func = getattr(module, func)
         # pass arguments are not supported for now.
