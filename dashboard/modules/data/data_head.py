@@ -64,7 +64,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                             dataset, value = res["metric"]["dataset"], res["value"][1]
                             if dataset in datasets:
                                 datasets[dataset][metric][query.value[0]] = value
-            except PrometheusQueryError:
+            except Exception:
                 # Prometheus server is not running,
                 # leave these values blank and return other data
                 pass
