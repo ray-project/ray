@@ -1,15 +1,7 @@
-from io import BytesIO
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
-
-import pyarrow
+from typing import TYPE_CHECKING, List, Union
 
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.data.datasource.file_meta_provider import (
-    BaseFileMetadataProvider,
-    DefaultFileMetadataProvider,
-)
-from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:

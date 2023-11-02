@@ -35,7 +35,6 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
-    _is_local_scheme,
     _lazy_import_pyarrow_dataset,
     _warn_on_high_parallelism,
     get_table_block_metadata,
@@ -1703,7 +1702,6 @@ def read_binary_files(
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
-    output_arrow_format = True
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(BinaryDatasource._FILE_EXTENSION)
 

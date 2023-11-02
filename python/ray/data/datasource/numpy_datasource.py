@@ -1,16 +1,10 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import pyarrow
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.data.datasource.file_meta_provider import (
-    BaseFileMetadataProvider,
-    DefaultFileMetadataProvider,
-)
-from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:

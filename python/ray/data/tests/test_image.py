@@ -1,7 +1,6 @@
 import os
 import tempfile
 from typing import Dict
-from unittest.mock import ANY, patch
 
 import numpy as np
 import pyarrow as pa
@@ -10,7 +9,7 @@ from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 
 import ray
-from ray.data.datasource import Partitioning, PathPartitionFilter
+from ray.data.datasource import Partitioning
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 from ray.data.datasource.image_datasource import (
     ImageDatasource,

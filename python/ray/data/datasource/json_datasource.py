@@ -1,22 +1,14 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
-
-import pyarrow
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
 )
-from ray.data.datasource.file_meta_provider import (
-    BaseFileMetadataProvider,
-    DefaultFileMetadataProvider,
-)
-from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
-    from pyarrow import json
 
 
 @PublicAPI
