@@ -746,7 +746,7 @@ class ExecutionPlan:
                 estimated_num_blocks,
                 k,
             ) = compute_additional_split_factor(
-                logical_op._reader,
+                logical_op._datasource_or_legacy_reader,
                 logical_op._parallelism,
                 logical_op._mem_size,
                 ctx.target_max_block_size,
