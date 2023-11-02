@@ -2515,9 +2515,9 @@ def _get_datasource_or_legacy_reader(
 
     DataContext._set_current(ctx)
 
-    try:
+    if ds.should_create_reader:
         datasource_or_legacy_reader = ds.create_reader(**kwargs)
-    except NotImplementedError:
+    else:
         datasource_or_legacy_reader = ds
 
     return datasource_or_legacy_reader
