@@ -1,10 +1,8 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Optional
 
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockAccessor
-from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
-from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.tfrecords_datasource import (
     _convert_arrow_table_to_examples,
     _write_record,
@@ -24,11 +22,11 @@ class _TFRecordDatasink(BlockBasedFileDatasink):
         file_format: str = "tar",
         **file_datasink_kwargs,
     ):
+        super().__init__(path, file_format=file_format, **file_datasink_kwargs)
+
         _check_import(self, module="crc32c", package="crc32c")
 
         self.tf_schema = tf_schema
-
-        super().__init__(path, file_format=file_format, **file_datasink_kwargs)
 
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
         arrow_table = block.to_arrow()

@@ -3,10 +3,8 @@ from typing import Any, Callable, Dict, Optional
 import pyarrow
 
 from ray.data.block import BlockAccessor
-from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
-from ray.data.datasource.filename_provider import FilenameProvider
 
 
 class _JSONDatasink(BlockBasedFileDatasink):
@@ -19,13 +17,13 @@ class _JSONDatasink(BlockBasedFileDatasink):
         file_format: str = "json",
         **file_datasink_kwargs,
     ):
+        super().__init__(path, file_format=file_format, **file_datasink_kwargs)
+
         if pandas_json_args is None:
             pandas_json_args = {}
 
         self.pandas_json_args_fn = pandas_json_args_fn
         self.pandas_json_args = pandas_json_args
-
-        super().__init__(path, file_format=file_format, **file_datasink_kwargs)
 
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
         writer_args = _resolve_kwargs(self.pandas_json_args_fn, **self.pandas_json_args)

@@ -2,14 +2,12 @@ import io
 import tarfile
 import time
 import uuid
-from typing import Any, Dict, Optional, Union
+from typing import Optional, Union
 
 import pyarrow
 
 from ray.data.block import BlockAccessor
-from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
-from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.webdataset_datasource import (
     _apply_list,
     _default_encoder,
@@ -26,9 +24,9 @@ class _WebDatasetDatasink(BlockBasedFileDatasink):
         file_format: str = "tar",
         **file_datasink_kwargs,
     ):
-        self.encoder = encoder
-
         super().__init__(path, file_format="tar", **file_datasink_kwargs)
+
+        self.encoder = encoder
 
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
         stream = tarfile.open(fileobj=file, mode="w|")

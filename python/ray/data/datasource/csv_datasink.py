@@ -3,10 +3,8 @@ from typing import Any, Callable, Dict, Optional
 import pyarrow
 
 from ray.data.block import BlockAccessor
-from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
-from ray.data.datasource.filename_provider import FilenameProvider
 
 
 class _CSVDatasink(BlockBasedFileDatasink):
@@ -19,13 +17,13 @@ class _CSVDatasink(BlockBasedFileDatasink):
         file_format="csv",
         **file_datasink_kwargs,
     ):
+        super().__init__(path, file_format=file_format, **file_datasink_kwargs)
+
         if arrow_csv_args is None:
             arrow_csv_args = {}
 
         self.arrow_csv_args_fn = arrow_csv_args_fn
         self.arrow_csv_args = arrow_csv_args
-
-        super().__init__(path, file_format=file_format, **file_datasink_kwargs)
 
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
         from pyarrow import csv
