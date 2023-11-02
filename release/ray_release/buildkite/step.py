@@ -1,6 +1,6 @@
 import copy
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
@@ -59,9 +59,9 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
 
 def get_step(
     test: Test,
+    test_collection_file: List[str] = None,
     report: bool = False,
     smoke_test: bool = False,
-    ray_wheels: Optional[str] = None,
     env: Optional[Dict] = None,
     priority_val: int = 0,
     global_config: Optional[str] = None,
@@ -72,6 +72,9 @@ def get_step(
 
     cmd = ["./release/run_release_test.sh", test["name"]]
 
+    for file in test_collection_file or []:
+        cmd += ["--test-collection-file", file]
+
     if global_config:
         cmd += ["--global-config", global_config]
 
@@ -80,9 +83,6 @@ def get_step(
 
     if smoke_test:
         cmd += ["--smoke-test"]
-
-    if ray_wheels:
-        cmd += ["--ray-wheels", ray_wheels]
 
     step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
 
