@@ -1,11 +1,11 @@
 import sys
-import os
 import logging
 import argparse
 from typing import List, Optional
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 import subprocess
+
 default_logger = logging.getLogger(__name__)
 
 
@@ -24,14 +24,19 @@ class MPIPlugin(RuntimeEnvPlugin):
         if mpi_config is None:
             return
         try:
-            proc = subprocess.run(["mpirun", "--version"], capture_output=True, check=True)
-        except subprocess.CalledProcessError as e:
-            logger.error("Failed to run mpi run. Please make sure mpi has been installed")
+            proc = subprocess.run(
+                ["mpirun", "--version"], capture_output=True, check=True
+            )
+        except subprocess.CalledProcessError:
+            logger.error(
+                "Failed to run mpi run. Please make sure mpi has been installed"
+            )
             raise
 
         logger.info(f"Running MPI plugin\n {proc.stdout.decode()}")
 
         from pathlib import Path
+
         # mpirun -n 10 python mpi.py worker_entry_func
         worker_entry = mpi_config["worker_entry"]
         assert Path(worker_entry).is_file()
@@ -64,7 +69,8 @@ if __name__ == "__main__":
     entry_file = args.main_entry if rank == 0 else args.worker_entry
 
     import importlib
+
     sys.argv[1:] = remaining_args
-    spec = importlib.util.spec_from_file_location('__main__', entry_file)
+    spec = importlib.util.spec_from_file_location("__main__", entry_file)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

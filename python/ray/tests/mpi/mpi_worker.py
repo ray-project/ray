@@ -3,14 +3,14 @@
 from mpi4py import MPI
 import numpy
 
+
 def compute_pi(samples):
     count = 0
     for x, y in samples:
         if x**2 + y**2 <= 1:
             count += 1
-    pi = 4*float(count)/len(samples)
+    pi = 4 * float(count) / len(samples)
     return pi
-
 
 
 def run():
@@ -33,6 +33,7 @@ def run():
 
     if myrank == 0:
         return pi
+
 
 if __name__ == "__main__":
     run()
