@@ -205,10 +205,12 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     # Read non-empty datasource with a specified schema.
     schema = Schema({"float_field": pa.float64(), "int_field": pa.int32()})
     ds = ray.data.read_datasource(
-        MongoDatasource(
-            uri=mongo_url, database=foo_db, collection=foo_collection, schema=schema
-        ),
+        MongoDatasource(),
         parallelism=2,
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        schema=schema,
     ).materialize()
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
@@ -223,8 +225,11 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     # Read with schema inference, which will read all columns (including the auto
     # generated internal column "_id").
     ds = ray.data.read_datasource(
-        MongoDatasource(uri=mongo_url, database=foo_db, collection=foo_collection),
+        MongoDatasource(),
         parallelism=2,
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
     ).materialize()
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
@@ -239,7 +244,10 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
 
     # Read with auto-tuned parallelism.
     ds = ray.data.read_datasource(
-        MongoDatasource(uri=mongo_url, database=foo_db, collection=foo_collection),
+        MongoDatasource(),
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
     ).materialize()
     assert str(ds) == (
         "MaterializedDataset(\n"
@@ -253,8 +261,11 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
 
     # Read with a parallelism larger than number of rows.
     ds = ray.data.read_datasource(
-        MongoDatasource(uri=mongo_url, database=foo_db, collection=foo_collection),
+        MongoDatasource(),
         parallelism=1000,
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
     )
     assert str(ds) == (
         "Dataset(\n"
@@ -268,13 +279,12 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
 
     # Read a subset of the collection.
     ds = ray.data.read_datasource(
-        MongoDatasource(
-            uri=mongo_url,
-            database=foo_db,
-            collection=foo_collection,
-            pipeline=[{"$match": {"int_field": {"$gte": 0, "$lt": 3}}}],
-        ),
+        MongoDatasource(),
         parallelism=2,
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        pipeline=[{"$match": {"int_field": {"$gte": 0, "$lt": 3}}}],
     )
     assert ds._block_num_rows() == [2, 1]
     assert str(ds) == (
