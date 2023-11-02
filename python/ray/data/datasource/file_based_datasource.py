@@ -20,7 +20,11 @@ import numpy as np
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.util import _check_pyarrow_version, make_async_gen
+from ray.data._internal.util import (
+    _check_pyarrow_version,
+    _is_local_scheme,
+    make_async_gen,
+)
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.block_path_provider import BlockWritePathProvider
@@ -567,6 +571,9 @@ class FileBasedDatasource(Datasource):
         if cls._FILE_EXTENSION is None:
             return None
         return FileExtensionFilter(cls._FILE_EXTENSION)
+
+    def supports_distributed_reads(self) -> bool:
+        return not _is_local_scheme(self._paths)
 
 
 def _add_partitions(
