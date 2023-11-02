@@ -488,6 +488,10 @@ py_test(
     size = "small",
     srcs = ["ray_release/tests/test_bisect.py"],
     exec_compatible_with = ["//:hermetic_python"],
+    data = [
+        "ray_release/tests/test_collection_data.yaml",
+        "cluster_tests/cpt_autoscaling_1-3_aws.yaml",
+    ],
     tags = [
         "release_unit",
         "team:ci",
