@@ -213,7 +213,7 @@ class TestRolloutWorker(unittest.TestCase):
                 num_envs_per_worker=2,
                 create_env_on_local_worker=True,
             )
-            .training(train_batch_size=20)
+            .training(train_batch_size=20, sgd_minibatch_size=5, num_sgd_iter=1)
         )
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             algo = config.build()

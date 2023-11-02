@@ -757,7 +757,7 @@ sh_test(
 py_test(
     name = "env/tests/test_multi_agent_env",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["env/tests/test_multi_agent_env.py"]
 )
 

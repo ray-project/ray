@@ -262,6 +262,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             .environment("flex_agents_multi_agent")
             .rollouts(num_rollout_workers=0)
             .framework("tf")
+            .training(train_batch_size=50, sgd_minibatch_size=50, num_sgd_iter=1)
         )
         algo = config.build()
         for i in range(10):
@@ -520,6 +521,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 ),
             )
             .framework("tf")
+            .training(train_batch_size=50, sgd_minibatch_size=50, num_sgd_iter=1)
         )
 
         algo = config.build()

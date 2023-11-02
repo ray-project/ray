@@ -566,7 +566,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
         rollout(algo2, "nested", 100)
         algo2.stop()
 
-    def test_py_torch_model(self):
+    def test_torch_model(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)
         register_env("nested", lambda _: NestedDictEnv())
 
@@ -614,7 +614,6 @@ class TestNestedObservationSpaces(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .experimental(_disable_preprocessor_api=True)
             .environment("repeat")
             .framework("torch")
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)

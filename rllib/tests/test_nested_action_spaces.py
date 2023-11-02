@@ -59,33 +59,39 @@ class NestedActionSpacesTest(unittest.TestCase):
         ray.shutdown()
 
     def test_nested_action_spaces(self):
-        config = PPOConfig()
-        config["env"] = RandomEnv
         # Write output to check, whether actions are written correctly.
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
             # Last resort: Resolve via underlying tempdir (and cut tmp_.
             tmp_dir = ray._private.utils.tempfile.gettempdir() + tmp_dir[4:]
             assert os.path.exists(tmp_dir), f"'{tmp_dir}' not found!"
-        config["output"] = tmp_dir
-        # Switch off OPE as we don't write action-probs.
-        # TODO: We should probably always write those if `output` is given.
-        config["off_policy_estimation_methods"] = {}
 
-        # Pretend actions in offline files are already normalized.
-        config["actions_in_input_normalized"] = True
+        config = (
+            PPOConfig()
+            .environment(RandomEnv)
+            # Pretend actions in offline files are already normalized.
+            .offline_data(output=tmp_dir, actions_in_input_normalized=True)
+            # Switch off OPE as we don't write action-probs.
+            # TODO: We should probably always write those if `output` is given.
+            .evaluation(off_policy_estimation_methods={})
+            # Remove lr schedule from config, not needed here, and not supported by BC.
+            .training(
+                lr_schedule=None,
+                train_batch_size=20,
+                sgd_minibatch_size=20,
+                num_sgd_iter=1,
+            )
+        )
 
-        # Remove lr schedule from config, not needed here, and not supported by BC.
-        config.lr_schedule = None
         for _ in framework_iterator(config):
             for name, action_space in SPACES.items():
-                config["env_config"] = {
-                    "action_space": action_space,
-                }
+                config.environment(env_config={"action_space": action_space})
+
                 for flatten in [True, False]:
+                    config.experimental(_disable_action_flattening=not flatten)
+
                     print(f"A={action_space} flatten={flatten}")
                     shutil.rmtree(config["output"])
-                    config["_disable_action_flattening"] = not flatten
                     algo = config.build()
                     algo.train()
                     algo.stop()
