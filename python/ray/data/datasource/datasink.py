@@ -7,14 +7,17 @@ from ray.util.annotations import DeveloperAPI
 
 @DeveloperAPI
 class Datasink:
-    def on_write_start(self, **_) -> None:
+    """Interface for defining write-related logic.
+
+    If you want to write data to something that isn't built-in, subclass this class
+    and call :meth:`~ray.data.Dataset.write_datasink`.
+    """
+
+    def on_write_start(self) -> None:
         """Callback for when a write job starts.
 
         Use this method to perform setup for write tasks. For example, creating a
         staging bucket in S3.
-
-        Args:
-            _: Forward-compatibility placeholder.
         """
         pass
 
@@ -22,14 +25,12 @@ class Datasink:
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-        **_,
     ) -> Any:
         """Write blocks. This is used by a single write task.
 
         Args:
             blocks: Generator of data blocks.
             ctx: ``TaskContext`` for the write task.
-            _: Forward-compatibility placeholder.
 
         Returns:
             A user-defined output. Can be anything, and the returned value is passed to
@@ -37,7 +38,7 @@ class Datasink:
         """
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[Any], **_) -> None:
+    def on_write_complete(self, write_results: List[Any]) -> None:
         """Callback for when a write job completes.
 
         This can be used to "commit" a write output. This method must
@@ -46,18 +47,16 @@ class Datasink:
 
         Args:
             write_results: The objects returned by every :meth:`~Datasink.write` task.
-            _: Forward-compatibility placeholder.
         """
         pass
 
-    def on_write_failed(self, error: Exception, **_) -> None:
+    def on_write_failed(self, error: Exception) -> None:
         """Callback for when a write job fails.
 
         This is called on a best-effort basis on write failures.
 
         Args:
             error: The first error encountered.
-            _: Forward-compatibility placeholder.
         """
         pass
 
