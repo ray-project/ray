@@ -273,7 +273,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read a subset of the collection.
-    ds = ray.data.read_datasource(
+    ds = ray.data.read_mongo(
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
