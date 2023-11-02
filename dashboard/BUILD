@@ -28,6 +28,7 @@ py_test_run_all_subdirectory(
         "tests/test_dashboard.py", 
         "tests/test_state_head.py",
         "modules/serve/tests/test_serve_dashboard.py",
+        "modules/data/tests/test_data_head.py",
     ],
     extra_srcs = [],
     data = [
@@ -95,3 +96,11 @@ py_test(
     srcs = ["modules/serve/tests/test_serve_dashboard.py"],
     tags = ["team:serve"],
 )
+
+py_test(
+    name = "test_data_head",
+    size = "small",
+    srcs = ["modules/data/tests/test_data_head.py"],
+    tags = ["team:data"],
+)
+
