@@ -15,25 +15,12 @@ class _NumpyDatasink(BlockBasedFileDatasink):
         path: str,
         column: str,
         *,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        try_create_dir: bool = True,
-        open_stream_args: Optional[Dict[str, Any]] = None,
-        filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
-        dataset_uuid: Optional[str] = None,
+        file_format: str = "npy",
+        **file_datasink_kwargs,
     ):
         self.column = column
 
-        super().__init__(
-            path,
-            filesystem=filesystem,
-            try_create_dir=try_create_dir,
-            open_stream_args=open_stream_args,
-            filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
-            dataset_uuid=dataset_uuid,
-            file_format="npy",
-        )
+        super().__init__(path, file_format=file_format, **file_datasink_kwargs)
 
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
         value = block.to_numpy(self.column)

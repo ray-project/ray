@@ -10,31 +10,12 @@ from ray.data.datasource.filename_provider import FilenameProvider
 
 class _ImageDatasink(RowBasedFileDatasink):
     def __init__(
-        self,
-        path: str,
-        column: str,
-        file_format: str,
-        *,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        try_create_dir: bool = True,
-        open_stream_args: Optional[Dict[str, Any]] = None,
-        filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
-        dataset_uuid: Optional[str] = None,
+        self, path: str, column: str, file_format: str, **file_datasink_kwargs
     ):
         self.column = column
         self.file_format = file_format
 
-        super().__init__(
-            path,
-            filesystem=filesystem,
-            try_create_dir=try_create_dir,
-            open_stream_args=open_stream_args,
-            filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
-            dataset_uuid=dataset_uuid,
-            file_format=file_format,
-        )
+        super().__init__(path, **file_datasink_kwargs)
 
     def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
         from PIL import Image

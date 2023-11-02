@@ -16,12 +16,8 @@ class _JSONDatasink(BlockBasedFileDatasink):
         *,
         pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         pandas_json_args: Optional[Dict[str, Any]] = None,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        try_create_dir: bool = True,
-        open_stream_args: Optional[Dict[str, Any]] = None,
-        filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
-        dataset_uuid: Optional[str] = None,
+        file_format: str = "json",
+        **file_datasink_kwargs,
     ):
         if pandas_json_args is None:
             pandas_json_args = {}
@@ -29,16 +25,7 @@ class _JSONDatasink(BlockBasedFileDatasink):
         self.pandas_json_args_fn = pandas_json_args_fn
         self.pandas_json_args = pandas_json_args
 
-        super().__init__(
-            path,
-            filesystem=filesystem,
-            try_create_dir=try_create_dir,
-            open_stream_args=open_stream_args,
-            filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
-            dataset_uuid=dataset_uuid,
-            file_format="json",
-        )
+        super().__init__(path, file_format=file_format, **file_datasink_kwargs)
 
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
         writer_args = _resolve_kwargs(self.pandas_json_args_fn, **self.pandas_json_args)

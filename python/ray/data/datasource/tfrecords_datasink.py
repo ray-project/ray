@@ -21,27 +21,14 @@ class _TFRecordDatasink(BlockBasedFileDatasink):
         path: str,
         *,
         tf_schema: Optional["schema_pb2.Schema"] = None,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        try_create_dir: bool = True,
-        open_stream_args: Optional[Dict[str, Any]] = None,
-        filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
-        dataset_uuid: Optional[str] = None,
+        file_format: str = "tar",
+        **file_datasink_kwargs,
     ):
         _check_import(self, module="crc32c", package="crc32c")
 
         self.tf_schema = tf_schema
 
-        super().__init__(
-            path,
-            filesystem=filesystem,
-            try_create_dir=try_create_dir,
-            open_stream_args=open_stream_args,
-            filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
-            dataset_uuid=dataset_uuid,
-            file_format="tar",
-        )
+        super().__init__(path, file_format=file_format, **file_datasink_kwargs)
 
     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
         arrow_table = block.to_arrow()
