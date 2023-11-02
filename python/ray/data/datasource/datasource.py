@@ -144,10 +144,10 @@ class Datasource:
     @property
     def should_create_reader(self) -> bool:
         has_implemented_get_read_tasks = (
-            self.get_read_tasks is not Datasource.get_read_tasks
+            type(self).get_read_tasks is not Datasource.get_read_tasks
         )
         has_implemented_estimate_inmemory_data_size = (
-            self.estimate_inmemory_data_size
+            type(self).estimate_inmemory_data_size
             is not Datasource.estimate_inmemory_data_size
         )
         return (
