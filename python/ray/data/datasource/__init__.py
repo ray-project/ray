@@ -9,7 +9,6 @@ from ray.data.datasource.datasource import (
     Datasource,
     DummyOutputDatasource,
     RandomIntRowDatasource,
-    RangeDatasource,
     Reader,
     ReadTask,
     WriteResult,
@@ -40,6 +39,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
+from ray.data.datasource.range_datasource import RangeDatasource
 from ray.data.datasource.sql_datasource import Connection, SQLDatasource
 from ray.data.datasource.text_datasource import TextDatasource
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource

@@ -223,13 +223,9 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
                     Call this method for creating synthetic datasets of tensor data.
 
     """
-    return read_datasource(
-        RangeDatasource(),
-        parallelism=parallelism,
-        n=n,
-        block_format="arrow",
-        column_name="id",
-    )
+
+    datasource = RangeDatasource(n=n, block_format="arrow", column_name="id")
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI
@@ -275,14 +271,10 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
                     Call this method to create synthetic datasets of integer data.
 
     """
-    return read_datasource(
-        RangeDatasource(),
-        parallelism=parallelism,
-        n=n,
-        block_format="tensor",
-        column_name="data",
-        tensor_shape=tuple(shape),
+    datasource = RangeDatasource(
+        n=n, block_format="tensor", column_name="data", tensor_shape=tuple(shape)
     )
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI
