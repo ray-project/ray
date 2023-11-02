@@ -137,9 +137,10 @@ def test_deploy_with_http_options(ray_start_stop):
     f1 = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
     )
-    f2 = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
-    )
+    # Used in the commented out block below.
+    # f2 = os.path.join(
+    # os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
+    # )
     success_message_fragment = b"Sent deploy request successfully."
 
     with open(f1, "r") as config_file:
