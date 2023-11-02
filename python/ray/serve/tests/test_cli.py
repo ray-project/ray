@@ -362,32 +362,6 @@ def test_deploy_multi_app_builder_with_args(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_config(ray_start_stop):
-    """Deploys config and checks that `serve config` returns correct response."""
-
-    # Check that `serve config` works even if no Serve app is running
-    info_response = subprocess.check_output(["serve", "config"])
-    assert "No config has been deployed" in info_response.decode("utf-8")
-
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
-    )
-    success_message_fragment = b"Sent deploy request successfully."
-
-    with open(config_file_name, "r") as config_file:
-        config = yaml.safe_load(config_file)
-
-    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
-    assert success_message_fragment in deploy_response
-
-    # Config should be immediately ready
-    info_response = subprocess.check_output(["serve", "config"])
-    info = yaml.safe_load(info_response)
-
-    assert config == info
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_config_multi_app(ray_start_stop):
     """Deploys multi-app config and checks output of `serve config`."""
 
@@ -429,7 +403,7 @@ def test_cli_without_config_deploy(ray_start_stop):
             SERVE_DEFAULT_APP_NAME
         ]
 
-        assert "No config has been deployed" in info_response.decode("utf-8")
+        assert len(info_response) == 0
         assert fetched_status["status"] == "RUNNING"
         assert fetched_status["deployments"]["fn"]["status"] == "HEALTHY"
         return True

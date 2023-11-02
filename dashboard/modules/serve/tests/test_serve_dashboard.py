@@ -359,7 +359,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     deploy_config_multi_app(config, url)
 
     def applications_running():
-        response = requests.get(url["GET_OR_PUT_V2"], timeout=15)
+        response = requests.get(url, timeout=15)
         assert response.status_code == 200
 
         serve_details = ServeInstanceDetails(**response.json())
@@ -371,7 +371,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     wait_for_condition(applications_running, timeout=15)
     print("All applications are in a RUNNING state.")
 
-    serve_details = ServeInstanceDetails(**requests.get(url["GET_OR_PUT_V2"]).json())
+    serve_details = ServeInstanceDetails(**requests.get(url).json())
     # CHECK: proxy location, HTTP host, and HTTP port
     assert serve_details.proxy_location == "HeadOnly"
     assert serve_details.http_options.host == "127.0.0.1"
