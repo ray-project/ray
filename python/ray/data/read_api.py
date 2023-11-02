@@ -223,7 +223,6 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
                     Call this method for creating synthetic datasets of tensor data.
 
     """
-
     datasource = RangeDatasource(n=n, block_format="arrow", column_name="id")
     return read_datasource(datasource, parallelism=parallelism)
 

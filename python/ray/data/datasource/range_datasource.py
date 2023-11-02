@@ -12,15 +12,7 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI
 class RangeDatasource(Datasource):
-    """An example datasource that generates ranges of numbers from [0..n).
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import RangeDatasource
-        >>> source = RangeDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource(source, n=10).take() # doctest: +SKIP
-        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    """
+    """An example datasource that generates ranges of numbers from [0..n)."""
 
     def __init__(
         self,
