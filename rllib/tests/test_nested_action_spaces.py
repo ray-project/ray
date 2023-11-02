@@ -67,7 +67,9 @@ class NestedActionSpacesTest(unittest.TestCase):
             assert os.path.exists(tmp_dir), f"'{tmp_dir}' not found!"
 
         config = (
-            PPOConfig().environment(RandomEnv)
+            PPOConfig()
+            .environment(RandomEnv)
+            .rollouts(num_rollout_workers=0)
             # Pretend actions in offline files are already normalized.
             .offline_data(output=tmp_dir, actions_in_input_normalized=True)
             # Switch off OPE as we don't write action-probs.
@@ -79,6 +81,9 @@ class NestedActionSpacesTest(unittest.TestCase):
                 train_batch_size=20,
                 sgd_minibatch_size=20,
                 num_sgd_iter=1,
+                model={
+                    "fcnet_hiddens": [10],
+                },
             )
         )
 

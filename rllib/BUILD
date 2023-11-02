@@ -1698,7 +1698,7 @@ py_test(
     name = "tests/test_nested_action_spaces",
     main = "tests/test_nested_action_spaces.py",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_nested_action_spaces.py"]
 )
 
