@@ -1,5 +1,11 @@
 group: serverless tests
 steps:
+  # builds
+  - name: serverlessbuild
+    wanda: ci/docker/serverless.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
+  # tests
   - label: ":serverless: serverless: python tests"
     tags: python
     instance_type: medium
@@ -22,6 +28,18 @@ steps:
         --only-tags spark_plugin_tests
         --except-tags kubernetes 
     depends_on: serverlessbuild
+    job_env: forge
+
+  - label: ":serverless: serverless: ml tests"
+    tags: python
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/util/dask/... serverless
+        --build-name mlbuild
+        --parallelism-per-worker 2
+        --only-tags client
+        --test-env=RAY_CLIENT_MODE=1
+    depends_on: mlbuild
     job_env: forge
 
   - label: ":serverless: serverless: flaky tests"

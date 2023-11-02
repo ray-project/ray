@@ -30,8 +30,8 @@ DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
 # all input blocks anyway, so there is no performance advantage to having
 # smaller blocks. Setting a larger block size allows avoiding overhead from an
 # excessive number of partitions.
-# We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
-DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
+# We choose 1GiB as 4x less than the typical memory:core ratio (4:1).
+DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 
 # Dataset will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
@@ -219,6 +219,9 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
+        # The additonal ray remote args that should be added to
+        # the task-pool-based data tasks.
+        self._task_pool_data_task_remote_args: Dict[str, Any] = {}
         # The extra key-value style configs.
         # These configs are managed by individual components or plugins via
         # `set_config`, `get_config` and `remove_config`.

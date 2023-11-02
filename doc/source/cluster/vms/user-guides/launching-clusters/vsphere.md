@@ -23,7 +23,6 @@ You can follow [this document](https://via.vmw.com/frozen-vm-ovf) to create and 
 * The VM's network adapter should be connected to the port group or NSX segment configured in the above section. And the `Connect At Power On` check box should be selected.
 * After the frozen VM is built, a private key file (`ray-bootstrap-key.pem`) and a public key file (`ray_bootstrap_public_key.key`) will be generated under the HOME directory of the current user. If you want to deploy Ray clusters from another machine, these files should be copied to that machine's HOME directory to be picked up by the vSphere cluster launcher.
 * An OVF will be generated in the content library. If you want to deploy Ray clusters in other vSphere deployments, you can export the OVF and use it to create the frozen VM, instead of building it again from scratch.
-* The VM should be in powered-on status before you launch Ray clusters.
 
 ## Install Ray cluster launcher
 

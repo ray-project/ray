@@ -83,7 +83,7 @@ class QMixConfig(SimpleQConfig):
         self.optim_eps = 0.00001
 
         self.grad_clip = 10.0
-        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
         # configured by the user. On the old API stack, RLlib will always clip by
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"

@@ -186,7 +186,7 @@ def check_input_specs(
     that are specified in the model specs. It also allows you to cache the validation
     to make sure the spec is only validated once in the entire lifetime of the instance.
 
-    Examples (See more examples in ../tests/test_specs_dict.py):
+    See more examples in ../tests/test_specs_dict.py)
 
     .. testcode::
 

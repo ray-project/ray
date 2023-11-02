@@ -39,6 +39,12 @@ class BuilderContainer(Container):
         cmds = []
         if self.build_type == "debug":
             cmds += ["export RAY_DEBUG_BUILD=debug"]
+
+        if os.environ.get("RAYCI_DISABLE_CPP_WHEEL") == "true":
+            cmds += ["export RAY_DISABLE_EXTRA_CPP=1"]
+        if os.environ.get("RAYCI_DISABLE_JAVA", "") == "true":
+            cmds += ["export RAY_INSTALL_JAVA=0"]
+
         cmds += [
             "./ci/build/build-manylinux-ray.sh",
             f"./ci/build/build-manylinux-wheel.sh {self.bin_path} {self.numpy_version}",

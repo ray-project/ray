@@ -432,5 +432,8 @@ class ApplyAdditionalSplitToOutputBlocks(MapTransformFn):
             offset = 0
             split_sizes = _splitrange(block.num_rows(), self._additional_split_factor)
             for size in split_sizes:
-                yield block.slice(offset, offset + size)
+                # NOTE: copy=True is needed because this is an output block. If
+                # a block slice is put into the object store, the entire block
+                # will get serialized.
+                yield block.slice(offset, offset + size, copy=True)
                 offset += size

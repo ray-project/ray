@@ -15,7 +15,7 @@ class ClientMmapTableEntry {
 
   ~ClientMmapTableEntry();
 
-  uint8_t *pointer() { return pointer_; }
+  uint8_t *pointer() { return reinterpret_cast<uint8_t *>(pointer_); }
 
   MEMFD_TYPE fd() { return fd_; }
 
@@ -23,7 +23,7 @@ class ClientMmapTableEntry {
   /// The associated file descriptor on the client.
   MEMFD_TYPE fd_;
   /// The result of mmap for this file descriptor.
-  uint8_t *pointer_;
+  void *pointer_;
   /// The length of the memory-mapped file.
   size_t length_;
 
