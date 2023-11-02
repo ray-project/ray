@@ -326,7 +326,7 @@ def merge_legacy_yaml_with_defaults(merged_config: Dict[str, Any]) -> Dict[str, 
         worker_node_info = {
             "node_config": merged_config["worker_nodes"],
             "resources": merged_config["worker_nodes"].get("resources") or {},
-            "min_worker_nodes": merged_config.get("min_workers", 0),
+            "min_worker_nodes": merged_config.get("min_worker_nodes", 0),
             "max_worker_nodes": merged_config["max_worker_nodes"],
         }
     else:
