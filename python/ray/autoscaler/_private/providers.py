@@ -27,7 +27,9 @@ MINIMAL_EXTERNAL_CONFIG = {
 
 def _import_aws(provider_config):
     try:
-        import boto3
+        # boto3 and botocore are imported in multiple places in the codebase,
+        # so we just import them here to ensure that they are installed.
+        import boto3 # noqa: F401
     except ImportError as e:
         raise ImportError(
             "The Ray AWS VM launcher requires the AWS SDK for Python (Boto3) "
@@ -41,7 +43,7 @@ def _import_aws(provider_config):
 
 def _import_gcp(provider_config):
     try:
-        import googleapiclient
+        import googleapiclient # noqa: F401
     except ImportError as e:
         raise ImportError(
             "The Ray GCP VM launcher requires the Google API Client to be installed. "

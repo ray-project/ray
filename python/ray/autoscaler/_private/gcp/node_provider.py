@@ -27,8 +27,6 @@ from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.node_provider import NodeProvider
 
-
-
 logger = logging.getLogger(__name__)
 
 
