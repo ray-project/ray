@@ -525,6 +525,10 @@ class ActorReplicaWrapper:
                 self._actor_name, namespace=SERVE_NAMESPACE
             )
         except ValueError:
+            logger.info(
+                f"Failed to get handle to replica {self._actor_name} "
+                "during controller recovery. Marking as dead."
+            )
             return False
 
         try:
@@ -933,6 +937,7 @@ class DeploymentReplica(VersionedReplica):
 
         self._start_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
+        return True
 
     def check_started(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """Check if the replica has started. If so, transition to RUNNING.
