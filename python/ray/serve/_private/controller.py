@@ -877,7 +877,7 @@ class ServeController:
     def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+            _, config_checkpoints_dict = pickle.loads(checkpoint)
             if name in config_checkpoints_dict:
                 config = config_checkpoints_dict[name]
                 return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
