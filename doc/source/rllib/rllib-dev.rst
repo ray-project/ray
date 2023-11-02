@@ -68,9 +68,8 @@ Both integrated and contributed algorithms ship with the ``ray`` PyPI package, a
 
 How to add an algorithm to ``rllib/algorithms``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-It takes just two changes to add an algorithm to `algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__.
-A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/algorithms/random_agent/random_agent.py>`__.
-First, subclass `Algorithm <https://github.com/ray-project/ray/commits/master/rllib/algorithms/algorithm.py>`__ and override the ``get_default_config``, ``setup`` and ``training_step`` methods:
+It takes just two changes to add an algorithm to `algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/algorithms/random_agent/random_agent.py>`__.
+First, subclass `Algorithm <https://github.com/ray-project/ray/commits/master/rllib/algorithms/algorithm.py>`__ and implement the ``_init`` and ``step`` methods:
 
 .. literalinclude:: ../../../rllib/algorithms/random_agent/random_agent.py
    :language: python
@@ -85,8 +84,13 @@ Second, register the algorithm with a name in `rllib/algorithms/registry.py <htt
         from ray.rllib.algorithms.random_agent.random_agent import RandomAgent
         return RandomAgent
 
+    def _import_random_agent_2():
+        from ray.rllib.algorithms.random_agent_2.random_agent_2 import RandomAgent2
+        return RandomAgent2
+
     ALGORITHMS = {
         "RandomAgent": _import_random_agent,
+        "RandomAgent2": _import_random_agent_2,
         # ...
     }
 
