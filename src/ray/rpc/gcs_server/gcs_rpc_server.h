@@ -419,10 +419,6 @@ class NodeResourceInfoGcsServiceHandler {
                                       rpc::GetDrainingNodesReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReportResourceUsage(ReportResourceUsageRequest request,
-                                         ReportResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleGetAllResourceUsage(GetAllResourceUsageRequest request,
                                          GetAllResourceUsageReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
@@ -448,7 +444,6 @@ class NodeResourceInfoGrpcService : public GrpcService {
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetDrainingNodes);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
   }
 
