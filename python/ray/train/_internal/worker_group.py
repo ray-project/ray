@@ -3,11 +3,11 @@ import os
 import socket
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.air._internal.util import skip_exceptions, exception_cause
+from ray.air._internal.util import exception_cause, skip_exceptions
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
 
@@ -44,14 +44,15 @@ class WorkerMetadata:
         node_id: ID of the node this worker is on.
         node_ip: IP address of the node this worker is on.
         hostname: Hostname that this worker is on.
-        gpu_ids: List of CUDA IDs available to this worker.
+        resource_ids: Map of accelerator resources
+        ("GPU", "neuron_cores", ..) to their IDs.
         pid: Process ID of this worker.
     """
 
     node_id: str
     node_ip: str
     hostname: str
-    gpu_ids: Optional[List[str]]
+    resource_ids: Dict[str, List[str]]
     pid: int
 
 
@@ -86,14 +87,14 @@ def construct_metadata() -> WorkerMetadata:
     node_id = ray.get_runtime_context().get_node_id()
     node_ip = ray.util.get_node_ip_address()
     hostname = socket.gethostname()
-    gpu_ids = [str(gpu_id) for gpu_id in ray.get_gpu_ids()]
+    resource_ids = ray.get_runtime_context().get_resource_ids()
     pid = os.getpid()
 
     return WorkerMetadata(
         node_id=node_id,
         node_ip=node_ip,
         hostname=hostname,
-        gpu_ids=gpu_ids,
+        resource_ids=resource_ids,
         pid=pid,
     )
 

@@ -240,6 +240,7 @@ class RuntimeEnv(dict):
             The value has to be a callable when passed to the Job, Task, or Actor.
             The callable is then exported and this value is converted to
             the setup hook's function name for observability.
+        nsight: Dictionary mapping nsight profile option name to it's value.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
@@ -264,6 +265,7 @@ class RuntimeEnv(dict):
         # with the test.
         "docker",
         "worker_process_setup_hook",
+        "_nsight",
     }
 
     extensions_fields: Set[str] = {
@@ -282,6 +284,7 @@ class RuntimeEnv(dict):
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
         worker_process_setup_hook: Optional[Union[Callable, str]] = None,
+        nsight: Optional[Union[str, Dict[str, str]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         **kwargs,
@@ -297,6 +300,8 @@ class RuntimeEnv(dict):
             runtime_env["pip"] = pip
         if conda is not None:
             runtime_env["conda"] = conda
+        if nsight is not None:
+            runtime_env["_nsight"] = nsight
         if container is not None:
             runtime_env["container"] = container
         if env_vars is not None:
@@ -438,6 +443,9 @@ class RuntimeEnv(dict):
         if "java_jars" in self:
             return list(self["java_jars"])
         return []
+
+    def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
+        return self.get("_nsight", None)
 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})

@@ -27,26 +27,32 @@ logger = logging.getLogger(__name__)
 class Result:
     """The final result of a ML training run or a Tune trial.
 
-    This is the class produced by Trainer.fit().
-    It contains a checkpoint, which can be used for resuming training and for
-    creating a Predictor object. It also contains a metrics object describing
-    training metrics. ``error`` is included so that unsuccessful runs
-    and trials can be represented as well.
+    This is the output produced by ``Trainer.fit``.
+    ``Tuner.fit`` outputs a :class:`~ray.tune.ResultGrid` that is a collection
+    of ``Result`` objects.
 
-    The constructor is a private API.
+    This API is the recommended way to access the outputs such as:
+    - checkpoints (``Result.checkpoint``)
+    - the history of reported metrics (``Result.metrics_dataframe``, ``Result.metrics``)
+    - errors encountered during a training run (``Result.error``)
+
+    The constructor is a private API -- use ``Result.from_path`` to create a result
+    object from a directory.
 
     Attributes:
-        metrics: The final metrics as reported by a Trainable.
-        checkpoint: The final checkpoint of the Trainable.
+        metrics: The latest set of reported metrics.
+        checkpoint: The latest checkpoint.
         error: The execution error of the Trainable run, if the trial finishes in error.
         metrics_dataframe: The full result dataframe of the Trainable.
             The dataframe is indexed by iterations and contains reported
-            metrics.
-        best_checkpoints: A list of tuples of the best checkpoints saved
-            by the Trainable and their associated metrics. The number of
-            saved checkpoints is determined by the ``checkpoint_config``
-            argument of ``run_config`` (by default, all checkpoints will
-            be saved).
+            metrics. Note that the dataframe columns are indexed with the
+            *flattened* keys of reported metrics, so the format of this dataframe
+            may be slightly different than ``Result.metrics``, which is an unflattened
+            dict of the latest set of reported metrics.
+        best_checkpoints: A list of tuples of the best checkpoints and
+            their associated metrics. The number of
+            saved checkpoints is determined by :class:`~ray.train.CheckpointConfig`
+            (by default, all checkpoints will be saved).
     """
 
     metrics: Optional[Dict[str, Any]]
@@ -154,16 +160,18 @@ class Result:
             with open(result_json_file, "r") as f:
                 json_list = [json.loads(line) for line in f if line]
                 metrics_df = pd.json_normalize(json_list, sep="/")
+            latest_metrics = json_list[-1] if json_list else {}
         # Fallback to restore from progress.csv
         elif progress_csv_file.exists():
             metrics_df = pd.read_csv(progress_csv_file)
+            latest_metrics = (
+                metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
+            )
         else:
             raise RuntimeError(
                 f"Failed to restore the Result object: Neither {EXPR_RESULT_FILE}"
                 f" nor {EXPR_PROGRESS_FILE} exists in the trial folder!"
             )
-
-        latest_metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
 
         # Restore all checkpoints from the checkpoint folders
         checkpoint_dirs = sorted(local_path.glob("checkpoint_*"))

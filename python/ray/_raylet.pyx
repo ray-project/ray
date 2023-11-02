@@ -128,6 +128,7 @@ from ray.includes.common cimport (
     PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
+    WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR,
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
@@ -152,6 +153,7 @@ from ray.includes.libcoreworker cimport (
     ResourceMappingType,
     CFiberEvent,
     CActorHandle,
+    CGeneratorBackpressureWaiter,
 )
 
 from ray.includes.ray_config cimport RayConfig
@@ -384,8 +386,10 @@ class StreamingObjectRefGenerator:
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait([self.suppress_exceptions(ref)],
-                                            timeout=timeout_s)
+        ready, unready = await asyncio.wait(
+            [asyncio.create_task(self.suppress_exceptions(ref))],
+            timeout=timeout_s
+        )
         if len(unready) > 0:
             return ObjectRef.nil()
 
@@ -453,6 +457,13 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsRpcError():
         raise RpcError(message, rpc_code=status.rpc_code())
+    elif status.IsIntentionalSystemExit():
+        with gil:
+            raise_sys_exit_with_custom_error_message(message)
+    elif status.IsUnexpectedSystemExit():
+        with gil:
+            raise_sys_exit_with_custom_error_message(
+                message, exit_code=1)
     else:
         raise RaySystemError(message)
 
@@ -563,8 +574,11 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
             The hex IDs of the nodes that have a copy of this object.
         - object_size:
             The size of data + metadata in bytes.
+        - did_spill:
+            Whether or not this object was spilled.
     """
     object_size = c_object_location.GetObjectSize()
+    did_spill = c_object_location.GetDidSpill()
 
     node_ids = set()
     c_node_ids = c_object_location.GetNodeIDs()
@@ -585,6 +599,7 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
     return {
         "node_ids": list(node_ids),
         "object_size": object_size,
+        "did_spill": did_spill,
     }
 
 
@@ -630,6 +645,7 @@ cdef int prepare_resources(
     cdef:
         unordered_map[c_string, double] out
         c_string resource_name
+        list unit_resources
 
     if resource_dict is None:
         raise ValueError("Must provide resource map.")
@@ -640,10 +656,18 @@ cdef int prepare_resources(
         if value < 0:
             raise ValueError("Resource quantities may not be negative.")
         if value > 0:
+            unit_resources = (
+                f"{RayConfig.instance().predefined_unit_instance_resources()\
+                .decode('utf-8')},"
+                f"{RayConfig.instance().custom_unit_instance_resources()\
+                .decode('utf-8')}"
+            ).split(",")
+
             if (value >= 1 and isinstance(value, float)
-                    and not value.is_integer()):
+                    and not value.is_integer() and str(key) in unit_resources):
                 raise ValueError(
-                    "Resource quantities >1 must be whole numbers.")
+                    f"{key} resource quantities >1 must",
+                    f" be whole numbers. The specified quantity {value} is invalid.")
             resource_map[0][key.encode("ascii")] = float(value)
     return 0
 
@@ -675,6 +699,31 @@ cdef int prepare_actor_concurrency_groups(
             key.encode("ascii"), value["max_concurrency"], c_fd_list)
         concurrency_groups.push_back(cg)
     return 1
+
+
+def raise_sys_exit_with_custom_error_message(
+        ray_terminate_msg: str,
+        exit_code: int = 0) -> None:
+    """It is equivalent to sys.exit, but it can contain
+    a custom message. Custom message is reported to
+    raylet and is accessible via GCS (from `ray get workers`).
+
+    Note that sys.exit == raise SystemExit. I.e., this API
+    simply raises SystemExit with a custom error message accessible
+    via `e.ray_terminate_msg`.
+
+    Args:
+        ray_terminate_msg: The error message to propagate to GCS.
+        exit_code: The exit code. If it is not 0, it is considered
+            as a system error.
+    """
+    # Raising SystemExit(0) is equivalent to
+    # sys.exit(0).
+    # https://docs.python.org/3/library/exceptions.html#SystemExit
+    e = SystemExit(exit_code)
+    e.ray_terminate_msg = ray_terminate_msg
+    raise e
+
 
 cdef prepare_args_and_increment_put_refs(
         CoreWorker core_worker,
@@ -948,6 +997,9 @@ cdef class StreamingGeneratorExecutionContext:
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
             application error.
+        generator_backpressure_num_objects: The backpressure threshold
+            for streaming generator. The stremaing generator pauses if
+            total number of unconsumed objects exceed this threshold.
     """
 
     cdef:
@@ -978,6 +1030,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns
         c_bool *is_retryable_error
         c_string *application_error
+        shared_ptr[CGeneratorBackpressureWaiter] waiter
 
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
         # We couldn't make this a part of `make` method because
@@ -1009,6 +1062,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error,
+        int64_t generator_backpressure_num_objects,
     ):
         cdef StreamingGeneratorExecutionContext self = (
             StreamingGeneratorExecutionContext())
@@ -1030,7 +1084,9 @@ cdef class StreamingGeneratorExecutionContext:
         self.streaming_generator_returns = streaming_generator_returns
         self.is_retryable_error = is_retryable_error
         self.application_error = application_error
-        self.should_retry_exceptions, = should_retry_exceptions,
+        self.should_retry_exceptions = should_retry_exceptions
+        self.waiter = make_shared[CGeneratorBackpressureWaiter](
+            generator_backpressure_num_objects)
         return self
 
 
@@ -1059,6 +1115,7 @@ cdef report_streaming_generator_output(
     cdef:
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+        int64_t generator_index = context.generator_index
 
     if isinstance(output_or_exception, Exception):
         create_generator_error_object(
@@ -1087,12 +1144,14 @@ cdef report_streaming_generator_output(
                 return_obj.first,
                 is_plasma_object(return_obj.second)))
 
-        CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-            return_obj,
-            context.generator_id,
-            context.caller_address,
-            context.generator_index,
-            context.attempt_number)
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+                return_obj,
+                context.generator_id,
+                context.caller_address,
+                generator_index,
+                context.attempt_number,
+                context.waiter))
         context.generator_index += 1
         return True
     else:
@@ -1119,12 +1178,14 @@ cdef report_streaming_generator_output(
         logger.debug(
             "Writes to a ObjectRefStream of an "
             "index {}".format(context.generator_index))
-        CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-            return_obj,
-            context.generator_id,
-            context.caller_address,
-            context.generator_index,
-            context.attempt_number)
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
+                return_obj,
+                context.generator_id,
+                context.caller_address,
+                generator_index,
+                context.attempt_number,
+                context.waiter))
         context.generator_index += 1
         return False
 
@@ -1465,7 +1526,8 @@ cdef void execute_task(
         title,
         task_name,
         c_bool is_streaming_generator,
-        c_bool should_retry_exceptions) except *:
+        c_bool should_retry_exceptions,
+        int64_t generator_backpressure_num_objects) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -1486,10 +1548,7 @@ cdef void execute_task(
     # actor, Ray will exit the actor.
     def exit_current_actor_if_asyncio():
         if core_worker.current_actor_is_asyncio():
-            error = SystemExit(0)
-            error.is_ray_terminate = True
-            error.ray_terminate_msg = "exit_actor() is called."
-            raise error
+            raise_sys_exit_with_custom_error_message("exit_actor() is called.")
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
@@ -1646,12 +1705,18 @@ cdef void execute_task(
                                 should_retry_exceptions,
                                 streaming_generator_returns,
                                 is_retryable_error,
-                                application_error)
+                                application_error,
+                                generator_backpressure_num_objects)
                         # We cannot pass generator to cdef in Cython for some reasons.
                         # It is a workaround.
                         context.initialize(outputs)
 
                         if is_async_gen:
+                            if generator_backpressure_num_objects != -1:
+                                raise ValueError(
+                                    "_generator_backpressure_num_objects is "
+                                    "not supported for an async actor."
+                                )
                             # Note that the report RPCs are called inside an
                             # event loop thread.
                             core_worker.run_async_func_or_coro_in_event_loop(
@@ -1820,7 +1885,8 @@ cdef execute_task_with_cancellation_handler(
         const c_string c_name_of_concurrency_group_to_execute,
         c_bool is_reattempt,
         c_bool is_streaming_generator,
-        c_bool should_retry_exceptions):
+        c_bool should_retry_exceptions,
+        int64_t generator_backpressure_num_objects):
 
     is_retryable_error[0] = False
 
@@ -1839,7 +1905,10 @@ cdef execute_task_with_cancellation_handler(
 
     # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
     # runtime_ids to restrict availability to this task.
-    ray._private.utils.set_gpu_and_accelerator_runtime_ids()
+    # Once actor is created, users can change the visible accelerator ids within
+    # an actor task and we don't want to reset it.
+    if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
+        ray._private.utils.set_visible_accelerator_ids()
 
     # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
     # It will be unset after the task execution if it was overwridden here.
@@ -1909,7 +1978,8 @@ cdef execute_task_with_cancellation_handler(
                      c_name_of_concurrency_group_to_execute,
                      is_reattempt, execution_info, title, task_name,
                      is_streaming_generator,
-                     should_retry_exceptions)
+                     should_retry_exceptions,
+                     generator_backpressure_num_objects)
 
         # Check for cancellation.
         PyErr_CheckSignals()
@@ -1923,7 +1993,7 @@ cdef execute_task_with_cancellation_handler(
         actor = None
         actor_id = core_worker.get_actor_id()
         if not actor_id.is_nil():
-            actor = core_worker.actors[actor_id]
+            actor = worker.actors[actor_id]
 
         store_task_errors(
                 worker, e,
@@ -1953,12 +2023,9 @@ cdef execute_task_with_cancellation_handler(
         # If we've reached the max number of executions for this worker, exit.
         task_counter = manager.get_task_counter(function_descriptor)
         if task_counter == execution_info.max_calls:
-            exit = SystemExit(0)
-            exit.is_ray_terminate = True
-            exit.ray_terminate_msg = (
+            raise_sys_exit_with_custom_error_message(
                 "max_call has reached, "
                 f"max_calls: {execution_info.max_calls}")
-            raise exit
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -1985,7 +2052,8 @@ cdef CRayStatus task_execution_handler(
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt,
         c_bool is_streaming_generator,
-        c_bool should_retry_exceptions) nogil:
+        c_bool should_retry_exceptions,
+        int64_t generator_backpressure_num_objects) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -2012,7 +2080,8 @@ cdef CRayStatus task_execution_handler(
                         name_of_concurrency_group_to_execute,
                         is_reattempt,
                         is_streaming_generator,
-                        should_retry_exceptions)
+                        should_retry_exceptions,
+                        generator_backpressure_num_objects)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -2044,16 +2113,16 @@ cdef CRayStatus task_execution_handler(
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
-            if hasattr(e, "is_ray_terminate"):
-                return CRayStatus.IntentionalSystemExit(e.ray_terminate_msg)
-            elif hasattr(e, "is_creation_task_error"):
+            if hasattr(e, "is_creation_task_error"):
                 return CRayStatus.CreationTaskError(e.init_error_message)
             elif e.code is not None and e.code == 0:
                 # This means the system exit was
                 # normal based on the python convention.
                 # https://docs.python.org/3/library/sys.html#sys.exit
-                return CRayStatus.IntentionalSystemExit(
-                    f"Worker exits with an exit code {e.code}.")
+                msg = f"Worker exits with an exit code {e.code}."
+                if hasattr(e, "ray_terminate_msg"):
+                    msg += (f" {e.ray_terminate_msg}")
+                return CRayStatus.IntentionalSystemExit(msg)
             else:
                 msg = f"Worker exits with an exit code {e.code}."
                 # In K8s, SIGTERM likely means we hit memory limits, so print
@@ -2061,9 +2130,10 @@ cdef CRayStatus task_execution_handler(
                 if "KUBERNETES_SERVICE_HOST" in os.environ:
                     msg += (
                         " The worker may have exceeded K8s pod memory limits.")
+                if hasattr(e, "ray_terminate_msg"):
+                    msg += (f" {e.ray_terminate_msg}")
                 if hasattr(e, "unexpected_error_traceback"):
-                    msg += (f"\n {e.unexpected_error_traceback}")
-                logger.exception(msg)
+                    msg += (f" {e.unexpected_error_traceback}")
                 return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
@@ -2080,10 +2150,30 @@ cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
 
 cdef CRayStatus check_signals() nogil:
     with gil:
+        # The Python exceptions are not handled if it is raised from cdef,
+        # so we have to handle it here.
         try:
             PyErr_CheckSignals()
         except KeyboardInterrupt:
             return CRayStatus.Interrupted(b"")
+        except SystemExit as e:
+            error_msg = (
+                "SystemExit is raised (sys.exit is called).")
+            if e.code is not None:
+                error_msg += f" Exit code: {e.code}."
+            else:
+                error_msg += " Exit code was not specified."
+
+            if hasattr(e, "ray_terminate_msg"):
+                error_msg += f" {e.ray_terminate_msg}"
+
+            if e.code and e.code == 0:
+                return CRayStatus.IntentionalSystemExit(error_msg.encode("utf-8"))
+            else:
+                return CRayStatus.UnexpectedSystemExit(error_msg.encode("utf-8"))
+        # By default, if signals raise an exception, Python just prints them.
+        # To keep the same behavior, we don't handle any other exceptions.
+
     return CRayStatus.OK()
 
 
@@ -2917,7 +3007,10 @@ def check_health(address: str, timeout=2, skip_version_check=False):
         Raises an exception otherwise.
     """
 
-    gcs_address, gcs_port = address.split(":")
+    tokens = address.rsplit(":", 1)
+    if len(tokens) != 2:
+        raise ValueError("Invalid address: {}. Expect 'ip:port'".format(address))
+    gcs_address, gcs_port = tokens
 
     cdef:
         c_string c_gcs_address = gcs_address
@@ -3014,15 +3107,15 @@ cdef class CoreWorker:
         self._task_id_to_future = {}
         self.thread_pool_for_async_event_loop = None
 
-    def shutdown(self):
+    def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
         # shutdown. So we can't call
         # `CCoreWorkerProcess.GetCoreWorker().GetWorkerType()` here.
         # Instead, we use the cached `is_driver` flag to test if it's a
         # driver.
-        if self.is_driver:
-            with nogil:
-                CCoreWorkerProcess.Shutdown()
+        assert self.is_driver
+        with nogil:
+            CCoreWorkerProcess.Shutdown()
 
     def notify_raylet(self):
         with nogil:
@@ -3032,13 +3125,16 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.RunTaskExecutionLoop()
 
-    def exit_worker(self, exit_type: str, c_string detail):
+    def drain_and_exit_worker(self, exit_type: str, c_string detail):
         """
         Exit the current worker process. This API should only be used by
-        a worker. If this API is called, the worker will finish currently
-        executing task, initiate the shutdown, and stop itself gracefully.
-        The given exit_type and detail will be reported to GCS, and any
-        worker failure error will contain them.
+        a worker. If this API is called, the worker will wait to finish
+        currently executing task, initiate the shutdown, and stop
+        itself gracefully. The given exit_type and detail will be
+        reported to GCS, and any worker failure error will contain them.
+
+        The behavior of this API while a task is running is undefined.
+        Avoid using the API when a task is still running.
         """
         cdef:
             CWorkerExitType c_exit_type
@@ -3048,6 +3144,8 @@ cdef class CoreWorker:
             c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
         if exit_type == "system":
             c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
+        elif exit_type == "intentional_system_exit":
+            c_exit_type = WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR
         else:
             raise ValueError(f"Invalid exit type: {exit_type}")
         assert not self.is_driver
@@ -3489,6 +3587,7 @@ cdef class CoreWorker:
                     scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
+                    int64_t generator_backpressure_num_objects
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -3532,6 +3631,7 @@ cdef class CoreWorker:
             task_options = CTaskOptions(
                 name, num_returns, c_resources,
                 b"",
+                generator_backpressure_num_objects,
                 serialized_runtime_env_info)
 
             # We are in the async context. We have to obtain
@@ -3716,7 +3816,8 @@ cdef class CoreWorker:
                           c_string name,
                           int num_returns,
                           double num_method_cpus,
-                          c_string concurrency_group_name):
+                          c_string concurrency_group_name,
+                          int64_t generator_backpressure_num_objects):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -3754,7 +3855,11 @@ cdef class CoreWorker:
                     ray_function,
                     args_vector,
                     CTaskOptions(
-                        name, num_returns, c_resources, concurrency_group_name),
+                        name,
+                        num_returns,
+                        c_resources,
+                        concurrency_group_name,
+                        generator_backpressure_num_objects),
                     return_refs,
                     current_c_task_id)
             # These arguments were serialized and put into the local object
@@ -3874,6 +3979,7 @@ cdef class CoreWorker:
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_returns,
+                                         method_meta.generator_backpressure_num_objects, # noqa
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
@@ -3882,6 +3988,7 @@ cdef class CoreWorker:
                                          {},  # method decorators
                                          {},  # method signatures
                                          {},  # method num_returns
+                                         {},  # generator_backpressure_num_objects
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
@@ -4264,22 +4371,24 @@ cdef class CoreWorker:
             function_descriptor, specified_cgname)
 
         async def async_func():
-            if task_id:
-                async_task_id.set(task_id)
+            try:
+                if task_id:
+                    async_task_id.set(task_id)
 
-            if inspect.isawaitable(func_or_coro):
-                coroutine = func_or_coro
-            else:
-                coroutine = func_or_coro(*args, **kwargs)
+                if inspect.isawaitable(func_or_coro):
+                    coroutine = func_or_coro
+                else:
+                    coroutine = func_or_coro(*args, **kwargs)
 
-            return await coroutine
+                return await coroutine
+            finally:
+                event.Notify()
 
         future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
         if task_id:
             with self._task_id_to_future_lock:
                 self._task_id_to_future[task_id] = future
 
-        future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
@@ -4606,4 +4715,5 @@ def get_session_key_from_storage(host, port, password, use_ssl, config, key):
     if result:
         return data
     else:
+        logger.info("Could not retrieve session key from storage.")
         return None

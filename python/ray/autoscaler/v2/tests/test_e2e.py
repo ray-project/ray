@@ -20,6 +20,76 @@ def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
     return False
 
 
+def test_autoscaler_no_churn():
+    num_cpus_per_node = 4
+    expected_nodes = 6
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": num_cpus_per_node},
+        worker_node_types={
+            "type-1": {
+                "resources": {"CPU": num_cpus_per_node},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2 * expected_nodes,
+            },
+        },
+    )
+
+    driver_script = f"""
+import time
+import ray
+@ray.remote(num_cpus=1)
+def foo():
+  time.sleep(60)
+  return True
+
+ray.init("auto")
+
+print("start")
+assert(ray.get([foo.remote() for _ in range({num_cpus_per_node * expected_nodes})]))
+print("end")
+"""
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+
+        def tasks_run():
+            tasks = list_tasks()
+            # Waiting til the driver in the run_string_as_driver_nonblocking is running
+            assert len(tasks) > 0
+            return True
+
+        run_string_as_driver_nonblocking(driver_script)
+        wait_for_condition(tasks_run)
+
+        reached_threshold = False
+        for _ in range(30):
+            # verify no pending task + with resource used.
+            status = get_cluster_status(gcs_address)
+            has_task_demand = len(status.resource_demands.ray_task_actor_demand) > 0
+
+            # Check that we don't overscale
+            assert len(status.active_nodes) <= expected_nodes
+
+            # Check there's no demand if we've reached the expected number of nodes
+            if reached_threshold:
+                assert not has_task_demand
+
+            # Load disappears in the next cycle after we've fully scaled up.
+            if len(status.active_nodes) == expected_nodes:
+                reached_threshold = True
+
+            time.sleep(1)
+
+        assert reached_threshold
+    finally:
+        # TODO(rickyx): refactor into a fixture for autoscaling cluster.
+        ray.shutdown()
+        cluster.shutdown()
+
+
 # TODO(rickyx): We are NOT able to counter multi-node inconsistency yet. The problem is
 # right now, when node A (head node) has an infeasible task,
 # node B just finished running previous task.
@@ -31,8 +101,7 @@ def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
 #  node A: 1 pending task (infeasible)
 #  node B: 0 pending task, but **CPU used = 1**
 #
-# @pytest.mark.parametrize("mode", (["single_node", "multi_node"]))
-@pytest.mark.parametrize("mode", (["single_node"]))
+@pytest.mark.parametrize("mode", (["single_node", "multi_node"]))
 def test_scheduled_task_no_pending_demand(mode):
 
     # So that head node will need to dispatch tasks to worker node.
@@ -66,6 +135,7 @@ while True:
     try:
         cluster.start()
         ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
 
         run_string_as_driver_nonblocking(driver_script)
 
@@ -81,7 +151,7 @@ while True:
 
         for _ in range(30):
             # verify no pending task + with resource used.
-            status = get_cluster_status()
+            status = get_cluster_status(gcs_address)
             has_task_demand = len(status.resource_demands.ray_task_actor_demand) > 0
             has_task_usage = False
 
@@ -139,6 +209,7 @@ while True:
     try:
         cluster.start()
         ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
 
         run_string_as_driver_nonblocking(driver_script)
 
@@ -152,7 +223,7 @@ while True:
 
         for _ in range(30):
             # verify no pending request + resource used.
-            status = get_cluster_status()
+            status = get_cluster_status(gcs_address)
             has_pg_demand = len(status.resource_demands.placement_group_demand) > 0
             has_pg_usage = False
             for usage in status.cluster_resource_usage:
@@ -181,6 +252,7 @@ def test_placement_group_removal_idle_node():
     try:
         cluster.start()
         ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
 
         # Schedule a pg on nodes
         pg = placement_group([{"CPU": 2}] * 3, strategy="STRICT_SPREAD")
@@ -192,11 +264,11 @@ def test_placement_group_removal_idle_node():
         from ray.autoscaler.v2.sdk import get_cluster_status
 
         def verify():
-            cluster_state = get_cluster_status()
+            cluster_state = get_cluster_status(gcs_address)
 
             # Verify that nodes are idle.
-            assert len((cluster_state.healthy_nodes)) == 3
-            for node in cluster_state.healthy_nodes:
+            assert len((cluster_state.idle_nodes)) == 3
+            for node in cluster_state.idle_nodes:
                 assert node.node_status == "IDLE"
                 assert node.resource_usage.idle_time_ms >= 1000
 
@@ -213,13 +285,15 @@ def test_object_store_memory_idle_node(shutdown_only):
     ray.init()
 
     obj = ray.put("hello")
+    gcs_address = ray.get_runtime_context().gcs_address
 
     def verify():
-        state = get_cluster_status()
-        for node in state.healthy_nodes:
+        state = get_cluster_status(gcs_address)
+        for node in state.active_nodes:
             assert node.node_status == "RUNNING"
             assert node.used_resources()["object_store_memory"] > 0
-            return True
+        assert len(state.idle_nodes) == 0
+        return True
 
     wait_for_condition(verify)
 
@@ -230,12 +304,13 @@ def test_object_store_memory_idle_node(shutdown_only):
     time.sleep(1)
 
     def verify():
-        state = get_cluster_status()
-        for node in state.healthy_nodes:
+        state = get_cluster_status(gcs_address)
+        for node in state.idle_nodes:
             assert node.node_status == "IDLE"
             assert node.used_resources()["object_store_memory"] == 0
             assert node.resource_usage.idle_time_ms >= 1000
-            return True
+        assert len(state.active_nodes) == 0
+        return True
 
     wait_for_condition(verify)
 
@@ -268,18 +343,20 @@ def test_serve_num_replica_idle_node():
         # = 4 cpus used
         serve.run(Deployment.options(num_replicas=10).bind())
 
+        gcs_address = ray.get_runtime_context().gcs_address
         expected_num_workers = 5
 
         def verify():
-            cluster_state = get_cluster_status()
+            cluster_state = get_cluster_status(gcs_address)
 
             # Verify that nodes are busy.
-            assert len((cluster_state.healthy_nodes)) == expected_num_workers + 1
-            for node in cluster_state.healthy_nodes:
+            assert len(cluster_state.active_nodes) == expected_num_workers + 1
+            for node in cluster_state.active_nodes:
                 assert node.node_status == "RUNNING"
                 if not is_head_node_from_resource_usage(node.total_resources()):
                     available = node.available_resources()
                     assert available["CPU"] == 0
+            assert len(cluster_state.idle_nodes) == 0
             return True
 
         wait_for_condition(verify)
@@ -288,23 +365,23 @@ def test_serve_num_replica_idle_node():
         serve.run(Deployment.options(num_replicas=1).bind())
 
         def verify():
-            cluster_state = get_cluster_status()
+            cluster_state = get_cluster_status(gcs_address)
             # We should only have 1 running worker for the 1 replica, the rest idle.
             expected_idle_workers = expected_num_workers - 1
 
-            assert len((cluster_state.healthy_nodes)) == expected_num_workers + 1
+            assert (
+                len(cluster_state.idle_nodes) + len(cluster_state.active_nodes)
+                == expected_num_workers + 1
+            )
             idle_nodes = []
 
-            for node in cluster_state.healthy_nodes:
+            for node in cluster_state.idle_nodes:
                 if not is_head_node_from_resource_usage(node.total_resources()):
                     available = node.available_resources()
                     if node.node_status == "IDLE":
                         assert available["CPU"] == 4
                         idle_nodes.append(node)
-            from rich import print
-
-            print(cluster_state.healthy_nodes)
-            assert len(idle_nodes) == expected_idle_workers
+            assert len(cluster_state.idle_nodes) == expected_idle_workers
             return True
 
         # A long sleep is needed for serve proxy to be removed.
@@ -362,13 +439,14 @@ while True:
                 "raylet_check_gc_period_milliseconds": 10,
             },
         )
-        ray.init("auto")
+        ctx = ray.init("auto")
+        gcs_address = ctx.address_info["gcs_address"]
 
         from ray.autoscaler.v2.sdk import get_cluster_status
 
         def nodes_up():
-            cluster_state = get_cluster_status()
-            return len(cluster_state.healthy_nodes) == num_worker_nodes + 1
+            cluster_state = get_cluster_status(gcs_address)
+            return len(cluster_state.idle_nodes) == num_worker_nodes + 1
 
         wait_for_condition(nodes_up)
 
@@ -378,10 +456,12 @@ while True:
 
         # Check the cluster state for 10 seconds
         while time.time() - start < 10:
-            cluster_state = get_cluster_status()
+            cluster_state = get_cluster_status(gcs_address)
 
             # Verify total cluster resources never change
-            assert len((cluster_state.healthy_nodes)) == num_worker_nodes + 1
+            assert (
+                len(cluster_state.idle_nodes) + len(cluster_state.active_nodes)
+            ) == num_worker_nodes + 1
             assert cluster_state.total_resources()["CPU"] == 2 * (num_worker_nodes + 1)
 
     finally:

@@ -21,19 +21,11 @@ from ray.dashboard.modules.job.common import (
     validate_request_type,
     JobInfoStorageClient,
 )
-
-try:
-    # package `pydantic` is not in ray's minimal dependencies
-    from ray.dashboard.modules.job.pydantic_models import (
-        DriverInfo,
-        JobDetails,
-        JobType,
-    )
-except Exception:
-    DriverInfo = None
-    JobDetails = None
-    JobType = None
-
+from ray.dashboard.modules.job.pydantic_models import (
+    DriverInfo,
+    JobDetails,
+    JobType,
+)
 from ray.dashboard.modules.job.common import (
     JobStatus,
     JOB_ID_METADATA_KEY,

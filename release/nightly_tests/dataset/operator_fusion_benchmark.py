@@ -97,7 +97,7 @@ def make_ds(
 
 
 def execute_ds(ds: ray.data.Dataset):
-    ds = ds.fully_executed()
+    ds = ds.materialize()
 
 
 def _summarize_results(results: List[Dict[str, float]]) -> Dict[str, float]:

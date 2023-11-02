@@ -181,7 +181,7 @@ $ serve run monitoring:say_hello
 2023-04-10 15:57:32,100	INFO scripts.py:380 -- Deploying from import path: "monitoring:say_hello".
 [2023-04-10 15:57:33]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
 (ServeController pid=63503) INFO 2023-04-10 15:57:35,822 controller 63503 deployment_state.py:1168 - Deploying new version of deployment SayHello.
-(HTTPProxyActor pid=63513) INFO:     Started server process [63513]
+(ProxyActor pid=63513) INFO:     Started server process [63513]
 (ServeController pid=63503) INFO 2023-04-10 15:57:35,882 controller 63503 deployment_state.py:1386 - Adding 1 replica to deployment SayHello.
 2023-04-10 15:57:36,840	SUCC scripts.py:398 -- Deployed Serve app successfully.
 ```
@@ -429,6 +429,7 @@ The following metrics are exposed by Ray Serve:
      - * route
        * error_code
        * method
+       * application
      - The number of non-200 HTTP responses.
    * - ``ray_serve_num_grpc_error_requests`` [*]
      - * route

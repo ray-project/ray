@@ -3,7 +3,6 @@ import io
 import os
 import math
 import logging
-import shutil
 import tempfile
 from pathlib import Path
 from typing import (
@@ -26,13 +25,8 @@ from ray.air._internal.remote_storage import download_from_uri, is_non_local_pat
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train._internal.storage import (
-    _use_storage_context,
-    StorageContext,
-    get_fs_and_path,
-)
+from ray.train._internal.storage import StorageContext, get_fs_and_path
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.analysis.experiment_analysis import LegacyExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
@@ -139,7 +133,7 @@ class TunerInternal:
         self._is_restored = False
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
         (
-            self._legacy_experiment_checkpoint_dir,
+            self._local_experiment_dir,
             self._experiment_dir_name,
         ) = self.setup_create_experiment_checkpoint_dir(
             self.converted_trainable, self._run_config
@@ -152,8 +146,8 @@ class TunerInternal:
         # without allowing for checkpointing tuner and trainable.
         # Thus this has to happen before tune.run() so that we can have something
         # to restore from.
-        experiment_checkpoint_path = Path(self._legacy_experiment_checkpoint_dir)
-        with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
+        experiment_checkpoint_path = Path(self._local_experiment_dir, _TUNER_PKL)
+        with open(experiment_checkpoint_path, "wb") as fp:
             pickle.dump(self.__getstate__(), fp)
 
     def get_run_config(self) -> RunConfig:
@@ -332,24 +326,9 @@ class TunerInternal:
         resume_config: _ResumeConfig,
         storage_filesystem: Optional[pyarrow.fs.FileSystem],
     ):
-        if _use_storage_context():
-            fs, fs_path = get_fs_and_path(path_or_uri, storage_filesystem)
-            with fs.open_input_file(os.path.join(fs_path, _TUNER_PKL)) as f:
-                tuner_state = pickle.loads(f.readall())
-
-            restoring_from_cloud = None
-            local_experiment_checkpoint_dir = None
-            experiment_checkpoint_path = None
-        else:
-            # Sync down from cloud storage if needed
-            (
-                restoring_from_cloud,
-                local_experiment_checkpoint_dir,
-            ) = self._maybe_sync_down_tuner_state(path_or_uri)
-            experiment_checkpoint_path = Path(local_experiment_checkpoint_dir)
-
-            with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
-                tuner_state = pickle.load(fp)
+        fs, fs_path = get_fs_and_path(path_or_uri, storage_filesystem)
+        with fs.open_input_file(os.path.join(fs_path, _TUNER_PKL)) as f:
+            tuner_state = pickle.loads(f.readall())
 
         old_trainable_name, flattened_param_space_keys = self._load_tuner_state(
             tuner_state
@@ -374,47 +353,20 @@ class TunerInternal:
         self._run_config.name = path_or_uri_obj.name
         self._run_config.storage_path = str(path_or_uri_obj.parent)
 
-        if _use_storage_context():
-            _, self._experiment_dir_name = self.setup_create_experiment_checkpoint_dir(
-                self.converted_trainable, self._run_config
-            )
-
-            self._legacy_experiment_checkpoint_dir = None
-        else:
-            # Set the experiment directory
-            if not restoring_from_cloud:
-                self._legacy_experiment_checkpoint_dir = local_experiment_checkpoint_dir
-            else:
-                # If we synced, `experiment_checkpoint_dir` will contain a temporary
-                # directory. Create an experiment checkpoint dir instead and move
-                # our data there.
-                (
-                    new_exp_path,
-                    new_exp_name,
-                ) = self.setup_create_experiment_checkpoint_dir(
-                    self.converted_trainable, self._run_config
-                )
-                new_exp_path = Path(new_exp_path)
-                for file_dir in experiment_checkpoint_path.glob("*"):
-                    file_dir.replace(new_exp_path / file_dir.name)
-                shutil.rmtree(experiment_checkpoint_path)
-                self._legacy_experiment_checkpoint_dir = str(new_exp_path)
-                self._experiment_dir_name = str(new_exp_name)
+        (
+            self._local_experiment_dir,
+            self._experiment_dir_name,
+        ) = self.setup_create_experiment_checkpoint_dir(
+            self.converted_trainable, self._run_config
+        )
 
         # Load the experiment results at the point where it left off.
         try:
-            if _use_storage_context():
-                self._experiment_analysis = ExperimentAnalysis(
-                    experiment_checkpoint_path=path_or_uri,
-                    default_metric=self._tune_config.metric,
-                    default_mode=self._tune_config.mode,
-                )
-            else:
-                self._experiment_analysis = LegacyExperimentAnalysis(
-                    experiment_checkpoint_path=path_or_uri,
-                    default_metric=self._tune_config.metric,
-                    default_mode=self._tune_config.mode,
-                )
+            self._experiment_analysis = ExperimentAnalysis(
+                experiment_checkpoint_path=path_or_uri,
+                default_metric=self._tune_config.metric,
+                default_mode=self._tune_config.mode,
+            )
         except Exception:
             self._experiment_analysis = None
 
@@ -503,28 +455,23 @@ class TunerInternal:
         Returns:
             Tuple: (experiment_path, experiment_dir_name)
         """
-        if _use_storage_context():
-            experiment_dir_name = (
-                run_config.name or StorageContext.get_experiment_dir_name(trainable)
-            )
-            storage_local_path = _get_defaults_results_dir()
-            experiment_path = (
-                Path(storage_local_path).joinpath(experiment_dir_name).as_posix()
-            )
-        else:
-            experiment_path = Experiment.get_experiment_checkpoint_dir(
-                trainable,
-                run_config.storage_path,
-                run_config.name,
-            )
-            experiment_dir_name = os.path.basename(experiment_path)
+        # TODO(justinvyu): Move this logic into StorageContext somehow
+        experiment_dir_name = run_config.name or StorageContext.get_experiment_dir_name(
+            trainable
+        )
+        storage_local_path = _get_defaults_results_dir()
+        experiment_path = (
+            Path(storage_local_path).joinpath(experiment_dir_name).as_posix()
+        )
 
         os.makedirs(experiment_path, exist_ok=True)
         return experiment_path, experiment_dir_name
 
     # This has to be done through a function signature (@property won't do).
     def get_experiment_checkpoint_dir(self) -> str:
-        return self._legacy_experiment_checkpoint_dir
+        # TODO(justinvyu): This is used to populate an error message.
+        # This should point to the storage path experiment dir instead.
+        return self._local_experiment_dir
 
     @property
     def trainable(self) -> TrainableTypeOrTrainer:
@@ -677,7 +624,6 @@ class TunerInternal:
             local_dir=self._run_config.local_dir,
             # Deprecated
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
-            _experiment_checkpoint_dir=self._legacy_experiment_checkpoint_dir,
         )
 
     def _fit_internal(

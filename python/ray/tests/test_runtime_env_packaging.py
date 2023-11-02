@@ -56,6 +56,7 @@ ARCHIVE_NAME = "archive.zip"
 # If you find that confusing, take it up with @jiaodong...
 HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
+S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 
@@ -516,6 +517,37 @@ class TestParseUri:
         assert parsed_package_name == parsed_uri
 
     @pytest.mark.parametrize(
+        "parsing_tuple",
+        [
+            (
+                "https://username:PAT@github.com/repo/archive:2/commit_hash.whl",
+                Protocol.HTTPS,
+                "commit_hash.whl",
+            ),
+            (
+                "gs://fake/2022-10-21T13:11:35+00:00/package.whl",
+                Protocol.GS,
+                "package.whl",
+            ),
+            (
+                "s3://fake/2022-10-21T13:11:35+00:00/package.whl",
+                Protocol.S3,
+                "package.whl",
+            ),
+            (
+                "file:///fake/2022-10-21T13:11:35+00:00/package.whl",
+                Protocol.FILE,
+                "package.whl",
+            ),
+        ],
+    )
+    def test_parse_remote_whl_uris(self, parsing_tuple):
+        raw_uri, protocol, parsed_uri = parsing_tuple
+        parsed_protocol, parsed_package_name = parse_uri(raw_uri)
+        assert parsed_protocol == protocol
+        assert parsed_package_name == parsed_uri
+
+    @pytest.mark.parametrize(
         "gcs_uri",
         ["gcs://pip_install_test-0.5-py3-none-any.whl", "gcs://storing@here.zip"],
     )
@@ -593,6 +625,13 @@ class TestDownloadAndUnpackPackage:
                 pkg_uri=S3_PACKAGE_URI, base_directory=temp_dest_dir
             )
             assert (Path(local_dir) / "test_module").exists()
+
+        # test download whl from remote S3
+        with tempfile.TemporaryDirectory() as temp_dest_dir:
+            wheel_uri = await download_and_unpack_package(
+                pkg_uri=S3_WHL_PACKAGE_URI, base_directory=temp_dest_dir
+            )
+            assert (Path(local_dir) / wheel_uri).exists()
 
     async def test_download_and_unpack_package_with_file_uri(self):
         with tempfile.TemporaryDirectory() as temp_dir:

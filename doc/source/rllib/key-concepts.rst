@@ -69,7 +69,7 @@ which implements the proximal policy optimization algorithm in RLlib.
 
     .. tab-item:: Basic RLlib Algorithm
 
-        .. code-block:: python
+        .. testcode::
 
             # Configure.
             from ray.rllib.algorithms.ppo import PPOConfig
@@ -79,13 +79,13 @@ which implements the proximal policy optimization algorithm in RLlib.
             algo = config.build()
 
             # Train.
-            while True:
-                print(algo.train())
+            print(algo.train())
 
 
     .. tab-item:: RLlib Algorithms and Tune
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             from ray import tune
 

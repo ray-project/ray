@@ -11,7 +11,7 @@ You can update your Serve applications once they're in production by updating th
 Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. For each deployment, modifying the following values is considered a lightweight config update, and won't tear down the replicas for that deployment:
 - `num_replicas`
 - `autoscaling_config`
-- **`user_config`**
+- `user_config`
 - `max_concurrent_queries`
 - `graceful_shutdown_timeout_s`
 - `graceful_shutdown_wait_loop_s`
@@ -66,7 +66,7 @@ $ serve deploy serve_config.yaml
 ...
 ```
 
-We can inspect our deployments with `serve status`. Once the `app_status`'s `status` returns to `"RUNNING"`, we can try our requests one more time:
+We can inspect our deployments with `serve status`. Once the application's `status` returns to `RUNNING`, we can try our request one more time:
 
 ```console
 $ serve status
@@ -99,7 +99,7 @@ The language has updated. Now the returned text is in German instead of French.
 
 ## Code Updates
 
-Changing the following values in a deployment's config is considered a code update, and the deployment replicas will be restarted.
+Changing the following values in a deployment's config will trigger redeployment and restart all the deployment's replicas.
 - `ray_actor_options`
 - `placement_group_bundles`
 - `placement_group_strategy`
@@ -107,11 +107,6 @@ Changing the following values in a deployment's config is considered a code upda
 Changing the following application-level config values is also considered a code update, and all deployments in the application will be restarted.
 - `import_path`
 - `runtime_env`
-
-Note that the following modifications are all considered "changes", and will trigger tear down of replicas:
-* changing an existing setting
-* adding an override setting that was previously not present in the config file
-* removing a setting from the config file
 
 :::{warning}
 Although you can update your Serve application by deploying an entirely new deployment graph using a different `import_path` and a different `runtime_env`, this is NOT recommended in production.

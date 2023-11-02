@@ -45,7 +45,7 @@ Currently, for timing (1), we can set the container's `Command` and `Args` in Ra
     # Prerequisite: There is a KubeRay operator in the Kubernetes cluster.
 
     # Download `ray-cluster.head-command.yaml`
-    curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.head-command.yaml
+    curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0-rc.0/ray-operator/config/samples/ray-cluster.head-command.yaml
 
     # Create a RayCluster
     kubectl apply -f ray-cluster.head-command.yaml

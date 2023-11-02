@@ -1,30 +1,29 @@
-from contextlib import contextmanager
 import logging
 import os
-from pathlib import Path
 import pickle
-import pytest
 import re
 import shutil
 import tempfile
 import time
+from contextlib import contextmanager
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import pyarrow.fs
+import pytest
 
 import ray
 from ray import train, tune
 from ray._private.test_utils import simulate_storage
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
+from ray.train._checkpoint import Checkpoint
 from ray.train._internal.storage import (
+    StorageContext,
     _delete_fs_path,
     _download_from_fs_path,
-    StorageContext,
 )
-from ray.train._checkpoint import Checkpoint
 from ray.train.base_trainer import TrainingFailedError
-from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune.trainable.trainable import _DICT_CHECKPOINT_FILE_NAME
 
@@ -64,14 +63,6 @@ def dummy_context_manager(*args, **kwargs):
     yield "dummy value"
 
 
-@pytest.fixture(scope="module")
-def enable_new_persistence_mode():
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "1")
-        yield
-        mp.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "0")
-
-
 @pytest.fixture(autouse=True)
 def disable_driver_artifact_sync():
     # NOTE: Hack to make sure that the driver doesn't sync the artifacts.
@@ -84,7 +75,7 @@ def disable_driver_artifact_sync():
 
 
 @pytest.fixture(autouse=True, scope="module")
-def ray_start_4_cpus(enable_new_persistence_mode):
+def ray_start_4_cpus():
     # Make sure to set the env var before calling ray.init()
     ray.init(num_cpus=4)
     yield
@@ -599,8 +590,6 @@ def test_trainer(
                 "in_trainer": True,
                 "num_iterations": TestConstants.NUM_ITERATIONS,
                 "fail_iters": [2, 4],
-                # TODO(justinvyu): This should be separated into its own test once
-                # CI has been fully migrated.
                 # Test that global rank 0 is not required to checkpoint.
                 "no_checkpoint_ranks": no_checkpoint_ranks,
             },

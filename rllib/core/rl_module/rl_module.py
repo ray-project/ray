@@ -551,7 +551,7 @@ class RLModule(abc.ABC):
         """Returns the output specs of the forward_inference method.
 
         Override this method to customize the output specs of the inference call.
-        The default implementation requires the forward_inference to reutn a dict that
+        The default implementation requires the forward_inference to return a dict that
         has `action_dist` key and its value is an instance of `Distribution`.
         This assumption must always hold.
         """

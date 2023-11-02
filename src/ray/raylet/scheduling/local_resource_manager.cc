@@ -294,21 +294,8 @@ double LocalResourceManager::GetLocalAvailableCpus() const {
   return local_resources_.available.Sum(ResourceID::CPU()).Double();
 }
 
-std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
-    int64_t after_version, syncer::MessageType message_type) const {
-  RAY_CHECK(message_type == syncer::MessageType::RESOURCE_VIEW);
-  // We check the memory inside version, so version is not a const function.
-  // Ideally, we need to move the memory check somewhere else.
-  // TODO(iycheng): Make version as a const function.
-  const_cast<LocalResourceManager *>(this)->UpdateAvailableObjectStoreMemResource();
-
-  if (version_ <= after_version) {
-    return std::nullopt;
-  }
-
-  syncer::RaySyncMessage msg;
-  rpc::ResourcesData resources_data;
-
+void LocalResourceManager::PopulateResourceUsage(
+    rpc::ResourcesData &resources_data) const {
   resources_data.set_node_id(local_node_id_.Binary());
 
   NodeResources resources = ToNodeResources();
@@ -342,6 +329,44 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
   resources_data.set_is_draining(IsLocalNodeDraining());
 
+  for (const auto &iter : last_idle_times_) {
+    if (iter.second == absl::nullopt) {
+      // If it is a WorkFootprint
+      if (iter.first.index() == 0) {
+        switch (std::get<WorkFootprint>(iter.first)) {
+        case WorkFootprint::NODE_WORKERS:
+          resources_data.add_node_activity("Busy workers on node.");
+          break;
+        default:
+          UNREACHABLE;
+        }
+        // If it is a ResourceID
+      } else {
+        std::stringstream out;
+        out << "Resource: " << std::get<ResourceID>(iter.first).Binary()
+            << " currently in use.";
+        resources_data.add_node_activity(out.str());
+      }
+    }
+  }
+}
+
+std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
+    int64_t after_version, syncer::MessageType message_type) const {
+  RAY_CHECK_EQ(message_type, syncer::MessageType::RESOURCE_VIEW);
+  // We check the memory inside version, so version is not a const function.
+  // Ideally, we need to move the memory check somewhere else.
+  // TODO(iycheng): Make version as a const function.
+  const_cast<LocalResourceManager *>(this)->UpdateAvailableObjectStoreMemResource();
+
+  if (version_ <= after_version) {
+    return std::nullopt;
+  }
+
+  syncer::RaySyncMessage msg;
+  rpc::ResourcesData resources_data;
+  PopulateResourceUsage(resources_data);
+
   msg.set_node_id(local_node_id_.Binary());
   msg.set_version(version_);
   msg.set_message_type(message_type);
@@ -363,11 +388,6 @@ void LocalResourceManager::OnResourceOrStateChanged() {
     return;
   }
   resource_change_subscriber_(ToNodeResources());
-}
-
-void LocalResourceManager::ResetLastReportResourceUsage(
-    const NodeResources &replacement) {
-  last_report_resources_.reset(new NodeResources(replacement));
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {

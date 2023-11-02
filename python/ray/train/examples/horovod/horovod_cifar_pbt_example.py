@@ -4,13 +4,15 @@ import tempfile
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 import torchvision
 import torchvision.transforms as transforms
+from torch.utils.data import DataLoader
 from torchvision.models import resnet18
 
 import ray
 import ray.cloudpickle as cpickle
+import ray.train.torch
+from ray import train, tune
 from ray.train import (
     Checkpoint,
     CheckpointConfig,
@@ -18,9 +20,7 @@ from ray.train import (
     RunConfig,
     ScalingConfig,
 )
-import ray.train.torch
 from ray.train.horovod import HorovodTrainer
-from ray import train, tune
 from ray.tune.schedulers import create_scheduler
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner

@@ -1,5 +1,5 @@
 import itertools
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -39,9 +39,11 @@ class ZipOperator(PhysicalOperator):
         self._right_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
-        super().__init__("Zip", [left_input_op, right_input_op])
+        super().__init__(
+            "Zip", [left_input_op, right_input_op], target_max_block_size=None
+        )
 
-    def num_outputs_total(self) -> Optional[int]:
+    def num_outputs_total(self) -> int:
         left_num_outputs = self.input_dependencies[0].num_outputs_total()
         right_num_outputs = self.input_dependencies[1].num_outputs_total()
         if left_num_outputs is not None and right_num_outputs is not None:
@@ -51,7 +53,7 @@ class ZipOperator(PhysicalOperator):
         else:
             return right_num_outputs
 
-    def add_input(self, refs: RefBundle, input_index: int) -> None:
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0 or input_index == 1, input_index
         if input_index == 0:
@@ -70,7 +72,7 @@ class ZipOperator(PhysicalOperator):
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         return self._output_buffer.pop(0)
 
     def get_stats(self) -> StatsDict:

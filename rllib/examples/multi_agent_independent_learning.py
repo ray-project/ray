@@ -2,7 +2,7 @@ import argparse
 
 from ray import air, tune
 from ray.tune.registry import register_env
-from ray.rllib.algorithms.apex_ddpg import ApexDDPGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v4
 
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     register_env("waterworld", env_creator)
 
     config = (
-        ApexDDPGConfig()
+        PPOConfig()
         .environment("waterworld")
         .resources(num_gpus=args.num_gpus)
         .rollouts(num_rollout_workers=2)
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         stop = {"episodes_total": 60000}
 
     tune.Tuner(
-        "APEX_DDPG",
+        "PPO",
         run_config=air.RunConfig(
             stop=stop,
             checkpoint_config=air.CheckpointConfig(

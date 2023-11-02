@@ -1,8 +1,9 @@
-from ray.util import metrics
-from typing import Tuple, Optional, Dict, List, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.serve import context
+from ray.util import metrics
+from ray.util.annotations import PublicAPI
 
 DEPLOYMENT_TAG = "deployment"
 REPLICA_TAG = "replica"
@@ -64,7 +65,41 @@ def _add_serve_context_tag_values(tag_keys: Tuple, tags: Dict[str, str]):
         tags[ROUTE_TAG] = _request_context.route
 
 
+@PublicAPI(stability="beta")
 class Counter(metrics.Counter):
+    """A serve cumulative metric that is monotonically increasing.
+
+    This corresponds to Prometheus' counter metric:
+    https://prometheus.io/docs/concepts/metric_types/#counter
+
+    Serve-related tags ("deployment", "replica", "application", "route")
+    are added automatically if not provided.
+
+    .. code-block:: python
+
+            @serve.deployment
+            class MyDeployment:
+                def __init__(self):
+                    self.num_requests = 0
+                    self.my_counter = metrics.Counter(
+                        "my_counter",
+                        description=("The number of odd-numbered requests "
+                            "to this deployment."),
+                        tag_keys=("model",),
+                    )
+                    self.my_counter.set_default_tags({"model": "123"})
+
+                def __call__(self):
+                    self.num_requests += 1
+                    if self.num_requests % 2 == 1:
+                        self.my_counter.inc()
+
+    Args:
+        name: Name of the metric.
+        description: Description of the metric.
+        tag_keys: Tag keys of the metric.
+    """
+
     def __init__(
         self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
     ):
@@ -87,7 +122,39 @@ class Counter(metrics.Counter):
         super().inc(value, tags)
 
 
+@PublicAPI(stability="beta")
 class Gauge(metrics.Gauge):
+    """Gauges keep the last recorded value and drop everything before.
+
+    This corresponds to Prometheus' gauge metric:
+    https://prometheus.io/docs/concepts/metric_types/#gauge
+
+    Serve-related tags ("deployment", "replica", "application", "route")
+    are added automatically if not provided.
+
+    .. code-block:: python
+
+            @serve.deployment
+            class MyDeployment:
+                def __init__(self):
+                    self.num_requests = 0
+                    self.my_gauge = metrics.Gauge(
+                        "my_gauge",
+                        description=("The current memory usage."),
+                        tag_keys=("model",),
+                    )
+                    self.my_counter.set_default_tags({"model": "123"})
+
+                def __call__(self):
+                    process = psutil.Process()
+                    self.gauge.set(process.memory_info().rss)
+
+    Args:
+        name: Name of the metric.
+        description: Description of the metric.
+        tag_keys: Tag keys of the metric.
+    """
+
     def __init__(
         self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
     ):
@@ -110,7 +177,43 @@ class Gauge(metrics.Gauge):
         super().set(value, tags)
 
 
+@PublicAPI(stability="beta")
 class Histogram(metrics.Histogram):
+    """Tracks the size and number of events in buckets.
+
+    Histograms allow you to calculate aggregate quantiles
+    such as 25, 50, 95, 99 percentile latency for an RPC.
+
+    This corresponds to Prometheus' histogram metric:
+    https://prometheus.io/docs/concepts/metric_types/#histogram
+
+    Serve-related tags ("deployment", "replica", "application", "route")
+    are added automatically if not provided.
+
+    .. code-block:: python
+
+            @serve.deployment
+            class MyDeployment:
+                def __init__(self):
+                    self.my_histogram = Histogram(
+                        "my_histogram",
+                        description=("Histogram of the __call__ method running time."),
+                        boundaries=[1,2,4,8,16,32,64],
+                        tag_keys=("model",),
+                    )
+                    self.my_histogram.set_default_tags({"model": "123"})
+
+                def __call__(self):
+                    start = time.time()
+                    self.my_histogram.observe(time.time() - start)
+
+    Args:
+        name: Name of the metric.
+        description: Description of the metric.
+        boundaries: Boundaries of histogram buckets.
+        tag_keys: Tag keys of the metric.
+    """
+
     def __init__(
         self,
         name: str,

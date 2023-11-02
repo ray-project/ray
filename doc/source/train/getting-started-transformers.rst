@@ -28,8 +28,8 @@ For reference, the final code follows:
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. `train_func` is the Python code that executes on each distributed training :ref:`worker <train-overview-worker>`.
-2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and computing resources (e.g. GPUs).
+1. `train_func` is the Python code that executes on each distributed training worker.
+2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
 3. :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
 Compare a Hugging Face Transformers training script with and without Ray Train.
@@ -96,6 +96,7 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
     .. group-tab:: Hugging Face Transformers + Ray Train
 
         .. code-block:: python
+            :emphasize-lines: 11-13, 15-18, 55-72
 
             import numpy as np
             import evaluate

@@ -278,12 +278,13 @@ def test_quote_escaping(ray_start_stop):
 
 
 def test_resources(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
+    ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1}, _memory=4)
 
     # Check the case of too many resources.
     for id, arg in [
         ("entrypoint_num_cpus", "--entrypoint-num-cpus=2"),
         ("entrypoint_num_gpus", "--entrypoint-num-gpus=2"),
+        ("entrypoint_memory", "--entrypoint-memory=5"),
         ("entrypoint_resources", "--entrypoint-resources='{\"Custom\": 2}'"),
     ]:
         _run_cmd(f"ray job submit --submission-id={id} --no-wait {arg} -- echo hi")
@@ -293,7 +294,7 @@ def test_resources(shutdown_only):
     # Check the case of sufficient resources.
     stdout, _ = _run_cmd(
         "ray job submit --entrypoint-num-cpus=1 "
-        "--entrypoint-num-gpus=1 --entrypoint-resources='{"
+        "--entrypoint-num-gpus=1 --entrypoint-memory=4 --entrypoint-resources='{"
         '"Custom": 1}\' -- echo hello',
     )
     assert "hello" in stdout

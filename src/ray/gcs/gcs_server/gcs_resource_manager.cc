@@ -23,10 +23,12 @@ namespace gcs {
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &io_context,
     ClusterResourceManager &cluster_resource_manager,
+    GcsNodeManager &gcs_node_manager,
     NodeID local_node_id,
     std::shared_ptr<ClusterTaskManager> cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
+      gcs_node_manager_(gcs_node_manager),
       local_node_id_(std::move(local_node_id)),
       cluster_task_manager_(std::move(cluster_task_manager)) {}
 
@@ -148,7 +150,6 @@ void GcsResourceManager::UpdateFromResourceView(const rpc::ResourcesData &data) 
           << node_id;
     }
   }
-
   UpdateNodeResourceUsage(node_id, data);
 }
 
@@ -168,50 +169,6 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
 const absl::flat_hash_map<NodeID, rpc::ResourcesData>
     &GcsResourceManager::NodeResourceReportView() const {
   return node_resource_usages_;
-}
-
-void GcsResourceManager::HandleReportResourceUsage(
-    rpc::ReportResourceUsageRequest request,
-    rpc::ReportResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  UpdateFromResourceView(request.resources());
-
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
-}
-
-// TODO(rickyx): We could update the cluster resource manager when we update the load
-// so that we will no longer need node_resource_usages_.
-std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-GcsResourceManager::GetAggregatedResourceLoad() const {
-  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-      aggregate_load;
-  if (node_resource_usages_.empty()) {
-    return aggregate_load;
-  }
-  for (const auto &usage : node_resource_usages_) {
-    // Aggregate the load reported by each raylet.
-    FillAggregateLoad(usage.second, &aggregate_load);
-  }
-  return aggregate_load;
-}
-
-void GcsResourceManager::FillAggregateLoad(
-    const rpc::ResourcesData &resources_data,
-    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-        *aggregate_load) const {
-  auto load = resources_data.resource_load_by_shape();
-  for (const auto &demand : load.resource_demands()) {
-    auto &aggregate_demand = (*aggregate_load)[demand.shape()];
-    aggregate_demand.set_num_ready_requests_queued(
-        aggregate_demand.num_ready_requests_queued() +
-        demand.num_ready_requests_queued());
-    aggregate_demand.set_num_infeasible_requests_queued(
-        aggregate_demand.num_infeasible_requests_queued() +
-        demand.num_infeasible_requests_queued());
-    aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                      demand.backlog_size());
-  }
 }
 
 void GcsResourceManager::HandleGetAllResourceUsage(
@@ -262,7 +219,10 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   }
 
   RAY_DCHECK(static_cast<size_t>(reply->resource_usage_data().batch().size()) ==
-             num_alive_nodes_);
+             num_alive_nodes_)
+      << "Number of alive nodes " << num_alive_nodes_
+      << " is not equal to number of usage reports "
+      << reply->resource_usage_data().batch().size() << " in the autoscaler report.";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
@@ -282,6 +242,24 @@ void GcsResourceManager::UpdateFromResourceCommand(const rpc::ResourcesData &dat
 
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
+  // Note: This may be inconsistent with autoscaler state, which is
+  // not reported as often as a Ray Syncer message.
+  if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
+      maybe_node_info != absl::nullopt) {
+    auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
+
+    if (resources.idle_duration_ms() > 0) {
+      snapshot->set_state(rpc::NodeSnapshot::IDLE);
+      snapshot->set_idle_duration_ms(resources.idle_duration_ms());
+    } else {
+      snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
+      snapshot->mutable_node_activity()->CopyFrom(resources.node_activity());
+    }
+    if (resources.is_draining()) {
+      snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+    }
+  }
+
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
     // It will only happen when the node has been deleted.
@@ -351,14 +329,12 @@ std::string GcsResourceManager::DebugString() const {
          << counts_[CountType::GET_RESOURCES_REQUEST]
          << "\n- GetAllAvailableResources request count"
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
-         << "\n- ReportResourceUsage request count: "
-         << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
          << "\n- GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
   return stream.str();
 }
 
-void GcsResourceManager::AddResourcesChangedListener(std::function<void()> listener) {
+void GcsResourceManager::AddResourcesChangedListener(std::function<void()> &&listener) {
   RAY_CHECK(listener != nullptr);
   resources_changed_listeners_.emplace_back(std::move(listener));
 }

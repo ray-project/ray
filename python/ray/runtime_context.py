@@ -2,7 +2,6 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import ray._private.worker
-from ray._private import ray_constants
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import pasre_pg_formatted_resources_to_original
 from ray._raylet import TaskID
@@ -415,7 +414,7 @@ class RuntimeContext(object):
 
     def get_resource_ids(self) -> Dict[str, List[str]]:
         """
-        Get the current worker's GPU, accelerator and TPU ids.
+        Get the current worker's visible accelerator ids.
 
         Returns:
             A dictionary keyed by the resource name. The values are list
@@ -425,14 +424,14 @@ class RuntimeContext(object):
         worker = self.worker
         worker.check_connected()
         ids_dict: Dict[str, List[str]] = {}
-        for name in [ray_constants.GPU, ray_constants.NEURON_CORES, ray_constants.TPU]:
-            resource_ids = worker.get_resource_ids_for_resource(
-                name, f"^{name}_group_[0-9A-Za-z]+$"
+        for (
+            accelerator_resource_name
+        ) in ray._private.accelerators.get_all_accelerator_resource_names():
+            accelerator_ids = worker.get_accelerator_ids_for_accelerator_resource(
+                accelerator_resource_name,
+                f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
             )
-            # Convert resource_ids to strings as they can be user-configured
-            # or system-generated.
-            resource_ids = [str(i) for i in resource_ids]
-            ids_dict[name] = resource_ids
+            ids_dict[accelerator_resource_name] = accelerator_ids
         return ids_dict
 
 

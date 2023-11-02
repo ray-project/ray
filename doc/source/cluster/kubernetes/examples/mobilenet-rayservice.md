@@ -19,7 +19,7 @@ Note that the YAML file in this example uses `serveConfigV2`, which is supported
 
 ```sh
 # Download `ray-service.mobilenet.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.mobilenet.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0-rc.0/ray-operator/config/samples/ray-service.mobilenet.yaml
 
 # Create a RayService
 kubectl apply -f ray-service.mobilenet.yaml

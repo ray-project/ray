@@ -4,14 +4,16 @@
 # __start__
 # Run the following script with the WANDB_API_KEY env var set.
 import os
+
+import torch
+import wandb
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+from torchvision.models import resnet18
+
 import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
-import torch
-from torchvision import datasets, transforms
-from torchvision.models import resnet18
-from torch.utils.data import DataLoader
-import wandb
 
 assert os.environ.get("WANDB_API_KEY", None), "Please set WANDB_API_KEY env var."
 

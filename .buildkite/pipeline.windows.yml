@@ -28,8 +28,8 @@ upload_wheels_if_needed: &upload_wheels_if_needed |-
 
 
 steps:
-- label: ":windows: Build & Test"
-  parallelism: 6
+- label: ":windows: Core + Python tests (excluding serve)"
+  parallelism: 5
   commands:
     - *prelude_commands
     # conda init should be moved to the docker image setup
@@ -40,6 +40,18 @@ steps:
     - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then ./ci/ci.sh test_core; fi
     # The next command will be sharded into $parallelism shards.
     - ./ci/ci.sh test_python
+
+- label: ":windows: Serve tests"
+  parallelism: 2
+  commands:
+    - *prelude_commands
+    # conda init should be moved to the docker image setup
+    - conda init
+    - . ./ci/ci.sh init
+    - ./ci/ci.sh build
+    - export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
+    # The next command will be sharded into $parallelism shards.
+    - ./ci/ci.sh test_serve
 
 - label: ":windows: Wheels"
   commands:

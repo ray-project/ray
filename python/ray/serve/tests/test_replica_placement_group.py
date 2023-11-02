@@ -1,20 +1,15 @@
+import os
 import sys
 
 import pytest
 
 import ray
-from ray.util.placement_group import (
-    get_current_placement_group,
-    PlacementGroup,
-)
-from ray.util.scheduling_strategies import (
-    PlacementGroupSchedulingStrategy,
-)
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve.context import _get_global_client
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import get_all_live_placement_group_names
+from ray.serve.context import _get_global_client
+from ray.util.placement_group import PlacementGroup, get_current_placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def _get_pg_strategy(pg: PlacementGroup) -> str:
@@ -128,7 +123,7 @@ def test_pg_removed_on_replica_crash(serve_instance):
     )
     class D:
         def die(self):
-            sys.exit()
+            os._exit(1)
 
         def get_pg(self) -> PlacementGroup:
             return get_current_placement_group()
@@ -199,7 +194,7 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     )
     class D:
         def die(self):
-            sys.exit()
+            os._exit(1)
 
         def get_pg(self) -> PlacementGroup:
             return get_current_placement_group()

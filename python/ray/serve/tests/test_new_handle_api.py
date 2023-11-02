@@ -4,18 +4,14 @@ from typing import Any
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor
-
 from ray import serve
+from ray._private.test_utils import SignalActor
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
     DeploymentResponseGenerator,
     RayServeHandle,
     RayServeSyncHandle,
-)
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
 )
 
 
@@ -172,10 +168,6 @@ def test_convert_to_object_ref(serve_instance):
     assert ray.get(identity_task.remote(ref._to_object_ref_sync())) == "hello"
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="Streaming only supported w/ new routing.",
-)
 def test_generators(serve_instance):
     """Test generators inside and outside a deployment."""
 
@@ -204,10 +196,6 @@ def test_generators(serve_instance):
     assert list(gen) == list(range(10))
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="Streaming only supported w/ new routing.",
-)
 def test_convert_to_object_ref_gen(serve_instance):
     """Test converting generators to obj ref gens inside and outside a deployment."""
 
@@ -239,10 +227,6 @@ def test_convert_to_object_ref_gen(serve_instance):
     assert ray.get(list(obj_ref_gen)) == list(range(10))
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="Streaming only supported w/ new routing.",
-)
 @pytest.mark.parametrize("stream", [False, True])
 def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
     """Blocking `DeploymentResponse` (and generator) methods should fail in loop."""

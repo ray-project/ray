@@ -1,19 +1,19 @@
 import os
 from typing import Any, Dict
 
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
+import xgboost
+import xgboost_ray
+from xgboost_ray.tune import TuneReportCheckpointCallback
 
 from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.xgboost import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
-import xgboost
-import xgboost_ray
-from xgboost_ray.tune import TuneReportCheckpointCallback
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
 
 
 @PublicAPI(stability="beta")

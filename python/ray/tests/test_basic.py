@@ -2,10 +2,10 @@
 import logging
 import os
 import pickle
+import random
 import sys
 import time
 
-import numpy as np
 import pytest
 
 import ray
@@ -56,7 +56,7 @@ def test_release_resources_race(shutdown_only):
     )
     refs = []
     for _ in range(10):
-        refs.append(ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8)))
+        refs.append(ray.put(bytearray(20 * 1024 * 1024)))
 
     @ray.remote
     def consume(refs):
@@ -113,7 +113,7 @@ def test_grpc_message_size(shutdown_only):
 
     # 50KiB, not enough to spill to plasma, but will be inlined.
     def f():
-        return np.zeros(50000, dtype=np.uint8)
+        return bytearray(50000)
 
     # Executes a 10MiB task spec
     ray.get(bar.remote(*[f() for _ in range(200)]))
@@ -309,20 +309,20 @@ def test_invalid_arguments():
     # Type check
     for keyword in ("max_retries", "max_calls"):
         with pytest.raises(TypeError, match=re.escape(template1.format(keyword))):
-            ray.remote(**{keyword: np.random.uniform(0, 1)})(f)
+            ray.remote(**{keyword: random.random()})(f)
     num_returns_template = (
         "The type of keyword 'num_returns' "
         + f"must be {(int, str, type(None))}, but received type {float}"
     )
     with pytest.raises(TypeError, match=re.escape(num_returns_template)):
-        ray.remote(**{"num_returns": np.random.uniform(0, 1)})(f)
+        ray.remote(**{"num_returns": random.random()})(f)
 
     for keyword in ("max_restarts", "max_task_retries"):
         with pytest.raises(TypeError, match=re.escape(template1.format(keyword))):
-            ray.remote(**{keyword: np.random.uniform(0, 1)})(A)
+            ray.remote(**{keyword: random.random()})(A)
 
     # Value check for non-negative finite values
-    for v in (np.random.randint(-100, -2), -1):
+    for v in (random.randint(-100, -2), -1):
         keyword = "max_calls"
         with pytest.raises(
             ValueError,
@@ -346,11 +346,11 @@ def test_invalid_arguments():
     )
 
     with pytest.raises(ValueError, match=template2.format("max_retries")):
-        ray.remote(max_retries=np.random.randint(-100, -2))(f)
+        ray.remote(max_retries=random.randint(-100, -2))(f)
 
     for keyword in ("max_restarts", "max_task_retries"):
         with pytest.raises(ValueError, match=template2.format(keyword)):
-            ray.remote(**{keyword: np.random.randint(-100, -2)})(A)
+            ray.remote(**{keyword: random.randint(-100, -2)})(A)
 
     metadata_type_err = (
         "The type of keyword '_metadata' "
@@ -662,9 +662,9 @@ def test_fetch_local(ray_start_cluster_head):
     @ray.remote
     def put():
         ray.wait([signal_actor.wait.remote()])
-        return np.random.rand(5 * 1024 * 1024)  # 40 MB data
+        return bytearray(40 * 1024 * 1024)  # 40 MB data
 
-    local_ref = ray.put(np.random.rand(5 * 1024 * 1024))
+    local_ref = ray.put(bytearray(40 * 1024 * 1024))
     remote_ref = put.remote()
     # Data is not ready in any node
     (ready_ref, remaining_ref) = ray.wait([remote_ref], timeout=2, fetch_local=False)
@@ -957,7 +957,7 @@ def test_args_named_and_star(ray_start_shared_local_modes):
 
 
 def test_oversized_function(ray_start_shared_local_modes):
-    bar = np.zeros(100 * 1024 * 125)
+    bar = bytearray(800 * 1024 * 125)
 
     @ray.remote
     class Actor:

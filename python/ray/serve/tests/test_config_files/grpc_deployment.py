@@ -1,10 +1,10 @@
+from typing import Dict
+
 # Users need to include their custom message type which will be embedded in the request.
 import ray
-from ray.serve.generated import serve_pb2
-
 from ray import serve
+from ray.serve.generated import serve_pb2
 from ray.serve.handle import RayServeDeploymentHandle
-from typing import Dict
 
 
 @serve.deployment
