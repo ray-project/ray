@@ -32,7 +32,7 @@ class Datasource:
 
     """  # noqa: E501
 
-    @Deprecated(message="TODO")
+    @Deprecated
     def create_reader(self, **read_args) -> "Reader":
         """Return a Reader for the given read arguments.
 
@@ -42,7 +42,12 @@ class Datasource:
         Args:
             read_args: Additional kwargs to pass to the datasource impl.
         """
-        warnings.warn("TODO", DeprecationWarning)
+        warnings.warn(
+            "`create_reader` has been deprecated in Ray 2.9. Instead of creating a "
+            "`Reader`, implement `Datasource.get_read_tasks` and "
+            "`Datasource.estimate_inmemory_data_size`.",
+            DeprecationWarning,
+        )
         return _LegacyDatasourceReader(self, **read_args)
 
     @Deprecated
@@ -136,8 +141,22 @@ class Datasource:
         """
         raise NotImplementedError
 
+    @property
+    def should_create_reader(self) -> bool:
+        has_implemented_get_read_tasks = (
+            type(self).get_read_tasks is not Datasource.get_read_tasks
+        )
+        has_implemented_estimate_inmemory_data_size = (
+            type(self).estimate_inmemory_data_size
+            is not Datasource.estimate_inmemory_data_size
+        )
+        return (
+            not has_implemented_get_read_tasks
+            or not has_implemented_estimate_inmemory_data_size
+        )
 
-@Deprecated(message="TODO")
+
+@Deprecated
 class Reader:
     """A bound read operation for a :class:`~ray.data.Datasource`.
 
