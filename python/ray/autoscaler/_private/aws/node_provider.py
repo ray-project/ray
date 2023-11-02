@@ -5,14 +5,6 @@ import threading
 import time
 from collections import OrderedDict, defaultdict
 from typing import Any, Dict, List
-try:
-    import botocore
-    from boto3.resources.base import ServiceResource
-except ImportError as e:
-    raise ImportError(
-        "The Ray AWS VM launcher requires the AWS SDK for Python (Boto3) to be installed. "
-        "You can install it with `pip install boto3`."
-    ) from e
 
 import ray._private.ray_constants as ray_constants
 from ray._private.utils import get_neuron_core_constraint_name
@@ -39,6 +31,16 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_NAME,
     TAG_RAY_USER_NODE_TYPE,
 )
+
+try:
+    import botocore
+    from boto3.resources.base import ServiceResource
+except ImportError as e:
+    raise ImportError(
+        "The Ray AWS VM launcher requires the AWS SDK for Python (Boto3) to be installed. "
+        "You can install it with `pip install boto3`."
+    ) from e
+
 
 logger = logging.getLogger(__name__)
 
