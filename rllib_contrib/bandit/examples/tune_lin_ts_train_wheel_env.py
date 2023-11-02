@@ -3,13 +3,14 @@
 """
 
 import argparse
-from matplotlib import pyplot as plt
-import numpy as np
 import time
+
+import numpy as np
+from matplotlib import pyplot as plt
+from rllib_bandit.bandit import BanditLinTSConfig
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.bandit.bandit import BanditLinTSConfig
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 
 
