@@ -164,9 +164,9 @@ class TestCallbacks(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=50)
+            .rollouts(num_rollout_workers=0)
             .callbacks(EpisodeAndSampleCallbacks)
-            .training(train_batch_size=50)
+            .training(train_batch_size=50, sgd_minibatch_size=50, num_sgd_iter=1)
         )
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             algo = config.build()

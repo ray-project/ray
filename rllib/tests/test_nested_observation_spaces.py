@@ -392,12 +392,15 @@ class TestNestedObservationSpaces(unittest.TestCase):
         register_env("nested", make_env)
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("nested", disable_env_checking=True)
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
             .framework("tf")
             .training(
                 model={"custom_model": "composite", "use_lstm": test_lstm},
                 train_batch_size=5,
+                sgd_minibatch_size=5,
+                num_sgd_iter=1,
             )
         )
         if disable_connectors:
@@ -428,10 +431,16 @@ class TestNestedObservationSpaces(unittest.TestCase):
         register_env("nested2", make_env)
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("nested2", disable_env_checking=True)
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
-            .framework("tf")
-            .training(model={"custom_model": "composite2"}, train_batch_size=5)
+            .framework("tf2")
+            .training(
+                model={"custom_model": "composite2"},
+                train_batch_size=5,
+                sgd_minibatch_size=5,
+                num_sgd_iter=1,
+            )
         )
         if disable_connectors:
             # manually disable the connectors
@@ -489,10 +498,11 @@ class TestNestedObservationSpaces(unittest.TestCase):
         act_space = spaces.Discrete(2)
         config = (
             PPOConfig()
+            .experimental(_enable_new_api_stack=True)
             .environment("nested_ma", disable_env_checking=True)
             .framework("tf")
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
-            .training(train_batch_size=5)
+            .training(train_batch_size=5, sgd_minibatch_size=5, num_sgd_iter=1)
             .multi_agent(
                 policies={
                     "tuple_policy": (
@@ -574,7 +584,12 @@ class TestNestedObservationSpaces(unittest.TestCase):
             .environment("nested")
             .framework("torch")
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
-            .training(train_batch_size=5, model={"custom_model": "composite"})
+            .training(
+                train_batch_size=5,
+                sgd_minibatch_size=5,
+                num_sgd_iter=1,
+                model={"custom_model": "composite"},
+            )
         )
         algo = config.build()
 

@@ -20,6 +20,7 @@ class TestTimeSteps(unittest.TestCase):
         """Test whether PG can be built with both frameworks."""
         config = (
             ppo.PPOConfig()
+            .experimental(_disable_preprocessor_api=True)
             .environment(RandomEnv)
             .rollouts(num_rollout_workers=0)
             .training(
@@ -39,10 +40,10 @@ class TestTimeSteps(unittest.TestCase):
 
             for i in range(1, 21):
                 algo.compute_single_action(obs)
-                check(policy.global_timestep, i)
+                check(int(policy.global_timestep), i)
             for i in range(1, 21):
                 policy.compute_actions(obs_batch)
-                check(policy.global_timestep, i + 20)
+                check(int(policy.global_timestep), i + 20)
 
             # Artificially set ts to 100Bio, then keep computing actions and
             # train.
@@ -51,7 +52,7 @@ class TestTimeSteps(unittest.TestCase):
             # Run for 10 more ts.
             for i in range(1, 11):
                 policy.compute_actions(obs_batch)
-                check(policy.global_timestep, i + crazy_timesteps)
+                check(int(policy.global_timestep), i + crazy_timesteps)
             algo.train()
             algo.stop()
 

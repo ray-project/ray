@@ -3077,7 +3077,7 @@ py_test(
     name = "examples/two_step_game_ppo_tf",
     main = "examples/two_step_game.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=tf", "--stop-reward=7"]
 )
@@ -3086,7 +3086,7 @@ py_test(
     name = "examples/two_step_game_ppo_torch",
     main = "examples/two_step_game.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7"]
 )
