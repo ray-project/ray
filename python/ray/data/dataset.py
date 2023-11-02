@@ -3421,7 +3421,8 @@ class Dataset:
         """  # noqa: E501
         warnings.warn(
             "`write_datasource` is deprecated in Ray 2.9. Create a `Datasink` and use "
-            "`write_datasink` instead.",
+            "`write_datasink` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/api/doc/ray.data.Datasource.html.",  # noqa: E501
             DeprecationWarning,
         )
 
@@ -3497,6 +3498,11 @@ class Dataset:
             ray_remote_args = {}
 
         if not datasink.supports_distributed_writes:
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    "If you're using Ray Client, Ray Data won't schedule write tasks "
+                    "on the driver's node."
+                )
             ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(),
                 soft=False,
