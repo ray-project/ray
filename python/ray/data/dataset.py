@@ -4,6 +4,7 @@ import html
 import itertools
 import logging
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -87,7 +88,12 @@ from ray.data._internal.stats import (
     DatasetStatsSummary,
     get_dataset_id_from_stats_actor,
 )
-from ray.data._internal.util import ConsumptionAPI, _is_local_scheme, validate_compute
+from ray.data._internal.util import (
+    AllToAllAPI,
+    ConsumptionAPI,
+    _is_local_scheme,
+    validate_compute,
+)
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -108,6 +114,7 @@ from ray.data.datasource import (
     BlockWritePathProvider,
     Connection,
     CSVDatasource,
+    Datasink,
     Datasource,
     FilenameProvider,
     ImageDatasource,
@@ -974,6 +981,7 @@ class Dataset:
 
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
@@ -1029,6 +1037,7 @@ class Dataset:
             logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def random_shuffle(
         self,
         *,
@@ -1079,6 +1088,7 @@ class Dataset:
             logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def randomize_block_order(
         self,
         *,
@@ -1833,6 +1843,7 @@ class Dataset:
             logical_plan,
         )
 
+    @AllToAllAPI
     def groupby(self, key: Union[str, List[str], None]) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
@@ -1880,6 +1891,7 @@ class Dataset:
 
         return GroupedData(self, key)
 
+    @AllToAllAPI
     def unique(self, column: str) -> List[Any]:
         """List the unique elements in a given column.
 
@@ -1921,6 +1933,7 @@ class Dataset:
         ds = self.select_columns([column]).groupby(column).count()
         return [item[column] for item in ds.take_all()]
 
+    @AllToAllAPI
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate values using one or more functions.
@@ -1958,6 +1971,7 @@ class Dataset:
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
+    @AllToAllAPI
     @ConsumptionAPI
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2000,6 +2014,7 @@ class Dataset:
         ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2042,6 +2057,7 @@ class Dataset:
         ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2084,6 +2100,7 @@ class Dataset:
         ret = self._aggregate_on(Max, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2126,6 +2143,7 @@ class Dataset:
         ret = self._aggregate_on(Mean, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def std(
         self,
@@ -2182,6 +2200,7 @@ class Dataset:
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     def sort(
         self,
         key: Union[str, List[str], None] = None,
@@ -3399,6 +3418,7 @@ class Dataset:
             project_id=project_id,
         )
 
+    @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasource(
         self,
@@ -3416,6 +3436,13 @@ class Dataset:
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
             write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
         """  # noqa: E501
+        warnings.warn(
+            "`write_datasource` is deprecated in Ray 2.9. Create a `Datasink` and use "
+            "`write_datasink` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/api/doc/ray.data.Datasource.html.",  # noqa: E501
+            DeprecationWarning,
+        )
+
         if ray_remote_args is None:
             ray_remote_args = {}
         path = write_args.get("path", None)
@@ -3467,6 +3494,76 @@ class Dataset:
             datasource.on_write_complete(write_results, **write_args)
         except Exception as e:
             datasource.on_write_failed([], e)
+            raise
+
+    @ConsumptionAPI(pattern="Time complexity:")
+    def write_datasink(
+        self,
+        datasink: Datasink,
+        *,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Writes the dataset to a custom :class:`~ray.data.Datasink`.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            datasink: The :class:`~ray.data.Datasink` to write to.
+            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+        """  # noqa: E501
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        if not datasink.supports_distributed_writes:
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    "If you're using Ray Client, Ray Data won't schedule write tasks "
+                    "on the driver's node."
+                )
+            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
+
+        write_fn = generate_write_fn(datasink)
+
+        def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
+            return write_fn(blocks, ctx)
+
+        plan = self._plan.with_stage(
+            OneToOneStage(
+                "Write",
+                write_fn_wrapper,
+                TaskPoolStrategy(),
+                ray_remote_args,
+                fn=lambda x: x,
+            )
+        )
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            write_op = Write(
+                logical_plan.dag,
+                datasink,
+                ray_remote_args=ray_remote_args,
+            )
+            logical_plan = LogicalPlan(write_op)
+
+        try:
+            import pandas as pd
+
+            datasink.on_write_start()
+
+            self._write_ds = Dataset(plan, logical_plan).materialize()
+            blocks = ray.get(self._write_ds._plan.execute().get_blocks())
+            assert all(
+                isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
+            )
+            write_results = [block["write_result"][0] for block in blocks]
+
+            datasink.on_write_complete(write_results)
+        except Exception as e:
+            datasink.on_write_failed(e)
             raise
 
     @ConsumptionAPI(

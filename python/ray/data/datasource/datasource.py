@@ -1,4 +1,5 @@
 import builtins
+import warnings
 from copy import copy
 from typing import Any, Callable, Iterable, List, Optional, Tuple
 
@@ -27,11 +28,11 @@ class Datasource:
 
     .. note::
         Datasource instances must be serializable, since
-        :meth:`~ray.data.Datasource.create_reader` and
-        :meth:`~ray.data.Datasource.write` are called in remote tasks.
+        :meth:`~ray.data.Datasource.write` is called in remote tasks.
 
     """  # noqa: E501
 
+    @Deprecated
     def create_reader(self, **read_args) -> "Reader":
         """Return a Reader for the given read arguments.
 
@@ -41,6 +42,12 @@ class Datasource:
         Args:
             read_args: Additional kwargs to pass to the datasource impl.
         """
+        warnings.warn(
+            "`create_reader` has been deprecated in Ray 2.9. Instead of creating a "
+            "`Reader`, implement `Datasource.get_read_tasks` and "
+            "`Datasource.estimate_inmemory_data_size`.",
+            DeprecationWarning,
+        )
         return _LegacyDatasourceReader(self, **read_args)
 
     @Deprecated
@@ -48,6 +55,7 @@ class Datasource:
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
+    @Deprecated
     def on_write_start(self, **write_args) -> None:
         """Callback for when a write job starts.
 
@@ -59,6 +67,7 @@ class Datasource:
         """
         pass
 
+    @Deprecated
     def write(
         self,
         blocks: Iterable[Block],
@@ -77,6 +86,7 @@ class Datasource:
         """
         raise NotImplementedError
 
+    @Deprecated
     def on_write_complete(self, write_results: List[WriteResult], **kwargs) -> None:
         """Callback for when a write job completes.
 
@@ -90,6 +100,7 @@ class Datasource:
         """
         pass
 
+    @Deprecated
     def on_write_failed(
         self, write_results: List[ObjectRef[WriteResult]], error: Exception, **kwargs
     ) -> None:
@@ -114,8 +125,42 @@ class Datasource:
             name = name[: -len(datasource_suffix)]
         return name
 
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        """Return an estimate of the in-memory data size, or None if unknown.
 
-@PublicAPI
+        Note that the in-memory data size may be larger than the on-disk data size.
+        """
+        raise NotImplementedError
+
+    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+        """Execute the read and return read tasks.
+
+        Args:
+            parallelism: The requested read parallelism. The number of read
+                tasks should equal to this value if possible.
+
+        Returns:
+            A list of read tasks that can be executed to read blocks from the
+            datasource in parallel.
+        """
+        raise NotImplementedError
+
+    @property
+    def should_create_reader(self) -> bool:
+        has_implemented_get_read_tasks = (
+            type(self).get_read_tasks is not Datasource.get_read_tasks
+        )
+        has_implemented_estimate_inmemory_data_size = (
+            type(self).estimate_inmemory_data_size
+            is not Datasource.estimate_inmemory_data_size
+        )
+        return (
+            not has_implemented_get_read_tasks
+            or not has_implemented_estimate_inmemory_data_size
+        )
+
+
+@Deprecated
 class Reader:
     """A bound read operation for a :class:`~ray.data.Datasource`.
 

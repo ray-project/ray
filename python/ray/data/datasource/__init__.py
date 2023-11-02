@@ -5,6 +5,7 @@ from ray.data.datasource.block_path_provider import (
     DefaultBlockWritePathProvider,
 )
 from ray.data.datasource.csv_datasource import CSVDatasource
+from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import (
     Datasource,
     DummyOutputDatasource,
@@ -56,6 +57,7 @@ __all__ = [
     "BlockWritePathProvider",
     "Connection",
     "CSVDatasource",
+    "Datasink",
     "Datasource",
     "SQLDatasource",
     "DefaultBlockWritePathProvider",
