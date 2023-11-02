@@ -3109,7 +3109,7 @@ def remote(__t: type) -> Any:
 @overload
 def remote(
     *,
-    num_returns: Union[int, float] = Undefined,
+    num_returns: Union[int, float, Literal["dynamic"]] = Undefined,
     num_cpus: Union[int, float] = Undefined,
     num_gpus: Union[int, float] = Undefined,
     resources: Dict[str, float] = Undefined,
