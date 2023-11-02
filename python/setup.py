@@ -255,7 +255,6 @@ if setup_spec.type == SetupType.RAY:
             # please add it to dashboard/optional_deps.py as well.
             "aiohttp >= 3.7",
             "aiohttp_cors",
-            "botocore",
             "colorful",
             "py-spy >= 0.2.0",
             "requests",
