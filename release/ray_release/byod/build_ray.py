@@ -19,8 +19,8 @@ def build_ray(tests: List[Test]) -> None:
     """
     Builds ray and ray-ml images for PR builds
     """
-    if not _is_pr():
-        logger.info("Not a PR, skipping build_ray")
+    if not _is_pr() or os.environ.get("RAYCI_V2"):
+        logger.info("Skip building Ray on PR builds and CIv2")
         return
     start = int(time.time())
     base_image = _get_docker_name()
