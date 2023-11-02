@@ -27,9 +27,9 @@ class BinaryDatasource(FileBasedDatasource):
         self,
         paths: Union[str, List[str]],
         include_paths: bool = False,
-        **file_datasource_kwargs,
+        **file_based_datasource_kwargs,
     ):
-        super().__init__(paths, **file_datasource_kwargs)
+        super().__init__(paths, **file_based_datasource_kwargs)
 
         self.include_paths = include_paths
 

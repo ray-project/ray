@@ -42,9 +42,9 @@ class ImageDatasource(FileBasedDatasource):
         size: Optional[Tuple[int, int]] = None,
         mode: Optional[str] = None,
         include_paths: bool = False,
-        **file_datasource_kwargs,
+        **file_based_datasource_kwargs,
     ):
-        super().__init__(paths, **file_datasource_kwargs)
+        super().__init__(paths, **file_based_datasource_kwargs)
 
         _check_import(self, module="PIL", package="Pillow")
 
@@ -63,7 +63,7 @@ class ImageDatasource(FileBasedDatasource):
         self.mode = mode
         self.include_paths = include_paths
 
-        meta_provider = file_datasource_kwargs.get("meta_provider", None)
+        meta_provider = file_based_datasource_kwargs.get("meta_provider", None)
         if isinstance(meta_provider, _ImageFileMetadataProvider):
             self._encoding_ratio = self._estimate_files_encoding_ratio()
             meta_provider._set_encoding_ratio(self._encoding_ratio)

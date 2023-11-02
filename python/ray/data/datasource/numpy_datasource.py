@@ -32,9 +32,9 @@ class NumpyDatasource(FileBasedDatasource):
         self,
         paths: Union[str, List[str]],
         numpy_load_args: Optional[Dict[str, Any]] = None,
-        **file_datasource_kwargs,
+        **file_based_datasource_kwargs,
     ):
-        super().__init__(paths, **file_datasource_kwargs)
+        super().__init__(paths, **file_based_datasource_kwargs)
 
         if numpy_load_args is None:
             numpy_load_args = {}
