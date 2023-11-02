@@ -93,7 +93,7 @@ py_test(
 py_test(
     name = "test_serve_dashboard",
     size = "large",
-    srcs = ["modules/serve/tests/test_serve_dashboard.py", "modules/data/tests/test_data_head.py"],
+    srcs = ["modules/serve/tests/test_serve_dashboard.py"],
     tags = ["team:serve"],
 )
 
@@ -101,6 +101,6 @@ py_test(
     name = "test_data_head",
     size = "small",
     srcs = ["modules/data/tests/test_data_head.py"],
-    tags = ["team:data"],
+    tags = ["team:serve"],
 )
 
