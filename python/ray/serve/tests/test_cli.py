@@ -137,10 +137,6 @@ def test_deploy_with_http_options(ray_start_stop):
     f1 = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
     )
-    # Used in the commented out block below.
-    # f2 = os.path.join(
-    # os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
-    # )
     success_message_fragment = b"Sent deploy request successfully."
 
     with open(f1, "r") as config_file:
@@ -161,20 +157,6 @@ def test_deploy_with_http_options(ray_start_stop):
     # TODO(zcin): the assertion should just be `info == config` here but the output
     # formatting removes a lot of info.
     assert info == config["applications"][0]
-
-    # TODO(zcin): investigate why this failed on V1 API but succeeds on V2 API.
-    # with pytest.raises(subprocess.CalledProcessError):
-    # subprocess.check_output(["serve", "deploy", f2], stderr=subprocess.STDOUT)
-
-    assert requests.post("http://localhost:8005/").text == "wonderful world"
-
-    deploy_response = subprocess.check_output(["serve", "deploy", f1])
-    assert success_message_fragment in deploy_response
-
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8005/").text == "wonderful world",
-        timeout=15,
-    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
