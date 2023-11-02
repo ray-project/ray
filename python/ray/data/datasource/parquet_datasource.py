@@ -29,7 +29,6 @@ from ray.data.datasource.file_meta_provider import (
     ParquetMetadataProvider,
     _handle_read_os_error,
 )
-from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.partitioning import PathPartitionFilter
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.util.annotations import PublicAPI

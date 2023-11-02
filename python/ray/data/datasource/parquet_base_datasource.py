@@ -1,8 +1,6 @@
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
-import pyarrow
-
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
