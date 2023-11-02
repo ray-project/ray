@@ -213,10 +213,12 @@ class _ParquetDatasourceReader(Reader):
 
             filtered_paths = set(expanded_paths) - set(paths)
             if filtered_paths:
-                logger.info(f"Filtered out the following paths: {filtered_paths}")
+                logger.debug(f"Filtered out the following paths: {filtered_paths}")
 
-        if len(paths) == 1:
-            paths = paths[0]
+        else:
+            # When partition_filter is used, we do not need this for full paths
+            if len(paths) == 1:
+                paths = paths[0]
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
