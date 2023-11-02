@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 import base64
 import json
@@ -177,12 +178,13 @@ parser.add_argument(
     ),
 )
 
-if __name__ == "__main__":
+
+def main(argv):
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
     # as a step function. For more details, check out
     # https://github.com/ray-project/ray/pull/12225#issue-525059663.
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
     worker_launched_time_ms = time.time_ns() // 1e6
     if args.worker_type == "WORKER":
@@ -287,3 +289,6 @@ if __name__ == "__main__":
             time.sleep(100000)
     else:
         raise ValueError(f"Unexcepted worker mode: {mode}")
+
+if __name__ == "__main__":
+    main(sys.argv)
