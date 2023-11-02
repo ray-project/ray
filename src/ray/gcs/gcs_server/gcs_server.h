@@ -110,6 +110,11 @@ class GcsServer {
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
 
+  void UpdateGcsResourceManagerInTest(const rpc::ResourcesData &resources) {
+    RAY_CHECK(gcs_resource_manager_ != nullptr);
+    gcs_resource_manager_->UpdateFromResourceView(resources);
+  }
+
  protected:
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;
@@ -150,7 +155,7 @@ class GcsServer {
   void InitGcsTaskManager();
 
   /// Initialize gcs autoscaling manager.
-  void InitGcsAutoscalerStateManager();
+  void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
 
   /// Initialize usage stats client.
   void InitUsageStatsClient();
