@@ -28,7 +28,7 @@ class RangeDatasource(Datasource):
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         if self._block_format == "tensor":
-            element_size = np.product(self._tensor_shape)
+            element_size = int(np.product(self._tensor_shape))
         else:
             element_size = 1
         return 8 * self._n * element_size
