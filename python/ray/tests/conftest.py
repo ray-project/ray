@@ -995,7 +995,19 @@ def listen_port(request):
         sock = socket.socket()
         if hasattr(socket, "SO_REUSEPORT"):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
-        sock.bind(("127.0.0.1", port))
+
+        # Try up to 10 times.
+        MAX_RETRY = 10
+        for i in range(MAX_RETRY):
+            try:
+                sock.bind(("127.0.0.1", port))
+                break
+            except OSError as e:
+                if i == MAX_RETRY - 1:
+                    raise e
+                else:
+                    print(f"failed to bind on a port {port}. {e}")
+                    time.sleep(1)
         yield port
     finally:
         sock.close()

@@ -2,7 +2,7 @@ ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG PYTHON_VERSION
-ARG PYDANTIC_VERSION
+ARG PYDANTIC_BUILD_COMMIT
 
 # Unset dind settings; we are using the host's docker daemon.
 ENV DOCKER_TLS_CERTDIR=
@@ -26,5 +26,8 @@ RUN pip install -U --ignore-installed \
 
 RUN git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
 
-# Install custom Pydantic version if requested.
-RUN if [[ -z $PYDANTIC_VERSION ]] ; then echo Not installing custom Pydantic version ; else pip install -U pydantic==$PYDANTIC_VERSION ; fi
+# Install Pydantic from source if requested.
+RUN if [[ -z $PYDANTIC_BUILD_COMMIT ]] ; \
+    then echo "Not installing Pydantic from source." ; \
+    else pip install -U git+https://github.com/pydantic/pydantic@$PYDANTIC_BUILD_COMMIT ; \
+fi

@@ -117,7 +117,7 @@ def test_autodetect_parallelism(
         parallelism=-1,
         target_max_block_size=target_max_block_size,
         ctx=DataContext.get_current(),
-        reader=MockReader(),
+        datasource_or_legacy_reader=MockReader(),
         avail_cpus=avail_cpus,
     )
     assert result == expected, (result, expected)
