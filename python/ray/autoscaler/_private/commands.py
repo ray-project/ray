@@ -268,6 +268,30 @@ def create_or_update_cluster(
         CreateClusterEvent.up_started, {"cluster_config": config}
     )
 
+    # Rewrite min_workers (deprecated) to min_worker_nodes.
+    if "min_workers" in config:
+        cli_logger.warning(
+            "`min_workers` is deprecated. Please use `min_worker_nodes` instead."
+        )
+        if "min_worker_nodes" in config:
+            cli_logger.warning(
+                "Both `min_workers` and `min_worker_nodes` are provided. "
+                "Using `min_worker_nodes`."
+            )
+        config["min_worker_nodes"] = config["min_workers"]
+
+    # Rewrite max_workers (deprecated) to max_worker_nodes.
+    if "max_workers" in config:
+        cli_logger.warning(
+            "`max_workers` is deprecated. Please use `max_worker_nodes` instead."
+        )
+        if "max_worker_nodes" in config:
+            cli_logger.warning(
+                "Both `max_workers` and `max_worker_nodes` are provided. "
+                "Using `max_worker_nodes`."
+            )
+        config["max_worker_nodes"] = config["max_workers"]
+
     # todo: validate file_mounts, ssh keys, etc.
 
     importer = _NODE_PROVIDERS.get(config["provider"]["type"])
