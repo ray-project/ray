@@ -42,6 +42,7 @@ def test_get_datasets():
     assert dataset["dataset"].startswith("data_head_test")
     assert dataset["state"] == "FINISHED"
     assert dataset["end_time"] is not None
+    assert False
 
 
 if __name__ == "__main__":

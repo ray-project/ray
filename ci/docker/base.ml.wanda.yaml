@@ -11,13 +11,5 @@ srcs:
   - python/requirements.txt
   - python/requirements_compiled.txt
   - python/requirements/test-requirements.txt
-  - python/requirements/ml/rllib-requirements.txt
-  - python/requirements/ml/rllib-test-requirements.txt
-  - python/requirements/ml/train-requirements.txt
-  - python/requirements/ml/train-test-requirements.txt
-  - python/requirements/ml/tune-requirements.txt
-  - python/requirements/ml/tune-test-requirements.txt
-  - python/requirements/ml/dl-cpu-requirements.txt
-  - python/requirements/ml/core-requirements.txt
 tags:
   - cr.ray.io/rayproject/oss-ci-base_ml
