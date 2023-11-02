@@ -661,7 +661,7 @@ def shutdown(address: str, yes: bool):
             abort=True,
         )
 
-    ServeSubmissionClient(address).delete_application()
+    ServeSubmissionClient(address).delete_applications()
 
     cli_logger.success(
         "Sent shutdown request; applications will be deleted asynchronously."

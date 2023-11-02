@@ -559,43 +559,6 @@ k8sFNode = global_f.options(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_build_kubernetes_flag():
-    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
-        print("Building k8sFNode.")
-        subprocess.check_output(
-            [
-                "serve",
-                "build",
-                "--single-app",
-                "ray.serve.tests.test_cli_2.k8sFNode",
-                "-o",
-                tmp.name,
-                "-k",
-            ]
-        )
-        print("Build succeeded!")
-
-        tmp.seek(0)
-        config = yaml.safe_load(tmp.read())
-        assert config == {
-            "importPath": "ray.serve.tests.test_cli_2.k8sFNode",
-            "runtimeEnv": json.dumps({}),
-            "host": "0.0.0.0",
-            "port": 8000,
-            "deployments": [
-                {
-                    "name": "global_f",
-                    "numReplicas": 2,
-                    "rayActorOptions": {
-                        "numCpus": 2.0,
-                        "numGpus": 1.0,
-                    },
-                },
-            ],
-        }
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("use_command", [True, False])
 def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     """Check that CLI is idempotent even if controller dies."""
