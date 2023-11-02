@@ -18,7 +18,8 @@ RESPONSE_SCHEMA = [
 ]
 
 
-def test_get_datasets(ray_start_stop):
+def test_get_datasets():
+    ray.init()
     ds = ray.data.range(1).map_batches(lambda x: x)
     ds._set_name("data_head_test")
     ds.materialize()
