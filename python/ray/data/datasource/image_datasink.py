@@ -10,7 +10,7 @@ class _ImageDatasink(RowBasedFileDatasink):
     def __init__(
         self, path: str, column: str, file_format: str, **file_datasink_kwargs
     ):
-        super().__init__(path, **file_datasink_kwargs)
+        super().__init__(path, file_format=file_format, **file_datasink_kwargs)
 
         self.column = column
         self.file_format = file_format
