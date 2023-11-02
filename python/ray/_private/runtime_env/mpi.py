@@ -1,11 +1,12 @@
 import os
 import argparse
 import logging
-
+from typing import List, Optional
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 logger = logging.getLogger(__name__)
+
 
 class MPIPlugin(RuntimeEnvPlugin):
     priority = 90
@@ -23,8 +24,17 @@ class MPIPlugin(RuntimeEnvPlugin):
             return
         logger.info("Running MPI plugin")
         from pathlib import Path
+
         # mpirun -n 10 python mpi.py worker_entry_func
-        cmds = ["mpirun"] + mpi_config["args"] + [context.py_executable, str(Path(__file__).absolute()), mpi_config["worker_entry"]]
+        cmds = (
+            ["mpirun"]
+            + mpi_config["args"]
+            + [
+                context.py_executable,
+                str(Path(__file__).absolute()),
+                mpi_config["worker_entry"],
+            ]
+        )
         # Construct the start cmd
         context.py_executable = " ".join(cmds)
 
@@ -38,6 +48,7 @@ if __name__ == "__main__":
     args, remaining_args = parser.parse_known_args()
 
     from mpi4py import MPI
+
     comm = MPI.COMM_WORLD
 
     rank = comm.Get_rank()
@@ -50,8 +61,9 @@ if __name__ == "__main__":
         main = getattr(module, "main")
         main(remaining_args)
     else:
-        module, func = args.worker_entry_func.rsplit('.', 1)
+        module, func = args.worker_entry_func.rsplit(".", 1)
         import importlib
+
         module = importlib.import_module(module)
         func = getattr(module, func)
         # pass arguments are not supported for now.

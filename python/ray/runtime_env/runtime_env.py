@@ -288,7 +288,7 @@ class RuntimeEnv(dict):
         nsight: Optional[Union[str, Dict[str, str]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
-        mpi: Optional[Dict]=None,
+        mpi: Optional[Dict] = None,
         **kwargs,
     ):
         super().__init__()
@@ -447,7 +447,7 @@ class RuntimeEnv(dict):
             return list(self["java_jars"])
         return []
 
-    def mpi(self) ->Optional[Union[str, Dict[str, str]]]:
+    def mpi(self) -> Optional[Union[str, Dict[str, str]]]:
         return self.get("mpi", None)
 
     def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
