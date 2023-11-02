@@ -14,8 +14,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_spilled_bytes{{{global_filters}}}) by (dataset)",
-                legend="Bytes Spilled: {{dataset}}",
+                expr="sum(ray_data_spilled_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Spilled: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -26,8 +26,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_allocated_bytes{{{global_filters}}}) by (dataset)",
-                legend="Bytes Allocated: {{dataset}}",
+                expr="sum(ray_data_allocated_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Allocated: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -38,8 +38,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_freed_bytes{{{global_filters}}}) by (dataset)",
-                legend="Bytes Freed: {{dataset}}",
+                expr="sum(ray_data_freed_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Freed: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -50,8 +50,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_current_bytes{{{global_filters}}}) by (dataset)",
-                legend="Current Usage: {{dataset}}",
+                expr="sum(ray_data_current_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Current Usage: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -62,8 +62,8 @@ DATA_GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr="sum(ray_data_cpu_usage_cores{{{global_filters}}}) by (dataset)",
-                legend="CPU Usage: {{dataset}}",
+                expr="sum(ray_data_cpu_usage_cores{{{global_filters}}}) by (dataset, operator)",
+                legend="CPU Usage: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -74,8 +74,8 @@ DATA_GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr="sum(ray_data_gpu_usage_cores{{{global_filters}}}) by (dataset)",
-                legend="GPU Usage: {{dataset}}",
+                expr="sum(ray_data_gpu_usage_cores{{{global_filters}}}) by (dataset, operator)",
+                legend="GPU Usage: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -86,8 +86,8 @@ DATA_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_data_output_bytes{{{global_filters}}}) by (dataset)",
-                legend="Bytes Outputted: {{dataset}}",
+                expr="sum(ray_data_output_bytes{{{global_filters}}}) by (dataset, operator)",
+                legend="Bytes Outputted: {{dataset}}, {{operator}}",
             )
         ],
     ),
@@ -98,8 +98,8 @@ DATA_GRAFANA_PANELS = [
         unit="seconds",
         targets=[
             Target(
-                expr="sum(ray_data_block_generation_seconds{{{global_filters}}}) by (dataset)",
-                legend="Block Generation Time: {{dataset}}",
+                expr="sum(ray_data_block_generation_seconds{{{global_filters}}}) by (dataset, operator)",
+                legend="Block Generation Time: {{dataset}}, {{operator}}",
             )
         ],
     ),

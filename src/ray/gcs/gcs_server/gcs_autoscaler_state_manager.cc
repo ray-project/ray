@@ -231,6 +231,14 @@ GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
   return aggregate_load;
 };
 
+void GcsAutoscalerStateManager::Initialize(const GcsInitData &gcs_init_data) {
+  for (const auto &entry : gcs_init_data.Nodes()) {
+    if (entry.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      OnNodeAdd(entry.second);
+    }
+  }
+}
+
 void GcsAutoscalerStateManager::GetPendingResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   auto aggregate_load = GetAggregatedResourceLoad();
