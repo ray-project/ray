@@ -77,7 +77,8 @@ steps:
     tags: python
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- python/ray/util/dask/... core
+      - bazel run //ci/ray_ci:test_in_docker -- 
+        python/ray/util/dask/... python/ray/tests/modin/... core
         --build-name data12build
         --parallelism-per-worker 2
     depends_on: data12build
