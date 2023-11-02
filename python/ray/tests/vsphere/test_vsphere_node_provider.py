@@ -545,7 +545,6 @@ def test_split_vm_2_gpu_ids_map():
         "frozen-vm-3": ["0000:3b:00.5"],
     }
     requested_gpu_num = 1
-    node_number = 3
     expected_result = [
         {"frozen-vm-1": ["0000:3b:00.0"]},
         {"frozen-vm-1": ["0000:3b:00.1"]},
@@ -555,23 +554,36 @@ def test_split_vm_2_gpu_ids_map():
         {"frozen-vm-3": ["0000:3b:00.5"]},
     ]
 
-    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
+    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num)
     assert result == expected_result
 
     # Test a valid case 2
     requested_gpu_num = 2
-    node_number = 2
     expected_result = [
         {"frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1"]},
         {"frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"]},
     ]
-    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
+    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num)
     assert result == expected_result
 
-    # Test an invalid case: No enough available GPU cards to assigned to nodes
-    node_number = 30
-    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
-    assert result == []
+
+def test_set_placeholder():
+    vnp = mock_vsphere_node_provider()
+    data = [
+        {"frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1"]},
+        {"frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"]},
+    ]
+    place_holder_number = 3
+    expected_result = [
+        {"frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1"]},
+        {"frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"]},
+        {},
+        {},
+        {},
+    ]
+
+    vnp.set_placeholder(data, place_holder_number)
+    assert data == expected_result
 
 
 if __name__ == "__main__":

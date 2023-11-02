@@ -115,7 +115,7 @@ def get_vm_2_gpu_ids_map(pool_name, desired_gpu_number):
     return result
 
 
-def split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number):
+def split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num):
     """
     This function split the `vm, all_gpu_ids` map into array of
     "vm, gpu_ids_with_requested_gpu_num" map. The purpose to split the gpu list is for
@@ -125,7 +125,6 @@ def split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number):
         vm_2_gpu_ids_map: It is `vm, all_gpu_ids` map, and you can get it by call
                           function `get_vm_2_gpu_ids_map`.
         requested_gpu_num: The number of GPU cards is requested by each ray node.
-        node_number: The number of ray nodes
 
     Returns:
         Array of "vm, gpu_ids_with_requested_gpu_num" map.
@@ -145,7 +144,7 @@ def split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number):
             'frozen-vm-2': ['0000:3b:00.3', '0000:3b:00.4'],
             'frozen-vm-3': ['0000:3b:00.5'],
         }
-        requested_gpu_num is 1, and node_number is 3.
+        requested_gpu_num is 1.
 
         After call the bove with this funtion, it returns this array:
         [
@@ -170,16 +169,6 @@ def split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number):
             gpu_ids_map_array.append(gpu_ids_maps)
             i = j
             j = i + requested_gpu_num
-
-    # When there are not enough gpu cards for all ray nodes
-    if len(gpu_ids_map_array) < node_number:
-        logger.error(
-            f"No enough available GPU cards to assigned to nodes "
-            f"expected enough for {node_number} nodes, "
-            f"only enough for {len(gpu_ids_map_array)} nodes, "
-            f"gpu_ids_map_array {gpu_ids_map_array}"
-        )
-        return []
 
     return gpu_ids_map_array
 

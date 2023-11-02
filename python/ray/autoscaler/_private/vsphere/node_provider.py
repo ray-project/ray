@@ -217,8 +217,8 @@ class VsphereNodeProvider(NodeProvider):
                     logger.debug("Fetch IP {} for VM {}".format(ipaddr, vm.name))
                     return ipaddr
         else:
-            logger.warning("VM Net is not ready")
-        logger.warning("External IPv4 address is not available")
+            logger.warning(f"Net of VM {vm.name} is not ready")
+        logger.warning(f"External IPv4 address of VM {vm.name} is not available")
         return None
 
     def internal_ip(self, node_id):
@@ -429,6 +429,14 @@ class VsphereNodeProvider(NodeProvider):
 
         requested_gpu_num = resources.get("GPU", 0)
         if requested_gpu_num > 0:
+            if not gpu_ids_map:
+                logger.error(
+                    f"No available GPU card to assigned to node {vm_name_target}"
+                )
+                raise ValueError(
+                    f"No available GPU card to assigned to node {vm_name_target}"
+                )
+
             for vm_name in gpu_ids_map:
                 parent_vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
                     [vim.VirtualMachine], vm_name
@@ -760,6 +768,10 @@ class VsphereNodeProvider(NodeProvider):
 
         return frozen_vm_obj
 
+    def set_placeholder(self, array_obj, place_holder_number):
+        for i in range(place_holder_number):
+            array_obj.append({})
+
     def _create_node(self, node_config, tags, count):
         created_nodes_dict = {}
         exception_happened = False
@@ -793,14 +805,19 @@ class VsphereNodeProvider(NodeProvider):
 
             # Split `vm_2_gpu_ids_map` for nodes
             gpu_ids_map_array = split_vm_2_gpu_ids_map(
-                vm_2_gpu_ids_map, requested_gpu_num, count
+                vm_2_gpu_ids_map, requested_gpu_num
             )
-            if not gpu_ids_map_array:
-                raise ValueError("No enough available GPU cards for all nodes")
+            if len(gpu_ids_map_array) < count:
+                logger.warning(
+                    f"The GPU card number cannot fulfill {count} Ray nodes, "
+                    f"but can fulfill {len(gpu_ids_map_array)} Ray nodes. "
+                    f"gpu_ids_map_array: {gpu_ids_map_array}"
+                )
+                # Avoid invalid index when accessing gpu_ids_map_array[i]
+                self.set_placeholder(gpu_ids_map_array, count - len(gpu_ids_map_array))
         else:
             # CPU node: Avoid invalid index when accessing gpu_ids_map_array[i]
-            for i in range(count):
-                gpu_ids_map_array.append([])
+            self.set_placeholder(gpu_ids_map_array, count)
 
         with ThreadPoolExecutor(max_workers=count) as executor:
             futures = [
@@ -814,7 +831,9 @@ class VsphereNodeProvider(NodeProvider):
                 )
                 for i in range(count)
             ]
-        for future in futures:
+        failed_vms_index = []
+        for i in range(count):
+            future = futures[i]
             try:
                 vm = future.result()
                 k = Constants.VSPHERE_NODE_STATUS
@@ -823,21 +842,27 @@ class VsphereNodeProvider(NodeProvider):
                 # if create succeed, we add a "created" tag
                 self.set_node_tags(vm.vm, vsphere_node_created_tag)
                 created_nodes_dict[vm.name] = vm
+                logger.info(f"VM {vm.name} is created.")
             except Exception as e:
                 logger.error(
                     "Exception occurred while creating or tagging VMs {}".format(e)
                 )
                 exception_happened = True
+                failed_vms_index.append(i)
+                logger.error(f"Failed creating VM {vm_names[i]}")
 
-        # We clean up all the created VMs if any exception occurs.
+        # We clean up the created VMs if any exception occurs to them
         if exception_happened:
             with ThreadPoolExecutor(max_workers=count) as executor:
                 futures = [
-                    executor.submit(self.delete_vm, vm_names[i]) for i in range(count)
+                    executor.submit(self.delete_vm, vm_names[i])
+                    for i in failed_vms_index
                 ]
             for future in futures:
                 _ = future.result()
-            raise RuntimeError("Failed creating VMs, exiting!")
+
+            if len(failed_vms_index) == count:
+                raise RuntimeError("Failed creating all VMs, exiting!")
 
         return created_nodes_dict
 
