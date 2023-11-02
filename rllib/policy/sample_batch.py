@@ -1128,7 +1128,6 @@ class SampleBatch(dict):
         if self._slice_seq_lens_in_B:
             return self._batch_slice(slice_)
 
-        #TEST
         start = slice_.start or 0
         stop = slice_.stop or len(self)
         # If stop goes beyond the length of this batch -> Make it go till the
@@ -1136,7 +1135,6 @@ class SampleBatch(dict):
         # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
         if stop > len(self):
             stop = len(self)
-        #TEST: END
 
         if (
             self.get(SampleBatch.SEQ_LENS) is not None
@@ -1152,14 +1150,6 @@ class SampleBatch(dict):
                 # batch), return the last sequence (the -1 here makes sure we
                 # never go beyond it; would result in an index error below).
                 self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
-
-            #start = slice_.start or 0
-            #stop = slice_.stop or len(self._slice_map) - 1
-            ## If stop goes beyond the length of this batch -> Make it go till the
-            ## end only (including last item).
-            ## Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
-            #if stop >= len(self._slice_map):
-            #    stop = len(self._slice_map) - 1
 
             start_seq_len, start_unpadded = self._slice_map[start]
             stop_seq_len, stop_unpadded = self._slice_map[stop]
@@ -1211,14 +1201,6 @@ class SampleBatch(dict):
                 _num_grad_updates=self.num_grad_updates,
             )
         else:
-
-            #start = slice_.start or 0
-            #stop = slice_.stop or len(self)
-            ## If stop goes beyond the length of this batch -> Make it go till the
-            ## end only (including last item).
-            ## Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
-            #if stop > len(self):
-            #    stop = len(self)
 
             def map_(value):
                 if (

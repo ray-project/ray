@@ -18,7 +18,6 @@ CONFIGS = [
     {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 55)},
     {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (400, 400)},
     {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (64, 64)},
-
     # W/ SEQ_LENS.
     {
         "mini_batch_size": 64,
@@ -46,26 +45,37 @@ class TestMinibatchUtils(unittest.TestCase):
 
             for backend in ["tf", "numpy"]:
                 sample_batches = {
-                    f"pol{i}": SampleBatch({
-                        "obs": np.arange(agent_steps[i]),
-                        "seq_lens": seq_lens,
-                    }) if not seq_lens or not padding else SampleBatch({
-                        "obs": np.concatenate([
-                            np.concatenate([
-                                np.arange(s),
-                                np.zeros(shape=(max_seq_len - s,)),
-                            ]) for s in seq_lens
-                        ]),
-                        "seq_lens": seq_lens,
-                    })
+                    f"pol{i}": SampleBatch(
+                        {
+                            "obs": np.arange(agent_steps[i]),
+                            "seq_lens": seq_lens,
+                        }
+                    )
+                    if not seq_lens or not padding
+                    else SampleBatch(
+                        {
+                            "obs": np.concatenate(
+                                [
+                                    np.concatenate(
+                                        [
+                                            np.arange(s),
+                                            np.zeros(shape=(max_seq_len - s,)),
+                                        ]
+                                    )
+                                    for s in seq_lens
+                                ]
+                            ),
+                            "seq_lens": seq_lens,
+                        }
+                    )
                     for i in range(len(agent_steps))
                 }
                 if backend == "tf":
                     for pid, batch in sample_batches.items():
                         batch["obs"] = tf.convert_to_tensor(batch["obs"])
                         if seq_lens:
-                            batch["seq_lens"] = (
-                                tf.convert_to_tensor(batch["seq_lens"], dtype=tf.int32)
+                            batch["seq_lens"] = tf.convert_to_tensor(
+                                batch["seq_lens"], dtype=tf.int32
                             )
 
                 mb = MultiAgentBatch(sample_batches, num_env_steps)
@@ -80,13 +90,15 @@ class TestMinibatchUtils(unittest.TestCase):
                     # Check that for each policy the batch size is equal to the
                     # mini_batch_size.
                     for policy_batch in batch.policy_batches.values():
-                        self.assertEqual(policy_batch.count, mini_batch_size)
+                        check(policy_batch.count, mini_batch_size)
                     iteration_counter += 1
 
                 # for each policy check that the last item in batch matches the expected
                 # values, i.e. iteration_counter * mini_batch_size % agent_steps - 1
                 total_steps = iteration_counter * mini_batch_size
-                for policy_idx, policy_batch in enumerate(batch.policy_batches.values()):
+                for policy_idx, policy_batch in enumerate(
+                    batch.policy_batches.values()
+                ):
                     expected_last_item = (total_steps - 1) % agent_steps[policy_idx]
                     if seq_lens and seq_lens[-1] < max_seq_len:
                         expected_last_item = 0.0
@@ -97,7 +109,7 @@ class TestMinibatchUtils(unittest.TestCase):
                 expected_iteration_counter = np.ceil(
                     num_sgd_iter * max(agent_steps) / mini_batch_size
                 )
-                #self.assertEqual(iteration_counter, expected_iteration_counter)
+                # check(iteration_counter, expected_iteration_counter)
                 print(f"iteration_counter: {iteration_counter}")
 
 
