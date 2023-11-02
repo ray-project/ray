@@ -37,8 +37,8 @@ try:
     from boto3.resources.base import ServiceResource
 except ImportError as e:
     raise ImportError(
-        "The Ray AWS VM launcher requires the AWS SDK for Python (Boto3) to be installed. "
-        "You can install it with `pip install boto3`."
+        "The Ray AWS VM launcher requires the AWS SDK for Python (Boto3) "
+        "to be installed. You can install it with `pip install boto3`."
     ) from e
 
 
