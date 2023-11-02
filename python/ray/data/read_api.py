@@ -839,21 +839,22 @@ def read_images(
     """
     if meta_provider is None:
         meta_provider = get_image_metadata_provider()
-    return read_datasource(
-        ImageDatasource(),
-        paths=paths,
-        filesystem=filesystem,
-        parallelism=parallelism,
-        meta_provider=meta_provider,
-        ray_remote_args=ray_remote_args,
-        open_stream_args=arrow_open_file_args,
-        partition_filter=partition_filter,
-        partitioning=partitioning,
+
+    datasource = ImageDatasource(
+        paths,
         size=size,
         mode=mode,
         include_paths=include_paths,
+        filesystem=filesystem,
+        meta_provider=meta_provider,
+        open_stream_args=arrow_open_file_args,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -1082,19 +1083,20 @@ def read_json(
     """  # noqa: E501
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(JSONDatasource._FILE_EXTENSION)
-    return read_datasource(
-        JSONDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = JSONDatasource(
+        paths,
+        arrow_json_args=arrow_json_args,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        **arrow_json_args,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -1237,19 +1239,22 @@ def read_csv(
     """
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(CSVDatasource._FILE_EXTENSION)
-    return read_datasource(
-        CSVDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = CSVDatasource(
+        paths,
+        arrow_csv_args=arrow_csv_args,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        **arrow_csv_args,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -1335,20 +1340,21 @@ def read_text(
     """
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(TextDatasource._FILE_EXTENSION)
-    return read_datasource(
-        TextDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = TextDatasource(
+        paths,
+        drop_empty_lines=drop_empty_lines,
+        encoding=encoding,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
-        drop_empty_lines=drop_empty_lines,
-        encoding=encoding,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -1413,10 +1419,10 @@ def read_numpy(
     """  # noqa: E501
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(NumpyDatasource._FILE_EXTENSION)
-    return read_datasource(
-        NumpyDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = NumpyDatasource(
+        paths,
+        numpy_load_args=numpy_load_args,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
@@ -1424,7 +1430,10 @@ def read_numpy(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        **numpy_load_args,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
     )
 
 
@@ -1524,18 +1533,18 @@ def read_tfrecords(
         meta_provider = get_generic_metadata_provider(
             TFRecordDatasource._FILE_EXTENSION
         )
-    return read_datasource(
-        TFRecordDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = TFRecordDatasource(
+        paths,
+        tf_schema=tf_schema,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
-        tf_schema=tf_schema,
         shuffle=shuffle,
     )
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI(stability="alpha")
@@ -1593,21 +1602,21 @@ def read_webdataset(
         meta_provider = get_generic_metadata_provider(
             WebDatasetDatasource._FILE_EXTENSION
         )
-    return read_datasource(
-        WebDatasetDatasource(),
-        parallelism=parallelism,
-        paths=paths,
-        filesystem=filesystem,
-        open_stream_args=arrow_open_stream_args,
-        meta_provider=meta_provider,
-        partition_filter=partition_filter,
+
+    datasource = WebDatasetDatasource(
+        paths,
         decoder=decoder,
         fileselect=fileselect,
         filerename=filerename,
         suffixes=suffixes,
         verbose_open=verbose_open,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
         shuffle=shuffle,
     )
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI
@@ -1697,20 +1706,20 @@ def read_binary_files(
     output_arrow_format = True
     if meta_provider is None:
         meta_provider = get_generic_metadata_provider(BinaryDatasource._FILE_EXTENSION)
-    return read_datasource(
-        BinaryDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = BinaryDatasource(
+        paths,
         include_paths=include_paths,
         filesystem=filesystem,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        output_arrow_format=output_arrow_format,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
