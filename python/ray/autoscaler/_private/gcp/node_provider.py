@@ -5,7 +5,13 @@ from threading import RLock
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Tuple
 
-import googleapiclient
+try:
+    import googleapiclient
+except ImportError as e:
+    raise ImportError(
+        "The Ray GCP VM launcher requires the Google API Client to be installed. "
+        "You can install it with `pip install google-api-python-client`."
+    ) from e
 
 from ray.autoscaler._private.gcp.config import (
     bootstrap_gcp,
