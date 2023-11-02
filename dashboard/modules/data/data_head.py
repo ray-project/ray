@@ -5,7 +5,6 @@ import aiohttp
 from aiohttp.web import Request, Response
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.data._internal.stats import _get_or_create_stats_actor
 from ray.dashboard.modules.metrics.metrics_head import (
     PROMETHEUS_HOST_ENV_VAR,
     DEFAULT_PROMETHEUS_HOST,
@@ -46,6 +45,8 @@ class DataHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_datasets(self, req: Request) -> Response:
         try:
+            from ray.data._internal.stats import _get_or_create_stats_actor
+            
             _stats_actor = _get_or_create_stats_actor()
             datasets = ray.get(_stats_actor.get_datasets.remote())
             # Initializes dataset metric values

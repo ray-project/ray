@@ -100,6 +100,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
+        --build-name datanbuild
         --parallelism-per-worker 3
     depends_on: datanbuild
     job_env: forge
