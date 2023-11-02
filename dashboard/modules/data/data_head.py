@@ -5,7 +5,6 @@ import aiohttp
 from aiohttp.web import Request, Response
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.data._internal.stats import _get_or_create_stats_actor
 from ray.dashboard.modules.metrics.metrics_head import (
     PROMETHEUS_HOST_ENV_VAR,
     DEFAULT_PROMETHEUS_HOST,
@@ -46,6 +45,8 @@ class DataHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_datasets(self, req: Request) -> Response:
         try:
+            from ray.data._internal.stats import _get_or_create_stats_actor
+
             _stats_actor = _get_or_create_stats_actor()
             datasets = ray.get(_stats_actor.get_datasets.remote())
             # Initializes dataset metric values
@@ -53,13 +54,20 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                 for metric, queries in DATASET_METRICS.items():
                     datasets[dataset][metric] = {query.value[0]: 0 for query in queries}
             # Query dataset metric values from prometheus
-            for metric, queries in DATASET_METRICS.items():
-                for query in queries:
-                    result = await self._query_prometheus(query.value[1].format(metric))
-                    for res in result["data"]["result"]:
-                        dataset, value = res["metric"]["dataset"], res["value"][1]
-                        if dataset in datasets:
-                            datasets[dataset][metric][query.value[0]] = value
+            try:
+                for metric, queries in DATASET_METRICS.items():
+                    for query in queries:
+                        result = await self._query_prometheus(
+                            query.value[1].format(metric)
+                        )
+                        for res in result["data"]["result"]:
+                            dataset, value = res["metric"]["dataset"], res["value"][1]
+                            if dataset in datasets:
+                                datasets[dataset][metric][query.value[0]] = value
+            except PrometheusQueryError:
+                # Prometheus server is not running,
+                # leave these values blank and return other data
+                pass
             # Flatten response
             datasets = list(
                 map(lambda item: {"dataset": item[0], **item[1]}, datasets.items())

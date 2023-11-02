@@ -45,8 +45,9 @@ const columns = [
     label: "Bytes Spilled",
     helpInfo: (
       <Typography>
-        Set "enable_get_object_locations_for_metrics" in DataContext to True to
-        collect spill stats.
+        Set
+        "ray.data.context.DataContext.get_current().enable_get_object_locations_for_metrics
+        = True" to collect spill stats.
       </Typography>
     ),
   },
