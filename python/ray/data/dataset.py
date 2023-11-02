@@ -3496,6 +3496,11 @@ class Dataset:
             ray_remote_args = {}
 
         if not datasink.supports_distributed_writes:
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    "If you're using Ray Client, Ray Data won't schedule write tasks "
+                    "on the driver's node."
+                )
             ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(),
                 soft=False,
