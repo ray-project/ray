@@ -5,6 +5,7 @@ import pickle
 import unittest
 
 import ray
+from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import convert_to_base_env
@@ -362,7 +363,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
     def test_invalid_model(self):
         ModelCatalog.register_custom_model("invalid", InvalidModel)
         config = (
-            PPOConfig()
+            PGConfig()
             .environment("CartPole-v1")
             .framework("torch")
             .training(model={"custom_model": "invalid"})
@@ -376,7 +377,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
     def test_invalid_model2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
         config = (
-            PPOConfig()
+            PGConfig()
             .environment("CartPole-v1")
             .framework("tf")
             .training(model={"custom_model": "invalid2"})
@@ -391,16 +392,13 @@ class TestNestedObservationSpaces(unittest.TestCase):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
         config = (
-            PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            PGConfig()
             .environment("nested", disable_env_checking=True)
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
             .framework("tf")
             .training(
                 model={"custom_model": "composite", "use_lstm": test_lstm},
                 train_batch_size=5,
-                sgd_minibatch_size=5,
-                num_sgd_iter=1,
             )
         )
         if disable_connectors:
@@ -430,17 +428,11 @@ class TestNestedObservationSpaces(unittest.TestCase):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
         register_env("nested2", make_env)
         config = (
-            PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            PGConfig()
             .environment("nested2", disable_env_checking=True)
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
-            .framework("tf2")
-            .training(
-                model={"custom_model": "composite2"},
-                train_batch_size=5,
-                sgd_minibatch_size=5,
-                num_sgd_iter=1,
-            )
+            .framework("tf")
+            .training(model={"custom_model": "composite2"}, train_batch_size=5)
         )
         if disable_connectors:
             # manually disable the connectors
@@ -497,25 +489,24 @@ class TestNestedObservationSpaces(unittest.TestCase):
         register_env("nested_ma", lambda _: NestedMultiAgentEnv())
         act_space = spaces.Discrete(2)
         config = (
-            PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            PGConfig()
             .environment("nested_ma", disable_env_checking=True)
             .framework("tf")
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
-            .training(train_batch_size=5, sgd_minibatch_size=5, num_sgd_iter=1)
+            .training(train_batch_size=5)
             .multi_agent(
                 policies={
                     "tuple_policy": (
                         None,
                         TUPLE_SPACE,
                         act_space,
-                        PPOConfig.overrides(model={"custom_model": "tuple_spy"}),
+                        PGConfig.overrides(model={"custom_model": "tuple_spy"}),
                     ),
                     "dict_policy": (
                         None,
                         DICT_SPACE,
                         act_space,
-                        PPOConfig.overrides(model={"custom_model": "dict_spy"}),
+                        PGConfig.overrides(model={"custom_model": "dict_spy"}),
                     ),
                 },
                 policy_mapping_fn=(
@@ -560,7 +551,7 @@ class TestNestedObservationSpaces(unittest.TestCase):
     def test_rollout_dict_space(self):
         register_env("nested", lambda _: NestedDictEnv())
 
-        config = PPOConfig().environment("nested").framework("tf")
+        config = PGConfig().environment("nested").framework("tf")
         algo = config.build()
         algo.train()
         result = algo.save()
@@ -623,10 +614,16 @@ class TestNestedObservationSpaces(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .experimental(_disable_preprocessor_api=True)
             .environment("repeat")
             .framework("torch")
             .rollouts(num_rollout_workers=0, rollout_fragment_length=5)
-            .training(train_batch_size=5, model={"custom_model": "r1"})
+            .training(
+                train_batch_size=5,
+                num_sgd_iter=1,
+                sgd_minibatch_size=5,
+                model={"custom_model": "r1"},
+            )
         )
         algo = config.build()
 
