@@ -44,7 +44,7 @@ class NodeTypeConfig:
 @dataclass
 class ClusterConfig:
     # The node type configs.
-    node_type_configs: List[NodeTypeConfig] = field(default_factory=list)
+    node_type_configs: Dict[NodeType, NodeTypeConfig] = field(default_factory=dict)
     # The max number of worker nodes to be launched for the entire cluster.
     max_num_worker_nodes: Optional[int]
 
