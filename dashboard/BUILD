@@ -97,7 +97,7 @@ py_test(
 )
 
 py_test(
-    name = "test_data_dashboard",
+    name = "test_data_head",
     size = "small",
     srcs = ["modules/data/tests/test_data_head.py"],
     tags = ["team:data"],
