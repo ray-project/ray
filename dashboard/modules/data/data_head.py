@@ -46,7 +46,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
     async def get_datasets(self, req: Request) -> Response:
         try:
             from ray.data._internal.stats import _get_or_create_stats_actor
-            
+
             _stats_actor = _get_or_create_stats_actor()
             datasets = ray.get(_stats_actor.get_datasets.remote())
             # Initializes dataset metric values

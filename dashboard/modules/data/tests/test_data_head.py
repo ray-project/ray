@@ -19,12 +19,14 @@ RESPONSE_SCHEMA = [
 
 
 def test_get_datasets():
-    ray.init(include_dashboard=True)
+    ray.init()
     ds = ray.data.range(1).map_batches(lambda x: x)
     ds._set_name("data_head_test")
     ds.materialize()
 
-    data = requests.get(DATA_HEAD_URLS["GET"]).json()
+    data = requests.get(DATA_HEAD_URLS["GET"])
+    print(data.text)
+    assert data.text == "HI"
 
     assert len(data["datasets"]) == 1
     assert sorted(data["datasets"][0].keys()) == sorted(RESPONSE_SCHEMA)
