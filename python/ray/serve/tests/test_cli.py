@@ -16,7 +16,6 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
-    MULTI_APP_MIGRATION_MESSAGE,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -327,42 +326,6 @@ def test_deploy_bad_v2_config(ray_start_stop):
     assert "ValidationError" in output, output
     assert "ServeDeploySchema" in output, output
     assert "Please ensure each application's route_prefix is unique" in output
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_bad_v1_config(ray_start_stop):
-    """
-    Deploy a bad config without field applications, should try to parse as v1 config.
-    """
-
-    config_file = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "bad_single_config.yaml"
-    )
-
-    with pytest.raises(subprocess.CalledProcessError) as e:
-        subprocess.check_output(
-            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
-        )
-
-    output = e.value.output.decode("utf-8")
-
-    assert "none is not an allowed value" in output
-    assert "ValidationError" in output, output
-    assert "ServeApplicationSchema" in output, output
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_single_with_name(ray_start_stop):
-    config_file = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "single_config_with_name.yaml"
-    )
-
-    with pytest.raises(subprocess.CalledProcessError) as e:
-        subprocess.check_output(
-            ["serve", "deploy", config_file], stderr=subprocess.STDOUT
-        )
-    assert "name" in e.value.output.decode("utf-8")
-    assert MULTI_APP_MIGRATION_MESSAGE in e.value.output.decode("utf-8")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

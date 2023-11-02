@@ -1,3 +1,6 @@
-import_path: ray.serve.tests.test_config_files.test_dag.basic_dag.DagNode
+http_options:
+  port: 8005
 
-port: 8005
+applications:
+  - name: default
+    import_path: ray.serve.tests.test_config_files.test_dag.basic_dag.DagNode
