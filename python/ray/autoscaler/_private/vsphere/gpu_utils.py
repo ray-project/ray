@@ -3,8 +3,6 @@ import logging
 from pyVim.task import WaitForTask
 from pyVmomi import vim
 
-from ray.autoscaler._private.vsphere.sdk_provider import ClientType, get_sdk_provider
-
 logger = logging.getLogger(__name__)
 
 
@@ -72,7 +70,7 @@ def get_supported_gpus(host):
     return gpus
 
 
-def get_vm_2_gpu_ids_map(pool_name, desired_gpu_number):
+def get_vm_2_gpu_ids_map(pyvmomi_sdk_provider, pool_name, desired_gpu_number):
     """
     This function returns "vm, gpu_ids" map, the key represents the VM
     and the value lists represents the available GPUs this VM can bind.
@@ -80,7 +78,6 @@ def get_vm_2_gpu_ids_map(pool_name, desired_gpu_number):
     Ray nodes.
     """
     result = {}
-    pyvmomi_sdk_provider = get_sdk_provider(ClientType.PYVMOMI_SDK)
     pool = pyvmomi_sdk_provider.get_pyvmomi_obj([vim.ResourcePool], pool_name)
     if not pool.vm:
         logger.error(f"No frozen-vm in pool {pool.name}")
@@ -137,7 +134,7 @@ def split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number):
         `host1` has 3 GPU cards, `0000:3b:00.0`, `0000:3b:00.1`,`0000:3b:00.2`
         `host2` has 2 GPU cards, `0000:3b:00.3`,`0000:3b:00.4`
         `host3` has 1 GPU card, `0000:3b:00.5`
-        And we provison a ray cluster with 3 nodes, each node need 1 GPU card
+        And we provision a ray cluster with 3 nodes, each node need 1 GPU card
 
         In this case,  vm_2_gpu_ids_map is like this:
         {
@@ -147,7 +144,7 @@ def split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number):
         }
         requested_gpu_num is 1, and node_number is 3.
 
-        After call the bove with this funtion, it returns this array:
+        After call the above with this funtion, it returns this array:
         [
             { 'frozen-vm-1' : ['0000:3b:00.0'] },
             { 'frozen-vm-1' : ['0000:3b:00.1'] },
@@ -218,14 +215,13 @@ def get_gpu_ids_from_vm(vm, desired_gpu_number):
     return gpu_ids
 
 
-def add_gpus_to_vm(vm_name: str, gpu_ids: list):
+def add_gpus_to_vm(pyvmomi_sdk_provider, vm_name: str, gpu_ids: list):
     """
     This function helps to add a list of gpu to a VM by PCI passthrough. Steps:
     1. Power off the VM if it is not at the off state.
     2. Construct a reconfigure spec and reconfigure the VM.
     3. Power on the VM.
     """
-    pyvmomi_sdk_provider = get_sdk_provider(ClientType.PYVMOMI_SDK)
     vm_obj = pyvmomi_sdk_provider.get_pyvmomi_obj([vim.VirtualMachine], vm_name)
     # The VM is supposed to be at powered on status after instant clone.
     # We need to power it off.
