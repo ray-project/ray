@@ -5675,29 +5675,30 @@
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
-- name: read_images_benchmark_multi_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
+# TODO: Re-enable this test once we fix https://github.com/ray-project/ray/issues/40686.
+# - name: read_images_benchmark_multi_node
+#   group: data-tests
+#   working_dir: nightly_tests/dataset
 
-  frequency: nightly-3x
-  team: data
+#   frequency: nightly-3x
+#   team: data
 
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: multi_node_read_images_benchmark_compute.yaml
+#   cluster:
+#     byod:
+#       type: gpu
+#     cluster_compute: multi_node_read_images_benchmark_compute.yaml
 
-  run:
-    timeout: 28800
-    script: python read_images_benchmark.py --multi-node
+#   run:
+#     timeout: 28800
+#     script: python read_images_benchmark.py --multi-node
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: multi_node_read_images_benchmark_compute_gce.yaml
+#   variations:
+#     - __suffix__: aws
+#     - __suffix__: gce
+#       env: gce
+#       frequency: manual
+#       cluster:
+#         cluster_compute: multi_node_read_images_benchmark_compute_gce.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
   group: data-tests
