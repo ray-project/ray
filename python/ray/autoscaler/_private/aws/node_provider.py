@@ -5,6 +5,7 @@ import threading
 import time
 from collections import OrderedDict, defaultdict
 from typing import Any, Dict, List
+
 import botocore
 from boto3.resources.base import ServiceResource
 
@@ -33,7 +34,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_NAME,
     TAG_RAY_USER_NODE_TYPE,
 )
-
 
 logger = logging.getLogger(__name__)
 
