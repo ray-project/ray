@@ -77,14 +77,12 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     std::function<void(int)> kill_node_chain_callback =
         [this, &kill_node_chain_callback, head_nodes, on_done, request, node_id](
             const auto &node_idx) {
-          if (node_idx < head_nodes.size()) {
-            OnNodeFailure(
-                head_nodes[node_idx],
-                [kill_node_chain_callback, node_idx, head_nodes](const Status &status) {
-                  RAY_CHECK_OK(status);
-                  RAY_LOG(INFO) << head_nodes[node_idx] << " should be running with id:";
-                  kill_node_chain_callback(node_idx + 1);
-                });
+          if (node_idx < static_cast<int>(head_nodes.size())) {
+            OnNodeFailure(head_nodes[node_idx],
+                          [kill_node_chain_callback, node_idx](const Status &status) {
+                            RAY_CHECK_OK(status);
+                            kill_node_chain_callback(node_idx + 1);
+                          });
           } else {
             RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
                 node_id, request.node_info(), on_done));
