@@ -1062,6 +1062,28 @@ def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
     assert sorted([x["out"] for x in ds.take()]) == [1, 3]
 
 
+def test_groupby_map_groups_extra_args(ray_start_regular_shared):
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    def func(df, a, b, c):
+        df["value"] = df["value"] * a + b + c
+        return df
+
+    ds = ds.groupby("group").map_groups(
+        func,
+        fn_args=(2, 1),
+        fn_kwargs={"c": 3},
+    )
+    assert sorted([x["value"] for x in ds.take()]) == [6, 8, 10, 12]
+
+
 def test_random_block_order_schema(ray_start_regular_shared):
     df = pd.DataFrame({"a": np.random.rand(10), "b": np.random.rand(10)})
     ds = ray.data.from_pandas(df).randomize_block_order()
