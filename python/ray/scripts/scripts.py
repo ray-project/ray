@@ -1184,6 +1184,25 @@ def stop(force: bool, grace_period: int):
     ray._private.utils.reset_ray_address()
 
 
+def handle_rename(old_param, old_param_name, new_param, new_param_name):
+    """Handle deprecated parameter names. Returns the new parameter if both are set."""
+    if old_param is not None:
+        cli_logger.warning(
+            "`{}` is deprecated. Please use `{}` instead.",
+            cf.bold(old_param_name),
+            cf.bold(new_param_name),
+        )
+        if new_param is None:
+            return old_param
+        cli_logger.warning(
+            "Both `{}` and `{}` are set. Using `{}`.",
+            cf.bold(new_param_name),
+            cf.bold(old_param_name),
+            cf.bold(new_param_name),
+        )
+    return new_param
+
+
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
@@ -1191,7 +1210,7 @@ def stop(force: bool, grace_period: int):
     required=False,
     type=int,
     help=(
-        "DEPRECATED: Use '--min-worker-nodes' instead. "
+        "DEPRECATED: Use `--min-worker-nodes` instead. "
         "Override the configured min worker node count for the cluster."
     ),
 )
@@ -1200,7 +1219,7 @@ def stop(force: bool, grace_period: int):
     required=False,
     type=int,
     help=(
-        "DEPRECATED: Use '--max-worker-nodes' instead. "
+        "DEPRECATED: Use `--max-worker-nodes` instead. "
         "Override the configured max worker node count for the cluster."
     ),
 )
@@ -1293,28 +1312,10 @@ def up(
     if disable_usage_stats:
         usage_lib.set_usage_stats_enabled_via_env_var(False)
 
-    def handle_deprecation(old_param, old_param_name, new_param, new_param_name):
-        """Handle deprecated parameters. Return the new parameter if set."""
-        if old_param is not None:
-            cli_logger.warning(
-                "`{}` is deprecated. Please use `{}` instead.",
-                cf.bold(old_param_name),
-                cf.bold(new_param_name),
-            )
-            if new_param is None:
-                return old_param
-            cli_logger.warning(
-                "Both `{}` and `{}` are set. Using `{}`.",
-                cf.bold(new_param_name),
-                cf.bold(old_param_name),
-                cf.bold(new_param_name),
-            )
-        return new_param
-
-    min_worker_nodes = handle_deprecation(
+    min_worker_nodes = handle_rename(
         min_workers, "--min-workers", min_worker_nodes, "--min-worker-nodes"
     )
-    max_worker_nodes = handle_deprecation(
+    max_worker_nodes = handle_rename(
         max_workers, "--max-workers", max_worker_nodes, "--max-worker-nodes"
     )
 
@@ -1360,7 +1361,13 @@ def up(
     "--yes", "-y", is_flag=True, default=False, help="Don't ask for confirmation."
 )
 @click.option(
-    "--workers-only", is_flag=True, default=False, help="Only destroy the workers."
+    "--workers-only",
+    is_flag=True,
+    default=False,
+    help=("DEPRECATED: Use --worker-nodes-only instead. Only destroy the workers."),
+)
+@click.option(
+    "--worker-nodes-only", is_flag=True, default=False, help="Only destroy the workers."
 )
 @click.option(
     "--cluster-name",
@@ -1373,14 +1380,43 @@ def up(
     "--keep-min-workers",
     is_flag=True,
     default=False,
+    help=(
+        "DEPRECATED: Use --keep-min-workers instead. "
+        "Retain the minimal amount of workers specified in the config."
+    ),
+)
+@click.option(
+    "--keep-min-worker-nodes",
+    is_flag=True,
+    default=False,
     help="Retain the minimal amount of workers specified in the config.",
 )
 @add_click_logging_options
 @PublicAPI
-def down(cluster_config_file, yes, workers_only, cluster_name, keep_min_worker_nodes):
+def down(
+    cluster_config_file,
+    yes,
+    workers_only,
+    worker_nodes_only,
+    cluster_name,
+    keep_min_workers,
+    keep_min_worker_nodes,
+):
     """Tear down a Ray cluster."""
+    worker_nodes_only = handle_rename(
+        workers_only,
+        "--workers-only",
+        worker_nodes_only,
+        "--worker-nodes-only",
+    )
+    keep_min_worker_nodes = handle_rename(
+        keep_min_workers,
+        "--keep-min-workers",
+        keep_min_worker_nodes,
+        "--keep-min-worker-nodes",
+    )
     teardown_cluster(
-        cluster_config_file, yes, workers_only, cluster_name, keep_min_worker_nodes
+        cluster_config_file, yes, worker_nodes_only, cluster_name, keep_min_worker_nodes
     )
 
 
