@@ -131,12 +131,12 @@ cdef class ObjectRef(BaseID):
 
     def __await__(self):
         ready, unready = ray.wait([self], timeout=0)
-        if len(ready) > 0:
-            f = asyncio.get_running_loop().create_future()
-            f.set_result(ray.get(ready))
-            return f.__await__()
-        else:
-            return self.as_future(_internal=True).__await__()
+        # if len(ready) > 0:
+        #     f = asyncio.get_running_loop().create_future()
+        #     f.set_result(ray.get(ready))
+        #     return f.__await__()
+        # else:
+        return self.as_future(_internal=True).__await__()
 
     def as_future(self, _internal=False) -> asyncio.Future:
         """Wrap ObjectRef with an asyncio.Future.

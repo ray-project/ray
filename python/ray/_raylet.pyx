@@ -296,7 +296,7 @@ class StreamingObjectRefGenerator:
         self.worker.check_connected()
         core_worker = self.worker.core_worker
         return core_worker.peek_object_ref_stream(
-            self._generator_ref)
+            self._generator_ref)[0]
 
     def __iter__(self) -> "StreamingObjectRefGenerator":
         return self
@@ -345,16 +345,18 @@ class StreamingObjectRefGenerator:
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
         """
-        self.worker.check_connected()
+        # self.worker.check_connected()
         core_worker = self.worker.core_worker
 
         # Wait for the next ObjectRef to become ready.
-        expected_ref = core_worker.peek_object_ref_stream(
+        expected_ref, is_ready = core_worker.peek_object_ref_stream(
             self._generator_ref)
-        ready, unready = ray.wait(
-            [expected_ref], timeout=timeout_s, fetch_local=False)
-        if len(unready) > 0:
-            return ObjectRef.nil()
+
+        if not is_ready:
+            ready, unready = ray.wait(
+                [expected_ref], timeout=timeout_s, fetch_local=False)
+            if len(unready) > 0:
+                return ObjectRef.nil()
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(
@@ -393,25 +395,19 @@ class StreamingObjectRefGenerator:
             timeout_s: Optional[float] = None
     ):
         """Same API as _next_sync, but it is for async context."""
-        self.worker.check_connected()
+        # self.worker.check_connected()
         core_worker = self.worker.core_worker
-
-        ref = core_worker.peek_object_ref_stream(
+        ref, is_ready = core_worker.peek_object_ref_stream(
             self._generator_ref)
-        # asyncio has high overhead. So if we can avoid
-        # avoid it.
-        ready, unready = ray.wait(
-            [ref], timeout=0, fetch_local=False)
-        
-        if len(unready) > 0:
-            t = asyncio.create_task(self.suppress_exceptions(ref))
+
+        if not is_ready:
             # TODO(swang): Avoid fetching the value.
             ready, unready = await asyncio.wait(
-                [t],
+                [asyncio.create_task(self.suppress_exceptions(ref))],
                 timeout=timeout_s
             )
-        if len(unready) > 0:
-            return ObjectRef.nil()
+            if len(unready) > 0:
+                return ObjectRef.nil()
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(
@@ -4326,7 +4322,7 @@ cdef class CoreWorker:
         if self.thread_pool_for_async_event_loop is None:
             # Theoretically, we can use multiple threads,
             self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
-                max_workers=1)
+                max_workers=64)
         return self.thread_pool_for_async_event_loop
 
     def get_event_loop(self, function_descriptor, specified_cgname):
@@ -4677,16 +4673,16 @@ cdef class CoreWorker:
     def peek_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
-            CObjectReference c_object_ref
+            pair[CObjectReference, c_bool] c_object_ref_and_is_ready_pair
 
         with nogil:
-            c_object_ref = (
+            c_object_ref_and_is_ready_pair = (
                     CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
                         c_generator_id))
 
         return ObjectRef(
-            c_object_ref.object_id(),
-            c_object_ref.owner_address().SerializeAsString())
+            c_object_ref_and_is_ready_pair.first.object_id(),
+            c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), c_object_ref_and_is_ready_pair.second
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

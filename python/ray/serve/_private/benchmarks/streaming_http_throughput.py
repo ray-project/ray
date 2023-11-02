@@ -48,30 +48,31 @@ class Intermediate:
 
     async def stream(self):
         gen = self._h.stream.remote()
-        print("wait until downstream is finished")
+        # print("wait until downstream is finished")
         # await asyncio.sleep(10)
         s = time.time()
         total_elapsed = 0
         total_tokens = 0
-        while True:
-            try:
-                anext_time = time.time()
-                tokens = await gen.__anext__()
-                print(f"anext took {(time.time() - anext_time) * 1000} ms")
-                # await gen._obj_ref_gen._generator_ref
-                ss = time.time()
-                for token in tokens:
-                    total_tokens += 1
-                    yield token
-                total_elapsed += (time.time() - ss) * 1000
-            except StopAsyncIteration:
-                break
-        # async for tokens in gen:
-        #     ss = time.time()
-        #     for token in tokens:
-        #         total_tokens += 1
-        #         yield token
-        #     total_elapsed += (time.time() - ss) * 1000
+        # while True:
+        #     try:
+        #         # anext_time = time.time()
+        #         tokens = await gen.__anext__()
+        #         # print(f"anext took {(time.time() - anext_time) * 1000} ms")
+        #         # await gen._obj_ref_gen._generator_ref
+        #         ss = time.time()
+        #         # yield tokens
+        #         for token in tokens:
+        #             total_tokens += 1
+        #             yield token
+        #         total_elapsed += (time.time() - ss) * 1000
+        #     except StopAsyncIteration:
+        #         break
+        async for tokens in gen:
+            ss = time.time()
+            for token in tokens:
+                total_tokens += 1
+                yield token
+            total_elapsed += (time.time() - ss) * 1000
             # print(f"inner yield takes {(time.time() - ss) * 1000} ms")
         e = (time.time() - s)
         print(f"yield takes {e * 1000} ms, inner elapse: {total_elapsed}, throughput: {total_tokens / e} / s")

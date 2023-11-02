@@ -384,7 +384,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// generator task.
   /// \return A object reference of the next index.
   /// It should not be nil.
-  rpc::ObjectReference PeekObjectRefStream(const ObjectID &generator_id);
+  std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
 
   /// Delete the ObjectRefStream that was
   /// created upon the initial task

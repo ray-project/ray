@@ -14,6 +14,8 @@ from ray.serve.handle import DeploymentHandle, RayServeHandle
 
 BATCH_SIZE = 1
 
+def p(percent, lst):
+    return lst[len(lst) * percent // 100] / 1000
 
 @ray.remote(num_cpus=0)
 class Downstream:
@@ -21,18 +23,24 @@ class Downstream:
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
         self._tokens_per_request = tokens_per_request
+        self.yield_latency = []
 
     def stream(self, i):
         batches = []
         s = time.time()
         for i in range(self._tokens_per_request):
-            batches.append("hi")
+            batches.append("hi" * 100)
             if i % BATCH_SIZE == 0:
-                ss = time.time()
+                # ss = time.time()
+                anext_time = time.perf_counter_ns()
                 yield batches
-                print(f"yield takes {(time.time() - ss) * 1000} ms")
+                elapsed = (time.perf_counter_ns() - anext_time)
+                self.yield_latency.append(elapsed)
+                # print(f"yield takes {(time.time() - ss) * 1000} ms")
                 batches = []
         e = (time.time() - s)
+        self.yield_latency.sort()
+        print(f"yield took p50: {p(50, self.yield_latency)} us, p95: {p(95, self.yield_latency)} us, p99: {p(99, self.yield_latency)} us")
         print(f"data generation takes {e * 1000} ms. throughput: {self._tokens_per_request / e} / s")
 
 
@@ -40,8 +48,10 @@ class Downstream:
 class Intermediate:
     def __init__(self, downstream):
         self._h = downstream
+        self.anext_latency = []
+        self.yield_latency = []
 
-    async def stream(self, i):
+    def stream(self, i):
         gen = self._h.stream.options(
             num_returns="streaming"
         ).remote(i)
@@ -53,25 +63,45 @@ class Intermediate:
         from viztracer import VizTracer
         while True:
             try:
-                anext_time = time.time()
-                if total_tokens == 10:
-                    with VizTracer(output_file="/tmp/a.json", log_async=True, log_gc=True,) as tracer:
-                        tokens = await gen.__anext__()
-                        tokens = await tokens
-                else:
-                    tokens = await gen.__anext__()
-                    tokens = await tokens
-                print(f"id {i} anext took {(time.time() - anext_time) * 1000} ms")
+                anext_time = time.perf_counter_ns()
+                # if total_tokens == 10:
+                #     with VizTracer(output_file="/tmp/a.json", log_async=True, log_gc=True,) as tracer:
+                #         tokens = await gen.__anext__()
+                #         tokens = await tokens
+                # else:
+                # tokens = await gen.__anext__()
+                tokens = next(gen)
+                elapsed = (time.perf_counter_ns() - anext_time)
+                self.anext_latency.append(elapsed)
+                # print(f"id {i} anext took {elapsed / 1000} us")
+                # tokens = await tokens
+                anext_time = time.perf_counter_ns()
+                # if total_tokens == 10:
+                #     with VizTracer(output_file="/tmp/a.json", log_async=True, log_gc=True,) as tracer:
+                #         yield tokens
+                # else:
+                # # await tokens
+                yield tokens
+                elapsed = (time.perf_counter_ns() - anext_time)
+                self.yield_latency.append(elapsed)
+                # print(f"id {i} yield took {elapsed / 1000} us")
+                total_tokens += 1
                 # await gen._obj_ref_gen._generator_ref
-                ss = time.time()
-                for token in tokens:
-                    total_tokens += 1
-                    yield token
-                total_elapsed += (time.time() - ss) * 1000
-            except StopAsyncIteration:
+                # ss = time.time()
+                # for token in tokens:
+                #     total_tokens += 1
+                #     yield token
+                # total_elapsed += (time.time() - ss) * 1000
+                total_elapsed=0
+            except StopIteration:
                 break
         e = (time.time() - s)
+        self.anext_latency.sort()
+        self.yield_latency.sort()
         print(f"id {i} yield takes {e * 1000} ms, inner elapse: {total_elapsed}, throughput: {total_tokens / e} / s")
+        print(f"id {i} anext took p50: {p(50, self.anext_latency)} us, p95: {p(95, self.anext_latency)} us, p99: {p(99, self.anext_latency)} us,")
+        print(f"id {i} yield took p50: {p(50, self.yield_latency)} us, p95: {p(95, self.yield_latency)} us, p99: {p(99, self.yield_latency)} us")
+        yield 1
 
 
 async def _consume_single_stream(h, i):
