@@ -95,21 +95,21 @@ def run_images_benchmark_single_node(benchmark: Benchmark):
     ]
 
     benchmark.run_materialize_ds(
-        "images-100-256-rbg-jpg", ray.data.read_images, root=test_input[0]
+        "images-100-256-rbg-jpg", ray.data.read_images, test_input[0]
     )
     benchmark.run_materialize_ds(
-        "images-100-2048-rbg-jpg", ray.data.read_images, root=test_input[1]
+        "images-100-2048-rbg-jpg", ray.data.read_images, test_input[1]
     )
     benchmark.run_materialize_ds(
         "images-100-2048-to-256-rbg-jpg",
         ray.data.read_images,
-        root=test_input[1],
+        test_input[1],
         size=(256, 256),
     )
     benchmark.run_materialize_ds(
         "images-1000-mix",
         ray.data.read_images,
-        root=test_input[2],
+        test_input[2],
         size=(256, 256),
         mode="RGB",
     )
@@ -122,7 +122,7 @@ def run_images_benchmark_single_node(benchmark: Benchmark):
     benchmark.run_materialize_ds(
         "images-imagenet-1g",
         ray.data.read_images,
-        root="s3://air-example-data-2/1G-image-data-synthetic-raw",
+        "s3://air-example-data-2/1G-image-data-synthetic-raw",
     )
 
 
