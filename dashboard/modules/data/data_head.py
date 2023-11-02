@@ -55,6 +55,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                     datasets[dataset][metric] = {query.value[0]: 0 for query in queries}
             # Query dataset metric values from prometheus
             try:
+                # TODO (Zandew): store results of completed datasets in stats actor.
                 for metric, queries in DATASET_METRICS.items():
                     for query in queries:
                         result = await self._query_prometheus(
@@ -65,7 +66,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                             if dataset in datasets:
                                 datasets[dataset][metric][query.value[0]] = value
             except Exception:
-                # Prometheus server is not running,
+                # Prometheus server may not be running,
                 # leave these values blank and return other data
                 pass
             # Flatten response
