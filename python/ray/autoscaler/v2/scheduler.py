@@ -3,7 +3,7 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from google.protobuf.json_format import MessageToDict
 
@@ -35,14 +35,14 @@ class NodeTypeConfig:
     min_workers: int
     # The maximal number of workers can be launched for this node type.
     max_workers: int
-    # The resources on the node.
+    # The total resources on the node.
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
     labels: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
-class ResourceScheduleConfig:
+class ClusterConfig:
     # The node type configs.
     node_type_configs: List[NodeTypeConfig] = field(default_factory=list)
     # The max number of worker nodes to be launched for the entire cluster.
@@ -50,7 +50,7 @@ class ResourceScheduleConfig:
 
 
 @dataclass
-class ResourceScheduleRequest:
+class SchedulingRequest:
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
     resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
@@ -65,11 +65,11 @@ class ResourceScheduleRequest:
     # The current list of instances.
     current_instances: List[Instance] = field(default_factory=list)
     # The resource schedule config.
-    schedule_config: ResourceScheduleConfig
+    schedule_config: ClusterConfig
 
 
 @dataclass
-class ResourceScheduleReply:
+class SchedulingReply:
     # The infeasible resource bundles.
     infeasible_resource_requests: List[ResourceRequestByCount] = field(
         default_factory=list
@@ -84,11 +84,14 @@ class ResourceScheduleReply:
     )
     # The target cluster shape, given the current resource demands and instances.
     # Key is the node type name, value is the number of nodes.
+    # This is needed to prevent autoscaler terminating nodes needed for cluster
+    # constraints.
     # Note this might be "smaller" than the current cluster shape, since there
-    # could be resource requests constraints enforced.
+    # could be cluster constraints enforced, e.g. a newly updated max_workers value
+    # would result in a target count smaller than the current count of the node type.
     target_cluster_shape: Dict[NodeType, int]
-    # The current cluster shape.
-    current_cluster_shape: Dict[NodeType, int]
+    # New launch needed to be launched.
+    to_launch_nodes: Dict[NodeType, int]
 
 
 class IResourceScheduler(metaclass=ABCMeta):
@@ -99,9 +102,7 @@ class IResourceScheduler(metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def schedule_resource_bundles(
-        self, request: ResourceScheduleRequest
-    ) -> ResourceScheduleReply:
+    def schedule(self, request: SchedulingRequest) -> SchedulingReply:
         """
         Given the resource requests and the current cluster state, calculate the
         target cluster shape by trying to schedule the resource requests on the
@@ -131,16 +132,12 @@ class SchedulingNode:
     A scheduling node is expected to be used as:
 
         node  = SchedulingNode.from_node_config(node_config)
-        infeasible = node.try_schedule(requests)
-        score = node.compute_score()
+        score, infeasible = node.try_schedule(requests)
 
         .... do something with the score ....
 
     NOTE:
-        One could also extend the scheduling behavior by overriding:
-            1. try_schedule()
-            2. compute_score()
-
+        One could also extend the scheduling behavior by overriding `try_schedule`
     """
 
     # Class level node id counter.
@@ -192,7 +189,9 @@ class SchedulingNode:
     # TODO
     launch_reason: Optional[str] = None
 
-    def try_schedule(self, requests: List[ResourceRequest]) -> List[ResourceRequest]:
+    def try_schedule(
+        self, requests: List[ResourceRequest]
+    ) -> Tuple[List[ResourceRequest], UtilizationScore]:
         """
         Try to schedule the resource requests on this node.
 
@@ -205,11 +204,14 @@ class SchedulingNode:
             requests: The resource requests to be scheduled.
 
         Returns:
-            A list of infeasible requests that cannot be scheduled on this node.
+            A tuple of:
+                - list of infeasible requests that cannot be scheduled on this node.
+                - the utilization score for this node with respect to the current
+                resource requests being scheduled.
         """
         pass
 
-    def compute_score(self) -> UtilizationScore:
+    def _compute_score(self) -> UtilizationScore:
         """
         Compute the utilization score for this node with respect to the current resource
         request being scheduled.
@@ -277,23 +279,21 @@ class ResourceDemandScheduler(IResourceScheduler):
     ############################
     # Internal States
     ############################
-    config_: ResourceScheduleConfig
+    config_: ClusterConfig
     # The current schedulable nodes (including pending nodes and pending requests).
     # One should try to access the nodes through _get_nodes().
     nodes_: List[SchedulingNode]
     # node types -> number of available nodes (max nodes - existing nodes)
     node_type_available_: Dict[NodeType, int]
 
-    def schedule_resource_bundles(
-        self, request: ResourceScheduleRequest
-    ) -> ResourceScheduleReply:
+    def schedule(self, request: SchedulingRequest) -> SchedulingReply:
         pass
 
     def __init__(
         self,
         nodes: List[SchedulingNode],
         node_type_available: Dict[NodeType, int],
-        config: ResourceScheduleConfig,
+        config: ClusterConfig,
     ):
         self._nodes = nodes
         self._node_type_available = node_type_available
@@ -312,7 +312,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             return copy.deepcopy(c)
         return None
 
-    def _get_sched_config(self) -> ResourceScheduleConfig:
+    def _get_sched_config(self) -> ClusterConfig:
         return copy.deepcopy(self._config)
 
     def _update(self, new_nodes: List[SchedulingNode]) -> None:
