@@ -22,7 +22,7 @@ CONFIGS = [
     {
         "mini_batch_size": 64,
         "num_sgd_iter": 1,
-        "agent_steps": (64,),
+        "agent_steps": (128,),
         "seq_lens": [16, 16, 16, 16, 16, 16, 2, 2, 14, 14],
         "padding": True,
     },
