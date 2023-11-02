@@ -50,7 +50,7 @@ class TestPreprocessors(unittest.TestCase):
                 },
             )
             # Run this very quickly locally.
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
+            .rollouts(num_rollout_workers=0)
             .training(
                 train_batch_size=10,
                 sgd_minibatch_size=1,

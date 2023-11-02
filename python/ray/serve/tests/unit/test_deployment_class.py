@@ -81,8 +81,6 @@ class TestDeploymentOptions:
         "name": "test",
         "version": "abcd",
         "num_replicas": 1,
-        "init_args": (),
-        "init_kwargs": {},
         "route_prefix": "/",
         "ray_actor_options": {},
         "user_config": {},
