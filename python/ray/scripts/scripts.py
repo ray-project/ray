@@ -1190,10 +1190,28 @@ def stop(force: bool, grace_period: int):
     "--min-workers",
     required=False,
     type=int,
-    help="Override the configured min worker node count for the cluster.",
+    help=(
+        "DEPRECATED: Use '--min-worker-nodes' instead. "
+        "Override the configured min worker node count for the cluster."
+    ),
 )
 @click.option(
     "--max-workers",
+    required=False,
+    type=int,
+    help=(
+        "DEPRECATED: Use '--max-worker-nodes' instead. "
+        "Override the configured max worker node count for the cluster."
+    ),
+)
+@click.option(
+    "--min-worker-nodes",
+    required=False,
+    type=int,
+    help="Override the configured min worker node count for the cluster.",
+)
+@click.option(
+    "--max-worker-nodes",
     required=False,
     type=int,
     help="Override the configured max worker node count for the cluster.",
@@ -1260,6 +1278,8 @@ def up(
     cluster_config_file,
     min_worker_nodes,
     max_worker_nodes,
+    min_workers,
+    max_workers,
     no_restart,
     restart_only,
     yes,
@@ -1272,6 +1292,31 @@ def up(
     """Create or update a Ray cluster."""
     if disable_usage_stats:
         usage_lib.set_usage_stats_enabled_via_env_var(False)
+
+    def handle_deprecation(old_param, old_param_name, new_param, new_param_name):
+        """Handle deprecated parameters. Return the new parameter if set."""
+        if old_param is not None:
+            cli_logger.warning(
+                "`{}` is deprecated. Please use `{}` instead.",
+                cf.bold(old_param_name),
+                cf.bold(new_param_name),
+            )
+            if new_param is None:
+                return old_param
+            cli_logger.warning(
+                "Both `{}` and `{}` are set. Using `{}`.",
+                cf.bold(new_param_name),
+                cf.bold(old_param_name),
+                cf.bold(new_param_name),
+            )
+        return new_param
+
+    min_worker_nodes = handle_deprecation(
+        min_workers, "--min-workers", min_worker_nodes, "--min-worker-nodes"
+    )
+    max_worker_nodes = handle_deprecation(
+        max_workers, "--max-workers", max_worker_nodes, "--max-worker-nodes"
+    )
 
     if restart_only or no_restart:
         cli_logger.doassert(
