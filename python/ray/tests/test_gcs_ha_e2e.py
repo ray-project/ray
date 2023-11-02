@@ -12,16 +12,19 @@ def test_ray_nodes_liveness(docker_cluster):
     get_nodes_script = """
 import ray
 ray.init("auto")
-print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
+print("Num Alive Nodes: ", sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
 """
     head, worker = docker_cluster
 
     def check_alive(n):
         output = worker.exec_run(cmd=f"python -c '{get_nodes_script}'")
-        text = output.output.decode().strip().split("\n")[-1]
-        print("Output: ", output.output.decode().strip().split("\n"))
+        output_msg = output.output.decode().strip().split("\n")
+        print("Output: ", output_msg)
         assert output.exit_code == 0
-        return n == int(text)
+        for msg in output_msg:
+            if "Num Alive Nodes" in msg:
+                return n == int(msg.split()[-1])
+        return False
 
     # Make sure two nodes are alive
     wait_for_condition(check_alive, n=2)
