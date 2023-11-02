@@ -67,8 +67,7 @@ class NestedActionSpacesTest(unittest.TestCase):
             assert os.path.exists(tmp_dir), f"'{tmp_dir}' not found!"
 
         config = (
-            PPOConfig()
-            .environment(RandomEnv)
+            PPOConfig().environment(RandomEnv)
             # Pretend actions in offline files are already normalized.
             .offline_data(output=tmp_dir, actions_in_input_normalized=True)
             # Switch off OPE as we don't write action-probs.
