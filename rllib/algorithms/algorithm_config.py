@@ -1,4 +1,5 @@
 import copy
+import json
 import logging
 import math
 import os
@@ -16,6 +17,7 @@ from typing import (
     Union,
 )
 
+import tree  # pip install dm_tree
 from packaging import version
 
 import ray
@@ -34,7 +36,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils import deep_update, deep_transform, merge_dicts
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -53,8 +55,9 @@ from ray.rllib.utils.gym import (
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
-    NOT_SERIALIZABLE,
     deserialize_type,
+    gym_space_to_dict,
+    NOT_SERIALIZABLE,
     serialize_type,
 )
 from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
@@ -681,28 +684,6 @@ class AlgorithmConfig(_Config):
         self.evaluation(**eval_call)
 
         return self
-
-    # TODO(sven): We might want to have a `deserialize` method as well. Right now,
-    #  simply using the from_dict() API works in this same (deserializing) manner,
-    #  whether the dict used is actually code-free (already serialized) or not
-    #  (i.e. a classic RLlib config dict with e.g. "callbacks" key still pointing to
-    #  a class).
-    def serialize(self) -> Mapping[str, Any]:
-        """Returns a mapping from str to JSON'able values representing this config.
-
-        The resulting values will not have any code in them.
-        Classes (such as `callbacks_class`) will be converted to their full
-        classpath, e.g. `ray.rllib.algorithms.callbacks.DefaultCallbacks`.
-        Actual code such as lambda functions will be written as their source
-        code (str) plus any closure information for properly restoring the
-        code inside the AlgorithmConfig object made from the returned dict data.
-        Dataclass objects get converted to dicts.
-
-        Returns:
-            A mapping from str to JSON'able values.
-        """
-        config = self.to_dict()
-        return self._serialize_dict(config)
 
     def copy(self, copy_frozen: Optional[bool] = None) -> "AlgorithmConfig":
         """Creates a deep copy of this config and (un)freezes if necessary.
@@ -3555,51 +3536,6 @@ class AlgorithmConfig(_Config):
     def items(self):
         """Shim method to help pretend we are a dict."""
         return self.to_dict().items()
-
-    @staticmethod
-    def _serialize_dict(config):
-        # Serialize classes to classpaths:
-        config["callbacks"] = serialize_type(config["callbacks"])
-        config["sample_collector"] = serialize_type(config["sample_collector"])
-        if isinstance(config["env"], type):
-            config["env"] = serialize_type(config["env"])
-        if "replay_buffer_config" in config and (
-            isinstance(config["replay_buffer_config"].get("type"), type)
-        ):
-            config["replay_buffer_config"]["type"] = serialize_type(
-                config["replay_buffer_config"]["type"]
-            )
-        if isinstance(config["exploration_config"].get("type"), type):
-            config["exploration_config"]["type"] = serialize_type(
-                config["exploration_config"]["type"]
-            )
-        if isinstance(config["model"].get("custom_model"), type):
-            config["model"]["custom_model"] = serialize_type(
-                config["model"]["custom_model"]
-            )
-
-        # List'ify `policies`, iff a set or tuple (these types are not JSON'able).
-        ma_config = config.get("multiagent")
-        if ma_config is not None:
-            if isinstance(ma_config.get("policies"), (set, tuple)):
-                ma_config["policies"] = list(ma_config["policies"])
-            # Do NOT serialize functions/lambdas.
-            if ma_config.get("policy_mapping_fn"):
-                ma_config["policy_mapping_fn"] = NOT_SERIALIZABLE
-            if ma_config.get("policies_to_train"):
-                ma_config["policies_to_train"] = NOT_SERIALIZABLE
-        # However, if these "multiagent" settings have been provided directly
-        # on the top-level (as they should), we override the settings under
-        # "multiagent". Note that the "multiagent" key should no longer be used anyways.
-        if isinstance(config.get("policies"), (set, tuple)):
-            config["policies"] = list(config["policies"])
-        # Do NOT serialize functions/lambdas.
-        if config.get("policy_mapping_fn"):
-            config["policy_mapping_fn"] = NOT_SERIALIZABLE
-        if config.get("policies_to_train"):
-            config["policies_to_train"] = NOT_SERIALIZABLE
-
-        return config
 
     @staticmethod
     def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:

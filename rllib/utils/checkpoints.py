@@ -3,10 +3,18 @@ import json
 import os
 from packaging import version
 import re
+import tree  # pip install dm_tree
 from typing import Any, Dict, Union
 
+import gymnasium as gym
+
 import ray
-from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
+from ray.rllib.utils import deep_transform
+from ray.rllib.utils.serialization import (
+    gym_space_to_dict,
+    NOT_SERIALIZABLE,
+    serialize_type,
+)
 from ray.train import Checkpoint
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
@@ -31,8 +39,14 @@ logger = logging.getLogger(__name__)
 
 # 1.2: Introduces the checkpoint for the new Learner API if the Learner api is enabled.
 
-CHECKPOINT_VERSION = version.Version("1.1")
-CHECKPOINT_VERSION_LEARNER = version.Version("1.2")
+# 1.3: Does not serialize the "policy_spec" key within the policy's state. This does not
+# make sense for pickle checkpoints anyways and only adds confusion for msgpack
+# conversions. Instead, we now require users to bring their original AlgorithmConfig
+# objects (which contain all information to create new policy specs) along, when
+# restoring from a msgpack checkpoint.
+
+CHECKPOINT_VERSION = version.Version("1.3")
+CHECKPOINT_VERSION_LEARNER = version.Version("1.3")
 
 
 @PublicAPI(stability="alpha")
@@ -208,7 +222,11 @@ def convert_to_msgpack_checkpoint(
     # Convert all code in state into serializable data.
     # Serialize the algorithm class.
     state["algorithm_class"] = serialize_type(state["algorithm_class"])
-    # Serialize the algorithm's config object.
+    # Serialize (as much as possible) the algorithm's config object. However, this field
+    # will NOT be used when recovering from the msgpack checkpoint as it's impossible to
+    # properly serialize things like lambdas, constructed classes, and other
+    # code-containing items. Therefore, the user must bring their own original config
+    # code when recovering from a msgpack checkpoint.
     state["config"] = state["config"].serialize()
 
     # Extract policy states from worker state (Policies get their own
@@ -334,3 +352,33 @@ def try_import_msgpack(error: bool = False):
                 "Could not import or setup msgpack and msgpack_numpy! "
                 "Try running `pip install msgpack msgpack_numpy` first."
             )
+
+
+def try_serialize_for_msgpack(struct):
+    # Serialize all found spaces to their serialized structs.
+    # Note: We cannot use `tree.map_structure` here b/c it doesn't play
+    # nice with gym Dicts or Tuples (crashes).
+    struct = deep_transform(
+        lambda s: gym_space_to_dict(s) if isinstance(s, gym.Space) else s, struct
+    )
+    # Serialize all found classes (types) to their classpaths:
+    struct = tree.map_structure(
+        lambda s: serialize_type(s) if isinstance(s, type) else s, struct
+    )
+    ## List'ify sets.
+    #struct = tree.map_structure(
+    #    lambda s: list(s) if isinstance(s, set) else s, struct
+    #)
+    # Non-msgpack'able items will be masked out via NOT_SERIALIZABLE.
+    msgpack = try_import_msgpack(error=True)
+
+    def _serialize_item(item):
+        try:
+            msgpack.dumps(item)
+        except TypeError:
+            return NOT_SERIALIZABLE
+        return item
+
+    struct = tree.map_structure(_serialize_item, struct)
+
+    return struct

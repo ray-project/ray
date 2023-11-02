@@ -63,7 +63,7 @@ from ray.rllib.offline.estimators import (
     DoublyRobust,
 )
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils import deep_update, FilterManager
 from ray.rllib.utils.annotations import (
@@ -263,6 +263,8 @@ class Algorithm(Trainable, AlgorithmBase):
     @staticmethod
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
+        *,
+        config: Optional[AlgorithmConfig] = None,
         policy_ids: Optional[Container[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -279,6 +281,12 @@ class Algorithm(Trainable, AlgorithmBase):
         Args:
             checkpoint: The path (str) to the checkpoint directory to use
                 or an AIR Checkpoint instance to restore from.
+            config: The config to use for recovering the Algorithm. Note that `config`
+                must be provided, if `checkpoint` is in msgpack format. However,
+                `config` might be slightly altered (wrt. to the original config used to
+                create `checkpoint`), depending on the user's needs. For example, a user
+                might want to reinstate the same Algorithm, but only with a single
+                remote workers instead of 32.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
@@ -315,29 +323,17 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # This is a msgpack checkpoint.
         if checkpoint_info["format"] == "msgpack":
-            # User did not provide unserializable function with this call
-            # (`policy_mapping_fn`). Note that if `policies_to_train` is None, it
-            # defaults to training all policies (so it's ok to not provide this here).
-            if policy_mapping_fn is None:
-                # Only DEFAULT_POLICY_ID present in this algorithm, provide default
-                # implementations of these two functions.
-                if checkpoint_info["policy_ids"] == {DEFAULT_POLICY_ID}:
-                    policy_mapping_fn = AlgorithmConfig.DEFAULT_POLICY_MAPPING_FN
-                # Provide meaningful error message.
-                else:
-                    raise ValueError(
-                        "You are trying to restore a multi-agent algorithm from a "
-                        "`msgpack` formatted checkpoint, which do NOT store the "
-                        "`policy_mapping_fn` or `policies_to_train` "
-                        "functions! Make sure that when using the "
-                        "`Algorithm.from_checkpoint()` utility, you also pass the "
-                        "args: `policy_mapping_fn` and `policies_to_train` with your "
-                        "call. You might leave `policies_to_train=None` in case "
-                        "you would like to train all policies anyways."
-                    )
+            if config is None:
+                raise ValueError(
+                    "When using `Algorithm.from_checkpoint()` with a msgpack "
+                    "checkpoint, you must provide the (original) `AlgorithmConfig` "
+                    "object or dict via the `config` arg, b/c msgpack checkpoints do "
+                    "NOT contain this information!"
+                )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,
+            config=config,
             policy_ids=policy_ids,
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=policies_to_train,
@@ -2846,6 +2842,7 @@ class Algorithm(Trainable, AlgorithmBase):
     @staticmethod
     def _checkpoint_info_to_algorithm_state(
         checkpoint_info: dict,
+        config: Optional[AlgorithmConfig] = None,
         policy_ids: Optional[Container[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -2863,6 +2860,12 @@ class Algorithm(Trainable, AlgorithmBase):
             checkpoint_info: A checkpoint info dict as returned by
                 `ray.rllib.utils.checkpoints.get_checkpoint_info(
                 [checkpoint dir or AIR Checkpoint])`.
+            config: The config to use for recovering the Algorithm state. Note that
+                `config` must be provided, if `checkpoint` is in msgpack format.
+                However, `config` might be slightly altered (wrt. to the original config
+                used to create `checkpoint`), depending on the user's needs. For
+                example, a user might want to reinstate the same Algorithm, but only
+                with a single remote workers instead of 32.
             policy_ids: Optional list/set of PolicyIDs. If not None, only those policies
                 listed here will be included in the returned state. Note that
                 state items such as filters, the `is_policy_to_train` function, as
@@ -2886,6 +2889,10 @@ class Algorithm(Trainable, AlgorithmBase):
 
         msgpack = None
         if checkpoint_info.get("format") == "msgpack":
+            assert config is not None, (
+                "When getting the state from a msgpack checkpoint, `config` must be "
+                "provided!"
+            )
             msgpack = try_import_msgpack(error=True)
 
         with open(checkpoint_info["state_file"], "rb") as f:
@@ -2923,29 +2930,41 @@ class Algorithm(Trainable, AlgorithmBase):
                 state["algorithm_class"] = deserialize_type(
                     state["algorithm_class"]
                 ) or get_trainable_cls(state["algorithm_class"])
+
             # Compile actual config object.
-            default_config = state["algorithm_class"].get_default_config()
-            if isinstance(default_config, AlgorithmConfig):
-                new_config = default_config.update_from_dict(state["config"])
+            # `config` is provided AND an AlgorithmConfig object -> Use it as-is.
+            if isinstance(config, AlgorithmConfig):
+                new_config = config
+            # `config` is None or a config dict.
             else:
-                new_config = Algorithm.merge_algorithm_configs(
-                    default_config, state["config"]
-                )
+                assert config is None or isinstance(config, dict)
+                default_config = state["algorithm_class"].get_default_config()
+                if isinstance(default_config, AlgorithmConfig):
+                    new_config = default_config.update_from_dict(
+                        config or state["config"]
+                    )
+                else:
+                    new_config = Algorithm.merge_algorithm_configs(
+                        default_config, config or state["config"]
+                    )
 
             # Remove policies from multiagent dict that are not in `policy_ids`.
             new_policies = new_config.policies
             if isinstance(new_policies, (set, list, tuple)):
-                new_policies = {pid for pid in new_policies if pid in policy_ids}
+                new_policies = {
+                    pid: PolicySpec() for pid in new_policies if pid in policy_ids
+                }
             else:
                 new_policies = {
                     pid: spec for pid, spec in new_policies.items() if pid in policy_ids
                 }
             new_config.multi_agent(
                 policies=new_policies,
-                policies_to_train=policies_to_train,
                 **(
                     {"policy_mapping_fn": policy_mapping_fn}
                     if policy_mapping_fn is not None
+                    else {} | {"policies_to_train": policies_to_train}
+                    if policies_to_train is not None
                     else {}
                 ),
             )
@@ -2972,15 +2991,32 @@ class Algorithm(Trainable, AlgorithmBase):
                 with open(policy_state_file, "rb") as f:
                     if msgpack is not None:
                         worker_state["policy_states"][pid] = msgpack.load(f)
+                        spec = worker_state["policy_states"][pid]["policy_spec"]
+                        spec = PolicySpec.deserialize(spec)
+                        # Since msgpack checkpoint do not store spaces
+                        # Replace PolicySpec's config with given one (msgpack does NOT
+                        # store config information).
+                        spec.config = new_config.copy(
+                            copy_frozen=False
+                        ).update_from_dict(new_config.policies[pid].config or {})
                     else:
                         worker_state["policy_states"][pid] = pickle.load(f)
 
             # These two functions are never serialized in a msgpack checkpoint (which
-            # does not store code, unlike a cloudpickle checkpoint). Hence the user has
+            # does not store code, unlike a cloudpickle checkpoint). Hence, the user has
             # to provide them with the `Algorithm.from_checkpoint()` call.
-            if policy_mapping_fn is not None:
+            if msgpack is not None:
+                worker_state["policy_mapping_fn"] = (
+                    policy_mapping_fn or new_config.policy_mapping_fn
+                )
+            elif policy_mapping_fn is not None:
                 worker_state["policy_mapping_fn"] = policy_mapping_fn
-            if (
+
+            if msgpack is not None:
+                worker_state["is_policy_to_train"] = (
+                    policies_to_train or new_config.policies_to_train
+                )
+            elif (
                 policies_to_train is not None
                 # `policies_to_train` might be left None in case all policies should be
                 # trained.

@@ -45,6 +45,7 @@ from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
     get_checkpoint_info,
     try_import_msgpack,
+    try_serialize_for_msgpack,
 )
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -84,6 +85,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.evaluation import Episode
     from ray.rllib.core.rl_module import RLModule
 
@@ -147,8 +149,6 @@ class PolicySpec:
             "policy_class": cls,
             "observation_space": space_to_dict(self.observation_space),
             "action_space": space_to_dict(self.action_space),
-            # TODO(jungong) : try making the config dict durable by maybe
-            #  getting rid of all the fields that are not JSON serializable.
             "config": self.config,
         }
 
@@ -159,6 +159,8 @@ class PolicySpec:
             from ray.rllib.algorithms.registry import get_policy_class
 
             policy_class = get_policy_class(spec["policy_class"])
+            if policy_class is None:
+                policy_class = deserialize_type(spec["policy_class"])
         elif isinstance(spec["policy_class"], type):
             # Policy spec is already a class type. Simply use it.
             policy_class = spec["policy_class"]
@@ -266,6 +268,8 @@ class Policy(metaclass=ABCMeta):
     @staticmethod
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
+        *,
+        config: Optional["AlgorithmConfig"] = None,
         policy_ids: Optional[Container[PolicyID]] = None,
     ) -> Union["Policy", Dict[PolicyID, "Policy"]]:
         """Creates new Policy instance(s) from a given Policy or Algorithm checkpoint.
@@ -349,6 +353,24 @@ class Policy(metaclass=ABCMeta):
                     state = msgpack.load(f)
                 else:
                     state = pickle.load(f)
+
+            # If msgpack OR checkpoint version is <=1.2, `policy_spec` will be
+            # serialized -> deserialize it first.
+            if (
+                state.get("policy_spec")
+                and (
+                    msgpack
+                    or checkpoint_info["checkpoint_version"] <= version.Version("1.2")
+                )
+            ):
+                state["policy_spec"] = PolicySpec.deserialize(state["policy_spec"])
+
+            # If config is explicitly provided, use it instead of stored config.
+            if config is not None and state.get("policy_spec"):
+                state["policy_spec"].config = (
+                    config if isinstance(config, dict) else config.to_dict()
+                )
+
             return Policy.from_state(state)
 
     @staticmethod
@@ -367,31 +389,30 @@ class Policy(metaclass=ABCMeta):
         Returns:
             A new Policy instance.
         """
-        serialized_pol_spec: Optional[dict] = state.get("policy_spec")
-        if serialized_pol_spec is None:
+        policy_spec: Optional[dict] = state.get("policy_spec")
+        if policy_spec is None:
             raise ValueError(
                 "No `policy_spec` key was found in given `state`! "
                 "Cannot create new Policy."
             )
-        pol_spec = PolicySpec.deserialize(serialized_pol_spec)
         actual_class = get_tf_eager_cls_if_necessary(
-            pol_spec.policy_class,
-            pol_spec.config,
+            policy_spec.policy_class,
+            policy_spec.config,
         )
 
-        if pol_spec.config["framework"] == "tf":
+        if policy_spec.config["framework"] == "tf":
             from ray.rllib.policy.tf_policy import TFPolicy
 
             return TFPolicy._tf1_from_state_helper(state)
 
         # Create the new policy.
         new_policy = actual_class(
-            # Note(jungong) : we are intentionally not using keyward arguments here
+            # Note: We are intentionally not using keyward arguments here
             # because some policies name the observation space parameter obs_space,
             # and some others name it observation_space.
-            pol_spec.observation_space,
-            pol_spec.action_space,
-            pol_spec.config,
+            policy_spec.observation_space,
+            policy_spec.action_space,
+            policy_spec.config,
         )
 
         # Set the new policy's state (weights, optimizer vars, exploration state,
@@ -1008,13 +1029,12 @@ class Policy(metaclass=ABCMeta):
 
         # Add this Policy's spec so it can be retreived w/o access to the original
         # code.
-        policy_spec = PolicySpec(
+        state["policy_spec"] = PolicySpec(
             policy_class=type(self),
             observation_space=self.observation_space,
             action_space=self.action_space,
             config=self.config,
         )
-        state["policy_spec"] = policy_spec.serialize()
 
         if self.config.get("enable_connectors", False):
             # Checkpoint connectors state as well if enabled.
@@ -1066,7 +1086,7 @@ class Policy(metaclass=ABCMeta):
                 obtained by calling `self.get_state()`.
         """
         if "policy_spec" in state:
-            policy_spec = PolicySpec.deserialize(state["policy_spec"])
+            policy_spec = state["policy_spec"]
             # Assert spaces remained the same.
             if (
                 policy_spec.observation_space is not None
@@ -1194,9 +1214,8 @@ class Policy(metaclass=ABCMeta):
             msgpack = try_import_msgpack(error=True)
             policy_state["checkpoint_version"] = str(CHECKPOINT_VERSION)
             # Serialize the config for msgpack dump'ing.
-            policy_state["policy_spec"]["config"] = AlgorithmConfig._serialize_dict(
-                policy_state["policy_spec"]["config"]
-            )
+            policy_state["policy_spec"] = policy_state["policy_spec"].serialize()
+            policy_state = try_serialize_for_msgpack(policy_state)
             state_file = "policy_state.msgpck"
             with open(os.path.join(export_dir, state_file), "w+b") as f:
                 msgpack.dump(policy_state, f)

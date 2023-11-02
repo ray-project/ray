@@ -140,13 +140,13 @@ Checkpoints are py-version specific, but can be converted to be version independ
 
 Algorithm checkpoints created via the ``save()`` method are always cloudpickle-based and
 thus dependent on the python version used. This means there is no guarantee that you
-will to be able to use a checkpoint created with python 3.8 to restore an Algorithm
-in a new environment that runs python 3.9.
+will to be able to use a checkpoint created with python 3.9 to restore an Algorithm
+in a new environment that runs python 3.10.
 
-However, we now provide a utility for converting a checkpoint (generated with
+However, RLlib provides a utility for converting a checkpoint (generated with
 `Algorithm.save()`) into a python version independent checkpoint (based on msgpack).
 You can then use the newly converted msgpack checkpoint to restore another
-Algorithm instance from it. Look at this this short example here on how to do this:
+Algorithm instance from it. Look at this this short example here on how to do this.
 
 .. literalinclude:: doc_code/checkpoints.py
     :language: python
@@ -158,8 +158,8 @@ This way, you can continue to run your algorithms and `save()` them occasionally
 As has been, this will produce cloudpickle based checkpoints. Once you need to migrate to
 a higher (or lower) python version, use the ``convert_to_msgpack_checkpoint()`` utility,
 create a msgpack-based checkpoint and hand that to either ``Algorithm.from_checkpoint()``
-or provide this to your Tune config. RLlib is able to recreate Algorithms from both these
-formats now.
+or provide this to your Tune config (see below). RLlib is able to recreate Algorithms
+from both these formats now.
 
 
 How do I restore an Algorithm from a checkpoint?
@@ -303,7 +303,8 @@ How do I restore from a Policy checkpoint?
 Assume you would like to serve your trained policy(ies) in production and would therefore
 like to use only the RLlib :py:class:`~ray.rllib.policy.policy.Policy` instance,
 without all the other functionality that
-normally comes with the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` object, like different ``RolloutWorkers`` for collecting
+normally comes with the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` object,
+like different ``RolloutWorkers`` for collecting
 training samples or for evaluation (both of which include RL environment copies), etc..
 
 In this case, it would be quite useful if you had a way to restore just the
@@ -320,13 +321,35 @@ Here is how you can do this:
     :end-before: __restore-policy-end__
 
 
+Policy checkpoints are py-version specific, but can be converted to be version independent
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Similar to how you can "bring along" an Algorithm checkpoints from one python version to another
+using RLlib's msgpack conversion function (:py:func:`~ray.rllib.utils.checkpoints.convert_to_msgpack_checkpoint`),
+you can do the same for individual Policy checkpoints as well (:py:func:`~ray.rllib.utils.checkpoints.convert_to_msgpack_policy_checkpoint`).
+
+Take a look at this code here for how to use this utility function on individual Policy
+checkpoints:
+
+.. literalinclude:: doc_code/checkpoints.py
+    :language: python
+    :start-after: __rllib-convert-pickle-to-msgpack-policy-checkpoint-begin__
+    :end-before: __rllib-convert-pickle-to-msgpack-policy-checkpoint-end__
+
+Thus, once you need to migrate your checkpointed policies to a higher (or lower)
+python version, use the ``convert_to_msgpack_policy_checkpoint()`` utility,
+create a msgpack-based Policy checkpoint and hand that to ``Policy.from_checkpoint()``
+RLlib is able to recreate Policy objects from both these formats now.
+
+
 How do I restore a multi-agent Algorithm with a subset of the original policies?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Imagine you have trained a multi-agent :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` with e.g. 100 different Policies and created
-a checkpoint from this :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
-The checkpoint now includes 100 sub-directories in the
-``policies/`` dir, named after the different policy IDs.
+Imagine you have trained a multi-agent :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+with e.g. 100 different Policies and created a checkpoint from this
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
+The checkpoint now includes 100 sub-directories in the ``policies/`` dir, named after
+the different policy IDs.
 
 After careful evaluation of the different policies, you would like to restore the
 :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
