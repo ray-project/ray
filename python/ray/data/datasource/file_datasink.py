@@ -122,7 +122,7 @@ class _FileDatasink(Datasink):
 
     @property
     def supports_distributed_writes(self) -> bool:
-        return _is_local_scheme(self.unresolved_path)
+        return not _is_local_scheme(self.unresolved_path)
 
 
 @DeveloperAPI
