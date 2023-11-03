@@ -214,27 +214,32 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         ;
         try_send_reply();
       } else {
-        // Get is_running_tasks from the core worker for the driver.
-        auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
-        std::unique_ptr<rpc::NumPendingTasksRequest> request(
-            new rpc::NumPendingTasksRequest());
-        RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id;
-        client->NumPendingTasks(
-            std::move(request),
-            [worker_id, reply, i, num_processed_jobs, try_send_reply](
-                const Status &status,
-                const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
-              RAY_LOG(DEBUG) << "Received NumPendingTasksReply from worker " << worker_id;
-              if (!status.ok()) {
-                RAY_LOG(WARNING) << "Failed to get is_running_tasks from core worker: "
-                                 << status.ToString();
-              }
-              bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
-              reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
-              (*num_processed_jobs)++;
-              ;
-              try_send_reply();
-            });
+        // NOTE(wanxing) Don't get is_running_tasks from driver,
+        // because the driver port is 0, may cause rpc hang.
+        // It seems that is_running_tasks is unused and can be ignored.
+        //        auto client =
+        //        core_worker_clients_.GetOrConnect(data.second.driver_address());
+        //        std::unique_ptr<rpc::NumPendingTasksRequest> request(
+        //            new rpc::NumPendingTasksRequest());
+        //        client->NumPendingTasks(
+        //            std::move(request),
+        //            [reply, i, num_processed_jobs, try_send_reply](
+        //                const Status &status,
+        //                const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
+        //              if (!status.ok()) {
+        //                RAY_LOG(WARNING) << "Failed to get is_running_tasks from core
+        //                worker: " << status.ToString();
+        //              }
+        //              bool is_running_tasks =
+        //              num_pending_tasks_reply.num_pending_tasks() > 0;
+        //              reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
+        //              (*num_processed_jobs)++;
+        //              ;
+        //              try_send_reply();
+        //            });
+        RAY_LOG(INFO) << "HandleGetAllJobInfo on_done ignore get is_running_tasks";
+        (*num_processed_jobs)++;
+        try_send_reply();
       }
       i++;
     }

@@ -101,7 +101,7 @@ TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
                      });
 }
 
-TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
+TEST_F(GcsJobManagerTest, DISABLED_TestIsRunningTasks) {
   gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
                                      gcs_publisher_,
                                      runtime_env_manager_,
