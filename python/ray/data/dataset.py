@@ -110,7 +110,6 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import (
-    BigQueryDatasource,
     BlockWritePathProvider,
     Connection,
     CSVDatasource,
@@ -122,8 +121,9 @@ from ray.data.datasource import (
     NumpyDatasource,
     ParquetDatasource,
     ReadTask,
-    SQLDatasource,
     TFRecordDatasource,
+    _BigQueryDatasink,
+    _SQLDatasink,
 )
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -3299,11 +3299,8 @@ class Dataset:
             ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
                 write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            SQLDatasource(connection_factory),
-            ray_remote_args=ray_remote_args,
-            sql=sql,
-        )
+        datasink = _SQLDatasink(sql=sql, connection_factory=connection_factory)
+        self.write_datasource(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3410,13 +3407,8 @@ class Dataset:
                 overwritten if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
-
-        self.write_datasource(
-            BigQueryDatasource(),
-            ray_remote_args=ray_remote_args,
-            dataset=dataset,
-            project_id=project_id,
-        )
+        datasink = _BigQueryDatasink(project_id, dataset)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")
