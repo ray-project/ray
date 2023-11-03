@@ -166,7 +166,7 @@ def test_dataset(
     cursor = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_get_reader": 1,
+                "_get_datasource_or_legacy_reader": 1,
                 "_execute_read_task_split": 1,
             },
             object_store_stats={

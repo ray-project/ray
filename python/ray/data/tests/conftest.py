@@ -594,6 +594,7 @@ class CoreExecutionMetrics:
             "_StatsActor.get": lambda count: True,
             "_StatsActor.record_start": lambda count: True,
             "_StatsActor.record_task": lambda count: True,
+            "_StatsActor.get_dataset_id": lambda count: True,
             "datasets_stats_actor:_StatsActor.__init__": lambda count: count <= 1,
         }
 
