@@ -115,13 +115,13 @@ from ray.data.datasource import (
     Datasink,
     Datasource,
     FilenameProvider,
-    ParquetDatasource,
     ReadTask,
     _BigQueryDatasink,
     _CSVDatasink,
     _ImageDatasink,
     _JSONDatasink,
     _NumpyDatasink,
+    _ParquetDatasink,
     _SQLDatasink,
     _TFRecordDatasink,
     _WebDatasetDatasink,
@@ -2743,19 +2743,18 @@ class Dataset:
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
         """
-        self.write_datasource(
-            ParquetDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _ParquetDatasink(
+            path,
+            arrow_parquet_args_fn=arrow_parquet_args_fn,
+            arrow_parquet_args=arrow_parquet_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=arrow_parquet_args_fn,
-            **arrow_parquet_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_json(
