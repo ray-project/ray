@@ -1,25 +1,32 @@
-import logging
-
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.util import log_once
-
-
-def rllib_contrib_warning(algo_str):
-    if log_once(f"{algo_str}_contrib"):
-        logging.getLogger(__name__).warning(
-            "{} has/have been moved to `rllib_contrib` and will no longer be maintained"
-            " by the RLlib team. You can still use it/them normally inside RLlib util "
-            "Ray 2.8, but from Ray 2.9 on, all `rllib_contrib` algorithms will no "
-            "longer be part of the core repo, and will therefore have to be installed "
-            "separately with pinned dependencies for e.g. ray[rllib] and other "
-            "packages! See "
-            "https://github.com/ray-project/ray/tree/master/rllib_contrib#rllib-contrib"
-            " for more information on the RLlib contrib effort.".format(algo_str)
-        )
+from ray.rllib.algorithms.appo.appo import APPO, APPOConfig
+from ray.rllib.algorithms.bc.bc import BC, BCConfig
+from ray.rllib.algorithms.cql.cql import CQL, CQLConfig
+from ray.rllib.algorithms.dqn.dqn import DQN, DQNConfig
+from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
+from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
+from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
+from ray.rllib.algorithms.sac.sac import SAC, SACConfig
 
 
 __all__ = [
     "Algorithm",
     "AlgorithmConfig",
+    "APPO",
+    "APPOConfig",
+    "BC",
+    "BCConfig",
+    "CQL",
+    "CQLConfig",
+    "DQN",
+    "DQNConfig",
+    "Impala",
+    "ImpalaConfig",
+    "MARWIL",
+    "MARWILConfig",
+    "PPO",
+    "PPOConfig",
+    "SAC",
+    "SACConfig",
 ]

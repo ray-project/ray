@@ -13,13 +13,19 @@ import ray
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.interfaces.physical_operator import OpTask, Waitable
+from ray.data._internal.execution.interfaces.physical_operator import (
+    DataOpTask,
+    MetadataOpTask,
+    OpTask,
+    Waitable,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -259,6 +265,18 @@ class OpState:
                 break  # Concurrent pop from the outqueue by the consumer thread.
         return object_store_memory
 
+    def outqueue_num_blocks(self) -> int:
+        """Return the number of blocks in this operator's outqueue."""
+        num_blocks = 0
+        for i in range(len(self.outqueue)):
+            try:
+                bundle = self.outqueue[i]
+                if isinstance(bundle, RefBundle):
+                    num_blocks += len(bundle.blocks)
+            except IndexError:
+                break
+        return len(self.outqueue)
+
 
 def build_streaming_topology(
     dag: PhysicalOperator, options: ExecutionOptions
@@ -310,16 +328,28 @@ def build_streaming_topology(
     return (topology, i)
 
 
-def process_completed_tasks(topology: Topology) -> None:
+def process_completed_tasks(
+    topology: Topology,
+    backpressure_policies: List[BackpressurePolicy],
+) -> None:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards."""
 
-    # Update active tasks.
-    active_tasks: Dict[Waitable, OpTask] = {}
-
-    for op in topology.keys():
+    # All active tasks, keyed by their waitables.
+    active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
+    for op, state in topology.items():
         for task in op.get_active_tasks():
-            active_tasks[task.get_waitable()] = task
+            active_tasks[task.get_waitable()] = (state, task)
+
+    max_blocks_to_read_per_op: Dict[OpState, int] = {}
+    for policy in backpressure_policies:
+        non_empty = len(max_blocks_to_read_per_op) > 0
+        max_blocks_to_read_per_op = policy.calculate_max_blocks_to_read_per_op(topology)
+        if non_empty and len(max_blocks_to_read_per_op) > 0:
+            raise ValueError(
+                "At most one backpressure policy that implements "
+                "calculate_max_blocks_to_read_per_op() can be used at a time."
+            )
 
     # Process completed Ray tasks and notify operators.
     if active_tasks:
@@ -330,7 +360,16 @@ def process_completed_tasks(topology: Topology) -> None:
             timeout=0.1,
         )
         for ref in ready:
-            active_tasks[ref].on_waitable_ready()
+            state, task = active_tasks.pop(ref)
+            if isinstance(task, DataOpTask):
+                num_blocks_read = task.on_data_ready(
+                    max_blocks_to_read_per_op.get(state, None)
+                )
+                if state in max_blocks_to_read_per_op:
+                    max_blocks_to_read_per_op[state] -= num_blocks_read
+            else:
+                assert isinstance(task, MetadataOpTask)
+                task.on_task_finished()
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
@@ -377,6 +416,7 @@ def select_operator_to_run(
     topology: Topology,
     cur_usage: TopologyResourceUsage,
     limits: ExecutionResources,
+    backpressure_policies: List[BackpressurePolicy],
     ensure_at_least_one_running: bool,
     execution_id: str,
     autoscaling_state: AutoscalingState,
@@ -406,6 +446,7 @@ def select_operator_to_run(
             and op.should_add_input()
             and under_resource_limits
             and not op.completed()
+            and all(p.can_add_input(op) for p in backpressure_policies)
         ):
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.

@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -30,8 +30,8 @@ DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
 # all input blocks anyway, so there is no performance advantage to having
 # smaller blocks. Setting a larger block size allows avoiding overhead from an
 # excessive number of partitions.
-# We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
-DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
+# We choose 1GiB as 4x less than the typical memory:core ratio (4:1).
+DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 
 # Dataset will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
@@ -219,6 +219,16 @@ class DataContext:
         self.enable_get_object_locations_for_metrics = (
             enable_get_object_locations_for_metrics
         )
+        # The additonal ray remote args that should be added to
+        # the task-pool-based data tasks.
+        self._task_pool_data_task_remote_args: Dict[str, Any] = {}
+        # The extra key-value style configs.
+        # These configs are managed by individual components or plugins via
+        # `set_config`, `get_config` and `remove_config`.
+        # The reason why we use a dict instead of individual fields is to decouple
+        # the DataContext from the plugin implementations, as well as to avoid
+        # circular dependencies.
+        self._kv_configs: Dict[str, Any] = {}
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -282,6 +292,33 @@ class DataContext:
         """
         global _default_context
         _default_context = context
+
+    def get_config(self, key: str, default: Any = None) -> Any:
+        """Get the value for a key-value style config.
+
+        Args:
+            key: The key of the config.
+            default: The default value to return if the key is not found.
+        Returns: The value for the key, or the default value if the key is not found.
+        """
+        return self._kv_configs.get(key, default)
+
+    def set_config(self, key: str, value: Any) -> None:
+        """Set the value for a key-value style config.
+
+        Args:
+            key: The key of the config.
+            value: The value of the config.
+        """
+        self._kv_configs[key] = value
+
+    def remove_config(self, key: str) -> None:
+        """Remove a key-value style config.
+
+        Args:
+            key: The key of the config.
+        """
+        self._kv_configs.pop(key, None)
 
 
 # Backwards compatibility alias.

@@ -18,10 +18,10 @@ default_logger = logging.getLogger(__name__)
 
 # Nsight options used when runtime_env={"_nsight": "default"}
 NSIGHT_DEFAULT_CONFIG = {
-    "-t": "cuda,cudnn,cublas,nvtx",
-    "-o": "'worker_process_%p'",
-    "--cudabacktrace": "all",
-    "--stop-on-exit": "true",
+    "t": "cuda,cudnn,cublas,nvtx",
+    "o": "'worker_process_%p'",
+    "cudabacktrace": "all",
+    "stop-on-exit": "true",
 }
 
 
@@ -30,17 +30,17 @@ def parse_nsight_config(nsight_config: Dict[str, str]) -> List[str]:
     Function to convert dictionary of nsight options into
     nsight command line
 
-    Args:
-        nsight_config: dictionary mapping nsight option to it's value
-    Returns:
-        a list of string consists of nsys profile command line and options
+    The function returns:
+    - List[str]: nsys profile cmd line split into list of str
     """
     nsight_cmd = ["nsys", "profile"]
     for option, option_val in nsight_config.items():
-        if option[:2] == "--":
-            nsight_cmd.append(f"{option}={option_val}")
-        elif option[0] == "-":
-            nsight_cmd += [option, option_val]
+        # option standard based on
+        # https://www.gnu.org/software/libc/manual/html_node/Argument-Syntax.html
+        if len(option) > 1:
+            nsight_cmd.append(f"--{option}={option_val}")
+        else:
+            nsight_cmd += [f"-{option}", option_val]
     return nsight_cmd
 
 
@@ -52,8 +52,8 @@ class NsightPlugin(RuntimeEnvPlugin):
 
         # replace this with better way to get logs dir
         session_dir, runtime_dir = os.path.split(resources_dir)
-        self._profilers_dir = Path(session_dir) / "logs" / "nsight"
-        try_to_create_directory(self._profilers_dir)
+        self._nsight_dir = Path(session_dir) / "logs" / "nsight"
+        try_to_create_directory(self._nsight_dir)
 
     async def _check_nsight_script(
         self, nsight_config: Dict[str, str]
@@ -69,7 +69,7 @@ class NsightPlugin(RuntimeEnvPlugin):
 
         # use empty as nsight report test filename
         nsight_config_copy = copy.deepcopy(nsight_config)
-        nsight_config_copy["-o"] = str(Path(self._profilers_dir) / "empty")
+        nsight_config_copy["o"] = str(Path(self._nsight_dir) / "empty")
         nsight_cmd = parse_nsight_config(nsight_config_copy)
         try:
             nsight_cmd = nsight_cmd + ["python", "-c", '""']
@@ -82,7 +82,7 @@ class NsightPlugin(RuntimeEnvPlugin):
             error_msg = stderr.strip() if stderr.strip() != "" else stdout.strip()
 
             # cleanup test.nsys-rep file
-            clean_up_cmd = ["rm", f"{nsight_config_copy['-o']}.nsys-rep"]
+            clean_up_cmd = ["rm", f"{nsight_config_copy['o']}.nsys-rep"]
             cleanup_process = await asyncio.create_subprocess_exec(
                 *clean_up_cmd,
                 stdout=subprocess.PIPE,
@@ -132,9 +132,8 @@ class NsightPlugin(RuntimeEnvPlugin):
                 f"error message:\n {error_msg}"
             )
         # add set output path to logs dir
-        nsight_config["-o"] = str(
-            Path(self._profilers_dir)
-            / nsight_config.get("-o", NSIGHT_DEFAULT_CONFIG["-o"])
+        nsight_config["o"] = str(
+            Path(self._nsight_dir) / nsight_config.get("o", NSIGHT_DEFAULT_CONFIG["o"])
         )
 
         self.nsight_cmd = parse_nsight_config(nsight_config)

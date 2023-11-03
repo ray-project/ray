@@ -83,9 +83,9 @@ class TestNsightProfiler:
         @ray.remote(
             runtime_env={
                 "nsight": {
-                    "-t": "cuda,cublas,cudnn",
-                    "--stop-on-exit": "true",
-                    "-o": CUSTOM_REPORT,
+                    "t": "cuda,cublas,cudnn",
+                    "stop-on-exit": "true",
+                    "o": CUSTOM_REPORT,
                 }
             }
         )
@@ -118,14 +118,14 @@ class TestNsightProfiler:
         # test ray task
         @ray.remote(
             runtime_env={
-                "nsight": {"-o": "ray_task_%p"},
+                "nsight": {"o": "ray_task_%p"},
             }
         )
         def test_generate_report():
             return 0
 
         # test ray actor
-        @ray.remote(runtime_env={"nsight": {"-o": "ray_actor"}})
+        @ray.remote(runtime_env={"nsight": {"o": "ray_actor"}})
         class NsightActor:
             def run(self):
                 return 0
@@ -166,7 +166,7 @@ class TestNsightProfiler:
         @ray.remote(
             runtime_env={
                 "nsight": {
-                    "-not-option": "random",
+                    "not-option": "random",
                 }
             }
         )
@@ -226,12 +226,17 @@ class TestNsightProfiler:
     def test_parse_nsight_config(self):
         """Test parse nsight config into nsight command prefix"""
         nsight_config = {
-            "-one-dash": "no=",
-            "--two-dash": "with=",
-            "invalid_flag": "nothing_return",
+            "o": "single_dash",
+            "two-dash": "double_dash",
         }
         nsight_cmd = parse_nsight_config(nsight_config)
-        assert nsight_cmd == ["nsys", "profile", "-one-dash", "no=", "--two-dash=with="]
+        assert nsight_cmd == [
+            "nsys",
+            "profile",
+            "-o",
+            "single_dash",
+            "--two-dash=double_dash",
+        ]
 
 
 @pytest.mark.skipif(

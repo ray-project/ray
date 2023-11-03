@@ -29,6 +29,7 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 
+from peft import LoraConfig, get_peft_model
 import ray
 from ray import train
 import ray.util.scheduling_strategies
@@ -45,12 +46,72 @@ from utils import (
 
 OPTIM_BETAS = (0.9, 0.999)
 OPTIM_EPS = 1e-8
+NUM_WARMUP_STEPS = 10
 OPTIM_WEIGHT_DECAY = 0.0
+ATTENTION_LAYER_NAME = "self_attn"
+
+
+def get_expected_lora_num_parameters(
+    model, lora_config: LoraConfig, attn_layer_name: str = ATTENTION_LAYER_NAME
+):
+    """Calculate the expected number of parameters for lora finetuning."""
+    sum_params = 0
+    num_attention_layers = 0
+    modules = model.named_modules()
+    loraified_modules = 0
+    # We calculate the number of parameters we need for lora finetuning by calculating
+    # the sizes of the deecomposed weight matrices according to the paper.
+    for full_name, target in modules:
+        layer_name = full_name.split(".")[-1]
+
+        if layer_name == attn_layer_name:
+            # Detected another attention layer (for example, llama 2 70b should have 80
+            # of these)
+            num_attention_layers += 1
+        elif layer_name in lora_config.modules_to_save:
+            # Detect another non-lora module to save, which will also contribute to the
+            # number of checkpointed parameters. This will result in one set of
+            # trainable parameters "<layer>.original_module.weight" and another one with
+            # "<layer>.modules_to_save.default.weight"
+            # Therefore, each layer contributes 2 x the number of actual elements in
+            # that layer.
+            sum_params += 2 * target.weight.numel()
+            print(
+                "Found non-lora-layer to checkpoint: ",
+                layer_name,
+                " with num params ",
+                target.weight.numel(),
+            )
+        else:
+            for module_name in lora_config.target_modules:
+                if layer_name == module_name:
+                    loraified_modules += 1
+                    if isinstance(target, nn.Linear):
+                        # Target is attention weight
+                        sum_params += (
+                            target.in_features + target.out_features
+                        ) * lora_config.r
+                    elif isinstance(target, nn.Embedding):
+                        # Target is linear weight
+                        sum_params += (
+                            target.embedding_dim + target.num_embeddings
+                        ) * lora_config.r
+
+    print(
+        f"Detected {num_attention_layers} attention layers, containing"
+        f" {loraified_modules} modules to modify according to LoRA's `target_modules`."
+        f" This should yield {sum_params} trainable parameters."
+    )
+
+    return sum_params
 
 
 def get_number_of_params(model: nn.Module):
-    state_dict = model.state_dict()
-    return sum(p.numel() for p in state_dict.values())
+    sum = 0
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            sum += param.numel()
+    return sum
 
 
 def collate_fn(batch, tokenizer, block_size, device):
@@ -228,7 +289,38 @@ def training_function(kwargs: dict):
         use_cache=False,
     )
     print(f"Done loading model in {time.time() - s} seconds.")
+
     model.resize_token_embeddings(len(tokenizer))
+
+    if config["lora"]:
+        # Apply LoRA
+        s = time.time()
+        lora_config = LoraConfig(**config["lora_config"])
+
+        expected_num_parameters = get_expected_lora_num_parameters(
+            lora_config=lora_config, model=model
+        )
+
+        print(f"Attempting to apply LoRA config: {lora_config}")
+
+        model.enable_input_require_grads()
+        model = get_peft_model(model, lora_config)
+
+        num_parameters = get_number_of_params(model)
+
+        if num_parameters != expected_num_parameters:
+            raise ValueError(
+                f"Expected {expected_num_parameters} parameters, got {num_parameters} "
+                f"parameters. LoRA-ification failed."
+            )
+
+        print(
+            f"LoRA-ification done in {time.time() - s} seconds. Estimated checkpoint "
+            f"size (fp16): {num_parameters * 2 / 1e6} MB"
+        )
+
+    print(f"Number of checkpointed parameters: {get_number_of_params(model)}")
+
     print("Model initialized with pretrained weights. Training starting...")
     if not args.no_grad_ckpt:
         model.gradient_checkpointing_enable()
@@ -249,9 +341,14 @@ def training_function(kwargs: dict):
     )
 
     # Instantiate scheduler
-    # Creates Dummy Scheduler if `scheduler` was specified in the config file
+    # Creates Dummy Scheduler if `scheduler` was specified in the config file or
     # else, creates `args.lr_scheduler_type` Scheduler
     # get train and valid dataset lengths
+
+    num_steps_per_epoch = math.ceil(train_ds_len / args.batch_size_per_device)
+    total_training_steps = (
+        num_steps_per_epoch * num_epochs // gradient_accumulation_steps
+    )
 
     if (
         accelerator.state.deepspeed_plugin is None
@@ -259,16 +356,14 @@ def training_function(kwargs: dict):
     ):
         lr_scheduler = get_linear_schedule_with_warmup(
             optimizer=optimizer,
-            num_warmup_steps=100,
-            num_training_steps=(
-                (train_ds_len * num_epochs) // gradient_accumulation_steps
-            ),
+            num_warmup_steps=NUM_WARMUP_STEPS * args.num_devices,
+            num_training_steps=total_training_steps * args.num_devices,
         )
     else:
         lr_scheduler = DummyScheduler(
             optimizer,
-            total_num_steps=(train_ds_len * num_epochs) // gradient_accumulation_steps,
-            warmup_num_steps=100,
+            warmup_num_steps=NUM_WARMUP_STEPS * args.num_devices,
+            total_num_steps=total_training_steps * args.num_devices,
         )
 
     # Prepare everything
@@ -284,7 +379,6 @@ def training_function(kwargs: dict):
         print("Number of batches on main process", train_ds_len // batch_size)
 
     for epoch in range(num_epochs):
-
         fwd_time_sum, bwd_time_sum, optim_step_time_sum = 0, 0, 0
         s_epoch = time.time()
         model.train()
@@ -328,12 +422,13 @@ def training_function(kwargs: dict):
                     f"loss: {loss.item()} step-time: {e_opt_step - s_fwd}"
                 )
 
+            aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
+
             if config["as_test"]:
                 break
 
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
-                aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
                 train.report(
                     {
                         "epoch": epoch,
@@ -378,7 +473,7 @@ def training_function(kwargs: dict):
         metrics = {
             "epoch": epoch,
             "iteration": step,
-            "train_loss_batch": loss.item(),
+            "train_loss_batch": aggregated_loss,
             "avg_train_loss_epoch": loss_sum.item() / (step + 1),
             "eval_loss": eloss,
             "perplexity": perplex,
@@ -459,6 +554,13 @@ def training_function(kwargs: dict):
                 time.perf_counter() - checkpoint_save_start,
             )
 
+        if perplex < args.stop_perplexity:
+            print(f"Perplexity reached {perplex} < {args.stop_perplexity}. Stopping.")
+            break
+
+        if config["as_test"]:
+            break
+
 
 def parse_args():
 
@@ -482,6 +584,14 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--stop-perplexity",
+        default=0,
+        type=float,
+        help="Target perplexity to reach after which to stop training. Default is 0. "
+        "If 0, training will not stop on perplexity.",
+    )
+
+    parser.add_argument(
         "--eval-batch-size-per-device",
         type=int,
         default=64,
@@ -495,7 +605,9 @@ def parse_args():
         "--grad_accum", type=int, default=1, help="Gradient accumulation steps."
     )
     parser.add_argument("--train_path", type=str, help="Path to training jsonl file")
+
     parser.add_argument("--test_path", type=str, help="Path to testing jsonl file")
+
     parser.add_argument(
         "--special_token_path", type=str, help="Path to token json file"
     )
@@ -505,6 +617,7 @@ def parse_args():
         help="If passed, will not use gradient checkpointing.",
     )
     parser.add_argument("--output_dir", type=str, help="Path to output directory.")
+
     parser.add_argument(
         "--model_name", default="meta-llama/Llama-2-7b-chat-hf", type=str
     )
@@ -539,6 +652,15 @@ def parse_args():
         default="./deepspeed_configs/zero_3_llama_2_7b.json",
         help="Deepspeed config json to use.",
     )
+
+    parser.add_argument(
+        "--lora",
+        action="store_true",
+        default=False,
+        help="If passed, will enable parameter efficient fine-tuning with LoRA ("
+        "https://arxiv.org/pdf/2106.09685.pdf).",
+    )
+
     args = parser.parse_args()
 
     return args
@@ -565,6 +687,12 @@ def main():
             "eval_batch_size": args.eval_batch_size_per_device,
         }
     )
+
+    # Add LoRA config if needed
+    if args.lora:
+        with open("./lora_configs/lora.json", "r") as json_file:
+            lora_config = json.load(json_file)
+        config["lora_config"] = lora_config
 
     # Add deepspeed plugin to the config
     ds_plugin = DeepSpeedPlugin(hf_ds_config=config.get("ds_config"))
@@ -601,6 +729,10 @@ def main():
     storage_path = (
         f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
     )
+
+    trial_name = f"{args.model_name}".split("/")[-1]
+    if args.lora:
+        trial_name += "-lora"
 
     trainer = TorchTrainer(
         training_function,

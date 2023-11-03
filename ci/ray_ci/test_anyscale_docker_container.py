@@ -1,4 +1,5 @@
 import sys
+import os
 from typing import List
 from unittest import mock
 
@@ -13,21 +14,28 @@ class TestAnyscaleDockerContainer(RayCITestBase):
 
     def test_run(self) -> None:
         def _mock_run_script(input: List[str]) -> None:
-            self.cmds.append(input[0])
+            self.cmds.append(input)
 
         with mock.patch(
             "ci.ray_ci.docker_container.Container.run_script",
             side_effect=_mock_run_script,
-        ):
-            container = AnyscaleDockerContainer("3.8", "cu11.8.0", "ray")
+        ), mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "test_branch"}):
+            container = AnyscaleDockerContainer("3.9", "cu11.8.0", "ray-ml")
             container.run()
             cmd = self.cmds[-1]
-            assert cmd == (
+            ecr = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
+            project = f"{ecr}/anyscale/ray-ml"
+            assert cmd == [
                 "./ci/build/build-anyscale-docker.sh "
-                "rayproject/ray:123456-py38-cu118 "
-                "anyscale/ray:123456-py38-cu118 "
-                "requirements_byod_3.8.txt"
-            )
+                "rayproject/ray-ml:123456-py39-cu118 "
+                f"{project}:123456-py39-cu118 requirements_ml_byod_3.9.txt {ecr}",
+                f"docker tag {project}:123456-py39-cu118 {project}:123456-py39-cu118",
+                f"docker push {project}:123456-py39-cu118",
+                f"docker tag {project}:123456-py39-cu118 {project}:123456-py39-gpu",
+                f"docker push {project}:123456-py39-gpu",
+                f"docker tag {project}:123456-py39-cu118 {project}:123456-py39",
+                f"docker push {project}:123456-py39",
+            ]
 
 
 if __name__ == "__main__":

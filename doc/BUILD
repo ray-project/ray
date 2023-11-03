@@ -113,11 +113,20 @@ py_test(
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 
+py_test(
+    name = "doc_code_ray_oom_prevention",
+    size = "medium",
+    main = "source/ray-core/doc_code/ray_oom_prevention.py",
+    srcs = ["source/ray-core/doc_code/ray_oom_prevention.py"],
+    tags = ["exclusive", "xcommit", "team:core"]
+)
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
     exclude = ["source/ray-core/doc_code/runtime_env_example.py",
-               "source/ray-core/doc_code/cross_language.py"],
+               "source/ray-core/doc_code/cross_language.py",
+               "source/ray-core/doc_code/ray_oom_prevention.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:core"],
 )
@@ -284,8 +293,6 @@ doctest(
             "source/ray-core/tasks/nested-tasks.rst",
             "source/ray-observability/user-guides/ray-tracing.rst",
             "source/ray-observability/user-guides/cli-sdk.rst",
-            "source/rllib/rllib-env.rst",
-            "source/rllib/rllib-sample-collection.rst",
             "source/serve/advanced-guides/inplace-updates.md",
             "source/serve/deploy-many-models/multi-app.md",
             "source/serve/production-guide/deploy-vm.md",
@@ -296,6 +303,8 @@ doctest(
 	    "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
+            "source/rllib/**/*.rst",
+            "source/rllib/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
         ]
     ),
@@ -313,6 +322,22 @@ doctest(
         ]
     ),
     tags = ["team:core"]
+)
+
+doctest(
+    name="doctest[rllib]",
+    files = glob(
+        include=[
+            "source/rllib/**/*.rst",
+            "source/rllib/**/*.md"
+        ],
+        exclude=[
+            "source/rllib/rllib-env.rst",
+            "source/rllib/rllib-sample-collection.rst",
+        ]
+    ),
+    size = "enormous",
+    tags = ["team:rllib"]
 )
 
 doctest(

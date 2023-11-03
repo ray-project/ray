@@ -1,7 +1,6 @@
 import copy
 import functools
 import itertools
-import uuid
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -110,7 +109,6 @@ class ExecutionPlan:
         self,
         in_blocks: BlockList,
         stats: DatasetStats,
-        dataset_uuid=None,
         *,
         run_by_consumer: bool,
     ):
@@ -135,11 +133,11 @@ class ExecutionPlan:
         self._last_optimized_stages = None
         # Cached schema.
         self._schema = None
-        self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
-        if not stats.dataset_uuid:
-            stats.dataset_uuid = self._dataset_uuid
+        # Set when a Dataset is constructed with this plan
+        self._dataset_uuid = None
 
         self._run_by_consumer = run_by_consumer
+        self._dataset_name = None
 
         # Snapshot the current context, so that the config of Datasets is always
         # determined by the config at the time it was created.
@@ -226,8 +224,17 @@ class ExecutionPlan:
             num_blocks = "?"
         else:
             num_blocks = dataset_blocks.estimated_num_blocks()
-        dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
-            classname, num_blocks, count, schema_str
+        name_str = (
+            "name={}, ".format(self._dataset_name)
+            if self._dataset_name is not None
+            else ""
+        )
+        dataset_str = "{}({}num_blocks={}, num_rows={}, schema={})".format(
+            classname,
+            name_str,
+            num_blocks,
+            count,
+            schema_str,
         )
 
         # If the resulting string representation fits in one line, use it directly.
@@ -267,8 +274,14 @@ class ExecutionPlan:
                 schema_str = (
                     "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
                 )
+            name_str = (
+                f"\n{trailing_space}{INDENT_STR}name={self._dataset_name},"
+                if self._dataset_name is not None
+                else ""
+            )
             dataset_str = (
                 f"{classname}("
+                f"{name_str}"
                 f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
                 f"\n{trailing_space}{INDENT_STR}num_rows={count},"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
@@ -321,29 +334,23 @@ class ExecutionPlan:
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
+        plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
-    def deep_copy(self, preserve_uuid: bool = False) -> "ExecutionPlan":
+    def deep_copy(self) -> "ExecutionPlan":
         """Create a deep copy of this execution plan.
 
         This copy can be executed AND cleared without mutating the original.
 
-        Args:
-            preserve_uuid: Whether to preserve the original UUID in the copy.
-
         Returns:
             A deep copy of this execution plan.
         """
-        dataset_uuid = None
-        if preserve_uuid:
-            dataset_uuid = self._dataset_uuid
         in_blocks = self._in_blocks
         if isinstance(in_blocks, BlockList):
             in_blocks = in_blocks.copy()
         plan_copy = ExecutionPlan(
             in_blocks,
             copy.copy(self._in_stats),
-            dataset_uuid=dataset_uuid,
             run_by_consumer=self._run_by_consumer,
         )
         if self._snapshot_blocks:
@@ -352,6 +359,7 @@ class ExecutionPlan:
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
+        plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
     def initial_num_blocks(self) -> int:
@@ -583,8 +591,10 @@ class ExecutionPlan:
                     StreamingExecutor,
                 )
 
+                metrics_tag = (self._dataset_name or "dataset") + self._dataset_uuid
                 executor = StreamingExecutor(
-                    copy.deepcopy(context.execution_options), self._dataset_uuid
+                    copy.deepcopy(context.execution_options),
+                    metrics_tag,
                 )
                 blocks = execute_to_legacy_block_list(
                     executor,
@@ -736,7 +746,7 @@ class ExecutionPlan:
                 estimated_num_blocks,
                 k,
             ) = compute_additional_split_factor(
-                logical_op._reader,
+                logical_op._datasource_or_legacy_reader,
                 logical_op._parallelism,
                 logical_op._mem_size,
                 ctx.target_max_block_size,

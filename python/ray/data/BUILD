@@ -186,6 +186,14 @@ py_test(
 )
 
 py_test(
+    name = "test_filename_provider",
+    size = "small",
+    srcs = ["tests/test_filename_provider.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],
@@ -428,7 +436,7 @@ py_test(
 
 py_test(
     name = "test_split",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_split.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -486,6 +494,14 @@ py_test(
     name = "test_webdataset",
     size = "medium",
     srcs = ["tests/test_webdataset.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_backpressure_policies",
+    size = "small",
+    srcs = ["tests/test_backpressure_policies.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

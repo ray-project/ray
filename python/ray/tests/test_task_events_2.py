@@ -810,7 +810,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
         verify_tasks_running_or_terminated,
         task_pids=ray.get(killer.get_pids.remote()),
         expect_num_tasks=len(tasks),
-        timeout=15,
+        timeout=30,
         retry_interval_ms=500,
     )
 

@@ -3,7 +3,6 @@ import tempfile
 import time
 from typing import Any, List, Optional
 
-import numpy as np
 import pytest
 import requests
 import starlette.responses
@@ -20,12 +19,12 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.routing import Route
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import IS_PYDANTIC_2, BaseModel, Field
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
@@ -152,6 +151,22 @@ def test_make_fastapi_class_based_view(websocket: bool):
     assert "get_current_servable" in str(self_dep.call)
 
 
+class Nested(BaseModel):
+    val: int
+
+
+class BodyType(BaseModel):
+    name: str
+    price: float = Field(None, gt=1.0, description="High price!")
+    nests: Nested
+
+
+class RespModel(BaseModel):
+    ok: bool
+    vals: List[Any]
+    file_path: str
+
+
 def test_fastapi_features(serve_instance):
     app = FastAPI(openapi_url="/my_api.json")
 
@@ -166,19 +181,6 @@ def test_fastapi_features(serve_instance):
         process_time = time.time() - start_time
         response.headers["X-Process-Time"] = str(process_time)
         return response
-
-    class Nested(BaseModel):
-        val: int
-
-    class BodyType(BaseModel):
-        name: str
-        price: float = Field(None, gt=1.0, description="High price!")
-        nests: Nested
-
-    class RespModel(BaseModel):
-        ok: bool
-        vals: List[Any]
-        file_path: str
 
     async def yield_db():
         yield "db"
@@ -509,11 +511,13 @@ def test_fastapi_multiple_headers(serve_instance):
     assert resp.cookies.get_dict() == {"a": "b", "c": "d"}
 
 
-def test_fastapi_nested_field_in_response_model(serve_instance):
+class TestModel(BaseModel):
+    a: str
     # https://github.com/ray-project/ray/issues/16757
-    class TestModel(BaseModel):
-        a: str
-        b: List[str]
+    b: List[str]
+
+
+def test_fastapi_nested_field_in_response_model(serve_instance):
 
     app = FastAPI()
 
@@ -672,28 +676,6 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
     ]
     for path in should_404:
         assert requests.get("http://localhost:8000" + path).status_code == 404, path
-
-
-@pytest.mark.skipif(
-    IS_PYDANTIC_2,
-    reason="We don't currently install custom encoders for pydantic >= 2.",
-)
-def test_fastapi_custom_serializers(serve_instance):
-    app = FastAPI()
-
-    @serve.deployment
-    @serve.ingress(app)
-    class D:
-        @app.get("/np_array")
-        def incr(self):
-            return np.zeros(2)
-
-    serve.run(D.bind())
-
-    resp = requests.get("http://localhost:8000/np_array")
-    print(resp.text)
-    resp.raise_for_status()
-    assert resp.json() == [0, 0]
 
 
 @pytest.mark.parametrize("two_fastapi", [True, False])

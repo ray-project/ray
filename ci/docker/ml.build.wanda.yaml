@@ -4,6 +4,7 @@ dockerfile: ci/docker/ml.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
   - ci/env/install-horovod.sh
+  - ci/env/install-hdfs.sh
   - python/requirements.txt
   - python/requirements_compiled.txt
   - python/requirements/test-requirements.txt
@@ -18,6 +19,6 @@ srcs:
   - python/requirements/ml/data-test-requirements.txt
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=$IMAGE_FROM
-  - IS_GPU_BUILD
+  - RAYCI_IS_GPU_BUILD
 tags:
   - cr.ray.io/rayproject/$IMAGE_TO

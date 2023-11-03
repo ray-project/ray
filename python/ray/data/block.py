@@ -206,6 +206,10 @@ class BlockMetadata:
     def __post_init__(self):
         if self.input_files is None:
             self.input_files = []
+        if self.size_bytes is not None:
+            # Require size_bytes to be int, ray.util.metrics objects
+            # will not take other types like numpy.int64
+            assert isinstance(self.size_bytes, int)
 
 
 @DeveloperAPI

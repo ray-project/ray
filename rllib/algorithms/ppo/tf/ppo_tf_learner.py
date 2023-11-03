@@ -134,6 +134,11 @@ class PPOTfLearner(PPOLearner, TfLearner):
                 ),
                 ENTROPY_KEY: mean_entropy,
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+                # "advantages": possibly_masked_mean(batch[Postprocessing.ADVANTAGES]),
+                # "values": possibly_masked_mean(batch[SampleBatch.VF_PREDS]),
+                # "value_targets": possibly_masked_mean(
+                #    batch[Postprocessing.VALUE_TARGETS]
+                # ),
             },
         )
         # Return the total loss.

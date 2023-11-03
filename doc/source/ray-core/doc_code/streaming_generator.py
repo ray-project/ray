@@ -65,7 +65,7 @@ class AsyncActor:
         for i in range(5):
             yield i
 
-@ray.remote(num_concurrency=5)
+@ray.remote(max_concurrency=5)
 class ThreadedActor:
     def f(self):
         for i in range(5):

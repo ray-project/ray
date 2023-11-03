@@ -192,6 +192,17 @@ _task_only_options = {
         else "retry_exceptions must be either a boolean or a list of exceptions",
         default_value=False,
     ),
+    "_generator_backpressure_num_objects": Option(
+        (int, type(None)),
+        lambda x: None
+        if x != 0
+        else (
+            "_generator_backpressure_num_objects=0 is not allowed. "
+            "Use a value > 0. If the value is equal to 1, the behavior "
+            "is identical to Python generator (generator 1 object "
+            "whenever `next` is called). Use -1 to disable this feature. "
+        ),
+    ),
 }
 
 _actor_only_options = {
