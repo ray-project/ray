@@ -287,7 +287,7 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = [
-        "tuned_examples/appo/cartpole-impala-separate-losses.py"
+        "tuned_examples/impala/cartpole-impala-separate-losses.py"
     ],
     args = ["--dir=tuned_examples/impala"]
 )
