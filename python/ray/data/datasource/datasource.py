@@ -55,6 +55,7 @@ class Datasource:
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
+    @Deprecated
     def on_write_start(self, **write_args) -> None:
         """Callback for when a write job starts.
 
@@ -66,6 +67,7 @@ class Datasource:
         """
         pass
 
+    @Deprecated
     def write(
         self,
         blocks: Iterable[Block],
@@ -84,6 +86,7 @@ class Datasource:
         """
         raise NotImplementedError
 
+    @Deprecated
     def on_write_complete(self, write_results: List[WriteResult], **kwargs) -> None:
         """Callback for when a write job completes.
 
@@ -97,6 +100,7 @@ class Datasource:
         """
         pass
 
+    @Deprecated
     def on_write_failed(
         self, write_results: List[ObjectRef[WriteResult]], error: Exception, **kwargs
     ) -> None:
