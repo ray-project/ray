@@ -1338,6 +1338,10 @@ def test_pandas_block_select():
 # tests should only be carefully reordered to retain this invariant!
 
 
+@pytest.mark.skip(
+    "The PyArrow version check caches results in a global variable. So, we don't raise "
+    " an error on subsequent checks, and this test can behave unpredictably."
+)
 def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
     ray.shutdown()
 
