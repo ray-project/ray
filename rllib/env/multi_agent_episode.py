@@ -2,7 +2,7 @@ import numpy as np
 import uuid
 
 from queue import Queue
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -95,8 +95,8 @@ class MultiAgentEpisode:
         # Agent ids must be provided if data is provided. The Episode cannot
         # know how many agents are in the environment. Also the number of agents
         # can grwo or shrink.
-        self._agent_ids: Union[List[str], List[object]] = (
-            [] if agent_ids is None else agent_ids
+        self._agent_ids: Union[Set[str], Set[object]] = (
+            set() if agent_ids is None else set(agent_ids)
         )
 
         # The global last timestep of the episode and the timesteps when this chunk
@@ -460,6 +460,14 @@ class MultiAgentEpisode:
             # Skip agents that have been terminated or truncated.
             if self.agent_episodes[agent_id].is_done:
                 continue
+
+            agent_is_terminated = (
+                False if agent_id not in is_terminated else is_terminated[agent_id]
+            ) or is_terminated["__all__"]
+            agent_is_truncated = (
+                False if agent_id not in is_truncated else is_truncated[agent_id]
+            ) or is_truncated["__all__"]
+
             # CASE 1: observation, no action.
             # If we have an observation, but no action, we might have a buffered action,
             # or an initial agent observation.
@@ -492,7 +500,7 @@ class MultiAgentEpisode:
                     # It could be the last timestep of the agent.
                     # Note, in this case the agent is in `is_terminated` and
                     # `is_truncated` b/c it has an observation.
-                    if is_terminated[agent_id] or is_truncated[agent_id]:
+                    if agent_is_terminated or agent_is_truncated:
                         # Then, flush the buffers.
                         # TODO (simon): You can simply not refill them above.
                         self.agent_buffers[agent_id]["rewards"].get_nowait()
@@ -508,23 +516,20 @@ class MultiAgentEpisode:
                         reward=agent_reward,
                         info=None if agent_id not in info else info[agent_id],
                         state=agent_state,
-                        is_terminated=False
-                        if agent_id not in is_terminated
-                        else is_terminated[agent_id],
-                        is_truncated=False
-                        if agent_id not in is_truncated
-                        else is_truncated[agent_id],
+                        is_terminated=agent_is_terminated,
+                        is_truncated=agent_is_truncated,
                         extra_model_output=agent_extra_model_output,
                     )
                 # We have no buffered action.
                 else:
                     # The agent might have been terminated/truncated.
                     # if agent_id in is_terminated or agent_id in is_truncated:
-                    if is_terminated[agent_id] or is_truncated[agent_id]:
+                    if agent_is_terminated or agent_is_truncated:
                         # If the agent has never stepped, we treat it as not being
                         # part of this episode.
                         # Delete all of the agent's registers.
-                        del self._agent_ids[self._agent_ids.index(agent_id)]
+                        # del self._agent_ids[self._agent_ids.index(agent_id)]
+                        self._agent_ids.discard(agent_id)
                         del self.agent_episodes[agent_id]
                         del self.agent_buffers[agent_id]
                         del self.global_t_to_local_t[agent_id]
@@ -553,145 +558,137 @@ class MultiAgentEpisode:
             elif agent_id not in observation and agent_id in action:
                 # Maybe the agent got terminated.
                 # if agent_id in is_terminated or agent_id in is_truncated:
-                # if is_terminated[agent_id] or is_truncated[agent_id]:
-                #     # If this was indeed the agent's last step, we need to record it
-                #     # in the timestep mapping.
-                #     self.global_t_to_local_t[agent_id].append(self.t)
-                #     # Also flush all default values from the buffers.
-                #     self.agent_buffers[agent_id]["rewards"].get_nowait()
-                #     self.agent_buffers[agent_id]["states"].get_nowait()
-                #     self.agent_buffers[agent_id]["extra_model_outputs"].get_nowait()
-                #     # If the agent was terminated and no observation is provided,
-                #     # take the last one.
-                #     self.agent_episodes[agent_id].add_timestep(
-                #         observation=self.agent_episodes[agent_id].observations[-1],
-                #         action=action[agent_id],
-                #         reward=0.0 if agent_id not in reward else reward[agent_id],
-                #         state=None if agent_id not in state else state[agent_id],
-                #         is_terminated=is_terminated[agent_id],
-                #         is_truncated=is_truncated[agent_id],
-                #         extra_model_output=None
-                #         if agent_id not in extra_model_output
-                #         else extra_model_output[agent_id],
-                #     )
-                # Agent is still alive.
-                # else:
-
-                # TODO (simon): Maybe add a shift mapping that keeps track on
-                # original action timestep (global one).
-                # Buffer the action.
-                self.agent_buffers[agent_id]["actions"].put_nowait(action[agent_id])
-                # If available, buffer also reward. Note, if the agent is terminated
-                # or truncated, we finish the `SingleAgentEpisode`.
-                if agent_id in reward:
-                    # Add the reward to the existing one in the buffer. Note, the
-                    # default value is zero.
-                    self.agent_buffers[agent_id]["rewards"].put_nowait(
-                        self.agent_buffers[agent_id]["rewards"].get_nowait()
-                        + reward[agent_id]
-                    )
-                # If not available set reward to zero.
-                # TODO (simon): Check, if this is okay for training.
-                # else:
-                #     self.agent_buffers[agent_id]["rewards"].put_nowait(0.0)
-                # If the agent got a state buffer that one, too.
-                if state and agent_id in state:
-                    # Flush the default `None` from buffer.
+                if agent_is_terminated or agent_is_truncated:
+                    # If this was indeed the agent's last step, we need to record it
+                    # in the timestep mapping.
+                    self.global_t_to_local_t[agent_id].append(self.t)
+                    # Also flush all default values from the buffers.
+                    self.agent_buffers[agent_id]["rewards"].get_nowait()
                     self.agent_buffers[agent_id]["states"].get_nowait()
-                    # Store the hidden state into the buffer.
-                    self.agent_buffers[agent_id]["states"].put_nowait(state[agent_id])
-                # If the agent got any extra model outputs, buffer them, too.
-                if extra_model_output and agent_id in extra_model_output:
-                    # Flush the default `None` from buffer.
                     self.agent_buffers[agent_id]["extra_model_outputs"].get_nowait()
-                    # STore the extra model outputs into the buffer.
-                    self.agent_buffers[agent_id]["extra_model_outputs"].put_nowait(
-                        extra_model_output[agent_id]
+                    # If the agent was terminated and no observation is provided,
+                    # take the last one.
+                    self.agent_episodes[agent_id].add_timestep(
+                        observation=self.agent_episodes[agent_id].observations[-1],
+                        action=action[agent_id],
+                        reward=0.0 if agent_id not in reward else reward[agent_id],
+                        state=None if agent_id not in state else state[agent_id],
+                        is_terminated=agent_is_terminated,
+                        is_truncated=agent_is_truncated,
+                        extra_model_output=None
+                        if agent_id not in extra_model_output
+                        else extra_model_output[agent_id],
                     )
+                # Agent is still alive.
+                else:
+                    # TODO (simon): Maybe add a shift mapping that keeps track on
+                    # original action timestep (global one).
+                    # Buffer the action.
+                    self.agent_buffers[agent_id]["actions"].put_nowait(action[agent_id])
+                    # If available, buffer also reward. Note, if the agent is terminated
+                    # or truncated, we finish the `SingleAgentEpisode`.
+                    if agent_id in reward:
+                        # Add the reward to the existing one in the buffer. Note, the
+                        # default value is zero.
+                        self.agent_buffers[agent_id]["rewards"].put_nowait(
+                            self.agent_buffers[agent_id]["rewards"].get_nowait()
+                            + reward[agent_id]
+                        )
+                    # If not available set reward to zero.
+                    # TODO (simon): Check, if this is okay for training.
+                    # else:
+                    #     self.agent_buffers[agent_id]["rewards"].put_nowait(0.0)
+                    # If the agent got a state buffer that one, too.
+                    if state and agent_id in state:
+                        # Flush the default `None` from buffer.
+                        self.agent_buffers[agent_id]["states"].get_nowait()
+                        # Store the hidden state into the buffer.
+                        self.agent_buffers[agent_id]["states"].put_nowait(
+                            state[agent_id]
+                        )
+                    # If the agent got any extra model outputs, buffer them, too.
+                    if extra_model_output and agent_id in extra_model_output:
+                        # Flush the default `None` from buffer.
+                        self.agent_buffers[agent_id]["extra_model_outputs"].get_nowait()
+                        # STore the extra model outputs into the buffer.
+                        self.agent_buffers[agent_id]["extra_model_outputs"].put_nowait(
+                            extra_model_output[agent_id]
+                        )
 
             # CASE 3: No observation and no action.
             # We have neither observation nor action. Then, we could have `reward`,
             # `is_terminated` or `is_truncated` and should record it.
             elif agent_id not in observation and agent_id not in action:
-                # The agent could be terminated.
-                # if agent_id in is_terminated or agent_id in is_truncated:
-                # if is_terminated[agent_id] or is_truncated[agent_id]:
-                #     # The agent could have been terminated before.
-                #     if self.agent_episodes[agent_id].is_done:
-                #         continue
+                # The agent could be is_terminated
+                if agent_is_terminated or agent_is_truncated:
+                    # If the agent has never stepped, we treat it as not being
+                    # part of this episode.
+                    if len(self.agent_episodes[agent_id].observations) == 0:
+                        # Delete all of the agent's registers.
+                        # del self._agent_ids[self._agent_ids.index(agent_id)]
+                        self._agent_ids.discard(agent_id)
+                        del self.agent_episodes[agent_id]
+                        del self.agent_buffers[agent_id]
+                        del self.global_t_to_local_t[agent_id]
+                        # Then continue with the next agent.
+                        continue
 
-                #     # If the agent has never stepped, we treat it as not being
-                #     # part of this episode.
-                #     if len(self.agent_episodes[agent_id].observations) == 0:
-                #         # Delete all of the agent's registers.
-                #         del self._agent_ids[self._agent_ids.index(agent_id)]
-                #         del self.agent_episodes[agent_id]
-                #         del self.agent_buffers[agent_id]
-                #         del self.global_t_to_local_t[agent_id]
-                #         # Then continue with the next agent.
-                #         continue
-
-                #     # If no observation and no action is available and the agent had
-                #     # stepped before the buffer must be full b/c after each
-                #     # observation the agent does step and if no observation followed
-                #     # to write the record away, the action gets buffered.
-                #     agent_action = self.agent_buffers[agent_id][
-                #         "actions"
-                #     ].get_nowait()
-                #     # Note, this is initialized as `None` if agents do not have
-                #     # extra model outputs.
-                #     agent_extra_model_output = self.agent_buffers[agent_id][
-                #         "extra_model_outputs"
-                #     ].get_nowait()
-                #     # Note, also the state is initialized as `None` and therefore
-                #     # always available.
-                #     agent_state = self.agent_buffers[agent_id]["states"].get_nowait()
-                #     # Get the reward from the buffer. Note, this is always available
-                #     # as it is initialized as a zero reward.
-                #     agent_reward = self.agent_buffers[agent_id][
-                #         "rewards"
-                #     ].get_nowait()
-                #     # If a reward is received at this timestep record it.
-                #     if agent_id in reward:
-                #         agent_reward += reward[agent_id]
-
-                #     # If this was indeed the agent's last step, we need to record
-                #     # it in the timestep mapping.
-                #     self.global_t_to_local_t[agent_id].append(self.t)
-                #     # Finish the agent's episode.
-                #     self.agent_episodes[agent_id].add_timestep(
-                #         observation=self.agent_episodes[agent_id].observations[-1],
-                #         action=agent_action,
-                #         reward=agent_reward,
-                #         info=None if agent_id not in info else info[agent_id],
-                #         state=agent_state,
-                #         is_terminated=is_terminated[agent_id],
-                #         is_truncated=is_truncated[agent_id],
-                #         extra_model_output=agent_extra_model_output,
-                #     )
-                # The agent is still alive.
-                # else:
-
-                # First check, if the agent had already an intiial observation.
-                if len(self.agent_episodes[agent_id].observations) > 0:
-                    # If the agent received an reward (triggered by actions of
-                    # other agents) we collect it and add it to the one in the
-                    # buffer.
-                    # TODO (sven, simon): Agents could have had already rewards
-                    # before the their initial observation, .e.g. cooperation
-                    # games.
+                    # If no observation and no action is available and the agent had
+                    # stepped before the buffer must be full b/c after each
+                    # observation the agent does step and if no observation followed
+                    # to write the record away, the action gets buffered.
+                    agent_action = self.agent_buffers[agent_id]["actions"].get_nowait()
+                    # Note, this is initialized as `None` if agents do not have
+                    # extra model outputs.
+                    agent_extra_model_output = self.agent_buffers[agent_id][
+                        "extra_model_outputs"
+                    ].get_nowait()
+                    # Note, also the state is initialized as `None` and therefore
+                    # always available.
+                    agent_state = self.agent_buffers[agent_id]["states"].get_nowait()
+                    # Get the reward from the buffer. Note, this is always available
+                    # as it is initialized as a zero reward.
+                    agent_reward = self.agent_buffers[agent_id]["rewards"].get_nowait()
+                    # If a reward is received at this timestep record it.
                     if agent_id in reward:
-                        self.agent_buffers[agent_id]["rewards"].put_nowait(
-                            self.agent_buffers[agent_id]["rewards"].get_nowait()
-                            + reward[agent_id]
-                        )
+                        agent_reward += reward[agent_id]
+
+                    # If this was indeed the agent's last step, we need to record
+                    # it in the timestep mapping.
+                    self.global_t_to_local_t[agent_id].append(self.t)
+                    # Finish the agent's episode.
+                    self.agent_episodes[agent_id].add_timestep(
+                        observation=self.agent_episodes[agent_id].observations[-1],
+                        action=agent_action,
+                        reward=agent_reward,
+                        info=None if agent_id not in info else info[agent_id],
+                        state=agent_state,
+                        is_terminated=agent_is_terminated,
+                        is_truncated=agent_is_truncated,
+                        extra_model_output=agent_extra_model_output,
+                    )
+                # The agent is still alive.
+                else:
+                    # First check, if the agent had already an intiial observation.
+                    if len(self.agent_episodes[agent_id].observations) > 0:
+                        # If the agent received an reward (triggered by actions of
+                        # other agents) we collect it and add it to the one in the
+                        # buffer.
+                        # TODO (sven, simon): Agents could have had already rewards
+                        # before the their initial observation, .e.g. cooperation
+                        # games.
+                        if agent_id in reward:
+                            self.agent_buffers[agent_id]["rewards"].put_nowait(
+                                self.agent_buffers[agent_id]["rewards"].get_nowait()
+                                + reward[agent_id]
+                            )
             # CASE 4: Observation and action.
             # We have an observation and an action. Then we can simply add the
             # complete information to the episode.
             else:
                 # In this case the agent id is also in the `is_terminated` and
                 # `is_truncated` dictionaries.
-                if is_terminated[agent_id] or is_truncated[agent_id]:
+                if agent_is_terminated or agent_is_truncated:
                     # If the agent is also done in this timestep, flush the buffers.
                     self.agent_buffers[agent_id]["rewards"].get_nowait()
                     self.agent_buffers[agent_id]["states"].get_nowait()
@@ -707,12 +704,8 @@ class MultiAgentEpisode:
                     state=None if agent_id not in state else state[agent_id],
                     # TODO (simon): Check, if case checking is necessary here.
                     # This would even insure against user errors in the env.
-                    is_terminated=False
-                    if is_terminated is None
-                    else is_terminated[agent_id],
-                    is_truncated=False
-                    if is_truncated is None
-                    else is_truncated[agent_id],
+                    is_terminated=agent_is_terminated,
+                    is_truncated=agent_is_truncated,
                     extra_model_output=None
                     if extra_model_output is None
                     else extra_model_output[agent_id],
@@ -1007,20 +1000,28 @@ class MultiAgentEpisode:
             )
 
             agent_is_terminated = (
-                False
+                [False]
                 if is_terminateds is None
                 else self._get_single_agent_data(
                     agent_id, is_terminateds, start_index=1, shift=-1
                 )
-            )[-1]
+            )
+            # If a list the list could be empty, if the agent never stepped.
+            agent_is_terminated = (
+                False if not agent_is_terminated else agent_is_terminated[-1]
+            )
 
             agent_is_truncated = (
-                False
+                [False]
                 if is_truncateds is None
                 else self._get_single_agent_data(
                     agent_id, is_truncateds, start_index=1, shift=-1
                 )
-            )[-1]
+            )
+            # If a list the list could be empty, if the agent never stepped.
+            agent_is_truncated = (
+                False if not agent_is_truncated else agent_is_truncated[-1]
+            )
 
             return SingleAgentEpisode(
                 id_=episode_id,
@@ -1033,7 +1034,7 @@ class MultiAgentEpisode:
                 states=agent_states,
                 extra_model_outputs=agent_extra_model_outputs,
             )
-        # Otherwise return empty ' SingleAgentEpisosde'.
+        # Otherwise return empty `SingleAgentEpisosde`.
         else:
             return SingleAgentEpisode(id_=episode_id)
 
