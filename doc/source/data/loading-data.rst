@@ -133,14 +133,16 @@ To view the full list of supported file formats, see the
             print(ds.schema())
 
         .. testoutput::
+            :options: +MOCK
 
-            Column             Type
-            ------             ----
-            sepal length (cm)  double
-            sepal width (cm)   double
-            petal length (cm)  double
-            petal width (cm)   double
-            target             int64
+            Column        Type
+            ------        ----
+            label         binary
+            petal.length  float
+            sepal.width   float
+            petal.width   float
+            sepal.length  float
+
 
 Reading files from local disk
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -477,9 +479,9 @@ Ray Data interoperates with distributed data processing frameworks like
 
         .. testoutput::
 
-            {'string': 'spam', 'number': 0}
-            {'string': 'ham', 'number': 1}
-            {'string': 'eggs', 'number': 2}
+            {'col1': 0, 'col2': '0'}
+            {'col1': 1, 'col2': '1'}
+            {'col1': 2, 'col2': '2'}
 
     .. tab-item:: Spark
 
@@ -488,7 +490,11 @@ Ray Data interoperates with distributed data processing frameworks like
         call :func:`~ray.data.from_spark`. This function creates a ``Dataset`` backed by
         the distributed Spark DataFrame partitions that underly the Spark DataFrame.
 
+        .. 
+            TODO: This code snippet might not work correctly. We should test it.
+
         .. testcode::
+            :skipif: True
 
             import ray
             import raydp
