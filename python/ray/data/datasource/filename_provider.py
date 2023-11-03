@@ -72,7 +72,7 @@ class FilenameProvider:
         """Generate a filename for a row.
 
         .. note::
-            Filenames must be unique and deterministic for a given task, block, and row.
+            Filenames must be unique and deterministic for a given task, block, and row
             index.
 
             A block consists of multiple rows, and each row corresponds to a single
