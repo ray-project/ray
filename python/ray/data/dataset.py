@@ -3004,7 +3004,7 @@ class Dataset:
             block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
-        self.write_datasource(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_tfrecords(
@@ -3291,7 +3291,7 @@ class Dataset:
                 write tasks.
         """  # noqa: E501
         datasink = _SQLDatasink(sql=sql, connection_factory=connection_factory)
-        self.write_datasource(datasink, ray_remote_args=ray_remote_args)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
