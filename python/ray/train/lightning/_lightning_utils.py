@@ -270,6 +270,9 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         checkpoint = Checkpoint.from_directory(tmpdir)
         train.report(metrics=metrics, checkpoint=checkpoint)
 
+        # Add a barrier to ensure all workers finished reporting here
+        torch.distributed.barrier()
+
         if self.local_rank == 0:
             shutil.rmtree(tmpdir)
 
