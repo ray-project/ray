@@ -3,12 +3,13 @@ import inspect
 import logging
 import warnings
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from fastapi import APIRouter, FastAPI
 
 import ray
 from ray import cloudpickle
+from ray._private.serialization import pickle_dumps
 from ray.dag import DAGNode
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
@@ -222,7 +223,9 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
         # this ingress deployment. We don't use copy.copy here to avoid
         # recursion issue.
         ensure_serialization_context()
-        frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+        frozen_app = cloudpickle.loads(
+            pickle_dumps(app, error_msg="Failed to serialize the FastAPI app.")
+        )
 
         class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
             def __init__(self, *args, **kwargs):
@@ -254,8 +257,6 @@ def deployment(
     name: Default[str] = DEFAULT.VALUE,
     version: Default[str] = DEFAULT.VALUE,
     num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-    init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-    init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
@@ -290,8 +291,6 @@ def deployment(
             this deployment. Defaults to 1.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` cannot be set.
-        init_args: [DEPRECATED] These should be passed to `.bind()` instead.
-        init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
         route_prefix: [DEPRECATED] Route prefix should be set per-application
             through `serve.run()`.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
@@ -383,8 +382,8 @@ def deployment(
     def decorator(_func_or_class):
         replica_config = ReplicaConfig.create(
             _func_or_class,
-            init_args=(init_args if init_args is not DEFAULT.VALUE else None),
-            init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
+            init_args=None,
+            init_kwargs=None,
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
@@ -801,6 +800,62 @@ def get_deployment_handle(
         RayServeException: If no Serve controller is running, or if
             calling from outside a Serve application and no application
             name is specified.
+
+    The following example gets the handle to the ingress deployment of
+    an application, which is equivalent to using `serve.get_app_handle`.
+
+    .. testcode::
+
+            import ray
+            from ray import serve
+
+            @serve.deployment
+            def f(val: int) -> int:
+                return val * 2
+
+            serve.run(f.bind(), name="my_app")
+            handle = serve.get_deployment_handle("f", app_name="my_app")
+            assert handle.remote(3).result() == 6
+
+            serve.shutdown()
+
+    The following example demonstrates how you can use this API to get
+    the handle to a non-ingress deployment in an application.
+
+    .. testcode::
+
+            import ray
+            from ray import serve
+            from ray.serve.handle import DeploymentHandle
+
+            @serve.deployment
+            class Multiplier:
+                def __init__(self, multiple: int):
+                    self._multiple = multiple
+
+                def __call__(self, val: int) -> int:
+                    return val * self._multiple
+
+            @serve.deployment
+            class Adder:
+                def __init__(self, handle: DeploymentHandle, increment: int):
+                    self._handle = handle.options(use_new_handle_api=True)
+                    self._increment = increment
+
+                async def __call__(self, val: int) -> int:
+                    return await self._handle.remote(val) + self._increment
+
+
+            # The app calculates 2 * x + 3
+            serve.run(Adder.bind(Multiplier.bind(2), 3), name="math_app")
+            handle = serve.get_app_handle("math_app")
+            assert handle.remote(5).result() == 13
+
+            # Get handle to Multiplier only
+            handle = serve.get_deployment_handle("Multiplier", app_name="math_app")
+            assert handle.remote(5).result() == 10
+
+            serve.shutdown()
     """
 
     client = _get_global_client()

@@ -1682,9 +1682,10 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
 def test_datasource(ray_start_regular):
     source = ray.data.datasource.RandomIntRowDatasource()
     assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
-    source = ray.data.datasource.RangeDatasource()
+    source = ray.data.datasource.RangeDatasource(n=10)
     assert extract_values(
-        "value", ray.data.read_datasource(source, n=10).take()
+        "value",
+        ray.data.read_datasource(source).take(),
     ) == list(range(10))
 
 

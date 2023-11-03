@@ -164,7 +164,7 @@ void ServerConnection::ReadBufferAsync(
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
-        io_context.stats().RecordStart("ClientConnection.async_read.ReadBufferAsync");
+        io_context.stats().RecordStart("ServerConnection.async_read.ReadBufferAsync");
     boost::asio::async_read(
         socket_,
         buffer,
@@ -401,8 +401,8 @@ void ClientConnection::ProcessMessages() {
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
-    const auto stats_handle =
-        io_context.stats().RecordStart("ClientConnection.async_read.ReadBufferAsync");
+    const auto stats_handle = io_context.stats().RecordStart(
+        "ClientConnection.async_read.ProcessMessageHeader");
     boost::asio::async_read(
         ServerConnection::socket_,
         header,
@@ -443,7 +443,7 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
     const auto stats_handle =
-        io_context.stats().RecordStart("ClientConnection.async_read.ReadBufferAsync");
+        io_context.stats().RecordStart("ClientConnection.async_read.ProcessMessage");
     boost::asio::async_read(
         ServerConnection::socket_,
         boost::asio::buffer(read_message_),

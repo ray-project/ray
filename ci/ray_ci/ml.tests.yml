@@ -1,4 +1,7 @@
 flaky_tests:
-  # tune
+  # non-gpu tests
   - //python/ray/tune:cifar10_pytorch
   - //python/ray/tune:test_commands
+  - //python/ray/train:torch_exp_tracking_mlflow
+  # gpu tests
+  - //python/ray/train:test_torch_lightning_train 
