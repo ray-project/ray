@@ -1517,7 +1517,7 @@ class FlakyCSVDatasink(_CSVDatasink):
 
         self.counter = Counter.remote()
 
-    def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+    def write_block_to_file(self, block: BlockAccessor, file):
         count = self.counter.increment.remote()
         if ray.get(count) == 1:
             raise ValueError("oops")
