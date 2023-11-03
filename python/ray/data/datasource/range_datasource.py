@@ -17,7 +17,7 @@ class RangeDatasource(Datasource):
     def __init__(
         self,
         n: int,
-        block_format: str = "list",
+        block_format: str = "arrow",
         tensor_shape: Tuple = (1,),
         column_name: Optional[str] = None,
     ):
@@ -86,7 +86,7 @@ class RangeDatasource(Datasource):
         else:
             raise ValueError("Unsupported block type", block_format)
         if block_format == "tensor":
-            element_size = np.product(tensor_shape)
+            element_size = int(np.product(tensor_shape))
         else:
             element_size = 1
 
