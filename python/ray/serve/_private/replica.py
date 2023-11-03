@@ -660,6 +660,15 @@ class RayServeReplica:
             self.version, self.deployment_config
         )
 
+        if deployment_config.logging_config:
+            logging_config = LoggingConfig(**deployment_config.logging_config)
+            configure_component_logger(
+                component_type=ServeComponentType.DEPLOYMENT,
+                component_name=self.deployment_id.name,
+                component_id=self.replica_tag,
+                logging_config=logging_config,
+            )
+
         if old_user_config != deployment_config.user_config:
             await self.update_user_config(deployment_config.user_config)
 

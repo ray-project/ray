@@ -910,8 +910,8 @@ def build_serve_application(
         deploy_args_list = []
         for deployment in deployments:
             is_ingress = deployment.name == ingress.name
-            # If deployment logging config is not set and use application logging
-            # config if it is set.
+            # If app log config is set and deployment config is not set,
+            # set app config to deployment log config.
             if deployment.logging_config is None and logging_config:
                 deployment.set_logging_config(logging_config.dict())
             deploy_args_list.append(
@@ -960,6 +960,7 @@ def override_deployment_info(
         return deployment_infos
 
     config_dict = override_config.dict(exclude_unset=True)
+    app_logging_config = config_dict.get("logging_config", None)
     deployment_override_options = config_dict.get("deployments", [])
 
     # Override options for each deployment listed in the config.
@@ -1022,12 +1023,15 @@ def override_deployment_info(
         # Override deployment config options
         original_options = info.deployment_config.dict()
         options.pop("name", None)
+        # If deployment logging config is not set, apply the application logging config
+        if "logging_config" not in options and app_logging_config:
+            options["logging_config"] = app_logging_config
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
 
         deployment_infos[deployment_name] = info.update(**override_options)
 
-    # Overwrite ingress route prefix
+    # Overwrite ingress route prefix && logging_config
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)
     for deployment in list(deployment_infos.values()):
         if (
@@ -1035,5 +1039,10 @@ def override_deployment_info(
             and deployment.route_prefix is not None
         ):
             deployment.route_prefix = app_route_prefix
-
+    
+    # When there is no deployment entries and app logging config is set, apply app logging config to all existing deployment
+    # logging config
+    if not deployment_override_options and app_logging_config:
+        for deployment in list(deployment_infos.values()):
+            deployment.deployment_config.logging_config = app_logging_config
     return deployment_infos

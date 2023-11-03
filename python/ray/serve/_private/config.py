@@ -155,6 +155,20 @@ class DeploymentConfig(BaseModel):
 
         return v
 
+    @validator("logging_config", always=True)
+    def logging_config_valid(cls, v):
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            raise TypeError(
+                f"Got invalid type '{type(v)}' for logging_config. "
+                "Expected a dictionary."
+            )
+        if "log_level" not in v:
+            v["log_level"] = "INFO"
+     
+        return v
+
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
 

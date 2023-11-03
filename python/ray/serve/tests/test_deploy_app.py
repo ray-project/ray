@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from copy import copy
 from functools import partial
 from typing import Dict, List
+import re
+import logging
 
 import pytest
 import requests
@@ -23,6 +25,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    LoggingConfig,
 )
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors, list_tasks
@@ -1408,6 +1411,153 @@ def test_change_route_prefix(client: ServeControllerClient):
 
     wait_for_condition(check_switched)
 
+def check_log_file(log_file: str, expected_regex: list):
+    with open(log_file, "r") as f:
+        s = f.read()
+        for regex in expected_regex:
+            assert re.findall(regex, s) != []
+    return True
+
+class TestDeploywithLoggingConfig:
+
+    def get_deploy_config(self):
+        return {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "ray.serve.tests.test_config_files.logging_config_test.model",
+                },
+            ],
+        }
+
+    @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
+    def test_deploy_app_with_logging_config(self, client: ServeControllerClient, encoding_type: str):
+        config_dict = self.get_deploy_config()
+
+        # Set json and debug
+        config_dict["applications"][0]["logging_config"] = {
+            "encoding": encoding_type,
+        }
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+        )
+
+        resp = requests.post("http://localhost:8000/app1").json()
+
+        if encoding_type == "JSON":
+            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+        else:
+            expected_log_regex = [f'.*{resp["replica"]}.*']
+        check_log_file(resp["log_file"], expected_log_regex)
+
+
+    def test_overwritting_logging_config(self, client: ServeControllerClient):
+        """Overwrite the default logging config with application logging config"""
+        config_dict = self.get_deploy_config()
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+        )
+
+        # By default, log level is "INFO"
+        resp = requests.post("http://localhost:8000/app1").json()
+
+        # Make sure 'model_debug_level' log content does not exist
+        with pytest.raises(AssertionError):
+            check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+
+        # Set log level to "DEBUG"
+        config_dict["applications"][0]["logging_config"] = {
+            "log_level": "DEBUG",
+        }
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200 and requests.post("http://localhost:8000/app1").json()["log_level"] == logging.DEBUG,
+        )
+        resp = requests.post("http://localhost:8000/app1").json()
+        check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+
+    def test_not_overwritting_logging_config(self, client: ServeControllerClient):
+        """Deployment logging config should not be overwritten 
+        by application logging config, when deployment config is explicitly set.
+        """
+        config_dict = self.get_deploy_config()
+        config_dict["applications"][0]["deployments"] = [
+            {
+                "name": "Model",
+                "logging_config": {
+                    "log_level": "DEBUG",
+                },
+            },
+        ]
+        config_dict["applications"][0]["logging_config"] = {
+            "log_level": "INFO",
+        }
+
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+        )
+        resp = requests.post("http://localhost:8000/app1").json()
+        check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+
+    def test_logs_dir(self, client: ServeControllerClient):
+
+        config_dict = self.get_deploy_config()
+        config_dict["applications"][0]["logging_config"] = {
+            "log_level": "DEBUG",
+        }
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+        )
+        resp = requests.get("http://127.0.0.1:8000/app1").json()
+
+        # Construct a new path
+        # "/tmp/ray/session_xxx/logs/serve/new_dir"
+        paths = resp["log_file"].split("/")
+        paths[-1] = "new_dir"
+        new_log_dir = "/".join(paths)
+
+        config_dict["applications"][0]["logging_config"] = {
+            "log_level": "DEBUG",
+            "logs_dir": new_log_dir,
+        }
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200 and "new_dir" in requests.get("http://127.0.0.1:8000/app1").json()["log_file"]
+        )
+        resp = requests.get("http://127.0.0.1:8000/app1").json()
+        # log content should be redirected to new file
+        check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
+
+
+    @pytest.mark.parametrize(
+        "access_type", ["ALL", "FILE_ONLY", "STREAM_ONLY", "DISABLE"]
+    )
+    def test_access_log(self, client: ServeControllerClient, access_type: str):
+
+        config_dict = self.get_deploy_config()
+        config_dict["applications"][0]["logging_config"] = {
+            "access_log": access_type,
+        }
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+        )
+        resp = requests.get("http://127.0.0.1:8000/app1").json()
+        assert resp["handlers_state"] == access_type
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

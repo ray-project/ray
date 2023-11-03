@@ -133,6 +133,10 @@ class TestLoggingAPI:
         expected_log_regex = [".*model_info_level.*"]
         check_log_file(resp["log_file"], expected_log_regex)
 
+        # Make sure 'model_debug_level' log content does not exist
+        with pytest.raises(AssertionError):
+            check_log_file(resp["log_file"], [".*model_debug_level.*"])
+
         serve.run(Model.options(logging_config={"log_level": "DEBUG"}).bind())
         resp = requests.get("http://127.0.0.1:8000/").json()
         expected_log_regex = [".*model_info_level.*", ".*model_debug_level.*"]
