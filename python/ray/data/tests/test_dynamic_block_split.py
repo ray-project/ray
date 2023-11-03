@@ -74,15 +74,14 @@ class RandomBytesReader(Reader):
                     block = ArrowBlockAccessor.numpy_to_block(batch)
                     yield block
                 else:
-                    batch = {
-                        "one": [
-                            np.ones(
-                                (self.num_rows_per_batch, self.row_size), dtype=np.uint8
-                            )
-                            for _ in range(self.num_rows_per_batch)
-                        ]
-                    }
-                    yield pd.DataFrame(batch)
+                    yield pd.DataFrame(
+                        {
+                            "one": [
+                                np.array2string(np.ones(self.row_size, dtype=int))
+                                for _ in range(self.num_rows_per_batch)
+                            ]
+                        }
+                    )
 
         return parallelism * [
             ReadTask(
