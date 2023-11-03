@@ -33,6 +33,11 @@ DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
 # We choose 1GiB as 4x less than the typical memory:core ratio (4:1).
 DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 
+# We will attempt to slice blocks whose size exceeds this factor *
+# target_max_block_size. We will warn the user if slicing fails and we produce
+# blocks larger than this threshold.
+MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
+
 # Dataset will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
