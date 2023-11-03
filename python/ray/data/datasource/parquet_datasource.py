@@ -191,6 +191,8 @@ class ParquetDatasource(Datasource):
         import pyarrow as pa
         import pyarrow.parquet as pq
 
+        self._unresolved_paths = paths
+
         self._local_scheduling = None
         if not self.supports_distributed_reads:
             import ray
@@ -442,8 +444,9 @@ class ParquetDatasource(Datasource):
         """
         return "Parquet"
 
+    @property
     def supports_distributed_reads(self) -> bool:
-        return not _is_local_scheme(self._paths)
+        return not _is_local_scheme(self._unresolved_paths)
 
 
 def _read_fragments(

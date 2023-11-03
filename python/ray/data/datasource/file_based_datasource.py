@@ -151,6 +151,7 @@ class FileBasedDatasource(Datasource):
         self._partition_filter = partition_filter
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
+        self._unresolved_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._paths, self._file_sizes = map(
             list,
@@ -572,8 +573,9 @@ class FileBasedDatasource(Datasource):
             return None
         return FileExtensionFilter(cls._FILE_EXTENSION)
 
+    @property
     def supports_distributed_reads(self) -> bool:
-        return not _is_local_scheme(self._paths)
+        return not _is_local_scheme(self._unresolved_paths)
 
 
 def _add_partitions(
