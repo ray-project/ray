@@ -2348,10 +2348,7 @@ def from_huggingface(
         from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
         # For an IterableDataset, we can use a streaming implementation to read data.
-        return read_datasource(
-            HuggingFaceDatasource(),
-            dataset=dataset,
-        )
+        return read_datasource(HuggingFaceDatasource(dataset=dataset))
     if isinstance(dataset, datasets.Dataset):
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g., train_test_split(), shard(), select()),
@@ -2473,8 +2470,7 @@ def from_torch(
         )
     }
     return read_datasource(
-        TorchDatasource(),
-        dataset=dataset,
+        TorchDatasource(dataset=dataset),
         # Only non-parallel, streaming read is currently supported
         parallelism=1,
         ray_remote_args=ray_remote_args,
