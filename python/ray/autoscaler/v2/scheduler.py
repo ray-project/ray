@@ -1,6 +1,4 @@
-import copy
-from abc import ABCMeta, abstractmethod
-from collections import defaultdict
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
@@ -90,11 +88,9 @@ class SchedulingReply:
     # could be cluster constraints enforced, e.g. a newly updated max_workers value
     # would result in a target count smaller than the current count of the node type.
     target_cluster_shape: Dict[NodeType, int]
-    # New launch needed to be launched.
-    to_launch_nodes: Dict[NodeType, int]
 
 
-class IResourceScheduler(metaclass=ABCMeta):
+class IResourceScheduler(ABC):
     """
     Interface for a resource scheduler.
 
@@ -118,7 +114,7 @@ class SchedulingNodeStatus(Enum):
 
     # The node is to be launched.
     TO_LAUNCH = "TO_LAUNCH"
-    # The node is pending to be launched (a pending request, or a pending instance)
+    # The node is pending, i.e. there's already an autoscaler instance being launched
     PENDING = "PENDING"
     # The node is running.
     RUNNING = "RUNNING"
@@ -140,17 +136,6 @@ class SchedulingNode:
         One could also extend the scheduling behavior by overriding `try_schedule`
     """
 
-    # Class level node id counter.
-    _next_id = 0
-
-    @classmethod
-    def next_id(cls) -> int:
-        """
-        Return the next id to be used for creating a new scheduling node id.
-        """
-        cls._next_id += 1
-        return cls._next_id
-
     @classmethod
     def from_node_config(
         cls,
@@ -161,7 +146,6 @@ class SchedulingNode:
         Create a scheduling node from a node config.
         """
         return cls(
-            node_id=cls.next_node_id(),
             node_type=node_config.name,
             total_resources=dict(node_config.resources),
             available_resources=dict(node_config.resources),
@@ -169,9 +153,6 @@ class SchedulingNode:
             status=status,
         )
 
-    # A unique id simply for differentiating nodes. Not the same as a normal ray node
-    # id.
-    id: int
     # Node type name.
     node_type: NodeType
     # Requests committed to be placed on this node.
@@ -247,14 +228,13 @@ class SchedulingNode:
 
     def __repr__(self) -> str:
         return (
-            "SchedulingNode(id={id},node_type={node_type}, "
+            "SchedulingNode(node_type={node_type}, "
             "status={status}, "
             "total_resources={total_resources}, "
             "available_resources={available_resources}, "
             "labels={labels}, launch_reason={launch_reason}), "
             "sched_requests={sched_requests})"
         ).format(
-            id=self.id,
             node_type=self.node_type,
             status=self.status,
             total_resources=self.total_resources,
@@ -262,85 +242,4 @@ class SchedulingNode:
             labels=self.labels,
             launch_reason=self.launch_reason,
             sched_requests="|".join(str(MessageToDict(r)) for r in self.sched_requests),
-        )
-
-
-class ResourceDemandScheduler(IResourceScheduler):
-    """
-    A "simple" resource scheduler that schedules resource requests based on the
-    following rules:
-        1. Enforce the minimal count of nodes for each worker node type.
-        2. Enforce the cluster resource constraints.
-        3. Schedule the gang resource requests.
-        4. Schedule the tasks/actor resource requests
-
-    """
-
-    ############################
-    # Internal States
-    ############################
-    config_: ClusterConfig
-    # The current schedulable nodes (including pending nodes and pending requests).
-    # One should try to access the nodes through _get_nodes().
-    nodes_: List[SchedulingNode]
-    # node types -> number of available nodes (max nodes - existing nodes)
-    node_type_available_: Dict[NodeType, int]
-
-    def schedule(self, request: SchedulingRequest) -> SchedulingReply:
-        pass
-
-    def __init__(
-        self,
-        nodes: List[SchedulingNode],
-        node_type_available: Dict[NodeType, int],
-        config: ClusterConfig,
-    ):
-        self._nodes = nodes
-        self._node_type_available = node_type_available
-        self._config = config
-
-    def _get_nodes(self) -> List[SchedulingNode]:
-        # NOTE: We do the deep copy here since the nodes are usually being updated
-        # during the scheduling process. To prevent accidental modification of the
-        # nodes, we return a copy, and callers should modify the context explicitly
-        # with `ctx.update()`
-        return copy.deepcopy(self._nodes)
-
-    def _get_node_config(self, node_type: NodeType) -> Optional[NodeTypeConfig]:
-        c = self._config.node_type_configs.get(node_type, None)
-        if c:
-            return copy.deepcopy(c)
-        return None
-
-    def _get_sched_config(self) -> ClusterConfig:
-        return copy.deepcopy(self._config)
-
-    def _update(self, new_nodes: List[SchedulingNode]) -> None:
-        """
-        Update the context with the new nodes.
-        """
-        pass
-
-    def _get_node_type_available(self) -> Dict[NodeType, int]:
-        return copy.deepcopy(self._node_type_available)
-
-    def _get_cluster_shape(self) -> Dict[NodeType, int]:
-        """
-        Return the current cluster shape.
-
-        The cluster shape is a dict of node types and the number of nodes of that type.
-        """
-        cluster_shape = defaultdict(int)
-        for node in self._get_nodes():
-            cluster_shape[node.node_type] += 1
-        return cluster_shape
-
-    def _get_max_num_nodes(self) -> Optional[int]:
-        """
-        Return the max number of nodes allowed in the cluster.
-        """
-        return (
-            self._config.max_num_nodes
-            if self._config.HasField("max_num_nodes")
-            else None
         )
