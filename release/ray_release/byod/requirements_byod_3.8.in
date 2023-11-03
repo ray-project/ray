@@ -5,6 +5,7 @@ boto3
 cmake
 crc32c
 cython
+fastapi
 gcsfs
 gsutil
 gym
