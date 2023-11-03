@@ -18,7 +18,6 @@ class _SQLDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-        sql: str,
     ) -> Any:
         with _connect(self.connection_factory) as cursor:
             for block in blocks:
