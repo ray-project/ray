@@ -160,10 +160,8 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
     // It will happen when the node has been deleted or hasn't been added.
     return;
   }
-  if (data.resource_load_changed()) {
-    (*iter->second.mutable_resource_load()) = data.resource_load();
-    (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
-  }
+  (*iter->second.mutable_resource_load()) = data.resource_load();
+  (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
 }
 
 const absl::flat_hash_map<NodeID, rpc::ResourcesData>
