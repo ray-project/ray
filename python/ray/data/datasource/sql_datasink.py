@@ -28,10 +28,10 @@ class _SQLDatasink(Datasink):
                     values.append(tuple(row.values()))
                     assert len(values) <= self._MAX_ROWS_PER_WRITE, len(values)
                     if len(values) == self._MAX_ROWS_PER_WRITE:
-                        cursor.executemany(sql, values)
+                        cursor.executemany(self.sql, values)
                         values = []
 
                 if values:
-                    cursor.executemany(sql, values)
+                    cursor.executemany(self.sql, values)
 
         return "ok"
