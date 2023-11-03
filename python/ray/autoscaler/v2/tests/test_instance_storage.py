@@ -8,14 +8,14 @@ import pytest  # noqa
 
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
-    InstanceUpdatedSuscriber,
+    InstanceUpdatedSubscriber,
     InstanceUpdateEvent,
 )
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.core.generated.instance_manager_pb2 import Instance
 
 
-class DummySubscriber(InstanceUpdatedSuscriber):
+class DummySubscriber(InstanceUpdatedSubscriber):
     def __init__(self):
         self.events = []
 

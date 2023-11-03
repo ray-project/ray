@@ -17,10 +17,10 @@ class InstanceUpdateEvent:
 
     instance_id: str
     new_status: int
-    new_ray_status: int = Instance.RAY_STATUS_UNKOWN
+    new_ray_status: int = Instance.RAY_STATUS_UNKNOWN
 
 
-class InstanceUpdatedSuscriber(metaclass=ABCMeta):
+class InstanceUpdatedSubscriber(metaclass=ABCMeta):
     """Subscribers to instance status changes."""
 
     @abstractmethod
@@ -37,7 +37,7 @@ class InstanceStorage:
         self,
         cluster_id: str,
         storage: Storage,
-        status_change_subscriber: Optional[InstanceUpdatedSuscriber] = None,
+        status_change_subscriber: Optional[InstanceUpdatedSubscriber] = None,
     ) -> None:
         self._storage = storage
         self._cluster_id = cluster_id
@@ -46,8 +46,10 @@ class InstanceStorage:
         if status_change_subscriber:
             self._status_change_subscribers.append(status_change_subscriber)
 
-    def add_status_change_subscriber(self, subscriber: InstanceUpdatedSuscriber):
-        self._status_change_subscribers.append(subscriber)
+    def add_status_change_subscribers(
+        self, subscribers: List[InstanceUpdatedSubscriber]
+    ):
+        self._status_change_subscribers.extend(subscribers)
 
     def batch_upsert_instances(
         self,
@@ -217,7 +219,7 @@ class InstanceStorage:
                         InstanceUpdateEvent(
                             instance_id=instance_id,
                             new_status=Instance.GARBAGE_COLLECTED,
-                            new_ray_status=Instance.RAY_STATUS_UNKOWN,
+                            new_ray_status=Instance.RAY_STATUS_UNKNOWN,
                         )
                         for instance_id in instance_ids
                     ],

@@ -12,6 +12,7 @@ from ray.autoscaler.v2.instance_manager.instance_manager import (
 )  # noqa
 
 from ray.autoscaler.v2.instance_manager.instance_storage import (
+    InstanceStorage,
     InstanceUpdatedSubscriber,
 )
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
@@ -36,11 +37,13 @@ def test_update_instance_states():
             "resources": {"CPU": 1},
         }
     }
-
-    manager = SimpleInstanceManager(
-        cluster_id="test_cluster",
+    ins_storage = InstanceStorage(
+        cluster_id="test-cluster",
         storage=InMemoryStorage(),
-        instance_configs=instance_configs,
+    )
+    manager = SimpleInstanceManager(
+        instance_storage=ins_storage,
+        available_node_types=instance_configs,
         status_change_subscribers=[subscriber],
     )
 

@@ -4,7 +4,7 @@ import logging
 import time
 import uuid
 from abc import ABCMeta, abstractmethod
-from typing import Any, Dict, List, Optional, override
+from typing import Any, Dict, List, Optional
 
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
@@ -78,10 +78,17 @@ class SimpleInstanceManager(InstanceManager):
         self._instance_storage = instance_storage
         instance_storage.add_status_change_subscribers(status_change_subscribers)
 
-    @override
     def update_instance_manager_state(
         self, request: UpdateInstanceManagerStateRequest
     ) -> UpdateInstanceManagerStateReply:
+        """
+        Updates the instance manager state with the updated instances, and new
+        instances to launch.
+
+        Overrides:
+            Overrides the base class method.
+        """
+
         # 1. Handle instance status updates.
         ids_to_updates = {update.instance_id: update for update in request.updates}
         if len(ids_to_updates) == 0:
@@ -129,8 +136,14 @@ class SimpleInstanceManager(InstanceManager):
         reply.version = reply.state.version
         return reply
 
-    @override
     def get_instance_manager_state(self) -> GetInstanceManagerStateReply:
+        """
+        Returns:
+            GetInstanceManagerStateReply: The current instance manager state.
+
+        Override:
+            Overrides the base class method.
+        """
         reply = GetInstanceManagerStateReply()
         reply.state.CopyFrom(self._get_instance_manager_state())
         reply.status = Status.OK

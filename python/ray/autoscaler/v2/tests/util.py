@@ -26,7 +26,7 @@ def create_instance(
     instance_id,
     status=Instance.UNKNOWN,
     version=0,
-    ray_status=Instance.RAY_STATUS_UNKOWN,
+    ray_status=Instance.RAY_STATUS_UNKNOWN,
     instance_type="worker_nodes1",
 ):
     return Instance(

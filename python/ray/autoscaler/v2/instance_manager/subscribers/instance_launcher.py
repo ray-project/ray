@@ -10,7 +10,7 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
-    InstanceUpdatedSuscriber,
+    InstanceUpdatedSubscriber,
     InstanceUpdateEvent,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProvider
@@ -19,7 +19,7 @@ from ray.core.generated.instance_manager_pb2 import Instance
 logger = logging.getLogger(__name__)
 
 
-class InstanceLauncher(InstanceUpdatedSuscriber):
+class InstanceLauncher(InstanceUpdatedSubscriber):
     """InstanceLauncher is responsible for provisioning new instances."""
 
     def __init__(
@@ -129,7 +129,7 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
             instance.internal_ip = cloud_instance.internal_ip
             instance.external_ip = cloud_instance.external_ip
             instance.status = Instance.ALLOCATED
-            instance.ray_status = Instance.RAY_STATUS_UNKOWN
+            instance.ray_status = Instance.RAY_STATUS_UNKNOWN
 
             # update instance status into the storage
             result, _ = self._instance_storage.upsert_instance(
