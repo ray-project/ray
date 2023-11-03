@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import Any, Iterable
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
@@ -28,7 +28,7 @@ class _MongoDatasink(Datasink):
         import pymongo
 
         _validate_database_collection_exist(
-            pymongo.MongoClient(uri), database, collection
+            pymongo.MongoClient(self.uri), self.database, self.collection
         )
 
         def write_block(uri: str, database: str, collection: str, block: Block):
