@@ -3381,7 +3381,6 @@ class Dataset:
                 docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_bigquery(
-                    BigQueryDatasource(),
                     project_id="my_project_id",
                     dataset="my_dataset_table",
                 )
