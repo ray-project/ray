@@ -1031,7 +1031,7 @@ def override_deployment_info(
 
         deployment_infos[deployment_name] = info.update(**override_options)
 
-    # Overwrite ingress route prefix && logging_config
+    # Overwrite ingress route prefix
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)
     for deployment in list(deployment_infos.values()):
         if (

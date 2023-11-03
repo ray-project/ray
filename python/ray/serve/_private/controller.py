@@ -135,6 +135,8 @@ class ServeController:
         self.done_recovering_event = asyncio.Event()
 
         # Try to read config from checkpoint
+        # logging config from checkpoint take precedence over the one passed in
+        # the constructor.
         self.logging_config = None
         log_config_checkpoint = self.kv_store.get(LOGGING_CONFIG_CHECKPOINT_KEY)
         if log_config_checkpoint is not None:
