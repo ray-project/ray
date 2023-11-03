@@ -186,8 +186,6 @@ class ParquetDatasource(Datasource):
         partition_filter: PathPartitionFilter = None,
         shuffle: Union[Literal["files"], None] = None,
     ):
-        print("schema", schema)
-        print("to_batch_kwargs", to_batch_kwargs)
         _check_pyarrow_version()
 
         import pyarrow as pa
