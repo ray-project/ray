@@ -229,6 +229,7 @@ ALGORITHMS = {
     "DreamerV3": _import_dreamerv3,
     "DT": _import_dt,
     "IMPALA": _import_impala,
+    "Impala": _import_impala,
     "APPO": _import_appo,
     "AlphaStar": _import_alpha_star,
     "MADDPG": _import_maddpg,
