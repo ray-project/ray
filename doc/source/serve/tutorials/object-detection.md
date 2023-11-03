@@ -38,13 +38,13 @@ You should see the following logs:
 ```
 
 :::{tip}
-If running the Serve app raises an error similar to:
+If running the Serve app raises an error similar to
 
 ```
 ImportError: libGL.so.1: cannot open shared object file: No such file or directory
 ```
 
-then try running
+then in your Ray cluster, try running
 
 ```
 pip uninstall opencv-python; pip install opencv-python-headless
