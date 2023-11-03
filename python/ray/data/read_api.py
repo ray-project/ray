@@ -223,13 +223,8 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
                     Call this method for creating synthetic datasets of tensor data.
 
     """
-    return read_datasource(
-        RangeDatasource(),
-        parallelism=parallelism,
-        n=n,
-        block_format="arrow",
-        column_name="id",
-    )
+    datasource = RangeDatasource(n=n, block_format="arrow", column_name="id")
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI
@@ -275,14 +270,10 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
                     Call this method to create synthetic datasets of integer data.
 
     """
-    return read_datasource(
-        RangeDatasource(),
-        parallelism=parallelism,
-        n=n,
-        block_format="tensor",
-        column_name="data",
-        tensor_shape=tuple(shape),
+    datasource = RangeDatasource(
+        n=n, block_format="tensor", column_name="data", tensor_shape=tuple(shape)
     )
+    return read_datasource(datasource, parallelism=parallelism)
 
 
 @PublicAPI
@@ -489,16 +480,16 @@ def read_mongo(
         ValueError: if ``database`` doesn't exist.
         ValueError: if ``collection`` doesn't exist.
     """
-    return read_datasource(
-        MongoDatasource(),
-        parallelism=parallelism,
+    datasource = MongoDatasource(
         uri=uri,
         database=database,
         collection=collection,
         pipeline=pipeline,
         schema=schema,
-        ray_remote_args=ray_remote_args,
         **mongo_args,
+    )
+    return read_datasource(
+        datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -556,12 +547,10 @@ def read_bigquery(
         Dataset producing rows from the results of executing the query (or reading the entire dataset)
         on the specified BigQuery dataset.
     """
+    datasource = BigQueryDatasource(project_id=project_id, dataset=dataset, query=query)
     return read_datasource(
-        BigQueryDatasource(),
+        datasource,
         parallelism=parallelism,
-        project_id=project_id,
-        dataset=dataset,
-        query=query,
         ray_remote_args=ray_remote_args,
     )
 
@@ -1798,10 +1787,9 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    datasource = SQLDatasource(connection_factory)
+    datasource = SQLDatasource(sql=sql, connection_factory=connection_factory)
     return read_datasource(
         datasource,
-        sql=sql,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
     )
@@ -1916,16 +1904,16 @@ def read_databricks_tables(
     if query is None:
         raise ValueError("One of 'query' and 'table_name' arguments should be set.")
 
-    return read_datasource(
-        datasource=DatabricksUCDatasource(),
-        parallelism=parallelism,
-        ray_remote_args=ray_remote_args,
+    datasource = DatabricksUCDatasource(
         host=host,
         token=token,
         warehouse_id=warehouse_id,
         catalog=catalog,
         schema=schema,
         query=query,
+    )
+    return read_datasource(
+        datasource=datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
     )
 
 
@@ -2357,10 +2345,7 @@ def from_huggingface(
         from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
         # For an IterableDataset, we can use a streaming implementation to read data.
-        return read_datasource(
-            HuggingFaceDatasource(),
-            dataset=dataset,
-        )
+        return read_datasource(HuggingFaceDatasource(dataset=dataset))
     if isinstance(dataset, datasets.Dataset):
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g., train_test_split(), shard(), select()),
@@ -2482,8 +2467,7 @@ def from_torch(
         )
     }
     return read_datasource(
-        TorchDatasource(),
-        dataset=dataset,
+        TorchDatasource(dataset=dataset),
         # Only non-parallel, streaming read is currently supported
         parallelism=1,
         ray_remote_args=ray_remote_args,
