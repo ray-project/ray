@@ -137,7 +137,7 @@ def test_shutdown(ray_start_stop):
         # nothing is deployed
         def serve_config_empty():
             config_response = subprocess.check_output(["serve", "config"])
-            return "No config has been deployed" in config_response.decode("utf-8")
+            return len(config_response) == 0
 
         def serve_status_empty():
             status_response = subprocess.check_output(["serve", "status"])
