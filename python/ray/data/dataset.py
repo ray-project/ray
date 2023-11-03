@@ -88,7 +88,12 @@ from ray.data._internal.stats import (
     DatasetStatsSummary,
     get_dataset_id_from_stats_actor,
 )
-from ray.data._internal.util import ConsumptionAPI, _is_local_scheme, validate_compute
+from ray.data._internal.util import (
+    AllToAllAPI,
+    ConsumptionAPI,
+    _is_local_scheme,
+    validate_compute,
+)
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     VALID_BATCH_FORMATS,
@@ -105,7 +110,6 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import (
-    BigQueryDatasource,
     BlockWritePathProvider,
     Connection,
     Datasink,
@@ -113,11 +117,12 @@ from ray.data.datasource import (
     FilenameProvider,
     ParquetDatasource,
     ReadTask,
-    SQLDatasource,
+    _BigQueryDatasink,
     _CSVDatasink,
     _ImageDatasink,
     _JSONDatasink,
     _NumpyDatasink,
+    _SQLDatasink,
     _TFRecordDatasink,
     _WebDatasetDatasink,
 )
@@ -977,6 +982,7 @@ class Dataset:
 
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
@@ -1032,6 +1038,7 @@ class Dataset:
             logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def random_shuffle(
         self,
         *,
@@ -1082,6 +1089,7 @@ class Dataset:
             logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     def randomize_block_order(
         self,
         *,
@@ -1836,6 +1844,7 @@ class Dataset:
             logical_plan,
         )
 
+    @AllToAllAPI
     def groupby(self, key: Union[str, List[str], None]) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
@@ -1883,6 +1892,7 @@ class Dataset:
 
         return GroupedData(self, key)
 
+    @AllToAllAPI
     def unique(self, column: str) -> List[Any]:
         """List the unique elements in a given column.
 
@@ -1924,6 +1934,7 @@ class Dataset:
         ds = self.select_columns([column]).groupby(column).count()
         return [item[column] for item in ds.take_all()]
 
+    @AllToAllAPI
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate values using one or more functions.
@@ -1961,6 +1972,7 @@ class Dataset:
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
+    @AllToAllAPI
     @ConsumptionAPI
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2003,6 +2015,7 @@ class Dataset:
         ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2045,6 +2058,7 @@ class Dataset:
         ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2087,6 +2101,7 @@ class Dataset:
         ret = self._aggregate_on(Max, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
@@ -2129,6 +2144,7 @@ class Dataset:
         ret = self._aggregate_on(Mean, on, ignore_nulls)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     @ConsumptionAPI
     def std(
         self,
@@ -2185,6 +2201,7 @@ class Dataset:
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
+    @AllToAllAPI
     def sort(
         self,
         key: Union[str, List[str], None] = None,
@@ -3273,11 +3290,8 @@ class Dataset:
             ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
                 write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            SQLDatasource(connection_factory),
-            ray_remote_args=ray_remote_args,
-            sql=sql,
-        )
+        datasink = _SQLDatasink(sql=sql, connection_factory=connection_factory)
+        self.write_datasource(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3384,13 +3398,8 @@ class Dataset:
                 overwritten if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
-
-        self.write_datasource(
-            BigQueryDatasource(),
-            ray_remote_args=ray_remote_args,
-            dataset=dataset,
-            project_id=project_id,
-        )
+        datasink = _BigQueryDatasink(project_id, dataset)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")

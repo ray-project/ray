@@ -228,9 +228,6 @@ class Test(dict):
             os.environ["BUILDKITE_BRANCH"],
         )
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        assert (
-            pr != "false" or branch == "master" or branch.startswith("releases/")
-        ), f"Invalid branch name {branch}"
         ray_version = commit[:6]
         if pr != "false":
             ray_version = f"pr-{pr}.{ray_version}"

@@ -42,7 +42,7 @@ Example ML Platforms built on Ray
 
   Shopify's Merlin architecture built on Ray.
 
-Spotify `uses Ray for advanced applications <https://www.anyscale.com/ray-summit-2022/agenda/sessions/180>`_ that include personalizing content recommendations for home podcasts, and personalizing Spotify Radio track sequencing.
+Spotify `uses Ray for advanced applications <https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/>`_ that include personalizing content recommendations for home podcasts, and personalizing Spotify Radio track sequencing.
 
 .. figure:: /images/spotify.png
 
