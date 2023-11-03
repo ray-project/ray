@@ -66,7 +66,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
   if (request.node_info().is_head_node()) {
     // mark all old head nodes as dead if exists:
     // 1. should never happen when HA is not used
-    // 2. happens when a new GCS is started
+    // 2. happens when a new head node is started
 
     std::vector<NodeID> head_nodes;
     for (auto &node : alive_nodes_) {
