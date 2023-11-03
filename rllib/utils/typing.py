@@ -105,7 +105,7 @@ TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]
 EpisodeID = int
 
 # A new stack Episode type: Either single-agent or multi-agent.
-EpisodeType = Union["SingleAgentEpisode", "MultiAgentEpisode"]
+EpisodeType = Type[Union["SingleAgentEpisode", "MultiAgentEpisode"]]
 
 # Represents an "unroll" (maybe across different sub-envs in a vector env).
 UnrollID = int

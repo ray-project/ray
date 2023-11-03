@@ -1,8 +1,11 @@
 from typing import Any, List
 
+import numpy as np
+
+import tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
-from ray.rllib.core.models.base import STATE_IN
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
@@ -34,21 +37,33 @@ class DefaultEnvToModule(ConnectorV2):
         if SampleBatch.OBS not in input_:
             observations = []
             for episode in episodes:
-                # Make sure we have a single agent episode.
-                assert isinstance(episode, EpisodeType)
                 # Make sure, we have at least one observation in the episode.
                 assert len(episode.observations) > 0
                 observations.append(episode.observations[-1])
             input_[SampleBatch.OBS] = batch(observations)
 
-        # If our module is recurrent, also add the most recent states to the inputs.
+        # If our module is recurrent:
+        # - Add the most recent states to the inputs.
+        # - Make all inputs have T=1.
         if ctx.rl_module.is_stateful():
             states = []
             for episode in episodes:
-                # Make sure we have a single agent episode.
-                assert isinstance(episodes, EpisodeType)
                 # Make sure, we have at least one observation in the episode.
+                assert episode.observations
+
                 # TODO: Generalize to MultiAgentEpisodes.
-                assert episode.state is not None
-                states.append(episode.state)
+                # Episode just started, get initial state from our RLModule.
+                if len(episode) == 0:
+                    state = ctx.rl_module.get_initial_state()
+                else:
+                    state = episode.extra_model_outputs[STATE_OUT][-1]
+                states.append(state)
+
+            # Make all other inputs have an additional T=1 axis.
+            input_ = tree.map_structure(lambda s: np.expand_dims(s, axis=1), input_)
+
+            # Batch states (from list of individual vector sub-env states).
+            # Note thatstate ins should NOT have the extra time dimension.
             input_[STATE_IN] = batch(states)
+
+        return input_

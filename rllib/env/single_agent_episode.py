@@ -16,7 +16,7 @@ class SingleAgentEpisode:
         actions: List[ActType] = None,
         rewards: List[SupportsFloat] = None,
         infos: List[Dict] = None,
-        states=None,
+        #states=None,
         t_started: Optional[int] = None,
         is_terminated: bool = False,
         is_truncated: bool = False,
@@ -89,7 +89,7 @@ class SingleAgentEpisode:
             self.infos = infos
         # h-states: t0 (in case this episode is a continuation chunk, we need to know
         # about the initial h) to T.
-        self.states = states
+        self.states = None  #states
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
         # TODO (simon): Check again what are the consequences of this decision for
@@ -148,7 +148,7 @@ class SingleAgentEpisode:
         self.rewards.extend(list(episode_chunk.rewards))
         self.infos.extend(list(episode_chunk.infos))
         self.t = episode_chunk.t
-        self.states = episode_chunk.states
+        #self.states = episode_chunk.states
 
         if episode_chunk.is_terminated:
             self.is_terminated = True
@@ -166,7 +166,7 @@ class SingleAgentEpisode:
         *,
         initial_observation: ObsType,
         initial_info: Optional[Dict] = None,
-        initial_state=None,
+        #initial_state=None,
         initial_render_image: Optional[np.ndarray] = None,
     ) -> None:
         """Adds the initial data to the episode.
@@ -174,8 +174,8 @@ class SingleAgentEpisode:
         Args:
             initial_observation: Obligatory. The initial observation.
             initial_info: Optional. The initial info.
-            initial_state: Optional. The initial hidden state of a
-                model (`RLModule`) if the latter is stateful.
+            #initial_state: Optional. The initial hidden state of a
+            #    model (`RLModule`) if the latter is stateful.
             initial_render_image: Optional. An RGB uint8 image from rendering
                 the environment.
         """
@@ -188,7 +188,7 @@ class SingleAgentEpisode:
         initial_info = initial_info or {}
 
         self.observations.append(initial_observation)
-        self.states = initial_state
+        #self.states = initial_state
         self.infos.append(initial_info)
         if initial_render_image is not None:
             self.render_images.append(initial_render_image)
@@ -203,7 +203,7 @@ class SingleAgentEpisode:
         reward: SupportsFloat,
         *,
         info: Optional[Dict[str, Any]] = None,
-        state=None,
+        #state=None,
         is_terminated: bool = False,
         is_truncated: bool = False,
         render_image: Optional[np.ndarray] = None,
@@ -217,8 +217,8 @@ class SingleAgentEpisode:
             action: The last action used by the agent.
             reward: The last reward received by the agent.
             info: The last info recevied from the environment.
-            state: Optional. The last hidden state of the model (`RLModule` ).
-                This is only available, if the model is stateful.
+            #state: Optional. The last hidden state of the model (`RLModule` ).
+            #    This is only available, if the model is stateful.
             is_terminated: A boolean indicating, if the environment has been
                 terminated.
             is_truncated: A boolean indicating, if the environment has been
@@ -236,7 +236,7 @@ class SingleAgentEpisode:
         self.rewards.append(reward)
         info = info or {}
         self.infos.append(info)
-        self.states = state
+        #self.states = state
         self.t += 1
         if render_image is not None:
             self.render_images.append(render_image)
@@ -276,9 +276,8 @@ class SingleAgentEpisode:
         # self.t - self.t_started is 1, but len(rewards) is 100.
         assert len(self.rewards) == (self.t - self.t_started)
 
-        if len(self.extra_model_outputs) > 0:
-            for k, v in self.extra_model_outputs.items():
-                assert len(v) == len(self.observations) - 1
+        for k, v in self.extra_model_outputs.items():
+            assert len(v) == len(self.observations) - 1
 
         # Convert all lists to numpy arrays, if we are terminated.
         if self.is_done:
@@ -337,7 +336,7 @@ class SingleAgentEpisode:
             # First (and only) info of successor is this episode's last info.
             infos=[self.infos[-1]],
             # Same state.
-            states=self.states,
+            #states=self.states,
             # Continue with self's current timestep.
             t_started=self.t,
         )

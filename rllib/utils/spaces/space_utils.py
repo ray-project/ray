@@ -206,7 +206,7 @@ def flatten_to_single_ndarray(input_):
 
 
 @DeveloperAPI
-def batch(list_of_structs):
+def batch(list_of_structs, individual_items_already_have_batch_1: bool = False):
     """Converts input from a list of (nested) structs to (nested) struct of batches.
 
     Input: Batch (list) of structs (each of these structs representing a
@@ -227,6 +227,9 @@ def batch(list_of_structs):
     Args:
         list_of_structs: The list of rows. Each item
             in this list represents a single (maybe complex) struct.
+        individual_items_already_have_batch_1: True, if the individual items in
+            `list_of_structs` already have a batch dim (of 1). In this case, we will
+            concatenate (instead of stack) at the end. 
 
     Returns:
         The struct of component batches. Each leaf item
@@ -247,7 +250,8 @@ def batch(list_of_structs):
 
     # Unflatten everything into the
     out = tree.unflatten_as(item, flat)
-    out = tree.map_structure_up_to(item, lambda s: np.stack(s, axis=0), out)
+    np_func = np.stack if not individual_items_already_have_batch_1 else np.concatenate
+    out = tree.map_structure_up_to(item, lambda s: np_func(s, axis=0), out)
     return out
 
 

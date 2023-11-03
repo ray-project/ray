@@ -121,7 +121,7 @@ def compute_bootstrap_value(
         # what should we do for adding the time dimension?
         # TODO (simon): Add support for recurrent models.
 
-        input_dict = NestedDict(input_dict)
+        #input_dict = NestedDict(input_dict)
         fwd_out = module.forward_exploration(input_dict)
         # TODO (simon): Remove time dimension in case of recurrent model.
         last_r = fwd_out[SampleBatch.VF_PREDS][-1]

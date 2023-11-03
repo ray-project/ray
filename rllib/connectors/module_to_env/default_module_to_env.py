@@ -1,7 +1,11 @@
 from typing import Any
 
+import numpy as np
+import tree  # pip install dm_tree
+
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
+from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.util.annotations import PublicAPI
@@ -32,43 +36,52 @@ class DefaultModuleToEnv(ConnectorV2):
     def __call__(self, input_: Any, episodes, ctx: ConnectorContextV2) -> Any:
 
         # Loop through all modules that created some output.
-        for mid in input_.keys():
-            sa_module = ctx.rl_module.get_module(module_id=mid)
+        # for mid in input_.keys():
+        #    sa_module = ctx.rl_module.get_module(module_id=mid)
 
-            # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
-            # Create a distribution object.
-            action_dist = None
-            # The RLModule has already computed actions.
-            if (
-                SampleBatch.ACTION_DIST_INPUTS in input_[mid]
-                and SampleBatch.ACTION_LOGP not in input_[mid]
-            ):
-                dist_inputs = input_[mid][SampleBatch.ACTION_DIST_INPUTS]
-                if ctx.explore:
-                    action_dist_class = sa_module.get_exploration_action_dist_cls()
-                else:
-                    action_dist_class = sa_module.get_inference_action_dist_cls()
-                action_dist = action_dist_class.from_logits(dist_inputs)
-                if not ctx.explore:
-                    action_dist = action_dist.to_deterministic()
+        # If our RLModule is stateful, remove the T=1 axis from all model outputs
+        # (except the state outs, which never have this extra time axis).
+        if ctx.rl_module.is_stateful():
+            state = input_.pop(STATE_OUT, None)
+            input_ = tree.map_structure(lambda s: np.squeeze(s, axis=1), input_)
+            if state:
+                input_[STATE_OUT] = state
 
-            # If `forward_...()` returned actions, use them here as-is.
-            if SampleBatch.ACTIONS in input_[mid]:
-                actions = input_[mid][SampleBatch.ACTIONS]
-            # Otherwise, sample actions from the distribution.
+        # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+        # Create a distribution object.
+        action_dist = None
+        # The RLModule has already computed actions.
+        if (
+            SampleBatch.ACTION_DIST_INPUTS in input_
+            and SampleBatch.ACTION_LOGP not in input_
+        ):
+            dist_inputs = input_[SampleBatch.ACTION_DIST_INPUTS]
+            if ctx.explore:
+                action_dist_class = ctx.rl_module.get_exploration_action_dist_cls()
             else:
-                if action_dist is None:
-                    raise KeyError(
-                        "Your RLModule's `forward_[explore|inference]()` methods must "
-                        f"return a dict with either the {SampleBatch.ACTIONS} key or "
-                        f"the {SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
-                    )
-                actions = action_dist.sample()
+                action_dist_class = ctx.rl_module.get_inference_action_dist_cls()
+            action_dist = action_dist_class.from_logits(dist_inputs)
+            if not ctx.explore:
+                action_dist = action_dist.to_deterministic()
 
-            # Compute action-logp and action-prob from distribution and add to
-            # output, if possible.
-            if action_dist is not None and SampleBatch.ACTION_LOGP not in input_[mid]:
-                input_[mid][SampleBatch.ACTION_LOGP] = action_dist.logp(actions)
+        # If `forward_...()` returned actions, use them here as-is.
+        if SampleBatch.ACTIONS in input_:
+            actions = input_[SampleBatch.ACTIONS]
+        # Otherwise, sample actions from the distribution.
+        else:
+            if action_dist is None:
+                raise KeyError(
+                    "Your RLModule's `forward_[explore|inference]()` methods must "
+                    f"return a dict with either the {SampleBatch.ACTIONS} key or "
+                    f"the {SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
+                )
+            actions = action_dist.sample()
+            input_[SampleBatch.ACTIONS] = actions
+
+        # Compute action-logp and action-prob from distribution and add to
+        # output, if possible.
+        if action_dist is not None and SampleBatch.ACTION_LOGP not in input_:
+            input_[SampleBatch.ACTION_LOGP] = action_dist.logp(actions)
 
         return input_
 

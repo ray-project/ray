@@ -73,9 +73,11 @@ class PrevRewardPrevActionConnector(ConnectorV2):
             if self.prev_a:
                 prev_a.append(episode.actions[-1] if len(episode) > 0 else self.action_space.sample())
 
-        input_[SampleBatch.PREV_REWARDS] = np.array(prev_r)
-        # Support nested action structures.
-        input_[SampleBatch.PREV_ACTIONS] = batch(prev_a)
+        if self.prev_r:
+            input_[SampleBatch.PREV_REWARDS] = np.array(prev_r)
+        if self.prev_a:
+            # Support nested action structures.
+            input_[SampleBatch.PREV_ACTIONS] = batch(prev_a)
         return input_
 
 
