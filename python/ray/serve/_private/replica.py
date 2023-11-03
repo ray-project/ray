@@ -363,7 +363,11 @@ def create_replica_wrapper(actor_class_name: str):
 
             proto = RequestMetadataProto.FromString(proto_request_metadata)
             request_metadata: RequestMetadata = RequestMetadata(
-                proto.request_id, proto.endpoint, call_method=proto.call_method
+                proto.request_id,
+                proto.endpoint,
+                call_method=proto.call_method,
+                multiplexed_model_id=proto.multiplexed_model_id,
+                route=proto.route,
             )
             request_args = request_args[0]
             return await self.replica.call_user_method(
