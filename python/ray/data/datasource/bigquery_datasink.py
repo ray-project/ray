@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Any, List
+from typing import Any, Iterable
 
 import pyarrow.parquet as pq
 
@@ -30,7 +30,7 @@ class _BigQueryDatasink(Datasink):
 
     def write(
         self,
-        blocks: List[ObjectRef[Block]],
+        blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> Any:
         from google.api_core import exceptions

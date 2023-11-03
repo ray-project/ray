@@ -39,6 +39,7 @@ from ray.data.datasource.image_datasink import _ImageDatasink
 from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasink import _JSONDatasink
 from ray.data.datasource.json_datasource import JSONDatasource
+from ray.data.datasource.mongo_datasink import _MongoDatasink
 from ray.data.datasource.mongo_datasource import MongoDatasource
 from ray.data.datasource.numpy_datasink import _NumpyDatasink
 from ray.data.datasource.numpy_datasource import NumpyDatasource
@@ -100,6 +101,7 @@ __all__ = [
     "Partitioning",
     "RandomIntRowDatasource",
     "RangeDatasource",
+    "_MongoDatasink",
     "MongoDatasource",
     "ReadTask",
     "Reader",
