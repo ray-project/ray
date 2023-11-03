@@ -225,7 +225,7 @@ Ray Data interoperates with distributed data processing frameworks like
                 app_name = "example",
                 num_executors = 1,
                 executor_cores = 4,
-                executor_memory = "64M"
+                executor_memory = "512M"
             )
 
             ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")

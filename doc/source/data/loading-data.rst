@@ -110,7 +110,7 @@ To view the full list of supported file formats, see the
 
             import ray
 
-            ds = ray.data.read_binary_files("s3://anonymous@ray-example-data/file.dat")
+            ds = ray.data.read_binary_files("s3://anonymous@ray-example-data/documents")
 
             print(ds.schema())
 
