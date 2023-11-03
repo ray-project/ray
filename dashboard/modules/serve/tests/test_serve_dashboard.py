@@ -14,6 +14,7 @@ import ray._private.ray_constants as ray_constants
 from ray.util.state import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
+from ray._private.test_utils import generate_system_config_map
 from ray.serve.schema import ServeInstanceDetails, HTTPOptionsSchema
 from ray.serve._private.common import (
     ApplicationStatus,
@@ -616,6 +617,36 @@ def test_default_dashboard_agent_listen_port():
     the dashboard agent listens to HTTP on port 52365.
     """
     assert ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT == 52365
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
+                gcs_failover_worker_reconnect_timeout=20,
+                gcs_rpc_server_reconnect_timeout_s=3600,
+                gcs_server_request_timeout_seconds=3,
+            ),
+        }
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
+def test_get_applications_while_gcs_down(
+    monkeypatch, ray_start_regular_with_external_redis, url
+):
+    # test serve agent's availability when gcs is down
+    monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "3")
+    serve.start(detached=True)
+
+    get_response = requests.get(url, timeout=15)
+    assert get_response.status_code == 200
+    ray._private.worker._global_node.kill_gcs_server()
+
+    get_response = requests.get(url, timeout=30)
+    assert get_response.status_code == 503
 
 
 if __name__ == "__main__":
