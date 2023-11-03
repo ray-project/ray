@@ -243,6 +243,21 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
   return true;
 }
 
+bool GlobalStateAccessor::UpdateWorkerDebuggerPort(const WorkerID &worker_id,
+                                                   const uint32_t debugger_port) {
+  std::promise<bool> promise;
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    RAY_CHECK_OK(gcs_client_->Workers().AsyncUpdateDebuggerPort(
+        worker_id, debugger_port, [&promise](const Status &status) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        }));
+  }
+  promise.get_future().get();
+  return true;
+}
+
 std::vector<std::string> GlobalStateAccessor::GetAllPlacementGroupInfo() {
   std::vector<std::string> placement_group_table_data;
   std::promise<bool> promise;

@@ -664,6 +664,21 @@ class GlobalState:
             worker_data.SerializeToString()
         )
 
+    def update_worker_debugger_port(self, worker_id, debugger_port):
+        """Update the debugger port of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            debugger_port: Port of the debugger. Type is int.
+
+        Returns:
+             Is operation success
+        """
+        self._check_connected()
+        return self.global_state_accessor.update_worker_debugger_port(
+            worker_id, debugger_port
+        )
+
     def cluster_resources(self):
         """Get the current total cluster resources.
 
@@ -933,3 +948,16 @@ def available_resources():
             resource in the cluster.
     """
     return state.available_resources()
+
+
+def update_worker_debugger_port(worker_id, debugger_port):
+    """Update the debugger port of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+        debugger_port: Port of the debugger. Type is int.
+
+    Returns:
+         Is operation success
+    """
+    return state.update_worker_debugger_port(worker_id, debugger_port)
