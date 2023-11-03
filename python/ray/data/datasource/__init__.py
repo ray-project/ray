@@ -1,10 +1,13 @@
+from ray.data.datasource.bigquery_datasink import _BigQueryDatasink
 from ray.data.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.block_path_provider import (
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
 )
+from ray.data.datasource.csv_datasink import _CSVDatasink
 from ray.data.datasource.csv_datasource import CSVDatasource
+from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import (
     Datasource,
     DummyOutputDatasource,
@@ -18,6 +21,10 @@ from ray.data.datasource.file_based_datasource import (
     FileExtensionFilter,
     _S3FileSystemWrapper,
 )
+from ray.data.datasource.file_datasink import (
+    BlockBasedFileDatasink,
+    RowBasedFileDatasink,
+)
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
@@ -27,9 +34,12 @@ from ray.data.datasource.file_meta_provider import (
     ParquetMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
+from ray.data.datasource.image_datasink import _ImageDatasink
 from ray.data.datasource.image_datasource import ImageDatasource
+from ray.data.datasource.json_datasink import _JSONDatasink
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.mongo_datasource import MongoDatasource
+from ray.data.datasource.numpy_datasink import _NumpyDatasink
 from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import ParquetDatasource
@@ -40,10 +50,13 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
 )
 from ray.data.datasource.range_datasource import RangeDatasource
+from ray.data.datasource.sql_datasink import _SQLDatasink
 from ray.data.datasource.sql_datasource import Connection, SQLDatasource
 from ray.data.datasource.text_datasource import TextDatasource
+from ray.data.datasource.tfrecords_datasink import _TFRecordDatasink
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data.datasource.torch_datasource import TorchDatasource
+from ray.data.datasource.webdataset_datasink import _WebDatasetDatasink
 from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
@@ -52,11 +65,16 @@ from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 __all__ = [
     "BaseFileMetadataProvider",
     "BinaryDatasource",
+    "_BigQueryDatasink",
     "BigQueryDatasource",
+    "BlockBasedFileDatasink",
     "BlockWritePathProvider",
     "Connection",
+    "_CSVDatasink",
     "CSVDatasource",
+    "Datasink",
     "Datasource",
+    "_SQLDatasink",
     "SQLDatasource",
     "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
@@ -67,8 +85,11 @@ __all__ = [
     "FileExtensionFilter",
     "FileMetadataProvider",
     "FilenameProvider",
+    "_ImageDatasink",
     "ImageDatasource",
+    "_JSONDatasink",
     "JSONDatasource",
+    "_NumpyDatasink",
     "NumpyDatasource",
     "ParquetBaseDatasource",
     "ParquetDatasource",
@@ -82,9 +103,12 @@ __all__ = [
     "MongoDatasource",
     "ReadTask",
     "Reader",
+    "RowBasedFileDatasink",
     "TextDatasource",
+    "_TFRecordDatasink",
     "TFRecordDatasource",
     "TorchDatasource",
+    "_WebDatasetDatasink",
     "WebDatasetDatasource",
     "WriteResult",
     "_S3FileSystemWrapper",
