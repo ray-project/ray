@@ -18,7 +18,7 @@ from ray.serve._private.common import ProxyStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
-from ray.serve.schema import LoggingConfig, ServeInstanceDetails
+from ray.serve.schema import ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 

@@ -402,8 +402,8 @@ def test_recover_deleting_application(serve_instance):
 
 def test_controller_crashes_with_logging_config(serve_instance):
     """Controller persists logging config into kv store, and when controller recover
-    from crash, it will read logging config from kv store and apply to the controller and
-    proxy.
+    from crash, it will read logging config from kv store and apply to the
+    controller and proxy.
     """
 
     @serve.deployment
