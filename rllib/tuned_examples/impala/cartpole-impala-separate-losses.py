@@ -12,7 +12,8 @@ config = (
     # Switch on >1 loss/optimizer API for TFPolicy and EagerTFPolicy.
     .experimental(_tf_policy_handles_more_than_one_loss=True)
     .training(
-        # IMPALA will produce two separate loss terms: policy loss + value function loss.
+        # IMPALA will produce two separate loss terms: policy loss + value function
+        # loss.
         _separate_vf_optimizer=True,
         # Separate learning rate for the value function branch.
         _lr_vf=0.00075,
