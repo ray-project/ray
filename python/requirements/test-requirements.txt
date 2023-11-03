@@ -4,7 +4,6 @@
 # General test requirements
 async-exit-stack==1.0.1
 async-generator==1.10
-asyncmock==0.4.2
 azure-cli-core==2.40.0
 azure-identity==1.10.0
 azure-mgmt-compute==23.1.0
