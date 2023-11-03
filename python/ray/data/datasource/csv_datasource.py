@@ -45,9 +45,7 @@ class CSVDatasource(FileBasedDatasource):
         self.parse_options = arrow_csv_args.pop("parse_options", csv.ParseOptions())
         self.arrow_csv_args = arrow_csv_args
 
-    def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
-    ) -> Iterator[Block]:
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import pyarrow as pa
         from pyarrow import csv
 

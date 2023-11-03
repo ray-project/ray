@@ -206,7 +206,7 @@ class MdsDatasource(ray.data.datasource.FileBasedDatasource):
     _FILE_EXTENSION = "mds"
 
     def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
+        self, f: "pyarrow.NativeFile", path: str
     ) -> Iterator[ray.data.block.Block]:
         file_info = streaming.base.format.base.reader.FileInfo(
             basename=os.path.basename(path), bytes=os.stat(path).st_size, hashes={}

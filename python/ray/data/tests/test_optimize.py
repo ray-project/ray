@@ -38,10 +38,10 @@ class MySource(CSVDatasource):
 
         self.counter = counter
 
-    def _read_stream(self, f, path: str, **reader_args):
+    def _read_stream(self, f, path: str):
         count = self.counter.increment.remote()
         ray.get(count)
-        for block in super()._read_stream(f, path, **reader_args):
+        for block in super()._read_stream(f, path):
             yield block
 
 
