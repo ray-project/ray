@@ -1039,9 +1039,9 @@ def override_deployment_info(
             and deployment.route_prefix is not None
         ):
             deployment.route_prefix = app_route_prefix
-    
-    # When there is no deployment entries and app logging config is set, apply app logging config to all existing deployment
-    # logging config
+
+    # When there is no deployment entries and app logging config is set,
+    # apply app logging config to all existing deployment logging config.
     if not deployment_override_options and app_logging_config:
         for deployment in list(deployment_infos.values()):
             deployment.deployment_config.logging_config = app_logging_config

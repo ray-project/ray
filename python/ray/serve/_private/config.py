@@ -166,7 +166,7 @@ class DeploymentConfig(BaseModel):
             )
         if "log_level" not in v:
             v["log_level"] = "INFO"
-     
+
         return v
 
     def needs_pickle(self):
