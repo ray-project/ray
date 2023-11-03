@@ -2,6 +2,7 @@ from typing import Any
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 
 class BlockOutputBuffer:
@@ -72,7 +73,10 @@ class BlockOutputBuffer:
         block_to_yield = self._buffer.build()
         block_remainder = None
         block = BlockAccessor.for_block(block_to_yield)
-        if block.size_bytes() >= 1.5 * self._target_max_block_size:
+        if (
+            block.size_bytes()
+            >= MAX_SAFE_BLOCK_SIZE_FACTOR * self._target_max_block_size
+        ):
             # Slice a block to respect the target max block size.  We only do
             # this if we are more than 50% above the target block size, because
             # this ensures that the last block produced will be at least half
@@ -81,14 +85,8 @@ class BlockOutputBuffer:
             target_num_rows = self._target_max_block_size // num_bytes_per_row
             target_num_rows = max(1, target_num_rows)
 
-            # If the buffer has received all rows, then try to divide the row
-            # remainder evenly across the output blocks. This reduces chance of
-            # slicing and favors producing even blocks over always staying
-            # under the target_max_block_size.
-            if self._finalized:
-                num_rows_remainder = block.num_rows() % target_num_rows
-                num_whole_blocks = block.num_rows() // target_num_rows
-                target_num_rows += num_rows_remainder // num_whole_blocks
+            # TODO(swang): If the buffer is finalized, try to create even
+            # blocks?
 
             if target_num_rows < block.num_rows():
                 # Use copy=True to avoid holding the entire block in memory.

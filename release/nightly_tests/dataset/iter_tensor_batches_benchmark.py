@@ -36,10 +36,6 @@ def iter_torch_batches(
         "num_batches:",
         num_batches,
     )
-    print(
-        f"iter_torch_batches batch_size={batch_size}, prefetch_batches={prefetch_batches}"
-    )
-    print(ds.stats())
     return ds
 
 
@@ -63,7 +59,9 @@ def to_tf(
     return ds
 
 
-def run_iter_tensor_batches_benchmark(benchmark: Benchmark, data_size_gb: int, block_size_mb: int):
+def run_iter_tensor_batches_benchmark(
+    benchmark: Benchmark, data_size_gb: int, block_size_mb: int
+):
     ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = block_size_mb * 1024 * 1024
 
