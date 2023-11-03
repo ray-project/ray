@@ -1,89 +1,12 @@
 group: build
 steps:
-  - name: manylinux
-    wanda: ci/docker/manylinux.wanda.yaml
-
-  - name: raycudabase
-    label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base"
-    tags:
-      - python_dependencies
-      - docker
-      - core_cpp
-    wanda: ci/docker/ray.cuda.base.wanda.yaml
-    matrix:
-      setup:
-        python:
-          - "3.8"
-          - "3.9"
-          - "3.10"
-          - "3.11"
-        cuda:
-          - "11.5.2"
-          - "11.6.2"
-          - "11.7.1"
-          - "11.8.0"
-          - "12.1.1"
-    env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
-
-  - name: raycpubase
-    label: "wanda: ray.py{{matrix}}.cpu.base"
-    tags:
-      - python_dependencies
-      - docker
-      - core_cpp
-    wanda: ci/docker/ray.cpu.base.wanda.yaml
-    matrix:
-      - "3.8"
-      - "3.9"
-      - "3.10"
-      - "3.11"
-    env:
-      PYTHON_VERSION: "{{matrix}}"
-
-  - name: ray-mlcudabase
-    label: "wanda: ray-ml.py{{matrix.python}}.cu{{matrix.cuda}}.base"
-    tags:
-      - python_dependencies
-      - docker
-      - core_cpp
-    wanda: ci/docker/ray-ml.cuda.base.wanda.yaml
-    depends_on: raycudabase
-    matrix:
-      setup:
-        python:
-          - "3.8"
-          - "3.9"
-          - "3.10"
-        cuda:
-          - "11.8.0"
-    env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
-
-  - name: ray-mlcpubase
-    label: "wanda: ray-ml.py{{matrix}}.cpu.base"
-    tags:
-      - python_dependencies
-      - docker
-      - core_cpp
-    wanda: ci/docker/ray-ml.cpu.base.wanda.yaml
-    depends_on: raycpubase
-    matrix:
-      - "3.8"
-      - "3.9"
-      - "3.10"
-    env:
-      PYTHON_VERSION: "{{matrix}}"
-
-  - label: ":tapioca: build: wheel {{matrix}}"
+  - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     tags:
       - linux_wheels
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}}
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64
     matrix:
       - "3.8"
       - "3.9"
@@ -93,6 +16,23 @@ steps:
       - manylinux
       - forge
     job_env: forge
+
+  - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
+    tags:
+      - linux_wheels
+      - oss
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64
+    matrix:
+      - "3.8"
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    depends_on:
+      - manylinux-aarch64
+      - forge-aarch64
+    job_env: forge-aarch64
 
   - label: ":tapioca: build: debug wheel"
     tags:
