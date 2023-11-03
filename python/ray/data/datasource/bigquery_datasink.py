@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Any, List
+from typing import Any, Iterable
 
 import pyarrow.parquet as pq
 
@@ -11,7 +11,6 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
-from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ class _BigQueryDatasink(Datasink):
 
     def write(
         self,
-        blocks: List[ObjectRef[Block]],
+        blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> Any:
         from google.api_core import exceptions

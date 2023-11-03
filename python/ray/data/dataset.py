@@ -120,6 +120,7 @@ from ray.data.datasource import (
     _CSVDatasink,
     _ImageDatasink,
     _JSONDatasink,
+    _MongoDatasink,
     _NumpyDatasink,
     _ParquetDatasink,
     _SQLDatasink,
@@ -3351,15 +3352,12 @@ class Dataset:
             ValueError: if ``database`` doesn't exist.
             ValueError: if ``collection`` doesn't exist.
         """
-        from ray.data.datasource import MongoDatasource
-
-        self.write_datasource(
-            MongoDatasource(),
-            ray_remote_args=ray_remote_args,
+        datasink = _MongoDatasink(
             uri=uri,
             database=database,
             collection=collection,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_bigquery(
