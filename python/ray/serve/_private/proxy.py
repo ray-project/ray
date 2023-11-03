@@ -1155,6 +1155,7 @@ class ProxyActor:
             RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or keep_alive_timeout_s
         )
         self._uvicorn_server = None
+        self.node_ip_address = node_ip_address
 
         self.http_setup_complete = asyncio.Event()
         self.grpc_setup_complete = asyncio.Event()
@@ -1204,9 +1205,17 @@ class ProxyActor:
     def _update_logging_config(self, logging_config: LoggingConfig):
         configure_component_logger(
             component_name="proxy",
-            component_id=ray.get_runtime_context().get_node_id(),
+            component_id=self.node_ip_address,
             logging_config=logging_config,
         )
+
+    def _get_logger_state(self) -> Dict:
+        """Test purpose, get the log information."""
+        log_file_path = None
+        for handler in logger.handlers:
+            if isinstance(handler, logging.handlers.RotatingFileHandler):
+                log_file_path = handler.baseFilename
+        return {"log_file_path": log_file_path}
 
     def should_start_grpc_service(self) -> bool:
         """Determine whether gRPC service should be started.

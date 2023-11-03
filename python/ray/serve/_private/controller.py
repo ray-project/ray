@@ -1074,6 +1074,14 @@ class ServeController:
                 "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
             )
 
+    def _get_logger_state(self) -> Dict:
+        """Test purpose, get the log information."""
+        log_file_path = None
+        for handler in logger.handlers:
+            if isinstance(handler, logging.handlers.RotatingFileHandler):
+                log_file_path = handler.baseFilename
+        return {"logging_config": self.logging_config, "log_file_path": log_file_path}
+
 
 @ray.remote(num_cpus=0)
 class ServeControllerAvatar:

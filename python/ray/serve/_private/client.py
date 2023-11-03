@@ -585,5 +585,5 @@ class ServeControllerClient:
 
     @_ensure_connected
     def update_system_logging_config(self, logging_config: LoggingConfig):
-
+        """Reconfigure the logging config for the controller & proxies."""
         self._controller.reconfigure_system_logging_config.remote(logging_config)
