@@ -47,7 +47,7 @@ logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
 
 # Path to example config rel RAY_PARENT
 EXAMPLE_CLUSTER_PATH = (
-    "ray/python/ray/autoscaler/kuberay/config/samples/ray-cluster.autoscaler.yaml"
+    "ray/python/ray/tests/kuberay/test_files/ray-cluster.autoscaler-template.yaml"
 )
 
 HEAD_SERVICE = "raycluster-autoscaler-head-svc"
@@ -79,7 +79,12 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         """
         with open(EXAMPLE_CLUSTER_PATH) as ray_cr_config_file:
             ray_cr_config_str = ray_cr_config_file.read()
-        config = yaml.safe_load(ray_cr_config_str)
+
+        kuberay_crd_sets = set(["RayCluster", "RayJob", "RayService"])
+        for k8s_object in yaml.safe_load_all(ray_cr_config_str):
+            if k8s_object['kind'] in kuberay_crd_sets:
+                config = k8s_object
+                break
         head_group = config["spec"]["headGroupSpec"]
         head_group["rayStartParams"][
             "resources"
