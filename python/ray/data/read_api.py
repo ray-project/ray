@@ -313,7 +313,6 @@ def read_datasource(
     if ray_remote_args is None:
         ray_remote_args = {}
 
-    local_uri = False
     if not datasource.supports_distributed_reads:
         if ray.util.client.ray.is_connected():
             raise ValueError(
@@ -324,7 +323,6 @@ def read_datasource(
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-        local_uri = True
 
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
@@ -344,7 +342,6 @@ def read_datasource(
         datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
             datasource,
             ctx,
-            local_uri,
             read_args,
         )
     else:
@@ -363,7 +360,6 @@ def read_datasource(
             get_datasource_or_legacy_reader.remote(
                 datasource,
                 ctx,
-                local_uri,
                 _wrap_arrow_serialization_workaround(read_args),
             )
         )
@@ -700,17 +696,22 @@ def read_parquet(
         tensor_column_schema,
         **arrow_parquet_args,
     )
-    return read_datasource(
-        ParquetDatasource(),
-        parallelism=parallelism,
-        paths=paths,
-        filesystem=filesystem,
+
+    dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
+    datasource = ParquetDatasource(
+        paths,
         columns=columns,
-        ray_remote_args=ray_remote_args,
+        dataset_kwargs=dataset_kwargs,
+        to_batch_kwargs=arrow_parquet_args,
+        filesystem=filesystem,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
-        **arrow_parquet_args,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -956,18 +957,21 @@ def read_parquet_bulk(
         tensor_column_schema,
         **arrow_parquet_args,
     )
-    return read_datasource(
-        ParquetBaseDatasource(),
-        parallelism=parallelism,
-        paths=paths,
+
+    datasource = ParquetBaseDatasource(
+        paths,
+        read_table_args=arrow_parquet_args,
         filesystem=filesystem,
-        columns=columns,
-        ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_file_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
         **arrow_parquet_args,
+    )
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -2500,7 +2504,6 @@ def from_torch(
 def _get_datasource_or_legacy_reader(
     ds: Datasource,
     ctx: DataContext,
-    local_uri: bool,
     kwargs: dict,
 ) -> Union[Datasource, Reader]:
     """Generates reader.
@@ -2508,7 +2511,6 @@ def _get_datasource_or_legacy_reader(
     Args:
         ds: Datasource to read from.
         ctx: Dataset config to use.
-        local_uri:
         kwargs: Additional kwargs to pass to the legacy reader if
             `Datasource.create_reader` is implemented.
 
@@ -2516,13 +2518,6 @@ def _get_datasource_or_legacy_reader(
         The datasource or a generated legacy reader.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-
-    # NOTE: `ParquetDatasource` has separate steps to fetch metadata and sample rows,
-    # so it needs `local_uri` parameter for now.
-    # TODO(chengsu): stop passing `local_uri` parameter to
-    # `ParquetDatasource.create_reader()`.
-    if local_uri and isinstance(ds, ParquetDatasource):
-        kwargs["local_uri"] = local_uri
 
     DataContext._set_current(ctx)
 
