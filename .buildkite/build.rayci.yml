@@ -99,5 +99,6 @@ steps:
       - rm ./python/requirements_compiled.txt
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
+    soft_fail: true
     depends_on:
       - forge

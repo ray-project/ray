@@ -303,7 +303,10 @@ if __name__ == "__main__":
             ):
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
-            elif changed_file.endswith("build-docker-images.py"):
+            elif (
+                changed_file.endswith("build-docker-images.py")
+                or changed_file == ".buildkite/build.rayci.yml"
+            ):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_TOOLS_AFFECTED = 1
