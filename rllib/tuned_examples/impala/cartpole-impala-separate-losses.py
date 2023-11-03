@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.appo import APPOConfig
+from ray.rllib.algorithms.impala import ImpalaConfig
 
 
 stop = {
@@ -7,12 +7,12 @@ stop = {
 }
 
 config = (
-    APPOConfig()
+    ImpalaConfig()
     .environment("CartPole-v1")
     # Switch on >1 loss/optimizer API for TFPolicy and EagerTFPolicy.
     .experimental(_tf_policy_handles_more_than_one_loss=True)
     .training(
-        # APPO will produce two separate loss terms: policy loss + value function loss.
+        # IMPALA will produce two separate loss terms: policy loss + value function loss.
         _separate_vf_optimizer=True,
         # Separate learning rate for the value function branch.
         _lr_vf=0.00075,
@@ -21,8 +21,6 @@ config = (
         vf_loss_coeff=0.01,
         vtrace=True,
         model={
-            # "fcnet_hiddens": [32],
-            # "fcnet_activation": "linear",
             # Make sure we really have completely separate branches.
             "vf_share_layers": False,
         },
