@@ -688,6 +688,7 @@ def read_parquet(
 
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
+    schema = arrow_parquet_args.pop("schema", None)
     datasource = ParquetDatasource(
         paths,
         columns=columns,
@@ -695,6 +696,7 @@ def read_parquet(
         to_batch_kwargs=arrow_parquet_args,
         _block_udf=_block_udf,
         filesystem=filesystem,
+        schema=schema,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
