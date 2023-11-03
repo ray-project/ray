@@ -300,48 +300,6 @@ py_test(
     args = ["--dir=tuned_examples/impala"]
 )
 
-# PG
-# TODO (sven): Move these PG tests for crashing workers/envs to be done by PPO as PG will be moved into `rllib_contrib`.
-py_test(
-    name = "learning_tests_cartpole_crashing_pg",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/cartpole-crashing-pg.yaml"],
-    args = ["--dir=tuned_examples/pg"]
-)
-
-py_test(
-    name = "learning_tests_cartpole_crashing_with_remote_envs_pg",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/cartpole-crashing-with-remote-envs-pg.yaml"],
-    args = ["--dir=tuned_examples/pg"]
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_restart_sub_envs_pg",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-restart-sub-envs-pg.yaml"],
-    args = ["--dir=tuned_examples/pg"]
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_with_remote_envs_pg",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-with-remote-envs-pg.yaml"],
-    args = ["--dir=tuned_examples/pg", "--num-cpus=14"]
-)
-
 # PPO
 # w/ new EnvRunner
 py_test(
@@ -767,20 +725,6 @@ py_test(
     srcs = ["env/tests/test_env_with_subprocess.py"]
 )
 
-py_test(
-    name = "env/tests/test_external_env",
-    tags = ["team:rllib", "env"],
-    size = "large",
-    srcs = ["env/tests/test_external_env.py"]
-)
-
-py_test(
-    name = "env/tests/test_external_multi_agent_env",
-    tags = ["team:rllib", "env"],
-    size = "small",
-    srcs = ["env/tests/test_external_multi_agent_env.py"]
-)
-
 sh_test(
     name = "env/tests/test_local_inference_cartpole",
     tags = ["team:rllib", "env"],
@@ -813,7 +757,7 @@ sh_test(
 py_test(
     name = "env/tests/test_multi_agent_env",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["env/tests/test_multi_agent_env.py"]
 )
 
@@ -854,13 +798,6 @@ sh_test(
 #     args = ["remote", "unity3d", "8860"],
 #     data = glob(["examples/serving/*.py"]),
 # )
-
-py_test(
-    name = "env/tests/test_remote_worker_envs",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_remote_worker_envs.py"]
-)
 
 py_test(
     name = "env/tests/test_single_agent_gym_env_runner",
@@ -1458,13 +1395,6 @@ py_test(
 )
 
 py_test(
-    name = "test_parameter_noise",
-    tags = ["team:rllib", "utils"],
-    size = "medium",
-    srcs = ["utils/exploration/tests/test_parameter_noise.py"]
-)
-
-py_test(
     name = "test_random_encoder",
     tags = ["team:rllib", "utils"],
     size = "large",
@@ -1634,22 +1564,22 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_checkpoint_restore_pg",
+    name = "tests/test_checkpoint_restore_ppo",
     main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePG"]
+    args = ["TestCheckpointRestorePPO"]
 )
 
 
 py_test(
-    name = "tests/test_checkpoint_restore_pg_gpu",
+    name = "tests/test_checkpoint_restore_ppo_gpu",
     main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir", "gpu"],
     size = "large",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePG"]
+    args = ["TestCheckpointRestorePPO"]
 )
 
 py_test(
@@ -1669,24 +1599,6 @@ py_test(
     size = "large",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreOffPolicy"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_evolution_algos",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "medium",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreEvolutionAlgos"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_evolution_algos_gpu",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
-    size = "medium",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreEvolutionAlgos"]
 )
 
 py_test(
@@ -1722,12 +1634,12 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_eager_support_pg",
+    name = "tests/test_eager_support_policy_gradient",
     main = "tests/test_eager_support.py",
     tags = ["team:rllib", "tests_dir"],
     size = "small",
     srcs = ["tests/test_eager_support.py"],
-    args = ["TestEagerSupportPG"]
+    args = ["TestEagerSupportPolicyGradient"]
 )
 
 py_test(
@@ -1786,7 +1698,7 @@ py_test(
     name = "tests/test_nested_action_spaces",
     main = "tests/test_nested_action_spaces.py",
     tags = ["team:rllib", "tests_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_nested_action_spaces.py"]
 )
 
@@ -1864,16 +1776,6 @@ py_test(
     args = ["TestEvaluate3"]
 )
 
-py_test(
-    name = "test_rllib_evaluate_4",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate4"]
-)
-
 # Test [train|evaluate].py scripts (and confirm `rllib evaluate` performance is same
 # as the final one from the `rllib train` run).
 py_test(
@@ -1897,12 +1799,12 @@ py_test(
 
 
 py_test(
-    name = "tests/test_supported_multi_agent_pg",
+    name = "tests/test_supported_multi_agent_policy_gradient",
     main = "tests/test_supported_multi_agent.py",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
     srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentPG"]
+    args = ["TestSupportedMultiAgentPolicyGradient"]
 )
 
 py_test(
@@ -1930,16 +1832,7 @@ py_test(
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesIMPALA"]
- )
-
-py_test(
-     name = "tests/test_supported_spaces_a3c",
-     main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
-     size = "large",
-     srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesA3C"]
- )
+)
 
 py_test(
      name = "tests/test_supported_spaces_ppo",
@@ -1975,15 +1868,6 @@ py_test(
     size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesOffPolicy"]
-)
-
-py_test(
-    name = "tests/test_supported_spaces_evolution_algos",
-    main = "tests/test_supported_spaces.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_supported_spaces.py"],
-    args = ["TestSupportedSpacesEvolutionAlgos"]
 )
 
 py_test(
@@ -2097,24 +1981,6 @@ py_test(
     size = "large",  # DQN learns much slower with BatchNorm.
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--framework=torch", "--run=DQN", "--stop-reward=70", "--stop-time=400"]
-)
-
-py_test(
-    name = "examples/batch_norm_model_ddpg_tf",
-    main = "examples/batch_norm_model.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/batch_norm_model.py"],
-    args = ["--run=DDPG", "--framework=tf", "--stop-iters=1"]
-)
-
-py_test(
-    name = "examples/batch_norm_model_ddpg_torch",
-    main = "examples/batch_norm_model.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/batch_norm_model.py"],
-    args = ["--framework=torch", "--run=DDPG", "--stop-iters=1"]
 )
 
 py_test(
@@ -2353,15 +2219,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_keras_model_a2c",
-    main = "examples/custom_keras_model.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/custom_keras_model.py"],
-    args = ["--run=A2C", "--stop=50", "--num-cpus=4"]
-)
-
-py_test(
     name = "examples/custom_keras_model_dqn",
     main = "examples/custom_keras_model.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -2436,7 +2293,7 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PG", "--stop-iters=1", "--framework=tf", "--input-files=tests/data/cartpole"]
+    args = ["--stop-iters=1", "--framework=tf", "--input-files=tests/data/cartpole"]
 )
 
 py_test(
@@ -2447,7 +2304,7 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PG", "--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
+    args = ["--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
 )
 
 py_test(
@@ -2898,30 +2755,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/parametric_actions_cartpole_pg_tf",
-    main = "examples/parametric_actions_cartpole.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--as-test", "--stop-reward=60.0", "--run=PG"]
-)
-
-py_test(
     name = "examples/parametric_actions_cartpole_dqn_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--framework=tf", "--stop-reward=60.0", "--run=DQN"]
-)
-
-py_test(
-    name = "examples/parametric_actions_cartpole_pg_torch",
-    main = "examples/parametric_actions_cartpole.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/parametric_actions_cartpole.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=60.0", "--run=PG"]
 )
 
 py_test(
@@ -2976,16 +2815,6 @@ py_test(
     size = "medium",
     srcs = ["examples/inference_and_serving/policy_inference_after_training_with_attention.py"],
     args = ["--stop-iters=2", "--framework=torch"]
-)
-
-py_test(
-    name = "examples/inference_and_serving/policy_inference_after_training_with_dt_torch",
-    main = "examples/inference_and_serving/policy_inference_after_training_with_dt.py",
-    tags = ["team:rllib", "exclusive", "examples", "ray_data"],
-    size = "medium",
-    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_dt.py"],
-    data = ["tests/data/cartpole/large.json"],
-    args = ["--input-files=tests/data/cartpole/large.json"]
 )
 
 py_test(
@@ -3245,54 +3074,21 @@ py_test(
 )
 
 py_test(
-    name = "examples/two_step_game_pg_tf",
+    name = "examples/two_step_game_ppo_tf",
     main = "examples/two_step_game.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=7", "--run=PG"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=7"]
 )
 
 py_test(
-    name = "examples/two_step_game_pg_torch",
+    name = "examples/two_step_game_ppo_torch",
     main = "examples/two_step_game.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
-)
-
-
-py_test(
-    name = "examples/bandit/lin_ts_train_wheel_env",
-    main = "examples/bandit/lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/bandit/lin_ts_train_wheel_env.py"],
-)
-
-py_test(
-    name = "examples/bandit/tune_lin_ts_train_wheel_env",
-    main = "examples/bandit/tune_lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/bandit/tune_lin_ts_train_wheel_env.py"],
-)
-
-py_test(
-    name = "examples/bandit/tune_lin_ucb_train_recommendation",
-    main = "examples/bandit/tune_lin_ucb_train_recommendation.py",
-    tags = ["team:rllib","exclusive",  "examples"],
-    size = "small",
-    srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
-)
-
-py_test(
-    name = "examples/bandit/tune_lin_ucb_train_recsim_env",
-    main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=7"]
 )
 
 py_test(

@@ -14,13 +14,13 @@ if __name__ == "__main__":
     # signatures/typehints.
     _register_all()
 
-    from ray.rllib.algorithms.a2c import A2CConfig
+    from ray.rllib.algorithms.ppo import PPOConfig
 
     assert "torch" not in sys.modules, "`torch` initially present, when it shouldn't!"
 
     # Note: No ray.init(), to test it works without Ray
     config = (
-        A2CConfig()
+        PPOConfig()
         .environment("CartPole-v1")
         .framework("tf")
         .rollouts(num_rollout_workers=0)

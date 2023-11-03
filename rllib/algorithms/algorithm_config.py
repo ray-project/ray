@@ -74,7 +74,6 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
-from ray.util import log_once
 
 gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
@@ -209,9 +208,9 @@ class AlgorithmConfig(_Config):
         .. testcode::
 
             from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-            from ray.rllib.algorithms.pg import PGConfig
+            from ray.rllib.algorithms.ppo import PPOConfig
             config = (
-                PGConfig()
+                PPOConfig()
                 .evaluation(
                     evaluation_num_workers=1,
                     evaluation_interval=1,
@@ -1798,14 +1797,6 @@ class AlgorithmConfig(_Config):
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
         if model is not NotProvided:
-            # Validate prev_a/r settings.
-            prev_a_r = model.get("lstm_use_prev_action_reward", DEPRECATED_VALUE)
-            if prev_a_r != DEPRECATED_VALUE:
-                deprecation_warning(
-                    "model.lstm_use_prev_action_reward",
-                    "model.lstm_use_prev_action and model.lstm_use_prev_reward",
-                    error=True,
-                )
             self.model.update(model)
             if (
                 model.get("_use_default_native_models", DEPRECATED_VALUE)
@@ -3759,48 +3750,3 @@ class AlgorithmConfig(_Config):
     @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
     def num_workers(self):
         pass
-
-
-def rllib_contrib_warning(algo_class):
-    if (
-        algo_class is not None
-        and algo_class.__name__
-        in [
-            "A2C",
-            "A3C",
-            "AlphaStar",
-            "AlphaZero",
-            "ApexDDPG",
-            "ApexDQN",
-            "ARS",
-            "BanditLinTS",
-            "BanditLinUCB",
-            "CRR",
-            "DDPG",
-            "DDPPO",
-            "Dreamer" "DT",
-            "ES",
-            "LeelaChessZero",
-            "MADDPG",
-            "MAML",
-            "MBMPO",
-            "PG",
-            "QMIX",
-            "R2D2",
-            "SimpleQ",
-            "SlateQ",
-            "TD3",
-        ]
-        and log_once(f"{algo_class.__name__}_contrib")
-    ):
-        logger.warning(
-            "{} has been moved to `rllib_contrib` and will no longer be maintained"
-            " by the RLlib team. You can still use it normally inside RLlib util "
-            "Ray 2.8, but from Ray 2.9 on, all `rllib_contrib` algorithms will no "
-            "longer be part of the core repo, and will therefore have to be installed "
-            "separately with pinned dependencies for e.g. ray[rllib] and other "
-            "packages! See "
-            "https://github.com/ray-project/ray/tree/master/rllib_contrib#rllib-contrib"
-            " for more information on the RLlib contrib "
-            "effort.".format(algo_class.__name__)
-        )
