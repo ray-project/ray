@@ -64,6 +64,16 @@ class MultiAgentTestEnv(MultiAgentEnv):
         obs = {agent_id: self.t for agent_id in agents_step}
         info = {agent_id: {} for agent_id in agents_step}
         reward = {agent_id: 1.0 for agent_id in agents_step}
+        # Add also agents without observations.
+        reward.update(
+            {
+                agent_id: 1.0
+                for agent_id in np.random.choice(
+                    np.array(list(self.agents_alive)), 8, replace=False
+                )
+                if agent_id not in reward
+            }
+        )
 
         # Use tha last terminateds/truncateds.
         is_truncated = {"__all__": False}
@@ -136,7 +146,11 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Run 100 samples.
         for i in range(100):
             agents_stepped = list(obs.keys())
-            action = {agent_id: i + 1 for agent_id in agents_stepped}
+            action = {
+                agent_id: i + 1
+                for agent_id in agents_stepped
+                if agent_id in env.agents_alive
+            }
             # action = env.action_space_sample(agents_stepped)
             obs, reward, is_terminated, is_truncated, info = env.step(action)
             observations.append(obs)
@@ -145,7 +159,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             infos.append(info)
             is_terminateds.append(is_terminated)
             is_truncateds.append(is_truncated)
-            states.append({agent_id: np.random.random() for agent_id in agents_stepped})
+            states.append({agent_id: np.random.random() for agent_id in action})
             extra_model_outputs.append(
                 {
                     agent_id: {"extra_1": np.random.random()}
@@ -174,6 +188,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
         for agent_id in env.get_agent_ids():
             if agent_id != "agent_1" and agent_id != "agent_5":
                 self.assertFalse(episode.agent_episodes[agent_id].is_done)
+        # Ensure that all global reward lists match in length the global reward
+        # timestep mappings.
+        for agent_id in episode._agent_ids:
+            self.assertEqual(
+                len(episode.global_rewards[agent_id]),
+                len(episode.global_rewards_t[agent_id]),
+            )
 
         # Test now intiializing an episode and setting the starting timestep at once.
         episode = MultiAgentEpisode(
@@ -183,7 +204,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             rewards=rewards[-10:],
             infos=infos[-11:],
             t_started=100,
-            states=states,
+            states=states[-10:],
             is_terminated=is_terminateds[-10:],
             is_truncated=is_truncateds[-10:],
             extra_model_outputs=extra_model_outputs[-10:],
@@ -202,6 +223,54 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertGreaterEqual(10, highest_index)
         # Assert that agent 5 is terminated.
         self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
+
+        # Now test, if agents that have never stepped are handled correctly.
+        # agent 5 will be the agent that never stepped.
+        observations = [
+            {"agent_1": 0, "agent_2": 0, "agent_3": 0},
+            {"agent_1": 1, "agent_3": 1, "agent_4": 1},
+            {"agent_2": 2, "agent_4": 2},
+        ]
+        actions = [
+            {"agent_1": 0, "agent_2": 0, "agent_3": 0},
+            {"agent_1": 1, "agent_3": 1, "agent_4": 1},
+        ]
+        rewards = [
+            {"agent_1": 1.0, "agent_3": 1.0, "agent_4": 1.0},
+            {"agent_2": 1.0, "agent_4": 1.0},
+        ]
+        infos = [
+            {"agent_1": {}, "agent_2": {}, "agent_3": {}},
+            {"agent_1": {}, "agent_3": {}, "agent_4": {}},
+            {"agent_2": {}, "agent_4": {}},
+        ]
+        is_terminated = [
+            {"__all__": False, "agent_1": False, "agent_3": False, "agent_4": False},
+            {"__all__": False, "agent_2": False, "agent_4": False},
+        ]
+        is_truncated = [
+            {"__all__": False, "agent_1": False, "agent_3": False, "agent_4": False},
+            {"__all__": False, "agent_2": False, "agent_4": False},
+        ]
+
+        episode = MultiAgentEpisode(
+            agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            infos=infos,
+            is_terminated=is_terminated,
+            is_truncated=is_truncated,
+        )
+
+        # Assert that the length of `SingleAgentEpisode`s are all correct.
+        self.assertEqual(len(episode.agent_episodes["agent_1"]), 1)
+        self.assertEqual(len(episode.agent_episodes["agent_2"]), 1)
+        self.assertEqual(len(episode.agent_episodes["agent_3"]), 1)
+        self.assertEqual(len(episode.agent_episodes["agent_4"]), 1)
+        # Assert now that applying length on agent 5's episode raises an error.
+        with self.assertRaises(AssertionError):
+            len(episode.agent_episodes["agent_5"])
 
     def test_add_initial_observation(self):
         # Generate an enviornment.
