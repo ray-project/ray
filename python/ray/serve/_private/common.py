@@ -7,6 +7,10 @@ import ray
 from ray.actor import ActorHandle
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+
+# from ray.serve.generated.serve_pb2 import (
+#     DeploymentStatusDriver as DeploymentStatusDriverProto,
+# )
 from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
@@ -102,30 +106,50 @@ class DeploymentStatus(str, Enum):
     UPDATING = "UPDATING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    UPSCALING = "UPSCALING"
+    DOWNSCALING = "DOWNSCALING"
+
+
+class DeploymentStatusDriver(str, Enum):
+    DEPLOY = "NEW_DEPLOY"
+    CONFIG_UPDATE = "CONFIG_UPDATE"
+    UPSCALE_FINISHED = "UPSCALE_FINISHED"
+    DOWNSCALE_FINISHED = "DOWNSCALE_FINISHED"
 
 
 @dataclass(eq=True)
 class DeploymentStatusInfo:
     name: str
     status: DeploymentStatus
+    status_driver: DeploymentStatusDriver
     message: str = ""
 
     def debug_string(self):
         return json.dumps(asdict(self), indent=4)
 
+    def update(self, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
     def to_proto(self):
         return DeploymentStatusInfoProto(
             name=self.name,
             status=f"DEPLOYMENT_STATUS_{self.status.name}",
+            # status_driver=f"DEPLOYMENT_STATUS_DRIVER_{self.status_driver.name}",
             message=self.message,
         )
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
         status = DeploymentStatusProto.Name(proto.status)[len("DEPLOYMENT_STATUS_") :]
+        # status_driver = DeploymentStatusDriverProto.Name(proto.status_driver)[
+        #     len("DEPLOYMENT_STATUS_DRIVER_") :
+        # ]
         return cls(
             name=proto.name,
             status=DeploymentStatus(status),
+            # status_driver=DeploymentStatusDriver(status_driver),
             message=proto.message,
         )
 
@@ -252,6 +276,26 @@ class DeploymentInfo:
     def __setstate__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._cached_actor_def = None
+
+    def compare_cindy(self, other) -> False:
+        """Check if num replicas is the only difference."""
+
+        if not other:
+            return False
+
+        return (
+            self.replica_config.ray_actor_options
+            == other.replica_config.ray_actor_options
+            and self.replica_config.placement_group_bundles
+            == other.replica_config.placement_group_bundles
+            and self.replica_config.placement_group_strategy
+            == other.replica_config.placement_group_strategy
+            and self.replica_config.max_replicas_per_node
+            == other.replica_config.max_replicas_per_node
+            and self.deployment_config.dict(exclude={"num_replicas"})
+            == other.deployment_config.dict(exclude={"num_replicas"})
+            and self.version == other.version
+        )
 
     def set_autoscaled_num_replicas(self, autoscaled_num_replicas):
         self.autoscaled_num_replicas = autoscaled_num_replicas
