@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Dict
 
 import boto3
 import hashlib
@@ -217,11 +217,18 @@ def _validate_and_push(byod_image: str) -> None:
     )
 
 
-def _get_ray_commit() -> str:
-    return os.environ.get(
+def _get_ray_commit(envs: Optional[Dict[str, str]] = None) -> str:
+    if envs is None:
+        envs = os.environ
+    for key in [
+        "RAY_WANT_COMMIT_IN_IMAGE",
         "COMMIT_TO_TEST",
-        os.environ["BUILDKITE_COMMIT"],
-    )
+        "BUILDKITE_COMMIT",
+    ]:
+        commit = envs.get(key, "")
+        if commit:
+            return commit
+    return ""
 
 
 def _download_dataplane_build_file() -> None:
