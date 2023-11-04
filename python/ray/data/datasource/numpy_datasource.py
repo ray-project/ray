@@ -13,17 +13,7 @@ if TYPE_CHECKING:
 
 @PublicAPI
 class NumpyDatasource(FileBasedDatasource):
-    """Numpy datasource, for reading and writing Numpy files.
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import NumpyDatasource
-        >>> source = NumpyDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource( # doctest: +SKIP
-        ...     source, paths="/path/to/dir").take()
-        [array([0., 1., 2.]), ...]
-
-    """
+    """Numpy datasource, for reading and writing Numpy files."""
 
     _COLUMN_NAME = "data"
     _FILE_EXTENSION = "npy"
