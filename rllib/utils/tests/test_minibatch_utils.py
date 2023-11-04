@@ -109,7 +109,8 @@ class TestMinibatchUtils(unittest.TestCase):
                 expected_iteration_counter = np.ceil(
                     num_sgd_iter * max(agent_steps) / mini_batch_size
                 )
-                # check(iteration_counter, expected_iteration_counter)
+                if not seq_lens:
+                    check(iteration_counter, expected_iteration_counter)
                 print(f"iteration_counter: {iteration_counter}")
 
 
