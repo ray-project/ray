@@ -690,6 +690,9 @@ class WorkerSet:
         if local_worker and self.local_worker() is not None:
             local_result = [func(self.local_worker())]
 
+        if not self.__worker_manager.actor_ids():
+            return local_result
+
         remote_results = self.__worker_manager.foreach_actor(
             func,
             healthy_only=healthy_only,

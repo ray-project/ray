@@ -441,7 +441,9 @@ class PPO(Algorithm):
                     )
             # New Episode-returning EnvRunner API.
             else:
-                if self.workers.num_remote_workers() <= 0:
+                # TODO (sven): Make this also use `synchronous_parallel_sample`.
+                #  Which needs to be enhanced to be able to handle episodes as well.
+                if self.workers.num_remote_workers() == 0:
                     episodes: List[SingleAgentEpisode] = [
                         self.workers.local_worker().sample()
                     ]
@@ -449,6 +451,17 @@ class PPO(Algorithm):
                     episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
                         lambda w: w.sample(), local_worker=False
                     )
+
+                TODO: Move the following two steps into:
+                1) Split up collected episode fragments (as-is, no postprocessing)
+                   into roughly n equal timesteps (n==num learner workers)
+                2) Send each learner worker one chunk of episode (fragments)
+                3) Have learner workers postprocess episodes (PPO specific)
+                4) Have learner workers call their training connector on the list of
+                episodes -> returns train batch
+                5) Have learner workers perform minibatch SGD looping on generated sample
+                batch.
+    
                 # Perform PPO postprocessing on a (flattened) list of Episodes.
                 postprocessed_episodes: List[
                     SingleAgentEpisode
