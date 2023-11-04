@@ -6,6 +6,11 @@ import yaml
 import click
 
 from ci.ray_ci.container import _DOCKER_ECR_REPO
+from ci.ray_ci.builder_container import (
+    BuilderContainer,
+    DEFAULT_BUILD_TYPE,
+    DEFAULT_PYTHON_VERSION,
+)
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 
@@ -100,7 +105,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 )
 @click.option(
     "--build-type",
-    type=click.Choice(["optimized", "debug", "asan", "java"]),
+    type=click.Choice(["optimized", "debug", "asan", "java", "wheel"]),
     default="optimized",
 )
 def main(
@@ -124,6 +129,9 @@ def main(
     os.chdir(bazel_workspace_dir)
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
+    if build_type == "wheel":
+        # for wheel testing, we first build the wheel and then use it for running tests
+        BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE).run()
     container = _get_container(
         team,
         workers,
