@@ -283,7 +283,8 @@ class ImpalaConfig(AlgorithmConfig):
                 function.
             entropy_coeff_schedule: Decay schedule for the entropy regularizer.
             _separate_vf_optimizer: Set this to true to have two separate optimizers
-                optimize the policy-and value networks.
+                optimize the policy-and value networks. Only supported for some
+                algorithms (APPO, IMPALA) on the old API stack.
             _lr_vf: If _separate_vf_optimizer is True, define separate learning rate
                 for the value network.
             after_train_step: Callback for APPO to use to update KL, target network
@@ -408,19 +409,16 @@ class ImpalaConfig(AlgorithmConfig):
 
         # If two separate optimizers/loss terms used for tf, must also set
         # `_tf_policy_handles_more_than_one_loss` to True.
-        if self._separate_vf_optimizer is True:
-            # Only supported in tf on the old API stack.
-            if self.framework_str not in ["tf", "tf2"]:
-                raise ValueError(
-                    "`_separate_vf_optimizer` only supported to tf so far!"
-                )
-            if self._tf_policy_handles_more_than_one_loss is False:
-                raise ValueError(
-                    "`_tf_policy_handles_more_than_one_loss` must be set to "
-                    "True, for TFPolicy to support more than one loss "
-                    "term/optimizer! Try setting config.training("
-                    "_tf_policy_handles_more_than_one_loss=True)."
-                )
+        if (
+            self.framework_str in ["tf", "tf2"]
+            and self._separate_vf_optimizer is True
+            and self._tf_policy_handles_more_than_one_loss is False
+        ):
+            raise ValueError(
+                "`_tf_policy_handles_more_than_one_loss` must be set to True, for "
+                "TFPolicy to support more than one loss term/optimizer! Try setting "
+                "config.training(_tf_policy_handles_more_than_one_loss=True)."
+            )
         # Learner API specific checks.
         if self._enable_new_api_stack:
             if not (
