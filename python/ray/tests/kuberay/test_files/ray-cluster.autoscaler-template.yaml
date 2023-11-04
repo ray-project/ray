@@ -1,5 +1,8 @@
 # `ray-cluster.autoscaler-template.yaml` is a template for the RayCluster CR and
 # is used by the function `_get_ray_cr_config` in `test_autoscaling_e2e.py`.
+# [Note]
+# (1) The VM test runner only has 4 CPUs, so we lower the CPU requests.
+# (2) `test_autoscaling_e2e.py` assumes that each Ray Pod has 1 logical CPU.
 apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
@@ -35,6 +38,7 @@ spec:
             name: dashboard
           - containerPort: 10001
             name: client
+          imagePullPolicy: IfNotPresent
           lifecycle:
             preStop:
               exec:
@@ -44,7 +48,7 @@ spec:
               cpu: "1"
               memory: "2G"
             requests:
-              cpu: "1"
+              cpu: "500m"
               memory: "2G"
   workerGroupSpecs:
   - replicas: 1
@@ -61,10 +65,11 @@ spec:
             preStop:
               exec:
                 command: ["/bin/sh","-c","ray stop"]
+          imagePullPolicy: IfNotPresent
           resources:
             limits:
               cpu: "1"
               memory: "1G"
             requests:
-              cpu: "1"
+              cpu: "500m"
               memory: "1G"
