@@ -19,7 +19,6 @@ from ray.tests.kuberay.utils import (
     switch_to_ray_parent_dir,
     kubectl_exec_python_script,
     kubectl_logs,
-    kubectl_patch,
     kubectl_delete,
     wait_for_pods,
     wait_for_pod_to_start,
@@ -80,9 +79,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         with open(EXAMPLE_CLUSTER_PATH) as ray_cr_config_file:
             ray_cr_config_str = ray_cr_config_file.read()
 
-        kuberay_crd_sets = set(["RayCluster", "RayJob", "RayService"])
         for k8s_object in yaml.safe_load_all(ray_cr_config_str):
-            if k8s_object['kind'] in kuberay_crd_sets:
+            if k8s_object['kind'] in ["RayCluster", "RayJob", "RayService"]:
                 config = k8s_object
                 break
         head_group = config["spec"]["headGroupSpec"]
