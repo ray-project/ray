@@ -13,16 +13,7 @@ if TYPE_CHECKING:
 
 @PublicAPI
 class JSONDatasource(FileBasedDatasource):
-    """JSON datasource, for reading and writing JSON and JSONL files.
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import JSONDatasource
-        >>> source = JSONDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource( # doctest: +SKIP
-        ...     source, paths="/path/to/dir").take()
-        [{"a": 1, "b": "foo"}, ...]
-    """
+    """JSON datasource, for reading and writing JSON and JSONL files."""
 
     _FILE_EXTENSION = ["json", "jsonl"]
 
