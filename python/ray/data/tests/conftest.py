@@ -595,6 +595,8 @@ class CoreExecutionMetrics:
             "_StatsActor.record_start": lambda count: True,
             "_StatsActor.record_task": lambda count: True,
             "_StatsActor.get_dataset_id": lambda count: True,
+            "_StatsActor.update_dataset": lambda count: True,
+            "_StatsActor.register_dataset": lambda count: True,
             "datasets_stats_actor:_StatsActor.__init__": lambda count: count <= 1,
         }
 
@@ -697,6 +699,33 @@ def barrier():
     return
 
 
+@ray.remote
+def warmup():
+    time.sleep(1)
+    return np.zeros(1024 * 1024, dtype=np.uint8)
+
+
+def get_initial_core_execution_metrics_cursor():
+    # Warmup plasma store and workers.
+    refs = [warmup.remote() for _ in range(10)]
+    ray.get(refs)
+
+    for ref in refs:
+        wait_for_condition(
+            lambda: any(
+                ref.hex().startswith(t.task_id) for t in ray.util.state.list_tasks()
+            )
+        )
+
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={"warmup": lambda count: True}, object_store_stats={}
+        ),
+        cursor=None,
+    )
+    return cursor
+
+
 def assert_core_execution_metrics_equals(
     expected_metrics: CoreExecutionMetrics, cursor=None
 ):
@@ -707,8 +736,6 @@ def assert_core_execution_metrics_equals(
         )
     )
 
-    if cursor is None:
-        cursor = CoreExecutionMetrics(task_count=None, object_store_stats=None)
     metrics = PhysicalCoreExecutionMetrics(cursor)
     metrics.assert_task_metrics(expected_metrics)
     metrics.assert_object_store_metrics(expected_metrics)

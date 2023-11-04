@@ -4,6 +4,11 @@ import pytest
 import ray
 from ray.data._internal.execution.operators.map_transformer import _splitrange
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import (
+    CoreExecutionMetrics,
+    assert_core_execution_metrics_equals,
+    get_initial_core_execution_metrics_cursor,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -24,19 +29,58 @@ def test_splitrange():
 
 
 def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
-    ds = ray.data.read_csv("example://iris.csv", parallelism=1)
-    assert ds.num_blocks() == 1
-    assert ds.materialize().num_blocks() == 1
-    assert ds.map_batches(lambda x: x).materialize().num_blocks() == 1
+    cursor = get_initial_core_execution_metrics_cursor()
 
-    ds = ds.map_batches(lambda x: x).materialize()
-    stats = ds.stats()
+    ds = ray.data.read_csv("example://iris.csv", parallelism=1)
+    materialized_ds = ds.materialize()
+    assert materialized_ds.num_blocks() == 1
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={
+                "_execute_read_task_split": 1,
+                "_get_datasource_or_legacy_reader": 1,
+            },
+        ),
+        cursor,
+    )
+
+    materialized_ds = ds.map_batches(lambda x: x).materialize()
+    assert materialized_ds.num_blocks() == 1
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={
+                "ReadCSV->MapBatches(<lambda>)": 1,
+            },
+        ),
+        cursor,
+    )
+
+    stats = materialized_ds.stats()
     assert "Stage 1 ReadCSV->MapBatches" in stats, stats
 
     ds = ray.data.read_csv("example://iris.csv", parallelism=10)
     assert ds.num_blocks() == 1
     assert ds.map_batches(lambda x: x).materialize().num_blocks() == 10
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={
+                "_get_datasource_or_legacy_reader": 1,
+                "MapBatches(<lambda>)": 10,
+                "ReadCSV->SplitBlocks(10)": 1,
+            },
+        ),
+        cursor,
+    )
+
     assert ds.materialize().num_blocks() == 10
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            task_count={
+                "_execute_read_task_split": 1,
+            },
+        ),
+        cursor,
+    )
 
     ds = ray.data.read_csv("example://iris.csv", parallelism=100)
     assert ds.num_blocks() == 1

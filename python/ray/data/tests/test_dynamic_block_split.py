@@ -18,6 +18,7 @@ from ray.data.datasource.datasource import Reader, ReadTask
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_core_execution_metrics_equals,
+    get_initial_core_execution_metrics_cursor,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -170,19 +171,12 @@ def test_dataset(
     def warmup():
         return np.zeros(ctx.target_max_block_size, dtype=np.uint8)
 
-    ray.get([warmup.remote() for _ in range(10)])
-    cursor = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(
-            task_count={"warmup": lambda count: True}, object_store_stats={}
-        ),
-        cursor=None,
-    )
-
+    cursor = get_initial_core_execution_metrics_cursor()
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
         parallelism=num_tasks,
         num_batches_per_task=num_blocks_per_task,
-        row_size=block_size,
+        row_size=ctx.target_max_block_size,
     )
     # Note the following calls to ds will not fully execute it.
     assert ds.schema() is not None
