@@ -1172,22 +1172,6 @@ py_test(
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
-# test abstract base models
-py_test(
-    name = "test_base_model",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/tests/test_base_model.py"]
-)
-
-# test torch base models
-py_test(
-    name = "test_torch_model",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/tests/test_torch_model.py"]
-)
-
 
 # --------------------------------------------------------------------
 # Offline
@@ -2042,15 +2026,6 @@ py_test(
     args = ["--stop-iters=3 --num-cpus=3"]
 )
 
-
-py_test(
-    name = "examples/coin_game_env",
-    tags = ["team:rllib", "examples"],
-    size = "small",
-    srcs = ["examples/coin_game_env.py"],
-    args = ["--stop-iters=2"]
-)
-
 py_test(
     name = "examples/complex_struct_space_tf",
     main = "examples/complex_struct_space.py",
@@ -2139,24 +2114,6 @@ py_test(
     size = "medium",
     srcs = ["examples/custom_experiment.py"],
     args = ["--train-iterations=10"]
-)
-
-py_test(
-    name = "examples/custom_fast_model_tf",
-    main = "examples/custom_fast_model.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_fast_model.py"],
-    args = ["--stop-iters=1", "--framework=tf"]
-)
-
-py_test(
-    name = "examples/custom_fast_model_torch",
-    main = "examples/custom_fast_model.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_fast_model.py"],
-    args = ["--stop-iters=1", "--framework=torch"]
 )
 
 py_test(
@@ -2719,15 +2676,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/tune/framework",
-    main = "examples/tune/framework.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/tune/framework.py"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "examples/two_trainer_workflow_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -2743,15 +2691,6 @@ py_test(
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
     args = ["--as-test", "--torch", "--stop-reward=450.0"]
-)
-
-py_test(
-    name = "examples/two_trainer_workflow_mixed_torch_tf",
-    main = "examples/two_trainer_workflow.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=450.0"]
 )
 
 py_test(

@@ -29,7 +29,6 @@ class A3CConfig(AlgorithmConfig):
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
         self.entropy_coeff_schedule = None
-        self.sample_async = True
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_rollout_workers = 2
@@ -64,7 +63,6 @@ class A3CConfig(AlgorithmConfig):
         vf_loss_coeff: Optional[float] = NotProvided,
         entropy_coeff: Optional[float] = NotProvided,
         entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
-        sample_async: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "A3CConfig":
         super().training(**kwargs)
@@ -85,8 +83,6 @@ class A3CConfig(AlgorithmConfig):
             self.entropy_coeff = entropy_coeff
         if entropy_coeff_schedule is not NotProvided:
             self.entropy_coeff_schedule = entropy_coeff_schedule
-        if sample_async is not NotProvided:
-            self.sample_async = sample_async
 
         return self
 

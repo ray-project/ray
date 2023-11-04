@@ -1950,8 +1950,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # A callable returning an InputReader object to use.
         if isinstance(self.config.input_, FunctionType):
             return self.config.input_
-        # Use RLlib's Sampler classes (SyncSampler or AsynchSampler, depending
-        # on `config.sample_async` setting).
+        # Use RLlib's Sampler classes (SyncSampler).
         elif self.config.input_ == "sampler":
             return lambda ioctx: ioctx.default_sampler_input()
         # Ray Dataset input -> Use `config.input_config` to construct DatasetReader.
