@@ -170,6 +170,60 @@ def test_group_workers_by_ip(ray_start_2_cpus):
     ), "Workers should be grouped by IP, with the first IP being 1."
 
 
+def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
+    def create_worker_group(pids, ips, gpu_ids):
+        wg = WorkerGroup(num_workers=len(ips))
+        wg.workers = [
+            Worker(
+                actor=None,
+                metadata=WorkerMetadata(
+                    node_id="dummy",
+                    node_ip=ip,
+                    hostname="dummy",
+                    resource_ids={"GPU": gpu_id.split() if gpu_id else []},
+                    pid=pid,
+                ),
+            )
+            for pid, ip, gpu_id in zip(pids, ips, gpu_ids)
+        ]
+        return wg
+
+    # All CPU workers
+    wg = create_worker_group(
+        pids=[0, 1, 2, 3, 4, 5, 6, 7],
+        ips=["2", "2", "1", "1", "2", "1", "1", "2"],
+        gpu_ids=[None] * 8,
+    )
+    wg.group_workers_by_ip()
+
+    # GPU workers, each with one GPU
+    wg = create_worker_group(
+        pids=[0, 1, 2, 3, 4, 5, 6, 7],
+        ips=["2", "2", "1", "1", "2", "1", "1", "2"],
+        gpu_ids=["1", "0", "3", "2", "2", "0", "1", "3"],
+    )
+    wg.group_workers_by_ip()
+    expected_order = {"1": [5, 6, 3, 2], "2": [1, 0, 4, 7]}
+    order = [w.metadata.pid for w in wg.workers]
+    assert (
+        order == expected_order
+    ), f"Workers on the same node should be sorted by GPU id!\nExpect: {expected_order}\nGot: {order}"
+
+    # GPU workers, each with multiple GPUs
+    wg = create_worker_group(
+        pids=[0, 1, 2, 3],
+        ips=["2", "1", "1", "2"],
+        gpu_ids=["1,3", "2,1", "0,3", "0,2"],
+    )
+    wg.group_workers_by_ip()
+    expected_order = {"1": [2, 1], "2": [3, 0]}
+    order = [w.metadata.pid for w in wg.workers]
+    assert (
+        order == expected_order
+    ), f"Workers on the same node should be sorted by their"
+    " minimal GPU id!\nExpect: {expected_order}\nGot: {order}"
+
+
 def test_execute_single(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
 
