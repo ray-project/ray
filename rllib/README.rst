@@ -94,7 +94,7 @@ A list of all the algorithms can be found `here <https://docs.ray.io/en/master/r
 Quick First Experiment
 ----------------------
 
-.. code-block:: python
+.. testcode::
 
     import gymnasium as gym
     from ray.rllib.algorithms.ppo import PPOConfig
@@ -171,9 +171,14 @@ Quick First Experiment
     # Since we have to guess 10 times and the optimal reward is 0.0
     # (exact match between observation and action value),
     # we can expect to reach an optimal episode reward of 0.0.
-    for i in range(5):
+    for i in range(1):
         results = algo.train()
         print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
+
+.. testoutput::
+    :options: +MOCK
+
+    Iter: 0; avg. reward=-41.88662799871655
 
 
 After training, you may want to perform action computations (inference) in your environment.
@@ -184,7 +189,7 @@ Below is a minimal example on how to do this. Also
 and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training_with_attention.py>`_).
 
 
-.. code-block:: python
+.. testcode::
 
     # Perform inference (action computations) based on given env observations.
     # Note that we are using a slightly simpler env here (-3.0 to 3.0, instead
@@ -206,6 +211,11 @@ and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/exampl
         total_reward += reward
     # Report results.
     print(f"Shreaked for 1 episode; total-reward={total_reward}")
+
+.. testoutput::
+    :options: +MOCK
+
+    Shreaked for 1 episode; total-reward=-0.001
 
 
 For a more detailed `"60 second" example, head to our main documentation  <https://docs.ray.io/en/master/rllib/index.html>`_.

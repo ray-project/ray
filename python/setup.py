@@ -27,7 +27,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
+SUPPORTED_PYTHONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -270,7 +270,6 @@ if setup_spec.type == SetupType.RAY:
             "fastapi",
             "aiorwlock",
             "watchfiles",
-            numpy_dep,
         ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
         "observability": [

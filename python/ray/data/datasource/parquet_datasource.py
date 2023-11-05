@@ -13,13 +13,13 @@ from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
 )
 from ray.data.datasource.datasource import Reader, ReadTask
-from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.file_meta_provider import (
     DefaultParquetMetadataProvider,
     ParquetMetadataProvider,
     _handle_read_os_error,
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -151,14 +151,6 @@ class ParquetDatasource(ParquetBaseDatasource):
     PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
     automatic Arrow dataset schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import ParquetDatasource
-        >>> source = ParquetDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource( # doctest: +SKIP
-        ...     source, paths="/path/to/dir").take()
-        [{"a": 1, "b": "foo"}, ...]
     """
 
     def get_name(self):

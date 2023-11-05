@@ -1,11 +1,16 @@
 import os
 import sys
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 import yaml
 import click
 
 from ci.ray_ci.container import _DOCKER_ECR_REPO
+from ci.ray_ci.builder_container import (
+    BuilderContainer,
+    DEFAULT_BUILD_TYPE,
+    DEFAULT_PYTHON_VERSION,
+)
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import docker_login
 
@@ -100,7 +105,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 )
 @click.option(
     "--build-type",
-    type=click.Choice(["optimized", "debug", "asan"]),
+    type=click.Choice(["optimized", "debug", "asan", "java", "wheel"]),
     default="optimized",
 )
 def main(
@@ -114,7 +119,7 @@ def main(
     run_flaky_tests: bool,
     skip_ray_installation: bool,
     gpus: int,
-    test_env: List[str],
+    test_env: Tuple[str],
     test_arg: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
@@ -124,15 +129,19 @@ def main(
     os.chdir(bazel_workspace_dir)
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
+    if build_type == "wheel":
+        # for wheel testing, we first build the wheel and then use it for running tests
+        BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE).run()
     container = _get_container(
         team,
         workers,
         worker_id,
         parallelism_per_worker,
         gpus,
-        build_name,
-        build_type,
-        skip_ray_installation,
+        test_env=list(test_env),
+        build_name=build_name,
+        build_type=build_type,
+        skip_ray_installation=skip_ray_installation,
     )
     test_targets = _get_test_targets(
         container,
@@ -142,7 +151,7 @@ def main(
         only_tags=only_tags,
         get_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(test_targets, test_env, test_arg)
+    success = container.run_tests(test_targets, test_arg)
     sys.exit(0 if success else 1)
 
 
@@ -152,6 +161,7 @@ def _get_container(
     worker_id: int,
     parallelism_per_worker: int,
     gpus: int,
+    test_env: Optional[List[str]] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
     skip_ray_installation: bool = False,
@@ -162,6 +172,7 @@ def _get_container(
 
     return TesterContainer(
         build_name or f"{team}build",
+        test_envs=test_env,
         shard_count=shard_count,
         shard_ids=list(range(shard_start, shard_end)),
         gpus=gpus,

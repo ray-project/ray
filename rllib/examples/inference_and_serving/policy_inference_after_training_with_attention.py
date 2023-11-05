@@ -77,6 +77,8 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        # TODO (Kourosh): Enable when Attentions are supported.
+        .experimental(_enable_new_api_stack=False)
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
         .framework(args.framework)
@@ -90,12 +92,9 @@ if __name__ == "__main__":
                 "attention_memory_inference": 10,
                 "attention_memory_training": 10,
             },
-            # TODO (Kourosh): Enable when Attentions are supported.
-            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

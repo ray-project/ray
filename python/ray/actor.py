@@ -27,6 +27,7 @@ from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
     PythonFunctionDescriptor,
     StreamingObjectRefGenerator,
+    raise_sys_exit_with_custom_error_message,
 )
 from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -352,6 +353,7 @@ class _ActorClassMetadata:
         resources: The default resources required by the actor creation task.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
+            See :ref:`accelerator types <accelerator_types>`.
         runtime_env: The runtime environment for this actor.
         scheduling_strategy: Strategy about how to schedule this actor.
         last_export_session_and_job: A pair of the last exported session
@@ -590,7 +592,7 @@ class ActorClass:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.util.accelerators` for accelerator types.
+                See :ref:`accelerator types <accelerator_types>`.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
@@ -1462,10 +1464,7 @@ def exit_actor():
 
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.
-        exit = SystemExit(0)
-        exit.is_ray_terminate = True
-        exit.ray_terminate_msg = "exit_actor() is called."
-        raise exit
+        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
     else:
         raise TypeError(
             "exit_actor API is called on a non-actor worker, "

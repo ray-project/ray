@@ -129,6 +129,8 @@ if __name__ == "__main__":
     # main part: RLlib config with AttentionNet model
     config = (
         ppo.PPOConfig()
+        # TODO (Kourosh): Enable when LSTMs are supported.
+        .experimental(_enable_new_api_stack=False)
         .environment(
             args.env,
             # This env_config is only used for the RepeatAfterMeEnv env.
@@ -150,8 +152,6 @@ if __name__ == "__main__":
                 "attention_head_dim": 32,
                 "attention_position_wise_mlp_dim": 32,
             },
-            # TODO (Kourosh): Enable when LSTMs are supported.
-            _enable_learner_api=False,
         )
         .framework(args.framework)
         .rollouts(num_envs_per_worker=20)
@@ -159,7 +159,6 @@ if __name__ == "__main__":
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0))
         )
-        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {
