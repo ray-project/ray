@@ -24,11 +24,12 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.core.learner.learner import LearnerSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
-from ray.rllib.utils.minibatch_utils import ShardBatchIterator
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.minibatch_utils import ShardBatchIterator, ShardEpisodesIterator
+from ray.rllib.utils.typing import EpisodeType, ResultDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
+from ray.util.annotations import PublicAPI
 
 
 if TYPE_CHECKING:
@@ -58,6 +59,7 @@ def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
     return True
 
 
+@PublicAPI(stability="alpha")
 class LearnerGroup:
     """Coordinator of Learners.
 
@@ -144,25 +146,38 @@ class LearnerGroup:
 
     def update(
         self,
-        batch: MultiAgentBatch,
         *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
         reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
+        # TODO (sven): Deprecate the following args. They should be extracted from the
+        #  LearnerHyperparameters of those specific algorithms that actually require
+        #  these settings.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Do one or more gradient based updates to the Learner(s) based on given data.
 
         Args:
-            batch: The data batch to use for the update.
+            batch: The (optional) data batch to use for the update. If there are more
+                than one Learner workers, the batch is split amongst these and one
+                shard is sent to each Learner. If `batch` is not provided, the user
+                must provide the `episodes` arg. Sending both `batch` and `episodes`
+                is also allowed.
+            episodes: The (optional) list of Episodes to process and perform the update
+                for. If there are more than one Learner workers, the list of episodes
+                is split amongst these and one list shard is sent to each Learner.
+                If `episodes` is not provided, the user must provide the `batch` arg.
+                Sending both `batch` and `episodes` is also allowed.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
             reduce_fn: An optional callable to reduce the results from a list of the
                 Learner actors into a single result. This can be any arbitrary function
                 that takes a list of dictionaries and returns a single dictionary. For
-                example you can either take an average (default) or concatenate the
+                example, you can either take an average (default) or concatenate the
                 results (for example for metrics) or be more selective about you want to
                 report back to the algorithm's training_step. If None is passed, the
                 results will not get reduced.
@@ -173,6 +188,9 @@ class LearnerGroup:
         """
 
         # Construct a multi-agent batch with only the trainable modules.
+        # TODO (sven): Move this into individual Learners. It might be that
+        #  batch/episodes postprocessing on each Learner requires the non-trainable
+        #  modules' data.
         train_batch = {}
         for module_id in batch.policy_batches.keys():
             if self._is_module_trainable(module_id, batch):
@@ -180,9 +198,11 @@ class LearnerGroup:
         train_batch = MultiAgentBatch(train_batch, batch.count)
 
         if self.is_local:
+            assert batch is not None or episodes is not None
             results = [
                 self._learner.update(
-                    train_batch,
+                    batch=train_batch,
+                    episodes=episodes,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     reduce_fn=reduce_fn,
@@ -190,24 +210,42 @@ class LearnerGroup:
             ]
         else:
 
-            def _learner_update(learner, minibatch):
+            def _learner_update(learner: Learner, batch_shard=None, episodes_shard=None):
                 return learner.update(
-                    minibatch,
+                    batch=batch_shard,
+                    episodes=episodes_shard,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     reduce_fn=reduce_fn,
                 )
 
-            results = self._get_results(
-                self._worker_manager.foreach_actor(
-                    [
-                        partial(_learner_update, minibatch=minibatch)
-                        for minibatch in ShardBatchIterator(batch, len(self._workers))
-                    ]
+            # Only batch provided, split it up into n shards.
+            if episodes is None:
+                assert batch is not None
+                results = self._get_results(
+                    self._worker_manager.foreach_actor(
+                        [
+                            partial(_learner_update, batch_shard=batch_shard)
+                            for batch_shard in ShardBatchIterator(batch, len(self._workers))
+                        ]
+                    )
                 )
-            )
+            elif batch is None:
+                assert episodes is not None
+                results = self._get_results(
+                    self._worker_manager.foreach_actor(
+                        [
+                            partial(_learner_update, episodes_shard=episodes_shard)
+                            for episodes_shard in ShardEpisodesIterator(episodes, len(self._workers))
+                        ]
+                    )
+                )
+            # TODO (sven): Implement the case in which both batch and episodes might
+            #  already be provided (or figure out whether this makes sense at all).
+            else:
+                raise NotImplementedError
 
-        # TODO(sven): Move reduce_fn to the training_step
+        # TODO (sven): Move reduce_fn to the training_step
         if reduce_fn is None:
             return results
         else:
@@ -215,18 +253,31 @@ class LearnerGroup:
 
     def async_update(
         self,
-        batch: MultiAgentBatch,
         *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
         reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
+        # TODO (sven): Deprecate the following args. They should be extracted from the
+        #  LearnerHyperparameters of those specific algorithms that actually require
+        #  these settings.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
     ) -> Union[List[Mapping[str, Any]], List[List[Mapping[str, Any]]]]:
         """Asnychronously do gradient based updates to the Learner(s) with `batch`.
 
         Args:
-            batch: The data batch to use for the update.
+            batch: The (optional) data batch to use for the update. If there are more
+                than one Learner workers, the batch is split amongst these and one
+                shard is sent to each Learner. If `batch` is not provided, the user
+                must provide the `episodes` arg. Sending both `batch` and `episodes`
+                is also allowed.
+            episodes: The (optional) list of Episodes to process and perform the update
+                for. If there are more than one Learner workers, the list of episodes
+                is split amongst these and one list shard is sent to each Learner.
+                If `episodes` is not provided, the user must provide the `batch` arg.
+                Sending both `batch` and `episodes` is also allowed.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.

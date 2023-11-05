@@ -452,24 +452,24 @@ class PPO(Algorithm):
                         lambda w: w.sample(), local_worker=False
                     )
 
-                TODO: Move the following two steps into:
-                1) Split up collected episode fragments (as-is, no postprocessing)
-                   into roughly n equal timesteps (n==num learner workers)
-                2) Send each learner worker one chunk of episode (fragments)
-                3) Have learner workers postprocess episodes (PPO specific)
-                4) Have learner workers call their training connector on the list of
-                episodes -> returns train batch
-                5) Have learner workers perform minibatch SGD looping on generated sample
-                batch.
+                #TODO: Move the following two steps into:
+                #1) Split up collected episode fragments (as-is, no postprocessing)
+                #   into roughly n equal timesteps (n==num learner workers)
+                #2) Send each learner worker one chunk of episode (fragments)
+                #3) Have learner workers postprocess episodes (PPO specific)
+                #4) Have learner workers call their training connector on the list of
+                #episodes -> returns train batch
+                #5) Have learner workers perform minibatch SGD looping on generated sample
+                #batch.
     
                 # Perform PPO postprocessing on a (flattened) list of Episodes.
-                postprocessed_episodes: List[
-                    SingleAgentEpisode
-                ] = self.postprocess_episodes(tree.flatten(episodes))
-                # Convert list of postprocessed Episodes into a single sample batch.
-                train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
-                    postprocessed_episodes
-                )
+                #postprocessed_episodes: List[
+                #    SingleAgentEpisode
+                #] = self.postprocess_episodes(tree.flatten(episodes))
+                ## Convert list of postprocessed Episodes into a single sample batch.
+                #train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
+                #    postprocessed_episodes
+                #)
 
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()

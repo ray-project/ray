@@ -327,7 +327,8 @@ class AlgorithmConfig(_Config):
         # TODO (sven): Deprecate as soon as A3C moves to `rllib_contrib`.
         self.sample_async = False
         self.enable_connectors = True
-        self.connector_creator = None
+        self.env_connector_creator = None
+        self.learner_connector_creator = None
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_env_batch_wait_ms = 0
@@ -1471,7 +1472,7 @@ class AlgorithmConfig(_Config):
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
         sample_async: Optional[bool] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
-        connector_creator: Optional[
+        env_connector_creator: Optional[
             Callable[
                 [EnvType, "RLModule"],
                 Tuple["ConnectorV2", "ConnectorV2", "ConnectorContextV2"],
@@ -1524,7 +1525,7 @@ class AlgorithmConfig(_Config):
             enable_connectors: Use connector based environment runner, so that all
                 preprocessing of obs and postprocessing of actions are done in agent
                 and action connectors.
-            connector_creator: A callable taking an Env and RLModule as input args
+            env_connector_creator: A callable taking an Env and RLModule as input args
                 and returning a tuple consisting of an env-to-module ConnectorV2
                 (might be a pipeline), a module-to-env ConnectorV2 (might be a pipeline),
                 and an initial ConnectorContextV2 object.
@@ -1617,8 +1618,8 @@ class AlgorithmConfig(_Config):
             self.sample_async = sample_async
         if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
-        if connector_creator is not NotProvided:
-            self.connector_creator = connector_creator
+        if env_connector_creator is not NotProvided:
+            self.env_connector_creator = env_connector_creator
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:
@@ -1723,6 +1724,12 @@ class AlgorithmConfig(_Config):
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
+        learner_connector_creator: Optional[
+            Callable[
+                ["RLModule"],
+                Tuple["ConnectorV2", "ConnectorContextV2"],
+            ]
+        ] = NotProvided,
         # Deprecated arg.
         _enable_learner_api: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
@@ -1782,6 +1789,11 @@ class AlgorithmConfig(_Config):
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight, or enable compression
                 in your experiment of timesteps.
+            learner_class: The `Learner` class to use for (distributed) updating of the
+                RLModule. Only used when `_enable_new_api_stack=True`.
+            learner_connector_creator: A callable taking an RLModule as input
+                and returning a tuple consisting of an learner ConnectorV2
+                (might be a pipeline) and an initial ConnectorContextV2 object.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1826,6 +1838,8 @@ class AlgorithmConfig(_Config):
             )
         if learner_class is not NotProvided:
             self._learner_class = learner_class
+        if learner_connector_creator is not NotProvided:
+            self.learner_connector_creator = learner_connector_creator
 
         return self
 
@@ -3476,6 +3490,7 @@ class AlgorithmConfig(_Config):
             grad_clip_by=self.grad_clip_by,
             _per_module_overrides=per_module_learner_hp_overrides,
             seed=self.seed,
+            learner_connector_creator=self.learner_connector_creator,
         )
 
     def __setattr__(self, key, value):

@@ -23,6 +23,8 @@ from typing import (
 )
 
 import ray
+from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.rl_module.marl_module import (
@@ -63,6 +65,7 @@ from ray.rllib.utils.typing import (
     ResultDict,
     TensorType,
 )
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
@@ -186,6 +189,10 @@ class LearnerHyperparameters:
     grad_clip_by: str = None
     seed: int = None
 
+    learner_connector_creator: Callable[
+        [RLModule], Tuple[ConnectorV2, ConnectorContextV2]
+    ] = None
+
     # Maps ModuleIDs to LearnerHyperparameters that are to be used for that particular
     # module.
     # You can access the module-specific `LearnerHyperparameters` object for a given
@@ -226,6 +233,7 @@ class LearnerHyperparameters:
             return self
 
 
+@PublicAPI(stability="alpha")
 class Learner:
     """Base class for Learners.
 
@@ -412,6 +420,29 @@ class Learner:
         # `Learner.update()`. These metrics will be "compiled" automatically into
         # the final results dict in the `self.compile_update_results()` method.
         self._metrics = defaultdict(dict)
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def build(self) -> None:
+        """Builds the Learner.
+
+        This method should be called before the learner is used. It is responsible for
+        setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
+        """
+        if self._is_built:
+            logger.debug("Learner already built. Skipping build.")
+            return
+        self._is_built = True
+
+        # Build the module to be trained by this learner.
+        self._module = self._make_module()
+
+        self._learner_connector, self._learner_connector_ctx = (
+            self.hps.learner_connector_creator(rl_module=self.module)
+        )
+
+        # Configure, construct, and register all optimizers needed to train
+        # `self.module`.
+        self.configure_optimizers()
 
     @property
     def distributed(self) -> bool:
@@ -963,25 +994,6 @@ class Learner:
 
         self.module.remove_module(module_id)
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def build(self) -> None:
-        """Builds the Learner.
-
-        This method should be called before the learner is used. It is responsible for
-        setting up the RLModule, optimizers, and (optionally) their lr-schedulers.
-        """
-        if self._is_built:
-            logger.debug("Learner already built. Skipping build.")
-            return
-        self._is_built = True
-
-        # Build the module to be trained by this learner.
-        self._module = self._make_module()
-
-        # Configure, construct, and register all optimizers needed to train
-        # `self.module`.
-        self.configure_optimizers()
-
     @OverrideToImplementCustomLogic
     def compute_loss(
         self,
@@ -1226,13 +1238,16 @@ class Learner:
 
     def update(
         self,
-        batch: MultiAgentBatch,
         *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
+        batch: Optional[MultiAgentBatch] = None,
+        episodes: Optional[List[EpisodeType]] = None,
         reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
             _reduce_mean_results
         ),
+        # TODO (sven): Deprecate these in favor of learner hyperparams for those algos
+        #  that actually need to do minibatching.
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Do `num_iters` minibatch updates given the original batch.
 
@@ -1258,16 +1273,23 @@ class Learner:
         """
         self._check_is_built()
 
-        missing_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
-        if len(missing_module_ids) > 0:
+        unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
+        if len(unknown_module_ids) > 0:
             raise ValueError(
                 "Batch contains module ids that are not in the learner: "
-                f"{missing_module_ids}"
+                f"{unknown_module_ids}"
             )
 
         if num_iters < 1:
             # We must do at least one pass on the batch for training.
             raise ValueError("`num_iters` must be >= 1")
+
+        # Call the learner connector.
+        batch = self._learner_connector(
+            input_=batch,
+            episodes=episodes,
+            ctx=self._learner_connector_ctx,
+        )
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator
@@ -1307,11 +1329,12 @@ class Learner:
                 metrics_per_module=defaultdict(dict, **metrics_per_module),
             )
             self._check_result(result)
-            # TODO (sven): Figure out whether `compile_metrics` should be forced
+            # TODO (sven): Figure out whether `compile_results` should be forced
             #  to return all numpy/python data, then we can skip this conversion
             #  step here.
             results.append(convert_to_numpy(result))
 
+        # TODO (sven): Deprecate this, b/c it is hacky and intransparent.
         batch = self._set_slicing_by_batch_id(batch, value=False)
 
         # Reduce results across all minibatches, if necessary.
