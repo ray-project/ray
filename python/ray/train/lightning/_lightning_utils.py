@@ -226,14 +226,8 @@ class RayTrainReportCallback(pl.callbacks.Callback):
     This callback is a subclass of `lightning.pytorch.callbacks.Callback
     <https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.Callback.html#lightning.pytorch.callbacks.Callback>`_.
 
-    At the end of each training epoch, this callback dumps a checkpoint with
-    `lightning.pytorch.Trainer.save_checkpoint`, and fetches the latest metrics
-    with `trainer.callback_metrics`. It then reports the metrics and checkpoint
-    via `ray.train.report`.
-
-    This callback supports distributed checkpointing. It efficiently uploads
-    checkpoint shards from individual workers in parallel, such as those from
-    Deepspeed ZeRO and FSDP.
+    It fetches the latest `trainer.callback_metrics` and reports together with
+    the checkpoint on each training epoch end.
 
     Checkpoints will be saved in the following structure::
 
@@ -241,21 +235,14 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         └─ checkpoint.ckpt      PyTorch Lightning Checkpoint
 
     For customized reporting and checkpointing logic, implement your own
-    lightning callback following this user
+    `lightning.pytorch.callbacks.Callback` following this user
     guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
-
-    Args:
-        rank_zero_only: Whether to upload checkpoints from world rank
-        zero worker only. Default is False.
-
     """
 
-    def __init__(self, rank_zero_only=False) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.rank_zero_only = rank_zero_only
         self.trial_name = train.get_context().get_trial_name()
         self.local_rank = train.get_context().get_local_rank()
-        self.world_rank = train.get_context().get_world_rank()
         self.tmpdir_prefix = os.path.join(tempfile.gettempdir(), self.trial_name)
         if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
             shutil.rmtree(self.tmpdir_prefix)
@@ -277,16 +264,14 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
         # Save checkpoint to local
         ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
-
-        # Lightning determines saving on rank zero or all ranks
         trainer.save_checkpoint(ckpt_path, weights_only=False)
 
         # Report to train session
-        if self.rank_zero_only and self.world_rank != 0:
-            checkpoint = None
-        else:
-            checkpoint = Checkpoint.from_directory(tmpdir)
+        checkpoint = Checkpoint.from_directory(tmpdir)
         train.report(metrics=metrics, checkpoint=checkpoint)
+
+        # Add a barrier to ensure all workers finished reporting here
+        torch.distributed.barrier()
 
         if self.local_rank == 0:
             shutil.rmtree(tmpdir)

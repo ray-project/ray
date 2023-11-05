@@ -1,4 +1,5 @@
 import time
+from collections import defaultdict
 
 import pytest
 
@@ -188,40 +189,65 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
         ]
         return wg
 
-    # All CPU workers
-    wg = create_worker_group(
-        pids=[0, 1, 2, 3, 4, 5, 6, 7],
-        ips=["2", "2", "1", "1", "2", "1", "1", "2"],
-        gpu_ids=[None] * 8,
-    )
-    wg.group_workers_by_ip()
+    def setup_and_check_worker_group(pids, ips, gpu_ids, expected_local_ranks):
+        """
+        Create a worker group, group workers by IP, and check local ranks assignment.
 
-    # GPU workers, each with one GPU
-    wg = create_worker_group(
-        pids=[0, 1, 2, 3, 4, 5, 6, 7],
-        ips=["2", "2", "1", "1", "2", "1", "1", "2"],
-        gpu_ids=["1", "0", "3", "2", "2", "0", "1", "3"],
-    )
-    wg.group_workers_by_ip()
-    expected_order = {"1": [5, 6, 3, 2], "2": [1, 0, 4, 7]}
-    order = [w.metadata.pid for w in wg.workers]
-    assert (
-        order == expected_order
-    ), f"Workers on the same node should be sorted by GPU id!\nExpect: {expected_order}\nGot: {order}"
+        Args:
+            pids: List of unique process IDs.
+            ips: List of IP addresses corresponding to each PID.
+            gpu_ids: List of GPU IDs or None for each PID.
+            expected_local_ranks: Dictionary mapping PID to the
+                expected local rank.
+        """
+        wg = create_worker_group(pids=pids, ips=ips, gpu_ids=gpu_ids)
+        wg.group_workers_by_ip()
 
-    # GPU workers, each with multiple GPUs
-    wg = create_worker_group(
-        pids=[0, 1, 2, 3],
-        ips=["2", "1", "1", "2"],
-        gpu_ids=["1,3", "2,1", "0,3", "0,2"],
-    )
-    wg.group_workers_by_ip()
-    expected_order = {"1": [2, 1], "2": [3, 0]}
-    order = [w.metadata.pid for w in wg.workers]
-    assert (
-        order == expected_order
-    ), f"Workers on the same node should be sorted by their"
-    " minimal GPU id!\nExpect: {expected_order}\nGot: {order}"
+        # CPU workers do not need rank checking
+        if not expected_local_ranks:
+            return
+
+        # Build local ranks according to the logics in
+        # `BackendExecutor._create_rank_world_size_mappings()`
+        ip_dict = defaultdict(int)
+        local_ranks_map = defaultdict(int)
+        for w in wg.workers:
+            local_ranks_map[w.metadata.pid] = ip_dict[w.metadata.node_ip]
+            ip_dict[w.metadata.node_ip] += 1
+
+        local_ranks = [local_ranks_map[pid] for pid in pids]
+
+        assert (
+            local_ranks == expected_local_ranks
+        ), "Incorrect local ranks allocation!\n"
+        f"Expect: {expected_local_ranks}\nGot: {local_ranks}"
+
+    # Define the worker configurations for different scenarios
+    cpu_workers_config = {
+        "pids": [0, 1, 2, 3, 4, 5, 6, 7],
+        "ips": ["2", "2", "1", "1", "2", "1", "1", "2"],
+        "gpu_ids": [None] * 8,
+        "expected_local_ranks": None,  # No expected ranks for CPU workers
+    }
+
+    gpu_workers_single_gpu_config = {
+        "pids": [0, 1, 2, 3, 4, 5, 6, 7],
+        "ips": ["2", "2", "1", "1", "2", "1", "1", "2"],
+        "gpu_ids": ["1", "0", "3", "2", "2", "0", "1", "3"],
+        "expected_local_ranks": [1, 0, 3, 2, 2, 0, 1, 3],
+    }
+
+    gpu_workers_multiple_gpus_config = {
+        "pids": [0, 1, 2, 3],
+        "ips": ["2", "1", "1", "2"],
+        "gpu_ids": ["1,3", "2,1", "0,3", "0,2"],
+        "expected_local_ranks": [1, 1, 0, 0],
+    }
+
+    # Setup and check worker groups for each configuration
+    setup_and_check_worker_group(**cpu_workers_config)
+    setup_and_check_worker_group(**gpu_workers_single_gpu_config)
+    setup_and_check_worker_group(**gpu_workers_multiple_gpus_config)
 
 
 def test_execute_single(ray_start_2_cpus):
