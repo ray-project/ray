@@ -2,7 +2,7 @@ from typing import List
 
 import click
 
-from ci.ray_ci.builder_container import PYTHON_VERSIONS, BUILD_TYPE, BuilderContainer
+from ci.ray_ci.builder_container import PYTHON_VERSIONS, BUILD_TYPES, BuilderContainer
 from ci.ray_ci.doc_builder_container import DocBuilderContainer
 from ci.ray_ci.forge_container import ForgeContainer
 from ci.ray_ci.docker_container import PLATFORM
@@ -26,7 +26,7 @@ from ci.ray_ci.utils import logger, docker_login
 @click.option(
     "--build-type",
     default="optimized",
-    type=click.Choice(BUILD_TYPE),
+    type=click.Choice(BUILD_TYPES),
 )
 @click.option(
     "--python-version",
