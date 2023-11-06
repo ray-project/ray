@@ -6,7 +6,5 @@ srcs:
   - python/requirements_compiled.txt
   - python/requirements/test-requirements.txt
   - python/requirements/ml/dl-cpu-requirements.txt
-  - ci/env/install-toolchains.sh
-  - ci/env/install-llvm-binaries.sh
 tags:
   - cr.ray.io/rayproject/corebuild

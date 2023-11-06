@@ -11,13 +11,8 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-# Python dependencies
 RUN pip install -U --ignore-installed  \
   -c python/requirements_compiled.txt \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt \
   -r python/requirements/ml/dl-cpu-requirements.txt
-
-# C++ toolchains
-RUN ./ci/env/install-toolchains.sh
-RUN ./ci/env/install-llvm-binaries.sh
