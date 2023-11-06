@@ -346,27 +346,43 @@ def flatten_inputs_to_1d_tensor(
         flattened/one-hot'd input components. Depending on the time_axis flag,
         the shape is (B, n) or (B, T, n).
 
-    Examples:
-        >>> # B=2
-        >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gymnasium.spaces import Discrete, Box
-        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
-        ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
-        ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1))))
-        ... ) # doctest: +SKIP
-        >>> print(out) # doctest: +SKIP
-        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+    .. testcode::
 
-        >>> # B=2; T=2
-        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
-        ...     ([[1, 0], [0, 1]],
-        ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
-        ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
-        ...     time_axis=True
-        ... ) # doctest: +SKIP
-        >>> print(out) # doctest: +SKIP
-        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],\
-        [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
+        from gymnasium.spaces import Discrete, Box
+        from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor
+        import torch
+        struct = {
+            "a": np.array([1, 3]),
+            "b": (
+                np.array([[1.0, 2.0], [4.0, 5.0]]),
+                np.array(
+                    [[[8.0], [7.0]], [[5.0], [4.0]]]
+                ),
+            ),
+                "c": {
+                    "cb": np.array([1.0, 2.0]),
+                },
+        }
+        struct_torch = tree.map_structure(lambda s: torch.from_numpy(s), struct)
+        spaces = dict(
+            {
+                "a": gym.spaces.Discrete(4),
+                "b": (gym.spaces.Box(-1.0, 10.0, (2,)), gym.spaces.Box(-1.0, 1.0, (2,
+                        1))),
+                "c": dict(
+                    {
+                        "cb": gym.spaces.Box(-1.0, 1.0, ()),
+                    }
+                ),
+            }
+        )
+        print(flatten_inputs_to_1d_tensor(struct_torch, spaces_struct=spaces))
+
+    .. testoutput::
+
+        tensor([[0., 1., 0., 0., 1., 2., 8., 7., 1.],
+                [0., 0., 0., 1., 4., 5., 5., 4., 2.]])
+
     """
 
     flat_inputs = tree.flatten(inputs)
@@ -552,24 +568,26 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     Raises:
         ValueError: If the given space is not a discrete one.
 
-    Examples:
-        >>> import torch
-        >>> import gymnasium as gym
-        >>> from ray.rllib.utils.torch_utils import one_hot
-        >>> x = torch.IntTensor([0, 3])  # batch-dim=2
-        >>> # Discrete space with 4 (one-hot) slots per batch item.
-        >>> s = gym.spaces.Discrete(4)
-        >>> one_hot(x, s) # doctest: +SKIP
-        tensor([[1, 0, 0, 0], [0, 0, 0, 1]])
-        >>> x = torch.IntTensor([[0, 1, 2, 3]])  # batch-dim=1
-        >>> # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
-        >>> # per batch item.
-        >>> s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
-        >>> one_hot(x, s) # doctest: +SKIP
-        tensor([[1, 0, 0, 0, 0,
-                 0, 1, 0, 0,
-                 0, 0, 1, 0,
-                 0, 0, 0, 1, 0, 0, 0]])
+    .. testcode::
+
+        import torch
+        import gymnasium as gym
+        from ray.rllib.utils.torch_utils import one_hot
+        x = torch.IntTensor([0, 3])  # batch-dim=2
+        # Discrete space with 4 (one-hot) slots per batch item.
+        s = gym.spaces.Discrete(4)
+        print(one_hot(x, s))
+        x = torch.IntTensor([[0, 1, 2, 3]])  # batch-dim=1
+        # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
+        # per batch item.
+        s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
+        print(one_hot(x, s))
+
+    .. testoutput::
+
+        tensor([[1, 0, 0, 0],
+                [0, 0, 0, 1]])
+        tensor([[1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0]])
     """
     if isinstance(space, Discrete):
         return nn.functional.one_hot(x.long(), space.n)

@@ -2,34 +2,31 @@ import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray.data import Dataset
 from ray._private.ray_constants import env_integer
-from ray.air.config import CheckpointConfig
+from ray.data import Dataset
 from ray.exceptions import RayActorError
-from ray.train import DataConfig
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint, DataConfig
 from ray.train._internal.session import (
-    TrainingResult,
     TrialInfo,
+    _TrainingResult,
     get_session,
     init_session,
     shutdown_session,
 )
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import StorageContext
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
-    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -96,7 +93,6 @@ class BackendExecutor:
         num_gpus_per_worker: float = 0,
         additional_resources_per_worker: Optional[Dict[str, float]] = None,
         max_retries: int = 3,
-        checkpoint_config: Optional[CheckpointConfig] = None,
     ):
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
@@ -117,12 +113,6 @@ class BackendExecutor:
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
 
-        self._checkpoint_keep_all_ranks = (
-            checkpoint_config and checkpoint_config._checkpoint_keep_all_ranks
-        )
-        self._checkpoint_upload_from_workers = (
-            checkpoint_config and checkpoint_config._checkpoint_upload_from_workers
-        )
         self._resource_configs = [
             ResourceConfig(
                 ray_constants.NEURON_CORES,
@@ -162,16 +152,21 @@ class BackendExecutor:
         trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
         self.worker_group.group_workers_by_ip(trial_driver_ip)
 
-        worker_locs = [
-            f"{w.metadata.pid} ({w.metadata.node_ip})"
-            for w in self.worker_group.workers
-        ]
-        logger.info(f"Starting distributed worker processes: {worker_locs}")
-
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
+
+            # Always propagate the driver's DataContext to each worker in the group.
+            from ray.data import DataContext
+
+            def _set_driver_dataset_context(ctx: DataContext):
+                DataContext._set_current(ctx)
+
+            self.worker_group.execute(
+                _set_driver_dataset_context,
+                DataContext.get_current(),
+            )
 
             share_cuda_visible_devices_enabled = bool(
                 env_integer(
@@ -428,6 +423,16 @@ class BackendExecutor:
             node_ip = worker.metadata.node_ip
             local_world_size_map[world_rank] = ip_dict[node_ip]
 
+        workers_info = "\n".join(
+            [
+                f"- (ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
+                f"world_rank={i}, local_rank={local_rank_map[i]}, "
+                f"node_rank={node_rank_map[i]}"
+                for i, w in enumerate(self.worker_group.workers)
+            ]
+        )
+        logger.info(f"Started distributed worker processes: \n{workers_info}")
+
         return local_rank_map, local_world_size_map, node_rank_map
 
     def start_training(
@@ -456,7 +461,6 @@ class BackendExecutor:
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
         )
-        use_lazy_checkpointing = not env_integer(DISABLE_LAZY_CHECKPOINTING_ENV, 0)
 
         # First initialize the session.
         def initialize_session(
@@ -470,8 +474,6 @@ class BackendExecutor:
             checkpoint,
             dataset_shard,
             metadata,
-            checkpoint_keep_all_ranks,
-            checkpoint_upload_from_workers,
             storage,
         ):
             try:
@@ -487,9 +489,6 @@ class BackendExecutor:
                     metadata=metadata,
                     checkpoint=checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
-                    enable_lazy_checkpointing=use_lazy_checkpointing,
-                    checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
-                    checkpoint_upload_from_workers=(checkpoint_upload_from_workers),
                     storage=storage,
                 )
             except ValueError:
@@ -532,10 +531,6 @@ class BackendExecutor:
                     dataset_shard=self.dataset_shards[index],
                     metadata=metadata,
                     checkpoint=checkpoint,
-                    checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,
-                    checkpoint_upload_from_workers=(
-                        self._checkpoint_upload_from_workers
-                    ),
                     storage=storage,
                 )
             )
@@ -554,15 +549,15 @@ class BackendExecutor:
 
         self.worker_group.execute_async(train_async)
 
-    def get_next_results(self) -> Optional[List[TrainingResult]]:
-        """Fetches the next ``TrainingResult`` from each worker.
+    def get_next_results(self) -> Optional[List[_TrainingResult]]:
+        """Fetches the next ``_TrainingResult`` from each worker.
 
-        Each ``TrainingResult`` is expected to correspond to the same step from
-        each worker (e.g. the same call to ``session.report()``).
+        Each ``_TrainingResult`` is expected to correspond to the same step from
+        each worker (e.g. the same call to ``train.report()``).
 
         Returns:
-            A list of ``TrainingResult``s with the same
-            ``TrainingResultType``, or ``None`` if there are no more results.
+            A list of ``_TrainingResult``s or ``None`` if there are no more results
+            since the training function has exited on all workers.
         """
 
         def get_next():
@@ -598,28 +593,7 @@ class BackendExecutor:
                 # Return None if all results are None.
                 return None
 
-        if not _use_storage_context():
-            first_result = results[0]
-            result_type = first_result.type
-            if any(r.type != result_type for r in results):
-                raise RuntimeError(
-                    "Some workers returned results with "
-                    "different types. Make sure that "
-                    "`session.report()` are called the "
-                    "same number of times on all workers."
-                )
-
         return results
-
-    def _set_legacy_checkpoint_uri(self, uri: str):
-        """Tell remote sessions where to upload the chekcpoint."""
-
-        def set_uri():
-            session = _get_session("_set_legacy_checkpoint_uri")
-            session._set_legacy_checkpoint_uri(uri)
-
-        futures = self.worker_group.execute_async(set_uri)
-        self.get_with_failure_handling(futures)
 
     def pause_reporting(self):
         """Disable workers from enqueuing results from ``session.report()``.

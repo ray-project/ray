@@ -171,11 +171,23 @@ class AtariRamPreprocessor(Preprocessor):
 class OneHotPreprocessor(Preprocessor):
     """One-hot preprocessor for Discrete and MultiDiscrete spaces.
 
-    Examples:
-        >>> self.transform(Discrete(3).sample())
-        ... np.array([0.0, 1.0, 0.0])
-        >>> self.transform(MultiDiscrete([2, 3]).sample())
-        ... np.array([0.0, 1.0, 0.0, 0.0, 1.0])
+    .. testcode::
+        :skipif: True
+
+        self.transform(Discrete(3).sample())
+
+    .. testoutput::
+
+        np.array([0.0, 1.0, 0.0])
+
+    .. testcode::
+        :skipif: True
+
+        self.transform(MultiDiscrete([2, 3]).sample())
+
+    .. testoutput::
+
+        np.array([0.0, 1.0, 0.0, 0.0, 1.0])
     """
 
     @override(Preprocessor)

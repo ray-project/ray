@@ -7,7 +7,6 @@ import pytest
 import ray
 from ray import train, tune
 from ray.train.data_parallel_trainer import DataParallelTrainer
-
 from ray.train.tests.util import create_dict_checkpoint
 
 

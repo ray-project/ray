@@ -1,10 +1,9 @@
 import threading
-from typing import TYPE_CHECKING, Optional, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray.train._internal import session
 from ray.train._internal.storage import StorageContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
 
 if TYPE_CHECKING:
     from ray.tune.execution.placement_groups import PlacementGroupFactory

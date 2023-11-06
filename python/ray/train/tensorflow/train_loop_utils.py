@@ -1,6 +1,6 @@
-from ray.util.annotations import PublicAPI
-
 import tensorflow as tf
+
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="beta")

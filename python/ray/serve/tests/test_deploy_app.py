@@ -2,6 +2,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from copy import copy
 from functools import partial
 from typing import Dict, List
 
@@ -22,6 +23,10 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+)
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_RUNTIME_ENV_PINNED_URI,
 )
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors, list_tasks
@@ -620,12 +625,7 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
 def test_deploy_app_runtime_env(client: ServeControllerClient):
     config_template = {
         "import_path": "conditional_dag.serve_dag",
-        "runtime_env": {
-            "working_dir": (
-                "https://github.com/ray-project/test_dag/archive/"
-                "41d09119cbdf8450599f993f51318e9e27c59098.zip"
-            )
-        },
+        "runtime_env": {"working_dir": TEST_DAG_PINNED_URI},
     }
 
     config1 = ServeApplicationSchema.parse_obj(config_template)
@@ -994,10 +994,7 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
                 "route_prefix": "/app1",
                 "import_path": "conditional_dag.serve_dag",
                 "runtime_env": {
-                    "working_dir": (
-                        "https://github.com/ray-project/test_dag/archive/"
-                        "41d09119cbdf8450599f993f51318e9e27c59098.zip"
-                    )
+                    "working_dir": TEST_DAG_PINNED_URI,
                 },
             },
             {
@@ -1005,10 +1002,7 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
                 "route_prefix": "/app2",
                 "import_path": "hello_world.app",
                 "runtime_env": {
-                    "working_dir": (
-                        "https://github.com/zcin/test_runtime_env/archive/"
-                        "c96019b6049cd9a2997db5ea0f10432bfeffb844.zip"
-                    )
+                    "working_dir": TEST_RUNTIME_ENV_PINNED_URI,
                 },
             },
         ],
@@ -1321,6 +1315,91 @@ def test_deploy_lightweight_multiple_route_prefix(
         assert s.status == ApplicationStatus.DEPLOY_FAILED
         assert "Found multiple route prefixes" in s.message
         time.sleep(0.1)
+
+
+@pytest.mark.parametrize("rebuild", [True, False])
+def test_redeploy_old_config_after_failed_deployment(
+    client: ServeControllerClient, rebuild
+):
+    """
+    1. Deploy application which succeeds.
+    2. Redeploy application with an import path that fails.
+    3. Redeploy the exact same config from step 1.
+
+    Verify that step 3 succeeds and the application returns to running state.
+    """
+
+    app_config = {
+        "name": "default",
+        "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+    }
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+
+    def check_application_running():
+        status = serve.status().applications["default"]
+        assert status.status == "RUNNING"
+        assert requests.post("http://localhost:8000/").text == "wonderful world"
+        return True
+
+    wait_for_condition(check_application_running)
+
+    # Change config so that redeploy will error
+    new_app_config = copy(app_config)
+    if rebuild:
+        # New import path will cause an error upon importing app
+        new_app_config[
+            "import_path"
+        ] = "ray.serve.tests.test_config_files.import_error.app"
+        err_msg = "ZeroDivisionError"
+    else:
+        # Trying to add a route prefix for non-ingress deployment will fail
+        new_app_config["deployments"] = [{"name": "f", "route_prefix": "/"}]
+        err_msg = "Found multiple route prefixes"
+    client.deploy_apps(ServeDeploySchema(**{"applications": [new_app_config]}))
+
+    def check_deploy_failed(message):
+        status = serve.status().applications["default"]
+        assert status.status == "DEPLOY_FAILED"
+        assert message in status.message
+        return True
+
+    wait_for_condition(check_deploy_failed, message=err_msg)
+
+    # Redeploy old config
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+
+    wait_for_condition(check_application_running)
+
+
+def test_change_route_prefix(client: ServeControllerClient):
+    # Deploy application with route prefix /old
+    app_config = {
+        "name": "default",
+        "route_prefix": "/old",
+        "import_path": "ray.serve.tests.test_config_files.pid.node",
+    }
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+
+    wait_for_condition(check_running, _client=client)
+    pid1 = requests.get("http://localhost:8000/old").json()[0]
+
+    # Redeploy application with route prefix /new.
+    app_config["route_prefix"] = "/new"
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+
+    # Check that the old route is gone and the response from the new route
+    # has the same PID (replica wasn't restarted).
+    def check_switched():
+        # Old route should be gone
+        resp = requests.get("http://localhost:8000/old")
+        assert "Path '/old' not found." in resp.text
+
+        # Response from new route should be same PID
+        pid2 = requests.get("http://localhost:8000/new").json()[0]
+        assert pid2 == pid1
+        return True
+
+    wait_for_condition(check_switched)
 
 
 if __name__ == "__main__":

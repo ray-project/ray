@@ -9,13 +9,14 @@ import io.ray.runtime.metric.Metrics;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.context.RequestContext;
 import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.router.Query;
-import io.ray.serve.util.LogUtil;
+import io.ray.serve.util.MessageFormatter;
 import io.ray.serve.util.ReflectUtil;
 import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -157,6 +158,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   @Override
   public Object handleRequest(Object requestMetadata, Object requestArgs) {
+    // TODO 1101 wrap_user_method_call
     long startTime = System.currentTimeMillis();
     Query request = new Query((RequestMetadata) requestMetadata, requestArgs);
     LOGGER.debug(
@@ -181,11 +183,14 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
     long start = System.currentTimeMillis();
     Method methodToCall = null;
+    RequestMetadata requestMetadata = requestItem.getMetadata();
     try {
-      LOGGER.debug(
-          "Replica {} started executing request {}",
-          replicaTag,
-          requestItem.getMetadata().getRequestId());
+      RequestContext.set(
+          requestMetadata.getRoute(),
+          requestMetadata.getRequestId(),
+          deploymentId.getApp(),
+          requestMetadata.getMultiplexedModelId());
+      LOGGER.info("Started executing request {}", requestMetadata.getRequestId());
 
       Object[] args = parseRequestItem(requestItem);
       methodToCall =
@@ -198,7 +203,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
     } catch (Throwable e) {
       RayServeMetrics.execute(() -> errorCounter.inc(1.0));
       throw new RayServeException(
-          LogUtil.format(
+          MessageFormatter.format(
               "Replica {} failed to invoke method {}",
               replicaTag,
               methodToCall == null ? "unknown" : methodToCall.getName()),
@@ -206,6 +211,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
     } finally {
       RayServeMetrics.execute(
           () -> processingLatencyTracker.update(System.currentTimeMillis() - start));
+      RequestContext.clean();
     }
   }
 
@@ -226,7 +232,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
       return ReflectUtil.getMethod(callable.getClass(), methodName, args);
     } catch (NoSuchMethodException e) {
       String errMsg =
-          LogUtil.format(
+          MessageFormatter.format(
               "Tried to call a method {} that does not exist. Available methods: {}",
               methodName,
               ReflectUtil.getMethodStrings(callable.getClass()));
@@ -314,7 +320,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
           .invoke(callable, userConfig);
     } catch (NoSuchMethodException e) {
       String errMsg =
-          LogUtil.format(
+          MessageFormatter.format(
               "userConfig specified but deployment {} missing {} method",
               deploymentId,
               Constants.RECONFIGURE_METHOD);
@@ -322,7 +328,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
       throw new RayServeException(errMsg, e);
     } catch (Throwable e) {
       String errMsg =
-          LogUtil.format(
+          MessageFormatter.format(
               "Replica {} of deployment {} failed to reconfigure userConfig {}",
               replicaTag,
               deploymentId,

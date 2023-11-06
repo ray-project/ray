@@ -236,7 +236,6 @@ py_test(
     srcs = test_srcs,
     env = {
         "IS_SMOKE_TEST": "1",
-        "RAY_AIR_NEW_PERSISTENCE_MODE": "1",
     },
     main = "golden_notebook_tests/workloads/torch_tune_serve_test.py",
     tags = [
@@ -269,24 +268,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "air_benchmark_data_smoke_test",
-    size = "small",
-    srcs = test_srcs,
-    args = [
-        "--dataset-size-gb=1",
-        "--num-workers=1",
-    ],
-    main = "air_tests/air_benchmarks/workloads/data_benchmark.py",
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/air:ml_lib",
-    ],
-)
 
 py_test(
     name = "air_benchmark_gpu_batch_inference_parquet_smoke_test",
@@ -297,7 +278,7 @@ py_test(
         "--data-format=parquet",
         "--smoke-test",
     ],
-    main = "air_tests/air_benchmarks/workloads/gpu_batch_inference.py",
+    main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
         "team:data",
@@ -317,7 +298,7 @@ py_test(
         "--data-format=raw",
         "--smoke-test",
     ],
-    main = "air_tests/air_benchmarks/workloads/gpu_batch_inference.py",
+    main = "nightly_tests/dataset/gpu_batch_inference.py",
     tags = [
         "exclusive",
         "team:data",
@@ -507,6 +488,10 @@ py_test(
     size = "small",
     srcs = ["ray_release/tests/test_bisect.py"],
     exec_compatible_with = ["//:hermetic_python"],
+    data = [
+        "ray_release/tests/test_collection_data.yaml",
+        "cluster_tests/cpt_autoscaling_1-3_aws.yaml",
+    ],
     tags = [
         "release_unit",
         "team:ci",
@@ -552,21 +537,6 @@ py_test(
 )
 
 py_test(
-    name = "test_byod_build_ray",
-    size = "small",
-    srcs = ["ray_release/tests/test_byod_build_ray.py"],
-    exec_compatible_with = ["//:hermetic_python"],
-    tags = [
-        "release_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":ray_release",
-        bk_require("pytest"),
-    ],
-)
-
-py_test(
     name = "test_cluster_manager",
     size = "small",
     srcs = ["ray_release/tests/test_cluster_manager.py"],
@@ -593,6 +563,7 @@ py_test(
     ) + [
         "//python/ray/autoscaler/aws:test_configs",
         "//python/ray/autoscaler/gcp:test_configs",
+        "ray_release/tests/test_collection_data.yaml",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
@@ -706,21 +677,6 @@ py_test(
     name = "test_state_machine",
     size = "small",
     srcs = ["ray_release/tests/test_state_machine.py"],
-    exec_compatible_with = ["//:hermetic_python"],
-    tags = [
-        "release_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":ray_release",
-        bk_require("pytest"),
-    ],
-)
-
-py_test(
-    name = "test_template",
-    size = "small",
-    srcs = ["ray_release/tests/test_template.py"],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "release_unit",

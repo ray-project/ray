@@ -600,7 +600,10 @@ class ReporterAgent(
             load = (cpu_percent, cpu_percent, cpu_percent)
         else:
             load = os.getloadavg()
-        per_cpu_load = tuple((round(x / self._cpu_counts[0], 2) for x in load))
+        if self._cpu_counts[0] > 0:
+            per_cpu_load = tuple((round(x / self._cpu_counts[0], 2) for x in load))
+        else:
+            per_cpu_load = None
         return load, per_cpu_load
 
     @staticmethod

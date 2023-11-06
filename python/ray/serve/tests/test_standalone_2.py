@@ -86,7 +86,7 @@ def test_memory_omitted_option(shutdown_ray_and_serve):
     ray.init(num_gpus=3, namespace="serve")
     handle = serve.run(hello.bind())
 
-    assert ray.get(handle.remote()) == "world"
+    assert handle.remote().result() == "world"
 
 
 @pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
@@ -217,9 +217,7 @@ def test_controller_deserialization_deployment_def(
     ray.init(
         address="auto",
         namespace="serve",
-        runtime_env={
-            "working_dir": os.path.join(os.path.dirname(__file__), "storage_tests")
-        },
+        runtime_env={"working_dir": os.path.join(os.path.dirname(__file__), "common")},
     )
     serve.start()
     serve.context._global_client = None

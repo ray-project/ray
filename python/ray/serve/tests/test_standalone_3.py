@@ -230,7 +230,7 @@ def test_handle_early_detect_failure(shutdown_ray):
         return os.getpid()
 
     handle = serve.run(f.bind())
-    pids = ray.get([handle.remote() for _ in range(2)])
+    pids = ray.get([handle.remote()._to_object_ref_sync() for _ in range(2)])
     assert len(set(pids)) == 2
 
     client = _get_global_client()
@@ -239,9 +239,9 @@ def test_handle_early_detect_failure(shutdown_ray):
     ray.kill(client._controller, no_restart=True)
 
     with pytest.raises(RayActorError):
-        ray.get(handle.remote(do_crash=True))
+        handle.remote(do_crash=True).result()
 
-    pids = ray.get([handle.remote() for _ in range(10)])
+    pids = ray.get([handle.remote()._to_object_ref_sync() for _ in range(10)])
     assert len(set(pids)) == 1
 
     # Restart the controller, and then clean up all the replicas
@@ -358,9 +358,11 @@ def test_drain_and_undrain_http_proxy_actors(
             **ray.get(client._controller.get_serve_instance_details.remote())
         )
         proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
-        return {
+        print("all proxies!!!", [proxy for _, proxy in serve_details.proxies.items()])
+        current_status = {
             status: proxy_status_list.count(status) for status in proxy_status_list
-        } == proxy_status_to_count
+        }
+        return current_status == proxy_status_to_count, current_status
 
     wait_for_condition(
         condition_predictor=check_proxy_status,

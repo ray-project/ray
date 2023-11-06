@@ -5,20 +5,19 @@ from typing import Any, Callable, Dict, Optional, Union
 from fastapi import Depends, FastAPI
 
 from ray import cloudpickle, serve
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import DAG_DEPRECATION_MESSAGE, SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers_utils import load_http_adapter
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="beta")
+@Deprecated(message=DAG_DEPRECATION_MESSAGE)
 @serve.deployment
 class DAGDriver(ASGIAppReplicaWrapper):
     """A driver implementation that accepts HTTP requests."""
@@ -42,7 +41,6 @@ class DAGDriver(ASGIAppReplicaWrapper):
         if http_adapter is not None:
             ServeUsageTag.HTTP_ADAPTER_USED.record("1")
 
-        install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
         app = FastAPI()
 
@@ -66,7 +64,6 @@ class DAGDriver(ASGIAppReplicaWrapper):
                 endpoint_create_func()
 
         else:
-            assert isinstance(dags, (RayServeDAGHandle, RayServeHandle))
             if isinstance(dags, RayServeHandle):
                 dags = dags.options(use_new_handle_api=True)
 
@@ -89,7 +86,7 @@ class DAGDriver(ASGIAppReplicaWrapper):
         # the `_ray_cache_refs` kwarg.
         if isinstance(dag, RayServeDAGHandle):
             kwargs["_ray_cache_refs"] = _ray_cache_refs
-            return await (await dag.remote(*args, **kwargs))
+            return await dag.remote(*args, **kwargs)
         else:
             return await dag.remote(*args, **kwargs)
 
@@ -99,10 +96,7 @@ class DAGDriver(ASGIAppReplicaWrapper):
             raise RayServeException(f"{route_path} does not exist in dags routes")
 
         dag = self.dags[route_path]
-        if isinstance(dag, RayServeDAGHandle):
-            return await (await dag.remote(*args, **kwargs))
-        else:
-            return await dag.remote(*args, **kwargs)
+        return await dag.remote(*args, **kwargs)
 
     async def get_intermediate_object_refs(self) -> Dict[str, Any]:
         """Gets latest cached object refs from latest call to predict().

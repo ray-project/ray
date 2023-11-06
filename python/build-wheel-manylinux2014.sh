@@ -6,7 +6,6 @@ export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
 
 # Python version key, interpreter version code, numpy tuples.
 PYTHON_NUMPYS=(
-  "py37 cp37-cp37m 1.14.5"
   "py38 cp38-cp38 1.14.5"
   "py39 cp39-cp39 1.19.3"
   "py310 cp310-cp310 1.22.0"

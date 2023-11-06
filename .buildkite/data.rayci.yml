@@ -1,6 +1,27 @@
 group: data tests
 steps:
+  # builds
+  - name: data6build
+    wanda: ci/docker/data6.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  - name: data12build
+    wanda: ci/docker/data12.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  - name: datanbuild
+    wanda: ci/docker/datan.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  - name: datamongobuild
+    wanda: ci/docker/datamongo.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  # tests
   - label: ":database: data: arrow 6 tests"
+    tags: 
+      - python
+      - data
     instance_type: medium
     parallelism: 2
     commands:
@@ -14,6 +35,9 @@ steps:
     job_env: forge
 
   - label: ":database: data: arrow 12 tests"
+    tags: 
+      - python
+      - data
     instance_type: medium
     parallelism: 2
     commands:
@@ -27,6 +51,9 @@ steps:
     job_env: forge
 
   - label: ":database: data: arrow nightly tests"
+    tags: 
+      - python
+      - data
     instance_type: medium
     parallelism: 2
     commands:
@@ -39,7 +66,49 @@ steps:
     depends_on: datanbuild
     job_env: forge
 
+  - label: ":database: data: doc gpu"
+    tags: 
+      - data
+      - ci_doc
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... data 
+        --build-name docgpubuild
+        --only-tags gpu
+    depends_on: docgpubuild
+    job_env: forge
+
+  - label: ":database: data: integration tests"
+    tags:
+      - python
+      - data
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data 
+        --build-name datamongobuild
+        --build-type java
+        --only-tags data_integration
+        --except-tags doctest
+    depends_on: datamongobuild
+    job_env: forge
+
+  - label: ":database: data: dashboard tests"
+    tags:
+      - python
+      - dashboard
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
+        --build-name datanbuild
+        --parallelism-per-worker 3
+    depends_on: datanbuild
+    job_env: forge
+
   - label: ":database: data: flaky tests"
+    tags: 
+      - python
+      - data
     instance_type: medium
     soft_fail: true
     commands:

@@ -1,4 +1,3 @@
-import json
 import os
 from pathlib import Path
 
@@ -84,16 +83,12 @@ if __name__ == "__main__":
 
     # TEST
 
-    checkpoint_config_path = os.path.join(results.get_best_result().path, "params.json")
-    with open(checkpoint_config_path, "rb") as f:
-        checkpoint_config = json.load(f)
-
-    checkpoint_config["explore"] = False
+    param_space["explore"] = False
 
     best_checkpoint = results.get_best_result().best_checkpoints[0][0]
     print("Loading checkpoint: {}".format(best_checkpoint))
 
-    algo = get_trainable_cls("RNNSAC")(env=StatelessCartPole, config=checkpoint_config)
+    algo = get_trainable_cls("RNNSAC")(config=param_space)
     algo.restore(best_checkpoint)
 
     env = algo.env_creator({})

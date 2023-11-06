@@ -1,10 +1,9 @@
-from typing import Any, Callable, Optional, Dict, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
-from ray.train import DataConfig
+from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.trainer import GenDataset
-from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train import Checkpoint, ScalingConfig, RunConfig
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:

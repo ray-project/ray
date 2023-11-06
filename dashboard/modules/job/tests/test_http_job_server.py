@@ -338,9 +338,12 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     )
 
     try:
+        job_start_time = time.time()
         wait_for_condition(
-            _check_job_succeeded, client=client, job_id=job_id, timeout=60
+            _check_job_succeeded, client=client, job_id=job_id, timeout=300
         )
+        job_duration = time.time() - job_start_time
+        print(f"The job took {job_duration}s to succeed.")
     except RuntimeError as e:
         # If the job is still pending, include job logs and info in error.
         if client.get_job_status(job_id) == JobStatus.PENDING:

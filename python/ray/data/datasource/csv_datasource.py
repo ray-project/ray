@@ -13,16 +13,7 @@ if TYPE_CHECKING:
 
 @PublicAPI
 class CSVDatasource(FileBasedDatasource):
-    """CSV datasource, for reading and writing CSV files.
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import CSVDatasource
-        >>> source = CSVDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource( # doctest: +SKIP
-        ...     source, paths="/path/to/dir").take()
-        [{"a": 1, "b": "foo"}, ...]
-    """
+    """CSV datasource, for reading and writing CSV files."""
 
     _FILE_EXTENSION = "csv"
 

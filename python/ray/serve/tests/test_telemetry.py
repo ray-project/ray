@@ -22,7 +22,7 @@ from ray.serve.context import _get_global_client
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
 from ray.serve.schema import ServeDeploySchema
-from ray.serve.tests.utils import (
+from ray.serve.tests.common.utils import (
     TELEMETRY_ROUTE_PREFIX,
     TelemetryStorage,
     check_ray_started,
@@ -202,13 +202,13 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
     serve.delete(name="telemetry", _blocking=True)
 
     if version == "v1":
-        config = {"import_path": "ray.serve.tests.utils.receiver_app"}
+        config = {"import_path": "ray.serve.tests.common.utils.receiver_app"}
     elif version == "v2":
         config = {
             "applications": [
                 {
                     "name": "receiver_app",
-                    "import_path": "ray.serve.tests.utils.receiver_app",
+                    "import_path": "ray.serve.tests.common.utils.receiver_app",
                     "route_prefix": TELEMETRY_ROUTE_PREFIX,
                 },
                 {
@@ -277,7 +277,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
             "applications": [
                 {
                     "name": "receiver_app",
-                    "import_path": "ray.serve.tests.utils.receiver_app",
+                    "import_path": "ray.serve.tests.common.utils.receiver_app",
                     "route_prefix": TELEMETRY_ROUTE_PREFIX,
                 },
             ]
@@ -360,7 +360,7 @@ def test_lightweight_config_options(
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.utils.receiver_app",
+                "import_path": "ray.serve.tests.common.utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
             {
@@ -476,13 +476,11 @@ def test_handle_apis_detected(
     if call_in_deployment:
         result = requests.get("http://localhost:8000").text
     elif use_new_handle_api:
-        result = (
-            handle.options(use_new_handle_api=True)
-            .remote(call_downstream=False)
-            .result()
-        )
+        result = handle.remote(call_downstream=False).result()
     else:
-        result = ray.get(handle.remote(call_downstream=False))
+        result = ray.get(
+            handle.options(use_new_handle_api=False).remote(call_downstream=False)
+        )
 
     assert result == "ok"
 

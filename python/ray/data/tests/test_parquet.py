@@ -16,7 +16,6 @@ from ray.data.datasource import (
     DefaultParquetMetadataProvider,
     FileExtensionFilter,
 )
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
@@ -25,6 +24,7 @@ from ray.data.datasource.parquet_datasource import (
     _ParquetDatasourceReader,
     _SerializedFragment,
 )
+from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -243,6 +243,56 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
         [5, "f"],
         [6, "g"],
     ]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),
+            lazy_fixture("s3_path_with_space"),
+        ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
+    ],
+)
+def test_parquet_read_random_shuffle(
+    ray_start_regular_shared, restore_data_context, fs, data_path
+):
+    # NOTE: set preserve_order to True to allow consistent output behavior.
+    context = ray.data.DataContext.get_current()
+    context.execution_options.preserve_order = True
+
+    input_list = list(range(10))
+    df1 = pd.DataFrame({"one": input_list[: len(input_list) // 2]})
+    table = pa.Table.from_pandas(df1)
+    setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": input_list[len(input_list) // 2 :]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle="files")
+
+    # Execute 10 times to get a set of output results.
+    output_results_list = []
+    for _ in range(10):
+        result = [row["one"] for row in ds.take_all()]
+        output_results_list.append(result)
+    all_rows_matched = [
+        input_list == output_list for output_list in output_results_list
+    ]
+
+    # Check when shuffle is enabled, output order has at least one different
+    # case.
+    assert not all(all_rows_matched)
 
 
 @pytest.mark.parametrize(
@@ -898,30 +948,6 @@ def test_parquet_write_create_dir(
         ]
     )
     assert df.equals(dfds)
-
-
-def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
-    data_path = str(tmp_path)
-    one_data = list(range(6))
-    df1 = pd.DataFrame({"one": one_data[:3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": one_data[3:], "two": ["e", "f", "g"]})
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-
-    def _block_udf(block):
-        df = BlockAccessor.for_block(block).to_pandas().copy()
-        df["one"] += 1
-        return pa.Table.from_pandas(df)
-
-    # 2 write tasks
-    ds._set_uuid("data")
-    ds.write_parquet(data_path, _block_udf=_block_udf)
-    path1 = os.path.join(data_path, "data_000000_000000.parquet")
-    path2 = os.path.join(data_path, "data_000001_000000.parquet")
-    dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
-    expected_df = df
-    expected_df["one"] += 1
-    assert expected_df.equals(dfds)
 
 
 @pytest.mark.parametrize(

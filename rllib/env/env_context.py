@@ -104,11 +104,16 @@ class EnvContext(dict):
             defaults: The key/value pairs to add to self, but only for those
                 keys in `defaults` that don't exist yet in self.
 
-        Examples:
-            >>> from ray.rllib.env.env_context import EnvContext
-            >>> env_ctx = EnvContext({"a": 1, "b": 2}, worker_index=0)  # doctest: +SKIP
-            >>> env_ctx.set_defaults({"a": -42, "c": 3}) # doctest: +SKIP
-            >>> print(env_ctx) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.env.env_context import EnvContext
+            env_ctx = EnvContext({"a": 1, "b": 2}, worker_index=0)
+            env_ctx.set_defaults({"a": -42, "c": 3})
+            print(env_ctx)
+
+        .. testoutput::
+
             {"a": 1, "b": 2, "c": 3}
         """
         for key, value in defaults.items():

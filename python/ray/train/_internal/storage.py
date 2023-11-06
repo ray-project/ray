@@ -1,11 +1,5 @@
-import dataclasses
-import fnmatch
-import logging
-import os
-from pathlib import Path
-import shutil
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
-
+# Try import ray[train] core requirements (defined in setup.py)
+# isort: off
 try:
     import fsspec  # noqa
     from fsspec.implementations.local import LocalFileSystem
@@ -25,11 +19,19 @@ except (ImportError, ModuleNotFoundError) as e:
         "pyarrow is a required dependency of Ray Train and Ray Tune. "
         "Please install with: `pip install pyarrow`"
     ) from e
+# isort: on
 
+import dataclasses
+import fnmatch
+import logging
+import os
+import shutil
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray._private.storage import _get_storage_uri
 from ray.air._internal.filelock import TempFileLock
-from ray.train._internal.syncer import Syncer, SyncConfig, _BackgroundSyncer
+from ray.train._internal.syncer import SyncConfig, Syncer, _BackgroundSyncer
 from ray.train.constants import _get_defaults_results_dir
 
 if TYPE_CHECKING:
@@ -40,13 +42,6 @@ logger = logging.getLogger(__name__)
 
 
 _VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
-
-
-def _use_storage_context() -> bool:
-    # Whether to enable the new simple persistence mode.
-    from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
-
-    return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "1")))
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
@@ -241,7 +236,6 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
 
     If the path doesn't exist, returns an empty list.
     """
-
     selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
     return [
         os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))
@@ -396,7 +390,7 @@ class StorageContext:
         ...     storage_path=None,
         ...     experiment_dir_name="exp_name",
         ... )
-        >>> storage.storage_path  # Auto-resolved
+        >>> storage.storage_fs_path  # Auto-resolved
         '/tmp/ray_results'
         >>> storage.storage_local_path
         '/tmp/ray_results'
@@ -426,7 +420,7 @@ class StorageContext:
         sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
-        current_checkpoint_index: int = 0,
+        current_checkpoint_index: int = -1,
     ):
         self.custom_fs_provided = storage_filesystem is not None
 
@@ -443,7 +437,7 @@ class StorageContext:
         # If `storage_path=None`, then set it to the local path.
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
-        self.storage_path = storage_path or ray_storage_uri or self.storage_local_path
+        storage_path = storage_path or ray_storage_uri or self.storage_local_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
@@ -452,7 +446,7 @@ class StorageContext:
         )
 
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
-            self.storage_path, storage_filesystem
+            storage_path, storage_filesystem
         )
         self.storage_fs_path = Path(self.storage_fs_path).as_posix()
 
@@ -476,17 +470,16 @@ class StorageContext:
         self._check_validation_file()
 
     def __str__(self):
-        attrs = [
-            "storage_path",
-            "storage_local_path",
-            "storage_filesystem",
-            "storage_fs_path",
-            "experiment_dir_name",
-            "trial_dir_name",
-            "current_checkpoint_index",
-        ]
-        attr_str = "\n".join([f"  {attr}={getattr(self, attr)}" for attr in attrs])
-        return f"StorageContext<\n{attr_str}\n>"
+        return (
+            "StorageContext<\n"
+            f"  storage_filesystem='{self.storage_filesystem.type_name}',\n"
+            f"  storage_fs_path='{self.storage_fs_path}',\n"
+            f"  storage_local_path='{self.storage_local_path}',\n"
+            f"  experiment_dir_name='{self.experiment_dir_name}',\n"
+            f"  trial_dir_name='{self.trial_dir_name}',\n"
+            f"  current_checkpoint_index={self.current_checkpoint_index},\n"
+            ">"
+        )
 
     def _create_validation_file(self):
         """On the creation of a storage context, create a validation file at the
@@ -507,12 +500,12 @@ class StorageContext:
         )
         if not _exists_at_fs_path(fs=self.storage_filesystem, fs_path=valid_file):
             raise RuntimeError(
-                f"Unable to set up cluster storage at storage_path={self.storage_path}"
+                f"Unable to set up cluster storage with the following settings:\n{self}"
                 "\nCheck that all nodes in the cluster have read/write access "
                 "to the configured storage path."
             )
 
-    def _increase_checkpoint_index(self, metrics: Dict):
+    def _update_checkpoint_index(self, metrics: Dict):
         # Per default, increase by 1. This can be overwritten to customize checkpoint
         # directories.
         self.current_checkpoint_index += 1

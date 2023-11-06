@@ -21,8 +21,8 @@ from ray.data.datasource import (
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     FileExtensionFilter,
-    _unwrap_protocol,
 )
+from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
@@ -236,7 +236,7 @@ def test_csv_ignore_missing_paths(
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_csv(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.fully_executed()
+            ds.materialize()
 
 
 @pytest.mark.parametrize(

@@ -25,7 +25,6 @@ class TestUniformResourceAllocation(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         self.tune_controller, *_ = create_execution_test_objects(
-            self.tmpdir,
             resources={"CPU": 8, "GPU": 8},
             reuse_actors=False,
             tune_controller_cls=MockTuneController,

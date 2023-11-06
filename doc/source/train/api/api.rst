@@ -12,6 +12,7 @@ PyTorch Ecosystem
 -----------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.torch.TorchTrainer
@@ -23,6 +24,7 @@ PyTorch
 ~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.torch.get_device
@@ -36,6 +38,7 @@ PyTorch Lightning
 ~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.lightning.prepare_trainer
@@ -51,6 +54,7 @@ Hugging Face Transformers
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.huggingface.transformers.prepare_trainer
@@ -64,6 +68,7 @@ Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.tensorflow.TensorflowTrainer
@@ -75,6 +80,7 @@ Horovod
 ~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.horovod.HorovodTrainer
@@ -85,6 +91,7 @@ XGBoost
 ~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.xgboost.XGBoostTrainer
@@ -94,6 +101,7 @@ LightGBM
 ~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
@@ -105,6 +113,7 @@ Ray Train Configuration
 -----------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.CheckpointConfig
@@ -122,6 +131,7 @@ Ray Train Utilities
 **Classes**
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.Checkpoint
@@ -130,6 +140,7 @@ Ray Train Utilities
 **Functions**
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
     
     ~train.get_checkpoint
@@ -142,6 +153,7 @@ Ray Train Output
 ----------------
 
 .. autosummary::
+    :nosignatures:
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
@@ -157,6 +169,7 @@ Trainer Base Classes
 ~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.trainer.BaseTrainer
@@ -171,6 +184,7 @@ Train Backend Base Classes
 .. _train-backend-config:
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
     :template: autosummary/class_without_autosummary.rst
 

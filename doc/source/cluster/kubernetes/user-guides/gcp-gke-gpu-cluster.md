@@ -14,7 +14,9 @@ gcloud container clusters create kuberay-gpu-cluster \
     --zone=us-west1-b --machine-type e2-standard-4
 ```
 
-> Note: You can also create a cluster from the [Google Cloud Console](https://console.cloud.google.com/kubernetes/list).
+```{admonition} Note
+You can also create a cluster from the [Google Cloud Console](https://console.cloud.google.com/kubernetes/list).
+```
 
 ## Step 2: Create a GPU node pool
 
@@ -22,25 +24,22 @@ Run the following command to create a GPU node pool for Ray GPU workers. You can
 
 ```sh
 gcloud container node-pools create gpu-node-pool \
-  --accelerator type=nvidia-l4-vws,count=1,gpu-driver-version=default \
+  --accelerator type=nvidia-l4-vws,count=1 \
   --zone us-west1-b \
   --cluster kuberay-gpu-cluster \
   --num-nodes 1 \
   --min-nodes 0 \
   --max-nodes 1 \
   --enable-autoscaling \
-  --machine-type g2-standard-4 \
+  --machine-type g2-standard-4
 ```
 
 The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. This example uses the [NVIDIA L4](https://cloud.google.com/compute/docs/gpus#l4-gpus) GPU. The machine type `g2-standard-4` has 1 GPU, 24 GB GPU Memory, 4 vCPUs and 16 GB RAM.
 
-.. note::
-
-    GKE automatically installs the GPU drivers for you.  For more details, see [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#create-gpu-pool-auto-drivers).
-
-.. note::
-
-    GKE automatically configures taints and tolerations so that only GPU pods are scheduled on GPU nodes.  For more details, see [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#create)
+```{admonition} Note
+GKE automatically configures taints and tolerations so that only GPU pods are scheduled on GPU nodes.
+For more details, see [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#create)
+```
 
 ## Step 3: Configure `kubectl` to connect to the cluster
 
@@ -51,3 +50,20 @@ gcloud container clusters get-credentials kuberay-gpu-cluster --zone us-west1-b
 ```
 
 For more details, see [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
+
+## Step 4: Install GPU drivers (optional)
+
+If you encounter any issues with the GPU drivers installed by GKE, you can manually install the GPU drivers by following the instructions below.
+
+```sh
+# Install NVIDIA GPU device driver
+kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded-latest.yaml
+
+# Verify that your nodes have allocatable GPUs 
+kubectl get nodes "-o=custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu"
+
+# Verify that your nodes have allocatable GPUs 
+# NAME     GPU
+# ......   <none>
+# ......   1
+```
