@@ -1283,11 +1283,12 @@ async def execute_streaming_generator_async(
         # Run it in a separate thread to that we can
         # avoid blocking the event loop when serializing
         # the output (which has nogil).
-        done = await loop.run_in_executor(
-            worker.core_worker.get_thread_pool_for_async_event_loop(),
-            report_streaming_generator_output,
-            output_or_exception,
-            context)
+        done = report_streaming_generator_output(output_or_exception, context)
+        # done = await loop.run_in_executor(
+        #     worker.core_worker.get_thread_pool_for_async_event_loop(),
+        #     report_streaming_generator_output,
+        #     output_or_exception,
+        #     context)
         if done:
             break
 

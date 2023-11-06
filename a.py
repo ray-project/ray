@@ -51,7 +51,7 @@ class Intermediate:
         self.anext_latency = []
         self.yield_latency = []
 
-    def stream(self, i):
+    async def stream(self, i):
         gen = self._h.stream.options(
             num_returns="streaming"
         ).remote(i)
@@ -81,17 +81,19 @@ class Intermediate:
                 #         yield tokens
                 # else:
                 # # await tokens
-                yield tokens
+                if total_tokens == 10:
+                    with VizTracer(output_file="/tmp/a.json", log_async=True, log_gc=True,) as tracer:
+                        tokens = await tokens
+                        for token in tokens:
+                            yield token
+                else:
+                    tokens = await tokens
+                    for token in tokens:
+                        yield token
                 elapsed = (time.perf_counter_ns() - anext_time)
                 self.yield_latency.append(elapsed)
                 # print(f"id {i} yield took {elapsed / 1000} us")
                 total_tokens += 1
-                # await gen._obj_ref_gen._generator_ref
-                # ss = time.time()
-                # for token in tokens:
-                #     total_tokens += 1
-                #     yield token
-                # total_elapsed += (time.time() - ss) * 1000
                 total_elapsed=0
             except StopIteration:
                 break

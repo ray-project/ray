@@ -28,6 +28,7 @@ class Downstream:
             batches.append("hi")
             if i % BATCH_SIZE == 0:
                 yield batches
+                await asyncio.sleep(0)
                 batches = []
         e = (time.time() - s)
         print(f"data generation takes {e * 1000} ms. throughput: {self._tokens_per_request / e} / s")
@@ -35,6 +36,7 @@ class Downstream:
     def __call__(self, *args):
         return StreamingResponse(self.stream())
 
+# yield -> serialize (30us) -> send message (inlined object) to the owner (30us) -> object ref is ready.
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
 class Intermediate:
