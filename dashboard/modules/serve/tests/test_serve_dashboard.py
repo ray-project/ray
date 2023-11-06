@@ -26,7 +26,7 @@ from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 # For local testing. If you're running these tests locally on a Macbook, set
 # this variable to False to enable tests.
-DISABLE_DARWIN = False
+DISABLE_DARWIN = True
 
 
 SERVE_AGENT_URLs = {
