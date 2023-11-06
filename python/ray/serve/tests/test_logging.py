@@ -51,7 +51,7 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
             return res
 
     handle = serve.run(Handle.bind())
-    rotation_config = ray.get(handle.remote())
+    rotation_config = handle.remote().result()
     assert rotation_config["max_bytes"] == max_bytes
     assert rotation_config["backup_count"] == backup_count
 
@@ -90,16 +90,16 @@ def test_handle_access_log(serve_instance):
                 ]
             )
 
-        replica_tag = ray.get(h.remote())
+        replica_tag = h.remote().result()
         wait_for_condition(check_log, replica_tag=replica_tag, method_name="__call__")
 
-        ray.get(h.other_method.remote())
+        h.other_method.remote().result()
         wait_for_condition(
             check_log, replica_tag=replica_tag, method_name="other_method"
         )
 
         with pytest.raises(RuntimeError, match="blah blah blah"):
-            ray.get(h.throw.remote())
+            h.throw.remote().result()
 
         wait_for_condition(
             check_log, replica_tag=replica_tag, method_name="throw", fail=True
@@ -122,7 +122,7 @@ def test_user_logs(serve_instance):
 
     f = io.StringIO()
     with redirect_stderr(f):
-        replica_tag, log_file_name = ray.get(handle.remote())
+        replica_tag, log_file_name = handle.remote().result()
 
         def check_stderr_log(replica_tag: str):
             s = f.getvalue()
@@ -159,7 +159,7 @@ def test_disable_access_log(serve_instance):
 
     f = io.StringIO()
     with redirect_stderr(f):
-        replica_tag = ray.get(handle.remote())
+        replica_tag = handle.remote().result()
 
         for _ in range(10):
             time.sleep(0.1)

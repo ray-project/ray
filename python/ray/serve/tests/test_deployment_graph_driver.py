@@ -4,7 +4,6 @@ import pytest
 import requests
 import starlette.requests
 
-import ray
 from ray import serve
 from ray.serve.dag import InputNode
 from ray.serve.drivers import DAGDriver
@@ -82,7 +81,7 @@ def test_multi_dag(serve_instance):
     handle = serve.run(dag)
 
     for i in range(1, 5):
-        assert ray.get(handle.predict_with_route.remote(f"/my_D{i}")) == f"D{i}"
+        assert handle.predict_with_route.remote(f"/my_D{i}").result() == f"D{i}"
         assert requests.post(f"http://127.0.0.1:8000/my_D{i}", json=1).json() == f"D{i}"
         assert requests.get(f"http://127.0.0.1:8000/my_D{i}", json=1).json() == f"D{i}"
 
@@ -116,9 +115,9 @@ def test_multi_dag_with_inputs(serve_instance):
         )
         handle = serve.run(dag)
 
-    assert ray.get(handle.predict_with_route.remote("/my_D1", 1)) == 1
-    assert ray.get(handle.predict_with_route.remote("/my_D2", 10, 2)) == 12
-    assert ray.get(handle.predict_with_route.remote("/my_D3", 100)) == 100
+    assert handle.predict_with_route.remote("/my_D1", 1).result() == 1
+    assert handle.predict_with_route.remote("/my_D2", 10, 2).result() == 12
+    assert handle.predict_with_route.remote("/my_D3", 100).result() == 100
     assert requests.post("http://127.0.0.1:8000/my_D1", json=1).json() == 1
     assert requests.post("http://127.0.0.1:8000/my_D2", json=[1, 2]).json() == 3
     assert requests.post("http://127.0.0.1:8000/my_D3", json=100).json() == 100
