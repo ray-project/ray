@@ -1626,7 +1626,7 @@ class AlgorithmConfig(_Config):
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         # Deprecated settings.
-        if sample_async:
+        if sample_async is not False:
             deprecation_warning(
                 old="AlgorithmConfig.rollouts(sample_async=True)",
                 help="AsyncSampler is not supported anymore.",

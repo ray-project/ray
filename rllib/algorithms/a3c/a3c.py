@@ -91,7 +91,7 @@ class A3CConfig(AlgorithmConfig):
             self.entropy_coeff_schedule = entropy_coeff_schedule
 
         # Deprecated settings.
-        if sample_async:
+        if sample_async is not False:
             deprecation_warning(
                 old="A3CConfig.training(sample_async=True)",
                 help="AsyncSampler is not supported anymore.",
