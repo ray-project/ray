@@ -60,6 +60,7 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
 from ray.rllib.utils.typing import (
+    EpisodeType,
     LearningRateOrSchedule,
     Optimizer,
     Param,
@@ -192,7 +193,7 @@ class LearnerHyperparameters:
     grad_clip_by: str = None
     seed: int = None
 
-    learner_connector_creator: Callable[
+    learner_connector: Callable[
         [RLModule], Tuple[ConnectorV2, ConnectorContextV2]
     ] = None
 
@@ -439,8 +440,10 @@ class Learner:
         # Build the module to be trained by this learner.
         self._module = self._make_module()
         # Build learner connector and context.
+        # TODO (sven): Support multi-agent; Also, what if user requires a different
+        #  learner connector per single-agent RLModule?
         self._learner_connector, self._learner_connector_ctx = (
-            self.hps.learner_connector_creator(rl_module=self.module)
+            self.hps.learner_connector(rl_module=self.module["default_policy"])
         )
         # Append default learner connector piece at the end.
         self._learner_connector.append(
@@ -1280,12 +1283,15 @@ class Learner:
         """
         self._check_is_built()
 
-        unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
-        if len(unknown_module_ids) > 0:
-            raise ValueError(
-                "Batch contains module ids that are not in the learner: "
-                f"{unknown_module_ids}"
+        if batch is not None:
+            unknown_module_ids = (
+                set(batch.policy_batches.keys()) - set(self.module.keys())
             )
+            if len(unknown_module_ids) > 0:
+                raise ValueError(
+                    "Batch contains module ids that are not in the learner: "
+                    f"{unknown_module_ids}"
+                )
 
         if num_iters < 1:
             # We must do at least one pass on the batch for training.

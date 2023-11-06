@@ -2,11 +2,13 @@ import argparse
 import os
 
 import numpy as np
+import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_pipeline_v2 import (
+    ConnectorPipelineV2,
     EnvToModulePipeline,
     ModuleToEnvPipeline,
 )
@@ -25,8 +27,6 @@ parser.add_argument(
     default="torch",
     help="The DL framework specifier.",
 )
-parser.add_argument("--use-prev-action", action="store_true")
-parser.add_argument("--use-prev-reward", action="store_true")
 parser.add_argument(
     "--as-test",
     action="store_true",
@@ -45,39 +45,41 @@ parser.add_argument(
 
 
 class PrevRewardPrevActionConnector(ConnectorV2):
-    def __init__(self, *, ctx, prev_r=False, prev_a=False):
+    def __init__(self, *, ctx, as_learner_connector=False):
         super().__init__(ctx=ctx)
-        self.prev_r = prev_r
-        self.prev_a = prev_a
-        self.action_space = self.ctx.env.single_action_space
+        self.action_space = ctx.rl_module.config.action_space
+        self.as_learner_connector = as_learner_connector
 
     # Only need to override the __call__ method to implement the extraction of
-    # state, reward, and action data from the ongoing episodes.
-    def __call__(self, input_, episodes, ctx, **kwargs):
+    # reward and action data from the ongoing episodes.
+    def __call__(self, *, input_, episodes, ctx, **kwargs):
         # This is a data-in-data-out connector, so we expect `input_` to be a dict
         # with: key=column name, e.g. "obs" and value=[data to be processed by RLModule].
         # We will just extract the most recent rewards and/or most recent actions from
         # all episodes and store them inside the `input_` data dict.
 
-        # Make sure our expectations are correct.
-        assert isinstance(input_, dict)
-        assert SampleBatch.PREV_REWARDS not in input_
-        assert SampleBatch.PREV_ACTIONS not in input_
+        # 0th reward == 0.0.
+        r0 = 0.0
+        # Set 0th action (prior to first action taken in episode) to all 0s.
+        a0 = tree.map_structure(
+            lambda s: np.zeros_like(s),
+            (
+                self.action_space.sample()
+            ),
+        )
 
-        # Extract prev rewards.
-        prev_r = []
         prev_a = []
+        prev_r = []
         for episode in episodes:
-            if self.prev_r:
-                prev_r.append(episode.rewards[-1] if len(episode) > 0 else 0.0)
-            if self.prev_a:
-                prev_a.append(episode.actions[-1] if len(episode) > 0 else self.action_space.sample())
+            if self.as_learner_connector:
+                prev_r.extend([r0] + list(episode.rewards[:-1]))
+                prev_a.extend([a0] + list(episode.actions[:-1]))
+            else:
+                prev_a.append(episode.actions[-1] if len(episode) else a0)
+                prev_r.append(episode.rewards[-1] if len(episode) else r0)
 
-        if self.prev_r:
-            input_[SampleBatch.PREV_REWARDS] = np.array(prev_r)
-        if self.prev_a:
-            # Support nested action structures.
-            input_[SampleBatch.PREV_ACTIONS] = batch(prev_a)
+        input_[SampleBatch.PREV_ACTIONS] = batch(prev_a)
+        input_[SampleBatch.PREV_REWARDS] = np.array(prev_r)
         return input_
 
 
@@ -90,24 +92,37 @@ if __name__ == "__main__":
     ray.init(local_mode=True)#TODO
 
     # Define our custom connector pipelines.
-    def connector_creator(env, rl_module):
+    def make_sampling_connectors(env, rl_module):
         # Create the connector context to use.
         ctx = ConnectorContextV2(rl_module=rl_module, env=env)
-        # Create the env-to-module connector (pipeline).
+        # Create the env-to-module connector.
         env_to_module = EnvToModulePipeline(
+            ctx=ctx,
+            connectors=[PrevRewardPrevActionConnector(ctx=ctx)]
+        )
+        # Leave module-to-env undefined as we don't need any special behavior
+        # here.
+        # TODO (sven): Allow returning None here. Also allow returning non-pipeline
+        #  individual connector. RLlib should always create pipeline automatically.
+        module_to_env = ModuleToEnvPipeline(ctx=ctx)
+
+        return env_to_module, module_to_env, ctx
+
+    def make_learner_connector(rl_module):
+        # Create the connector context to use.
+        ctx = ConnectorContextV2(rl_module=rl_module)
+        # Create the learner connector.
+        learner_connector = ConnectorPipelineV2(
             ctx=ctx,
             connectors=[
                 PrevRewardPrevActionConnector(
                     ctx=ctx,
-                    prev_r=args.use_prev_reward,
-                    prev_a=args.use_prev_action,
+                    as_learner_connector=True,
                 ),
             ],
         )
-        # Create the (empty) module-to-env connector (pipeline).
-        module_to_env = ModuleToEnvPipeline(ctx=ctx)
+        return learner_connector, ctx
 
-        return env_to_module, module_to_env, ctx
 
     config = (
         PPOConfig()
@@ -119,10 +134,11 @@ if __name__ == "__main__":
         .rollouts(
             env_runner_cls=SingleAgentEnvRunner,
             enable_connectors=True,
-            connector_creator=connector_creator,
+            sampling_connectors=make_sampling_connectors,
         )
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .training(
+            learner_connector=make_learner_connector,
             num_sgd_iter=5,
             vf_loss_coeff=0.0001,
             train_batch_size=512,

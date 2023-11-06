@@ -24,7 +24,7 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
+#from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sample_batch
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -457,26 +457,8 @@ class PPO(Algorithm):
                     episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
                         lambda w: w.sample(), local_worker=False
                     )
-                standardize_fields(train_batch, ["advantages"])
-                # TODO: Move the following two steps into:
-                # 1) Split up collected episode fragments (as-is, no postprocessing)
-                #  into roughly n equal timesteps (n==num learner workers)
-                # 2) Send each learner worker one chunk of episode (fragments)
-                # 3) Have learner workers postprocess episodes (PPO specific)
-                # 4) Have learner workers call their training connector on the list of
-                # episodes -> returns train batch
-                # 5) Have learner workers perform minibatch SGD looping on generated
-                #  sample batch.
-
-                # Perform PPO postprocessing on a (flattened) list of Episodes.
-                # postprocessed_episodes: List[
-                #     SingleAgentEpisode
-                # ] = self.postprocess_episodes(tree.flatten(episodes))
-                # Convert list of postprocessed Episodes into a single sample batch.
-                # train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
-                #     postprocessed_episodes
-                # )
-                # TODO: single- vs multi-agent.
+                episodes = tree.flatten(episodes)
+                # TODO (sven): single- vs multi-agent.
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
                 self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
 
@@ -499,11 +481,17 @@ class PPO(Algorithm):
             ):
                 is_module_trainable = self.workers.local_worker().is_policy_to_train
                 self.learner_group.set_is_module_trainable(is_module_trainable)
-            train_results = self.learner_group.update(
-                train_batch,
-                minibatch_size=self.config.sgd_minibatch_size,
-                num_iters=self.config.num_sgd_iter,
-            )
+                train_results = self.learner_group.update(
+                    batch=train_batch,
+                    minibatch_size=self.config.sgd_minibatch_size,
+                    num_iters=self.config.num_sgd_iter,
+                )
+            else:
+                train_results = self.learner_group.update(
+                    episodes=episodes,
+                    minibatch_size=self.config.sgd_minibatch_size,
+                    num_iters=self.config.num_sgd_iter,
+                )
 
         elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)

@@ -20,20 +20,27 @@ _, tf, _ = try_import_tf()
 
 
 @DeveloperAPI
-def compute_gae_for_episode(
-    episode: SingleAgentEpisode,
+def compute_advantages_for_episodes(
+    batch: SampleBatch,
+    episodes: List[SingleAgentEpisode],
     gamma: float,
     lambda_: float,
     use_gae: bool,
     use_critic: bool,
     rl_module: RLModule,
-):
-    """Adds GAE to a trajectory."""
-    # TODO (simon): All of this can be batched over multiple episodes.
-    # This should increase performance.
-    # TODO (sven): Shall do postprocessing in the training_step or
-    # in the env_runner? Here we could batch over episodes as we have
-    # them now in the training_step.
+) -> np._typing.NDArray:
+    """Computes advantages over a list of Episodes and return advantages as tensor."""
+
+    # Compute value function outs, if not already in the episodes.
+    if SampleBatch.VF_PREDS not in batch:
+        # Shared encoder.
+        encoder_outs = rl_module.encoder(batch)
+        # Value head.
+        vf_out = rl_module.vf(encoder_outs[ENCODER_OUT][CRITIC])
+        # TODO (sven): Make framework agnostic.
+        batch[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
+
+    # Compute bootstrapped values at end of
     episode = compute_bootstrap_value_for_episode(episode, rl_module)
 
     vf_preds = episode.extra_model_outputs[SampleBatch.VF_PREDS]
@@ -51,6 +58,8 @@ def compute_gae_for_episode(
         vf_preds=vf_preds,
         rewards=rewards,
     )
+
+    standardize_fields(train_batch, ["advantages"])
 
     # TODO (simon): Add dimension in case of recurrent model.
     return episode

@@ -191,11 +191,13 @@ class LearnerGroup:
         # TODO (sven): Move this into individual Learners. It might be that
         #  batch/episodes postprocessing on each Learner requires the non-trainable
         #  modules' data.
-        train_batch = {}
-        for module_id in batch.policy_batches.keys():
-            if self._is_module_trainable(module_id, batch):
-                train_batch[module_id] = batch.policy_batches[module_id]
-        train_batch = MultiAgentBatch(train_batch, batch.count)
+        train_batch = None
+        if batch is not None:
+            train_batch = {}
+            for module_id in batch.policy_batches.keys():
+                if self._is_module_trainable(module_id, batch):
+                    train_batch[module_id] = batch.policy_batches[module_id]
+            train_batch = MultiAgentBatch(train_batch, batch.count)
 
         if self.is_local:
             assert batch is not None or episodes is not None
@@ -226,7 +228,7 @@ class LearnerGroup:
                     self._worker_manager.foreach_actor(
                         [
                             partial(_learner_update, batch_shard=batch_shard)
-                            for batch_shard in ShardBatchIterator(batch, len(self._workers))
+                            for batch_shard in ShardBatchIterator(train_batch, len(self._workers))
                         ]
                     )
                 )

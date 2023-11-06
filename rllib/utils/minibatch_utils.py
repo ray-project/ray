@@ -1,8 +1,10 @@
 import math
+from typing import List
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.typing import EpisodeType
 
 
 @DeveloperAPI
@@ -153,3 +155,33 @@ class ShardBatchIterator:
             # TODO (Avnish): int(batch_size) ? How should we shard MA batches really?
             new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
             yield new_batch
+
+
+@DeveloperAPI
+class ShardEpisodesIterator:
+    """Iterator for sharding a list of Episodes into num_shards sub-lists of Episodes.
+
+    Args:
+        episodes: The input list of Episodes.
+        num_shards: The number of shards to split the episodes into.
+
+    Yields:
+        A sub-list of Episodes of size roughly `len(episodes) / num_shards`.
+    """
+    def __init__(self, episodes: List[EpisodeType], num_shards: int):
+        self._episodes = sorted(episodes, key=len, reverse=True)
+        self._num_shards = num_shards
+
+    def __iter__(self):
+        # Initialize sub-lists and their total lengths
+        sublists = [[] for _ in range(self._num_shards)]
+        lengths = [0 for _ in range(self._num_shards)]
+
+        for episodes in self._episodes:
+            # Find the sub-list with the minimum total length and add the item to it
+            min_index = lengths.index(min(lengths))
+            sublists[min_index].append(item)
+            lengths[min_index] += len(item)
+
+        for sublist in sublists:
+            yield sublist

@@ -5,7 +5,7 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
-from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
+from ray.rllib.evaluation.postprocessing_v2 import compute_advantages_for_episodes
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.schedules.scheduler import Scheduler
@@ -46,8 +46,12 @@ class PPOLearner(Learner):
         super().build()
 
         # Expand the (user defined) learner connector by PPO's advantage computing
-        # connector.
-        self._learner_connector.prepend(PPOLearnerConnector())
+        # connector. Place this connector piece at the end, such that we then
+        # already have the ready (module-specific) batch to be used to compute the value
+        # function outputs first (then compute advantages from these).
+        self._learner_connector.append(
+            PPOLearnerConnector(ctx=self._learner_connector_ctx)
+        )
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
@@ -117,14 +121,15 @@ class PPOLearnerConnector(ConnectorV2):
         **kwargs,
     ):
         """Calculate advantages and value targets."""
-        for episode in episodes:
-            compute_gae_for_episode(
-                episode=episode,
-                gamma=self.config.gamma,
-                lambda_=self.config.lambda_,
-                use_gae=self.config.use_gae,
-                use_critic=True,
-                rl_module=ctx.rl_module,
-            )
+        advantages = compute_advantages_for_episodes(
+            batch=input_,
+            episode=episodes,
+            gamma=self.config.gamma,
+            lambda_=self.config.lambda_,
+            use_gae=self.config.use_gae,
+            use_critic=True,
+            rl_module=ctx.rl_module,
+        )
+        input_[SampleBatch.ADVANTAGES] = advantages
 
         return input_
