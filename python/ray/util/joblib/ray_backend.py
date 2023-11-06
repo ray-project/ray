@@ -17,6 +17,8 @@ class RayBackend(MultiprocessingBackend):
     More info about Ray is available here: https://docs.ray.io.
     """
 
+    supports_return_generator = True
+
     def __init__(
         self,
         nesting_level: Optional[int] = None,
