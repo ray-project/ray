@@ -114,7 +114,7 @@ def test_build_anyscale_base_byod_images() -> None:
     def _mock_validate_and_push(image: str) -> None:
         images.append(image)
 
-    with patch("ray_release.byod.build_ray.build_ray", return_value=None), patch(
+    with patch(
         "ray_release.byod.build._download_dataplane_build_file", return_value=None
     ), patch(
         "os.environ",
