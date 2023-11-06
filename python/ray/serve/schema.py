@@ -33,6 +33,17 @@ from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
 
+TARGET_CAPACITY_FIELD = Field(
+    default=None,
+    description=(
+        "[EXPERIMENTAL]: the target capacity % for replicas across all the "
+        "cluster. The number of replicas in each deployment will be scaled by this "
+        "percentage, including the bounds of autoscaling configurations."
+    ),
+    ge=0,
+    le=100,
+)
+
 
 def _route_prefix_format(cls, v):
     """
@@ -671,12 +682,6 @@ class ServeDeploySchema(BaseModel):
           simply ignoring new parameters)
     """
 
-    target_capacity: Optional[int] = Field(
-        default=None,
-        description=(
-            "The target capacity for applications being deployed. Valid values are in the range [0, 100]. The target capacity for existing applications are implicitly set to (100 - target_capacity). If not set, the applications will be fully scaled up and any existing applications in the cluster will be fully terminated."
-        ),
-    )
     proxy_location: ProxyLocation = Field(
         default=ProxyLocation.EveryNode,
         description=(
@@ -696,6 +701,7 @@ class ServeDeploySchema(BaseModel):
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
     )
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
     @validator("applications")
     def application_names_unique(cls, v):
@@ -998,6 +1004,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
@@ -1015,6 +1022,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 
     def _get_status(self) -> ServeStatus:
         return ServeStatus(
+            target_capacity=self.target_capacity,
             proxies={node_id: proxy.status for node_id, proxy in self.proxies.items()},
             applications={
                 app_name: ApplicationStatusOverview(
@@ -1064,6 +1072,7 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
             "the status."
         ),
     )
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
