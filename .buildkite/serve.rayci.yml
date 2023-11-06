@@ -96,7 +96,9 @@ steps:
     job_env: forge
 
   - label: ":ray-serve: serve: serve minimal"
-    tags: python
+    tags:
+      - serve
+      - python
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve 
@@ -109,6 +111,7 @@ steps:
 
   - label: ":ray-serve: serve: dashboard tests"
     tags: 
+      - serve
       - python
       - dashboard
     instance_type: medium
