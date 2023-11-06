@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import React from "react";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import DataOverview from "./DataOverview";
@@ -23,6 +24,24 @@ describe("DataOverview", () => {
           value: 30,
           max: 40,
         },
+        operators: [
+          {
+            operator: "test_ds1_op1",
+            state: "RUNNING",
+            progress: 99,
+            total: 101,
+            ray_data_output_bytes: {
+              max: 11,
+            },
+            ray_data_spilled_bytes: {
+              max: 21,
+            },
+            ray_data_current_bytes: {
+              value: 31,
+              max: 41,
+            },
+          },
+        ],
       },
       {
         dataset: "test_ds2",
@@ -41,8 +60,10 @@ describe("DataOverview", () => {
           value: 70,
           max: 80,
         },
+        operators: [],
       },
     ];
+    const user = userEvent.setup();
 
     render(<DataOverview datasets={datasets} />, { wrapper: TEST_APP_WRAPPER });
 
@@ -55,6 +76,13 @@ describe("DataOverview", () => {
     expect(screen.getByText("10.0000B")).toBeVisible();
     expect(screen.getByText("20.0000B")).toBeVisible();
     expect(screen.getByText("30.0000B/40.0000B")).toBeVisible();
+
+    // Operator dropdown
+    expect(screen.queryByText("test_ds1_op1")).toBeNull();
+    await user.click(screen.getByTitle("Expand Dataset test_ds1"));
+    expect(screen.getByText("test_ds1_op1")).toBeVisible();
+    await user.click(screen.getByTitle("Collapse Dataset test_ds1"));
+    expect(screen.queryByText("test_ds1_op1")).toBeNull();
 
     // Second Dataset
     expect(screen.getByText("test_ds2")).toBeVisible();

@@ -264,7 +264,7 @@ class _StatsActor:
             self.gpu_usage.set(stats.get("gpu_usage", 0), tags)
             self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
 
-        self.update_dataset(tags["dataset"], state)
+        self.update_dataset(tags_list[0]["dataset"], state)
 
     def update_iter_metrics(self, stats: "DatasetStats", tags):
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
@@ -285,13 +285,21 @@ class _StatsActor:
         self.iter_total_blocked_s.set(0, tags)
         self.iter_user_s.set(0, tags)
 
-    def register_dataset(self, dataset_tag):
+    def register_dataset(self, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
             "state": "RUNNING",
             "progress": 0,
             "total": 0,
             "start_time": time.time(),
             "end_time": None,
+            "operators": {
+                operator: {
+                    "state": "RUNNING",
+                    "progress": 0,
+                    "total": 0,
+                }
+                for operator in operator_tags
+            },
         }
 
     def update_dataset(self, dataset_tag, state):
@@ -384,13 +392,13 @@ def get_dataset_id_from_stats_actor() -> str:
         return uuid4().hex
 
 
-def register_dataset_to_stats_actor(dataset_tag):
+def register_dataset_to_stats_actor(dataset_tag: str, operator_tags: List[str]):
     global _stats_actor
     _check_cluster_stats_actor()
-    _stats_actor.register_dataset.remote(dataset_tag)
+    _stats_actor.register_dataset.remote(dataset_tag, operator_tags)
 
 
-def update_stats_actor_dataset(dataset_tag, state):
+def update_stats_actor_dataset(dataset_tag: str, state: Dict[str, Any]):
     global _stats_actor
     _check_cluster_stats_actor()
     _stats_actor.update_dataset.remote(dataset_tag, state)

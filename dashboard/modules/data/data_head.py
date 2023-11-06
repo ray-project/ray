@@ -19,10 +19,17 @@ SAMPLE_RATE = "1s"
 
 
 class PrometheusQuery(Enum):
-    VALUE = ("value", "sum({}) by (dataset)")
+    """Enum to store types of Prometheus queries for a given metric.
+
+    Values are stored in the form (name, dataset-level query, operator-level query)
+    """
+
+    VALUE = ("value", "sum({}) by (dataset)", "sum({}) by (dataset, operator)")
     MAX = (
         "max",
         "max_over_time(sum({}) by (dataset)[" + f"{MAX_TIME_WINDOW}:{SAMPLE_RATE}])",
+        "max_over_time(sum({}) by (dataset, operator)["
+        + f"{MAX_TIME_WINDOW}:{SAMPLE_RATE}])",
     )
 
 
@@ -53,23 +60,56 @@ class DataHead(dashboard_utils.DashboardHeadModule):
             for dataset in datasets:
                 for metric, queries in DATASET_METRICS.items():
                     datasets[dataset][metric] = {query.value[0]: 0 for query in queries}
+                    for operator in datasets[dataset]["operators"]:
+                        datasets[dataset]["operators"][operator][metric] = {
+                            query.value[0]: 0 for query in queries
+                        }
             # Query dataset metric values from prometheus
             try:
                 # TODO (Zandew): store results of completed datasets in stats actor.
                 for metric, queries in DATASET_METRICS.items():
                     for query in queries:
-                        result = await self._query_prometheus(
+                        # Dataset level
+                        dataset_result = await self._query_prometheus(
                             query.value[1].format(metric)
                         )
-                        for res in result["data"]["result"]:
+                        for res in dataset_result["data"]["result"]:
                             dataset, value = res["metric"]["dataset"], res["value"][1]
                             if dataset in datasets:
                                 datasets[dataset][metric][query.value[0]] = value
-            except Exception:
+
+                        # Operator level
+                        operator_result = await self._query_prometheus(
+                            query.value[2].format(metric)
+                        )
+                        for res in operator_result["data"]["result"]:
+                            dataset, operator, value = (
+                                res["metric"]["dataset"],
+                                res["metric"]["operator"],
+                                res["value"][1],
+                            )
+                            # Check if dataset/operator is in current _StatsActor scope.
+                            # Prometheus server may contain metrics from previous
+                            # cluster if not reset.
+                            if (
+                                dataset in datasets
+                                and operator in datasets[dataset]["operators"]
+                            ):
+                                datasets[dataset]["operators"][operator][metric][
+                                    query.value[0]
+                                ] = value
+            except aiohttp.client_exceptions.ClientConnectorError:
                 # Prometheus server may not be running,
                 # leave these values blank and return other data
                 pass
             # Flatten response
+            for dataset in datasets:
+                datasets[dataset]["operators"] = list(
+                    map(
+                        lambda item: {"operator": item[0], **item[1]},
+                        datasets[dataset]["operators"].items(),
+                    )
+                )
             datasets = list(
                 map(lambda item: {"dataset": item[0], **item[1]}, datasets.items())
             )

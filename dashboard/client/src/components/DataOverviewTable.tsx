@@ -1,5 +1,7 @@
 import {
   Box,
+  createStyles,
+  makeStyles,
   Table,
   TableBody,
   TableCell,
@@ -12,6 +14,7 @@ import {
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import React, { useState } from "react";
+import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { formatDateFromTimeMs } from "../common/formatUtils";
 import rowStyles from "../common/RowStyles";
 import { TaskProgressBar } from "../pages/job/TaskProgressBar";
@@ -62,6 +65,7 @@ const DataOverviewTable = ({
   const { changeFilter, filterFunc } = useFilter();
   const pageSize = 10;
   const datasetList = datasets.filter(filterFunc);
+  const [expanded, setExpanded] = useState({});
 
   const list = datasetList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
 
@@ -97,11 +101,11 @@ const DataOverviewTable = ({
         <Table>
           <TableHead>
             <TableRow>
-              {columns.map(({ label, helpInfo }) => (
+              {columns.map(({ label, helpInfo }, i) => (
                 <TableCell align="center" key={label}>
                   <Box
                     display="flex"
-                    justifyContent="center"
+                    justifyContent={i === 0 ? "start" : "end"}
                     alignItems="center"
                   >
                     {label}
@@ -116,58 +120,144 @@ const DataOverviewTable = ({
             </TableRow>
           </TableHead>
           <TableBody>
-            {list.map(
-              ({
-                dataset,
-                state,
-                ray_data_current_bytes,
-                ray_data_output_bytes,
-                ray_data_spilled_bytes,
-                progress,
-                total,
-                start_time,
-                end_time,
-              }) => (
-                <TableRow key={dataset}>
-                  <TableCell align="center">{dataset}</TableCell>
-                  <TableCell align="center">
-                    <TaskProgressBar
-                      numFinished={progress}
-                      numRunning={
-                        state === "RUNNING" ? total - progress : undefined
-                      }
-                      numCancelled={
-                        state === "FAILED" ? total - progress : undefined
-                      }
-                      total={total}
-                    />
-                  </TableCell>
-                  <TableCell align="center">
-                    <StatusChip type="task" status={state} />
-                  </TableCell>
-                  <TableCell align="center">
-                    {memoryConverter(Number(ray_data_output_bytes.max))}
-                  </TableCell>
-                  <TableCell align="center">
-                    {memoryConverter(Number(ray_data_current_bytes.value))}/
-                    {memoryConverter(Number(ray_data_current_bytes.max))}
-                  </TableCell>
-                  <TableCell align="center">
-                    {memoryConverter(Number(ray_data_spilled_bytes.max))}
-                  </TableCell>
-                  <TableCell align="center">
-                    {formatDateFromTimeMs(start_time * 1000)}
-                  </TableCell>
-                  <TableCell align="center">
-                    {end_time && formatDateFromTimeMs(end_time * 1000)}
-                  </TableCell>
-                </TableRow>
-              ),
-            )}
+            {list.map((dataset, index) => (
+              <DatasetTable
+                datasetMetrics={dataset}
+                isExpanded={expanded[dataset.dataset as keyof {}]}
+                setIsExpanded={(isExpanded: boolean) => {
+                  const copy = { ...expanded, [dataset.dataset]: isExpanded };
+                  setExpanded(copy);
+                }}
+                key={dataset.dataset}
+              />
+            ))}
           </TableBody>
         </Table>
       </div>
     </div>
+  );
+};
+
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    icon: {
+      width: 16,
+      height: 16,
+    },
+  }),
+);
+
+const DatasetTable = ({
+  datasetMetrics,
+  isExpanded,
+  setIsExpanded,
+}: {
+  datasetMetrics: DatasetMetrics;
+  isExpanded: boolean;
+  setIsExpanded: CallableFunction;
+}) => {
+  const classes = useStyles();
+  const {
+    dataset,
+    state,
+    progress,
+    total,
+    ray_data_current_bytes,
+    ray_data_output_bytes,
+    ray_data_spilled_bytes,
+    start_time,
+    end_time,
+    operators,
+  } = datasetMetrics;
+  const operatorRows =
+    isExpanded &&
+    operators.map((operator) => (
+      <TableRow key={operator.operator}>
+        <TableCell align="left">{operator.operator}</TableCell>
+        <TableCell align="right">
+          <TaskProgressBar
+            numFinished={operator.progress}
+            numRunning={
+              operator.state === "RUNNING"
+                ? operator.total - operator.progress
+                : undefined
+            }
+            numCancelled={
+              operator.state === "FAILED"
+                ? operator.total - operator.progress
+                : undefined
+            }
+            total={operator.total}
+          />
+        </TableCell>
+        <TableCell align="right">
+          <StatusChip type="task" status={operator.state} />
+        </TableCell>
+        <TableCell align="right">
+          {memoryConverter(Number(operator.ray_data_output_bytes.max))}
+        </TableCell>
+        <TableCell align="right">
+          {memoryConverter(Number(operator.ray_data_current_bytes.value))}/
+          {memoryConverter(Number(operator.ray_data_current_bytes.max))}
+        </TableCell>
+        <TableCell align="right">
+          {memoryConverter(Number(operator.ray_data_spilled_bytes.max))}
+        </TableCell>
+        <TableCell></TableCell>
+        <TableCell></TableCell>
+      </TableRow>
+    ));
+  return (
+    <React.Fragment>
+      <TableRow key={dataset}>
+        <TableCell align="left">
+          <div style={{ display: "flex" }}>
+            {isExpanded ? (
+              <RiArrowDownSLine
+                title={"Collapse Dataset " + dataset}
+                className={classes.icon}
+                onClick={() => setIsExpanded(false)}
+              />
+            ) : (
+              <RiArrowRightSLine
+                title={"Expand Dataset " + dataset}
+                className={classes.icon}
+                onClick={() => setIsExpanded(true)}
+              />
+            )}
+            {dataset}
+          </div>
+        </TableCell>
+        <TableCell align="right">
+          <TaskProgressBar
+            numFinished={progress}
+            numRunning={state === "RUNNING" ? total - progress : undefined}
+            numCancelled={state === "FAILED" ? total - progress : undefined}
+            total={total}
+          />
+        </TableCell>
+        <TableCell align="right">
+          <StatusChip type="task" status={state} />
+        </TableCell>
+        <TableCell align="right">
+          {memoryConverter(Number(ray_data_output_bytes.max))}
+        </TableCell>
+        <TableCell align="right">
+          {memoryConverter(Number(ray_data_current_bytes.value))}/
+          {memoryConverter(Number(ray_data_current_bytes.max))}
+        </TableCell>
+        <TableCell align="right">
+          {memoryConverter(Number(ray_data_spilled_bytes.max))}
+        </TableCell>
+        <TableCell align="right">
+          {formatDateFromTimeMs(start_time * 1000)}
+        </TableCell>
+        <TableCell align="right">
+          {end_time && formatDateFromTimeMs(end_time * 1000)}
+        </TableCell>
+      </TableRow>
+      {operatorRows}
+    </React.Fragment>
   );
 };
 
