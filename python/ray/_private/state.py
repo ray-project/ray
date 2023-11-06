@@ -675,6 +675,12 @@ class GlobalState:
              Is operation success
         """
         self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+        assert (
+            debugger_port is not None and debugger_port > 0
+        ), "debugger_port is not valid"
+
         return self.global_state_accessor.update_worker_debugger_port(
             worker_id, debugger_port
         )
