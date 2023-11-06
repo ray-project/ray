@@ -104,7 +104,11 @@ class DAGNode(DAGNodeBase):
         self.cache_from_last_execute = {}
 
     def execute(
-        self, *args, _ray_cache_refs: bool = False, **kwargs
+        self,
+        *args,
+        _ray_cache_refs: bool = False,
+        _ray_cache_actors: bool = True,
+        **kwargs,
     ) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor _execute_impl().
 
@@ -119,8 +123,15 @@ class DAGNode(DAGNodeBase):
         def executor(node):
             return node._execute_impl(*args, **kwargs)
 
-        result = self.apply_recursive(executor)
+        cache = {}
         if _ray_cache_refs:
+            cache = self.cache_from_last_execute
+        elif _ray_cache_actors:
+            for key, ref in self.cache_from_last_execute.items():
+                if isinstance(ref, ray.actor.ActorHandle):
+                    cache[key] = ref
+        result = self.apply_recursive(executor, cache=cache)
+        if _ray_cache_refs or _ray_cache_actors:
             self.cache_from_last_execute = executor.cache
         return result
 
@@ -218,7 +229,7 @@ class DAGNode(DAGNodeBase):
             new_args, new_kwargs, self.get_options(), new_other_args_to_resolve
         )
 
-    def apply_recursive(self, fn: "Callable[[DAGNode], T]") -> T:
+    def apply_recursive(self, fn: "Callable[[DAGNode], T]", cache=None) -> T:
         """Apply callable on each node in this DAG in a bottom-up tree walk.
 
         Args:
@@ -231,8 +242,11 @@ class DAGNode(DAGNodeBase):
         """
 
         class _CachingFn:
-            def __init__(self, fn):
-                self.cache = {}
+            def __init__(self, fn, cache=None):
+                if cache is None:
+                    self.cache = {}
+                else:
+                    self.cache = cache
                 self.fn = fn
                 self.fn.cache = self.cache
                 self.input_node_uuid = None
@@ -250,7 +264,7 @@ class DAGNode(DAGNodeBase):
                 return self.cache[node._stable_uuid]
 
         if not type(fn).__name__ == "_CachingFn":
-            fn = _CachingFn(fn)
+            fn = _CachingFn(fn, cache)
 
         return fn(
             self._apply_and_replace_all_child_nodes(
