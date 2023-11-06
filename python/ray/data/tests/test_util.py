@@ -104,7 +104,7 @@ def get_parquet_read_logical_op(
         mem_size = read_kwargs.pop("mem_size")
     read_op = Read(
         datasource=datasource,
-        reader=reader,
+        datasource_or_legacy_reader=reader,
         mem_size=mem_size,
         ray_remote_args=ray_remote_args,
         **read_kwargs,

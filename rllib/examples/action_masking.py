@@ -109,7 +109,10 @@ if __name__ == "__main__":
         )
         # We need to disable preprocessing of observations, because preprocessing
         # would flatten the observation dict of the environment.
-        .experimental(_disable_preprocessor_api=True)
+        .experimental(
+            _enable_new_api_stack=True,
+            _disable_preprocessor_api=True,
+        )
         .framework(args.framework)
         .resources(
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

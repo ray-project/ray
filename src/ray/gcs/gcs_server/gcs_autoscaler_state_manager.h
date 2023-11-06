@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -61,6 +62,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
+
+  void Initialize(const GcsInitData &gcs_init_data);
 
   void OnNodeAdd(const rpc::GcsNodeInfo &node);
 

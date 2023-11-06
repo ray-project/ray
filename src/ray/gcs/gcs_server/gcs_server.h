@@ -118,9 +118,9 @@ class GcsServer {
     return *gcs_autoscaler_state_manager_;
   }
 
-  GcsResourceManager &GetMutableGcsResourceManager() {
+  void UpdateGcsResourceManagerInTest(const rpc::ResourcesData &resources) {
     RAY_CHECK(gcs_resource_manager_ != nullptr);
-    return *gcs_resource_manager_;
+    gcs_resource_manager_->UpdateFromResourceView(resources);
   }
 
  protected:
@@ -163,7 +163,7 @@ class GcsServer {
   void InitGcsTaskManager();
 
   /// Initialize gcs autoscaling manager.
-  void InitGcsAutoscalerStateManager();
+  void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
 
   /// Initialize usage stats client.
   void InitUsageStatsClient();

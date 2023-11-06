@@ -29,10 +29,11 @@ class Translator:
 
 @serve.deployment
 class Summarizer:
-    def __init__(self, translator):
-        # Load model
+    def __init__(self, translator: DeploymentHandle):
+        self.translator = translator
+
+        # Load model.
         self.model = pipeline("summarization", model="t5-small")
-        self.translator: DeploymentHandle = translator.options(use_new_handle_api=True)
 
     def summarize(self, text: str) -> str:
         # Run inference

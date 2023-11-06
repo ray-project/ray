@@ -27,6 +27,10 @@ from ray.serve._private.utils import (
     serve_encoders,
     snake_to_camel_case,
 )
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_DEPLOY_GROUP_PINNED_URI,
+)
 from ray.serve.tests.common.utils import MockTimer
 
 
@@ -231,10 +235,7 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
 
         with ray.init(
             runtime_env={
-                "py_modules": [
-                    "https://github.com/ray-project/test_dag/archive/"
-                    "445c9611151720716060b1471b29c70219ed33ef.zip"
-                ],
+                "py_modules": [TEST_DAG_PINNED_URI],
                 "env_vars": {"var1": "hello"},
             }
         ):
@@ -250,10 +251,7 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
 
             @ray.remote(
                 runtime_env={
-                    "py_modules": [
-                        "https://github.com/ray-project/test_deploy_group/archive/"
-                        "67971777e225600720f91f618cdfe71fc47f60ee.zip"
-                    ],
+                    "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
                     "env_vars": {"var2": "world"},
                 }
             )

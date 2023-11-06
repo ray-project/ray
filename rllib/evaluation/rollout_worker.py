@@ -172,10 +172,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # Create a rollout worker and using it to collect experiences.
         import gymnasium as gym
         from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+        from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
         worker = RolloutWorker(
           env_creator=lambda _: gym.make("CartPole-v1"),
-          default_policy_class=PGTF1Policy)
+          default_policy_class=PPOTF1Policy)
         print(worker.sample())
 
         # Creating a multi-agent rollout worker
@@ -495,7 +495,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         )
 
         # This is only for the old API where local_worker was responsible for learning
-        if not self.config._enable_learner_api:
+        if not self.config._enable_new_api_stack:
             # Error if we don't find enough GPUs.
             if (
                 ray.is_initialized()
@@ -540,7 +540,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # state.
         for pol in self.policy_map.values():
             if not pol._model_init_state_automatically_added and not pol.config.get(
-                "_enable_rl_module_api", False
+                "_enable_new_api_stack", False
             ):
                 pol._update_model_view_requirements_from_init_state()
 
@@ -680,10 +680,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy,
+              default_policy_class=PPOTF1Policy,
               config=AlgorithmConfig(),
             )
             print(worker.sample())
@@ -767,10 +767,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTFPolicy)
+              default_policy_class=PPOTFPolicy)
             print(worker.sample_with_count())
 
         .. testoutput::
@@ -797,10 +797,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy)
+              default_policy_class=PPOTF1Policy)
             batch = worker.sample()
             info = worker.learn_on_batch(samples)
         """
@@ -921,10 +921,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy)
+              default_policy_class=PPOTF1Policy)
             batch = worker.sample()
             grads, info = worker.compute_gradients(samples)
         """
@@ -992,10 +992,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             import gymnasium as gym
             from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
             worker = RolloutWorker(
               env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PGTF1Policy)
+              default_policy_class=PPOTF1Policy)
             samples = worker.sample()
             grads, info = worker.compute_gradients(samples)
             worker.apply_gradients(grads)
@@ -1147,7 +1147,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """
         validate_policy_id(policy_id, error=False)
 
-        if module_spec is not None and not self.config._enable_rl_module_api:
+        if module_spec is not None and not self.config._enable_new_api_stack:
             raise ValueError(
                 "If you pass in module_spec to the policy, the RLModule API needs "
                 "to be enabled."
@@ -1744,7 +1744,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         updated_policy_dict = self._get_complete_policy_specs_dict(policy_dict)
 
         # Use the updated policy dict to create the marl_module_spec if necessary
-        if self.config._enable_rl_module_api:
+        if self.config._enable_new_api_stack:
             spec = self.config.get_marl_module_spec(
                 policy_dict=updated_policy_dict,
                 single_agent_rl_module_spec=single_agent_rl_module_spec,
@@ -1823,7 +1823,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                     obs_space,
                     merged_conf.model,
                     include_multi_binary=self.config.get(
-                        "_enable_rl_module_api", False
+                        "_enable_new_api_stack", False
                     ),
                 )
                 # Original observation space should be accessible at
@@ -1890,7 +1890,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 new_policy = policy
 
             # Maybe torch compile an RLModule.
-            if self.config.get("_enable_rl_module_api", False) and self.config.get(
+            if self.config.get("_enable_new_api_stack", False) and self.config.get(
                 "torch_compile_worker"
             ):
                 if self.config.framework_str != "torch":

@@ -2,7 +2,7 @@ import os
 import threading
 import time
 import uuid
-from typing import Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -37,6 +37,8 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import (
     DatasetStats,
     clear_stats_actor_metrics,
+    register_dataset_to_stats_actor,
+    update_stats_actor_dataset,
     update_stats_actor_metrics,
 )
 from ray.data.context import DataContext
@@ -44,6 +46,7 @@ from ray.data.context import DataContext
 logger = DatasetLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
+# If not set, execution state will still be logged after each scheduling loop.
 DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
 
 # Force a progress bar update after this many events processed . This avoids the
@@ -83,6 +86,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._backpressure_policies: List[BackpressurePolicy] = []
 
         self._dataset_tag = dataset_tag
+        # Stores if an operator is completed,
+        # used for marking when an op has just completed.
+        self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
 
         Executor.__init__(self, options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
@@ -114,11 +120,14 @@ class StreamingExecutor(Executor, threading.Thread):
         self._topology, _ = build_streaming_topology(dag, self._options)
         self._backpressure_policies = get_backpressure_policies(self._topology)
 
+        self._has_op_completed = {op: False for op in self._topology}
+
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
             self._global_info = ProgressBar("Running", dag.num_outputs_total())
 
         self._output_node: OpState = self._topology[dag]
+        register_dataset_to_stats_actor(self._dataset_tag)
         self.start()
 
         class StreamIterator(OutputIterator):
@@ -148,8 +157,8 @@ class StreamingExecutor(Executor, threading.Thread):
                         return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
-                except BaseException:
-                    self._outer.shutdown()
+                except BaseException as e:
+                    self._outer.shutdown(isinstance(e, StopIteration))
                     raise
 
             def __del__(self):
@@ -160,7 +169,7 @@ class StreamingExecutor(Executor, threading.Thread):
     def __del__(self):
         self.shutdown()
 
-    def shutdown(self):
+    def shutdown(self, execution_completed: bool = True):
         context = DataContext.get_current()
         global _num_shutdown
 
@@ -168,6 +177,13 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._shutdown:
                 return
             logger.get_logger().debug(f"Shutting down {self}.")
+            update_stats_actor_dataset(
+                self._dataset_tag,
+                {
+                    "state": "FINISHED" if execution_completed else "FAILED",
+                    "end_time": time.time(),
+                },
+            )
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
@@ -208,7 +224,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._output_node.outqueue.append(None)
             # Clears metrics for this dataset so that they do
             # not persist in the grafana dashboard after execution
-            clear_stats_actor_metrics({"dataset": self._dataset_tag})
+            clear_stats_actor_metrics(self._get_metrics_tags())
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -289,9 +305,29 @@ class StreamingExecutor(Executor, threading.Thread):
         for op_state in topology.values():
             op_state.refresh_progress_bar()
 
+        if not DEBUG_TRACE_SCHEDULING:
+            _debug_dump_topology(topology, log_to_stdout=False)
+
+        last_op, last_state = list(topology.items())[-1]
         update_stats_actor_metrics(
-            [op.metrics for op in self._topology], {"dataset": self._dataset_tag}
+            [op.metrics for op in self._topology],
+            self._get_metrics_tags(),
+            # TODO (Zandew): report progress at operator level
+            {
+                "progress": last_state.num_completed_tasks,
+                "total": last_op.num_outputs_total(),
+            },
         )
+
+        # Log metrics of newly completed operators.
+        for op in topology:
+            if op.completed() and not self._has_op_completed[op]:
+                log_str = (
+                    f"Operator {op} completed. "
+                    f"Operator Metrics:\n{op._metrics.as_dict()}"
+                )
+                logger.get_logger(log_to_stdout=False).info(log_str)
+                self._has_op_completed[op] = True
 
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
@@ -332,6 +368,13 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         if self._global_info:
             self._global_info.set_description(resources_status)
+
+    def _get_metrics_tags(self):
+        """Returns a list of tags for operator-level metrics."""
+        return [
+            {"dataset": self._dataset_tag, "operator": f"{op.name}{i}"}
+            for i, op in enumerate(self._topology)
+        ]
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
@@ -396,13 +439,16 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
         raise ValueError(error_message.strip())
 
 
-def _debug_dump_topology(topology: Topology) -> None:
+def _debug_dump_topology(topology: Topology, log_to_stdout: bool = True) -> None:
     """Print out current execution state for the topology for debugging.
 
     Args:
         topology: The topology to debug.
     """
-    logger.get_logger().info("vvv scheduling trace vvv")
+    logger.get_logger(log_to_stdout).info("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
-        logger.get_logger().info(f"{i}: {state.summary_str()}")
-    logger.get_logger().info("^^^ scheduling trace ^^^")
+        logger.get_logger(log_to_stdout).info(
+            f"{i}: {state.summary_str()}, "
+            f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
+        )
+    logger.get_logger(log_to_stdout).info("")

@@ -1483,6 +1483,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   // Publish the worker failure.
   auto worker_failure_data_ptr =
       gcs::CreateWorkerFailureData(worker->WorkerId(),
+                                   self_node_id_,
+                                   initial_config_.node_manager_address,
                                    time(nullptr),
                                    disconnect_type,
                                    disconnect_detail,
@@ -1746,7 +1748,7 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
   auto resources_data = reply->mutable_resources();
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  cluster_task_manager_->FillResourceUsage(*resources_data, nullptr);
+  cluster_task_manager_->FillResourceUsage(*resources_data);
   resources_data->set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2711,6 +2713,8 @@ void NodeManager::TriggerGlobalGC() {
 }
 
 void NodeManager::Stop() {
+  // This never fails.
+  RAY_CHECK_OK(store_client_.Disconnect());
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();

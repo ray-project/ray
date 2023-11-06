@@ -372,11 +372,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return resource_map;
   }
 
-  void ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
-    // Do it from the server side.
-    gcs_server_->GetMutableGcsResourceManager().UpdateFromResourceView(*resources);
-  }
-
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
     std::promise<bool> promise;
     std::vector<rpc::AvailableResources> resources;
@@ -618,7 +613,7 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   (*resource->mutable_resources_available())["GPU"] = 10.0;
   (*resource->mutable_resources_total())["CPU"] = 1.0;
   (*resource->mutable_resources_total())["GPU"] = 10.0;
-  ReportResourceUsage(resource);
+  gcs_server_->UpdateGcsResourceManagerInTest(*resource);
 
   // Assert get all available resources right.
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
@@ -762,7 +757,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   resources->set_node_id(node_info->node_id());
   // Set this flag because GCS won't publish unchanged resources.
   resources->set_should_global_gc(true);
-  ReportResourceUsage(resources);
+  gcs_server_->UpdateGcsResourceManagerInTest(*resources);
 
   RestartGcsServer();
 
@@ -770,7 +765,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(RegisterNode(*node_info));
   node_id = NodeID::FromBinary(node_info->node_id());
   resources->set_node_id(node_info->node_id());
-  ReportResourceUsage(resources);
+  gcs_server_->UpdateGcsResourceManagerInTest(*resources);
 
   WaitForExpectedCount(node_change_count, 2);
 }

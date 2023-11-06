@@ -41,6 +41,20 @@ steps:
     depends_on: mlbuild
     job_env: forge
 
+  - label: ":train: ml: train gpu tests"
+    tags: 
+      - train
+      - gpu
+    instance_type: gpu-large
+    parallelism: 2
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/air/... //doc/... ml
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
+        --build-name mlgpubuild
+        --only-tags gpu,gpu_only
+    depends_on: mlgpubuild
+    job_env: forge
+
   - label: ":train: ml: train authentication tests"
     tags:
       - train
@@ -161,19 +175,6 @@ steps:
     depends_on: minbuild-ml
     job_env: forge
 
-  - label: ":train: ml: train gpu tests"
-    tags: 
-      - train
-      - gpu
-    instance_type: gpu-large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/air/... //doc/... ml
-        --parallelism-per-worker 2
-        --build-name mlgpubuild
-        --only-tags gpu,gpu_only
-    depends_on: mlgpubuild
-    job_env: forge
-
   - label: ":train: ml: train gpu lightning 2.0 tests"
     tags: 
       - train
@@ -191,9 +192,23 @@ steps:
       - train
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml 
-        --run-flaky-tests
-        --except-tags soft_imports,gpu_only,rllib,multinode
+      - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
+        --parallelism-per-worker 2
+        --except-tags gpu_only,gpu
     depends_on: mlbuild
+    job_env: forge
+    soft_fail: true
+
+  - label: ":train: ml: train gpu flaky tests"
+    tags: 
+      - train
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
+        --parallelism-per-worker 2
+        --build-name mlgpubuild
+        --only-tags gpu,gpu_only
+    depends_on: mlgpubuild
     job_env: forge
     soft_fail: true
