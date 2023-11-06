@@ -45,15 +45,6 @@
 #    - INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
 #    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/ludwig/...
 
-- label: ":potable_water: Dataset library integrations tests and examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/modin/...
-
 - label: ":book: Doc tests and examples (excluding Ray AIR examples)"
   # Todo: check if we can modify the examples to use Ray with fewer CPUs.
   conditions:
@@ -68,9 +59,6 @@
     # (see https://github.com/ray-project/ray/pull/38432/)
     - pip install "transformers==4.30.2" "datasets==2.14.0"
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel,-team:core
-      doc/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=xcommit,-gpu
       doc/...

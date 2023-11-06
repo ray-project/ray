@@ -1,5 +1,23 @@
 group: rllib tests
 steps:
+  # builds
+  - name: rllibbuild
+    wanda: ci/docker/rllib.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
+      IMAGE_TO: rllibbuild
+      RAYCI_IS_GPU_BUILD: "false"
+
+  - name: rllibgpubuild
+    wanda: ci/docker/rllib.build.wanda.yaml
+    depends_on: oss-ci-base_gpu
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
+      IMAGE_TO: rllibgpubuild
+      RAYCI_IS_GPU_BUILD: "true"
+
+  # tests
   - label: ":brain: rllib: algorithm, model and others"
     tags: rllib_directly
     parallelism: 4
