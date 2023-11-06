@@ -38,8 +38,8 @@ TARGET_CAPACITY_FIELD = Field(
     default=None,
     description=(
         "[EXPERIMENTAL]: the target capacity % for all replicas across the "
-        "cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for each deployment will be scaled by this "
-        "percentage."
+        "cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for each "
+        "deployment will be scaled by this percentage."
     ),
     ge=0,
     le=100,
