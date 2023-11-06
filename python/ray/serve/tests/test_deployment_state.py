@@ -9,6 +9,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
+    DeploymentStatusDriver,
     ReplicaName,
     ReplicaState,
     ReplicaTag,
@@ -599,6 +600,7 @@ def check_counts(
 
 
 def test_create_delete_single_replica(mock_deployment_state):
+    deployment_state: DeploymentState
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {"node-id"}
 
@@ -618,11 +620,17 @@ def test_create_delete_single_replica(mock_deployment_state):
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     deployment_state._replicas.get()[0]._actor.set_ready()
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_driver == DeploymentStatusDriver.DEPLOY
+    )
 
     # Now the replica should be marked running.
     deployment_state.update()
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_driver == DeploymentStatusDriver.DEPLOY
+    )
 
     # Removing the replica should transition it to stopping.
     deployment_state.delete()
@@ -637,6 +645,9 @@ def test_create_delete_single_replica(mock_deployment_state):
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert deployment_state._replicas.get()[0]._actor.stopped
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_driver == DeploymentStatusDriver.DELETE
+    )
 
     # Once it's done stopping, replica should be removed.
     replica = deployment_state._replicas.get()[0]
@@ -1776,8 +1787,90 @@ def test_new_version_and_scale_up(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-def test_scale_up(mock_deployment_state):
-    pass
+@pytest.mark.parametrize("scale_direction", ["up", "down"])
+def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction: str):
+    """Test upscaling and downscaling the number of replicas manually."""
+
+    # State
+    version = get_random_letters()
+    deployment_id = DeploymentID("test_deployment", "test_app")
+
+    # Create deployment state manager
+    create_deployment_state_manager, _, _ = mock_deployment_state_manager_full
+    deployment_state_manager: DeploymentStateManager = create_deployment_state_manager()
+
+    # Deploy deployment with 3 replicas
+    info_1, _ = deployment_info(num_replicas=3, version=version)
+    deployment_state_manager.deploy(deployment_id, info_1)
+    deployment_state: DeploymentState = deployment_state_manager._deployment_states[
+        deployment_id
+    ]
+
+    # status=UPDATING, status_driver=DEPLOY
+    deployment_state_manager.update()
+    check_counts(deployment_state, total=3, by_state=[(ReplicaState.STARTING, 3)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_driver == DeploymentStatusDriver.DEPLOY
+    )
+
+    # Set replicas ready and check statuses
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+
+    # status=HEALTHY, status_driver=DEPLOY
+    deployment_state_manager.update()
+    check_counts(deployment_state, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_driver == DeploymentStatusDriver.DEPLOY
+    )
+
+    # upscale or downscale the number of replicas manually
+    new_num_replicas = 5 if scale_direction == "up" else 1
+    info_2, _ = deployment_info(num_replicas=new_num_replicas, version=version)
+    deployment_state_manager.deploy(deployment_id, info_2)
+    deployment_state_manager.update()
+
+    # status=UPSCALING/DOWNSCALING, status_driver=CONFIG_UPDATE
+    assert (
+        deployment_state.curr_status_info.status_driver
+        == DeploymentStatusDriver.CONFIG_UPDATE
+    )
+    if scale_direction == "up":
+        check_counts(
+            deployment_state,
+            total=5,
+            by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 2)],
+        )
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+        for replica in deployment_state._replicas.get():
+            replica._actor.set_ready()
+    elif scale_direction == "down":
+        check_counts(
+            deployment_state,
+            total=3,
+            by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 2)],
+        )
+        assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+        for replica in deployment_state._replicas.get():
+            replica._actor.set_done_stopping()
+
+    # After the upscaling/downscaling finishes
+    # status=HEALTHY, status_driver=UPSCALING_FINISHED/DOWNSCALE_FINISHED
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=new_num_replicas,
+        by_state=[(ReplicaState.RUNNING, new_num_replicas)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_driver
+        == DeploymentStatusDriver.UPSCALE_FINISHED
+        if scale_direction == "up"
+        else DeploymentStatusDriver.DOWNSCALE_FINISHED
+    )
 
 
 def test_health_check(mock_deployment_state):

@@ -118,6 +118,27 @@ class DeploymentTargetState:
 
         return cls(info, num_replicas, version, deleting)
 
+    def compare_cindy(self, other) -> False:
+        """Check if num replicas is the only difference."""
+
+        if not other.info:
+            return False
+
+        return (
+            self.info.replica_config.ray_actor_options
+            == other.info.replica_config.ray_actor_options
+            and self.info.replica_config.placement_group_bundles
+            == other.info.replica_config.placement_group_bundles
+            and self.info.replica_config.placement_group_strategy
+            == other.info.replica_config.placement_group_strategy
+            and self.info.replica_config.max_replicas_per_node
+            == other.info.replica_config.max_replicas_per_node
+            and self.info.deployment_config.dict(exclude={"num_replicas"})
+            == other.info.deployment_config.dict(exclude={"num_replicas"})
+            and self.version
+            and self.version == other.version
+        )
+
 
 @dataclass
 class DeploymentStateUpdateResult:
@@ -1336,7 +1357,11 @@ class DeploymentState:
         self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
         self._target_state = target_state
-        self._curr_status_info.update(status=DeploymentStatus.UPDATING, message="")
+        self._curr_status_info.update(
+            status=DeploymentStatus.UPDATING,
+            status_driver=DeploymentStatusDriver.DELETE,
+            message="",
+        )
         app_msg = f" in application '{self.app_name}'" if self.app_name else ""
         logger.info(
             f"Deleting deployment {self.deployment_name}{app_msg}",
@@ -1369,9 +1394,8 @@ class DeploymentState:
                 ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
         # Determine status
-        if self._target_state.info and target_info.compare_cindy(
-            self._target_state.info
-        ):
+        cindy = target_state.compare_cindy(self._target_state)
+        if self._target_state.info and cindy:
             new, old = (target_state.num_replicas, self._target_state.num_replicas)
             scaling_decision = "Upscaling" if new > old else "Downscaling"
             self._curr_status_info.update(

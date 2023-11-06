@@ -18,6 +18,9 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
 from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
 from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusDriver as DeploymentStatusDriverProto,
+)
+from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import (
@@ -111,10 +114,11 @@ class DeploymentStatus(str, Enum):
 
 
 class DeploymentStatusDriver(str, Enum):
-    DEPLOY = "NEW_DEPLOY"
+    DEPLOY = "DEPLOY"
     CONFIG_UPDATE = "CONFIG_UPDATE"
     UPSCALE_FINISHED = "UPSCALE_FINISHED"
     DOWNSCALE_FINISHED = "DOWNSCALE_FINISHED"
+    DELETE = "DELETE"
 
 
 @dataclass(eq=True)
@@ -136,20 +140,20 @@ class DeploymentStatusInfo:
         return DeploymentStatusInfoProto(
             name=self.name,
             status=f"DEPLOYMENT_STATUS_{self.status.name}",
-            # status_driver=f"DEPLOYMENT_STATUS_DRIVER_{self.status_driver.name}",
+            status_driver=f"DEPLOYMENT_STATUS_DRIVER_{self.status_driver.name}",
             message=self.message,
         )
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
         status = DeploymentStatusProto.Name(proto.status)[len("DEPLOYMENT_STATUS_") :]
-        # status_driver = DeploymentStatusDriverProto.Name(proto.status_driver)[
-        #     len("DEPLOYMENT_STATUS_DRIVER_") :
-        # ]
+        status_driver = DeploymentStatusDriverProto.Name(proto.status_driver)[
+            len("DEPLOYMENT_STATUS_DRIVER_") :
+        ]
         return cls(
             name=proto.name,
             status=DeploymentStatus(status),
-            # status_driver=DeploymentStatusDriver(status_driver),
+            status_driver=DeploymentStatusDriver(status_driver),
             message=proto.message,
         )
 
@@ -276,27 +280,6 @@ class DeploymentInfo:
     def __setstate__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._cached_actor_def = None
-
-    def compare_cindy(self, other) -> False:
-        """Check if num replicas is the only difference."""
-
-        if not other:
-            return False
-
-        return (
-            self.replica_config.ray_actor_options
-            == other.replica_config.ray_actor_options
-            and self.replica_config.placement_group_bundles
-            == other.replica_config.placement_group_bundles
-            and self.replica_config.placement_group_strategy
-            == other.replica_config.placement_group_strategy
-            and self.replica_config.max_replicas_per_node
-            == other.replica_config.max_replicas_per_node
-            and self.deployment_config.dict(exclude={"num_replicas"})
-            == other.deployment_config.dict(exclude={"num_replicas"})
-            and self.version
-            and self.version == other.version
-        )
 
     def set_autoscaled_num_replicas(self, autoscaled_num_replicas):
         self.autoscaled_num_replicas = autoscaled_num_replicas
