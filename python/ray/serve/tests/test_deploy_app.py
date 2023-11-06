@@ -549,6 +549,57 @@ def test_controller_recover_and_deploy(client: ServeControllerClient):
     assert SERVE_DEFAULT_APP_NAME not in serve.status().applications
 
 
+@pytest.mark.parametrize(
+    "field_to_update",
+    ["import_path", "runtime_env", "ray_actor_options"],
+)
+def test_deploy_config_update_heavyweight(
+    client: ServeControllerClient, field_to_update: str
+):
+    """Check that replicas are torn down when code updates are made."""
+    config_template = {
+        "applications": [
+            {
+                "name": "default",
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+                "deployments": [
+                    {
+                        "name": "f",
+                        "autoscaling_config": None,
+                        "user_config": {"name": "alice"},
+                        "ray_actor_options": {"num_cpus": 0.1},
+                    },
+                ],
+            }
+        ]
+    }
+
+    client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
+    wait_for_condition(partial(check_running, client), timeout=15)
+    pid1, _ = requests.get("http://localhost:8000/f").json()
+
+    if field_to_update == "import_path":
+        config_template["applications"][0][
+            "import_path"
+        ] = "ray.serve.tests.test_config_files.pid.dup_node"
+    elif field_to_update == "runtime_env":
+        config_template["applications"][0]["runtime_env"] = {
+            "env_vars": {"test_var": "test_val"}
+        }
+    elif field_to_update == "ray_actor_options":
+        config_template["applications"][0]["deployments"][0]["ray_actor_options"] = {
+            "num_cpus": 0.2
+        }
+
+    client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
+    wait_for_condition(partial(check_running, client), timeout=15)
+
+    pids = []
+    for _ in range(4):
+        pids.append(requests.get("http://localhost:8000/f").json()[0])
+    assert pid1 not in pids
+
+
 def test_update_config_user_config(client: ServeControllerClient):
     """Check that replicas stay alive when user config is updated."""
 
@@ -954,6 +1005,29 @@ def test_deploy_with_no_applications(client: ServeControllerClient):
         return "ServeController" in actor_names and "ProxyActor" in actor_names
 
     wait_for_condition(serve_running)
+
+
+def test_deployments_not_listed_in_config(client: ServeControllerClient):
+    """Apply a config without the app's deployments listed. The deployments should
+    not redeploy.
+    """
+
+    config = {
+        "applications": [{"import_path": "ray.serve.tests.test_config_files.pid.node"}]
+    }
+    client.deploy_apps(ServeDeploySchema(**config))
+    wait_for_condition(partial(check_running, client), timeout=15)
+    pid1, _ = requests.get("http://localhost:8000/").json()
+
+    # Redeploy the same config (with no deployments listed)
+    client.deploy_apps(ServeDeploySchema(**config))
+    wait_for_condition(partial(check_running, client), timeout=15)
+
+    # It should be the same replica actor
+    pids = []
+    for _ in range(4):
+        pids.append(requests.get("http://localhost:8000/").json()[0])
+    assert all(pid == pid1 for pid in pids)
 
 
 def test_get_app_handle(client: ServeControllerClient):

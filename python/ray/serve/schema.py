@@ -935,7 +935,8 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     deploy_mode: ServeDeployMode = Field(
         default=ServeDeployMode.MULTI_APP,
         description=(
-            "[DEPRECATED]: single-app configs are removed, so this is always MULTI_APP."
+            "[DEPRECATED]: single-app configs are removed, so this is always "
+            "MULTI_APP. This field will be removed in a future release."
         ),
     )
     applications: Dict[str, ApplicationDetails] = Field(
