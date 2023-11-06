@@ -22,22 +22,31 @@ def test_basic(serve_instance):
 
     @serve.deployment
     class Deployment:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle
-            assert isinstance(self._handle, RayServeHandle)
-            self._new_handle = handle.options(use_new_handle_api=True)
-            assert isinstance(self._new_handle, DeploymentHandle)
+            assert isinstance(self._handle, DeploymentHandle)
+            self._old_handle = handle.options(use_new_handle_api=False)
+            assert isinstance(self._old_handle, RayServeHandle)
 
         async def __call__(self):
-            ref = self._new_handle.remote()
-            assert isinstance(ref, DeploymentResponse)
-            return await ref
+            response = self._handle.remote()
+            assert isinstance(response, DeploymentResponse)
+            val = await response
 
-    handle: RayServeSyncHandle = serve.run(Deployment.bind(downstream.bind()))
-    assert isinstance(handle, RayServeSyncHandle)
-    new_handle = handle.options(use_new_handle_api=True)
-    assert isinstance(new_handle, DeploymentHandle)
-    assert new_handle.remote().result() == "hello"
+            ref = await self._old_handle.remote()
+            assert isinstance(ref, ray.ObjectRef)
+            old_val = await ref
+
+            assert val == old_val
+
+            return val
+
+    handle: DeploymentHandle = serve.run(Deployment.bind(downstream.bind()))
+    assert isinstance(handle, DeploymentHandle)
+    assert handle.remote().result() == "hello"
+    old_handle = handle.options(use_new_handle_api=False)
+    assert isinstance(old_handle, RayServeSyncHandle)
+    assert ray.get(old_handle.remote()) == "hello"
 
 
 def test_result_timeout(serve_instance):
