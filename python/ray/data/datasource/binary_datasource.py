@@ -11,16 +11,7 @@ if TYPE_CHECKING:
 
 @PublicAPI
 class BinaryDatasource(FileBasedDatasource):
-    """Binary datasource, for reading and writing binary files.
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import BinaryDatasource
-        >>> source = BinaryDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource( # doctest: +SKIP
-        ...     source, paths="/path/to/dir").take()
-        [b"file_data", ...]
-    """
+    """Binary datasource, for reading and writing binary files."""
 
     _COLUMN_NAME = "bytes"
 

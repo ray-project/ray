@@ -175,10 +175,9 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   }
 
   void UpdateResourceLoads(const std::string &node_id,
-                           std::vector<rpc::ResourceDemand> demands,
-                           bool resource_load_changed = true) {
+                           std::vector<rpc::ResourceDemand> demands) {
     rpc::ResourcesData data;
-    Mocker::FillResourcesData(data, node_id, demands, resource_load_changed);
+    Mocker::FillResourcesData(data, node_id, demands);
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(data);
   }
 

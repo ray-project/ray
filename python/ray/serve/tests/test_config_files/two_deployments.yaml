@@ -12,9 +12,10 @@ deployments:
     health_check_timeout_s: null
     ray_actor_options: 
       runtime_env:
+        # Keep these pinned remote URIs in sync with tests/common/remote_uris.py.
         py_modules:
-          - "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
-          - "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+          - "https://github.com/ray-project/test_deploy_group/archive/67971777e225600720f91f618cdfe71fc47f60ee.zip"
+          - "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
 
   - name: one
     import_path: "test_module.test.one"
@@ -29,6 +30,7 @@ deployments:
     health_check_timeout_s: null
     ray_actor_options: 
       runtime_env:
+        # Keep these pinned remote URIs in sync with tests/common/remote_uris.py.
         py_modules:
-          - "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip"
-          - "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+          - "https://github.com/ray-project/test_deploy_group/archive/67971777e225600720f91f618cdfe71fc47f60ee.zip"
+          - "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"
