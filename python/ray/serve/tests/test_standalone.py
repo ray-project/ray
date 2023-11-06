@@ -264,7 +264,7 @@ def test_connect(ray_shutdown):
         )
 
     handle = serve.run(connect_in_deployment.bind())
-    ray.get(handle.remote())
+    handle.remote().result()
     assert "deployment-ception" in serve.status().applications["app2"].deployments
 
 
@@ -516,7 +516,7 @@ def test_no_http(ray_shutdown):
 
         handle = serve.run(hello.bind())
 
-        assert ray.get(handle.remote()) == "hello"
+        assert handle.remote().result() == "hello"
         serve.shutdown()
 
 
