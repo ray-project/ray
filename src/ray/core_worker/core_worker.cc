@@ -2121,10 +2121,10 @@ Status CoreWorker::CreatePlacementGroup(
   const auto &bundles = placement_group_creation_options.bundles;
   for (const auto &bundle : bundles) {
     for (const auto &resource : bundle) {
-      if (resource.first == kBundle_ResourceLabel) {
+      if (resource.first.find(kBundle_ResourceLabel) != std::string::npos) {
         std::ostringstream stream;
         stream << kBundle_ResourceLabel << " is a system reserved resource, which is not "
-               << "allowed to be used in placement groupd ";
+               << "allowed to be used in placement group naming. ";
         return Status::Invalid(stream.str());
       }
     }
@@ -2648,6 +2648,15 @@ Status CoreWorker::ExecuteTask(
     absl::MutexLock lock(&mutex_);
     current_tasks_.emplace(task_spec.TaskId(), task_spec);
     if (resource_ids) {
+      // kBundle_ResourceLabel* is a phantom resource used only for scheduling.
+      // Since the task is already scheduled onto the worker, we don't need it.
+      for (auto iter = resource_ids->begin(); iter != resource_ids->end();) {
+        if (iter->first.find(kBundle_ResourceLabel) == 0) {
+          iter = resource_ids->erase(iter);
+        } else {
+          iter++;
+        }
+      }
       resource_ids_ = resource_ids;
     }
   }

@@ -1968,11 +1968,6 @@ def pasre_pg_formatted_resources_to_original(
             continue
         original_resources[key] = value
 
-    # kBundle_ResourceLabel should be invisible to the user.
-    BUNDLE_RESOURCE_LABEL = "bundle"
-    if BUNDLE_RESOURCE_LABEL in original_resources:
-        original_resources.pop(BUNDLE_RESOURCE_LABEL)
-
     return original_resources
 
 

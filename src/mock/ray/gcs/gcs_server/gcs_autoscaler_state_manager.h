@@ -20,10 +20,12 @@ class MockGcsAutoscalerStateManager : public GcsAutoscalerStateManager {
  public:
   explicit MockGcsPlacementGroupManager() {}
 
-  MOCK_METHOD((const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>> &),
-        GetNodeResourceInfo, (), const);
+  MOCK_METHOD((const absl::flat_hash_map<ray::NodeID,
+                                         std::pair<absl::Time, rpc::ResourcesData>> &),
+              GetNodeResourceInfo,
+              (),
+              const);
 };
 
 }  // namespace gcs
 }  // namespace ray
-
