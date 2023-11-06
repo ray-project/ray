@@ -111,7 +111,7 @@ _AUTOSCALER_METRICS = [
 
 
 # This list of metrics should be kept in sync with
-# ray/python/ray/autoscaler/_private/prom_metrics.py
+# dashboard/dashboard_metrics.py
 _DASHBOARD_METRICS = [
     "ray_dashboard_api_requests_duration_seconds_bucket",
     "ray_dashboard_api_requests_duration_seconds_created",
@@ -153,6 +153,7 @@ _NODE_COMPONENT_METRICS = [
     "ray_component_cpu_percentage",
     "ray_component_rss_mb",
     "ray_component_uss_mb",
+    "ray_component_num_fds",
 ]
 
 _METRICS.append("ray_health_check_rpc_latency_ms_sum")
@@ -417,14 +418,113 @@ def test_operation_stats(monkeypatch, shutdown_only):
         m.setenv("RAY_event_stats_metrics", "1")
         addr = ray.init()
 
-        @ray.remote
-        def f():
-            pass
+        signal = SignalActor.remote()
 
-        ray.get(f.remote())
+        @ray.remote
+        class Actor:
+            def __init__(self, signal):
+                self.signal = signal
+
+            def get_worker_id(self):
+                return ray.get_runtime_context().get_worker_id()
+
+            def wait(self):
+                ray.get(self.signal.wait.remote())
+
+        actor = Actor.remote(signal)
+        worker_id = ray.get(actor.get_worker_id.remote())
+        obj_ref = actor.wait.remote()
 
         def verify():
             metrics = raw_metrics(addr)
+            samples = metrics["ray_operation_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 1
+            if not found:
+                return False
+
+            samples = metrics["ray_operation_active_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 1
+            if not found:
+                return False
+
+            return True
+
+        wait_for_condition(verify, timeout=60)
+
+        ray.get(signal.send.remote())
+        ray.get(obj_ref)
+
+        def verify():
+            metrics = raw_metrics(addr)
+
+            samples = metrics["ray_operation_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 1
+            if not found:
+                return False
+
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"]
+                    == "CoreWorkerService.grpc_client.PushTask.OnReplyReceived"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 1
+            if not found:
+                return False
+
+            samples = metrics["ray_operation_active_count"]
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"] == "CoreWorkerService.grpc_client.PushTask"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 0
+            if not found:
+                return False
+
+            found = False
+            for sample in samples:
+                if (
+                    sample.labels["Method"]
+                    == "CoreWorkerService.grpc_client.PushTask.OnReplyReceived"
+                    and sample.labels["Component"] == "core_worker"
+                    and sample.labels["WorkerId"] == worker_id
+                ):
+                    found = True
+                    assert sample.value == 0
+            if not found:
+                return False
+
             metric_names = set(metrics.keys())
             for op_metric in operation_metrics:
                 assert op_metric in metric_names
@@ -444,6 +544,7 @@ def test_per_func_name_stats(shutdown_only):
     comp_metrics = [
         "ray_component_cpu_percentage",
         "ray_component_rss_mb",
+        "ray_component_num_fds",
     ]
     if sys.platform == "linux" or sys.platform == "linux2":
         # Uss only available from Linux

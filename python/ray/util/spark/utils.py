@@ -5,6 +5,7 @@ import random
 import threading
 import collections
 import logging
+import time
 
 
 _logger = logging.getLogger("ray.util.spark.utils")
@@ -81,12 +82,23 @@ def exec_cmd(
         )
 
 
-def check_port_open(host, port):
+def is_port_in_use(host, port):
     import socket
     from contextlib import closing
 
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         return sock.connect_ex((host, port)) == 0
+
+
+def _wait_service_up(host, port, timeout):
+    beg_time = time.time()
+
+    while time.time() - beg_time < timeout:
+        if is_port_in_use(host, port):
+            return True
+        time.sleep(1)
+
+    return False
 
 
 def get_random_unused_port(
@@ -103,7 +115,7 @@ def get_random_unused_port(
         port = rng.randint(min_port, max_port)
         if port in exclude_list:
             continue
-        if not check_port_open(host, port):
+        if not is_port_in_use(host, port):
             return port
     raise RuntimeError(
         f"Get available port between range {min_port} and {max_port} failed."
@@ -371,7 +383,10 @@ def get_avail_mem_per_ray_worker_node(
                 object_store_memory_per_node,
             )
         except Exception as e:
-            return -1, -1, repr(e), None
+            import traceback
+
+            trace_msg = "\n".join(traceback.format_tb(e.__traceback__))
+            return -1, -1, repr(e) + trace_msg, None
 
     # Running memory inference routine on spark executor side since the spark worker
     # nodes may have a different machine configuration compared to the spark driver
@@ -410,19 +425,3 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
     else:
         return gpu_addr_list
-
-
-def setup_sigterm_on_parent_death():
-    """
-    Uses prctl to automatically send SIGTERM to the child process when its parent is
-    dead. The child process itself should handle SIGTERM properly.
-    """
-    try:
-        import ctypes
-        import signal
-
-        libc = ctypes.CDLL("libc.so.6")
-        # Set the parent process death signal of the command process to SIGTERM.
-        libc.prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG, see prctl.h
-    except OSError as e:
-        _logger.warning(f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}.")

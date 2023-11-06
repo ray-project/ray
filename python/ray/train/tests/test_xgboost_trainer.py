@@ -1,18 +1,16 @@
-import pytest
 import json
-import pandas as pd
 
+import pandas as pd
+import pytest
 import xgboost as xgb
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
 
 import ray
 from ray import train, tune
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
-
 from ray.train.xgboost import XGBoostTrainer
-
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
 
 
 @pytest.fixture
@@ -66,7 +64,6 @@ class ScalingConfigAssertingXGBoostTrainer(XGBoostTrainer):
     def training_loop(self) -> None:
         pgf = train.get_context().get_trial_resources()
         assert pgf.strategy == "SPREAD"
-        assert pgf._kwargs["_max_cpu_fraction_per_node"] == 0.9
         return super().training_loop()
 
 
@@ -76,10 +73,8 @@ def test_fit_with_advanced_scaling_config(ray_start_4_cpus):
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = ScalingConfigAssertingXGBoostTrainer(
         scaling_config=ScalingConfig(
-            trainer_resources={"CPU": 0},
             num_workers=2,
             placement_strategy="SPREAD",
-            _max_cpu_fraction_per_node=0.9,
         ),
         label_column="target",
         params=params,
@@ -216,8 +211,17 @@ def test_distributed_data_loading(ray_start_4_cpus):
     trainer.fit()
 
 
+def test_xgboost_trainer_resources():
+    """`trainer_resources` is not allowed in the scaling config"""
+    with pytest.raises(ValueError):
+        XGBoostTrainer._validate_scaling_config(
+            ScalingConfig(trainer_resources={"something": 1})
+        )
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

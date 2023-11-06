@@ -7,14 +7,9 @@ import pytest
 
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
-from ray.train.lightgbm import (
-    LightGBMCheckpoint,
-    LightGBMPredictor,
-)
+from ray.train.lightgbm import LightGBMCheckpoint, LightGBMPredictor
 from ray.train.predictor import TYPE_TO_ENUM
-
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
-
 
 dummy_data = np.array([[1, 2], [3, 4], [5, 6]])
 dummy_target = np.array([0, 1, 0])

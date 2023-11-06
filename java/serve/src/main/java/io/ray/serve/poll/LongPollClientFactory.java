@@ -51,7 +51,7 @@ public class LongPollClientFactory {
 
   private static boolean inited = false;
 
-  private static long longPollTimoutS = 10L;
+  private static long longPollTimoutS = 1L;
 
   public static final Map<LongPollNamespace, Function<byte[], Object>> DESERIALIZERS =
       new HashMap<>();
@@ -73,13 +73,18 @@ public class LongPollClientFactory {
       SNAPSHOT_IDS.put(keyType, -1);
     }
     LOGGER.info("LongPollClient registered keys: {}.", keyListeners.keySet());
+    try {
+      pollNext();
+    } catch (RayTimeoutException e) {
+      LOGGER.info("Register poll timeout. keys:{}", keyListeners.keySet());
+    }
   }
 
   public static synchronized void init(BaseActorHandle hostActor) {
     if (inited) {
       return;
     }
-    long intervalS = 6L;
+    long intervalS = 10L;
     try {
       ReplicaContext replicaContext = Serve.getReplicaContext();
       boolean enabled =
@@ -100,7 +105,7 @@ public class LongPollClientFactory {
           Optional.ofNullable(replicaContext.getConfig())
               .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_INTERVAL))
               .map(Long::valueOf)
-              .orElse(1L);
+              .orElse(10L);
       longPollTimoutS =
           Optional.ofNullable(replicaContext.getConfig())
               .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_TIMEOUT_S))
@@ -152,7 +157,7 @@ public class LongPollClientFactory {
 
   /** Poll the updates. */
   @SuppressWarnings("unchecked")
-  public static void pollNext() {
+  public static synchronized void pollNext() {
     LOGGER.info("LongPollClient polls next snapshotIds {}", SNAPSHOT_IDS);
     LongPollRequest longPollRequest = new LongPollRequest(SNAPSHOT_IDS);
     LongPollResult longPollResult = null;

@@ -117,6 +117,8 @@ enum class StatusCode : char {
   OutOfResource = 31,
   ObjectRefEndOfStream = 32,
   AuthError = 33,
+  // Indicates the input value is not valid.
+  InvalidArgument = 34,
 };
 
 #if defined(__clang__)
@@ -170,6 +172,10 @@ class RAY_EXPORT Status {
 
   static Status IOError(const std::string &msg) {
     return Status(StatusCode::IOError, msg);
+  }
+
+  static Status InvalidArgument(const std::string &msg) {
+    return Status(StatusCode::InvalidArgument, msg);
   }
 
   static Status RedisError(const std::string &msg) {
@@ -269,6 +275,7 @@ class RAY_EXPORT Status {
   }
   bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsIOError() const { return code() == StatusCode::IOError; }
+  bool IsInvalidArgument() const { return code() == StatusCode::InvalidArgument; }
   bool IsTypeError() const { return code() == StatusCode::TypeError; }
   bool IsUnknownError() const { return code() == StatusCode::UnknownError; }
   bool IsNotImplemented() const { return code() == StatusCode::NotImplemented; }

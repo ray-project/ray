@@ -1,0 +1,3 @@
+flaky_tests:
+  - //python/ray/data:test_streaming_integration
+  - //python/ray/data:test_split

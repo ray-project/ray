@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/announcement.rst
-
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. include:: /_includes/rllib/rlm_learner_migration_banner.rst
@@ -209,6 +207,9 @@ Community Examples
    A dense traffic simulating environment with RLlib-generated baselines.
 - `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
    Example of setting up a multi-agent version of `GFootball <https://github.com/google-research>`__ with RLlib.
+- `mobile-env <https://github.com/stefanbschneider/mobile-env>`__:
+   An open, minimalist Gymnasium environment for autonomous coordination in wireless mobile networks.
+   Includes an example notebook using Ray RLlib for multi-agent RL with mobile-env.
 - `Neural MMO <https://github.com/NeuralMMO/environment>`__:
    A multiagent AI research environment inspired by Massively Multiplayer Online (MMO) role playing games –
    self-contained worlds featuring thousands of agents per persistent macrocosm, diverse skilling systems, local and global economies, complex emergent social structures,
@@ -222,11 +223,8 @@ Community Examples
 - `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
 - `Simple custom environment for single RL with Ray and RLlib <https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb>`__:
-   Create a custom environment and train a single agent RL using Ray 2.0 with Tune and Air.
+   Create a custom environment and train a single agent RL using Ray 2.0 with Tune.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
-   
-
-.. include:: /_includes/rllib/announcement_bottom.rst

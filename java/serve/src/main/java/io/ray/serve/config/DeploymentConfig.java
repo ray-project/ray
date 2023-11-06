@@ -8,7 +8,7 @@ import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.common.Constants;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.DeploymentLanguage;
-import io.ray.serve.util.LogUtil;
+import io.ray.serve.util.MessageFormatter;
 import java.io.Serializable;
 
 /** Configuration options for a deployment, to be set by the user. */
@@ -176,8 +176,9 @@ public class DeploymentConfig implements Serializable {
     return version;
   }
 
-  public void setVersion(String version) {
+  public DeploymentConfig setVersion(String version) {
     this.version = version;
+    return this;
   }
 
   public String getPrevVersion() {
@@ -198,7 +199,8 @@ public class DeploymentConfig implements Serializable {
             .setHealthCheckPeriodS(healthCheckPeriodS)
             .setHealthCheckTimeoutS(healthCheckTimeoutS)
             .setIsCrossLanguage(isCrossLanguage)
-            .setDeploymentLanguage(deploymentLanguage);
+            .setDeploymentLanguage(deploymentLanguage)
+            .setVersion(version);
     if (null != userConfig) {
       builder.setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()));
     }
@@ -241,7 +243,7 @@ public class DeploymentConfig implements Serializable {
     deploymentConfig.setCrossLanguage(proto.getIsCrossLanguage());
     if (proto.getDeploymentLanguage() == DeploymentLanguage.UNRECOGNIZED) {
       throw new RayServeException(
-          LogUtil.format(
+          MessageFormatter.format(
               "Unrecognized deployment language {}. Deployment language must be in {}.",
               proto.getDeploymentLanguage(),
               Lists.newArrayList(DeploymentLanguage.values())));

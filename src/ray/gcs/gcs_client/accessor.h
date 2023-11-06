@@ -52,9 +52,16 @@ class ActorInfoAccessor {
 
   /// Get all actor specification from the GCS asynchronously.
   ///
+  /// \param  actor_id To filter actors by actor_id.
+  /// \param  job_id To filter actors by job_id.
+  /// \param  actor_state_name To filter actors based on actor state.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback);
+  virtual Status AsyncGetAllByFilter(
+      const std::optional<ActorID> &actor_id,
+      const std::optional<JobID> &job_id,
+      const std::optional<std::string> &actor_state_name,
+      const MultiItemCallback<rpc::ActorTableData> &callback);
 
   /// Get actor specification for a named actor from the GCS asynchronously.
   ///
@@ -188,11 +195,11 @@ class ActorInfoAccessor {
 
   /// Resubscribe operations for actors.
   absl::flat_hash_map<ActorID, SubscribeOperation> resubscribe_operations_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 
   /// Save the fetch data operation of actors.
   absl::flat_hash_map<ActorID, FetchDataOperation> fetch_data_operations_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 
   GcsClient *client_impl_;
 };
@@ -453,20 +460,6 @@ class NodeResourceInfoAccessor {
   /// server.
   virtual void AsyncResubscribe();
 
-  /// Report resource usage of a node to GCS asynchronously.
-  ///
-  /// \param data_ptr The data that will be reported to GCS.
-  /// \param callback Callback that will be called after report finishes.
-  /// \return Status
-  virtual Status AsyncReportResourceUsage(
-      const std::shared_ptr<rpc::ResourcesData> &data_ptr,
-      const StatusCallback &callback);
-
-  /// Return resources in last report. Used by light heartbeat.
-  virtual const std::shared_ptr<NodeResources> &GetLastResourceUsage() {
-    return last_resource_usage_;
-  }
-
   /// Get newest resource usage of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
@@ -474,22 +467,12 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &callback);
 
-  /// Fill resource fields with cached resources. Used by light resource usage report.
-  virtual void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
-
  protected:
   /// Cache which stores resource usage in last report used to check if they are changed.
   /// Used by light resource usage report.
   std::shared_ptr<NodeResources> last_resource_usage_ = std::make_shared<NodeResources>();
 
  private:
-  // Mutex to protect the cached_resource_usage_ field.
-  absl::Mutex mutex_;
-
-  /// Save the resource usage data, so we can resend it again when GCS server restarts
-  /// from a failure.
-  rpc::ReportResourceUsageRequest cached_resource_usage_ GUARDED_BY(mutex_);
-
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
   SubscribeOperation subscribe_resource_operation_;

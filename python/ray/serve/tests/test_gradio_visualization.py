@@ -1,14 +1,15 @@
-import pytest
-from collections import defaultdict
 import asyncio
-import aiohttp
 import random
+from collections import defaultdict
 
-from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
-from ray.dag.utils import _DAGNodeNameGenerator
+import pytest
+from gradio_client import Client
+
 from ray import serve
 from ray.dag import InputNode
+from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve.drivers import DAGDriver
+from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
 
 
 @pytest.fixture
@@ -233,29 +234,40 @@ async def test_gradio_visualization_e2e(graph1):
     handle = serve.run(DAGDriver.bind(dag))
     visualizer = GraphVisualizer()
     (_, url, _) = visualizer.visualize_with_gradio(handle, _launch=True, _block=False)
+    client = Client("http://localhost:7860")
 
-    async with aiohttp.ClientSession() as session:
+    def get_fn_index_for_fn(api_info, fn_name):
+        for fn_index, fn_api_info in api_info.items():
+            if (
+                len(fn_api_info["returns"]) == 1
+                and fn_api_info["returns"][0]["label"] == fn_name
+            ):
+                return int(fn_index)
 
-        async def fetch(data, fn_index):
-            async with session.post(
-                f"{url.strip('/')}/api/predict/",
-                json={
-                    "session_hash": "random_hash",
-                    "data": data,
-                    "fn_index": fn_index,
-                },
-            ) as resp:
-                return (await resp.json())["data"]
+    # Get info (e.g fn_index, parameters, return values) of all endpoints for Gradio app
+    # None of the endpoints are named, so the functions tied to each Gradio component
+    # should all be under "unnamed_endpoints"
+    api_info = client.view_api(return_format="dict", print_info=False)[
+        "unnamed_endpoints"
+    ]
 
-        await fetch(
-            [random.randint(0, 100), 1, 2], 0
-        )  # sends request to dag with input (1,2)
-        values = await asyncio.gather(
-            fetch([], 1),  # fetches return value for one of the nodes
-            fetch([], 2),  # fetches return value for the other node
-        )
+    # Prepare request to send
+    param_info = [param["label"] for param in api_info["0"]["parameters"]]
+    params = [random.randint(0, 100), None, None]
+    params[param_info.index("INPUT_ATTRIBUTE_NODE_0")] = 100
+    params[param_info.index("INPUT_ATTRIBUTE_NODE_key")] = 150
 
-    assert [1] in values and [2] in values
+    # Send request to dag with input (100, 150)
+    job = client.submit(*params, fn_index=0)
+
+    # Wait for ray tasks to finish processing
+    job.result()
+
+    # Verify the results of the output components
+    fn_index_f = get_fn_index_for_fn(api_info, "f")
+    assert client.predict(fn_index=fn_index_f) == 100
+    fn_index_run = get_fn_index_for_fn(api_info, "run")
+    assert client.predict(fn_index=fn_index_run) == 150
 
 
 @pytest.mark.asyncio

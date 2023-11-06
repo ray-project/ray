@@ -1,9 +1,6 @@
-import itertools
-import os
 import pathlib
 import posixpath
-import sys
-import urllib.parse
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -12,37 +9,35 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
-    Tuple,
-    TypeVar,
     Union,
 )
 
 import numpy as np
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
-from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import (
-    _check_pyarrow_version,
-    _resolve_custom_scheme,
-    get_attribute_from_class_name,
-)
+from ray.data._internal.util import _check_pyarrow_version, make_async_gen
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
+from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
+)
+from ray.data.datasource.filename_provider import (
+    FilenameProvider,
+    _DefaultFilenameProvider,
 )
 from ray.data.datasource.partitioning import (
     Partitioning,
     PathPartitionFilter,
     PathPartitionParser,
 )
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -67,101 +62,6 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
 # The max number of attempts for opening file.
 OPEN_FILE_MAX_ATTEMPTS = 10
-
-
-@DeveloperAPI
-class BlockWritePathProvider:
-    """Abstract callable that provides concrete output paths when writing
-    dataset blocks.
-
-    Current subclasses:
-        DefaultBlockWritePathProvider
-    """
-
-    def _get_write_path_for_block(
-        self,
-        base_path: str,
-        *,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        dataset_uuid: Optional[str] = None,
-        task_index: Optional[int] = None,
-        block_index: Optional[int] = None,
-        file_format: Optional[str] = None,
-    ) -> str:
-        """
-        Resolves and returns the write path for the given dataset block. When
-        implementing this method, care should be taken to ensure that a unique
-        path is provided for every dataset block.
-
-        Args:
-            base_path: The base path to write the dataset block out to. This is
-                expected to be the same for all blocks in the dataset, and may
-                point to either a directory or file prefix.
-            filesystem: The filesystem implementation that will be used to
-                write a file out to the write path returned.
-            dataset_uuid: Unique identifier for the dataset that this block
-                belongs to.
-            block: The block to write.
-            task_index: Ordered index of the write task within its parent
-                dataset.
-            block_index: Ordered index of the block to write within its parent
-                write task.
-            file_format: File format string for the block that can be used as
-                the file extension in the write path returned.
-
-        Returns:
-            The dataset block write path.
-        """
-        raise NotImplementedError
-
-    def __call__(
-        self,
-        base_path: str,
-        *,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        dataset_uuid: Optional[str] = None,
-        task_index: Optional[int] = None,
-        block_index: Optional[int] = None,
-        file_format: Optional[str] = None,
-    ) -> str:
-        return self._get_write_path_for_block(
-            base_path,
-            filesystem=filesystem,
-            dataset_uuid=dataset_uuid,
-            task_index=task_index,
-            block_index=block_index,
-            file_format=file_format,
-        )
-
-
-@DeveloperAPI
-class DefaultBlockWritePathProvider(BlockWritePathProvider):
-    """Default block write path provider implementation that writes each
-    dataset block out to a file of the form:
-    {base_path}/{dataset_uuid}_{task_index}_{block_index}.{file_format}
-    """
-
-    def _get_write_path_for_block(
-        self,
-        base_path: str,
-        *,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        dataset_uuid: Optional[str] = None,
-        task_index: Optional[int] = None,
-        block_index: Optional[int] = None,
-        file_format: Optional[str] = None,
-    ) -> str:
-        assert task_index is not None
-        # Add the task index to the filename to make sure that each task writes
-        # to a different and deterministically generated filename.
-        if block_index is not None:
-            suffix = f"{dataset_uuid}_{task_index:06}_{block_index:06}.{file_format}"
-        else:
-            suffix = f"{dataset_uuid}_{task_index:06}.{file_format}"
-        # Uses POSIX path for cross-filesystem compatibility, since PyArrow
-        # FileSystem paths are always forward slash separated, see:
-        # https://arrow.apache.org/docs/python/filesystems.html
-        return posixpath.join(base_path, suffix)
 
 
 @PublicAPI(stability="beta")
@@ -226,6 +126,9 @@ class FileBasedDatasource(Datasource):
     # each block to a file.
     _WRITE_FILE_PER_ROW = False
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
+    # Number of threads for concurrent reading within each read task.
+    # If zero or negative, reading will be performed in the main thread.
+    _NUM_THREADS_PER_TASK = 0
 
     def _open_input_source(
         self,
@@ -308,7 +211,8 @@ class FileBasedDatasource(Datasource):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
+        block_path_provider: Optional[BlockWritePathProvider] = None,  # Deprecated
+        filename_provider: Optional[FilenameProvider] = None,
         write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         file_format: Optional[str] = None,
         _block_udf: Optional[Callable[[Block], Block]] = None,
@@ -331,8 +235,18 @@ class FileBasedDatasource(Datasource):
         if open_stream_args is None:
             open_stream_args = {}
 
-        if not block_path_provider:
-            block_path_provider = DefaultBlockWritePathProvider()
+        if block_path_provider is not None:
+            warnings.warn(
+                "`block_path_provider` has been deprecated in favor of "
+                "`filename_provider`. For more information, see "
+                "https://docs.ray.io/en/master/data/api/doc/ray.data.datasource.FilenameProvider.html",  # noqa: E501
+                DeprecationWarning,
+            )
+
+        if filename_provider is None and block_path_provider is None:
+            filename_provider = _DefaultFilenameProvider(
+                dataset_uuid=dataset_uuid, file_format=file_format
+            )
 
         num_rows_written = 0
         block_idx = 0
@@ -347,15 +261,18 @@ class FileBasedDatasource(Datasource):
             fs = _unwrap_s3_serialization_workaround(filesystem)
 
             if self._WRITE_FILE_PER_ROW:
-                for row_index, row in enumerate(
-                    block.iter_rows(public_row_format=False)
-                ):
-                    # TODO: Refactor `BlockWritePathProvider` to support rows.
-                    filename = (
-                        f"{dataset_uuid}_{ctx.task_idx:06}_{block_idx:06}_"
-                        f"{row_index:06}.{file_format}"
-                    )
-                    write_path = os.path.join(path, filename)
+                for row_idx, row in enumerate(block.iter_rows(public_row_format=False)):
+                    if filename_provider is not None:
+                        filename = filename_provider.get_filename_for_row(
+                            row, ctx.task_idx, block_idx, row_idx
+                        )
+                    else:  # Legacy code path
+                        filename = (
+                            f"{dataset_uuid}_{ctx.task_idx:06}_{block_idx:06}_"
+                            f"{row_idx:06}.{file_format}"
+                        )
+                    write_path = posixpath.join(path, filename)
+
                     logger.get_logger().debug(f"Writing {write_path} file.")
                     with _open_file_with_retry(
                         write_path,
@@ -369,14 +286,21 @@ class FileBasedDatasource(Datasource):
                             **write_args,
                         )
             else:
-                write_path = block_path_provider(
-                    path,
-                    filesystem=filesystem,
-                    dataset_uuid=dataset_uuid,
-                    task_index=ctx.task_idx,
-                    block_index=block_idx,
-                    file_format=file_format,
-                )
+                if filename_provider is not None:
+                    filename = filename_provider.get_filename_for_block(
+                        block, ctx.task_idx, block_idx
+                    )
+                    write_path = posixpath.join(path, filename)
+                else:  # Legacy code path
+                    write_path = block_path_provider(
+                        path,
+                        filesystem=filesystem,
+                        dataset_uuid=dataset_uuid,
+                        task_index=ctx.task_idx,
+                        block_index=block_idx,
+                        file_format=file_format,
+                    )
+
                 logger.get_logger().debug(f"Writing {write_path} file.")
                 with _open_file_with_retry(
                     write_path,
@@ -467,6 +391,7 @@ class _FileBasedDatasourceReader(Reader):
         partition_filter: PathPartitionFilter = None,
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
+        shuffle: Union[Literal["files"], None] = None,
         **reader_args,
     ):
         _check_pyarrow_version()
@@ -507,10 +432,9 @@ class _FileBasedDatasourceReader(Reader):
                     "No input files found to read. Please double check that "
                     "'partition_filter' field is set properly."
                 )
-
-        ctx = DataContext.get_current()
-        shuffler_class = get_attribute_from_class_name(ctx.file_metadata_shuffler)
-        self._file_metadata_shuffler = shuffler_class(self._reader_args)
+        self._file_metadata_shuffler = None
+        if shuffle == "files":
+            self._file_metadata_shuffler = np.random.default_rng()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -527,10 +451,15 @@ class _FileBasedDatasourceReader(Reader):
         reader_args = self._reader_args
         partitioning = self._partitioning
 
-        paths_and_sizes = self._file_metadata_shuffler.shuffle_files(
-            list(zip(self._paths, self._file_sizes))
-        )
-        paths, file_sizes = list(map(list, zip(*paths_and_sizes)))
+        if self._file_metadata_shuffler is not None:
+            files_metadata = list(zip(self._paths, self._file_sizes))
+            shuffled_files_metadata = [
+                files_metadata[i]
+                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
+            ]
+            paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
+        else:
+            paths, file_sizes = self._paths, self._file_sizes
 
         read_stream = self._delegate._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
@@ -541,11 +470,11 @@ class _FileBasedDatasourceReader(Reader):
         open_input_source = self._delegate._open_input_source
 
         def read_files(
-            read_paths: List[str],
-            fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
+            read_paths: Iterable[str],
         ) -> Iterable[Block]:
+            nonlocal filesystem, open_stream_args, reader_args, partitioning
+
             DataContext._set_current(ctx)
-            logger.get_logger().debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
             for read_path in read_paths:
                 compression = open_stream_args.pop("compression", None)
@@ -591,6 +520,29 @@ class _FileBasedDatasourceReader(Reader):
                             data = _add_partitions(data, partitions)
                         yield data
 
+        def create_read_task_fn(read_paths, num_threads):
+            def read_task_fn():
+                nonlocal num_threads, read_paths
+
+                if num_threads > 0:
+                    if len(read_paths) < num_threads:
+                        num_threads = len(read_paths)
+
+                    logger.get_logger().debug(
+                        f"Reading {len(read_paths)} files with {num_threads} threads."
+                    )
+
+                    yield from make_async_gen(
+                        iter(read_paths),
+                        read_files,
+                        num_workers=num_threads,
+                    )
+                else:
+                    logger.get_logger().debug(f"Reading {len(read_paths)} files.")
+                    yield from read_files(read_paths)
+
+            return read_task_fn
+
         # fix https://github.com/ray-project/ray/issues/24296
         parallelism = min(parallelism, len(paths))
 
@@ -607,9 +559,13 @@ class _FileBasedDatasourceReader(Reader):
                 rows_per_file=self._delegate._rows_per_file(),
                 file_sizes=file_sizes,
             )
-            read_task = ReadTask(
-                lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
+
+            read_task_fn = create_read_task_fn(
+                read_paths, self._delegate._NUM_THREADS_PER_TASK
             )
+
+            read_task = ReadTask(read_task_fn, meta)
+
             read_tasks.append(read_task)
 
         return read_tasks
@@ -683,162 +639,6 @@ def _add_partitions_to_dataframe(
     return df
 
 
-# TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and
-# _expand_paths.
-
-
-def _resolve_paths_and_filesystem(
-    paths: Union[str, List[str]],
-    filesystem: "pyarrow.fs.FileSystem" = None,
-) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
-    """
-    Resolves and normalizes all provided paths, infers a filesystem from the
-    paths and ensures that all paths use the same filesystem.
-
-    Args:
-        paths: A single file/directory path or a list of file/directory paths.
-            A list of paths can contain both files and directories.
-        filesystem: The filesystem implementation that should be used for
-            reading these files. If None, a filesystem will be inferred. If not
-            None, the provided filesystem will still be validated against all
-            filesystems inferred from the provided paths to ensure
-            compatibility.
-    """
-    import pyarrow as pa
-    from pyarrow.fs import (
-        FileSystem,
-        FSSpecHandler,
-        PyFileSystem,
-        _resolve_filesystem_and_path,
-    )
-
-    if isinstance(paths, str):
-        paths = [paths]
-    if isinstance(paths, pathlib.Path):
-        paths = [str(paths)]
-    elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
-        raise ValueError(
-            "Expected `paths` to be a `str`, `pathlib.Path`, or `list[str]`, but got "
-            f"`{paths}`."
-        )
-    elif len(paths) == 0:
-        raise ValueError("Must provide at least one path.")
-
-    need_unwrap_path_protocol = True
-    if filesystem and not isinstance(filesystem, FileSystem):
-        err_msg = (
-            f"The filesystem passed must either conform to "
-            f"pyarrow.fs.FileSystem, or "
-            f"fsspec.spec.AbstractFileSystem. The provided "
-            f"filesystem was: {filesystem}"
-        )
-        try:
-            import fsspec
-            from fsspec.implementations.http import HTTPFileSystem
-        except ModuleNotFoundError:
-            # If filesystem is not a pyarrow filesystem and fsspec isn't
-            # installed, then filesystem is neither a pyarrow filesystem nor
-            # an fsspec filesystem, so we raise a TypeError.
-            raise TypeError(err_msg) from None
-        if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
-            raise TypeError(err_msg) from None
-        if isinstance(filesystem, HTTPFileSystem):
-            # If filesystem is fsspec HTTPFileSystem, the protocol/scheme of paths
-            # should not be unwrapped/removed, because HTTPFileSystem expects full file
-            # paths including protocol/scheme. This is different behavior compared to
-            # file systems implementation in pyarrow.fs.FileSystem.
-            need_unwrap_path_protocol = False
-
-        filesystem = PyFileSystem(FSSpecHandler(filesystem))
-
-    resolved_paths = []
-    for path in paths:
-        path = _resolve_custom_scheme(path)
-        try:
-            resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-                path, filesystem
-            )
-        except pa.lib.ArrowInvalid as e:
-            if "Cannot parse URI" in str(e):
-                resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-                    _encode_url(path), filesystem
-                )
-                resolved_path = _decode_url(resolved_path)
-            elif "Unrecognized filesystem type in URI" in str(e):
-                scheme = urllib.parse.urlparse(path, allow_fragments=False).scheme
-                if scheme in ["http", "https"]:
-                    # If scheme of path is HTTP and filesystem is not resolved,
-                    # try to use fsspec HTTPFileSystem. This expects fsspec is
-                    # installed.
-                    try:
-                        from fsspec.implementations.http import HTTPFileSystem
-                    except ModuleNotFoundError:
-                        raise ImportError(
-                            "Please install fsspec to read files from HTTP."
-                        ) from None
-
-                    resolved_filesystem = PyFileSystem(FSSpecHandler(HTTPFileSystem()))
-                    resolved_path = path
-                    need_unwrap_path_protocol = False
-                else:
-                    raise
-            else:
-                raise
-        if filesystem is None:
-            filesystem = resolved_filesystem
-        elif need_unwrap_path_protocol:
-            resolved_path = _unwrap_protocol(resolved_path)
-        resolved_path = filesystem.normalize_path(resolved_path)
-        resolved_paths.append(resolved_path)
-
-    return resolved_paths, filesystem
-
-
-def _is_url(path) -> bool:
-    return urllib.parse.urlparse(path).scheme != ""
-
-
-def _encode_url(path):
-    return urllib.parse.quote(path, safe="/:")
-
-
-def _decode_url(path):
-    return urllib.parse.unquote(path)
-
-
-def _unwrap_protocol(path):
-    """
-    Slice off any protocol prefixes on path.
-    """
-    if sys.platform == "win32" and _is_local_windows_path(path):
-        # Represent as posix path such that downstream functions properly handle it.
-        # This is executed when 'file://' is NOT included in the path.
-        return pathlib.Path(path).as_posix()
-
-    parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
-    query = "?" + parsed.query if parsed.query else ""  # support '?' in path
-    netloc = parsed.netloc
-    if parsed.scheme == "s3" and "@" in parsed.netloc:
-        # If the path contains an @, it is assumed to be an anonymous
-        # credentialed path, and we need to strip off the credentials.
-        netloc = parsed.netloc.split("@")[-1]
-
-    parsed_path = parsed.path
-    # urlparse prepends the path with a '/'. This does not work on Windows
-    # so if this is the case strip the leading slash.
-    if (
-        sys.platform == "win32"
-        and not netloc
-        and len(parsed_path) >= 3
-        and parsed_path[0] == "/"  # The problematic leading slash
-        and parsed_path[1].isalpha()  # Ensure it is a drive letter.
-        and parsed_path[2:4] in (":", ":/")
-    ):
-        parsed_path = parsed_path[1:]
-
-    return netloc + parsed_path + query
-
-
 def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
     # This is needed because pa.fs.S3FileSystem assumes pa.fs is already
     # imported before deserialization. See #17085.
@@ -894,39 +694,10 @@ def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
 def _resolve_kwargs(
     kwargs_fn: Callable[[], Dict[str, Any]], **kwargs
 ) -> Dict[str, Any]:
-
     if kwargs_fn:
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)
     return kwargs
-
-
-Uri = TypeVar("Uri")
-Meta = TypeVar("Meta")
-
-
-def _fetch_metadata_parallel(
-    uris: List[Uri],
-    fetch_func: Callable[[List[Uri]], List[Meta]],
-    desired_uris_per_task: int,
-    **ray_remote_args,
-) -> Iterator[Meta]:
-    """Fetch file metadata in parallel using Ray tasks."""
-    remote_fetch_func = cached_remote_fn(fetch_func, num_cpus=0.5)
-    if ray_remote_args:
-        remote_fetch_func = remote_fetch_func.options(**ray_remote_args)
-    # Choose a parallelism that results in a # of metadata fetches per task that
-    # dominates the Ray task overhead while ensuring good parallelism.
-    # Always launch at least 2 parallel fetch tasks.
-    parallelism = max(len(uris) // desired_uris_per_task, 2)
-    metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
-    fetch_tasks = []
-    for uri_chunk in np.array_split(uris, parallelism):
-        if len(uri_chunk) == 0:
-            continue
-        fetch_tasks.append(remote_fetch_func.remote(uri_chunk))
-    results = metadata_fetch_bar.fetch_until_complete(fetch_tasks)
-    yield from itertools.chain.from_iterable(results)
 
 
 def _open_file_with_retry(

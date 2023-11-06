@@ -395,6 +395,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// Get the placement group load information.
   ///
+  /// The API guarantees the returned placement groups' states
+  /// are either PENDING or RESCHEDULING.
+  ///
   /// \return Placement group load information. Users should check if
   /// the returned rpc has any placement_group_data.
   virtual std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;

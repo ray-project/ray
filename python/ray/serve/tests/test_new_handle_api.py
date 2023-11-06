@@ -1,23 +1,17 @@
-import asyncio
-import concurrent.futures
 import sys
 from typing import Any
 
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
-
 from ray import serve
+from ray._private.test_utils import SignalActor
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
     DeploymentResponseGenerator,
     RayServeHandle,
     RayServeSyncHandle,
-)
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
 )
 
 
@@ -28,22 +22,31 @@ def test_basic(serve_instance):
 
     @serve.deployment
     class Deployment:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self._handle = handle
-            assert isinstance(self._handle, RayServeHandle)
-            self._new_handle = handle.options(use_new_handle_api=True)
-            assert isinstance(self._new_handle, DeploymentHandle)
+            assert isinstance(self._handle, DeploymentHandle)
+            self._old_handle = handle.options(use_new_handle_api=False)
+            assert isinstance(self._old_handle, RayServeHandle)
 
         async def __call__(self):
-            ref = self._new_handle.remote()
-            assert isinstance(ref, DeploymentResponse)
-            return await ref
+            response = self._handle.remote()
+            assert isinstance(response, DeploymentResponse)
+            val = await response
 
-    handle: RayServeSyncHandle = serve.run(Deployment.bind(downstream.bind()))
-    assert isinstance(handle, RayServeSyncHandle)
-    new_handle = handle.options(use_new_handle_api=True)
-    assert isinstance(new_handle, DeploymentHandle)
-    assert new_handle.remote().result() == "hello"
+            ref = await self._old_handle.remote()
+            assert isinstance(ref, ray.ObjectRef)
+            old_val = await ref
+
+            assert val == old_val
+
+            return val
+
+    handle: DeploymentHandle = serve.run(Deployment.bind(downstream.bind()))
+    assert isinstance(handle, DeploymentHandle)
+    assert handle.remote().result() == "hello"
+    old_handle = handle.options(use_new_handle_api=False)
+    assert isinstance(old_handle, RayServeSyncHandle)
+    assert ray.get(old_handle.remote()) == "hello"
 
 
 def test_result_timeout(serve_instance):
@@ -63,65 +66,6 @@ def test_result_timeout(serve_instance):
 
     ray.get(signal_actor.send.remote())
     assert ref.result() == "hi"
-
-
-# TODO(edoakes): expand this test to cancel ongoing requests once actor cancellation
-# is supported.
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="`max_concurrent_queries` not properly enforced in old codepath.",
-)
-def test_cancel(serve_instance):
-    """Test `.cancel()` from inside and outside a deployment."""
-
-    signal_actor = SignalActor.remote()
-
-    # Set max_concurrent_queries=1 and block so subsequent calls won't be scheduled.
-    @serve.deployment(max_concurrent_queries=1)
-    def downstream():
-        ray.get(signal_actor.wait.remote())
-        return "hi"
-
-    @serve.deployment
-    class Deployment:
-        def __init__(self, handle: RayServeHandle):
-            self._handle = handle.options(use_new_handle_api=True)
-
-        async def check_cancel(self):
-            ref = self._handle.remote()
-            with pytest.raises(asyncio.TimeoutError):
-                await asyncio.wait_for(ref, timeout=0.1)
-
-            ref.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await ref
-
-            return "Cancelled successfully."
-
-    app_handle = serve.run(Deployment.bind(downstream.bind())).options(
-        use_new_handle_api=True
-    )
-
-    # Send first blocking request so subsequent requests will be pending replica
-    # assignment.
-    deployment_handle = serve.get_deployment_handle("downstream", app_name="default")
-    blocking_ref = deployment_handle.remote()
-    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
-    with pytest.raises(TimeoutError):
-        blocking_ref.result(timeout_s=0.001)
-
-    # Check cancellation behavior from outside deployment.
-    cancelled_ref = deployment_handle.remote()
-    cancelled_ref.cancel()
-    with pytest.raises(concurrent.futures.CancelledError):
-        cancelled_ref.result()
-
-    # Check cancellation behavior from inside deployment.
-    assert app_handle.check_cancel.remote().result() == "Cancelled successfully."
-
-    # Unblock blocking request.
-    ray.get(signal_actor.send.remote())
-    assert blocking_ref.result() == "hi"
 
 
 def test_get_app_and_deployment_handle(serve_instance):
@@ -233,10 +177,6 @@ def test_convert_to_object_ref(serve_instance):
     assert ray.get(identity_task.remote(ref._to_object_ref_sync())) == "hello"
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="Streaming only supported w/ new routing.",
-)
 def test_generators(serve_instance):
     """Test generators inside and outside a deployment."""
 
@@ -265,10 +205,6 @@ def test_generators(serve_instance):
     assert list(gen) == list(range(10))
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="Streaming only supported w/ new routing.",
-)
 def test_convert_to_object_ref_gen(serve_instance):
     """Test converting generators to obj ref gens inside and outside a deployment."""
 
@@ -300,10 +236,6 @@ def test_convert_to_object_ref_gen(serve_instance):
     assert ray.get(list(obj_ref_gen)) == list(range(10))
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="Streaming only supported w/ new routing.",
-)
 @pytest.mark.parametrize("stream", [False, True])
 def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
     """Blocking `DeploymentResponse` (and generator) methods should fail in loop."""

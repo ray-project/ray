@@ -13,15 +13,12 @@ from ray import train, tune
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE
 from ray.train._internal.storage import _delete_fs_path
-from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
 from ray.tune.experiment import Trial
 from ray.tune.utils import flatten_dict
 
-from ray.train.tests.util import (
-    create_dict_checkpoint,
-    load_dict_checkpoint,
-    mock_s3_bucket_uri,
-)
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.train.tests.test_new_persistence import mock_s3_bucket_uri
 
 
 NUM_TRIALS = 3
@@ -100,7 +97,7 @@ def experiment_analysis(request):
         if load_from in ["dir", "cloud"]:
             # Test init without passing in in-memory trials.
             # Load them from an experiment directory instead.
-            yield NewExperimentAnalysis(
+            yield ExperimentAnalysis(
                 str(URI(storage_path) / "test_experiment_analysis"),
                 default_metric="ascending",
                 default_mode="max",

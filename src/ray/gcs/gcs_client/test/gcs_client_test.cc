@@ -116,7 +116,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   void ReconnectClient() {
-    ClusterID cluster_id = gcs_server_->rpc_server_.GetClusterId();
+    ClusterID cluster_id = gcs_server_->GetClusterId();
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_, cluster_id));
   }
 
@@ -287,7 +287,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::vector<rpc::ActorTableData> GetAllActors(bool filter_non_dead_actor = false) {
     std::promise<bool> promise;
     std::vector<rpc::ActorTableData> actors;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAllByFilter(
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
         [filter_non_dead_actor, &actors, &promise](
             Status status, std::vector<rpc::ActorTableData> &&result) {
           if (!result.empty()) {
@@ -367,13 +370,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return resource_map;
-  }
-
-  bool ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-        resources, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
@@ -592,44 +588,6 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
-TEST_P(GcsClientTest, TestNodeResourceUsage) {
-  // Register node.
-  auto node_info = Mocker::GenNodeInfo();
-  RAY_CHECK(RegisterNode(*node_info));
-
-  // Report resource usage of a node to GCS.
-  NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto resource = std::make_shared<rpc::ResourcesData>();
-  resource->set_node_id(node_id.Binary());
-  resource->set_should_global_gc(true);
-  std::string resource_name = "CPU";
-  double resource_value = 1.0;
-  (*resource->mutable_resources_total())[resource_name] = resource_value;
-  ASSERT_TRUE(ReportResourceUsage(resource));
-
-  // Get and check last report resource usage.
-  auto last_resource_usage = gcs_client_->NodeResources().GetLastResourceUsage();
-  ASSERT_EQ(last_resource_usage->total.Get(scheduling::ResourceID::CPU()),
-            resource_value);
-}
-
-TEST_P(GcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
-  // Register node.
-  auto node_info = Mocker::GenNodeInfo();
-  RAY_CHECK(RegisterNode(*node_info));
-
-  // Report unchanged resource usage of a node to GCS.
-  NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto resource = std::make_shared<rpc::ResourcesData>();
-  resource->set_node_id(node_id.Binary());
-  ASSERT_TRUE(ReportResourceUsage(resource));
-
-  // Report changed resource usage of a node to GCS.
-  auto resource1 = std::make_shared<rpc::ResourcesData>();
-  resource1->set_node_id(node_id.Binary());
-  ASSERT_TRUE(ReportResourceUsage(resource1));
-}
-
 TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
@@ -647,7 +605,7 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   (*resource->mutable_resources_available())["GPU"] = 10.0;
   (*resource->mutable_resources_total())["CPU"] = 1.0;
   (*resource->mutable_resources_total())["GPU"] = 10.0;
-  ASSERT_TRUE(ReportResourceUsage(resource));
+  gcs_server_->UpdateGcsResourceManagerInTest(*resource);
 
   // Assert get all available resources right.
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
@@ -791,7 +749,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   resources->set_node_id(node_info->node_id());
   // Set this flag because GCS won't publish unchanged resources.
   resources->set_should_global_gc(true);
-  ASSERT_TRUE(ReportResourceUsage(resources));
+  gcs_server_->UpdateGcsResourceManagerInTest(*resources);
 
   RestartGcsServer();
 
@@ -799,7 +757,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(RegisterNode(*node_info));
   node_id = NodeID::FromBinary(node_info->node_id());
   resources->set_node_id(node_info->node_id());
-  ASSERT_TRUE(ReportResourceUsage(resources));
+  gcs_server_->UpdateGcsResourceManagerInTest(*resources);
 
   WaitForExpectedCount(node_change_count, 2);
 }

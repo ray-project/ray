@@ -2,7 +2,6 @@ import copy
 import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
 
 import ray
@@ -28,8 +27,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
 )
-from ray.data._internal.execution.operators.map_transformer import MapTransformer
-from ray.data._internal.memory_tracing import trace_allocation
+from ray.data._internal.execution.operators.map_transformer import (
+    ApplyAdditionalSplitToOutputBlocks,
+    MapTransformer,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
@@ -48,6 +49,7 @@ class MapOperator(OneToOneOperator, ABC):
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         name: str,
+        target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
         ray_remote_args: Optional[Dict[str, Any]],
     ):
@@ -62,8 +64,6 @@ class MapOperator(OneToOneOperator, ABC):
 
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
-        # Object store allocation stats.
-        self._metrics = _ObjectStoreMetrics(alloc=0, freed=0, cur=0, peak=0)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
@@ -80,13 +80,35 @@ class MapOperator(OneToOneOperator, ABC):
         # When the streaming generator ref is GC'ed, the objects it generated
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
         self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
-        super().__init__(name, input_op)
+        super().__init__(name, input_op, target_max_block_size)
+
+        # If set, then all output blocks will be split into
+        # this many sub-blocks. This is to avoid having
+        # too-large blocks, which may reduce parallelism for
+        # the subsequent stage.
+        self._additional_split_factor = None
+
+    def get_additional_split_factor(self) -> int:
+        if self._additional_split_factor is None:
+            return 1
+        return self._additional_split_factor
+
+    def set_additional_split_factor(self, k: int):
+        self._additional_split_factor = k
+
+    @property
+    def name(self) -> str:
+        name = super().name
+        if self._additional_split_factor is not None:
+            name += f"->SplitBlocks({self._additional_split_factor})"
+        return name
 
     @classmethod
     def create(
         cls,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
@@ -107,6 +129,8 @@ class MapOperator(OneToOneOperator, ABC):
             init_fn: The callable class to instantiate if using ActorPoolMapOperator.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -125,6 +149,7 @@ class MapOperator(OneToOneOperator, ABC):
                 map_transformer,
                 input_op,
                 name=name,
+                target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 ray_remote_args=ray_remote_args,
             )
@@ -145,6 +170,7 @@ class MapOperator(OneToOneOperator, ABC):
                 input_op,
                 autoscaling_policy=autoscaling_policy,
                 name=name,
+                target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 ray_remote_args=ray_remote_args,
             )
@@ -183,16 +209,19 @@ class MapOperator(OneToOneOperator, ABC):
 
             self._ray_remote_args_factory = RoundRobinAssign(locs)
 
+        map_transformer = self._map_transformer
+        # Apply additional block split if needed.
+        if self.get_additional_split_factor() > 1:
+            split_transformer = MapTransformer(
+                [ApplyAdditionalSplitToOutputBlocks(self.get_additional_split_factor())]
+            )
+            map_transformer = map_transformer.fuse(split_transformer)
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
-        self._map_transformer_ref = ray.put(self._map_transformer)
+        self._map_transformer_ref = ray.put(map_transformer)
 
-    def add_input(self, refs: RefBundle, input_index: int):
+    def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
-        # Add ref bundle allocation to operator's object store metrics.
-        self._metrics.cur += refs.size_bytes()
-        if self._metrics.cur > self._metrics.peak:
-            self._metrics.peak = self._metrics.cur
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         if self._block_ref_bundler.has_bundle():
@@ -257,28 +286,31 @@ class MapOperator(OneToOneOperator, ABC):
         #    can also be capsulated in the base class.
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
+        self._metrics.on_task_submitted(task_index, inputs)
 
         def _output_ready_callback(task_index, output: RefBundle):
             # Since output is streamed, it should only contain one block.
-            assert len(output.blocks) == 1
-            for block_ref, _ in output.blocks:
-                trace_allocation(block_ref, "map_operator_output")
+            assert len(output) == 1
+            self._metrics.on_output_generated(task_index, output)
+
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)
-            # Update object store metrics.
-            allocated = output.size_bytes()
-            self._metrics.alloc += allocated
-            self._metrics.cur += allocated
-            if self._metrics.cur > self._metrics.peak:
-                self._metrics.peak = self._metrics.cur
 
-        def _task_done_callback(task_index, inputs):
-            # We should only destroy the input bundle when the whole task is done.
-            # Otherwise, if the task crashes in the middle, we can't rerun it.
-            inputs.destroy_if_owned()
-            freed = inputs.size_bytes()
-            self._metrics.freed += freed
-            self._metrics.cur -= freed
+        def _task_done_callback(task_index):
+            self._metrics.on_task_finished(task_index)
+
+            # Estimate number of tasks from inputs received and tasks submitted so far
+            estimated_num_tasks = (
+                self.input_dependencies[0].num_outputs_total()
+                / self._metrics.num_inputs_received
+                * self._next_data_task_idx
+            )
+            self._estimated_output_blocks = round(
+                estimated_num_tasks
+                * self._metrics.num_outputs_of_finished_tasks
+                / self._metrics.num_tasks_finished
+            )
+
             task = self._data_tasks.pop(task_index)
             self._finished_streaming_gens.append(task.get_waitable())
             # Notify output queue that this task is complete.
@@ -289,7 +321,7 @@ class MapOperator(OneToOneOperator, ABC):
         self._data_tasks[task_index] = DataOpTask(
             gen,
             lambda output: _output_ready_callback(task_index, output),
-            lambda: _task_done_callback(task_index, inputs),
+            lambda: _task_done_callback(task_index),
         )
 
     def _submit_metadata_task(
@@ -323,10 +355,9 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         return self._output_queue.has_next()
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         assert self._started
         bundle = self._output_queue.get_next()
-        self._metrics.cur -= bundle.size_bytes()
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
         return bundle
@@ -335,12 +366,8 @@ class MapOperator(OneToOneOperator, ABC):
     def progress_str(self) -> str:
         raise NotImplementedError
 
-    def get_metrics(self) -> Dict[str, int]:
-        sorted_ray_args = dict(sorted(self._remote_args_for_metrics.items()))
-        return dict(
-            self._metrics.to_metrics_dict(),
-            ray_remote_args=sorted_ray_args,
-        )
+    def _extra_metrics(self) -> Dict[str, Any]:
+        return {"ray_remote_args": dict(sorted(self._remote_args_for_metrics.items()))}
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
@@ -366,23 +393,6 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
 
-@dataclass
-class _ObjectStoreMetrics:
-    """Metrics for object store memory allocations."""
-
-    alloc: int
-    freed: int
-    cur: int
-    peak: int
-
-    def to_metrics_dict(self) -> Dict[str, int]:
-        return {
-            "obj_store_mem_alloc": self.alloc,
-            "obj_store_mem_freed": self.freed,
-            "obj_store_mem_peak": self.peak,
-        }
-
-
 def _map_task(
     map_transformer: MapTransformer,
     data_context: DataContext,
@@ -402,6 +412,7 @@ def _map_task(
     """
     DataContext._set_current(data_context)
     stats = BlockExecStats.builder()
+    map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)

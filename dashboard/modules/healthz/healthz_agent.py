@@ -4,7 +4,7 @@ from ray.dashboard.modules.healthz.utils import HealthChecker
 import ray.exceptions
 from aiohttp.web import Request, Response
 
-routes = optional_utils.ClassMethodRouteTable
+routes = optional_utils.DashboardAgentRouteTable
 
 
 class HealthzAgent(dashboard_utils.DashboardAgentModule):

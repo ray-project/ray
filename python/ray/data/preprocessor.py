@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
     from ray.air.data_batch_type import DataBatchType
-    from ray.data import Dataset, DatasetPipeline
+    from ray.data import Dataset
 
 
 @PublicAPI(stability="beta")
@@ -63,10 +63,24 @@ class Preprocessor(abc.ABC):
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
 
+    def _check_has_fitted_state(self):
+        """Checks if the Preprocessor has fitted state.
+
+        This is also used as an indiciation if the Preprocessor has been fit, following
+        convention from Ray versions prior to 2.6.
+        This allows preprocessors that have been fit in older versions of Ray to be
+        used to transform data in newer versions.
+        """
+
+        fitted_vars = [v for v in vars(self) if v.endswith("_")]
+        return bool(fitted_vars)
+
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
             return Preprocessor.FitStatus.NOT_FITTABLE
-        elif hasattr(self, "_fitted") and self._fitted:
+        elif (
+            hasattr(self, "_fitted") and self._fitted
+        ) or self._check_has_fitted_state():
             return Preprocessor.FitStatus.FITTED
         else:
             return Preprocessor.FitStatus.NOT_FITTED
@@ -183,31 +197,6 @@ class Preprocessor(abc.ABC):
             )
         return self._transform_batch(data)
 
-    def _transform_pipeline(self, pipeline: "DatasetPipeline") -> "DatasetPipeline":
-        """Transform the given DatasetPipeline.
-
-        Args:
-            pipeline: The pipeline to transform.
-
-        Returns:
-            A DatasetPipeline with this preprocessor's transformation added as an
-                operation to the pipeline.
-        """
-
-        fit_status = self.fit_status()
-        if fit_status not in (
-            Preprocessor.FitStatus.NOT_FITTABLE,
-            Preprocessor.FitStatus.FITTED,
-        ):
-            raise RuntimeError(
-                "Streaming/pipelined ingest only works with "
-                "Preprocessors that do not need to be fit on the entire dataset. "
-                "It is not possible to fit on Datasets "
-                "in a streaming fashion."
-            )
-
-        return self._transform(pipeline)
-
     @DeveloperAPI
     def _fit(self, ds: "Dataset") -> "Preprocessor":
         """Sub-classes should override this instead of fit()."""
@@ -242,9 +231,7 @@ class Preprocessor(abc.ABC):
                 "for Preprocessor transforms."
             )
 
-    def _transform(
-        self, ds: Union["Dataset", "DatasetPipeline"]
-    ) -> Union["Dataset", "DatasetPipeline"]:
+    def _transform(self, ds: "Dataset") -> "Dataset":
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
         transform_type = self._determine_transform_to_use()

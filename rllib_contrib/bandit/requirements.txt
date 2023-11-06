@@ -1,0 +1,3 @@
+tensorflow==2.13.0
+torch==1.12.0
+tensorflow-probability==0.20.1

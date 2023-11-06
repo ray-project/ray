@@ -50,19 +50,20 @@ def synchronous_parallel_sample(
         The list of collected sample batch types (one for each parallel
         rollout worker in the given `worker_set`).
 
-    Examples:
-        >>> # Define an RLlib Algorithm.
-        >>> algorithm = ... # doctest: +SKIP
-        >>> # 2 remote workers (num_workers=2):
-        >>> batches = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
-        >>> print(len(batches)) # doctest: +SKIP
+    .. testcode::
+
+        # Define an RLlib Algorithm.
+        from ray.rllib.algorithms.ppo import PPO, PPOConfig
+        config = PPOConfig().environment("CartPole-v1")
+        algorithm = PPO(config=config)
+        # 2 remote workers (num_workers=2):
+        batches = synchronous_parallel_sample(worker_set=algorithm.workers,
+            concat=False)
+        print(len(batches))
+
+    .. testoutput::
+
         2
-        >>> print(batches[0]) # doctest: +SKIP
-        SampleBatch(16: ['obs', 'actions', 'rewards', 'terminateds', 'truncateds'])
-        >>> # 0 remote workers (num_workers=0): Using the local worker.
-        >>> batches = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
-        >>> print(len(batches)) # doctest: +SKIP
-        1
     """
     # Only allow one of `max_agent_steps` or `max_env_steps` to be defined.
     assert not (max_agent_steps is not None and max_env_steps is not None)

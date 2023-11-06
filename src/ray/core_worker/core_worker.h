@@ -16,6 +16,7 @@
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
@@ -26,6 +27,7 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
@@ -71,7 +73,7 @@ class TaskCounter {
   TaskCounter() {
     counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, TaskStatusType, bool> &key)
-            EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
+            ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
               if (std::get<1>(key) != kRunning) {
                 return;
               }
@@ -127,7 +129,7 @@ class TaskCounter {
     job_id_ = job_id.Hex();
   }
 
-  bool IsActor() EXCLUSIVE_LOCKS_REQUIRED(&mu_) { return actor_name_.size() > 0; }
+  bool IsActor() ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { return actor_name_.size() > 0; }
 
   void RecordMetrics() {
     absl::MutexLock l(&mu_);
@@ -243,17 +245,18 @@ class TaskCounter {
  private:
   mutable absl::Mutex mu_;
   // Tracks all tasks submitted to this worker by state, is_retry.
-  CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_ GUARDED_BY(&mu_);
+  CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_
+      ABSL_GUARDED_BY(&mu_);
 
   // Additionally tracks the sub-states of RUNNING_IN_RAY_GET/WAIT. The counters here
   // overlap with those of counter_.
-  CounterMap<std::pair<std::string, bool>> running_in_get_counter_ GUARDED_BY(&mu_);
-  CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ GUARDED_BY(&mu_);
+  CounterMap<std::pair<std::string, bool>> running_in_get_counter_ ABSL_GUARDED_BY(&mu_);
+  CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ ABSL_GUARDED_BY(&mu_);
 
-  std::string job_id_ GUARDED_BY(&mu_) = "";
+  std::string job_id_ ABSL_GUARDED_BY(&mu_) = "";
   // Used for actor state tracking.
-  std::string actor_name_ GUARDED_BY(&mu_) = "";
-  int64_t num_tasks_running_ GUARDED_BY(&mu_) = 0;
+  std::string actor_name_ ABSL_GUARDED_BY(&mu_) = "";
+  int64_t num_tasks_running_ ABSL_GUARDED_BY(&mu_) = 0;
 };
 
 struct TaskToRetry {
@@ -773,12 +776,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// report from the caller side.
   /// \param[in] attempt_number The number of time the current task is retried.
   /// 0 means it is the first attempt.
+  /// \param[in] waiter The class to pause the thread if generator backpressure limit
+  /// is reached.
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,
-      uint64_t attempt_number);
+      uint64_t attempt_number,
+      std::shared_ptr<GeneratorBackpressureWaiter> waiter);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
@@ -803,7 +809,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// For actors, this is the current actor ID. To make sure that all caller
   /// IDs have the same type, we embed the actor ID in a TaskID with the rest
   /// of the bytes zeroed out.
-  TaskID GetCallerId() const LOCKS_EXCLUDED(mutex_);
+  TaskID GetCallerId() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Push an error to the relevant driver.
   ///
@@ -971,6 +977,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
 
   const ActorID &GetActorId() const { return actor_id_; }
+
+  const std::string GetActorName() const;
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
   const ResourceMappingType GetResourceIDs() const;
@@ -1240,11 +1248,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
-  /// \param[in] python_future the void* object to be passed to SetResultCallback
+  /// \param[in] python_user_callback The user-provided Python callback object that
+  /// will be called inside of `success_callback`.
   /// \return void
   void GetAsync(const ObjectID &object_id,
                 SetResultCallback success_callback,
-                void *python_future);
+                void *python_user_callback);
 
   // Get serialized job configuration.
   rpc::JobConfig GetJobConfig() const;
@@ -1330,7 +1339,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &serialized_runtime_env_info,
       const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",
-      bool include_job_config = false);
+      bool include_job_config = false,
+      int64_t generator_backpressure_num_objects = -1);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1599,14 +1609,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// The ID of the current task being executed by the main thread. If there
   /// are multiple threads, they will have a thread-local task ID stored in the
   /// worker context.
-  TaskID main_thread_task_id_ GUARDED_BY(mutex_);
+  TaskID main_thread_task_id_ ABSL_GUARDED_BY(mutex_);
 
-  std::string main_thread_task_name_ GUARDED_BY(mutex_);
+  std::string main_thread_task_name_ ABSL_GUARDED_BY(mutex_);
 
   /// States that used for initialization.
   absl::Mutex initialize_mutex_;
   absl::CondVar intialize_cv_;
-  bool initialized_ GUARDED_BY(initialize_mutex_) = false;
+  bool initialized_ ABSL_GUARDED_BY(initialize_mutex_) = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context io_service_;
@@ -1704,20 +1714,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   mutable absl::Mutex mutex_;
 
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
-  ActorID actor_id_ GUARDED_BY(mutex_);
+  ActorID actor_id_ ABSL_GUARDED_BY(mutex_);
 
   /// The currently executing task spec. We have to track this separately since
   /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
-  absl::flat_hash_map<TaskID, TaskSpecification> current_tasks_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<TaskID, TaskSpecification> current_tasks_ ABSL_GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
-  std::unordered_map<std::string, std::string> webui_display_ GUARDED_BY(mutex_);
+  std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
 
   /// Actor title that consists of class name, args, kwargs for actor construction.
-  std::string actor_title_ GUARDED_BY(mutex_);
+  std::string actor_title_ ABSL_GUARDED_BY(mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
-  std::string actor_repr_name_ GUARDED_BY(mutex_) = "";
+  std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_) = "";
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;
@@ -1728,7 +1738,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
-  std::shared_ptr<ResourceMappingType> resource_ids_ GUARDED_BY(mutex_);
+  std::shared_ptr<ResourceMappingType> resource_ids_ ABSL_GUARDED_BY(mutex_);
 
   /// Common rpc service for all worker modules.
   rpc::CoreWorkerGrpcService grpc_service_;
@@ -1750,7 +1760,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
-      to_resubmit_ GUARDED_BY(mutex_);
+      to_resubmit_ ABSL_GUARDED_BY(mutex_);
 
   /// Map of named actor registry. It doesn't need to hold a lock because
   /// local mode is single-threaded.
@@ -1761,7 +1771,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Callbacks for when when a plasma object becomes ready.
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
-      async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
+      async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
 
   // Fallback for when GetAsync cannot directly get the requested object.
   void PlasmaCallback(SetResultCallback success,
@@ -1771,7 +1781,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.
-  std::optional<std::string> exiting_detail_ GUARDED_BY(mutex_);
+  std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
 
   std::atomic<bool> is_shutdown_ = false;
 

@@ -1,12 +1,13 @@
 import os
-import requests
 import sys
 import time
 
 import pytest
+import requests
+
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition, SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
@@ -72,7 +73,7 @@ def test_controller_failure(serve_instance):
 
 def _kill_http_proxies():
     http_proxies = ray.get(
-        serve.context._global_client._controller.get_http_proxies.remote()
+        serve.context._global_client._controller.get_proxies.remote()
     )
     for http_proxy in http_proxies.values():
         ray.kill(http_proxy, no_restart=False)

@@ -16,6 +16,7 @@ import unittest
 from unittest import mock
 
 import ray
+import ray.train
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
 from ray.train import CheckpointConfig, Checkpoint
@@ -38,7 +39,7 @@ class TuneRestoreTest(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         test_name = "TuneRestoreTest"
         tune.run(
-            "PG",
+            "PPO",
             name=test_name,
             stop={"training_iteration": 1},
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
@@ -62,7 +63,7 @@ class TuneRestoreTest(unittest.TestCase):
     def testTuneRestore(self):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
         tune.run(
-            "PG",
+            "PPO",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},  # train one more iteration.
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
@@ -77,7 +78,7 @@ class TuneRestoreTest(unittest.TestCase):
         """Tests that checkpoint restored from is not deleted post-restore."""
         self.assertTrue(os.path.isfile(self.checkpoint_path))
         tune.run(
-            "PG",
+            "PPO",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},
             checkpoint_config=CheckpointConfig(
@@ -108,7 +109,7 @@ class SteppingCallback(Callback):
 def _run(local_dir, driver_semaphore, trainer_semaphore):
     def _train(config):
         for i in range(7):
-            tune.report(val=i)
+            ray.train.report(dict(val=i))
 
     tune.run(
         _train,
@@ -176,11 +177,9 @@ class TuneInterruptionTest(unittest.TestCase):
         def run_in_thread():
             def _train(config):
                 for i in range(7):
-                    tune.report(val=i)
+                    ray.train.report(dict(val=i))
 
-            tune.run(
-                _train,
-            )
+            tune.run(_train)
             event.set()
 
         thread = threading.Thread(target=run_in_thread)
@@ -617,7 +616,7 @@ class TrainableCrashWithFailFast(unittest.TestCase):
         should bubble up."""
 
         def f(config):
-            tune.report({"a": 1})
+            ray.train.report({"a": 1})
             time.sleep(0.1)
             raise RuntimeError("Error happens in trainable!!")
 

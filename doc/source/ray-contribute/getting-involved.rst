@@ -5,6 +5,18 @@
 Getting Involved / Contributing
 ===============================
 
+
+.. toctree::
+    :hidden:
+
+    development
+    docs
+    writing-code-snippets
+    fake-autoscaler
+    ../ray-core/examples/testing-tips
+    debugging
+    profiling
+
 Ray is more than a framework for distributed applications but also an active community of developers,
 researchers, and folks that love machine learning.
 
@@ -96,7 +108,7 @@ If you are running tests for the first time, you can install the required depend
 
 .. code-block:: shell
 
-    pip install -c python/requirements.txt -r python/requirements/test-requirements.txt
+    pip install -c python/requirements_compiled.txt -r python/requirements/test-requirements.txt
 
 Testing for Python development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

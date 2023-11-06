@@ -482,7 +482,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           auto callback_it = queue.inflight_task_callbacks.find(task_id);
           if (callback_it == queue.inflight_task_callbacks.end()) {
             RAY_LOG(DEBUG) << "The task " << task_id
-                           << " has already been marked as failed. Ingore the reply.";
+                           << " has already been marked as failed. Ignore the reply.";
             return;
           }
           reply_callback = std::move(callback_it->second);

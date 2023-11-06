@@ -46,7 +46,7 @@ Ray Examples
         :class-item: gallery-item gen-ai cv training
         :link: https://www.anyscale.com/blog/faster-stable-diffusion-fine-tuning-with-ray-air
 
-        Faster stable diffusion fine-tuning with Ray AIR
+        Faster stable diffusion fine-tuning with Ray Train
 
     .. grid-item-card:: :bdg-primary:`Blog`
         :class-item: gallery-item training serving huggingface llm gen-ai
@@ -62,7 +62,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item llm gen-ai huggingface training nlp
-        :link: /ray-air/examples/gptj_deepspeed_fine_tuning
+        :link: /train/examples/deepspeed/gptj_deepspeed_fine_tuning
         :link-type: doc
 
         GPT-J-6B Fine-Tuning with Ray Train and DeepSpeed
@@ -75,66 +75,59 @@ Ray Examples
 
     .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item pytorch training
-        :link: /ray-air/examples/convert_existing_pytorch_code_to_ray_air
+        :link: /train/examples/pytorch/convert_existing_pytorch_code_to_ray_train
         :link-type: doc
 
-        Get started with Ray AIR from an existing PyTorch codebase
+        Get started with Ray Train from an existing PyTorch codebase
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training
-        :link: /ray-air/examples/lightgbm_example
+        :link: /train/examples/lightgbm/lightgbm_example
         :link-type: doc
 
         Distributed training with LightGBM
 
     .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item training
-        :link: /ray-air/examples/xgboost_example
+        :link: /train/examples/xgboost/xgboost_example
         :link-type: doc
 
         Distributed training with XGBoost
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing
-        :link: /ray-air/examples/batch_tuning
+        :class-item: gallery-item llm nlp gen-ai inference
+        :link: /data/examples/gptj_batch_prediction
         :link-type: doc
 
-        Perform batch tuning on NYC Taxi Dataset with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item llm nlp gen-ai
-        :link: /ray-air/examples/gptj_batch_prediction
-        :link-type: doc
-
-        How to use Ray AIR to do batch prediction with the Hugging Face Transformers GPT-J model
+        How to use Ray Data to do batch prediction with the Hugging Face Transformers GPT-J model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item serving llm gen-ai
         :link: /ray-air/examples/gptj_serving
         :link-type: doc
 
-        How to use Ray AIR to do online serving with the Hugging Face Transformers GPT-J model
+        How to use Ray Serve to do online serving with the Hugging Face Transformers GPT-J model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item cv training gen-ai
-        :link: /ray-air/examples/dreambooth_finetuning
+        :link: /train/examples/pytorch/dreambooth_finetuning
         :link-type: doc
 
         How to fine-tune a DreamBooth text-to-image model with your own images.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training train llm nlp gen-ai
-        :link: /ray-air/examples/dolly_lightning_fsdp_finetuning
+        :link: /train/examples/lightning/dolly_lightning_fsdp_finetuning
         :link-type: doc
 
-        How to fine-tune a dolly-v2-7b model with Ray AIR LightningTrainer and FSDP
+        Fine-tune dolly-v2-7b with Ray Train, PyTorch Lightning and FSDP
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv
-        :link: /ray-air/examples/torch_detection
+        :link: /train/examples/pytorch/torch_detection
         :link-type: doc
 
-        Torch Object Detection Example with Ray AIR
+        Torch Object Detection Example with Ray Train
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch
@@ -144,11 +137,11 @@ Ray Examples
         Image Classification Batch Inference with PyTorch ResNet152
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item cv gen-ai
-        :link: /ray-air/examples/stablediffusion_batch_prediction
+        :class-item: gallery-item cv gen-ai inference
+        :link: /data/examples/stablediffusion_batch_prediction
         :link-type: doc
 
-        How to use Ray AIR to do batch prediction with the Stable Diffusion text-to-image model
+        How to use Ray Data to do batch prediction with the Stable Diffusion text-to-image model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item cv pytorch inference
@@ -198,13 +191,6 @@ Ray Examples
         :link-type: doc
 
         Scaling your Gradio app with Ray Serve
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item serving
-        :link: /serve/tutorials/gradio-dag-visualization
-        :link-type: doc
-
-        Visualizing a Deployment Graph with Gradio
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item serving
@@ -266,20 +252,6 @@ Ray Examples
 
         Batch Prediction using Ray Data
 
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing inference
-        :link: /data/examples/nyc_taxi_basic_processing
-        :link-type: doc
-
-        Batch Inference on NYC taxi data using Ray Data
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing inference
-        :link: /data/examples/ocr_example
-        :link-type: doc
-
-        Batch OCR processing using Ray Data
-
     .. grid-item-card:: :bdg-primary:`Blog`
         :class-item: gallery-item training
         :link: https://www.anyscale.com/blog/training-one-million-machine-learning-models-in-record-time-with-ray
@@ -315,7 +287,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training tuning
-        :link: /ray-air/examples/batch_tuning
+        :link: /tune/examples/batch_tuning
         :link-type: doc
 
         Batch Training and Tuning using Ray Tune
@@ -552,10 +524,10 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training huggingface nlp
-        :link: /ray-air/examples/huggingface_text_classification
+        :link: /train/examples/transformers/huggingface_text_classification
         :link-type: doc
 
-        Fine-tune a 🤗 Transformers model
+        Fine-tune a 🤗 Transformers model on GLUE benchmark
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch training train cv
@@ -590,7 +562,7 @@ Ray Examples
         :link: lightning_advanced_example
         :link-type: ref
 
-        Use LightningTrainer with Ray Data and Batch Predictor
+        Fine-tune a PyTorch Lightning Text Classifier with Ray Data
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tensorflow tuning
@@ -605,13 +577,6 @@ Ray Examples
         :link-type: ref
 
         End-to-end Example for Tuning a PyTorch Model with PBT
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tracking
-        :link: lightning_experiment_tracking
-        :link-type: ref
-
-        Using Experiment Tracking Tools in LightningTrainer
 
     .. grid-item-card:: :bdg-info:`Course`
         :class-item: gallery-item rl
@@ -1062,7 +1027,7 @@ Ray Examples
         :class-item: gallery-item rl rllib
         :link: https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb
 
-        Create a custom environment and train a single agent RL using Ray 2.0 with Tune and Air.
+        Create a custom environment and train a single agent RL using Ray 2.0 with Tune.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl rllib
@@ -1185,39 +1150,11 @@ Ray Examples
         Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
 
     .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing
-        :link: /data/examples/nyc_taxi_basic_processing
-        :link-type: doc
-
-        Processing the NYC taxi dataset
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item data data-processing training
         :link: /data/examples/batch_training
         :link-type: doc
 
-        Batch Training with Ray Data
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing cv
-        :link: /data/examples/ocr_example
-        :link-type: doc
-
-        Scaling OCR with Ray Data
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data data-processing
-        :link: /data/examples/random-access
-        :link-type: doc
-
-        Random Data Access (Experimental)
-
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item data data-processing
-        :link: /data/examples/custom-datasource
-        :link-type: doc
-
-        Implementing a Custom Datasource
+        Many Model Training with Ray Data
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core inference
@@ -1253,13 +1190,6 @@ Ray Examples
         :link-type: doc
 
         Learning to Play Pong
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item core rl
-        :link: /ray-core/examples/plot_example-a3c
-        :link-type: doc
-
-        Asynchronous Advantage Actor Critic (A3C)
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item core
@@ -1387,18 +1317,31 @@ Ray Examples
         :link: /train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
         :link-type: doc
 
-        Fine-tune vicuna-13b-v1.3 with DeepSpeed and LightningTrainer
-    
+        Fine-tune vicuna-13b-v1.3 with DeepSpeed, PyTorch Lightning and Ray Train
+
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training llm pytorch nlp
         :link: deepspeed_example
         :link-type: ref
 
         Distributed Training with DeepSpeed ZeRO-3 and TorchTrainer
-    
+
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training llm pytorch huggingface nlp
         :link: deepspeed_example
         :link-type: ref
 
         Distributed Training with Hugging Face Accelelate and TorchTrainer
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item inference huggingface cv
+        :link: kuberay-batch-inference-example
+        :link-type: ref
+
+        RayJob Batch Inference Example on Kubernetes with Ray
+
+    .. grid-item-card:: :bdg-primary:`Blog`
+        :class-item: gallery-item train
+        :link: https://www.uber.com/blog/elastic-xgboost-ray/
+
+        Elastic Distributed Training with XGBoost on Ray

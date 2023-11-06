@@ -242,6 +242,12 @@ METRICS_GAUGES = {
         "MB",
         COMPONENT_METRICS_TAG_KEYS,
     ),
+    "component_num_fds": Gauge(
+        "component_num_fds",
+        "Number of open fds of all components on the node.",
+        "count",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
     "cluster_active_nodes": Gauge(
         "cluster_active_nodes",
         "Active nodes on the cluster",
@@ -529,6 +535,7 @@ class ReporterAgent(
                             "cmdline",
                             "memory_info",
                             "memory_full_info",
+                            "num_fds",
                         ]
                     )
                 )
@@ -566,6 +573,7 @@ class ReporterAgent(
                     "cmdline",
                     "memory_info",
                     "memory_full_info",
+                    "num_fds",
                 ]
             )
 
@@ -582,6 +590,7 @@ class ReporterAgent(
                 "cmdline",
                 "memory_info",
                 "memory_full_info",
+                "num_fds",
             ]
         )
 
@@ -591,7 +600,10 @@ class ReporterAgent(
             load = (cpu_percent, cpu_percent, cpu_percent)
         else:
             load = os.getloadavg()
-        per_cpu_load = tuple((round(x / self._cpu_counts[0], 2) for x in load))
+        if self._cpu_counts[0] > 0:
+            per_cpu_load = tuple((round(x / self._cpu_counts[0], 2) for x in load))
+        else:
+            per_cpu_load = None
         return load, per_cpu_load
 
     @staticmethod
@@ -688,6 +700,13 @@ class ReporterAgent(
                 tags=tags,
             )
         )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_num_fds"],
+                value=0,
+                tags=tags,
+            )
+        )
         return records
 
     def _generate_system_stats_record(
@@ -709,6 +728,7 @@ class ReporterAgent(
         total_rss = 0.0
         total_uss = 0.0
         total_shm = 0.0
+        total_num_fds = 0
 
         for stat in stats:
             total_cpu_percentage += float(stat.get("cpu_percent", 0.0))  # noqa
@@ -721,6 +741,7 @@ class ReporterAgent(
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
                 total_uss += float(mem_full_info.uss) / 1.0e6
+            total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
         if pid:
@@ -756,6 +777,13 @@ class ReporterAgent(
                     tags=tags,
                 )
             )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_num_fds"],
+                value=total_num_fds,
+                tags=tags,
+            )
+        )
 
         return records
 

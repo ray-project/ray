@@ -42,7 +42,6 @@ namespace ray {
 using raylet::ClusterTaskManager;
 using raylet::NoopLocalTaskManager;
 
-class GcsClientTest;
 namespace gcs {
 
 struct GcsServerConfig {
@@ -98,6 +97,9 @@ class GcsServer {
   /// Check if gcs server is stopped.
   bool IsStopped() const { return is_stopped_; }
 
+  /// Retrieve cluster ID
+  const ClusterID &GetClusterId() const { return rpc_server_.GetClusterId(); }
+
   // TODO(vitsai): string <=> enum generator macro
   enum class StorageType {
     UNKNOWN = 0,
@@ -107,6 +109,11 @@ class GcsServer {
 
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
+
+  void UpdateGcsResourceManagerInTest(const rpc::ResourcesData &resources) {
+    RAY_CHECK(gcs_resource_manager_ != nullptr);
+    gcs_resource_manager_->UpdateFromResourceView(resources);
+  }
 
  protected:
   /// Generate the redis client options
@@ -148,7 +155,7 @@ class GcsServer {
   void InitGcsTaskManager();
 
   /// Initialize gcs autoscaling manager.
-  void InitGcsAutoscalerStateManager();
+  void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
 
   /// Initialize usage stats client.
   void InitUsageStatsClient();
@@ -173,8 +180,6 @@ class GcsServer {
 
   /// Initialize monitor service.
   void InitMonitorServer();
-
-  friend class ray::GcsClientTest;
 
  private:
   /// Gets the type of KV storage to use from config.
@@ -252,7 +257,7 @@ class GcsServer {
   /// Monitor service for monitor server
   std::unique_ptr<rpc::MonitorGrpcService> monitor_grpc_service_;
 
-  /// Ray Syncer realted fields.
+  /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
   std::unique_ptr<std::thread> ray_syncer_thread_;

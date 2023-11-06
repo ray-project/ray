@@ -4,27 +4,24 @@ import requests
 import ray
 from ray import serve
 from ray.dag import InputNode
-from ray.serve.handle import RayServeHandle
+from ray.dag.utils import _DAGNodeNameGenerator
+from ray.serve._private import api as _private_api
 from ray.serve._private.deployment_graph_build import (
-    transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
-    transform_serve_dag_to_serve_executor_dag,
     get_pipeline_input_node,
+    transform_ray_dag_to_serve_dag,
+    transform_serve_dag_to_serve_executor_dag,
 )
-from ray.serve.tests.resources.test_modules import (
-    Model,
-    NESTED_HANDLE_KEY,
-    combine,
-)
-from ray.serve.tests.resources.test_dags import (
-    get_simple_class_with_class_method_dag,
+from ray.serve.handle import DeploymentHandle
+from ray.serve.tests.common.test_dags import (
     get_func_class_with_class_method_dag,
     get_multi_instantiation_class_deployment_in_init_args_dag,
-    get_shared_deployment_handle_dag,
     get_multi_instantiation_class_nested_deployment_arg_dag,
+    get_shared_deployment_handle_dag,
+    get_simple_class_with_class_method_dag,
     get_simple_func_dag,
 )
-from ray.dag.utils import _DAGNodeNameGenerator
+from ray.serve.tests.common.test_modules import NESTED_HANDLE_KEY, Model, combine
 
 pytestmark = pytest.mark.asyncio
 
@@ -37,10 +34,10 @@ def _validate_consistent_python_output(
     2) Original executable Ray DAG
     3) Deployment handle return from serve public API get_deployment()
     """
-    deployment_handle = deployment.get_handle()
+    deployment_handle = deployment._get_handle()
     assert ray.get(deployment_handle.remote(input)) == output
     assert ray.get(dag.execute(input)) == output
-    handle_by_name = serve.get_deployment(handle_by_name).get_handle()
+    handle_by_name = _private_api.get_deployment(handle_by_name)._get_handle()
     assert ray.get(handle_by_name.remote(input)) == output
 
 
@@ -57,9 +54,9 @@ def test_build_simple_func_dag(serve_instance):
     serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
-    deployments[0].deploy()
+    deployments[0]._deploy()
 
-    deployment_handle = deployments[0].get_handle()
+    deployment_handle = deployments[0]._get_handle()
     # Because the bound kwarg is stored in dag, so it has to be explicitly passed in.
     assert ray.get(deployment_handle.remote(1, 2, kwargs_output=1)) == 4
     assert ray.get(ray_dag.execute([1, 2])) == 4
@@ -74,7 +71,7 @@ def test_simple_single_class(serve_instance):
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
-    deployments[0].deploy()
+    deployments[0]._deploy()
     _validate_consistent_python_output(
         deployments[0], ray_dag, "Model", input=1, output=0.6
     )
@@ -100,10 +97,10 @@ async def test_func_class_with_class_method_dag(serve_instance):
     )
     assert len(deployments) == 3
     for deployment in deployments:
-        deployment.deploy()
+        deployment._deploy()
 
     assert ray.get(ray_dag.execute(1, 2, 3)) == 8
-    assert ray.get(await serve_executor_root_dag.execute(1, 2, 3)) == 8
+    assert await serve_executor_root_dag.execute(1, 2, 3) == 8
 
 
 def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
@@ -122,7 +119,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 3
     for deployment in deployments:
-        deployment.deploy()
+        deployment._deploy()
 
     _validate_consistent_python_output(
         deployments[2], ray_dag, "Combine", input=1, output=5
@@ -144,7 +141,7 @@ def test_shared_deployment_handle(serve_instance):
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 2
     for deployment in deployments:
-        deployment.deploy()
+        deployment._deploy()
 
     _validate_consistent_python_output(
         deployments[1], ray_dag, "Combine", input=1, output=4
@@ -170,14 +167,14 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     # with correct handle
     combine_deployment = deployments[2]
     init_arg_handle = combine_deployment.init_args[0]
-    assert isinstance(init_arg_handle, RayServeHandle)
+    assert isinstance(init_arg_handle, DeploymentHandle)
     assert init_arg_handle.deployment_name == "Model"
     init_kwarg_handle = combine_deployment.init_kwargs["m2"][NESTED_HANDLE_KEY]
-    assert isinstance(init_kwarg_handle, RayServeHandle)
+    assert isinstance(init_kwarg_handle, DeploymentHandle)
     assert init_kwarg_handle.deployment_name == "Model_1"
 
     for deployment in deployments:
-        deployment.deploy()
+        deployment._deploy()
 
     _validate_consistent_python_output(
         deployments[2], ray_dag, "Combine", input=1, output=5
@@ -237,11 +234,11 @@ def test_unique_name_reset_upon_build(serve_instance):
 def test_deployment_function_node_build(serve_instance):
     @serve.deployment
     class Forward:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle: DeploymentHandle):
             self.handle = handle
 
         async def __call__(self, *args, **kwargs):
-            return await (await self.handle.remote())
+            return await self.handle.remote()
 
     @serve.deployment
     def no_op():

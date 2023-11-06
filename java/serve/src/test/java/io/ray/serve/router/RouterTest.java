@@ -9,6 +9,7 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorNameList;
@@ -37,6 +38,7 @@ public class RouterTest {
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
+      String appName = "app1";
       Map<String, String> config = new HashMap<>();
       config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
@@ -49,7 +51,9 @@ public class RouterTest {
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs =
-          new Object[] {deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
+          new Object[] {
+            deploymentName, replicaTag, controllerName, new Object(), new HashMap<>(), appName
+          };
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
@@ -66,10 +70,10 @@ public class RouterTest {
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config, null);
 
       // Router
-      Router router = new Router(controllerHandle, deploymentName);
+      Router router = new Router(controllerHandle, new DeploymentId(deploymentName, appName));
       ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
       router.getReplicaSet().updateWorkerReplicas(builder.build());

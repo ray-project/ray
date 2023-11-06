@@ -1,13 +1,12 @@
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.dag import DAGNode
 from ray.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.dag.format_utils import get_dag_node_str
-
-from ray.serve.deployment import Deployment
-from ray.serve.handle import DeploymentHandle, RayServeHandle
 from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
 from ray.serve._private.deployment_method_node import DeploymentMethodNode
+from ray.serve.deployment import Deployment
+from ray.serve.handle import DeploymentHandle, RayServeHandle
 
 
 class DeploymentNode(DAGNode):
@@ -35,11 +34,11 @@ class DeploymentNode(DAGNode):
         self._deployment = deployment
         if RAY_SERVE_ENABLE_NEW_HANDLE_API:
             self._deployment_handle = DeploymentHandle(
-                self._deployment.name, self._app_name
+                self._deployment.name, self._app_name, sync=False
             )
         else:
             self._deployment_handle = RayServeHandle(
-                self._deployment.name, self._app_name
+                self._deployment.name, self._app_name, sync=False
             )
 
     def _copy_impl(

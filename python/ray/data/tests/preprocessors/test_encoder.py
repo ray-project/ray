@@ -473,6 +473,25 @@ def test_label_encoder():
     )
     assert out_df.equals(expected_df)
 
+    # Inverse transform data.
+    inverse_transformed = encoder.inverse_transform(transformed)
+    inverse_df = inverse_transformed.to_pandas()
+
+    assert inverse_df.equals(in_df)
+
+    # Inverse transform without fitting.
+    new_encoder = LabelEncoder("A")
+
+    with pytest.raises(RuntimeError):
+        new_encoder.inverse_transform(ds)
+
+    # Inverse transform on fitted preprocessor that hasn't transformed anything.
+    new_encoder.fit(ds)
+    inv_non_fitted = new_encoder.inverse_transform(transformed)
+    inv_non_fitted_df = inv_non_fitted.to_pandas()
+
+    assert inv_non_fitted_df.equals(in_df)
+
     # Transform batch.
     pred_col_a = ["blue", "red", "yellow"]
     pred_col_b = ["cold", "unknown", None]

@@ -7,6 +7,13 @@ from unittest.mock import MagicMock, patch
 from ray.autoscaler._private.vsphere.node_provider import VsphereNodeProvider
 from com.vmware.vcenter_client import VM
 from com.vmware.vcenter.vm_client import Power as HardPower
+from ray.autoscaler._private.vsphere.config import (
+    update_vsphere_configs,
+    validate_frozen_vm_configs,
+)
+from ray.autoscaler._private.vsphere.gpu_utils import (
+    split_vm_2_gpu_ids_map,
+)
 
 _CLUSTER_NAME = "test"
 _PROVIDER_CONFIG = {
@@ -27,6 +34,9 @@ def mock_vsphere_node_provider():
         self.cluster_name = cluster_name
         self.tag_cache = {}
         self.cached_nodes = {}
+        self.vsphere_config = {}
+        self.vsphere_credentials = {}
+        self.pyvmomi_sdk_provider = MagicMock()
 
     with patch.object(VsphereNodeProvider, "__init__", __init__):
         node_provider = VsphereNodeProvider(_PROVIDER_CONFIG, _CLUSTER_NAME)
@@ -123,16 +133,6 @@ def test_non_terminated_nodes_with_multiple_filters_not_matching():
     assert len(nodes) == 0
 
 
-def test_is_running():
-    """Should return true if a cached node is in POWERED_ON state"""
-    vnp = mock_vsphere_node_provider()
-    node1 = MagicMock()
-    node1.power_state = HardPower.State.POWERED_ON
-    vnp.cached_nodes = {"node1": node1}
-    is_running = vnp.is_running("node1")
-    assert is_running is True
-
-
 def test_is_terminated():
     """Should return true if a cached node is not in POWERED_ON state"""
     vnp = mock_vsphere_node_provider()
@@ -158,16 +158,6 @@ def test_node_tags():
 
     tags = vnp.node_tags("test_vm_id_1")
     assert tags == vnp.tag_cache["test_vm_id_1"]
-
-
-def test_external_ip():
-    vnp = mock_vsphere_node_provider()
-    vm = MagicMock()
-    vm.ip_address = "10.123.234.255"
-    vnp.vsphere_sdk_client.vcenter.vm.guest.Identity.get.return_value = vm
-
-    ip_address = vnp.external_ip("test_id")
-    assert ip_address == "10.123.234.255"
 
 
 def test_create_nodes():
@@ -237,10 +227,13 @@ def test_create_instant_clone_node(mock_wait_task, mock_ic_spec, mock_relo_spec)
     vm_clone_from = MagicMock(vm="test-1")
     node_config = {"resource_pool": "rp1", "datastore": "ds1", "resources": {}}
     tags = {"key": "value"}
+    gpu_ids_map = None
 
     mock_ic_spec.return_value = MagicMock()
     mock_relo_spec.return_value = MagicMock()
-    vm = vnp.create_instant_clone_node(vm_clone_from, "target-vm", node_config, tags)
+    vm = vnp.create_instant_clone_node(
+        vm_clone_from, "target-vm", node_config, tags, gpu_ids_map
+    )
     # assert
     assert vm == "test VM"
 
@@ -271,6 +264,7 @@ def test__create_node():
     vnp.attach_tag = MagicMock(return_value=None)
     vnp.get_frozen_vm_obj = MagicMock(return_value=MagicMock())
     vnp.delete_vm = MagicMock(return_value=None)
+    vnp.create_new_or_fetch_existing_frozen_vms = MagicMock(return_value={"vm": "vm-d"})
     vnp.lock = RLock()
 
     created_nodes_dict = vnp._create_node(
@@ -361,6 +355,223 @@ def test__get_node():
     vnp.vsphere_sdk_client.vcenter.VM.list.return_value = []
     vm = vnp._get_node("node_id_1")
     assert vm is None
+
+
+def test_create_new_or_fetch_existing_frozen_vms():
+    vnp = mock_vsphere_node_provider()
+    vnp.get_frozen_vm_obj = MagicMock()
+    vnp.check_frozen_vm_status = MagicMock()
+    vnp.choose_frozen_vm_obj = MagicMock()
+    vnp.create_frozen_vm_from_ovf = MagicMock()
+    vnp.create_frozen_vm_on_each_host = MagicMock()
+    vnp.initialize_frozen_vm_scheduler = MagicMock()
+
+    node_config = {"frozen_vm": {"name": "frozen"}}
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.check_frozen_vm_status.assert_called()
+
+    node_config = {"frozen_vm": {"name": "frozen", "resource_pool": "frozen-rp"}}
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.initialize_frozen_vm_scheduler.assert_called()
+
+    node_config = {"frozen_vm": {"name": "frozen", "library_item": "frozen"}}
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.create_frozen_vm_from_ovf.assert_called()
+
+    node_config = {
+        "frozen_vm": {
+            "name": "frozen",
+            "library_item": "frozen",
+            "resource_pool": "frozen-rp",
+        }
+    }
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.create_frozen_vm_on_each_host.assert_called()
+    vnp.initialize_frozen_vm_scheduler.assert_called()
+
+
+def test_update_vsphere_configs():
+    input_config = {
+        "available_node_types": {
+            "ray.head.default": {
+                "resources": {},
+                "node_config": {"resource_pool": "ray", "datastore": "vsan"},
+            },
+            "worker": {"resources": {}, "node_config": {}},
+        },
+        "provider": {"vsphere_config": {}},
+        "head_node_type": "ray.head.default",
+    }
+
+    with pytest.raises(KeyError):
+        update_vsphere_configs(input_config)
+
+    input_config = {
+        "provider": {
+            "vsphere_config": {
+                "frozen_vm": {
+                    "name": "frozen",
+                    "resource_pool": "frozen-rp",
+                    "library_item": "frozen",
+                    "cluster": "cluster",
+                    "datastore": "vsanDatastore",
+                }
+            }
+        },
+        "available_node_types": {
+            "ray.head.default": {
+                "resources": {},
+                "node_config": {"resource_pool": "ray", "datastore": "vsan"},
+            },
+            "worker": {"resources": {}, "node_config": {}},
+            "worker1": {"resources": {}, "node_config": {}},
+        },
+        "head_node_type": "ray.head.default",
+    }
+
+    update_vsphere_configs(input_config)
+    assert (
+        "frozen_vm"
+        in input_config["available_node_types"]["ray.head.default"]["node_config"]
+    )
+    assert "frozen_vm" in input_config["available_node_types"]["worker"]["node_config"]
+    assert "frozen_vm" in input_config["available_node_types"]["worker1"]["node_config"]
+    assert (
+        input_config["available_node_types"]["worker"]["node_config"]["frozen_vm"][
+            "name"
+        ]
+        == "frozen"
+    )
+
+
+def test_validate_frozen_vm_configs():
+    # Test a valid case with OVF deployment
+    config = {
+        "name": "single-frozen-vm",
+        "library_item": "frozen-vm-template",
+        "cluster": "vsanCluster",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test a valid case with existing frozen VM
+    config = {"name": "existing-single-frozen-vm"}
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test a valid case with OVF deployment and resource pool
+    config = {
+        "name": "frozen-vm-prefix",
+        "library_item": "frozen-vm-template",
+        "resource_pool": "frozen-vm-resource-pool",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test a valid case with existing resource pool
+    config = {"resource_pool": "frozen-vm-resource-pool"}
+    assert validate_frozen_vm_configs(config) is None
+
+    # Test an invalid case missing everything for OVF deployment
+    with pytest.raises(
+        ValueError,
+        match="'datastore' is not given when trying to deploy the frozen VM from OVF.",
+    ):
+        config = {
+            "library_item": "frozen-vm-template",
+        }
+        validate_frozen_vm_configs(config)
+
+    # Test an invalid case missing datastore for OVF deployment
+    with pytest.raises(
+        ValueError,
+        match="'datastore' is not given when trying to deploy the frozen VM from OVF.",
+    ):
+        config = {
+            "name": "single-frozen-vm",
+            "library_item": "frozen-vm-template",
+            "cluster": "vsanCluster",
+        }
+        validate_frozen_vm_configs(config)
+
+    # Test an invalid case missing cluster and resource pool for OVF deployment
+    with pytest.raises(
+        ValueError,
+        match="both 'cluster' and 'resource_pool' are missing when trying to deploy "
+        "the frozen VM from OVF, at least one should be given.",
+    ):
+        config = {
+            "name": "single-frozen-vm",
+            "library_item": "frozen-vm-template",
+            "datastore": "vsanDatastore",
+        }
+        validate_frozen_vm_configs(config)
+
+    # Test an invalid case missing name for OVF deployment
+    with pytest.raises(
+        ValueError, match="'name' must be given when deploying the frozen VM from OVF."
+    ):
+        config = {
+            "library_item": "frozen-vm-template",
+            "cluster": "vsanCluster",
+            "datastore": "vsanDatastore",
+        }
+        validate_frozen_vm_configs(config)
+
+    # Test an valid case with redundant data
+    config = {
+        "name": "single-frozen-vm",
+        "library_item": "frozen-vm-template",
+        "resource_pool": "frozen-vm-resource-pool",
+        "cluster": "vsanCluster",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
+
+    # Another case with redundant data
+    config = {
+        "name": "single-frozen-vm",
+        "resource_pool": "frozen-vm-resource-pool",
+        "cluster": "vsanCluster",
+        "datastore": "vsanDatastore",
+    }
+    assert validate_frozen_vm_configs(config) is None
+
+
+def test_split_vm_2_gpu_ids_map():
+    # Test a valid case 1
+    vm_2_gpu_ids_map = {
+        "frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1", "0000:3b:00.2"],
+        "frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"],
+        "frozen-vm-3": ["0000:3b:00.5"],
+    }
+    requested_gpu_num = 1
+    node_number = 3
+    expected_result = [
+        {"frozen-vm-1": ["0000:3b:00.0"]},
+        {"frozen-vm-1": ["0000:3b:00.1"]},
+        {"frozen-vm-1": ["0000:3b:00.2"]},
+        {"frozen-vm-2": ["0000:3b:00.3"]},
+        {"frozen-vm-2": ["0000:3b:00.4"]},
+        {"frozen-vm-3": ["0000:3b:00.5"]},
+    ]
+
+    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
+    assert result == expected_result
+
+    # Test a valid case 2
+    requested_gpu_num = 2
+    node_number = 2
+    expected_result = [
+        {"frozen-vm-1": ["0000:3b:00.0", "0000:3b:00.1"]},
+        {"frozen-vm-2": ["0000:3b:00.3", "0000:3b:00.4"]},
+    ]
+    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
+    assert result == expected_result
+
+    # Test an invalid case: No enough available GPU cards to assigned to nodes
+    node_number = 30
+    result = split_vm_2_gpu_ids_map(vm_2_gpu_ids_map, requested_gpu_num, node_number)
+    assert result == []
 
 
 if __name__ == "__main__":

@@ -94,7 +94,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   absl::Mutex mu_;
   /// A map of actor task IDs -> is_canceled.
   // Pending means tasks are queued or running.
-  absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
 
   friend class SchedulingQueueTest;
 };

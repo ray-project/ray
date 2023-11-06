@@ -1,5 +1,6 @@
-from ray import serve
 import asyncio
+
+from ray import serve
 
 
 @serve.deployment

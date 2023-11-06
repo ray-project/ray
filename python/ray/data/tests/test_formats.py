@@ -190,6 +190,21 @@ def test_from_torch(shutdown_only, tmp_path):
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
 
+    import torch
+
+    class IterMNIST(torch.utils.data.IterableDataset):
+        def __len__(self):
+            return len(torch_dataset)
+
+        def __iter__(self):
+            return iter(torch_dataset)
+
+    iter_torch_dataset = IterMNIST()
+    ray_dataset = ray.data.from_torch(iter_torch_dataset)
+
+    actual_data = extract_values("item", list(ray_dataset.take_all()))
+    assert actual_data == expected_data
+
 
 class NodeLoggerOutputDatasource(Datasource):
     """A writable datasource that logs node IDs of write tasks, for testing."""
@@ -304,17 +319,19 @@ def test_get_reader(shutdown_only):
 
     head_node_id = ray.get_runtime_context().get_node_id()
 
-    # Issue read so `_get_reader` being executed.
+    # Issue read so `_get_datasource_or_legacy_reader` being executed.
     ray.data.range(10).materialize()
 
-    # Verify `_get_reader` being executed on same node (head node).
+    # Verify `_get_datasource_or_legacy_reader` being executed on same node (head node).
     def verify_get_reader():
         from ray.util.state import list_tasks
 
-        task_states = list_tasks(filters=[("name", "=", "_get_reader")])
+        task_states = list_tasks(
+            filters=[("name", "=", "_get_datasource_or_legacy_reader")]
+        )
         # Verify only one task being executed on same node.
         assert len(task_states) == 1
-        assert task_states[0]["name"] == "_get_reader"
+        assert task_states[0]["name"] == "_get_datasource_or_legacy_reader"
         assert task_states[0]["node_id"] == head_node_id
         return True
 

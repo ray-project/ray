@@ -20,7 +20,7 @@ def test_input_validation(shutdown_only):
             pass
 
     a = A.remote()
-    with pytest.raises(TypeError, match="force=True is not supported"):
+    with pytest.raises(ValueError, match="force=True is not supported"):
         ray.cancel(a.f.remote(), force=True)
 
 

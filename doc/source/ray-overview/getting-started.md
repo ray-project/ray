@@ -1,6 +1,3 @@
-```{include} /_includes/overview/announcement.md
-```
-
 (gentle-intro)=
 
 # Getting Started
@@ -12,7 +9,7 @@ Use Ray to scale applications on your laptop or the cloud. Choose the right guid
 
 
 (libraries-quickstart)=
-## Ray AI Runtime Libraries Quickstart
+## Ray AI Libraries Quickstart
 
 Use individual libraries for ML workloads. Click on the dropdowns for your workload below.
 
@@ -690,7 +687,4 @@ Learn more about Ray State APIs
 `````
 
 ```{include} learn-more.md
-```
-
-```{include} /_includes/overview/announcement_bottom.md
 ```

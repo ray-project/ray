@@ -1,42 +1,41 @@
+import json
 import os
 import re
-import sys
-import yaml
-import time
-import json
 import signal
+import subprocess
+import sys
+import time
+from tempfile import NamedTemporaryFile
+from typing import Pattern
+
+import grpc
 import pytest
 import requests
-import subprocess
-from typing import Pattern
-from pydantic import BaseModel
-from tempfile import NamedTemporaryFile
-
+import yaml
 
 import ray
-from ray.util.state import list_actors
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve.tests.conftest import check_ray_stop
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    SERVE_NAMESPACE,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-)
+from ray._private.pydantic_compat import BaseModel
+from ray._private.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-import grpc
-from ray.serve.tests.utils import (
-    ping_grpc_list_applications,
-    ping_grpc_healthz,
-    ping_grpc_call_method,
+from ray.serve.handle import DeploymentHandle
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_DEPLOY_GROUP_PINNED_URI,
+)
+from ray.serve.tests.common.utils import (
+    ping_fruit_stand,
     ping_grpc_another_method,
+    ping_grpc_call_method,
+    ping_grpc_healthz,
+    ping_grpc_list_applications,
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
-    ping_fruit_stand,
 )
+from ray.serve.tests.conftest import check_ray_stop
+from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray.util.state import list_actors
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -389,16 +388,14 @@ def test_run_runtime_env(ray_start_stop):
                 "missing_runtime_env.yaml",
             ),
             "--runtime-env-json",
-            (
-                '{"py_modules": ["https://github.com/ray-project/test_deploy_group'
-                '/archive/67971777e225600720f91f618cdfe71fc47f60ee.zip"],'
-                '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
+            json.dumps(
+                {
+                    "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
+                    "working_dir": "http://nonexistentlink-q490123950ni34t",
+                }
             ),
             "--working-dir",
-            (
-                "https://github.com/ray-project/test_dag/archive/"
-                "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
-            ),
+            TEST_DAG_PINNED_URI,
         ]
     )
     wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
@@ -492,11 +489,11 @@ def global_f(*args):
 
 @serve.deployment
 class NoArgDriver:
-    def __init__(self, dag: RayServeDAGHandle):
-        self.dag = dag
+    def __init__(self, h: DeploymentHandle):
+        self._h = h
 
     async def __call__(self):
-        return await (await self.dag.remote())
+        return await self._h.remote()
 
 
 TestBuildFNode = global_f.bind()
@@ -806,9 +803,7 @@ def test_run_config_request_timeout():
     # the 0.1 request_timeout_s set in in the config yaml
     wait_for_condition(
         lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").status_code
-        == 408
-        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
-        else 500,
+        == 408,
     )
 
     # Ensure the http request returned the correct response when the deployment runs

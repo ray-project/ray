@@ -1,15 +1,15 @@
 import sys
-import pytest
 
-from ray.serve._private import constants as serve_constants
+import pytest
 
 import ray
 from ray import serve
-from ray.serve.drivers import DAGDriver
-from ray.dag.input_node import InputNode
-from ray.serve._private.common import DeploymentID, ReplicaState
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.dag.input_node import InputNode
+from ray.serve._private import constants as serve_constants
+from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve.drivers import DAGDriver
 
 # Magic number to use for speed up scale from 0 replica
 serve_constants.HANDLE_METRIC_PUSH_INTERVAL_S = 1
@@ -52,12 +52,11 @@ def test_autoscaling_0_replica(serve_instance):
             autoscaling_config=autoscaling_config,
         ).bind(output)
     dag_handle = serve.run(serve_dag)
-    assert 2 == ray.get(dag_handle.predict.remote(1))
+    assert 2 == dag_handle.predict.remote(1).result()
 
 
 @pytest.mark.parametrize("min_replicas", [0, 1])
 def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
-
     signal = SignalActor.remote()
 
     autoscaling_config = {
@@ -142,7 +141,6 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
 
 
 def test_autoscaling_with_ensemble_nodes(serve_instance):
-
     signal = SignalActor.remote()
     autoscaling_config = {
         "metrics_interval_s": 0.1,
