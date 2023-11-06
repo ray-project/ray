@@ -92,6 +92,7 @@ static int GetReferenceCount(const std::string serialized_runtime_env) {
 class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
   void GetOrCreateRuntimeEnv(const JobID &job_id,
+                             const WorkerID &worker_id,
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              const std::string &serialized_allocated_resource_instances,
@@ -111,6 +112,7 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   };
 
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                  const WorkerID &worker_id,
                                   DeleteRuntimeEnvIfPossibleCallback callback) override {
     auto it = runtime_env_reference.find(serialized_runtime_env);
     RAY_CHECK(it != runtime_env_reference.end());
