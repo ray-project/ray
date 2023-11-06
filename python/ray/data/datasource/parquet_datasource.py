@@ -202,7 +202,6 @@ class ParquetDatasource(Datasource):
 
         self._local_scheduling = None
         if not self._supports_distributed_reads:
-            import ray
             from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
             self._local_scheduling = NodeAffinitySchedulingStrategy(
