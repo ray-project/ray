@@ -3281,7 +3281,7 @@ def remote(
             By default it is empty.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
-            See `ray.util.accelerators` for accelerator types.
+            See :ref:`accelerator types <accelerator_types>`.
         memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the

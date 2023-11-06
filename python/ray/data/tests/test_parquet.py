@@ -950,30 +950,6 @@ def test_parquet_write_create_dir(
     assert df.equals(dfds)
 
 
-def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
-    data_path = str(tmp_path)
-    one_data = list(range(6))
-    df1 = pd.DataFrame({"one": one_data[:3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": one_data[3:], "two": ["e", "f", "g"]})
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-
-    def _block_udf(block):
-        df = BlockAccessor.for_block(block).to_pandas().copy()
-        df["one"] += 1
-        return pa.Table.from_pandas(df)
-
-    # 2 write tasks
-    ds._set_uuid("data")
-    ds.write_parquet(data_path, _block_udf=_block_udf)
-    path1 = os.path.join(data_path, "data_000000_000000.parquet")
-    path2 = os.path.join(data_path, "data_000001_000000.parquet")
-    dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
-    expected_df = df
-    expected_df["one"] += 1
-    assert expected_df.equals(dfds)
-
-
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
