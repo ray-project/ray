@@ -13,6 +13,7 @@ from typing import (
 
 import numpy as np
 
+import ray
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
