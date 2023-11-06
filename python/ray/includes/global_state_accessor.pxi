@@ -180,7 +180,8 @@ cdef class GlobalStateAccessor:
         cdef CWorkerID cworker_id = CWorkerID.FromBinary(worker_id.binary())
         cdef c_uint32_t cdebugger_port = debugger_port
         with nogil:
-            result = self.inner.get().UpdateWorkerDebuggerPort(cworker_id, cdebugger_port)
+            result = self.inner.get().UpdateWorkerDebuggerPort(cworker_id,
+                cdebugger_port)
         return result
 
     def get_placement_group_table(self):

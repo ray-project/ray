@@ -251,11 +251,18 @@ bool GlobalStateAccessor::UpdateWorkerDebuggerPort(const WorkerID &worker_id,
     RAY_CHECK_OK(gcs_client_->Workers().AsyncUpdateDebuggerPort(
         worker_id, debugger_port, [&promise](const Status &status) {
           RAY_CHECK_OK(status);
-          promise.set_value(true);
+          promise.set_value(status.ok());
         }));
   }
-  promise.get_future().get();
-  return true;
+  // Setup a timeout for the update request
+  auto future = promise.get_future();
+  if (future.wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    RAY_LOG(FATAL) << "Failed to update the debugger port within the timeout setting.";
+    return false;
+  }
+  return future.get();
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllPlacementGroupInfo() {
