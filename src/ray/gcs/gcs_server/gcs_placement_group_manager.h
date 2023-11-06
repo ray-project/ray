@@ -408,7 +408,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                                     GcsResourceManager &gcs_resource_manager);
 
  private:
-  /// Push a placement group to pending queue.
   ///
   /// \param pg The placementgroup we are adding
   /// \param rank The rank for this placement group. Semantically it's the time
@@ -425,23 +424,27 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
 
+  void MarkSchedulingStarted() { is_scheduling_.store(true); }
+
   /// Mark the manager that there's a placement group scheduling going on.
   void MarkSchedulingStarted(const PlacementGroupID placement_group_id) {
+    MarkSchedulingStarted();
     scheduling_in_progress_id_ = placement_group_id;
   }
 
   /// Mark the manager that there's no more placement group scheduling going on.
-  void MarkSchedulingDone() { scheduling_in_progress_id_ = PlacementGroupID::Nil(); }
+  void MarkSchedulingDone() {
+    is_scheduling_.store(false);
+    scheduling_in_progress_id_ = PlacementGroupID::Nil();
+  }
 
   /// Check if the placement group of a given id is scheduling.
   bool IsSchedulingInProgress(const PlacementGroupID &placement_group_id) const {
-    return scheduling_in_progress_id_ == placement_group_id;
+    return scheduling_in_progress_id_ == placement_group_id && is_scheduling_.load();
   }
 
   /// Check if there's any placement group scheduling going on.
-  bool IsSchedulingInProgress() const {
-    return scheduling_in_progress_id_ != PlacementGroupID::Nil();
-  }
+  bool IsSchedulingInProgress() const { return is_scheduling_.load(); }
 
   // Method that is invoked every second.
   void Tick();
@@ -503,6 +506,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// TODO(sang): Currently, only one placement group can be scheduled at a time.
   /// We should probably support concurrenet creation (or batching).
   PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
+
+  std::atomic<bool> is_scheduling_;
 
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;

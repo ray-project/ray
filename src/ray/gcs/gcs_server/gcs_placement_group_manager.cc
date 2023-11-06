@@ -159,6 +159,7 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
+      is_scheduling_(false),
       gcs_resource_manager_(gcs_resource_manager),
       get_ray_namespace_(get_ray_namespace) {
   placement_group_state_counter_.reset(
@@ -171,12 +172,13 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
             {{"State", rpc::PlacementGroupTableData::PlacementGroupState_Name(key)},
              {"Source", "gcs"}});
       });
-  Tick();
 }
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context, GcsResourceManager &gcs_resource_manager)
-    : io_context_(io_context), gcs_resource_manager_(gcs_resource_manager) {}
+    : io_context_(io_context),
+      is_scheduling_(false),
+      gcs_resource_manager_(gcs_resource_manager) {}
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
     const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
@@ -380,7 +382,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   }
 
   bool is_new_placement_group_scheduled = false;
-  MarkSchedulingStarted(placement_group_id);
+  MarkSchedulingStarted();
   while (!pending_placement_groups_.empty() && !is_new_placement_group_scheduled) {
     auto iter = pending_placement_groups_.begin();
     if (iter->first > absl::GetCurrentTimeNanos()) {
@@ -400,6 +402,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
       auto stats = placement_group->GetMutableStats();
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
       stats->set_scheduling_started_time_ns(absl::GetCurrentTimeNanos());
+      MarkSchedulingStarted(placement_group_id);
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
           placement_group,
           [this, backoff](std::shared_ptr<GcsPlacementGroup> placement_group,
@@ -861,18 +864,6 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
   }
 }
 
-void GcsPlacementGroupManager::Tick() {
-  UpdatePlacementGroupLoad();
-  // To avoid scheduling exhaution in some race conditions.
-  // Note that we don't currently have a known race condition that requires this, but we
-  // added as a safety check. https://github.com/ray-project/ray/pull/18419
-  SchedulePendingPlacementGroups();
-  execute_after(
-      io_context_,
-      [this] { Tick(); },
-      std::chrono::milliseconds(1000) /* milliseconds */);
-}
-
 std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementGroupLoad()
     const {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
@@ -919,12 +910,6 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
   }
 
   return placement_group_load;
-}
-
-void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
-  // TODO(rickyx): We should remove this, no other callers other than autoscaler
-  // use this info.
-  gcs_resource_manager_.UpdatePlacementGroupLoad(GetPlacementGroupLoad());
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
