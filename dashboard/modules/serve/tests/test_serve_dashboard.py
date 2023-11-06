@@ -219,7 +219,7 @@ def test_delete_multi_app(ray_start_stop, url):
                 "runtime_env": {
                     "working_dir": (
                         "https://github.com/ray-project/test_dag/archive/"
-                        "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
+                        "1a0ca74268de85affc6ead99121e2de7a01fa360.zip"
                     )
                 },
                 "deployments": [
