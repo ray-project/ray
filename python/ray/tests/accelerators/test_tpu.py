@@ -74,6 +74,50 @@ def test_autodetect_tpu_accelerator_type(
 @pytest.mark.parametrize(
     "test_case",
     [
+        ("gce", "0", 0),
+        ("gke", "0", 0),
+   ],
+)
+@patch("requests.get")
+@patch("os.getenv")
+def test_get_tpu_worker_id(mock_os, mock_request, test_case):
+    gce_or_gke, worker_id, expected_value = test_case
+    if gce_or_gke == "gce":
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = worker_id
+        mock_request.return_value = mock_response
+        mock_os.return_value = None
+    else:
+        mock_os.return_value = worker_id
+    assert TPUAcceleratorManager.get_tpu_worker_id() == expected_value
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ("gce", "my-tpu"),
+        ("gke", "my-tpu"),
+   ],
+)
+@patch("requests.get")
+@patch("os.getenv")
+def test_get_tpu_unique_id(mock_os, mock_request, test_case):
+    gce_or_gke, worker_id = test_case
+    if gce_or_gke == "gce":
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = worker_id
+        mock_request.return_value = mock_response
+        mock_os.return_value = None
+    else:
+        mock_os.return_value = worker_id
+    assert TPUAcceleratorManager.get_tpu_id() == worker_id
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
         ("gce", "not-a-valid-version"),
         ("gce", "vNOTVALID-8"),
         ("gce", "230498230948230948"),

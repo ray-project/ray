@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 TPU_VALID_CHIP_OPTIONS = (1, 2, 4)
 GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
+GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
+GKE_TPU_ID_ENV_VAR = "TPU_ID"
 
 # Constants for accessing the `accelerator-type` from TPU VM
 # instance metadata.
@@ -214,7 +216,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             v4-16.
 
         """
-        # GKE-based check
+        # Start with GKE-based check
         accelerator_type = os.getenv(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
         if not accelerator_type:
             # GCE-based VM check
@@ -227,15 +229,28 @@ class TPUAcceleratorManager(AcceleratorManager):
         return None
 
     @staticmethod
-    def get_tpu_id() -> str:
+    def get_tpu_id() -> Optional[str]:
         """Return the name of the TPU pod that this worker node is a part of."""
-        return _get_tpu_metadata(key=GCE_TPU_INSTANCE_ID_KEY)
+        try:
+            # Start with GKE-based check
+            tpu_id = os.getenv(GKE_TPU_ID_ENV_VAR, None)
+            if not tpu_id:
+                # GCE-based VM check
+                tpu_id = _get_tpu_metadata(key=GCE_TPU_INSTANCE_ID_KEY)
+            return tpu_id
+        except ValueError as e:
+            logging.debug("Could not get TPU worker id: %s", e)
+            return None
 
     @staticmethod
     def get_tpu_worker_id() -> Optional[int]:
         """Return the worker index of the TPU pod."""
         try:
-            worker_id = _get_tpu_metadata(key=GCE_TPU_WORKER_ID_KEY)
+            # Start with GKE-based check
+            worker_id = os.getenv(GKE_TPU_WORKER_ID_ENV_VAR, None)
+            if not worker_id:
+                # GCE-based VM check
+                worker_id = _get_tpu_metadata(key=GCE_TPU_WORKER_ID_KEY)
             return int(worker_id)
         except ValueError as e:
             logging.debug("Could not get TPU worker id: %s", e)
