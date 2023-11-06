@@ -294,6 +294,7 @@ class DeploymentInfo:
             == other.replica_config.max_replicas_per_node
             and self.deployment_config.dict(exclude={"num_replicas"})
             == other.deployment_config.dict(exclude={"num_replicas"})
+            and self.version
             and self.version == other.version
         )
 

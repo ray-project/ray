@@ -339,7 +339,7 @@ class MockClusterNodeInfoCache:
 
 
 @pytest.fixture
-def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
+def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
     timer = MockTimer()
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
@@ -598,7 +598,6 @@ def check_counts(
             assert curr_count == count, msg
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_create_delete_single_replica(mock_deployment_state):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {"node-id"}
@@ -647,7 +646,6 @@ def test_create_delete_single_replica(mock_deployment_state):
     check_counts(deployment_state, total=0)
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_force_kill(mock_deployment_state):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {"node-id"}
@@ -705,7 +703,6 @@ def test_force_kill(mock_deployment_state):
     check_counts(deployment_state, total=0)
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_redeploy_same_version(mock_deployment_state):
     # Redeploying with the same version and code should do nothing.
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -764,7 +761,6 @@ def test_redeploy_same_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_redeploy_no_version(mock_deployment_state):
     # Redeploying with no version specified (`None`) should always redeploy
     # the replicas.
@@ -842,7 +838,6 @@ def test_redeploy_no_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_redeploy_new_version(mock_deployment_state):
     # Redeploying with a new version should start a new replica.
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -954,7 +949,6 @@ def test_redeploy_new_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 @pytest.mark.parametrize(
     "option,value",
     [
@@ -1027,7 +1021,6 @@ def test_deploy_new_config_same_code_version(mock_deployment_state, option, valu
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_new_config_same_code_version_2(mock_deployment_state):
     # Make sure we don't transition from STARTING to UPDATING directly.
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -1087,7 +1080,6 @@ def test_deploy_new_config_same_code_version_2(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_new_config_new_version(mock_deployment_state):
     # Deploying a new config with a new version should deploy a new replica.
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -1154,7 +1146,6 @@ def test_deploy_new_config_new_version(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_stop_replicas_on_draining_nodes(mock_deployment_state):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
@@ -1211,7 +1202,6 @@ def test_stop_replicas_on_draining_nodes(mock_deployment_state):
     )
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_initial_deploy_no_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
@@ -1237,7 +1227,6 @@ def test_initial_deploy_no_throttling(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_new_version_deploy_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     # When the version is updated, it should be throttled. The throttling
@@ -1466,7 +1455,6 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_reconfigure_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     # When the version is updated, it should be throttled.
@@ -1544,7 +1532,6 @@ def test_reconfigure_throttling(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
 def test_new_version_and_scale_down(mock_deployment_state):
     # Test the case when we reduce the number of replicas and change the
     # version at the same time. First the number of replicas should be
@@ -1688,7 +1675,6 @@ def test_new_version_and_scale_down(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
 def test_new_version_and_scale_up(mock_deployment_state):
     # Test the case when we increase the number of replicas and change the
     # version at the same time. The new replicas should all immediately be
@@ -1790,7 +1776,10 @@ def test_new_version_and_scale_up(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+def test_scale_up(mock_deployment_state):
+    pass
+
+
 def test_health_check(mock_deployment_state):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
@@ -1854,7 +1843,6 @@ def test_health_check(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_update_while_unhealthy(mock_deployment_state):
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state
     cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
@@ -1998,7 +1986,6 @@ def _constructor_failure_loop_two_replica(deployment_state, num_loops):
         replica_2._actor.set_done_stopping()
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
     """
     Test deploy() multiple replicas with consistent constructor failure.
@@ -2020,7 +2007,6 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
     assert deployment_state.curr_status_info.message != ""
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     """
     Test deploy() multiple replicas with constructor failure exceedining
@@ -2114,7 +2100,6 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_with_transient_constructor_failure(mock_deployment_state):
     """
     Test deploy() multiple replicas with transient constructor failure.
@@ -2160,7 +2145,6 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
-@pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
 def test_exponential_backoff(mock_deployment_state):
     """Test exponential backoff."""
     deployment_state, timer, cluster_node_info_cache = mock_deployment_state

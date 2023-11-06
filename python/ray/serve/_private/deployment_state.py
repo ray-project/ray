@@ -1337,9 +1337,6 @@ class DeploymentState:
 
         self._target_state = target_state
         self._curr_status_info.update(status=DeploymentStatus.UPDATING, message="")
-        #     DeploymentStatusInfo(
-        #     self.deployment_name, DeploymentStatus.UPDATING
-        # )
         app_msg = f" in application '{self.app_name}'" if self.app_name else ""
         logger.info(
             f"Deleting deployment {self.deployment_name}{app_msg}",
@@ -1946,8 +1943,7 @@ class DeploymentState:
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
                 if replica.version == self._target_state.version:
-                    self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-                        name=self.deployment_name,
+                    self._curr_status_info.update(
                         status=DeploymentStatus.UNHEALTHY,
                         message="A replica's health check failed. This "
                         "deployment will be UNHEALTHY until the replica "
@@ -1994,8 +1990,7 @@ class DeploymentState:
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info = DeploymentStatusInfo(
-                        name=self.deployment_name,
+                    self._curr_status_info.update(
                         status=DeploymentStatus.UPDATING,
                         message=message,
                     )
@@ -2013,8 +2008,7 @@ class DeploymentState:
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
                 if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
-                    self._curr_status_info = DeploymentStatusInfo(
-                        name=self.deployment_name,
+                    self._curr_status_info.update(
                         status=DeploymentStatus.UPDATING,
                         message=message,
                     )
@@ -2077,8 +2071,7 @@ class DeploymentState:
                 "Exception occurred trying to update deployment state:\n"
                 + traceback.format_exc()
             )
-            self._curr_status_info = DeploymentStatusInfo(
-                name=self.deployment_name,
+            self._curr_status_info.update(
                 status=DeploymentStatus.UNHEALTHY,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
