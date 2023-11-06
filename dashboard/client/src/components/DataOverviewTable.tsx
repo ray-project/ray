@@ -26,12 +26,13 @@ import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 
 const columns = [
-  { label: "Dataset" },
+  { label: "" },
+  { label: "Dataset / Operator Name", align: "start" },
   {
     label: "Progress",
     helpInfo: <Typography>Blocks outputted by output operator.</Typography>,
   },
-  { label: "State" },
+  { label: "State", align: "center" },
   { label: "Bytes Outputted" },
   {
     label: "Memory Usage (Current / Max)",
@@ -52,8 +53,8 @@ const columns = [
       </Typography>
     ),
   },
-  { label: "Start Time" },
-  { label: "End Time" },
+  { label: "Start Time", align: "center" },
+  { label: "End Time", align: "center" },
 ];
 
 const DataOverviewTable = ({
@@ -81,7 +82,7 @@ const DataOverviewTable = ({
             changeFilter("dataset", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="Dataset" />
+            <TextField {...params} label="Dataset Name" />
           )}
         />
       </div>
@@ -101,11 +102,11 @@ const DataOverviewTable = ({
         <Table>
           <TableHead>
             <TableRow>
-              {columns.map(({ label, helpInfo }, i) => (
+              {columns.map(({ label, helpInfo, align }) => (
                 <TableCell align="center" key={label}>
                   <Box
                     display="flex"
-                    justifyContent={i === 0 ? "start" : "end"}
+                    justifyContent={align ? align : "end"}
                     alignItems="center"
                   >
                     {label}
@@ -173,6 +174,7 @@ const DatasetTable = ({
     isExpanded &&
     operators.map((operator) => (
       <TableRow key={operator.operator}>
+        <TableCell></TableCell>
         <TableCell align="left">{operator.operator}</TableCell>
         <TableCell align="right">
           <TaskProgressBar
@@ -190,7 +192,7 @@ const DatasetTable = ({
             total={operator.total}
           />
         </TableCell>
-        <TableCell align="right">
+        <TableCell align="center">
           <StatusChip type="task" status={operator.state} />
         </TableCell>
         <TableCell align="right">
@@ -210,24 +212,22 @@ const DatasetTable = ({
   return (
     <React.Fragment>
       <TableRow key={dataset}>
-        <TableCell align="left">
-          <div style={{ display: "flex" }}>
-            {isExpanded ? (
-              <RiArrowDownSLine
-                title={"Collapse Dataset " + dataset}
-                className={classes.icon}
-                onClick={() => setIsExpanded(false)}
-              />
-            ) : (
-              <RiArrowRightSLine
-                title={"Expand Dataset " + dataset}
-                className={classes.icon}
-                onClick={() => setIsExpanded(true)}
-              />
-            )}
-            {dataset}
-          </div>
+        <TableCell align="center">
+          {isExpanded ? (
+            <RiArrowDownSLine
+              title={"Collapse Dataset " + dataset}
+              className={classes.icon}
+              onClick={() => setIsExpanded(false)}
+            />
+          ) : (
+            <RiArrowRightSLine
+              title={"Expand Dataset " + dataset}
+              className={classes.icon}
+              onClick={() => setIsExpanded(true)}
+            />
+          )}
         </TableCell>
+        <TableCell align="left">{dataset}</TableCell>
         <TableCell align="right">
           <TaskProgressBar
             numFinished={progress}
@@ -236,7 +236,7 @@ const DatasetTable = ({
             total={total}
           />
         </TableCell>
-        <TableCell align="right">
+        <TableCell align="center">
           <StatusChip type="task" status={state} />
         </TableCell>
         <TableCell align="right">
@@ -249,10 +249,10 @@ const DatasetTable = ({
         <TableCell align="right">
           {memoryConverter(Number(ray_data_spilled_bytes.max))}
         </TableCell>
-        <TableCell align="right">
+        <TableCell align="center">
           {formatDateFromTimeMs(start_time * 1000)}
         </TableCell>
-        <TableCell align="right">
+        <TableCell align="center">
           {end_time && formatDateFromTimeMs(end_time * 1000)}
         </TableCell>
       </TableRow>
