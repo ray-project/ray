@@ -3394,11 +3394,11 @@ class Dataset:
 
         if ray_remote_args is None:
             ray_remote_args = {}
-        
+
         # Each write task will launch individual remote tasks to write each block
         # For correctness purposes, the write task cannot be retried
         ray_remote_args["max_retries"] = 0
-        
+
         self.write_datasource(
             BigQueryDatasource(),
             ray_remote_args=ray_remote_args,
