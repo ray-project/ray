@@ -28,9 +28,11 @@ class MPIPlugin(RuntimeEnvPlugin):
                 ["mpirun", "--version"], capture_output=True, check=True
             )
         except subprocess.CalledProcessError:
-            logger.error(
+            logger.exception(
                 "Failed to run mpi run. Please make sure mpi has been installed"
             )
+            # The worker will fail to run and exception will be thrown in runtime
+            # env agent.
             raise
 
         logger.info(f"Running MPI plugin\n {proc.stdout.decode()}")
@@ -38,8 +40,11 @@ class MPIPlugin(RuntimeEnvPlugin):
         from pathlib import Path
 
         # mpirun -n 10 python mpi.py worker_entry_func
-        worker_entry = mpi_config["worker_entry"]
-        assert Path(worker_entry).is_file()
+
+        worker_entry = mpi_config.get("worker_entry", None)
+        assert worker_entry is not None, "`worker_entry` must be setup in the runtime env."
+        assertPath(worker_entry).is_file(), "`worker_entry` must be a file."
+
         cmds = (
             ["mpirun"]
             + mpi_config.get("args", [])

@@ -11,9 +11,6 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-RUN apt install libmpich-dev
-
-
 RUN pip install -U --ignore-installed  \
   -c python/requirements_compiled.txt \
   -r python/requirements.txt \
