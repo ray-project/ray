@@ -74,6 +74,11 @@ class ServeJSONFormatter(logging.Formatter):
             ]
         if SERVE_LOG_ROUTE in record.__dict__:
             record_format[SERVE_LOG_ROUTE] = SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE]
+
+        if "_extra" in record.__dict__ and record.__dict__["_extra"]:
+            for key in record.__dict__["_extra"]:
+                record_format[key] = f"%({key})s"
+
         if SERVE_LOG_APPLICATION in record.__dict__:
             record_format[SERVE_LOG_APPLICATION] = SERVE_LOG_RECORD_FORMAT[
                 SERVE_LOG_APPLICATION
@@ -161,6 +166,30 @@ def get_component_logger_file_path() -> Optional[str]:
                 return absolute_path[len(ray_logs_dir) :]
 
 
+original_makeRecord = logging.Logger.makeRecord
+
+
+def make_record_with_extra(
+    self, name, level, fn, lno, msg, args, exc_info, func=None, extra=None, sinfo=None
+):
+
+    record = original_makeRecord(
+        self,
+        name,
+        level,
+        fn,
+        lno,
+        msg,
+        args,
+        exc_info,
+        func=func,
+        extra=extra,
+        sinfo=sinfo,
+    )
+    record._extra = extra
+    return record
+
+
 def configure_component_logger(
     *,
     component_name: str,
@@ -177,6 +206,7 @@ def configure_component_logger(
 
     This logger will *not* propagate its log messages to the parent logger(s).
     """
+    logging.Logger.makeRecord = make_record_with_extra
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
     logger.setLevel(log_level)
