@@ -168,11 +168,13 @@ def get_component_logger_file_path() -> Optional[str]:
 
 original_makeRecord = logging.Logger.makeRecord
 
-# Unfortunately logging doesn't provide any functionality to differentiate extra fields
-# from "record" object. So we add _extra field by ourselves to record the extra field.
+
 def make_record_with_extra(
     self, name, level, fn, lno, msg, args, exc_info, func=None, extra=None, sinfo=None
 ):
+    # Unfortunately logging doesn't provide any functionality to differentiate extra
+    # fields from "record" object. So we add _extra field by ourselves to record the
+    # extra field.
 
     record = original_makeRecord(
         self,
