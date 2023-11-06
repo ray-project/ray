@@ -33,6 +33,7 @@ from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
 
+# Shared amongst multiple schemas.
 TARGET_CAPACITY_FIELD = Field(
     default=None,
     description=(
