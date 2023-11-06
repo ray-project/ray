@@ -37,7 +37,7 @@ from ray.util.annotations import PublicAPI
 TARGET_CAPACITY_FIELD = Field(
     default=None,
     description=(
-        "[EXPERIMENTAL]: the target capacity % for all replicas across the "
+        "[EXPERIMENTAL]: the target capacity percentage for all replicas across the "
         "cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for each "
         "deployment will be scaled by this percentage."
     ),
@@ -818,10 +818,13 @@ class ServeStatus:
         proxies: The proxy actors running on each node in the cluster.
             A map from node ID to proxy status.
         applications: The live applications in the cluster.
+        target_capacity: the target capacity percentage for all replicas across the
+            cluster.
     """
 
     proxies: Dict[str, ProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
 
 @PublicAPI(stability="stable")
