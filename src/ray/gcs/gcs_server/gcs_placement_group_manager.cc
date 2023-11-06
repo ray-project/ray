@@ -380,6 +380,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   }
 
   bool is_new_placement_group_scheduled = false;
+  MarkSchedulingStarted(placement_group_id);
   while (!pending_placement_groups_.empty() && !is_new_placement_group_scheduled) {
     auto iter = pending_placement_groups_.begin();
     if (iter->first > absl::GetCurrentTimeNanos()) {
@@ -399,7 +400,6 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
       auto stats = placement_group->GetMutableStats();
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
       stats->set_scheduling_started_time_ns(absl::GetCurrentTimeNanos());
-      MarkSchedulingStarted(placement_group_id);
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
           placement_group,
           [this, backoff](std::shared_ptr<GcsPlacementGroup> placement_group,
