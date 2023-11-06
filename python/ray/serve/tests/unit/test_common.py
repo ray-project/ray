@@ -6,6 +6,7 @@ from ray.serve._private.common import (
     ApplicationStatus,
     ApplicationStatusInfo,
     DeploymentStatus,
+    DeploymentStatusDriver,
     DeploymentStatusInfo,
     ReplicaName,
     RunningReplicaInfo,
@@ -75,10 +76,16 @@ class TestDeploymentStatusInfo:
         with pytest.raises(TypeError):
             DeploymentStatusInfo(name="test_name")
 
-    @pytest.mark.parametrize("status", list(DeploymentStatus))
-    def test_proto(self, status):
+    @pytest.mark.parametrize(
+        "status,status_driver",
+        list(zip(list(DeploymentStatus), list(DeploymentStatusDriver))),
+    )
+    def test_proto(self, status, status_driver):
         deployment_status_info = DeploymentStatusInfo(
-            name="test_name", status=status, message="context about status"
+            name="test_name",
+            status=status,
+            status_driver=status_driver,
+            message="context about status",
         )
         serialized_proto = deployment_status_info.to_proto().SerializeToString()
         deserialized_proto = DeploymentStatusInfoProto.FromString(serialized_proto)

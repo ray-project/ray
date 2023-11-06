@@ -1514,7 +1514,9 @@ class DeploymentState:
         new_info = copy(self._target_state.info)
         new_info.set_autoscaled_num_replicas(decision_num_replicas)
         new_info.version = self._target_state.version.code_version
-        self._set_target_state(new_info, status_driver=None)
+        self._set_target_state(
+            new_info, status_driver=DeploymentStatusDriver.UNSPECIFIED
+        )
 
     def delete(self) -> None:
         if not self._target_state.deleting:
@@ -1811,13 +1813,13 @@ class DeploymentState:
                 if self._curr_status_info.status == DeploymentStatus.UPSCALING:
                     self._curr_status_info.update(
                         status=DeploymentStatus.HEALTHY,
-                        status_driver=DeploymentStatusDriver.UPSCALE_FINISHED,
+                        status_driver=DeploymentStatusDriver.UPSCALE_COMPLETED,
                         message="",
                     )
                 elif self._curr_status_info.status == DeploymentStatus.DOWNSCALING:
                     self._curr_status_info.update(
                         status=DeploymentStatus.HEALTHY,
-                        status_driver=DeploymentStatusDriver.DOWNSCALE_FINISHED,
+                        status_driver=DeploymentStatusDriver.DOWNSCALE_COMPLETED,
                         message="",
                     )
                 else:
@@ -1967,8 +1969,14 @@ class DeploymentState:
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
                 if replica.version == self._target_state.version:
+                    status_driver = (
+                        DeploymentStatusDriver.UNSPECIFIED
+                        if self._curr_status_info.status == DeploymentStatus.HEALTHY
+                        else self._curr_status_info.status_driver
+                    )
                     self._curr_status_info.update(
                         status=DeploymentStatus.UNHEALTHY,
+                        status_driver=status_driver,
                         message="A replica's health check failed. This "
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",

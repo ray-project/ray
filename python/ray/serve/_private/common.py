@@ -114,10 +114,11 @@ class DeploymentStatus(str, Enum):
 
 
 class DeploymentStatusDriver(str, Enum):
+    UNSPECIFIED = "UNSPECIFIED"
     DEPLOY = "DEPLOY"
     CONFIG_UPDATE = "CONFIG_UPDATE"
-    UPSCALE_FINISHED = "UPSCALE_FINISHED"
-    DOWNSCALE_FINISHED = "DOWNSCALE_FINISHED"
+    UPSCALE_COMPLETED = "UPSCALE_COMPLETED"
+    DOWNSCALE_COMPLETED = "DOWNSCALE_COMPLETED"
     DELETE = "DELETE"
 
 
@@ -125,7 +126,7 @@ class DeploymentStatusDriver(str, Enum):
 class DeploymentStatusInfo:
     name: str
     status: DeploymentStatus
-    status_driver: DeploymentStatusDriver
+    status_driver: Optional[DeploymentStatusDriver] = DeploymentStatusDriver.UNSPECIFIED
     message: str = ""
 
     def debug_string(self):
