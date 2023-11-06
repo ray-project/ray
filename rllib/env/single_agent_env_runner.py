@@ -90,7 +90,7 @@ class SingleAgentEnvRunner(EnvRunner):
             self.env_to_module,
             self.module_to_env,
             self.connector_ctx,
-        ) = self.config.connector_creator(env=self.env, rl_module=self.module)
+        ) = self.config.env_connector_creator(env=self.env, rl_module=self.module)
 
         # This should be the default.
         self._needs_initial_reset: bool = True

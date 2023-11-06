@@ -25,6 +25,9 @@ from typing import (
 import ray
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
+from ray.rllib.connectors.learner.default_learner_connector import (
+    DefaultLearnerConnector
+)
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.rl_module.marl_module import (
@@ -435,9 +438,13 @@ class Learner:
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()
-
+        # Build learner connector and context.
         self._learner_connector, self._learner_connector_ctx = (
             self.hps.learner_connector_creator(rl_module=self.module)
+        )
+        # Append default learner connector piece at the end.
+        self._learner_connector.append(
+            DefaultLearnerConnector(ctx=self._learner_connector_ctx)
         )
 
         # Configure, construct, and register all optimizers needed to train

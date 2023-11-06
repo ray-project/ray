@@ -1,11 +1,15 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
+from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.connector_context_v2 import ConnectorContextV2
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
+from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.schedules.scheduler import Scheduler
+from ray.rllib.utils.typing import EpisodeType
 
 
 LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY = "vf_loss_unclipped"
@@ -40,6 +44,10 @@ class PPOLearner(Learner):
     @override(Learner)
     def build(self) -> None:
         super().build()
+
+        # Expand the (user defined) learner connector by PPO's advantage computing
+        # connector.
+        self._learner_connector.prepend(PPOLearnerConnector())
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
@@ -93,3 +101,30 @@ class PPOLearner(Learner):
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 
         return results
+
+
+class PPOLearnerConnector(ConnectorV2):
+    """The connector that PPO always prepends to the learner connector pipeline.
+
+    Computes advantages
+    """
+    def __call__(
+        self,
+        *,
+        input_: Any,
+        episodes: List[EpisodeType],
+        ctx: ConnectorContextV2,
+        **kwargs,
+    ):
+        """Calculate advantages and value targets."""
+        for episode in episodes:
+            compute_gae_for_episode(
+                episode=episode,
+                gamma=self.config.gamma,
+                lambda_=self.config.lambda_,
+                use_gae=self.config.use_gae,
+                use_critic=True,
+                rl_module=ctx.rl_module,
+            )
+
+        return input_

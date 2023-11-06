@@ -6,8 +6,8 @@ import tree  # pip install dm_tree
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.evaluation.postprocessing import discount_cumsum
-from ray.rllib.policy.sample_batch import concat_samples, SampleBatch
+from ray.rllib.evaluation.postprocessing import discount_cumsum, Postprocessing
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
@@ -20,45 +20,13 @@ _, tf, _ = try_import_tf()
 
 
 @DeveloperAPI
-class Postprocessing:
-    """Constant definitions for postprocessing."""
-
-    ADVANTAGES = "advantages"
-    VALUE_TARGETS = "value_targets"
-
-
-@DeveloperAPI
-def postprocess_episodes_to_sample_batch(
-    episodes: List[SingleAgentEpisode],
-) -> SampleBatch:
-    """Converts the results from sampling with an `EnvRunner` to one `SampleBatch'.
-
-    Once the `SampleBatch` will be deprecated this function will be
-    deprecated, too.
-    """
-    batches = []
-
-    for episode_or_list in episodes:
-        # Without postprocessing (explore=True), we could have
-        # a list.
-        if isinstance(episode_or_list, list):
-            for episode in episode_or_list:
-                batches.append(episode.to_sample_batch())
-        # During exploration we have an episode.
-        else:
-            batches.append(episode_or_list.to_sample_batch())
-
-    batch = concat_samples(batches)
-
-    # Return the SampleBatch.
-    return batch
-
-
-@DeveloperAPI
 def compute_gae_for_episode(
     episode: SingleAgentEpisode,
-    config: AlgorithmConfig,
-    module: RLModule,
+    gamma: float,
+    lambda_: float,
+    use_gae: bool,
+    use_critic: bool,
+    rl_module: RLModule,
 ):
     """Adds GAE to a trajectory."""
     # TODO (simon): All of this can be batched over multiple episodes.
@@ -66,20 +34,20 @@ def compute_gae_for_episode(
     # TODO (sven): Shall do postprocessing in the training_step or
     # in the env_runner? Here we could batch over episodes as we have
     # them now in the training_step.
-    episode = compute_bootstrap_value(episode, module)
+    episode = compute_bootstrap_value_for_episode(episode, rl_module)
 
     vf_preds = episode.extra_model_outputs[SampleBatch.VF_PREDS]
     rewards = episode.rewards
 
     # TODO (simon): In case of recurrent models sequeeze out time dimension.
 
-    episode = compute_advantages(
+    episode = compute_advantages_for_episode(
         episode,
         last_r=episode.extra_model_outputs[SampleBatch.VALUES_BOOTSTRAPPED][-1],
-        gamma=config["gamma"],
-        lambda_=config["lambda"],
-        use_gae=config["use_gae"],
-        use_critic=config.get("use_critic", True),
+        gamma=gamma,
+        lambda_=lambda_,
+        use_gae=use_gae,
+        use_critic=use_critic,
         vf_preds=vf_preds,
         rewards=rewards,
     )
@@ -88,14 +56,14 @@ def compute_gae_for_episode(
     return episode
 
 
-def compute_bootstrap_value(
-    episode: SingleAgentEpisode, module: RLModule
+def compute_bootstrap_value_for_episode(
+    episode: SingleAgentEpisode, rl_module: RLModule
 ) -> SingleAgentEpisode:
     if episode.is_terminated:
         last_r = 0.0
     else:
         # TODO (simon): This has to be made multi-agent ready.
-        initial_states = module.get_initial_state()
+        initial_states = rl_module.get_initial_state()
         state = {
             k: initial_states[k] if episode.states is None else episode.states[k]
             for k in initial_states.keys()
@@ -104,25 +72,21 @@ def compute_bootstrap_value(
         input_dict = {
             STATE_IN: tree.map_structure(
                 lambda s: convert_to_torch_tensor(s)
-                if module.framework == "torch"
+                if rl_module.framework == "torch"
                 else tf.convert_to_tensor(s),
                 state,
             ),
             SampleBatch.OBS: convert_to_torch_tensor(
                 np.expand_dims(episode.observations[-1], axis=0)
             )
-            if module.framework == "torch"
+            if rl_module.framework == "torch"
             else tf.convert_to_tensor(np.expand_dims(episode.observations[-1], axis=0)),
         }
 
         # TODO (simon): Torch might need the correct device.
-
-        # TODO (sven): If we want to get rid of the policy in the future
-        # what should we do for adding the time dimension?
         # TODO (simon): Add support for recurrent models.
 
-        #input_dict = NestedDict(input_dict)
-        fwd_out = module.forward_exploration(input_dict)
+        fwd_out = rl_module.forward_exploration(input_dict)
         # TODO (simon): Remove time dimension in case of recurrent model.
         last_r = fwd_out[SampleBatch.VF_PREDS][-1]
 
@@ -141,7 +105,7 @@ def compute_bootstrap_value(
     return episode
 
 
-def compute_advantages(
+def compute_advantages_for_episode(
     episode: SingleAgentEpisode,
     last_r: float,
     gamma: float = 0.9,

@@ -439,6 +439,12 @@ class PPO(Algorithm):
                         worker_set=self.workers,
                         max_env_steps=self.config.train_batch_size,
                     )
+                train_batch = train_batch.as_multi_agent()
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+                self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+                # Standardize advantages.
+                train_batch = standardize_fields(train_batch, ["advantages"])
+
             # New Episode-returning EnvRunner API.
             else:
                 # TODO (sven): Make this also use `synchronous_parallel_sample`.
@@ -451,32 +457,29 @@ class PPO(Algorithm):
                     episodes: List[SingleAgentEpisode] = self.workers.foreach_worker(
                         lambda w: w.sample(), local_worker=False
                     )
+                standardize_fields(train_batch, ["advantages"])
+                # TODO: Move the following two steps into:
+                # 1) Split up collected episode fragments (as-is, no postprocessing)
+                #  into roughly n equal timesteps (n==num learner workers)
+                # 2) Send each learner worker one chunk of episode (fragments)
+                # 3) Have learner workers postprocess episodes (PPO specific)
+                # 4) Have learner workers call their training connector on the list of
+                # episodes -> returns train batch
+                # 5) Have learner workers perform minibatch SGD looping on generated
+                #  sample batch.
 
-                #TODO: Move the following two steps into:
-                #1) Split up collected episode fragments (as-is, no postprocessing)
-                #   into roughly n equal timesteps (n==num learner workers)
-                #2) Send each learner worker one chunk of episode (fragments)
-                #3) Have learner workers postprocess episodes (PPO specific)
-                #4) Have learner workers call their training connector on the list of
-                #episodes -> returns train batch
-                #5) Have learner workers perform minibatch SGD looping on generated sample
-                #batch.
-    
                 # Perform PPO postprocessing on a (flattened) list of Episodes.
-                #postprocessed_episodes: List[
-                #    SingleAgentEpisode
-                #] = self.postprocess_episodes(tree.flatten(episodes))
-                ## Convert list of postprocessed Episodes into a single sample batch.
-                #train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
-                #    postprocessed_episodes
-                #)
+                # postprocessed_episodes: List[
+                #     SingleAgentEpisode
+                # ] = self.postprocess_episodes(tree.flatten(episodes))
+                # Convert list of postprocessed Episodes into a single sample batch.
+                # train_batch: SampleBatch = postprocess_episodes_to_sample_batch(
+                #     postprocessed_episodes
+                # )
+                # TODO: single- vs multi-agent.
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+                self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
 
-        train_batch = train_batch.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
-
-        # Standardize advantages.
-        train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
         if self.config._enable_new_api_stack:
             # TODO (Kourosh) Clearly define what train_batch_size
@@ -623,24 +626,3 @@ class PPO(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-    def postprocess_episodes(
-        self, episodes: List[SingleAgentEpisode]
-    ) -> List[SingleAgentEpisode]:
-        """Calculate advantages and value targets."""
-        from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
-
-        # Bootstrap values.
-        postprocessed_episodes = []
-        # TODO (simon): Remove somehow the double list.
-        # episodes = [episode for episode_list in episodes for episode in episode_list]
-        for episode in episodes:
-            # TODO (sven): Calling 'module' on the 'EnvRunner' only works
-            #  for the 'SingleAgentEnvRunner' not for 'MultiAgentEnvRunner'.
-            postprocessed_episodes.append(
-                compute_gae_for_episode(
-                    episode, self.config, self.workers.local_worker().module
-                )
-            )
-
-        return postprocessed_episodes

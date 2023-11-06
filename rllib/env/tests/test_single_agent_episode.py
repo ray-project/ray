@@ -389,61 +389,61 @@ class TestSingelAgentEpisode(unittest.TestCase):
         with self.assertRaises(AssertionError):
             episode_reproduced = SingleAgentEpisode.from_state(state)
 
-    def test_to_and_from_sample_batch(self):
-        """Tests if a `SingelAgentEpisode` can be reconstructed from a `SampleBatch`.
+    #def test_to_and_from_sample_batch(self):
+    #    """Tests if a `SingelAgentEpisode` can be reconstructed from a `SampleBatch`.
 
-        This tests converst an episode to a `SampleBatch` and reconstructs the
-        episode then from this sample batch. It is then tested, if all data is
-        complete.
-        Note that `extra_model_outputs` are defined by the user and as the format
-        in the episode from which a `SampleBatch` was created is unknown this
-        reconstruction would only work, if the user does take care of it (as a
-        counter example just rempve the index [0] from the `extra_model_output`).
-        """
-        # Create an empty episode.
-        episode = SingleAgentEpisode()
-        # Create an environment.
-        env = TestEnv()
-        # Add initial observation.
-        init_obs, init_obs = env.reset()
-        episode.add_initial_observation(
-            initial_observation=init_obs, initial_info=init_obs
-        )
-        # Sample 100 steps.
-        for i in range(100):
-            action = i
-            obs, reward, is_terminated, is_truncated, info = env.step(action)
-            episode.add_timestep(
-                observation=obs,
-                action=action,
-                reward=reward,
-                info=info,
-                is_terminated=is_terminated,
-                is_truncated=is_truncated,
-                extra_model_output={"extra": np.random.random(1)[0]},
-            )
+    #    This tests converst an episode to a `SampleBatch` and reconstructs the
+    #    episode then from this sample batch. It is then tested, if all data is
+    #    complete.
+    #    Note that `extra_model_outputs` are defined by the user and as the format
+    #    in the episode from which a `SampleBatch` was created is unknown this
+    #    reconstruction would only work, if the user does take care of it (as a
+    #    counter example just rempve the index [0] from the `extra_model_output`).
+    #    """
+    #    # Create an empty episode.
+    #    episode = SingleAgentEpisode()
+    #    # Create an environment.
+    #    env = TestEnv()
+    #    # Add initial observation.
+    #    init_obs, init_obs = env.reset()
+    #    episode.add_initial_observation(
+    #        initial_observation=init_obs, initial_info=init_obs
+    #    )
+    #    # Sample 100 steps.
+    #    for i in range(100):
+    #        action = i
+    #        obs, reward, is_terminated, is_truncated, info = env.step(action)
+    #        episode.add_timestep(
+    #            observation=obs,
+    #            action=action,
+    #            reward=reward,
+    #            info=info,
+    #            is_terminated=is_terminated,
+    #            is_truncated=is_truncated,
+    #            extra_model_output={"extra": np.random.random(1)[0]},
+    #        )
 
-        # Create `SampleBatch`.
-        batch = episode.to_sample_batch()
-        # Reproduce form `SampleBatch`.
-        episode_reproduced = SingleAgentEpisode.from_sample_batch(batch)
-        # Assert that the data is complete.
-        self.assertEqual(episode.id_, episode_reproduced.id_)
-        self.assertEqual(episode.t, episode_reproduced.t)
-        self.assertEqual(episode.t_started, episode_reproduced.t_started)
-        self.assertEqual(episode.is_terminated, episode_reproduced.is_terminated)
-        self.assertEqual(episode.is_truncated, episode_reproduced.is_truncated)
-        self.assertListEqual(episode.observations, episode_reproduced.observations)
-        self.assertListEqual(episode.actions, episode_reproduced.actions)
-        self.assertListEqual(episode.rewards, episode_reproduced.rewards)
-        self.assertEqual(episode.infos, episode_reproduced.infos)
-        self.assertEqual(episode.is_terminated, episode_reproduced.is_terminated)
-        self.assertEqual(episode.is_truncated, episode_reproduced.is_truncated)
-        self.assertEqual(episode.states, episode_reproduced.states)
-        self.assertListEqual(episode.render_images, episode_reproduced.render_images)
-        self.assertDictEqual(
-            episode.extra_model_outputs, episode_reproduced.extra_model_outputs
-        )
+    #    # Create `SampleBatch`.
+    #    batch = episode.to_sample_batch()
+    #    # Reproduce form `SampleBatch`.
+    #    episode_reproduced = SingleAgentEpisode.from_sample_batch(batch)
+    #    # Assert that the data is complete.
+    #    self.assertEqual(episode.id_, episode_reproduced.id_)
+    #    self.assertEqual(episode.t, episode_reproduced.t)
+    #    self.assertEqual(episode.t_started, episode_reproduced.t_started)
+    #    self.assertEqual(episode.is_terminated, episode_reproduced.is_terminated)
+    #    self.assertEqual(episode.is_truncated, episode_reproduced.is_truncated)
+    #    self.assertListEqual(episode.observations, episode_reproduced.observations)
+    #    self.assertListEqual(episode.actions, episode_reproduced.actions)
+    #    self.assertListEqual(episode.rewards, episode_reproduced.rewards)
+    #    self.assertEqual(episode.infos, episode_reproduced.infos)
+    #    self.assertEqual(episode.is_terminated, episode_reproduced.is_terminated)
+    #    self.assertEqual(episode.is_truncated, episode_reproduced.is_truncated)
+    #    self.assertEqual(episode.states, episode_reproduced.states)
+    #    self.assertListEqual(episode.render_images, episode_reproduced.render_images)
+    #    self.assertDictEqual(
+    #        episode.extra_model_outputs, episode_reproduced.extra_model_outputs
+    #    )
 
 
 if __name__ == "__main__":

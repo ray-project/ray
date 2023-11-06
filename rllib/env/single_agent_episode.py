@@ -349,98 +349,116 @@ class SingleAgentEpisode:
         start.
 
         Returns:
-            An `ray.rLlib.policy.sample_batch.SampleBatch` instance containing this
-            episode's data.
+            A SampleBatch containing all of this episode's data.
         """
-        return SampleBatch(
-            {
-                SampleBatch.EPS_ID: np.array([self.id_] * len(self)),
-                SampleBatch.OBS: self.observations[:-1],
-                SampleBatch.NEXT_OBS: self.observations[1:],
-                SampleBatch.ACTIONS: self.actions,
-                SampleBatch.REWARDS: self.rewards,
-                SampleBatch.T: list(range(self.t_started, self.t)),
-                SampleBatch.TERMINATEDS: np.array(
-                    [False] * (len(self) - 1) + [self.is_terminated]
-                ),
-                SampleBatch.TRUNCATEDS: np.array(
-                    [False] * (len(self) - 1) + [self.is_truncated]
-                ),
-                # Return the infos after stepping the environment.
-                SampleBatch.INFOS: self.infos[1:],
-                **self.extra_model_outputs,
-            }
-        )
-
-    @staticmethod
-    def from_sample_batch(batch: SampleBatch) -> "SingleAgentEpisode":
-        """Converts a `SampleBatch` instance into a `SingleAegntEpisode`.
-
-        The `ray.rllib.policy.sample_batch.SampleBatch` class is used in `RLlib`
-        for training an agent's modules (`RLModule`), converting from or to
-        `SampleBatch` can be performed by this function and its counterpart
-        `to_sample_batch()`.
-
-        Args:
-            batch: A `SampleBatch` instance. It should contain only a single episode.
-
-        Returns:
-            An `SingleAegntEpisode` instance containing the data from `batch`.
-        """
-        is_done = (
-            batch[SampleBatch.TERMINATEDS][-1] or batch[SampleBatch.TRUNCATEDS][-1]
-        )
-        observations = np.concatenate(
-            [batch[SampleBatch.OBS], batch[SampleBatch.NEXT_OBS][None, -1]]
-        )
-        actions = batch[SampleBatch.ACTIONS]
-        rewards = batch[SampleBatch.REWARDS]
-        # These are the infos after stepping the environment, i.e. without the
-        # initial info.
-        infos = batch[SampleBatch.INFOS]
-        # Concatenate an intiial empty info.
-        infos = np.concatenate([np.array([{}]), infos])
-
-        # TODO (simon): This is very ugly, but right now
-        #  we can only do it according to the exclusion principle.
-        extra_model_output_keys = []
-        for k in batch.keys():
-            if k not in [
+        return SampleBatch({
+            key: self.get_data(key) for key in [
                 SampleBatch.EPS_ID,
-                SampleBatch.AGENT_INDEX,
-                SampleBatch.ENV_ID,
-                SampleBatch.AGENT_INDEX,
-                SampleBatch.T,
-                SampleBatch.SEQ_LENS,
                 SampleBatch.OBS,
                 SampleBatch.INFOS,
-                SampleBatch.NEXT_OBS,
                 SampleBatch.ACTIONS,
-                SampleBatch.PREV_ACTIONS,
                 SampleBatch.REWARDS,
-                SampleBatch.PREV_REWARDS,
                 SampleBatch.TERMINATEDS,
                 SampleBatch.TRUNCATEDS,
-                SampleBatch.UNROLL_ID,
-                SampleBatch.DONES,
-                SampleBatch.CUR_OBS,
-            ]:
-                extra_model_output_keys.append(k)
+                SampleBatch.T,
+                *self.extra_model_outputs.keys()
+            ]
+        })
 
-        return SingleAgentEpisode(
-            id_=batch[SampleBatch.EPS_ID][0],
-            observations=observations if is_done else observations.tolist(),
-            actions=actions if is_done else actions.tolist(),
-            rewards=rewards if is_done else rewards.tolist(),
-            t_started=batch[SampleBatch.T][0],
-            is_terminated=batch[SampleBatch.TERMINATEDS][-1],
-            is_truncated=batch[SampleBatch.TRUNCATEDS][-1],
-            infos=infos if is_done else infos.tolist(),
-            extra_model_outputs={
-                k: (batch[k] if is_done else batch[k].tolist())
-                for k in extra_model_output_keys
-            },
-        )
+    def get_data(self, key):
+        if key == SampleBatch.OBS:
+            return self.observations[:-1]
+        elif key == SampleBatch.INFOS:
+            return self.infos[1:]
+        elif key == SampleBatch.ACTIONS:
+            return self.actions
+        elif key == SampleBatch.REWARDS:
+            return self.rewards
+        elif key == SampleBatch.TERMINATEDS:
+            return np.array(
+                [False] * (len(self) - 1) + [self.is_terminated]
+            )
+        elif key == SampleBatch.TRUNCATEDS:
+            return np.array(
+                [False] * (len(self) - 1) + [self.is_truncated]
+            )
+        elif key == SampleBatch.T:
+            return np.array(list(range(self.t_started, self.t)))
+        elif key == SampleBatch.EPS_ID:
+            return np.array([self.id_] * len(self))
+        else:
+            assert key in self.extra_model_outputs
+            return self.extra_model_outputs[key]
+
+    #@staticmethod
+    #def from_sample_batch(batch: SampleBatch) -> "SingleAgentEpisode":
+    #    """Converts a `SampleBatch` instance into a `SingleAgentEpisode`.
+    #
+    #    The `ray.rllib.policy.sample_batch.SampleBatch` class is used in `RLlib`
+    #    for training an agent's modules (`RLModule`), converting from or to
+    #    `SampleBatch` can be performed by this function and its counterpart
+    #    `to_sample_batch()`.
+    #
+    #    Args:
+    #        batch: A `SampleBatch` instance. It should contain only a single episode.
+    #
+    #    Returns:
+    #        An `SingleAegntEpisode` instance containing the data from `batch`.
+    #    """
+    #    is_done = (
+    #        batch[SampleBatch.TERMINATEDS][-1] or batch[SampleBatch.TRUNCATEDS][-1]
+    #    )
+    #    observations = np.concatenate(
+    #        [batch[SampleBatch.OBS], batch[SampleBatch.NEXT_OBS][None, -1]]
+    #    )
+    #    actions = batch[SampleBatch.ACTIONS]
+    #    rewards = batch[SampleBatch.REWARDS]
+    #    # These are the infos after stepping the environment, i.e. without the
+    #    # initial info.
+    #    infos = batch[SampleBatch.INFOS]
+    #    # Concatenate an intiial empty info.
+    #    infos = np.concatenate([np.array([{}]), infos])
+    #
+    #    # TODO (simon): This is very ugly, but right now
+    #    #  we can only do it according to the exclusion principle.
+    #    extra_model_output_keys = []
+    #    for k in batch.keys():
+    #        if k not in [
+    #            SampleBatch.EPS_ID,
+    #            SampleBatch.AGENT_INDEX,
+    #            SampleBatch.ENV_ID,
+    #            SampleBatch.AGENT_INDEX,
+    #            SampleBatch.T,
+    #            SampleBatch.SEQ_LENS,
+    #            SampleBatch.OBS,
+    #            SampleBatch.INFOS,
+    #            SampleBatch.NEXT_OBS,
+    #            SampleBatch.ACTIONS,
+    #            SampleBatch.PREV_ACTIONS,
+    #            SampleBatch.REWARDS,
+    #            SampleBatch.PREV_REWARDS,
+    #            SampleBatch.TERMINATEDS,
+    #            SampleBatch.TRUNCATEDS,
+    #            SampleBatch.UNROLL_ID,
+    #            SampleBatch.DONES,
+    #            SampleBatch.CUR_OBS,
+    #        ]:
+    #            extra_model_output_keys.append(k)
+    #
+    #    return SingleAgentEpisode(
+    #        id_=batch[SampleBatch.EPS_ID][0],
+    #        observations=observations if is_done else observations.tolist(),
+    #        actions=actions if is_done else actions.tolist(),
+    #        rewards=rewards if is_done else rewards.tolist(),
+    #        t_started=batch[SampleBatch.T][0],
+    #        is_terminated=batch[SampleBatch.TERMINATEDS][-1],
+    #        is_truncated=batch[SampleBatch.TRUNCATEDS][-1],
+    #        infos=infos if is_done else infos.tolist(),
+    #        extra_model_outputs={
+    #            k: (batch[k] if is_done else batch[k].tolist())
+    #            for k in extra_model_output_keys
+    #        },
+    #    )
 
     def get_return(self) -> float:
         """Calculates an episode's return.
