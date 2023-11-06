@@ -305,11 +305,6 @@ def read_datasource(
         ray_remote_args = {}
 
     if not datasource.supports_distributed_reads:
-        if ray.util.client.ray.is_connected():
-            raise ValueError(
-                "If you're using Ray Client, Ray Data won't schedule read tasks "
-                "on the driver's node."
-            )
         ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
             ray.get_runtime_context().get_node_id(),
             soft=False,

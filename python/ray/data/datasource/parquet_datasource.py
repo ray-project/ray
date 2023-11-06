@@ -191,10 +191,16 @@ class ParquetDatasource(Datasource):
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        self._unresolved_paths = paths
+        self._supports_distributed_reads = not _is_local_scheme(paths)
+        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the Ray "
+                "cluster can't access your local files. To fix this issue, store "
+                "files in cloud storage or a distributed filesystem like NFS."
+            )
 
         self._local_scheduling = None
-        if not self.supports_distributed_reads:
+        if not self._supports_distributed_reads:
             import ray
             from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -446,7 +452,7 @@ class ParquetDatasource(Datasource):
 
     @property
     def supports_distributed_reads(self) -> bool:
-        return not _is_local_scheme(self._unresolved_paths)
+        return self._supports_distributed_reads
 
 
 def _read_fragments(
