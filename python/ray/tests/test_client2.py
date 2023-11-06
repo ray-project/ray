@@ -1,13 +1,13 @@
 import ray
 import pytest
-from ray.util.client2.session import ClientSession
+from ray.experimental.client2.client import Client as Client2
 from ray._private.test_utils import (
     format_web_url,
     get_current_unused_port,
-    run_string_as_driver,
 )
 import subprocess
 import os
+import time
 
 
 @ray.remote(num_cpus=0.01)
@@ -34,6 +34,9 @@ class Counter:
     def total_count(self):
         return self.count
 
+    def iota(self, count):
+        return list(range(count))
+
 
 def start_ray_cluster():
     # One need to specify these ports to be able to start more than 1 clusters in a machine.
@@ -54,6 +57,8 @@ def call_ray_start_with_webui_addr():
     webui = start_ray_cluster()
     # yield ray_address, webui
     yield webui
+    if Client2.active_client is not None:
+        Client2.active_client.disconnect(kill_channel=True)
     # Disconnect from the Ray cluster.
     ray.shutdown()
     # Kill the Ray cluster.
@@ -64,29 +69,29 @@ def call_ray_start_with_webui_addr():
 
 def test_get_put_simple(call_ray_start_with_webui_addr):  # noqa: F811
     webui = call_ray_start_with_webui_addr
-    with ClientSession(webui, "test_get_put_simple") as client:
-        my_data = 42
-        ref = client.put(my_data)
-        print(f"put {my_data} as ref: {ref}")
-        # but within a task/method, it's all in the worker, ofc
-        got = client.get(ref)
-        print(f"got {got} as ref: {ref}")
-        assert type(got) == type(my_data)
-        assert got == 42
+    client = Client2(webui, "test_get_put_simple")
+    my_data = 42
+    ref = client.put(my_data)
+    print(f"put {my_data} as ref: {ref}")
+    # but within a task/method, it's all in the worker, ofc
+    got = client.get(ref)
+    print(f"got {got} as ref: {ref}")
+    assert type(got) == type(my_data)
+    assert got == 42
 
 
 def test_get_multiple(call_ray_start_with_webui_addr):  # noqa: F811
     webui = call_ray_start_with_webui_addr
-    with ClientSession(webui, "test_get_put_simple") as client:
-        my_data1 = 42
-        ref1 = client.put(my_data1)
+    client = Client2(webui, "test_get_multiple")
+    my_data1 = 42
+    ref1 = client.put(my_data1)
 
-        my_data2 = "something extra"
-        ref2 = client.put(my_data2)
+    my_data2 = "something extra"
+    ref2 = client.put(my_data2)
 
-        got1, got2 = client.get([ref1, ref2])
-        assert got1 == 42
-        assert got2 == "something extra"
+    got1, got2 = client.get([ref1, ref2])
+    assert got1 == 42
+    assert got2 == "something extra"
 
 
 class MyDataType:
@@ -103,38 +108,40 @@ def test_get_put_custom_type(call_ray_start_with_webui_addr):  # noqa: F811
     # Caveat: the types are within python module "test.py" which does not exist
     # remotely. One have to use the working_dir to let the driver be aware of the module.
     webui = call_ray_start_with_webui_addr
-    with ClientSession(
+    client = Client2(
         webui,
         "test_get_put_custom_type",
         runtime_env={"working_dir": os.path.dirname(__file__)},
-    ) as client:
-        my_data = MyDataType(42, "some serializable python object")
-        ref = client.put(my_data)
-        print(f"put {my_data.pprint()} as ref: {ref}")
-        # but within a task/method, it's all in the worker, ofc
-        got = client.get(ref)
-        print(f"got {got.pprint()} as ref: {ref}")
-        assert type(got) == type(my_data)
-        assert got.i == my_data.i
-        assert got.s == my_data.s
+    )
+    my_data = MyDataType(42, "some serializable python object")
+    ref = client.put(my_data)
+    print(f"put {my_data.pprint()} as ref: {ref}")
+    # but within a task/method, it's all in the worker, ofc
+    got = client.get(ref)
+    print(f"got {got.pprint()} as ref: {ref}")
+    assert type(got) == type(my_data)
+    assert got.i == my_data.i
+    assert got.s == my_data.s
 
 
 def test_task_remote(call_ray_start_with_webui_addr):
     webui = call_ray_start_with_webui_addr
-    with ClientSession(webui, "test_task_remote") as client:
-        remote_task_call = fib.remote(5)
-        got = client.get(remote_task_call)
-        assert got == 8
+    client = Client2(webui, "test_task_remote")
+    remote_task_call = client.task(fib).remote(5)
+    got = client.get(remote_task_call)
+    assert got == 8
 
 
 def test_task_remote_options(call_ray_start_with_webui_addr):
     webui = call_ray_start_with_webui_addr
-    with ClientSession(webui, "test_task_remote") as client:
-        remote_task_call = has_env.options(
-            runtime_env={"env_vars": {"test_env_key": "test_env_val"}}
-        ).remote("test_env_key", "test_env_val")
-        got = client.get(remote_task_call)
-        assert got is True
+    client = Client2(webui, "test_task_remote")
+    remote_task_call = (
+        client.task(has_env)
+        .options(runtime_env={"env_vars": {"test_env_key": "test_env_val"}})
+        .remote("test_env_key", "test_env_val")
+    )
+    got = client.get(remote_task_call)
+    assert got is True
 
 
 class FibResult:
@@ -154,15 +161,15 @@ def test_task_remote_custom_type_with_ref(call_ray_start_with_webui_addr):  # no
     # Caveat: the types are within python module "test.py" which does not exist
     # remotely. One have to use the working_dir to let the driver be aware of the module.
     webui = call_ray_start_with_webui_addr
-    with ClientSession(
+    client = Client2(
         webui,
         "test_task_remote_custom_type_with_ref",
         runtime_env={"working_dir": os.path.dirname(__file__)},
-    ) as client:
-        result_ref = fib_with_ref.remote(5)
-        fib_result = client.get(result_ref)
-        assert fib_result.input == 5
-        assert client.get(fib_result.obj_ref) == 8
+    )
+    result_ref = client.task(fib_with_ref).remote(5)
+    fib_result = client.get(result_ref)
+    assert fib_result.input == 5
+    assert client.get(fib_result.obj_ref) == 8
 
 
 @ray.remote(num_cpus=0.01)
@@ -192,98 +199,102 @@ def test_task_remote_dynamic(call_ray_start_with_webui_addr):
     TODO: support StreamingObjectRefGenerator.
     """
     webui = call_ray_start_with_webui_addr
-    with ClientSession(webui, "test_task_remote") as client:
-        remote_task_call = primes_dynamic.remote(100)
-        gen = client.get(remote_task_call)
-        rets = []
-        for ref in gen:
-            ret = client.get(ref)
-            rets.append(ret)
-        assert rets == [
-            2,
-            3,
-            5,
-            7,
-            11,
-            13,
-            17,
-            19,
-            23,
-            29,
-            31,
-            37,
-            41,
-            43,
-            47,
-            53,
-            59,
-            61,
-            67,
-            71,
-            73,
-            79,
-            83,
-            89,
-            97,
-        ]
+    client = Client2(webui, "test_task_remote")
+    remote_task_call = client.task(primes_dynamic).remote(100)
+    gen = client.get(remote_task_call)
+    rets = []
+    for ref in gen:
+        ret = client.get(ref)
+        rets.append(ret)
+    assert rets == [
+        int(x)
+        for x in "2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97".split(
+            ","
+        )
+    ]
 
 
 def test_actor_remote(call_ray_start_with_webui_addr):
     webui = call_ray_start_with_webui_addr
-    with ClientSession(webui, "test_actor_remote") as client:
-        actor = Counter.remote(5)
-        got_ref = actor.increment.remote(3)
-        got = client.get(got_ref)
-        assert got == 8
+    client = Client2(webui, "test_actor_remote")
+    actor = client.actor(Counter).remote(5)
+    got_ref = client.method(actor.increment).remote(3)
+    got = client.get(got_ref)
+    assert got == 8
+
+
+def test_actor_remote_options(call_ray_start_with_webui_addr):
+    webui = call_ray_start_with_webui_addr
+    client = Client2(webui, "test_actor_remote")
+    actor = client.actor(Counter).options(num_cpus=1).remote(5)
+    got_ref = client.method(actor.iota).options(num_returns=3).remote(3)
+    assert client.get(got_ref) == [0, 1, 2]
+
+
+def test_actor_wrapped(call_ray_start_with_webui_addr):
+    class ContainsActor:
+        def __init__(self, actor) -> None:
+            self.actor = actor
+
+    @ray.remote
+    def returnsCounter(count):
+        c = Counter.remote(count)
+        return ContainsActor(c)
+
+    webui = call_ray_start_with_webui_addr
+    client = Client2(webui, "test_actor_wrapped")
+    contains_actor_ref = client.task(returnsCounter).remote(5)
+    contains_actor = client.get(contains_actor_ref)
+    got_ref = client.method(contains_actor.actor.increment).remote(3)
+    got = client.get(got_ref)
+    assert got == 8
 
 
 def test_reconnection(call_ray_start_with_webui_addr):
-    # ClientSession default has detached=True. This means even if the ClientSession is
-    # exited, or the whole python interpreter is dead, the Client2DriverActor is still alive
+    # Client2 default has detached=True. This means even if the Client2 is
+    # exited, or the whole python interpreter is dead, the ClientSupervisor actor is still alive
     # and serving. You can reconnect to it and still use the ObjectRef.
     webui = call_ray_start_with_webui_addr
-    with ClientSession(webui, "test_get_put_cross_reconnection") as client:
-        ref = client.put(42)
+    client = Client2(webui, "test_get_put_cross_reconnection")
+    ref = client.put(42)
+    client.disconnect()
 
-    with ClientSession(webui, "test_get_put_cross_reconnection") as client:
-        got = client.get(ref)
-        assert got == 42
-
-
-def test_reconnection_in_another_process(call_ray_start_with_webui_addr):
-    """
-    All scripts can connect to a same client2 session by the name. They can visit each
-    other's ObjectRef. Main use case: when your script is down and reconnecting.
-    """
-    webui = call_ray_start_with_webui_addr
-    with ClientSession(webui, "test_reconnection_in_another_process") as client:
-        ref = client.put(42)
-
-    driver_script = f"""
-import ray
-from ray.util.client2.session import ClientSession
-
-webui = "{webui}"
-with ClientSession(webui, "test_reconnection_in_another_process") as client:
-    ref = ray.ObjectRef({ref.binary()})
+    client.connect()
     got = client.get(ref)
-    print(got)
-    """
-    assert run_string_as_driver(driver_script).strip() == "42"
+    assert got == 42
 
 
-def test_no_reconnection_non_detached(call_ray_start_with_webui_addr):
-    # If ClientSession has detached=False, client close -> driver killed. Reconnecting
-    # only creates another session and all objects/actors are gone.
+def test_kill_channel(call_ray_start_with_webui_addr):
+    # If disconnect(kill_channel=True), the ClientSupervisor actor dies immediately.
     webui = call_ray_start_with_webui_addr
-    with ClientSession(
-        webui, "test_get_put_cross_reconnection", detached=False
-    ) as client:
-        ref = client.put(42)
+    client = Client2(webui, "test_get_put_cross_reconnection")
+    _ = client.put(42)
+    client.disconnect(kill_channel=True)
 
-    with ClientSession(webui, "test_get_put_cross_reconnection") as client:
-        with pytest.raises(ValueError):
-            client.get(ref)
+    with pytest.raises(ValueError):
+        client.connect()
+
+
+def test_no_reconnection_after_ttl(call_ray_start_with_webui_addr):
+    # If a ClientSupervisor has ttl exceeded, it suicides and we can't reconnect to it.
+    webui = call_ray_start_with_webui_addr
+    client = Client2(webui, "test_no_reconnection_after_ttl", ttl_secs=10)
+    _ = client.put(42)
+    client.disconnect()
+
+    time.sleep(20)
+    from datetime import datetime
+
+    print(
+        f'current time {datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d %H:%M:%S")}'
+    )
+
+    with pytest.raises(ValueError):
+        # can't connect back.
+        client.connect()
+    with pytest.raises(ValueError):
+        # can't connect the other way either.
+        Client2(webui, "test_no_reconnection_after_ttl", connect_only=True)
 
 
 def test_move_data_across_clusters(call_ray_start_with_webui_addr):
@@ -296,15 +307,15 @@ def test_move_data_across_clusters(call_ray_start_with_webui_addr):
     Note: It can move data from 1 Ray cluster to another but in this test we only move within 1 cluster but for 2 client sessions. This is because I did not successfully get the unit test to spin up 2 clusters without interfering each other. It should do fine if we had 2 clusters.
     """
     webui = call_ray_start_with_webui_addr
-    with ClientSession(webui, "session1") as client1:
-        with ClientSession(webui, "session2") as client2:
-            ref1 = client1.put(42)
-            obj1 = client1.get(ref1)
-            assert obj1 == 42
-            ref2 = client2.put(obj1)
-            assert client2.get(ref2) == 42
-            # task.remote() works in client2
-        # task.remote() works in client1
+    client1 = Client2(webui, "session1")
+    ref1 = client1.put(42)
+    obj1 = client1.get(ref1)
+    client1.disconnect()
+
+    client2 = Client2(webui, "session2")
+    ref2 = client2.put(obj1)
+    assert client2.get(ref2) == 42
+    client2.disconnect()
 
 
 if __name__ == "__main__":
