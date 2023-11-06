@@ -2046,8 +2046,84 @@ def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction:
     )
 
 
-@pytest.mark.parametrize("scale_direction", ["up", "down"])
-def test_autoscaling(mock_deployment_state_manager_full, scale_direction: str):
+def test_autoscale_up(mock_deployment_state_manager_full):
+    """Test autoscaling up and down."""
+
+    # State
+    deployment_id = DeploymentID("test_deployment", "test_app")
+
+    # Create deployment state manager
+    create_deployment_state_manager, timer, _ = mock_deployment_state_manager_full
+    deployment_state_manager: DeploymentStateManager = create_deployment_state_manager()
+
+    # Deploy deployment with 3 replicas
+    info, _ = deployment_info(
+        autoscaling_config={
+            "target_num_ongoing_requests_per_replica": 1,
+            "min_replicas": 0,
+            "max_replicas": 6,
+            "initial_replicas": 3,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        }
+    )
+    deployment_state_manager.deploy(deployment_id, info)
+    deployment_state: DeploymentState = deployment_state_manager._deployment_states[
+        deployment_id
+    ]
+
+    # status=UPDATING, status_driver=DEPLOY
+    deployment_state_manager.update()
+    check_counts(deployment_state, total=3, by_state=[(ReplicaState.STARTING, 3)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+    assert (
+        deployment_state.curr_status_info.status_driver == DeploymentStatusDriver.DEPLOY
+    )
+
+    # Set replicas ready and check statuses
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+
+    # status=HEALTHY, status_driver=DEPLOY
+    deployment_state_manager.update()
+    check_counts(deployment_state, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_driver == DeploymentStatusDriver.DEPLOY
+    )
+
+    for replica in deployment_state._replicas.get():
+        deployment_state_manager.record_autoscaling_metrics(
+            (replica._actor.replica_tag, 2), None
+        )
+
+    # status=UPSCALING/DOWNSCALING, status_driver=AUTOSCALE
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=6,
+        by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
+    assert (
+        deployment_state.curr_status_info.status_driver
+        == DeploymentStatusDriver.AUTOSCALE
+    )
+
+    # Set replicas ready and check statuses
+    for replica in deployment_state._replicas.get():
+        replica._actor.set_ready()
+
+    # status=HEALTHY, status_driver=UPSCALE_COMPLETED/DOWNSCALE_COMPLETED
+    deployment_state_manager.update()
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert (
+        deployment_state.curr_status_info.status_driver
+        == DeploymentStatusDriver.UPSCALE_COMPLETED
+    )
+
+
+def test_autoscale_down(mock_deployment_state_manager_full):
     """Test autoscaling up and down."""
 
     # State
@@ -2095,40 +2171,28 @@ def test_autoscaling(mock_deployment_state_manager_full, scale_direction: str):
 
     for replica in deployment_state._replicas.get():
         deployment_state_manager.record_autoscaling_metrics(
-            (replica._actor.replica_tag, 2 if scale_direction == "up" else 0), None
+            (replica._actor.replica_tag, 0), None
         )
 
     # status=UPSCALING/DOWNSCALING, status_driver=None
     deployment_state_manager.update()
-    if scale_direction == "up":
-        assert deployment_state.curr_status_info.status == DeploymentStatus.UPSCALING
-    else:
-        assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
+    assert deployment_state.curr_status_info.status == DeploymentStatus.DOWNSCALING
     assert (
         deployment_state.curr_status_info.status_driver
-        == DeploymentStatusDriver.UNSPECIFIED
+        == DeploymentStatusDriver.AUTOSCALE
     )
 
     # Set replicas ready and check statuses
     for replica in deployment_state._replicas.get():
-        if scale_direction == "up":
-            replica._actor.set_ready()
-        else:
-            replica._actor.set_done_stopping()
+        replica._actor.set_done_stopping()
 
     # status=HEALTHY, status_driver=UPSCALE_COMPLETED/DOWNSCALE_COMPLETED
     deployment_state_manager.update()
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
-    if scale_direction == "up":
-        assert (
-            deployment_state.curr_status_info.status_driver
-            == DeploymentStatusDriver.UPSCALE_COMPLETED
-        )
-    else:
-        assert (
-            deployment_state.curr_status_info.status_driver
-            == DeploymentStatusDriver.DOWNSCALE_COMPLETED
-        )
+    assert (
+        deployment_state.curr_status_info.status_driver
+        == DeploymentStatusDriver.DOWNSCALE_COMPLETED
+    )
 
 
 def test_health_check(mock_deployment_state):

@@ -7,10 +7,6 @@ import ray
 from ray.actor import ActorHandle
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-
-# from ray.serve.generated.serve_pb2 import (
-#     DeploymentStatusDriver as DeploymentStatusDriverProto,
-# )
 from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
@@ -119,6 +115,7 @@ class DeploymentStatusDriver(str, Enum):
     CONFIG_UPDATE = "CONFIG_UPDATE"
     UPSCALE_COMPLETED = "UPSCALE_COMPLETED"
     DOWNSCALE_COMPLETED = "DOWNSCALE_COMPLETED"
+    AUTOSCALE = "AUTOSCALE"
     DELETE = "DELETE"
 
 
