@@ -237,6 +237,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   };
 
   client->GetOrCreateRuntimeEnv(job_id,
+                                WorkerID::Nil(),
                                 serialized_runtime_env,
                                 runtime_env_config,
                                 serialized_allocated_resource_instances,
@@ -407,7 +408,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback);
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", WorkerID::Nil(), callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
