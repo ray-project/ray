@@ -7,11 +7,13 @@ from ray.serve.handle import DeploymentHandle
 
 @serve.deployment
 class Ingress:
-    def __init__(
-        self, ver_25_handle: DeploymentHandle, ver_26_handle: DeploymentHandle
-    ):
-        self.ver_25_handle = ver_25_handle
-        self.ver_26_handle = ver_26_handle
+    def __init__(self, ver_25_handle, ver_26_handle):
+        self.ver_25_handle: DeploymentHandle = ver_25_handle.options(
+            use_new_handle_api=True,
+        )
+        self.ver_26_handle: DeploymentHandle = ver_26_handle.options(
+            use_new_handle_api=True,
+        )
 
     async def __call__(self, request: Request):
         if request.query_params["version"] == "25":

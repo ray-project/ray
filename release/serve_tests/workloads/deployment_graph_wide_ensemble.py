@@ -124,7 +124,7 @@ def main(
 
     # 0 + 1 + 2 + 3 + 4 + ... + (fanout_degree - 1)
     expected = ((0 + fanout_degree - 1) * fanout_degree) / 2
-    assert dag_handle.predict.remote(0).result() == expected
+    assert ray.get(dag_handle.predict.remote(0)) == expected
 
     throughput_mean_tps, throughput_std_tps = asyncio.run(
         benchmark_throughput_tps(

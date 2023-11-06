@@ -18,12 +18,8 @@ from ray import serve
 from ray._private.pydantic_compat import BaseModel
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.handle import DeploymentHandle
-from ray.serve.tests.common.remote_uris import (
-    TEST_DAG_PINNED_URI,
-    TEST_DEPLOY_GROUP_PINNED_URI,
-)
 from ray.serve.tests.common.utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
@@ -388,14 +384,16 @@ def test_run_runtime_env(ray_start_stop):
                 "missing_runtime_env.yaml",
             ),
             "--runtime-env-json",
-            json.dumps(
-                {
-                    "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
-                    "working_dir": "http://nonexistentlink-q490123950ni34t",
-                }
+            (
+                '{"py_modules": ["https://github.com/ray-project/test_deploy_group'
+                '/archive/67971777e225600720f91f618cdfe71fc47f60ee.zip"],'
+                '"working_dir": "http://nonexistentlink-q490123950ni34t"}'
             ),
             "--working-dir",
-            TEST_DAG_PINNED_URI,
+            (
+                "https://github.com/ray-project/test_dag/archive/"
+                "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
+            ),
         ]
     )
     wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
@@ -489,11 +487,11 @@ def global_f(*args):
 
 @serve.deployment
 class NoArgDriver:
-    def __init__(self, h: DeploymentHandle):
-        self._h = h
+    def __init__(self, dag: RayServeDAGHandle):
+        self.dag = dag
 
     async def __call__(self):
-        return await self._h.remote()
+        return await (await self.dag.remote())
 
 
 TestBuildFNode = global_f.bind()

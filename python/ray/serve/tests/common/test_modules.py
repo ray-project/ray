@@ -4,12 +4,12 @@ fully qualified name as import_path to test DAG building, artifact generation
 and structured deployment.
 """
 import asyncio
-from typing import Dict, Union
+from typing import TypeVar
 
 from ray import serve
 from ray.actor import ActorHandle
-from ray.serve.handle import DeploymentHandle
 
+RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
 
 
@@ -40,8 +40,8 @@ class Model:
 class Combine:
     def __init__(
         self,
-        m1: DeploymentHandle,
-        m2: Union[DeploymentHandle, Dict[str, DeploymentHandle]],
+        m1: "RayHandleLike",
+        m2: "RayHandleLike" = None,
         m2_nested: bool = False,
     ):
         self.m1 = m1
@@ -52,8 +52,8 @@ class Combine:
             r1_ref = self.m1.forward.remote(req)
             r2_ref = self.m2.forward.remote(req)
         else:
-            r1_ref = await self.m1.forward.remote(req)._to_object_ref()
-            r2_ref = await self.m2.forward.remote(req)._to_object_ref()
+            r1_ref = await self.m1.forward.remote(req)
+            r2_ref = await self.m2.forward.remote(req)
 
         return sum(await asyncio.gather(r1_ref, r2_ref))
 

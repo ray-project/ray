@@ -330,7 +330,6 @@ class Deployment:
             app_name="",
             missing_ok=True,
             sync=sync,
-            use_new_handle_api=False,
         )
 
     def options(

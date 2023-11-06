@@ -179,18 +179,18 @@ from user_defined_protos_pb2 import (
 )
 
 from ray import serve
-from ray.serve.handle import DeploymentHandle
+from ray.serve.handle import RayServeDeploymentHandle
 
 
 @serve.deployment
 class ImageClassifier:
     def __init__(
         self,
-        _image_downloader: DeploymentHandle,
-        _data_preprocessor: DeploymentHandle,
+        _image_downloader: RayServeDeploymentHandle,
+        _data_preprocessor: RayServeDeploymentHandle,
     ):
-        self._image_downloader = _image_downloader
-        self._data_preprocessor = _data_preprocessor
+        self._image_downloader = _image_downloader.options(use_new_handle_api=True)
+        self._data_preprocessor = _data_preprocessor.options(use_new_handle_api=True)
         self.model = torch.hub.load(
             "pytorch/vision:v0.10.0", "resnet18", pretrained=True
         )

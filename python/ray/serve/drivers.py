@@ -64,6 +64,7 @@ class DAGDriver(ASGIAppReplicaWrapper):
                 endpoint_create_func()
 
         else:
+            assert isinstance(dags, (RayServeDAGHandle, RayServeHandle))
             if isinstance(dags, RayServeHandle):
                 dags = dags.options(use_new_handle_api=True)
 
@@ -86,7 +87,7 @@ class DAGDriver(ASGIAppReplicaWrapper):
         # the `_ray_cache_refs` kwarg.
         if isinstance(dag, RayServeDAGHandle):
             kwargs["_ray_cache_refs"] = _ray_cache_refs
-            return await dag.remote(*args, **kwargs)
+            return await (await dag.remote(*args, **kwargs))
         else:
             return await dag.remote(*args, **kwargs)
 
@@ -96,7 +97,10 @@ class DAGDriver(ASGIAppReplicaWrapper):
             raise RayServeException(f"{route_path} does not exist in dags routes")
 
         dag = self.dags[route_path]
-        return await dag.remote(*args, **kwargs)
+        if isinstance(dag, RayServeDAGHandle):
+            return await (await dag.remote(*args, **kwargs))
+        else:
+            return await dag.remote(*args, **kwargs)
 
     async def get_intermediate_object_refs(self) -> Dict[str, Any]:
         """Gets latest cached object refs from latest call to predict().

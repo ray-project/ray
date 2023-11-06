@@ -3,6 +3,7 @@ from typing import AsyncGenerator, Generator
 
 import pytest
 
+import ray
 from ray import serve
 from ray.serve import Deployment
 from ray.serve.handle import RayServeHandle
@@ -70,23 +71,23 @@ class TestAppHandleStreaming:
         h = serve.run(deployment.bind()).options(stream=True)
 
         # Test calling __call__ generator.
-        gen = h.remote(5)
-        assert list(gen) == list(range(5))
+        obj_ref_gen = ray.get(h.remote(5))
+        assert ray.get(list(obj_ref_gen)) == list(range(5))
 
         # Test calling another method name.
-        gen = h.other_method.remote(5)
-        assert list(gen) == list(range(5))
+        obj_ref_gen = ray.get(h.other_method.remote(5))
+        assert ray.get(list(obj_ref_gen)) == list(range(5))
 
         # Test calling another method name via `.options`.
-        gen = h.options(method_name="other_method").remote(5)
-        assert list(gen) == list(range(5))
+        obj_ref_gen = ray.get(h.options(method_name="other_method").remote(5))
+        assert ray.get(list(obj_ref_gen)) == list(range(5))
 
         # Test calling a method that returns another generator.
-        gen = h.call_inner_generator.remote(5)
-        assert list(gen) == list(range(5))
+        obj_ref_gen = ray.get(h.call_inner_generator.remote(5))
+        assert ray.get(list(obj_ref_gen)) == list(range(5))
 
         # Test calling a unary method on the same deployment.
-        assert h.options(stream=False).unary.remote(5).result() == 5
+        assert ray.get(h.options(stream=False).unary.remote(5)) == 5
 
     def test_call_gen_without_stream_flag(self, serve_instance, deployment: Deployment):
         h = serve.run(deployment.bind())
@@ -98,7 +99,7 @@ class TestAppHandleStreaming:
                 "`handle.options\(stream=True\)` to call generators on a deployment."
             ),
         ):
-            h.remote(5).result()
+            ray.get(h.remote(5))
 
         with pytest.raises(
             TypeError,
@@ -107,31 +108,31 @@ class TestAppHandleStreaming:
                 "`handle.options\(stream=True\)` to call generators on a deployment."
             ),
         ):
-            h.call_inner_generator.remote(5).result()
+            ray.get(h.call_inner_generator.remote(5))
 
     def test_call_no_gen_with_stream_flag(self, serve_instance, deployment: Deployment):
         h = serve.run(deployment.bind()).options(stream=True)
 
-        gen = h.unary.remote(0)
+        obj_ref_gen = ray.get(h.unary.remote(0))
         with pytest.raises(
             TypeError,
             match="must be a generator function, but 'unary' is not",
         ):
-            next(gen)
+            ray.get(next(obj_ref_gen))
 
     def test_generator_yields_no_results(self, serve_instance, deployment: Deployment):
         h = serve.run(deployment.bind()).options(stream=True)
 
-        gen = h.remote(0)
+        obj_ref_gen = ray.get(h.remote(0))
         with pytest.raises(StopIteration):
-            next(gen)
+            ray.get(next(obj_ref_gen))
 
     def test_exception_raised_in_gen(self, serve_instance, deployment: Deployment):
         h = serve.run(deployment.bind()).options(stream=True)
 
-        gen = h.remote(0, should_error=True)
+        obj_ref_gen = ray.get(h.remote(0, should_error=True))
         with pytest.raises(RuntimeError, match="oopsies"):
-            next(gen)
+            ray.get(next(obj_ref_gen))
 
 
 @pytest.mark.parametrize("deployment", [AsyncStreamer, SyncStreamer])
@@ -146,22 +147,24 @@ class TestDeploymentHandleStreaming:
                 h = self._h.options(stream=True)
 
                 # Test calling __call__ generator.
-                gen = h.remote(5)
-                assert [result async for result in gen] == list(range(5))
+                obj_ref_gen = await h.remote(5)
+                assert [await obj_ref async for obj_ref in obj_ref_gen] == list(
+                    range(5)
+                )
 
                 # Test calling another method name.
-                gen = h.other_method.remote(5)
-                assert [result async for result in gen] == list(range(5))
+                obj_ref_gen = await h.other_method.remote(5)
+                assert [await obj_ref for obj_ref in obj_ref_gen] == list(range(5))
 
                 # Test calling another method name via `.options`.
-                gen = h.options(method_name="other_method").remote(5)
-                assert [result async for result in gen] == list(range(5))
+                obj_ref_gen = await h.options(method_name="other_method").remote(5)
+                assert [await obj_ref for obj_ref in obj_ref_gen] == list(range(5))
 
                 # Test calling a unary method on the same deployment.
-                assert await h.options(stream=False).unary.remote(5) == 5
+                assert await (await h.options(stream=False).unary.remote(5)) == 5
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        h.remote().result()
+        ray.get(h.remote())
 
     def test_call_gen_without_stream_flag(self, serve_instance, deployment: Deployment):
         @serve.deployment
@@ -178,7 +181,7 @@ class TestDeploymentHandleStreaming:
                         "deployment."
                     ),
                 ):
-                    await self._h.remote(5)
+                    await (await self._h.remote(5))
 
                 with pytest.raises(
                     TypeError,
@@ -188,10 +191,10 @@ class TestDeploymentHandleStreaming:
                         "deployment."
                     ),
                 ):
-                    await self._h.call_inner_generator.remote(5)
+                    await (await self._h.call_inner_generator.remote(5))
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        h.remote().result()
+        ray.get(h.remote())
 
     def test_call_no_gen_with_stream_flag(self, serve_instance, deployment: Deployment):
         @serve.deployment
@@ -202,14 +205,14 @@ class TestDeploymentHandleStreaming:
             async def __call__(self):
                 h = self._h.options(stream=True)
 
-                gen = h.unary.remote(0)
+                obj_ref_gen = await h.unary.remote(0)
                 with pytest.raises(
                     TypeError, match="must be a generator function, but 'unary' is not"
                 ):
-                    await gen.__anext__()
+                    await (await obj_ref_gen.__anext__())
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        h.remote().result()
+        ray.get(h.remote())
 
     def test_generator_yields_no_results(self, serve_instance, deployment: Deployment):
         @serve.deployment
@@ -220,12 +223,12 @@ class TestDeploymentHandleStreaming:
             async def __call__(self):
                 h = self._h.options(stream=True)
 
-                gen = h.remote(0)
+                obj_ref_gen = await h.remote(0)
                 with pytest.raises(StopAsyncIteration):
-                    await gen.__anext__()
+                    await (await obj_ref_gen.__anext__())
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        h.remote().result()
+        ray.get(h.remote())
 
     def test_exception_raised_in_gen(self, serve_instance, deployment: Deployment):
         @serve.deployment
@@ -236,12 +239,12 @@ class TestDeploymentHandleStreaming:
             async def __call__(self):
                 h = self._h.options(stream=True)
 
-                gen = h.remote(0, should_error=True)
+                obj_ref_gen = await h.remote(0, should_error=True)
                 with pytest.raises(RuntimeError, match="oopsies"):
-                    await gen.__anext__()
+                    await (await obj_ref_gen.__anext__())
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        h.remote().result()
+        ray.get(h.remote())
 
     def test_call_multiple_downstreams(self, serve_instance, deployment: Deployment):
         @serve.deployment
@@ -251,31 +254,31 @@ class TestDeploymentHandleStreaming:
                 self._h2 = streamer2.options(stream=True)
 
             async def __call__(self):
-                gen1 = self._h1.remote(1)
-                gen2 = self._h2.remote(2)
+                obj_ref_gen1 = await self._h1.remote(1)
+                obj_ref_gen2 = await self._h2.remote(2)
 
-                assert await gen1.__anext__() == 0
-                assert await gen2.__anext__() == 0
-
-                with pytest.raises(StopAsyncIteration):
-                    assert await gen1.__anext__()
-                assert await gen2.__anext__() == 1
+                assert await (await obj_ref_gen1.__anext__()) == 0
+                assert await (await obj_ref_gen2.__anext__()) == 0
 
                 with pytest.raises(StopAsyncIteration):
-                    assert await gen1.__anext__()
+                    assert await (await obj_ref_gen1.__anext__())
+                assert await (await obj_ref_gen2.__anext__()) == 1
+
                 with pytest.raises(StopAsyncIteration):
-                    assert await gen2.__anext__()
+                    assert await (await obj_ref_gen1.__anext__())
+                with pytest.raises(StopAsyncIteration):
+                    assert await (await obj_ref_gen2.__anext__())
 
         h = serve.run(Delegate.bind(deployment.bind(), deployment.bind()))
-        h.remote().result()
+        ray.get(h.remote())
 
 
 @pytest.mark.parametrize("deployment", [sync_gen_function, async_gen_function])
 class TestGeneratorFunctionDeployment:
     def test_app_handle(self, deployment: Deployment):
         h = serve.run(deployment.bind()).options(stream=True)
-        gen = h.remote(5)
-        assert list(gen) == list(range(5))
+        obj_ref_gen = h.remote(5)
+        assert ray.get(list(obj_ref_gen)) == list(range(5))
 
     def test_deployment_handle(self, deployment: Deployment):
         @serve.deployment
@@ -284,11 +287,16 @@ class TestGeneratorFunctionDeployment:
                 self._f = f.options(stream=True)
 
             async def __call__(self):
-                gen = self._f.remote(5)
-                assert [result async for result in gen] == list(range(5))
+                obj_ref_gen = await self._f.remote(5)
+
+                results = []
+                async for obj_ref in obj_ref_gen:
+                    results.append(await obj_ref)
+
+                assert results == list(range(5))
 
         h = serve.run(Delegate.bind(deployment.bind()))
-        h.remote().result()
+        ray.get(h.remote())
 
 
 if __name__ == "__main__":

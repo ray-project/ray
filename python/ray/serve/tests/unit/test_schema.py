@@ -24,10 +24,6 @@ from ray.serve.schema import (
     ServeStatusSchema,
     _serve_status_to_schema,
 )
-from ray.serve.tests.common.remote_uris import (
-    TEST_DEPLOY_GROUP_PINNED_URI,
-    TEST_MODULE_PINNED_URI,
-)
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_P4, NVIDIA_TESLA_V100
 
 
@@ -39,13 +35,27 @@ def get_valid_runtime_envs() -> List[Dict]:
         {},
         # Runtime_env with remote_URIs
         {
-            "working_dir": TEST_MODULE_PINNED_URI,
-            "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
+            "working_dir": (
+                "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+            ),
+            "py_modules": [
+                (
+                    "https://github.com/shrekris-anyscale/"
+                    "test_deploy_group/archive/HEAD.zip"
+                ),
+            ],
         },
         # Runtime_env with extra options
         {
-            "working_dir": TEST_MODULE_PINNED_URI,
-            "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
+            "working_dir": (
+                "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+            ),
+            "py_modules": [
+                (
+                    "https://github.com/shrekris-anyscale/"
+                    "test_deploy_group/archive/HEAD.zip"
+                ),
+            ],
             "pip": ["pandas", "numpy"],
             "env_vars": {"OMP_NUM_THREADS": "32", "EXAMPLE_VAR": "hello"},
             "excludes": "imaginary_file.txt",
@@ -62,7 +72,10 @@ def get_invalid_runtime_envs() -> List[Dict]:
             "working_dir": ".",
             "py_modules": [
                 "/Desktop/my_project",
-                TEST_DEPLOY_GROUP_PINNED_URI,
+                (
+                    "https://github.com/shrekris-anyscale/"
+                    "test_deploy_group/archive/HEAD.zip"
+                ),
             ],
         }
     ]
@@ -111,7 +124,10 @@ class TestRayActorOptionsSchema:
     def get_valid_ray_actor_options_schema(self):
         return {
             "runtime_env": {
-                "working_dir": TEST_MODULE_PINNED_URI,
+                "working_dir": (
+                    "https://github.com/shrekris-anyscale/"
+                    "test_module/archive/HEAD.zip"
+                )
             },
             "num_cpus": 0.2,
             "num_gpus": 50,
@@ -205,8 +221,16 @@ class TestDeploymentSchema:
             "health_check_timeout_s": 11,
             "ray_actor_options": {
                 "runtime_env": {
-                    "working_dir": TEST_MODULE_PINNED_URI,
-                    "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
+                    "working_dir": (
+                        "https://github.com/shrekris-anyscale/"
+                        "test_module/archive/HEAD.zip"
+                    ),
+                    "py_modules": [
+                        (
+                            "https://github.com/shrekris-anyscale/"
+                            "test_deploy_group/archive/HEAD.zip"
+                        ),
+                    ],
                 },
                 "num_cpus": 3,
                 "num_gpus": 4.2,
@@ -363,8 +387,16 @@ class TestServeApplicationSchema:
                     "health_check_timeout_s": 11,
                     "ray_actor_options": {
                         "runtime_env": {
-                            "working_dir": TEST_MODULE_PINNED_URI,
-                            "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
+                            "working_dir": (
+                                "https://github.com/shrekris-anyscale/"
+                                "test_module/archive/HEAD.zip"
+                            ),
+                            "py_modules": [
+                                (
+                                    "https://github.com/shrekris-anyscale/"
+                                    "test_deploy_group/archive/HEAD.zip"
+                                ),
+                            ],
                         },
                         "num_cpus": 3,
                         "num_gpus": 4.2,
@@ -745,8 +777,16 @@ def test_deployment_to_schema_to_deployment():
         route_prefix="/hello",
         ray_actor_options={
             "runtime_env": {
-                "working_dir": TEST_MODULE_PINNED_URI,
-                "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
+                "working_dir": (
+                    "https://github.com/shrekris-anyscale/"
+                    "test_module/archive/HEAD.zip"
+                ),
+                "py_modules": [
+                    (
+                        "https://github.com/shrekris-anyscale/"
+                        "test_deploy_group/archive/HEAD.zip"
+                    ),
+                ],
             }
         },
     )
@@ -762,13 +802,12 @@ def test_deployment_to_schema_to_deployment():
 
     assert deployment.num_replicas == 3
     assert deployment.route_prefix == "/hello"
-    assert (
-        deployment.ray_actor_options["runtime_env"]["working_dir"]
-        == TEST_MODULE_PINNED_URI
+    assert deployment.ray_actor_options["runtime_env"]["working_dir"] == (
+        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
     )
     assert deployment.ray_actor_options["runtime_env"]["py_modules"] == [
-        TEST_DEPLOY_GROUP_PINNED_URI,
-        TEST_MODULE_PINNED_URI,
+        "https://github.com/shrekris-anyscale/test_deploy_group/archive/HEAD.zip",
+        "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
     ]
 
 

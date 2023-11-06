@@ -756,7 +756,7 @@ def test_cold_start_time(serve_instance):
     wait_for_condition(check_running)
 
     start = time.time()
-    result = handle.remote().result()
+    result = ray.get(handle.remote())
     cold_start_time = time.time() - start
     assert cold_start_time < 3
     print(
@@ -821,9 +821,9 @@ def test_e2e_bursty(serve_instance):
     for _ in range(5):
         ray.get(signal.send.remote(clear=True))
         assert check_autoscale_num_replicas(controller, "A") == num_replicas
-        responses = [handle.remote() for _ in range(100)]
+        refs = [handle.remote() for _ in range(100)]
         signal.send.remote()
-        [r.result() for r in responses]
+        ray.get(refs)
         time.sleep(0.05)
 
     # As the queue is drained, we should scale back down.
@@ -1151,7 +1151,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
 
     handle = serve.run(scaler.bind())
     dep_id = DeploymentID("scaler", SERVE_DEFAULT_APP_NAME)
-    responses = [handle.remote() for _ in range(10)]
+    refs = [handle.remote() for _ in range(10)]
 
     def check_two_replicas():
         actors = state_api.list_actors(
@@ -1167,14 +1167,13 @@ def test_e2e_preserve_prev_replicas(serve_instance):
 
     ray.get(signal.send.remote())
 
-    pids = {r.result() for r in responses}
+    pids = set(ray.get(refs))
     assert len(pids) == 2
 
     # Now re-deploy the application, make sure it is still 2 replicas and it shouldn't
     # be scaled down.
     handle = serve.run(scaler.bind())
-    responses = [handle.remote() for _ in range(10)]
-    pids = {r.result() for r in responses}
+    pids = set(ray.get([handle.remote() for _ in range(10)]))
     assert len(pids) == 2
 
     def check_num_replicas(live: int, dead: int):
@@ -1212,9 +1211,8 @@ def test_e2e_preserve_prev_replicas(serve_instance):
         )
     )
     handle = serve.run(scaler.bind())
-    responses = [handle.remote() for _ in range(15)]
-    pids = {r.result() for r in responses}
-    assert len(pids) == 3
+    new_pids = set(ray.get([handle.remote() for _ in range(15)]))
+    assert len(new_pids) == 3
 
     wait_for_condition(
         check_num_replicas, retry_interval_ms=1000, timeout=20, live=3, dead=4

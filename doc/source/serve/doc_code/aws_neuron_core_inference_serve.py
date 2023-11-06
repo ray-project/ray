@@ -41,8 +41,10 @@ neuron_model = "./sentiment_neuron.pt"
 @serve.deployment(num_replicas=1)
 @serve.ingress(app)
 class APIIngress:
-    def __init__(self, bert_base_model_handle: DeploymentHandle) -> None:
-        self.handle = bert_base_model_handle
+    def __init__(self, bert_base_model_handle) -> None:
+        self.handle: DeploymentHandle = bert_base_model_handle.options(
+            use_new_handle_api=True,
+        )
 
     @app.get("/infer")
     async def infer(self, sentence: str):

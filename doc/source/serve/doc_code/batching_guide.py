@@ -10,7 +10,9 @@ class Model:
         return single_sample * 2
 
 
-handle: DeploymentHandle = serve.run(Model.bind())
+handle: DeploymentHandle = serve.run(Model.bind()).options(
+    use_new_handle_api=True,
+)
 assert handle.remote(1).result() == 2
 # __single_sample_end__
 
@@ -32,7 +34,9 @@ class Model:
         return np.array(multiple_samples) * 2
 
 
-handle: DeploymentHandle = serve.run(Model.bind())
+handle: DeploymentHandle = serve.run(Model.bind()).options(
+    use_new_handle_api=True,
+)
 responses = [handle.remote(i) for i in range(8)]
 assert list(r.result() for r in responses) == [i * 2 for i in range(8)]
 # __batch_end__

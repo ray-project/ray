@@ -32,9 +32,13 @@ class DownstreamModel:
 
 @serve.deployment
 class Ingress:
-    def __init__(self, preprocessor: DeploymentHandle, downstream: DeploymentHandle):
-        self._preprocessor = preprocessor
-        self._downstream = downstream
+    def __init__(self, preprocessor, downstream):
+        self._preprocessor: DeploymentHandle = preprocessor.options(
+            use_new_handle_api=True,
+        )
+        self._downstream: DeploymentHandle = downstream.options(
+            use_new_handle_api=True,
+        )
 
     async def __call__(self, mode: str) -> str:
         preprocessor_response: DeploymentResponse = self._preprocessor.remote()
@@ -47,7 +51,7 @@ class Ingress:
 
 
 app = Ingress.bind(Preprocessor.bind(), DownstreamModel.bind())
-handle: DeploymentHandle = serve.run(app)
+handle: DeploymentHandle = serve.run(app).options(use_new_handle_api=True)
 
 by_value_result = handle.remote(mode="by_value").result()
 assert by_value_result == "Got result by value: 'Hello from preprocessor!'"

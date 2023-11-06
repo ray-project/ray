@@ -476,11 +476,13 @@ def test_handle_apis_detected(
     if call_in_deployment:
         result = requests.get("http://localhost:8000").text
     elif use_new_handle_api:
-        result = handle.remote(call_downstream=False).result()
-    else:
-        result = ray.get(
-            handle.options(use_new_handle_api=False).remote(call_downstream=False)
+        result = (
+            handle.options(use_new_handle_api=True)
+            .remote(call_downstream=False)
+            .result()
         )
+    else:
+        result = ray.get(handle.remote(call_downstream=False))
 
     assert result == "ok"
 

@@ -2,7 +2,6 @@ import os
 import sys
 import time
 from collections import defaultdict
-from typing import Callable
 
 import pytest
 import requests
@@ -70,10 +69,10 @@ def test_empty_decorator(serve_instance):
     assert func.name == "func"
     assert Class.name == "Class"
     func_handle = serve.run(func.bind())
-    assert func_handle.remote().result() == "hi"
+    assert ray.get(func_handle.remote()) == "hi"
 
     class_handle = serve.run(Class.bind())
-    assert class_handle.ping.remote().result() == "pong"
+    assert ray.get(class_handle.ping.remote()) == "pong"
 
 
 def test_reconfigure_with_exception(serve_instance):
@@ -378,7 +377,9 @@ def test_reconfigure_with_queries(serve_instance):
             return self.state["a"]
 
     handle = serve.run(A.options(version="1", user_config={"a": 1}).bind())
-    responses = [handle.remote() for _ in range(30)]
+    refs = []
+    for _ in range(30):
+        refs.append(handle.remote())
 
     @ray.remote(num_cpus=0)
     def reconfigure():
@@ -387,9 +388,9 @@ def test_reconfigure_with_queries(serve_instance):
     reconfigure_ref = reconfigure.remote()
     signal.send.remote()
     ray.get(reconfigure_ref)
-
-    assert all([r.result() == 1 for r in responses])
-    assert handle.remote().result() == 2
+    for ref in refs:
+        assert ray.get(ref) == 1
+    assert ray.get(handle.remote()) == 2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -494,7 +495,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     assert all(pid not in pids1 for pid in responses2["2"])
 
 
-def test_handle_method_name_validation(serve_instance):
+def test_deploy_handle_validation(serve_instance):
     @serve.deployment
     class A:
         def b(self, *args):
@@ -502,18 +503,12 @@ def test_handle_method_name_validation(serve_instance):
 
     handle = serve.run(A.bind(), name="app")
 
-    # Specify method via `.options`.
-    assert handle.options(method_name="b").remote().result() == "hello"
-
-    # Specify method via attribute.
-    assert handle.b.remote().result() == "hello"
-
-    # Unknown method.
+    # Legacy code path
+    assert ray.get(handle.options(method_name="b").remote()) == "hello"
+    # New code path
+    assert ray.get(handle.b.remote()) == "hello"
     with pytest.raises(RayServeException):
-        handle.options(method_name="c").remote().result()
-
-    with pytest.raises(RayServeException):
-        handle.c.remote().result()
+        ray.get(handle.c.remote())
 
 
 def test_deploy_with_init_args(serve_instance):
@@ -545,14 +540,14 @@ def test_deploy_with_init_kwargs(serve_instance):
 def test_init_args_with_closure(serve_instance):
     @serve.deployment
     class Evaluator:
-        def __init__(self, func: Callable):
-            self._func = func
+        def __init__(self, func):
+            self.func = func
 
-        def __call__(self, inp: int) -> int:
-            return self._func(inp)
+        def __call__(self, inp):
+            return self.func(inp)
 
     handle = serve.run(Evaluator.bind(lambda a: a + 1))
-    assert handle.remote(41).result() == 42
+    assert ray.get(handle.remote(41)) == 42
 
 
 def test_input_validation():

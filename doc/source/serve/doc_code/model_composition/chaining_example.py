@@ -25,9 +25,13 @@ class Multiplier:
 
 @serve.deployment
 class Ingress:
-    def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
-        self._adder = adder
-        self._multiplier = multiplier
+    def __init__(self, adder, multiplier):
+        self._adder: DeploymentHandle = adder.options(
+            use_new_handle_api=True,
+        )
+        self._multiplier: DeploymentHandle = multiplier.options(
+            use_new_handle_api=True,
+        )
 
     async def __call__(self, input: int) -> int:
         adder_response: DeploymentResponse = self._adder.remote(input)
@@ -44,7 +48,7 @@ app = Ingress.bind(
     Multiplier.bind(multiple=2),
 )
 
-handle: DeploymentHandle = serve.run(app)
+handle: DeploymentHandle = serve.run(app).options(use_new_handle_api=True)
 response = handle.remote(5)
 assert response.result() == 12, "(5 + 1) * 2 = 12"
 # __chaining_example_end__

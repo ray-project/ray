@@ -13,8 +13,10 @@ app = FastAPI()
 @serve.deployment(num_replicas=1)
 @serve.ingress(app)
 class APIIngress:
-    def __init__(self, distilbert_model_handle: DeploymentHandle) -> None:
-        self.handle = distilbert_model_handle
+    def __init__(self, distilbert_model_handle) -> None:
+        self.handle: DeploymentHandle = distilbert_model_handle.options(
+            use_new_handle_api=True,
+        )
 
     @app.get("/classify")
     async def classify(self, sentence: str):

@@ -1,9 +1,10 @@
 from typing import Dict
 
 # Users need to include their custom message type which will be embedded in the request.
+import ray
 from ray import serve
 from ray.serve.generated import serve_pb2
-from ray.serve.handle import DeploymentHandle
+from ray.serve.handle import RayServeDeploymentHandle
 
 
 @serve.deployment
@@ -56,8 +57,8 @@ g = GrpcDeployment.options(name="grpc-deployment").bind()
 class FruitMarket:
     def __init__(
         self,
-        _orange_stand: DeploymentHandle,
-        _apple_stand: DeploymentHandle,
+        _orange_stand: RayServeDeploymentHandle,
+        _apple_stand: RayServeDeploymentHandle,
     ):
         self.directory = {
             "ORANGE": _orange_stand,
@@ -82,7 +83,9 @@ class FruitMarket:
             if fruit not in self.directory:
                 return
             fruit_stand = self.directory[fruit]
-            costs += await fruit_stand.remote(int(amount))
+            ref: ray.ObjectRef = await fruit_stand.remote(int(amount))
+            result = await ref
+            costs += result
         return costs
 
 
