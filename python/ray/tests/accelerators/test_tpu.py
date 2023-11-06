@@ -76,7 +76,7 @@ def test_autodetect_tpu_accelerator_type(
     [
         ("gce", "0", 0),
         ("gke", "0", 0),
-   ],
+    ],
 )
 @patch("requests.get")
 @patch("os.getenv")
@@ -98,7 +98,7 @@ def test_get_tpu_worker_id(mock_os, mock_request, test_case):
     [
         ("gce", "my-tpu"),
         ("gke", "my-tpu"),
-   ],
+    ],
 )
 @patch("requests.get")
 @patch("os.getenv")
