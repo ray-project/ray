@@ -403,6 +403,9 @@ def test_jemalloc_ray_start(monkeypatch, ray_start_cluster):
     )
     assert not ray.get(ray.remote(check_jemalloc_enabled).remote())
 
+    ray.shutdown()
+    cluster.shutdown()
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
