@@ -110,6 +110,14 @@ class GcsServer {
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
 
+  const GcsAutoscalerStateManager &GetAutoscalerStateManager() const {
+    return *gcs_autoscaler_state_manager_;
+  }
+
+  GcsAutoscalerStateManager &GetMutableAutoscalerStateManager() {
+    return *gcs_autoscaler_state_manager_;
+  }
+
   void UpdateGcsResourceManagerInTest(const rpc::ResourcesData &resources) {
     RAY_CHECK(gcs_resource_manager_ != nullptr);
     gcs_resource_manager_->UpdateFromResourceView(resources);

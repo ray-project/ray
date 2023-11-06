@@ -229,12 +229,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param io_context The event loop to run the monitor on.
   /// \param scheduler Used to schedule placement group creation tasks.
   /// \param gcs_table_storage Used to flush placement group data to storage.
-  /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
   GcsPlacementGroupManager(instrumented_io_context &io_context,
                            std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
                            std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                           GcsResourceManager &gcs_resource_manager,
                            std::function<std::string(const JobID &)> get_ray_namespace);
 
   ~GcsPlacementGroupManager() = default;
@@ -404,8 +402,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
  protected:
   /// For testing/mocking only.
-  explicit GcsPlacementGroupManager(instrumented_io_context &io_context,
-                                    GcsResourceManager &gcs_resource_manager);
+  explicit GcsPlacementGroupManager(instrumented_io_context &io_context);
 
  private:
   /// Push a placement group to pending queue.
@@ -442,12 +439,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   bool IsSchedulingInProgress() const {
     return scheduling_in_progress_id_ != PlacementGroupID::Nil();
   }
-
-  // Method that is invoked every second.
-  void Tick();
-
-  // Update placement group load information so that the autoscaler can use it.
-  void UpdatePlacementGroupLoad();
 
   /// Check if this placement group is waiting for scheduling.
   bool IsInPendingQueue(const PlacementGroupID &placement_group_id) const;
@@ -503,9 +494,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// TODO(sang): Currently, only one placement group can be scheduled at a time.
   /// We should probably support concurrenet creation (or batching).
   PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
-
-  /// Reference of GcsResourceManager.
-  GcsResourceManager &gcs_resource_manager_;
 
   UsageStatsClient *usage_stats_client_;
 

@@ -31,10 +31,6 @@ def get_node_to_deployment_to_num_replicas():
     return node_to_deployment_to_num_replicas
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Flaky on Windows due to https://github.com/ray-project/ray/issues/36926.",
-)
 @pytest.mark.parametrize(
     "ray_autoscaling_cluster",
     [
@@ -86,10 +82,6 @@ def test_basic(ray_autoscaling_cluster):
         assert deployment_to_num_replicas["deploy2"] == 1
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Flaky on Windows due to https://github.com/ray-project/ray/issues/36926.",
-)
 @pytest.mark.parametrize(
     "ray_autoscaling_cluster",
     [

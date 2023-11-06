@@ -18,9 +18,11 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 // clang-format on
 
 namespace ray {
@@ -40,6 +42,12 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         gcs_publisher_, gcs_table_storage_, raylet_client_pool_, ClusterID::Nil());
+    gcs_placement_group_manager_ = std::make_shared<MockGcsPlacementGroupManager>();
+    gcs_autoscaler_state_manager_.reset(
+        new GcsAutoscalerStateManager("fake_cluster",
+                                      *gcs_node_manager_,
+                                      *gcs_placement_group_manager_,
+                                      raylet_client_pool_));
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
@@ -68,6 +76,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         io_service_,
         cluster_resource_scheduler->GetClusterResourceManager(),
         *gcs_node_manager_,
+        *gcs_autoscaler_state_manager_,
         local_node_id_);
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
         io_service_,
@@ -148,6 +157,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
+  std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;

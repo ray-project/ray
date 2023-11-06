@@ -447,6 +447,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::unique_ptr<std::thread> client_io_service_thread_;
   std::unique_ptr<instrumented_io_context> client_io_service_;
   std::unique_ptr<gcs::GcsClient> gcs_client_;
+  std::unique_ptr<std::thread> syncer_io_service_thread_;
+  std::unique_ptr<instrumented_io_context> syncer_io_service_;
+
+  // Ray Syncer and reporter.
+  std::unique_ptr<syncer::RaySyncer> ray_syncer_;
+  std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
+  std::unique_ptr<grpc::Server> syncer_server_;
+  std::unique_ptr<LocalResourceManager> local_resource_manager_;
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};

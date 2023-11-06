@@ -121,7 +121,7 @@ void GcsMonitorServer::PopulateResourceDemands(
   // always be race conditions if a node with demands dies unexpectedly.
   for (const auto &node_report_pair : resources_report_by_node) {
     for (const auto &resource_demand :
-         node_report_pair.second.resource_load_by_shape().resource_demands()) {
+         node_report_pair.second.second.resource_load_by_shape().resource_demands()) {
       rpc::ResourceRequest *request;
       auto it = task_load_by_shape.find(resource_demand.shape());
       if (it == task_load_by_shape.end()) {

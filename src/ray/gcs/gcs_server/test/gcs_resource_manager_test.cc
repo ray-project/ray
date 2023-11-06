@@ -17,7 +17,9 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "mock/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
@@ -31,8 +33,15 @@ class GcsResourceManagerTest : public ::testing::Test {
   GcsResourceManagerTest()
       : cluster_resource_manager_(io_service_),
         gcs_node_manager_(std::make_unique<gcs::MockGcsNodeManager>()) {
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
+    gcs_placement_group_manager_ = std::make_unique<gcs::MockGcsPlacementGroupManager>();
+    gcs_autoscaler_state_manager_ = std::make_unique<gcs::MockGcsAutoscalerStateManager>(
+        *gcs_node_manager_, *gcs_placement_group_manager_),
+    gcs_resource_manager_ =
+        std::make_shared<gcs::GcsResourceManager>(io_service_,
+                                                  cluster_resource_manager_,
+                                                  *gcs_node_manager_,
+                                                  *gcs_autoscaler_state_manager_,
+                                                  NodeID::FromRandom());
   }
 
   void UpdateFromResourceViewSync(
@@ -54,6 +63,8 @@ class GcsResourceManagerTest : public ::testing::Test {
   instrumented_io_context io_service_;
   ClusterResourceManager cluster_resource_manager_;
   std::unique_ptr<gcs::GcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<gcs::MockGcsPlacementGroupManager> gcs_placement_group_manager_;
+  std::unique_ptr<gcs::MockGcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };
 
@@ -105,25 +116,25 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
       get_all_request, &get_all_reply, send_reply_callback);
   ASSERT_EQ(get_all_reply.resource_usage_data().batch().size(), 0);
 
-  gcs_resource_manager_->OnNodeAdd(*node);
+  gcs_autoscaler_state_manager_->OnNodeAdd(*node);
 
   rpc::ResourcesData resources_data;
   (*resources_data.mutable_resources_available())["CPU"] = 2;
   (*resources_data.mutable_resources_total())["CPU"] = 2;
-  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resources_data);
+  gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
 
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply, send_reply_callback);
   ASSERT_EQ(get_all_reply.resource_usage_data().batch().size(), 1);
 
-  gcs_resource_manager_->OnNodeDead(node_id);
+  gcs_autoscaler_state_manager_->OnNodeDead(node_id);
   rpc::GetAllResourceUsageReply get_all_reply2;
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply2, send_reply_callback);
   ASSERT_EQ(get_all_reply2.resource_usage_data().batch().size(), 0);
 
   // This will be ignored since the node is dead.
-  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resources_data);
+  gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
   rpc::GetAllResourceUsageReply get_all_reply3;
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply3, send_reply_callback);

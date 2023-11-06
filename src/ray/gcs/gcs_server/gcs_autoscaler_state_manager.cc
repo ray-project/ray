@@ -119,6 +119,11 @@ void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
   GetClusterResourceConstraints(state);
 }
 
+std::shared_ptr<rpc::PlacementGroupLoad>
+GcsAutoscalerStateManager::GetPlacementGroupLoad() const {
+  return gcs_placement_group_manager_.GetPlacementGroupLoad();
+}
+
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   // Get the gang resource requests from the placement group load.
@@ -210,7 +215,17 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
     (*new_data.mutable_resources_total()) = data.resources_total();
   }
 
+  for (auto &it : data.resources_total()) {
+    RAY_LOG(INFO) << "vct total " << it.first << " " << it.second;
+  }
+
   (*new_data.mutable_resources_available()) = data.resources_available();
+
+  for (auto &it : data.resources_available()) {
+    RAY_LOG(INFO) << "vct available " << it.first << " " << it.second;
+  }
+
+  (*new_data.mutable_resources_normal_task()) = data.resources_normal_task();
 
   new_data.set_object_pulls_queued(data.object_pulls_queued());
   new_data.set_idle_duration_ms(data.idle_duration_ms());
@@ -224,6 +239,9 @@ std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDema
 GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
   std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
       aggregate_load;
+  if (node_resource_info_.empty()) {
+    return aggregate_load;
+  }
   for (const auto &info : node_resource_info_) {
     // Aggregate the load reported by each raylet.
     gcs::FillAggregateLoad(info.second.second, &aggregate_load);
@@ -288,7 +306,6 @@ void GcsAutoscalerStateManager::GetNodeStates(
         node_resource_info_.find(NodeID::FromBinary(node_state_proto->node_id()));
 
     RAY_CHECK(node_resource_iter != node_resource_info_.end());
-
     auto const &node_resource_item = node_resource_iter->second;
     auto const &node_resource_data = node_resource_item.second;
     if (node_resource_data.is_draining()) {
