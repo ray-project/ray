@@ -80,7 +80,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             ray_cr_config_str = ray_cr_config_file.read()
 
         for k8s_object in yaml.safe_load_all(ray_cr_config_str):
-            if k8s_object['kind'] in ["RayCluster", "RayJob", "RayService"]:
+            if k8s_object["kind"] in ["RayCluster", "RayJob", "RayService"]:
                 config = k8s_object
                 break
         head_group = config["spec"]["headGroupSpec"]
