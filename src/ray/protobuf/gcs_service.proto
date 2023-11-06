@@ -398,6 +398,36 @@ service PlacementGroupInfoGcsService {
       returns (WaitPlacementGroupUntilReadyReply);
 }
 
+message VirtualClusterBundle {
+  map<string, double> resources = 1;
+}
+
+message CreateVirtualClusterRequest {
+  bytes virtual_cluster_id = 1;
+  repeated VirtualClusterBundle bundles = 2;
+}
+
+message CreateVirtualClusterReply {
+  GcsStatus status = 1;
+}
+
+message RemoveVirtualClusterRequest {
+  bytes virtual_cluster_id = 1;
+}
+
+message RemoveVirtualClusterReply {
+  GcsStatus status = 1;
+}
+
+service VirtualClusterGcsService {
+  // Create virtual cluster via gcs service.
+  rpc CreateVirtualCluster(CreateVirtualClusterRequest)
+      returns (CreateVirtualClusterReply);
+  // Remove virtual cluster via gcs service.
+  rpc RemoveVirtualCluster(RemoveVirtualClusterRequest)
+      returns (RemoveVirtualClusterReply);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /* Please do not modify/remove/change the following messages to maintain
 backwards compatibility in autoscaler. This is necessary to make sure we can
