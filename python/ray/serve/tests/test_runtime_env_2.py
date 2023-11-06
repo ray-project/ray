@@ -24,7 +24,7 @@ class Test:
         return open("hello").read()
 
 handle = serve.run(Test.bind())
-assert ray.get(handle.remote()) == "world"
+assert handle.remote().result() == "world"
 """
 
     run_string_as_driver(driver1)
@@ -47,7 +47,7 @@ class Test:
         return open("hello").read()
 
 handle = serve.run(Test.bind())
-assert ray.get(handle.remote()) == "world2"
+assert handle.remote().result() == "world2"
 serve.delete(SERVE_DEFAULT_APP_NAME)
 """
 
