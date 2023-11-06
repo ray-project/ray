@@ -399,7 +399,7 @@ def training_function(kwargs: dict):
                 s_fwd = time.time()
                 outputs = model(**batch)
                 loss = outputs.loss
-                loss_sum += loss
+                loss_sum += loss.item()
                 e_fwd = time.time()
                 fwd_time = e_fwd - s_fwd
                 fwd_time_sum += fwd_time
