@@ -15,20 +15,7 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI(stability="alpha")
 class MongoDatasource(Datasource):
-    """Datasource for reading from and writing to MongoDB.
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import MongoDatasource
-        >>> from pymongoarrow.api import Schema # doctest: +SKIP
-        >>> ds = ray.data.read_datasource( # doctest: +SKIP
-        ...     MongoDatasource(), # doctest: +SKIP
-        ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501 # doctest: +SKIP
-        ...     database="my_db", # doctest: +SKIP
-        ...     collection="my_collection", # doctest: +SKIP
-        ...     schema=Schema({"col1": pa.string(), "col2": pa.int64()}), # doctest: +SKIP
-        ... ) # doctest: +SKIP
-    """
+    """Datasource for reading from and writing to MongoDB."""
 
     def __init__(
         self,
