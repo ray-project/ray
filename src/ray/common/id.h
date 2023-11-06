@@ -395,6 +395,7 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
     type() : UniqueID() {}                                                               \
     static type FromRandom() { return type(UniqueID::FromRandom()); }                    \
     static type FromBinary(const std::string &binary) { return type(binary); }           \
+    static type FromHex(const std::string &hex) { return type(UniqueID::FromHex(hex)); } \
     static type Nil() { return type(UniqueID::Nil()); }                                  \
     static constexpr size_t Size() { return kUniqueIDSize; }                             \
                                                                                          \

@@ -4,6 +4,7 @@ import gymnasium as gym
 from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
 from gymnasium.spaces import Dict as GymDict
 from gymnasium.spaces import Tuple as GymTuple
+import inspect
 import logging
 import numpy as np
 import os
@@ -93,6 +94,11 @@ def framework_iterator(
     frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
 
     for fw in frameworks:
+        # Skip tf if on new API stack.
+        if fw == "tf" and config.get("_enable_new_api_stack", False):
+            logger.warning("framework_iterator skipping tf (new API stack configured)!")
+            continue
+
         # Skip non-installed frameworks.
         if fw == "torch" and not torch:
             logger.warning("framework_iterator skipping torch (not installed)!")
@@ -344,7 +350,7 @@ def check_compute_single_action(
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
             if state_in:
-                if what.config.get("_enable_rl_module_api", False):
+                if what.config.get("_enable_new_api_stack", False):
                     input_dict["state_in"] = state_in
                 else:
                     for i, s in enumerate(state_in):
@@ -492,11 +498,7 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
     # Avoids circular import
     from ray.rllib.utils.policy import local_policy_inference
 
-    # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
-    if env_name.startswith("ALE/"):
-        env = gym.make("GymV26Environment-v0", env_id=env_name)
-    else:
-        env = gym.make(env_name)
+    env = gym.make(env_name)
 
     # Potentially wrap the env like we do in RolloutWorker
     if is_atari(env):
@@ -822,6 +824,12 @@ def run_learning_tests_from_yaml(
     # If an experiment passes, we'll remove it from this dict.
     experiments_to_run = experiments.copy()
 
+    # When running as a release test, use `/mnt/cluster_storage` as the storage path.
+    release_test_storage_path = "/mnt/cluster_storage"
+    if os.path.exists(release_test_storage_path):
+        for k, e in experiments_to_run.items():
+            e["storage_path"] = release_test_storage_path
+
     try:
         ray.init(address="auto")
     except ConnectionError:
@@ -1137,7 +1145,7 @@ def check_reproducibilty(
             # iterations).
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
-            if algo_config._enable_learner_api:
+            if algo_config._enable_new_api_stack:
                 check(
                     results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
                     results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
@@ -1293,9 +1301,9 @@ def test_ckpt_restore(
     config: "AlgorithmConfig",
     env_name: str,
     tf2=False,
-    object_store=False,
     replay_buffer=False,
     run_restored_algorithm=True,
+    eval_workerset=False,
 ):
     """Test that after an algorithm is trained, its checkpoint can be restored.
 
@@ -1319,77 +1327,87 @@ def test_ckpt_restore(
 
     frameworks = (["tf2"] if tf2 else []) + ["torch", "tf"]
     for fw in framework_iterator(config, frameworks=frameworks):
-        for use_object_store in [False, True] if object_store else [False]:
-            print("use_object_store={}".format(use_object_store))
-            env = gym.make(env_name)
-            alg1 = config.environment(env_name).framework(fw).build()
-            alg2 = config.environment(env_name).build()
+        env = gym.make(env_name)
+        alg1 = config.environment(env_name).framework(fw).build()
+        alg2 = config.environment(env_name).build()
 
-            policy1 = alg1.get_policy()
+        policy1 = alg1.get_policy()
 
-            res = alg1.train()
-            print("current status: " + str(res))
+        res = alg1.train()
+        print("current status: " + str(res))
 
-            # Check optimizer state as well.
-            optim_state = policy1.get_state().get("_optimizer_variables")
+        # Check optimizer state as well.
+        optim_state = policy1.get_state().get("_optimizer_variables")
 
-            if use_object_store:
-                checkpoint = alg1.save_to_object()
+        checkpoint = alg1.save()
+
+        # Test if we can restore multiple times (at least twice, assuming failure
+        # would mainly stem from improperly reused variables)
+        for num_restores in range(2):
+            # Sync the models
+            alg2.restore(checkpoint)
+
+        # Compare optimizer state with re-loaded one.
+        if optim_state:
+            s2 = alg2.get_policy().get_state().get("_optimizer_variables")
+            # Tf -> Compare states 1:1.
+            if fw in ["tf2", "tf"]:
+                check(s2, optim_state)
+            # For torch, optimizers have state_dicts with keys=params,
+            # which are different for the two models (ignore these
+            # different keys, but compare all values nevertheless).
             else:
-                checkpoint = alg1.save()
-
-            # Test if we can restore multiple times (at least twice, assuming failure
-            # would mainly stem from improperly reused variables)
-            for num_restores in range(2):
-                # Sync the models
-                if use_object_store:
-                    alg2.restore_from_object(checkpoint)
-                else:
-                    alg2.restore(checkpoint)
-
-            # Compare optimizer state with re-loaded one.
-            if optim_state:
-                s2 = alg2.get_policy().get_state().get("_optimizer_variables")
-                # Tf -> Compare states 1:1.
-                if fw in ["tf2", "tf"]:
-                    check(s2, optim_state)
-                # For torch, optimizers have state_dicts with keys=params,
-                # which are different for the two models (ignore these
-                # different keys, but compare all values nevertheless).
-                else:
-                    for i, s2_ in enumerate(s2):
-                        check(
-                            list(s2_["state"].values()),
-                            list(optim_state[i]["state"].values()),
-                        )
-
-            # Compare buffer content with restored one.
-            if replay_buffer:
-                data = alg1.local_replay_buffer.replay_buffers[
-                    "default_policy"
-                ]._storage[42 : 42 + 42]
-                new_data = alg2.local_replay_buffer.replay_buffers[
-                    "default_policy"
-                ]._storage[42 : 42 + 42]
-                check(data, new_data)
-
-            for _ in range(1):
-                obs = env.observation_space.sample()
-                a1 = _get_mean_action_from_algorithm(alg1, obs)
-                a2 = _get_mean_action_from_algorithm(alg2, obs)
-                print("Checking computed actions", alg1, obs, a1, a2)
-                if abs(a1 - a2) > 0.1:
-                    raise AssertionError(
-                        "algo={} [a1={} a2={}]".format(str(alg1.__class__), a1, a2)
+                for i, s2_ in enumerate(s2):
+                    check(
+                        list(s2_["state"].values()),
+                        list(optim_state[i]["state"].values()),
                     )
-            # Stop algo 1.
-            alg1.stop()
 
-            if run_restored_algorithm:
-                # Check that algo 2 can still run.
-                print("Starting second run on Algo 2...")
-                alg2.train()
-            alg2.stop()
+        # Compare buffer content with restored one.
+        if replay_buffer:
+            data = alg1.local_replay_buffer.replay_buffers["default_policy"]._storage[
+                42 : 42 + 42
+            ]
+            new_data = alg2.local_replay_buffer.replay_buffers[
+                "default_policy"
+            ]._storage[42 : 42 + 42]
+            check(data, new_data)
+
+        # Check, whether the eval worker sets have the same policies and
+        # `policy_mapping_fn`.
+        if eval_workerset:
+            eval_mapping_src = inspect.getsource(
+                alg1.evaluation_workers.local_worker().policy_mapping_fn
+            )
+            check(
+                eval_mapping_src,
+                inspect.getsource(
+                    alg2.evaluation_workers.local_worker().policy_mapping_fn
+                ),
+            )
+            check(
+                eval_mapping_src,
+                inspect.getsource(alg2.workers.local_worker().policy_mapping_fn),
+                false=True,
+            )
+
+        for _ in range(1):
+            obs = env.observation_space.sample()
+            a1 = _get_mean_action_from_algorithm(alg1, obs)
+            a2 = _get_mean_action_from_algorithm(alg2, obs)
+            print("Checking computed actions", alg1, obs, a1, a2)
+            if abs(a1 - a2) > 0.1:
+                raise AssertionError(
+                    "algo={} [a1={} a2={}]".format(str(alg1.__class__), a1, a2)
+                )
+        # Stop algo 1.
+        alg1.stop()
+
+        if run_restored_algorithm:
+            # Check that algo 2 can still run.
+            print("Starting second run on Algo 2...")
+            alg2.train()
+        alg2.stop()
 
 
 def check_supported_spaces(
@@ -1493,7 +1511,7 @@ def check_supported_spaces(
         config_copy = config.copy()
         config_copy.validate()
         # If RLModules are enabled, we need to skip a few tests for now:
-        if config_copy._enable_rl_module_api:
+        if config_copy._enable_new_api_stack:
             # Skip PPO cases in which RLModules don't support the given spaces yet.
             if o_name not in rlmodule_supported_observation_spaces:
                 logger.warning(
@@ -1542,7 +1560,7 @@ def check_supported_spaces(
         except UnsupportedSpaceException:
             stat = "unsupported"
         else:
-            if alg not in ["DDPG", "ES", "ARS", "SAC", "PPO"]:
+            if alg not in ["SAC", "PPO"]:
                 # 2D (image) input: Expect VisionNet.
                 if o_name in ["atari", "image"]:
                     if fw == "torch":
@@ -1572,7 +1590,7 @@ def check_supported_spaces(
     if not frameworks:
         frameworks = ("tf2", "tf", "torch")
 
-    if config._enable_rl_module_api:
+    if config._enable_new_api_stack:
         # Only test the frameworks that are supported by RLModules.
         frameworks = tuple(
             fw for fw in frameworks if fw in rlmodule_supported_frameworks

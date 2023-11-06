@@ -13,6 +13,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
           default: "rayDefaultDashboard",
           serve: "rayServeDashboard",
           serveDeployment: "rayServeDeploymentDashboard",
+          data: "rayDataDashboard",
         },
         prometheusHealth: true,
         sessionName: "session-name",
@@ -20,6 +21,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
         nodeMap: {},
         nodeMapByIp: {},
         namespaceMap: {},
+        dashboardDatasource: "Prometheus",
       }}
     >
       {children}
@@ -37,6 +39,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
           default: "rayDefaultDashboard",
           serve: "rayServeDashboard",
           serveDeployment: "rayServeDeploymentDashboard",
+          data: "rayDataDashboard",
         },
         prometheusHealth: false,
         sessionName: undefined,
@@ -44,6 +47,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
         nodeMap: {},
         nodeMapByIp: {},
         namespaceMap: {},
+        dashboardDatasource: "Prometheus",
       }}
     >
       {children}
@@ -58,9 +62,11 @@ describe("ServeMetricsSection", () => {
     render(<ServeMetricsSection />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
     expect(screen.getByText(/5 minutes/)).toBeVisible();
-    expect(screen.getByTitle("QPS per route")).toBeInTheDocument();
-    expect(screen.getByTitle("Error QPS per route")).toBeInTheDocument();
-    expect(screen.getByTitle("P90 latency per route")).toBeInTheDocument();
+    expect(screen.getByTitle("QPS per application")).toBeInTheDocument();
+    expect(screen.getByTitle("Error QPS per application")).toBeInTheDocument();
+    expect(
+      screen.getByTitle("P90 latency per application"),
+    ).toBeInTheDocument();
   });
 
   it("renders nothing when grafana is not available", async () => {
@@ -72,8 +78,8 @@ describe("ServeMetricsSection", () => {
 
     expect(screen.queryByText(/View in Grafana/)).toBeNull();
     expect(screen.queryByText(/5 minutes/)).toBeNull();
-    expect(screen.queryByTitle("QPS per route")).toBeNull();
-    expect(screen.queryByTitle("Error QPS per route")).toBeNull();
-    expect(screen.queryByTitle("P90 latency per route")).toBeNull();
+    expect(screen.queryByTitle("QPS per application")).toBeNull();
+    expect(screen.queryByTitle("Error QPS per application")).toBeNull();
+    expect(screen.queryByTitle("P90 latency per application")).toBeNull();
   });
 });

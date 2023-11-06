@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -ex
+
 unset RAY_ADDRESS
 
 if ! [ -x "$(command -v conda)" ]; then

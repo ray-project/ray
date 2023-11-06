@@ -43,7 +43,7 @@ class Partitioning:
         >>> import ray
         >>> from ray.data.datasource.partitioning import Partitioning
         >>> ds = ray.data.read_csv(
-        ...     "example://iris.csv",
+        ...     "s3://anonymous@ray-example-data/iris.csv",
         ...     partitioning=Partitioning("hive"),
         ... )
 
@@ -114,9 +114,7 @@ class Partitioning:
         base directory is correctly discovered at the root of all partitioned file
         paths.
         """
-        from ray.data.datasource.file_based_datasource import (
-            _resolve_paths_and_filesystem,
-        )
+        from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
         paths, self._resolved_filesystem = _resolve_paths_and_filesystem(
             self.base_dir,

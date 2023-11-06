@@ -63,6 +63,7 @@ struct GcsServerMocker {
     ray::Status ReturnWorker(int worker_port,
                              const WorkerID &worker_id,
                              bool disconnect_worker,
+                             const std::string &disconnect_worker_error_detail,
                              bool worker_exiting) override {
       if (disconnect_worker) {
         num_workers_disconnected++;
@@ -279,12 +280,6 @@ struct GcsServerMocker {
                              &callback) override {}
 
     /// ResourceUsageInterface
-    void RequestResourceReport(
-        const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override {
-      RAY_CHECK(false) << "Unused";
-    };
-
-    /// ResourceUsageInterface
     void UpdateResourceUsage(
         std::string &address,
         const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override {
@@ -296,6 +291,15 @@ struct GcsServerMocker {
         const NodeID &node_id,
         bool graceful,
         const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
+
+    void DrainRaylet(
+        const rpc::autoscaler::DrainNodeReason &reason,
+        const std::string &reason_message,
+        const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override {
+      rpc::DrainRayletReply reply;
+      reply.set_is_accepted(true);
+      callback(Status::OK(), reply);
+    };
 
     void NotifyGCSRestart(
         const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override{};

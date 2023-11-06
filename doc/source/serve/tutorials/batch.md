@@ -150,11 +150,14 @@ of the Python API, instead of running `serve run` from the console. Add the foll
 to the Python script `tutorial_batch.py`:
 
 ```python
-handle = serve.run(generator)
+from ray.serve.handle import DeploymentHandle
+
+handle: DeploymentHandle = serve.run(generator).options(use_new_handle_api=True)
+)
 ```
 
 Generally, to enqueue a query, you can call `handle.method.remote(data)`. This call 
-returns immediately with a [Ray ObjectRef](ray-object-refs). You can call `ray.get` to 
+immediately returns a `DeploymentResponse`. You can call `.result()` to 
 retrieve the result. Add the following to the same Python script.
 
 ```python
@@ -172,8 +175,9 @@ input_batch = [
 print("Input batch is", input_batch)
 
 import ray
-result_batch = ray.get([handle.handle_batch.remote(batch) for batch in input_batch])
-print("Result batch is", result_batch)
+responses = [handle.handle_batch.remote(batch) for batch in input_batch]
+results = [r.result() for r in responses]
+print("Result batch is", results)
 ```
 
 Finally, let's run the script.

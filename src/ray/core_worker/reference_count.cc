@@ -648,6 +648,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     it->second.on_ref_removed(id);
     it->second.on_ref_removed = nullptr;
   }
+
   PRINT_REF_COUNT(it);
 
   // Whether it is safe to unpin the value.
@@ -1368,6 +1369,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   }
 
   it->second.spilled = true;
+  it->second.did_spill = true;
   bool spilled_location_alive =
       spilled_node_id.IsNil() || check_node_alive_(spilled_node_id);
   if (spilled_location_alive) {
@@ -1550,6 +1552,7 @@ void ReferenceCounter::FillObjectInformationInternal(
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
   object_info->set_primary_node_id(primary_node_id.Binary());
   object_info->set_pending_creation(it->second.pending_creation);
+  object_info->set_did_spill(it->second.did_spill);
 }
 
 void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {

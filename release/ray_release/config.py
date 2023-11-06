@@ -40,11 +40,14 @@ RELEASE_TEST_SCHEMA_FILE = bazel_runfile("release/ray_release/schema.json")
 
 
 def read_and_validate_release_test_collection(
-    config_file: str, schema_file: Optional[str] = None
+    config_files: List[str],
+    schema_file: Optional[str] = None,
 ) -> List[Test]:
     """Read and validate test collection from config file"""
-    with open(config_file, "rt") as fp:
-        tests = parse_test_definition(yaml.safe_load(fp))
+    tests = []
+    for config_file in config_files:
+        with open(bazel_runfile(config_file), "rt") as fp:
+            tests += parse_test_definition(yaml.safe_load(fp))
 
     validate_release_test_collection(tests, schema_file=schema_file)
     return tests
@@ -172,6 +175,12 @@ def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
 
 
 def validate_test_cluster_env(test: Test) -> Optional[str]:
+    if test.is_byod_cluster():
+        """
+        BYOD clusters are not validated because they do not need cluster environment
+        """
+        return None
+
     from ray_release.template import get_cluster_env_path
 
     cluster_env_path = get_cluster_env_path(test)

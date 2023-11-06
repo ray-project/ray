@@ -532,7 +532,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
                 "If this leads to unformatted output (e.g. like "
                 "<IPython.core.display.HTML object>), consider passing "
                 "a `CLIReporter` as the `progress_reporter` argument "
-                "to `air.RunConfig()` instead."
+                "to `train.RunConfig()` instead."
             )
 
         self._overwrite = overwrite
@@ -1150,7 +1150,8 @@ def _trial_errors_str(
         fail_table_data = [
             [
                 str(trial),
-                str(trial.num_failures) + ("" if trial.status == Trial.ERROR else "*"),
+                str(trial.run_metadata.num_failures)
+                + ("" if trial.status == Trial.ERROR else "*"),
                 trial.error_file,
             ]
             for trial in failed[:max_rows]
@@ -1238,7 +1239,7 @@ def _get_trial_location(trial: Trial, result: dict) -> _Location:
         location = _Location(node_ip, pid)
     else:
         # fallback to trial location if there hasn't been a report yet
-        location = trial.location
+        location = trial.temporary_state.location
     return location
 
 

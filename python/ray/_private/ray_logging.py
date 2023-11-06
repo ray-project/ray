@@ -68,9 +68,7 @@ def setup_component_logger(
     Returns:
         the created or modified logger.
     """
-    ray_logger = logging.getLogger("ray")
-    ray_logger.propagate = True
-    ray_logger.handlers.clear()
+    ray._private.log.clear_logger("ray")
 
     logger = logging.getLogger(logger_name)
     if type(logging_level) is str:
@@ -102,15 +100,13 @@ def run_callback_on_events_in_ipython(event: str, cb: Callable):
     Args:
         cb: The callback to run.
     """
-    try:
+    if "IPython" in sys.modules:
         from IPython import get_ipython
 
         ipython = get_ipython()
         # Register a callback on cell completion.
         if ipython is not None:
             ipython.events.register(event, cb)
-    except ImportError:
-        pass
 
 
 """
@@ -277,10 +273,13 @@ class LogDeduplicator:
             elif self.skip_re and self.skip_re.search(line):
                 continue
             dedup_key = _canonicalise_log_line(line)
+
             if dedup_key in self.recent:
                 sources = self.recent[dedup_key].sources
                 sources.add(source)
-                if len(sources) > 1:
+                # We deduplicate the warnings/errorm essages from
+                # raylet by default.
+                if len(sources) > 1 or batch["pid"] == "raylet":
                     state = self.recent[dedup_key]
                     self.recent[dedup_key] = DedupState(
                         state.timestamp,

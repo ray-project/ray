@@ -13,18 +13,9 @@ if TYPE_CHECKING:
 
 @PublicAPI
 class JSONDatasource(FileBasedDatasource):
-    """JSON datasource, for reading and writing JSON files.
+    """JSON datasource, for reading and writing JSON and JSONL files."""
 
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import JSONDatasource
-        >>> source = JSONDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource( # doctest: +SKIP
-        ...     source, paths="/path/to/dir").take()
-        [{"a": 1, "b": "foo"}, ...]
-    """
-
-    _FILE_EXTENSION = "json"
+    _FILE_EXTENSION = ["json", "jsonl"]
 
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):

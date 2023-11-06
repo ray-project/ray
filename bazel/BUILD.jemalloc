@@ -1,0 +1,26 @@
+load("@rules_foreign_cc//foreign_cc:configure.bzl", "configure_make")
+load("@com_github_ray_project_ray//bazel:ray.bzl", "filter_files_with_suffix")
+
+filegroup(
+    name = "all",
+    srcs = glob(["**"]),
+)
+
+configure_make(
+    name = "libjemalloc",
+    lib_source = ":all",
+    linkopts = ["-ldl"],
+    copts = ["-fPIC"],
+    args = ["-j"],
+    out_shared_libs = ["libjemalloc.so"],
+    configure_options = ["--disable-static", "--enable-prof"],
+    visibility = ["//visibility:public"],
+)
+
+
+filter_files_with_suffix(
+    name = "shared",
+    srcs = ["@jemalloc//:libjemalloc"],
+    suffix = ".so",
+    visibility = ["//visibility:public"],
+)

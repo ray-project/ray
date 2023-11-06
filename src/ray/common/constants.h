@@ -67,6 +67,10 @@ constexpr char kRayVersion[] = "3.0.0.dev0";
 /*****************************/
 /* ENV labels for autoscaler */
 /*****************************/
+// Sync with python/ray/_private/ray_constants.py
+constexpr char kGcsAutoscalerStateNamespace[] = "__autoscaler";
+constexpr char kGcsAutoscalerV2EnabledKey[] = "__autoscaler_v2_enabled";
+
 /// Name for cloud instance id env
 constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
 
@@ -94,3 +98,10 @@ constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
 /// Default node label key: node_id
 constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
 #undef RAY_LABEL_KEY_PREFIX
+
+/// All nodes implicitly have resources with this prefix and the quantity is 1.
+/// NOTE: DON'T CHANGE THIS since autoscaler depends on it.
+/// Ideally we want to define the constant in autoscaler.proto so it
+/// can be shared but protobuf doesn't support defining string constants.
+/// https://docs.google.com/document/d/151T4VnknX_5EtPy6E-LbpL-r1T4ZSO0UBvSgWdSjx4Q/edit#heading=h.2ews5m5fmz
+constexpr char kImplicitResourcePrefix[] = "node:__internal_implicit_resource_";

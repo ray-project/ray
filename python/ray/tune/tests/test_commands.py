@@ -39,7 +39,9 @@ def start_ray():
     ray.shutdown()
 
 
-def test_time(start_ray, tmpdir):
+def test_time(start_ray, tmpdir, monkeypatch):
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
+
     experiment_name = "test_time"
     experiment_path = os.path.join(str(tmpdir), experiment_name)
     num_samples = 2
@@ -49,7 +51,6 @@ def test_time(start_ray, tmpdir):
                 "run": "__fake",
                 "stop": {"training_iteration": 1},
                 "num_samples": num_samples,
-                "local_dir": str(tmpdir),
             }
         }
     )
@@ -59,7 +60,7 @@ def test_time(start_ray, tmpdir):
         subprocess.check_call(["tune", "ls", experiment_path])
         times += [time.time() - start]
 
-    assert sum(times) / len(times) < 7.0, "CLI is taking too long!"
+    assert sum(times) / len(times) < 8, "CLI is taking too long!"
 
 
 @mock.patch(

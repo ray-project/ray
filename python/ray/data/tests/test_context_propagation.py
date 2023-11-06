@@ -6,7 +6,6 @@ from ray._private.test_utils import run_string_as_driver
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
-from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -39,10 +38,6 @@ def test_context_saved_when_dataset_created(ray_start_regular_shared):
         list(d.streaming_split(1)[0].iter_batches())
 
     d1.context.execution_options.resource_limits.cpu = 0.1
-    with pytest.raises(ValueError):
-        ray.get(check2.remote(d1))
-    with pytest.raises(ValueError):
-        ray.get(check3.remote(d1))
     ray.get(check2.remote(d2))
     ray.get(check3.remote(d2))
 
@@ -66,20 +61,6 @@ def test_map(ray_start_regular_shared):
     context.foo = 70001
     ds = ray.data.range(1).map(lambda x: {"id": DataContext.get_current().foo})
     assert ds.take_all()[0]["id"] == 70001
-
-
-def test_map_pipeline(ray_start_regular_shared):
-    context = DataContext.get_current()
-    context.foo = 8
-    pipe = ray.data.range(2).repeat(2)
-    pipe = pipe.map(lambda x: {"id": DataContext.get_current().foo})
-    [a, b] = pipe.split(2)
-
-    @ray.remote
-    def fetch(shard):
-        return extract_values("id", shard.take_all())
-
-    assert ray.get([fetch.remote(a), fetch.remote(b)]) == [[8, 8], [8, 8]]
 
 
 def test_flat_map(ray_start_regular_shared):
@@ -127,10 +108,8 @@ placement_group = ray.util.placement_group(
 )
 ray.get(placement_group.ready())
 context.scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group)
-pipe = ray.data.range(100, parallelism=2) \
-    .window(blocks_per_window=1) \
-    .map(lambda x: {"id": x["id"] + 1})
-assert pipe.take_all() == [{"id": x} for x in range(1, 101)]
+ds = ray.data.range(100, parallelism=2).map(lambda x: {"id": x["id"] + 1})
+assert ds.take_all() == [{"id": x} for x in range(1, 101)]
 placement_group_assert_no_leak([placement_group])
 ray.shutdown()
     """

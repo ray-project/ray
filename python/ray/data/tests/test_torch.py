@@ -306,8 +306,8 @@ def test_iter_torch_batches_tensor_ds(ray_start_10_cpus_shared):
 # This test catches an error in stream_split_iterator dealing with empty blocks,
 # which is difficult to reproduce outside of TorchTrainer.
 def test_torch_trainer_crash(ray_start_10_cpus_shared):
-    from ray.air import session
-    from ray.air.config import ScalingConfig
+    from ray import train
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
 
     ray.data.DataContext.get_current().execution_options.verbose_progress = True
@@ -316,7 +316,7 @@ def test_torch_trainer_crash(ray_start_10_cpus_shared):
     train_ds = train_ds.materialize()
 
     def train_loop_per_worker():
-        it = session.get_dataset_shard("train")
+        it = train.get_dataset_shard("train")
         for i in range(2):
             count = 0
             for batch in it.iter_batches():

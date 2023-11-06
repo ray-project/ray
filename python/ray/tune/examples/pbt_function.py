@@ -1,13 +1,16 @@
 #!/usr/bin/env python
 
-import numpy as np
 import argparse
+import json
+import os
 import random
+import tempfile
+
+import numpy as np
 
 import ray
-from ray import air, tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
 
 
@@ -39,10 +42,14 @@ def pbt_function(config):
 
     # NOTE: See below why step is initialized to 1
     step = 1
-    if session.get_checkpoint():
-        state = session.get_checkpoint().to_dict()
-        accuracy = state["acc"]
-        last_step = state["step"]
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "checkpoint.json"), "r") as f:
+                checkpoint_dict = json.load(f)
+
+        accuracy = checkpoint_dict["acc"]
+        last_step = checkpoint_dict["step"]
         # Current step should be 1 more than the last checkpoint step
         step = last_step + 1
 
@@ -71,7 +78,14 @@ def pbt_function(config):
         accuracy += noise_level * np.random.normal()
         accuracy = max(0, accuracy)
 
-        checkpoint = None
+        metrics = {
+            "mean_accuracy": accuracy,
+            "cur_lr": lr,
+            "optimal_lr": optimal_lr,  # for debugging
+            "q_err": q_err,  # for debugging
+            "done": accuracy > midpoint * 2,  # this stops the training process
+        }
+
         if step % checkpoint_interval == 0:
             # Checkpoint every `checkpoint_interval` steps
             # NOTE: if we initialized `step=0` above, our checkpointing and perturbing
@@ -79,18 +93,13 @@ def pbt_function(config):
             # Ex: if `checkpoint_interval` = `perturbation_interval` = 3
             # step:                0 (checkpoint)  1     2            3 (checkpoint)
             # training_iteration:  1               2     3 (perturb)  4
-            checkpoint = Checkpoint.from_dict({"acc": accuracy, "step": step})
-
-        session.report(
-            {
-                "mean_accuracy": accuracy,
-                "cur_lr": lr,
-                "optimal_lr": optimal_lr,  # for debugging
-                "q_err": q_err,  # for debugging
-                "done": accuracy > midpoint * 2,  # this stops the training process
-            },
-            checkpoint=checkpoint,
-        )
+            with tempfile.TemporaryDirectory() as tempdir:
+                with open(os.path.join(tempdir, "checkpoint.json"), "w") as f:
+                    checkpoint_dict = {"acc": accuracy, "step": step}
+                    json.dump(checkpoint_dict, f)
+                train.report(metrics, checkpoint=Checkpoint.from_directory(tempdir))
+        else:
+            train.report(metrics)
         step += 1
 
 
@@ -109,7 +118,7 @@ def run_tune_pbt(smoke_test=False):
 
     tuner = tune.Tuner(
         pbt_function,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_function_api_example",
             verbose=False,
             stop={
@@ -118,10 +127,10 @@ def run_tune_pbt(smoke_test=False):
                 "done": True,
                 "training_iteration": 10 if smoke_test else 1000,
             },
-            failure_config=air.FailureConfig(
+            failure_config=train.FailureConfig(
                 fail_fast=True,
             ),
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=2,
             ),

@@ -366,14 +366,17 @@ void raylet::RayletClient::ReportWorkerBacklog(
       });
 }
 
-Status raylet::RayletClient::ReturnWorker(int worker_port,
-                                          const WorkerID &worker_id,
-                                          bool disconnect_worker,
-                                          bool worker_exiting) {
+Status raylet::RayletClient::ReturnWorker(
+    int worker_port,
+    const WorkerID &worker_id,
+    bool disconnect_worker,
+    const std::string &disconnect_worker_error_detail,
+    bool worker_exiting) {
   rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
+  request.set_disconnect_worker_error_detail(disconnect_worker_error_detail);
   request.set_worker_exiting(worker_exiting);
   grpc_client_->ReturnWorker(
       request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
@@ -512,6 +515,16 @@ void raylet::RayletClient::ShutdownRaylet(
   grpc_client_->ShutdownRaylet(request, callback);
 }
 
+void raylet::RayletClient::DrainRaylet(
+    const rpc::autoscaler::DrainNodeReason &reason,
+    const std::string &reason_message,
+    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) {
+  rpc::DrainRayletRequest request;
+  request.set_reason(reason);
+  request.set_reason_message(reason_message);
+  grpc_client_->DrainRaylet(request, callback);
+}
+
 void raylet::RayletClient::GlobalGC(
     const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
   rpc::GlobalGCRequest request;
@@ -524,12 +537,6 @@ void raylet::RayletClient::UpdateResourceUsage(
   rpc::UpdateResourceUsageRequest request;
   request.set_serialized_resource_usage_batch(serialized_resource_usage_batch);
   grpc_client_->UpdateResourceUsage(request, callback);
-}
-
-void raylet::RayletClient::RequestResourceReport(
-    const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) {
-  rpc::RequestResourceReportRequest request;
-  grpc_client_->RequestResourceReport(request, callback);
 }
 
 void raylet::RayletClient::GetResourceLoad(

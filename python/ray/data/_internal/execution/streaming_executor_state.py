@@ -13,11 +13,18 @@ import ray
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+)
+from ray.data._internal.execution.interfaces.physical_operator import (
+    DataOpTask,
+    MetadataOpTask,
+    OpTask,
+    Waitable,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -137,7 +144,7 @@ class OpState:
         enabled = verbose_progress or is_all_to_all
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
-            self.op.num_outputs_total() or 1,
+            self.op.num_outputs_total(),
             index,
             enabled=enabled,
         )
@@ -162,14 +169,14 @@ class OpState:
 
     def num_processing(self):
         """Return the number of bundles currently in processing for this operator."""
-        return self.op.num_active_work_refs() + self.op.internal_queue_size()
+        return self.op.num_active_tasks() + self.op.internal_queue_size()
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
-            self.progress_bar.update(1)
+            self.progress_bar.update(1, self.op._estimated_output_blocks)
 
     def refresh_progress_bar(self) -> None:
         """Update the console with the latest operator progress."""
@@ -178,7 +185,7 @@ class OpState:
 
     def summary_str(self) -> str:
         queued = self.num_queued() + self.op.internal_queue_size()
-        active = self.op.num_active_work_refs()
+        active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: {active} active, {queued} queued"
         mem = memory_string(
             (self.op.current_resource_usage().object_store_memory or 0)
@@ -258,6 +265,18 @@ class OpState:
                 break  # Concurrent pop from the outqueue by the consumer thread.
         return object_store_memory
 
+    def outqueue_num_blocks(self) -> int:
+        """Return the number of blocks in this operator's outqueue."""
+        num_blocks = 0
+        for i in range(len(self.outqueue)):
+            try:
+                bundle = self.outqueue[i]
+                if isinstance(bundle, RefBundle):
+                    num_blocks += len(bundle.blocks)
+            except IndexError:
+                break
+        return len(self.outqueue)
+
 
 def build_streaming_topology(
     dag: PhysicalOperator, options: ExecutionOptions
@@ -309,28 +328,48 @@ def build_streaming_topology(
     return (topology, i)
 
 
-def process_completed_tasks(topology: Topology) -> None:
+def process_completed_tasks(
+    topology: Topology,
+    backpressure_policies: List[BackpressurePolicy],
+) -> None:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards."""
 
-    # Update active tasks.
-    active_tasks: Dict[ray.ObjectRef, PhysicalOperator] = {}
+    # All active tasks, keyed by their waitables.
+    active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
+    for op, state in topology.items():
+        for task in op.get_active_tasks():
+            active_tasks[task.get_waitable()] = (state, task)
 
-    for op in topology.keys():
-        for ref in op.get_work_refs():
-            active_tasks[ref] = op
+    max_blocks_to_read_per_op: Dict[OpState, int] = {}
+    for policy in backpressure_policies:
+        non_empty = len(max_blocks_to_read_per_op) > 0
+        max_blocks_to_read_per_op = policy.calculate_max_blocks_to_read_per_op(topology)
+        if non_empty and len(max_blocks_to_read_per_op) > 0:
+            raise ValueError(
+                "At most one backpressure policy that implements "
+                "calculate_max_blocks_to_read_per_op() can be used at a time."
+            )
 
     # Process completed Ray tasks and notify operators.
     if active_tasks:
-        completed, _ = ray.wait(
-            list(active_tasks),
+        ready, _ = ray.wait(
+            list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
             timeout=0.1,
         )
-        for ref in completed:
-            op = active_tasks.pop(ref)
-            op.notify_work_completed(ref)
+        for ref in ready:
+            state, task = active_tasks.pop(ref)
+            if isinstance(task, DataOpTask):
+                num_blocks_read = task.on_data_ready(
+                    max_blocks_to_read_per_op.get(state, None)
+                )
+                if state in max_blocks_to_read_per_op:
+                    max_blocks_to_read_per_op[state] -= num_blocks_read
+            else:
+                assert isinstance(task, MetadataOpTask)
+                task.on_task_finished()
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
@@ -377,6 +416,7 @@ def select_operator_to_run(
     topology: Topology,
     cur_usage: TopologyResourceUsage,
     limits: ExecutionResources,
+    backpressure_policies: List[BackpressurePolicy],
     ensure_at_least_one_running: bool,
     execution_id: str,
     autoscaling_state: AutoscalingState,
@@ -406,6 +446,7 @@ def select_operator_to_run(
             and op.should_add_input()
             and under_resource_limits
             and not op.completed()
+            and all(p.can_add_input(op) for p in backpressure_policies)
         ):
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.
@@ -427,7 +468,7 @@ def select_operator_to_run(
     if (
         ensure_at_least_one_running
         and not ops
-        and all(op.num_active_work_refs() == 0 for op in topology)
+        and all(op.num_active_tasks() == 0 for op in topology)
     ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
         ops = [
@@ -483,7 +524,7 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
     for op, state in topology.items():
         per_task_resource = op.incremental_resource_usage()
         task_bundle = to_bundle(per_task_resource)
-        resource_request.extend([task_bundle] * op.num_active_work_refs())
+        resource_request.extend([task_bundle] * op.num_active_tasks())
         # Only include incremental resource usage for ops that are ready for
         # dispatch.
         if state.num_queued() > 0:

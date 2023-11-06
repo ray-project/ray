@@ -2,12 +2,18 @@ import os
 import pytest
 
 import ray
-from ray.air import CheckpointConfig, RunConfig, ScalingConfig, session
+
 from ray.air.constants import EXPR_RESULT_FILE
-from ray.air.result import Result
-from ray.train.torch import TorchCheckpoint, TorchTrainer
+from ray import train
+from ray.train import Result, CheckpointConfig, RunConfig, ScalingConfig
+from ray.train.torch import TorchTrainer
 from ray.train.base_trainer import TrainingFailedError
 from ray.tune import TuneConfig, Tuner
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+
+
+_PARAM_SPACE = {"a": 1, "b": 2}
 
 
 @pytest.fixture
@@ -19,16 +25,21 @@ def ray_start_4_cpus():
 
 
 def build_dummy_trainer(configs):
-    def worker_loop():
+    def worker_loop(_config):
         for i in range(configs["NUM_ITERATIONS"]):
-            session.report(
-                metrics={"metric_a": i, "metric_b": -i},
-                checkpoint=TorchCheckpoint.from_dict({"iter": i}),
-            )
+            # Do some random reports in between checkpoints.
+            train.report({"metric_a": -100, "metric_b": -100})
+
+            with create_dict_checkpoint({"iter": i}) as checkpoint:
+                train.report(
+                    metrics={"metric_a": i, "metric_b": -i},
+                    checkpoint=checkpoint,
+                )
         raise RuntimeError()
 
     trainer = TorchTrainer(
         train_loop_per_worker=worker_loop,
+        train_loop_config=_PARAM_SPACE,
         scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
         run_config=RunConfig(
             name=configs["EXP_NAME"],
@@ -45,12 +56,16 @@ def build_dummy_trainer(configs):
 
 def build_dummy_tuner(configs):
     return Tuner(
-        trainable=build_dummy_trainer(configs), tune_config=TuneConfig(num_samples=1)
+        build_dummy_trainer(configs),
+        param_space={"train_loop_config": _PARAM_SPACE},
+        tune_config=TuneConfig(num_samples=1),
     )
 
 
 @pytest.mark.parametrize("mode", ["trainer", "tuner"])
-def test_result_restore(ray_start_4_cpus, tmpdir, mode):
+def test_result_restore(ray_start_4_cpus, monkeypatch, tmpdir, mode):
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir / "ray_results"))
+
     NUM_ITERATIONS = 5
     NUM_CHECKPOINTS = 3
     storage_path = str(tmpdir)
@@ -95,16 +110,19 @@ def test_result_restore(ray_start_4_cpus, tmpdir, mode):
     """
     # Check if the checkpoints bounded with correct metrics
     best_ckpt_a = result.get_best_checkpoint(metric="metric_a", mode="max")
-    assert best_ckpt_a.to_dict()["iter"] == NUM_ITERATIONS - 1
+    assert load_dict_checkpoint(best_ckpt_a)["iter"] == NUM_ITERATIONS - 1
 
     best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")
-    assert best_ckpt_b.to_dict()["iter"] == NUM_ITERATIONS - NUM_CHECKPOINTS
+    assert load_dict_checkpoint(best_ckpt_b)["iter"] == NUM_ITERATIONS - NUM_CHECKPOINTS
 
     with pytest.raises(RuntimeError, match="Invalid metric name.*"):
         result.get_best_checkpoint(metric="invalid_metric", mode="max")
 
     # Check if we properly restored errors
     assert isinstance(result.error, RuntimeError)
+
+    # Check that the config is properly formatted in the result metrics
+    assert result.metrics.get("config") == {"train_loop_config": _PARAM_SPACE}
 
     # [2] Restore from local path without result.json
     os.remove(f"{trial_dir}/{EXPR_RESULT_FILE}")
@@ -115,10 +133,10 @@ def test_result_restore(ray_start_4_cpus, tmpdir, mode):
     assert len(result.best_checkpoints) == NUM_CHECKPOINTS
 
     best_ckpt_a = result.get_best_checkpoint(metric="metric_a", mode="max")
-    assert best_ckpt_a.to_dict()["iter"] == NUM_ITERATIONS - 1
+    assert load_dict_checkpoint(best_ckpt_a)["iter"] == NUM_ITERATIONS - 1
 
     best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")
-    assert best_ckpt_b.to_dict()["iter"] == NUM_ITERATIONS - NUM_CHECKPOINTS
+    assert load_dict_checkpoint(best_ckpt_b)["iter"] == NUM_ITERATIONS - NUM_CHECKPOINTS
 
     assert isinstance(result.error, RuntimeError)
 

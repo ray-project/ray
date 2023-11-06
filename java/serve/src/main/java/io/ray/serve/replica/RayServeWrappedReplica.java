@@ -12,7 +12,7 @@ import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.metrics.RayServeMetrics;
-import io.ray.serve.util.LogUtil;
+import io.ray.serve.util.MessageFormatter;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
 import java.io.IOException;
@@ -38,7 +38,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
       byte[] initArgsbytes,
       byte[] deploymentConfigBytes,
       byte[] deploymentVersionBytes,
-      String controllerName) {
+      String controllerName,
+      String appName) {
 
     // Parse DeploymentConfig.
     DeploymentConfig deploymentConfig = DeploymentConfig.fromProtoBytes(deploymentConfigBytes);
@@ -49,7 +50,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       initArgs = parseInitArgs(initArgsbytes);
     } catch (IOException e) {
       String errMsg =
-          LogUtil.format(
+          MessageFormatter.format(
               "Failed to initialize replica {} of deployment {}",
               replicaTag,
               deploymentInfo.getName());
@@ -65,6 +66,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
     deploymentWrapper.setDeploymentConfig(deploymentConfig);
     deploymentWrapper.setInitArgs(initArgs);
     deploymentWrapper.setDeploymentVersion(version);
+    deploymentWrapper.setAppName(appName);
 
     // Init replica.
     init(deploymentWrapper, replicaTag, controllerName);
@@ -85,7 +87,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
           replicaTag,
           controllerName,
           null,
-          deploymentWrapper.getConfig());
+          deploymentWrapper.getConfig(),
+          deploymentWrapper.getAppName());
 
       // Instantiate the object defined by deploymentDef.
       Class deploymentClass =
@@ -114,11 +117,12 @@ public class RayServeWrappedReplica implements RayServeReplica {
               callable,
               deploymentWrapper.getDeploymentConfig(),
               deploymentWrapper.getDeploymentVersion(),
-              optional.get());
+              optional.get(),
+              deploymentWrapper.getAppName());
       this.deploymentInfo = deploymentWrapper;
     } catch (Throwable e) {
       String errMsg =
-          LogUtil.format(
+          MessageFormatter.format(
               "Failed to initialize replica {} of deployment {}",
               replicaTag,
               deploymentWrapper.getName());

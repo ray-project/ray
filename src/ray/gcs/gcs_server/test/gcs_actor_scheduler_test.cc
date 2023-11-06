@@ -67,6 +67,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler->GetClusterResourceManager(),
+        *gcs_node_manager_,
         local_node_id_);
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
         io_service_,

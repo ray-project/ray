@@ -393,6 +393,15 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   const std::deque<std::shared_ptr<GcsPlacementGroup>> &GetInfeasiblePlacementGroups()
       const;
 
+  /// Get the placement group load information.
+  ///
+  /// The API guarantees the returned placement groups' states
+  /// are either PENDING or RESCHEDULING.
+  ///
+  /// \return Placement group load information. Users should check if
+  /// the returned rpc has any placement_group_data.
+  virtual std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
+
  protected:
   /// For testing/mocking only.
   explicit GcsPlacementGroupManager(instrumented_io_context &io_context,

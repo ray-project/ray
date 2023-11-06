@@ -1,57 +1,33 @@
-import os
 import logging
-import pytorch_lightning as pl
-import tempfile
+import os
 import shutil
-
+import tempfile
 from inspect import isclass
-from typing import Optional, Type, Dict, Any
+from typing import Any, Dict, Optional, Type
 
 from ray.air.constants import MODEL_KEY
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.data import Preprocessor
-from ray.train.torch import TorchCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
+from ray.train.lightning._lightning_utils import import_lightning
+from ray.util.annotations import Deprecated
+
+pl = import_lightning()
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
-class LightningCheckpoint(TorchCheckpoint):
-    """A :class:`~ray.air.checkpoint.Checkpoint` with Lightning-specific functionality.
+LIGHTNING_CHECKPOINT_DEPRECATION_MESSAGE = (
+    "`LightningCheckpoint` is deprecated. Please use `ray.train.Checkpoint`" "instead."
+)
 
-    LightningCheckpoint only support file based checkpoint loading.
-    Create this by calling ``LightningCheckpoint.from_directory(ckpt_dir)``,
-    ``LightningCheckpoint.from_uri(uri)`` or ``LightningCheckpoint.from_path(path)``
 
-    LightningCheckpoint loads file named ``model`` under the specified directory.
-
-    Examples:
-        >>> from ray.train.lightning import LightningCheckpoint
-        >>>
-        >>> # Suppose we saved a checkpoint in "./checkpoint_00000/model":
-        >>> # Option 1: Load from a file
-        >>> checkpoint = LightningCheckpoint.from_path( # doctest: +SKIP
-        ...     path="./checkpoint_00000/model"
-        ... )
-        >>>
-        >>> # Option 2: Load from a directory
-        >>> checkpoint = LightningCheckpoint.from_directory( # doctest: +SKIP
-        ...     path="./checkpoint_00000/"
-        ... )
-        >>>
-        >>> # Suppose we saved a checkpoint in an S3 bucket:
-        >>> # Option 3: Load from URI
-        >>> checkpoint = LightningCheckpoint.from_uri( # doctest: +SKIP
-        ...     path="s3://path/to/checkpoint/directory/"
-        ... )
-        >>>
-        >>>
-    """
+@Deprecated
+class LightningCheckpoint(FrameworkCheckpoint):
+    """A :class:`~ray.train.Checkpoint` with Lightning-specific functionality."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._cache_dir = None
+        raise DeprecationWarning(LIGHTNING_CHECKPOINT_DEPRECATION_MESSAGE)
 
     @classmethod
     def from_path(
@@ -60,7 +36,7 @@ class LightningCheckpoint(TorchCheckpoint):
         *,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "LightningCheckpoint":
-        """Create a ``ray.air.lightning.LightningCheckpoint`` from a checkpoint file.
+        """Create a ``ray.train.lightning.LightningCheckpoint`` from a checkpoint file.
 
         Args:
             path: The file path to the PyTorch Lightning checkpoint file.
@@ -76,17 +52,16 @@ class LightningCheckpoint(TorchCheckpoint):
             raise ValueError(
                 f"`from_path()` expects a file path, but `{path}` is a directory. "
                 "A valid checkpoint file name is normally with .ckpt extension."
-                "If you have an AIR checkpoint folder, you can also try to use "
+                "If you have a Ray checkpoint folder, you can also try to use "
                 "`LightningCheckpoint.from_directory()` instead."
             )
 
-        cache_dir = tempfile.mkdtemp()
-        new_checkpoint_path = os.path.join(cache_dir, MODEL_KEY)
+        tempdir = tempfile.mkdtemp()
+        new_checkpoint_path = os.path.join(tempdir, MODEL_KEY)
         shutil.copy(path, new_checkpoint_path)
+        checkpoint = cls.from_directory(tempdir)
         if preprocessor:
-            save_preprocessor_to_dir(preprocessor, cache_dir)
-        checkpoint = cls.from_directory(cache_dir)
-        checkpoint._cache_dir = cache_dir
+            checkpoint.set_preprocessor(preprocessor)
         return checkpoint
 
     def get_model(
@@ -95,48 +70,6 @@ class LightningCheckpoint(TorchCheckpoint):
         **load_from_checkpoint_kwargs: Optional[Dict[str, Any]],
     ) -> pl.LightningModule:
         """Retrieve the model stored in this checkpoint.
-
-        Example:
-            .. testcode::
-
-                import pytorch_lightning as pl
-                from ray.train.lightning import LightningCheckpoint, LightningPredictor
-
-                class MyLightningModule(pl.LightningModule):
-                    def __init__(self, input_dim, output_dim) -> None:
-                        super().__init__()
-                        self.linear = nn.Linear(input_dim, output_dim)
-                        self.save_hyperparameters()
-
-                    # ...
-
-                # After the training is finished, LightningTrainer saves AIR
-                # checkpoints in the result directory, for example:
-                # ckpt_dir = "{storage_path}/LightningTrainer_.*/checkpoint_000000"
-
-                # You can load model checkpoint with model init arguments
-                def load_checkpoint(ckpt_dir):
-                    ckpt = LightningCheckpoint.from_directory(ckpt_dir)
-
-                    # `get_model()` takes the argument list of
-                    # `LightningModule.load_from_checkpoint()` as additional kwargs.
-                    # Please refer to PyTorch Lightning API for more details.
-
-                    return checkpoint.get_model(
-                        model_class=MyLightningModule,
-                        input_dim=32,
-                        output_dim=10,
-                    )
-
-                # You can also load checkpoint with a hyperparameter file
-                def load_checkpoint_with_hparams(
-                    ckpt_dir, hparam_file="./hparams.yaml"
-                ):
-                    ckpt = LightningCheckpoint.from_directory(ckpt_dir)
-                    return ckpt.get_model(
-                        model_class=MyLightningModule,
-                        hparams_file=hparam_file
-                    )
 
         Args:
             model_class: A subclass of ``pytorch_lightning.LightningModule`` that
@@ -163,7 +96,3 @@ class LightningCheckpoint(TorchCheckpoint):
                 ckpt_path, **load_from_checkpoint_kwargs
             )
         return model
-
-    def __del__(self):
-        if self._cache_dir and os.path.exists(self._cache_dir):
-            shutil.rmtree(self._cache_dir)

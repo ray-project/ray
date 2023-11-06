@@ -4,6 +4,7 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
+from ray.data._internal.sort import SortKey
 from ray.data.aggregate import AggregateFn
 
 
@@ -108,8 +109,7 @@ class Sort(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
-        key: Optional[str],
-        descending: bool,
+        sort_key: SortKey,
     ):
         super().__init__(
             "Sort",
@@ -120,8 +120,7 @@ class Sort(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        self._key = key
-        self._descending = descending
+        self._sort_key = sort_key
 
 
 class Aggregate(AbstractAllToAll):

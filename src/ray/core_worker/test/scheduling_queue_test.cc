@@ -26,11 +26,19 @@ class MockActorSchedulingQueue {
  public:
   MockActorSchedulingQueue(instrumented_io_context &main_io_service,
                            DependencyWaiter &waiter)
-      : queue_(main_io_service, waiter) {}
+      : queue_(main_io_service,
+               waiter,
+               /*pool_manager=*/
+               std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+               /*fiber_state_manager=*/
+               std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+               /*is_asyncio=*/false,
+               /*fiber_max_concurrency=*/1,
+               /*concurrency_groups=*/{}) {}
   void Add(int64_t seq_no,
            int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
-           std::function<void(rpc::SendReplyCallback)> reject_request,
+           std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback = nullptr,
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
@@ -44,6 +52,8 @@ class MockActorSchedulingQueue {
                task_id,
                dependencies);
   }
+
+  ~MockActorSchedulingQueue() { queue_.Stop(); }
 
  private:
   ActorSchedulingQueue queue_;
@@ -71,7 +81,9 @@ TEST(SchedulingQueueTest, TestInOrder) {
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(0, -1, fn_ok, fn_rej, nullptr);
   queue.Add(1, -1, fn_ok, fn_rej, nullptr);
   queue.Add(2, -1, fn_ok, fn_rej, nullptr);
@@ -92,7 +104,9 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   int n_rej = 0;
 
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(0, -1, fn_ok, fn_rej, nullptr);
   queue.Add(1, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj1}));
   queue.Add(2, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj2}));
@@ -119,7 +133,9 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   int n_rej = 0;
 
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(0, -1, fn_ok, fn_rej, nullptr);
   queue.Add(1, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj1}));
 
@@ -137,7 +153,9 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(2, -1, fn_ok, fn_rej, nullptr);
   queue.Add(0, -1, fn_ok, fn_rej, nullptr);
   queue.Add(3, -1, fn_ok, fn_rej, nullptr);
@@ -154,7 +172,9 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(2, -1, fn_ok, fn_rej, nullptr);
   queue.Add(0, -1, fn_ok, fn_rej, nullptr);
   queue.Add(3, -1, fn_ok, fn_rej, nullptr);
@@ -176,7 +196,9 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(2, 2, fn_ok, fn_rej, nullptr);
   queue.Add(3, 2, fn_ok, fn_rej, nullptr);
   queue.Add(1, 2, fn_ok, fn_rej, nullptr);
@@ -191,7 +213,9 @@ TEST(SchedulingQueueTest, TestCancelQueuedTask) {
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());
   queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());
   queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());

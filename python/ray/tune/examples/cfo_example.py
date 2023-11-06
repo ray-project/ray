@@ -7,8 +7,7 @@ Requires the FLAML library to be installed (`pip install flaml`).
 import time
 
 import ray
-from ray import tune
-from ray.air import session
+from ray import train, tune
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search.flaml import CFO
@@ -26,7 +25,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        session.report({"iterations": step, "mean_loss": intermediate_score})
+        train.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 

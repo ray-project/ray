@@ -3,21 +3,23 @@
 import argparse
 import json
 import os
+import tempfile
 
 import numpy as np
 
 import ray
-from ray import air, tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune.schedulers import HyperBandScheduler
 
 
-def train(config, checkpoint_dir=None):
+def train_func(config):
     step = 0
-    if checkpoint_dir:
-        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
-            step = json.loads(f.read())["timestep"]
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "checkpoint.json")) as f:
+                step = json.load(f)["timestep"] + 1
 
     for timestep in range(step, 100):
         v = np.tanh(float(timestep) / config.get("width", 1))
@@ -25,13 +27,18 @@ def train(config, checkpoint_dir=None):
 
         # Checkpoint the state of the training every 3 steps
         # Note that this is only required for certain schedulers
-        checkpoint = None
-        if timestep % 3 == 0:
-            checkpoint = Checkpoint.from_dict({"timestep": timestep})
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            checkpoint = None
+            if timestep % 3 == 0:
+                with open(
+                    os.path.join(temp_checkpoint_dir, "checkpoint.json"), "w"
+                ) as f:
+                    json.dump({"timestep": timestep}, f)
+                checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
 
-        # Here we use `episode_reward_mean`, but you can also report other
-        # objectives such as loss or accuracy.
-        session.report({"episode_reward_mean": v}, checkpoint=checkpoint)
+            # Here we use `episode_reward_mean`, but you can also report other
+            # objectives such as loss or accuracy.
+            train.report({"episode_reward_mean": v}, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
@@ -49,11 +56,11 @@ if __name__ == "__main__":
     hyperband = HyperBandScheduler(max_t=200)
 
     tuner = tune.Tuner(
-        train,
-        run_config=air.RunConfig(
+        train_func,
+        run_config=train.RunConfig(
             name="hyperband_test",
             stop={"training_iteration": 10 if args.smoke_test else 99999},
-            failure_config=air.FailureConfig(
+            failure_config=train.FailureConfig(
                 fail_fast=True,
             ),
         ),

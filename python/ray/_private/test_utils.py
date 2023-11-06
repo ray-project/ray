@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+import inspect
 import fnmatch
 import functools
 import io
@@ -8,6 +9,7 @@ import logging
 import math
 import os
 import pathlib
+import random
 import socket
 import subprocess
 import sys
@@ -24,15 +26,12 @@ from dataclasses import dataclass
 import requests
 from ray._raylet import Config
 
-import grpc
-import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
     ray_constants,
 )
 from ray._private.worker import RayContext
 import yaml
-from grpc._channel import _InactiveRpcError
 
 import ray
 import ray._private.gcs_utils as gcs_utils
@@ -45,9 +44,7 @@ from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
     node_manager_pb2,
-    node_manager_pb2_grpc,
     gcs_service_pb2,
-    gcs_service_pb2_grpc,
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -583,8 +580,12 @@ async def async_wait_for_condition(
     last_ex = None
     while time.time() - start <= timeout:
         try:
-            if condition_predictor(**kwargs):
-                return
+            if inspect.iscoroutinefunction(condition_predictor):
+                if await condition_predictor(**kwargs):
+                    return
+            else:
+                if condition_predictor(**kwargs):
+                    return
         except Exception as ex:
             last_ex = ex
         await asyncio.sleep(retry_interval_ms / 1000.0)
@@ -1442,7 +1443,7 @@ def get_and_run_node_killer(
                 if not self.is_running:
                     break
 
-                sleep_interval = np.random.rand() * self.node_kill_interval_s
+                sleep_interval = random.random() * self.node_kill_interval_s
                 time.sleep(sleep_interval)
 
                 if node_to_kill_port is not None:
@@ -1474,6 +1475,10 @@ def get_and_run_node_killer(
             return self.killed_nodes
 
         def _kill_raylet(self, ip, port, graceful=False):
+            import grpc
+            from grpc._channel import _InactiveRpcError
+            from ray.core.generated import node_manager_pb2_grpc
+
             raylet_address = f"{ip}:{port}"
             channel = grpc.insecure_channel(raylet_address)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
@@ -1694,6 +1699,9 @@ def wandb_setup_api_key_hook():
 
 # Get node stats from node manager.
 def get_node_stats(raylet, num_retry=5, timeout=2):
+    import grpc
+    from ray.core.generated import node_manager_pb2_grpc
+
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
     channel = ray._private.utils.init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
@@ -1711,6 +1719,8 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 
 # Gets resource usage assuming gcs is local.
 def get_resource_usage(gcs_address, timeout=10):
+    from ray.core.generated import gcs_service_pb2_grpc
+
     if not gcs_address:
         gcs_address = ray.worker._global_node.gcs_address
 
@@ -1739,6 +1749,10 @@ def get_load_metrics_report(webui_url):
 
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
+    import grpc
+    from grpc._channel import _InactiveRpcError
+    from ray.core.generated import node_manager_pb2_grpc
+
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
@@ -1955,3 +1969,11 @@ def find_available_port(start, end, port_num=1):
             f"Can't find {port_num} available port from {start} to {end}."
         )
     return ports
+
+
+# TODO(rickyx): We could remove this once we unify the autoscaler v1 and v2
+# code path for ray status
+def reset_autoscaler_v2_enabled_cache():
+    import ray.autoscaler.v2.utils as u
+
+    u.cached_is_autoscaler_v2 = None

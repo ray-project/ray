@@ -8,6 +8,8 @@ import warnings
 
 from ray._private.test_utils import SignalActor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.state import list_tasks
+from ray._private.test_utils import wait_for_condition
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -343,11 +345,56 @@ def test_ids(ray_start_regular):
     actor = FooActor.remote()
     ray.get(actor.foo.remote())
 
+    # actor name
+    @ray.remote
+    class NamedActor:
+        def name(self):
+            return ray.get_runtime_context().get_actor_name()
+
+    ACTOR_NAME = "actor_name"
+    named_actor = NamedActor.options(name=ACTOR_NAME).remote()
+    assert ray.get(named_actor.name.remote()) == ACTOR_NAME
+
+    # unnamed actor name
+    unnamed_actor = NamedActor.options().remote()
+    assert ray.get(unnamed_actor.name.remote()) == ""
+
+    # task actor name
+    @ray.remote
+    def task_actor_name():
+        ray.get_runtime_context().get_actor_name()
+
+    assert ray.get(task_actor_name.remote()) is None
+
+    # driver actor name
+    assert rtc.get_actor_name() is None
+
 
 def test_auto_init(shutdown_only):
     assert not ray.is_initialized()
     ray.get_runtime_context()
     assert ray.is_initialized()
+
+
+def test_async_actor_task_id(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class A:
+        async def f(self):
+            task_id = ray.get_runtime_context().get_task_id()
+            return task_id
+
+    a = A.remote()
+    task_id = ray.get(a.f.remote())
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "A.f")])
+        assert len(tasks) == 1
+        assert tasks[0].task_id == task_id
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":

@@ -57,7 +57,7 @@ class MockSchedulingQueue : public SchedulingQueue {
               (int64_t seq_no,
                int64_t client_processed_up_to,
                std::function<void(rpc::SendReplyCallback)> accept_request,
-               std::function<void(rpc::SendReplyCallback)> reject_request,
+               std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
                rpc::SendReplyCallback send_reply_callback,
                const std::string &concurrency_group_name,
                const ray::FunctionDescriptor &function_descriptor,

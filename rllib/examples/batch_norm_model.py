@@ -65,10 +65,15 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        # Batch-norm models have not been migrated to the RL Module API yet.
+        .experimental(_enable_new_api_stack=False)
         .environment("Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v1")
         .framework(args.framework)
         .rollouts(num_rollout_workers=3)
-        .training(model={"custom_model": "bn_model"}, lr=0.0003)
+        .training(
+            model={"custom_model": "bn_model"},
+            lr=0.0003,
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )

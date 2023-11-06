@@ -26,14 +26,6 @@ on each of our integrations:
             How To Use Tune With Dragonfly
 
     .. grid-item-card::
-        :img-top: ../images/skopt.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: skopt_example
-
-            How To Use Tune With Scikit-Optimize
-
-    .. grid-item-card::
         :img-top: ../images/hyperopt.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
@@ -82,25 +74,9 @@ on each of our integrations:
             How To Use Tune With Optuna
 
     .. grid-item-card::
-        :img-top: ../images/zoopt.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: zoopt_example
-
-            How To Use Tune With ZOOpt
-
-    .. grid-item-card::
         :img-top: ../images/sigopt.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
         .. button-ref:: sigopt_example
 
             How To Use Tune With SigOpt
-
-    .. grid-item-card::
-        :img-top: ../images/hebo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: hebo_example
-
-            How To Use Tune With HEBO

@@ -12,13 +12,12 @@ Trainable and is maximized or minimized according to ``mode``.
 
 .. code-block:: python
 
-    from ray import tune
-    from ray.air import session
+    from ray import train, tune
     from tune.schedulers import ASHAScheduler
 
     def train_fn(config):
         # This objective function is just for demonstration purposes
-        session.report({"loss": config["param"]})
+        train.report({"loss": config["param"]})
 
     tuner = tune.Tuner(
         train_fn,
@@ -72,6 +71,7 @@ that the value should be left to 1 bracket.
 This is the default used if no value is provided for the ``brackets`` argument.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
     :template: autosummary/class_without_autosummary.rst
 
@@ -87,6 +87,7 @@ Tune implements the `standard version of HyperBand <https://arxiv.org/abs/1603.0
 **We recommend using the ASHA Scheduler over the standard HyperBand scheduler.**
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     HyperBandScheduler
@@ -135,6 +136,7 @@ The Median Stopping Rule implements the simple strategy of stopping a trial if i
 below the median of other trials at similar points in time.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     MedianStoppingRule
@@ -185,6 +187,7 @@ of how PBT operates. :doc:`/tune/examples/pbt_guide` gives more examples
 of PBT usage.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     PopulationBasedTraining
@@ -219,6 +222,7 @@ See :ref:`here for an example <tune-advanced-tutorial-pbt-replay>` on how to use
 replay utility in practice.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     PopulationBasedTrainingReplay
@@ -236,7 +240,7 @@ The Tune implementation of PB2 requires GPy and sklearn to be installed:
 
 .. code-block:: bash
 
-    pip install GPy sklearn
+    pip install GPy scikit-learn
 
 
 PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig`` which is taken in by ``Tuner``, e.g.:
@@ -272,6 +276,7 @@ with a population size of ``4`` (as in the paper).
 The example uses the ``BipedalWalker`` environment so does not require any additional licenses.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     pb2.PB2
@@ -293,6 +298,7 @@ An example of this in use can be found here: :doc:`/tune/examples/includes/bohb_
 
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     HyperBandForBOHB
@@ -317,6 +323,7 @@ It wraps around another scheduler and uses its decisions.
 An example of this in use can be found here: :doc:`/tune/examples/includes/xgboost_dynamic_resources_example`.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ResourceChangingScheduler
@@ -327,6 +334,7 @@ FIFOScheduler (Default Scheduler)
 ---------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     FIFOScheduler
@@ -335,11 +343,13 @@ TrialScheduler Interface
 ------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     TrialScheduler
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     TrialScheduler.choose_trial_to_run
@@ -355,6 +365,7 @@ This can be useful if the scheduler you want to use changes often (e.g., specify
 via a CLI option or config file).
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     create_scheduler

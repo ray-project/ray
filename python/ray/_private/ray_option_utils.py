@@ -10,6 +10,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
+    NodeLabelSchedulingStrategy,
 )
 
 
@@ -76,6 +77,18 @@ def _validate_resource_quantity(name, quantity):
             f"The precision of the fractional quantity of resource {name}"
             " cannot go beyond 0.0001"
         )
+    resource_name = "GPU" if name == "num_gpus" else name
+    if resource_name in ray._private.accelerators.get_all_accelerator_resource_names():
+        (
+            valid,
+            error_message,
+        ) = ray._private.accelerators.get_accelerator_manager_for_resource(
+            resource_name
+        ).validate_resource_request_quantity(
+            quantity
+        )
+        if not valid:
+            return error_message
     return None
 
 
@@ -129,6 +142,7 @@ _common_options = {
             str,
             PlacementGroupSchedulingStrategy,
             NodeAffinitySchedulingStrategy,
+            NodeLabelSchedulingStrategy,
         )
     ),
     "_metadata": Option((dict, type(None))),
@@ -177,6 +191,17 @@ _task_only_options = {
         )
         else "retry_exceptions must be either a boolean or a list of exceptions",
         default_value=False,
+    ),
+    "_generator_backpressure_num_objects": Option(
+        (int, type(None)),
+        lambda x: None
+        if x != 0
+        else (
+            "_generator_backpressure_num_objects=0 is not allowed. "
+            "Use a value > 0. If the value is equal to 1, the behavior "
+            "is identical to Python generator (generator 1 object "
+            "whenever `next` is called). Use -1 to disable this feature. "
+        ),
     ),
 }
 

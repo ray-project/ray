@@ -97,8 +97,8 @@ void GcsMonitorServer::PopulateNodeStatuses(rpc::GetSchedulingStatusReply *reply
       continue;
     }
     const auto &node_resources = it->second.GetLocalView();
-    const auto available = node_resources.available.ToResourceMap();
-    const auto total = node_resources.total.ToResourceMap();
+    const auto available = node_resources.available.GetResourceMap();
+    const auto total = node_resources.total.GetResourceMap();
 
     auto node_status = reply->add_node_statuses();
     node_status->set_node_id(node_id.Binary());

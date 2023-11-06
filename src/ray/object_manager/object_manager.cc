@@ -100,6 +100,7 @@ ObjectManager::ObjectManager(
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
+                             ClusterID::Nil(),
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(
@@ -490,7 +491,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                   rpc_client,
                   [=](const Status &status) {
                     // Post back to the main event loop because the
-                    // PushManager is thread-safe.
+                    // PushManager is not thread-safe.
                     main_service_->post(
                         [this, node_id, object_id]() {
                           push_manager_->OnChunkComplete(node_id, object_id);

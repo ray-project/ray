@@ -1,5 +1,3 @@
-.. include:: /_includes/data/announcement.rst
-
 .. _data:
 
 ==================================
@@ -122,5 +120,3 @@ Learn more
             :expand:
 
             Read the Ray blogs
-
-.. include:: /_includes/data/announcement_bottom.rst

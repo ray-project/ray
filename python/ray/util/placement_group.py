@@ -12,6 +12,13 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"
 
+VALID_PLACEMENT_GROUP_STRATEGIES = {
+    "PACK",
+    "SPREAD",
+    "STRICT_PACK",
+    "STRICT_SPREAD",
+}
+
 
 # We need to import this method to use for ready API.
 # But ray.remote is only available in runtime, and
@@ -219,6 +226,12 @@ def placement_group(
                 stacklevel=1,
             )
 
+    if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
+        raise ValueError(
+            f"Invalid placement group strategy {strategy}. "
+            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+        )
+
     if lifetime is None:
         detached = False
     elif lifetime == "detached":
@@ -271,7 +284,9 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
         placement_group_name, worker.namespace
     )
     if placement_group_info is None:
-        raise ValueError(f"Failed to look up actor with name: {placement_group_name}")
+        raise ValueError(
+            f"Failed to look up placement group with name: {placement_group_name}"
+        )
     else:
         return PlacementGroup(
             PlacementGroupID(hex_to_binary(placement_group_info["placement_group_id"]))

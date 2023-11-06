@@ -4,6 +4,7 @@ This file holds framework-agnostic components for DreamerV3's RLModule.
 
 import abc
 
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
@@ -17,8 +18,12 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import one_hot
+
+
+_, tf, _ = try_import_tf()
 
 
 @ExperimentalAPI
@@ -36,6 +41,10 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )
         model_size = self.config.model_config_dict["model_size"]
 
+        if self.config.model_config_dict["use_float16"]:
+            tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
+            tf.keras.mixed_precision.set_global_policy("mixed_float16")
+
         # Build encoder and decoder from catalog.
         catalog = self.config.get_catalog()
         self.encoder = catalog.build_encoder(framework=self.framework)
@@ -44,6 +53,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         # Build the world model (containing encoder and decoder).
         self.world_model = WorldModel(
             model_size=model_size,
+            observation_space=self.config.observation_space,
             action_space=self.config.action_space,
             batch_length_T=T,
             encoder=self.encoder,
@@ -64,6 +74,8 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             world_model=self.world_model,
             actor=self.actor,
             critic=self.critic,
+            horizon=horizon_H,
+            gamma=gamma,
         )
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
@@ -72,22 +84,29 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             np.expand_dims(self.config.observation_space.sample(), (0, 1)),
             reps=(B, T) + (1,) * len(self.config.observation_space.shape),
         )
-        test_actions = np.tile(
-            np.expand_dims(
-                one_hot(
-                    self.config.action_space.sample(), depth=self.config.action_space.n
+        if isinstance(self.config.action_space, gym.spaces.Discrete):
+            test_actions = np.tile(
+                np.expand_dims(
+                    one_hot(
+                        self.config.action_space.sample(),
+                        depth=self.config.action_space.n,
+                    ),
+                    (0, 1),
                 ),
-                (0, 1),
-            ),
-            reps=(B, T, 1),
-        )
+                reps=(B, T, 1),
+            )
+        else:
+            test_actions = np.tile(
+                np.expand_dims(self.config.action_space.sample(), (0, 1)),
+                reps=(B, T, 1),
+            )
+
         self.dreamer_model(
-            inputs=_convert_to_tf(test_obs),
-            actions=_convert_to_tf(test_actions.astype(np.float32)),
-            is_first=_convert_to_tf(np.ones((B, T), np.float32)),
-            start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,), np.float32)),
-            horizon_H=horizon_H,
-            gamma=gamma,
+            None,
+            _convert_to_tf(test_obs, dtype=tf.float32),
+            _convert_to_tf(test_actions, dtype=tf.float32),
+            _convert_to_tf(np.ones((B, T)), dtype=tf.bool),
+            _convert_to_tf(np.zeros((B * T,)), dtype=tf.bool),
         )
 
         # Initialize the critic EMA net:

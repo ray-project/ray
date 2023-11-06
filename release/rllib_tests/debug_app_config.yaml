@@ -1,4 +1,4 @@
-base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py38-gpu") }}
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
 env_vars: {"LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin", "RLLIB_TEST_NO_JAX_IMPORT": "1"}
 debian_packages:
   - unzip
@@ -15,10 +15,10 @@ python:
   pip_packages:
   ## These dependencies should be handled by rllib-requirements.txt
   ## and removed here
-  - gymnasium[atari,mujoco]==0.26.3
-  - ale-py==0.8.0
-  - gym==0.26.2
-  - mujoco-py<2.2,>=2.1
+  - gymnasium==0.28.1
+  - imageio==2.31.1
+  - ale-py==0.8.1
+  - mujoco==2.3.6
   # AutoROM downloads ROMs via torrent when they are built. The torrent is unreliable,
   # so we built it for py3 and use that instead. This wheel was tested for python 3.7, 3.8,
   # and 3.9.

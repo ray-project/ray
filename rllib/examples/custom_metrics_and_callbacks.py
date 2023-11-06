@@ -2,16 +2,21 @@
 
 Here we use callbacks to track the average CartPole pole angle magnitude as a
 custom metric.
+
+We then use `keep_per_episode_custom_metrics` to keep the per-episode values
+of our custom metrics and do our own summarization of them.
 """
 
 from typing import Dict, Tuple
 import argparse
+import gymnasium as gym
 import numpy as np
 import os
 
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import Episode, RolloutWorker
 from ray.rllib.policy import Policy
@@ -27,6 +32,31 @@ parser.add_argument(
 parser.add_argument("--stop-iters", type=int, default=2000)
 
 
+# Create a custom CartPole environment that maintains an estimate of velocity
+class CustomCartPole(gym.Env):
+    def __init__(self, config):
+        self.env = gym.make("CartPole-v1")
+        self.observation_space = self.env.observation_space
+        self.action_space = self.env.action_space
+        self._pole_angle_vel = 0.0
+        self.last_angle = 0.0
+
+    def reset(self, *, seed=None, options=None):
+        self._pole_angle_vel = 0.0
+        obs, info = self.env.reset()
+        self.last_angle = obs[2]
+        return obs, info
+
+    def step(self, action):
+        obs, rew, term, trunc, info = self.env.step(action)
+        angle = obs[2]
+        self._pole_angle_vel = (
+            0.5 * (angle - self.last_angle) + 0.5 * self._pole_angle_vel
+        )
+        info["pole_angle_vel"] = self._pole_angle_vel
+        return obs, rew, term, trunc, info
+
+
 class MyCallbacks(DefaultCallbacks):
     def on_episode_start(
         self,
@@ -36,7 +66,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         episode: Episode,
         env_index: int,
-        **kwargs
+        **kwargs,
     ):
         # Make sure this episode has just been started (only initial obs
         # logged so far).
@@ -44,7 +74,7 @@ class MyCallbacks(DefaultCallbacks):
             "ERROR: `on_episode_start()` callback should be called right "
             "after env reset!"
         )
-        print("episode {} (env-idx={}) started.".format(episode.episode_id, env_index))
+        # Create lists to store angles in
         episode.user_data["pole_angles"] = []
         episode.hist_data["pole_angles"] = []
 
@@ -56,7 +86,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         episode: Episode,
         env_index: int,
-        **kwargs
+        **kwargs,
     ):
         # Make sure this episode is ongoing.
         assert episode.length > 0, (
@@ -68,6 +98,11 @@ class MyCallbacks(DefaultCallbacks):
         assert pole_angle == raw_angle
         episode.user_data["pole_angles"].append(pole_angle)
 
+        # Sometimes our pole is moving fast. We can look at the latest velocity
+        # estimate from our environment and log high velocities.
+        if np.abs(episode.last_info_for()["pole_angle_vel"]) > 0.25:
+            print("This is a fast pole!")
+
     def on_episode_end(
         self,
         *,
@@ -76,7 +111,7 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         episode: Episode,
         env_index: int,
-        **kwargs
+        **kwargs,
     ):
         # Check if there are multiple episodes in a batch, i.e.
         # "batch_mode": "truncate_episodes".
@@ -89,31 +124,37 @@ class MyCallbacks(DefaultCallbacks):
                 "after episode is done!"
             )
         pole_angle = np.mean(episode.user_data["pole_angles"])
-        print(
-            "episode {} (env-idx={}) ended with length {} and pole "
-            "angles {}".format(
-                episode.episode_id, env_index, episode.length, pole_angle
-            )
-        )
         episode.custom_metrics["pole_angle"] = pole_angle
         episode.hist_data["pole_angles"] = episode.user_data["pole_angles"]
 
     def on_sample_end(self, *, worker: RolloutWorker, samples: SampleBatch, **kwargs):
-        print("returned sample batch of size {}".format(samples.count))
+        # We can also do our own sanity checks here.
+        assert (
+            samples.count == 2000
+        ), f"I was expecting 2000 here, but got {samples.count}!"
 
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
-        print(
-            "Algorithm.train() result: {} -> {} episodes".format(
-                algorithm, result["episodes_this_iter"]
-            )
-        )
         # you can mutate the result dict to add new fields to return
         result["callback_ok"] = True
+
+        # Normally, RLlib would aggregate any custom metric into a mean, max and min
+        # of the given metric.
+        # For the sake of this example, we will instead compute the variance and mean
+        # of the pole angle over the evaluation episodes.
+        pole_angle = result["custom_metrics"]["pole_angle"]
+        var = np.var(pole_angle)
+        mean = np.mean(pole_angle)
+        result["custom_metrics"]["pole_angle_var"] = var
+        result["custom_metrics"]["pole_angle_mean"] = mean
+        # We are not interested in these original values
+        del result["custom_metrics"]["pole_angle"]
+        del result["custom_metrics"]["num_batches"]
 
     def on_learn_on_batch(
         self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
     ) -> None:
         result["sum_actions_in_train_batch"] = train_batch["actions"].sum()
+        # Log the sum of actions in the train batch.
         print(
             "policy.learn_on_batch() result: {} -> sum actions: {}".format(
                 policy, result["sum_actions_in_train_batch"]
@@ -130,9 +171,8 @@ class MyCallbacks(DefaultCallbacks):
         policies: Dict[str, Policy],
         postprocessed_batch: SampleBatch,
         original_batches: Dict[str, Tuple[Policy, SampleBatch]],
-        **kwargs
+        **kwargs,
     ):
-        print("postprocessed {} steps".format(postprocessed_batch.count))
         if "num_batches" not in episode.custom_metrics:
             episode.custom_metrics["num_batches"] = 0
         episode.custom_metrics["num_batches"] += 1
@@ -141,25 +181,25 @@ class MyCallbacks(DefaultCallbacks):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init()
+    config = (
+        PPOConfig()
+        .environment(CustomCartPole)
+        .framework(args.framework)
+        .callbacks(MyCallbacks)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rollouts(enable_connectors=False)
+        .reporting(keep_per_episode_custom_metrics=True)
+    )
+
+    ray.init(local_mode=True)
     tuner = tune.Tuner(
-        "PG",
+        "PPO",
         run_config=air.RunConfig(
             stop={
                 "training_iteration": args.stop_iters,
             },
         ),
-        param_space={
-            "env": "CartPole-v1",
-            "num_envs_per_worker": 2,
-            "callbacks": MyCallbacks,
-            "framework": args.framework,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            # TODO(avnishn): This example uses functions specific to episode v1
-            # that is not compatible with episode v2. Needs to be updated
-            "enable_connectors": False,
-        },
+        param_space=config,
     )
     # there is only one trial involved.
     result = tuner.fit().get_best_result()
@@ -168,7 +208,4 @@ if __name__ == "__main__":
     custom_metrics = result.metrics["custom_metrics"]
     print(custom_metrics)
     assert "pole_angle_mean" in custom_metrics
-    assert "pole_angle_min" in custom_metrics
-    assert "pole_angle_max" in custom_metrics
-    assert "num_batches_mean" in custom_metrics
-    assert "callback_ok" in result.metrics
+    assert "pole_angle_var" in custom_metrics

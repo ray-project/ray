@@ -12,10 +12,9 @@ from ray.rllib.algorithms.ppo import PPOConfig
 
 config = (
     PPOConfig()
+    .experimental(_enable_new_api_stack=True)
     .framework("torch")
     .environment("CartPole-v1")
-    .rl_module(_enable_rl_module_api=True)
-    .training(_enable_learner_api=True)
 )
 
 algorithm = config.build()
@@ -81,15 +80,12 @@ from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 
 config = (
     BCConfigTest()
+    .experimental(_enable_new_api_stack=True)
     .environment("CartPole-v1")
     .rl_module(
-        _enable_rl_module_api=True,
         rl_module_spec=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule),
     )
-    .training(
-        model={"fcnet_hiddens": [32, 32]},
-        _enable_learner_api=True,
-    )
+    .training(model={"fcnet_hiddens": [32, 32]})
 )
 
 algo = config.build()
@@ -107,17 +103,14 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 
 config = (
     BCConfigTest()
+    .experimental(_enable_new_api_stack=True)
     .environment(MultiAgentCartPole, env_config={"num_agents": 2})
     .rl_module(
-        _enable_rl_module_api=True,
         rl_module_spec=MultiAgentRLModuleSpec(
             module_specs=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule)
         ),
     )
-    .training(
-        model={"fcnet_hiddens": [32, 32]},
-        _enable_learner_api=True,
-    )
+    .training(model={"fcnet_hiddens": [32, 32]})
 )
 # __pass-specs-to-configs-ma-end__
 
@@ -399,3 +392,51 @@ spec = MultiAgentRLModuleSpec(
 
 module = spec.build()
 # __pass-custom-marlmodule-shared-enc-end__
+
+
+# __checkpointing-begin__
+import gymnasium as gym
+import shutil
+import tempfile
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+
+config = (
+    PPOConfig()
+    # Enable the new API stack (RLModule and Learner APIs).
+    .experimental(_enable_new_api_stack=True).environment("CartPole-v1")
+)
+env = gym.make("CartPole-v1")
+# Create an RL Module that we would like to checkpoint
+module_spec = SingleAgentRLModuleSpec(
+    module_class=PPOTorchRLModule,
+    observation_space=env.observation_space,
+    action_space=env.action_space,
+    model_config_dict={"fcnet_hiddens": [32]},
+    catalog_class=PPOCatalog,
+)
+module = module_spec.build()
+
+# Create the checkpoint
+module_ckpt_path = tempfile.mkdtemp()
+module.save_to_checkpoint(module_ckpt_path)
+
+# Create a new RL Module from the checkpoint
+module_to_load_spec = SingleAgentRLModuleSpec(
+    module_class=PPOTorchRLModule,
+    observation_space=env.observation_space,
+    action_space=env.action_space,
+    model_config_dict={"fcnet_hiddens": [32]},
+    catalog_class=PPOCatalog,
+    load_state_path=module_ckpt_path,
+)
+
+# Train with the checkpointed RL Module
+config.rl_module(rl_module_spec=module_to_load_spec)
+algo = config.build()
+algo.train()
+# __checkpointing-end__
+algo.stop()
+shutil.rmtree(module_ckpt_path)

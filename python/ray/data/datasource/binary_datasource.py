@@ -11,16 +11,7 @@ if TYPE_CHECKING:
 
 @PublicAPI
 class BinaryDatasource(FileBasedDatasource):
-    """Binary datasource, for reading and writing binary files.
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import BinaryDatasource
-        >>> source = BinaryDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource( # doctest: +SKIP
-        ...     source, paths="/path/to/dir").take()
-        [b"file_data", ...]
-    """
+    """Binary datasource, for reading and writing binary files."""
 
     _COLUMN_NAME = "bytes"
 
@@ -43,20 +34,13 @@ class BinaryDatasource(FileBasedDatasource):
         else:
             data = f.readall()
 
-        output_arrow_format = reader_args.pop("output_arrow_format", False)
-        if output_arrow_format:
-            builder = ArrowBlockBuilder()
-            if include_paths:
-                item = {self._COLUMN_NAME: data, "path": path}
-            else:
-                item = {self._COLUMN_NAME: data}
-            builder.add(item)
-            return builder.build()
+        builder = ArrowBlockBuilder()
+        if include_paths:
+            item = {self._COLUMN_NAME: data, "path": path}
         else:
-            if include_paths:
-                return [(path, data)]
-            else:
-                return [data]
+            item = {self._COLUMN_NAME: data}
+        builder.add(item)
+        return builder.build()
 
     def _rows_per_file(self):
         return 1

@@ -103,7 +103,7 @@ build_wheel_windows() {
     # Start a subshell to prevent PATH and cd from affecting our shell environment
     (
       if ! is_python_version "${pyversion}"; then
-        conda install -y python="${pyversion}"
+        conda install -y conda=23.1.0 python="${pyversion}"
       fi
       if ! is_python_version "${pyversion}"; then
         echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2
@@ -113,9 +113,9 @@ build_wheel_windows() {
       unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
       install_ray
       cd "${WORKSPACE_DIR}"/python
-      # Set the commit SHA in __init__.py.
+      # Set the commit SHA in _version.py.
       if [ -n "$BUILDKITE_COMMIT" ]; then
-        sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
+        sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
       else
         echo "BUILDKITE_COMMIT variable not set - required to populated ray.__commit__."
         exit 1

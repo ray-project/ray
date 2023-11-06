@@ -44,10 +44,11 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
     prometheusHealth,
     sessionName,
     dashboardUids,
+    dashboardDatasource,
   } = useContext(GlobalContext);
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
-  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=24`;
+  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=24&var-datasource=${dashboardDatasource}`;
   const timeRangeParams = "&from=now-30m&to=now";
 
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {

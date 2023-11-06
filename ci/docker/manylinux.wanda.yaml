@@ -1,0 +1,8 @@
+name: "manylinux"
+froms:
+  - quay.io/pypa/manylinux2014_x86_64:2022-12-20-b4884d9
+srcs:
+  - ci/build/build-manylinux-forge.sh
+build_args:
+  - BUILDKITE_BAZEL_CACHE_URL
+dockerfile: ci/docker/manylinux.Dockerfile

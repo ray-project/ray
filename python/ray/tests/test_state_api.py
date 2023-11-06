@@ -5,13 +5,13 @@ import sys
 import signal
 from collections import Counter
 from typing import List, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 import yaml
 from click.testing import CliRunner
 
@@ -25,6 +25,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
+    find_free_port,
 )
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
@@ -118,12 +119,6 @@ from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
-if sys.version_info >= (3, 8, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
-
-
 """
 Unit tests
 """
@@ -157,8 +152,11 @@ def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_address = address_info["gcs_address"]
     gcs_aio_client = GcsAioClient(address=gcs_address)
-    gcs_channel = gcs_aio_client.channel.channel()
-    state_api_data_source_client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
+    gcs_channel.connect()
+    state_api_data_source_client = StateDataSourceClient(
+        gcs_channel.channel(), gcs_aio_client
+    )
     manager = StateAPIManager(state_api_data_source_client)
 
     yield manager
@@ -911,10 +909,6 @@ async def test_api_manager_list_workers(state_api_manager):
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -996,10 +990,6 @@ async def test_api_manager_list_tasks(state_api_manager):
     assert len(result.result) == 1
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks_events(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1108,10 +1098,6 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     assert result["end_time_ms"] is None
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summarize_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1199,10 +1185,6 @@ async def test_api_manager_summarize_tasks(state_api_manager):
     assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1311,15 +1293,15 @@ async def test_api_manager_list_objects(state_api_manager):
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_agent_ids = MagicMock()
-    data_source_client.get_all_registered_agent_ids.return_value = ["1", "2", "3"]
+    data_source_client.get_all_registered_runtime_env_agent_ids = MagicMock()
+    data_source_client.get_all_registered_runtime_env_agent_ids.return_value = [
+        "1",
+        "2",
+        "3",
+    ]
 
     data_source_client.get_runtime_envs_info = AsyncMock()
     data_source_client.get_runtime_envs_info.side_effect = [
@@ -1501,10 +1483,10 @@ Integration tests
 async def test_state_data_source_client(ray_start_cluster):
     cluster = ray_start_cluster
     # head
-    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2, dashboard_agent_listen_port=find_free_port())
     ray.init(address=cluster.address)
     # worker
-    worker = cluster.add_node(num_cpus=2)
+    worker = cluster.add_node(num_cpus=2, dashboard_agent_listen_port=find_free_port())
 
     client = state_source_client(cluster.address)
 
@@ -1564,7 +1546,8 @@ async def test_state_data_source_client(ray_start_cluster):
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
         result = await client.get_task_info(node_id)
         assert isinstance(result, GetTasksInfoReply)
 
@@ -1582,7 +1565,8 @@ async def test_state_data_source_client(ray_start_cluster):
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
         result = await client.get_object_info(node_id)
         assert isinstance(result, GetObjectsInfoReply)
 
@@ -1725,7 +1709,8 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
 
     """
     Test tasks
@@ -2185,6 +2170,7 @@ def test_list_get_nodes(ray_start_cluster):
                 if node["node_name"] == "head_node"
                 else not node["is_head_node"]
             )
+            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
 
         # Check with legacy API
         check_nodes = ray.nodes()
@@ -2869,9 +2855,8 @@ async def test_cli_format_print(state_api_manager):
     print(result)
     result = [ActorState(**d) for d in result.result]
     # If the format is not yaml, it will raise an exception.
-    yaml.load(
-        format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML),
-        Loader=yaml.FullLoader,
+    yaml.safe_load(
+        format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML)
     )
     # If the format is not json, it will raise an exception.
     json.loads(
@@ -3002,6 +2987,47 @@ def test_filter(shutdown_only):
     assert dead_actor_id not in result.output
     assert alive_actor_id in result.output
 
+    """
+    Test case insensitive match on string fields.
+    """
+
+    @ray.remote
+    def task():
+        pass
+
+    ray.get(task.remote())
+
+    def verify():
+        result_1 = list_tasks(filters=[("name", "=", "task")])
+        result_2 = list_tasks(filters=[("name", "=", "TASK")])
+        assert result_1 == result_2
+
+        result_1 = list_tasks(filters=[("state", "=", "FINISHED")])
+        result_2 = list_tasks(filters=[("state", "=", "finished")])
+        assert result_1 == result_2
+
+        result_1 = list_objects(
+            filters=[("pid", "=", pid), ("reference_type", "=", "LOCAL_REFERENCE")]
+        )
+
+        result_2 = list_objects(
+            filters=[("pid", "=", pid), ("reference_type", "=", "local_reference")]
+        )
+        assert result_1 == result_2
+
+        result_1 = list_actors(filters=[("state", "=", "DEAD")])
+        result_2 = list_actors(filters=[("state", "=", "dead")])
+
+        assert result_1 == result_2
+
+        result_1 = list_actors(filters=[("state", "!=", "DEAD")])
+        result_2 = list_actors(filters=[("state", "!=", "dead")])
+
+        assert result_1 == result_2
+        return True
+
+    wait_for_condition(verify)
+
 
 def test_data_truncate(shutdown_only, monkeypatch):
     """
@@ -3081,18 +3107,14 @@ def test_detail(shutdown_only):
 
     # Make sure when the --detail option is specified, the default formatting
     # is yaml. If the format is not yaml, the below line will raise an yaml exception.
-    print(
-        yaml.load(
-            result.output,
-            Loader=yaml.FullLoader,
-        )
-    )
+    # Retrieve yaml content from result output
+    print(yaml.safe_load(result.output.split("---")[1].split("...")[0]))
 
     # When the format is given, it should respect that formatting.
-    result = runner.invoke(ray_list, ["actors", "--detail", "--format=table"])
+    result = runner.invoke(ray_list, ["actors", "--detail", "--format=json"])
     assert result.exit_code == 0
-    with pytest.raises(yaml.YAMLError):
-        yaml.load(result.output, Loader=yaml.FullLoader)
+    # Fails if output is not JSON
+    print(json.loads(result.output))
 
 
 def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None, **kwargs):

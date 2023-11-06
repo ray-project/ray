@@ -71,8 +71,10 @@ DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
 def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments):
+    """Returns: list of application route prefixes."""
+
     max_replicas_per_deployment = max_replicas // num_deployments
-    all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
+    all_app_names = [f"Echo_{i+1}" for i in range(num_deployments)]
 
     @serve.deployment(
         autoscaling_config={
@@ -87,35 +89,37 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments)
     )
     class Echo:
         def __init__(self):
-            self.all_deployment_async_handles = []
+            self.all_app_async_handles = []
 
-        def get_random_async_handle(self):
+        async def get_random_async_handle(self):
             # sync get_handle() and expected to be called only a few times
             # during deployment warmup so each deployment has reference to
             # all other handles to send recursive inference call
-            if len(self.all_deployment_async_handles) < len(all_deployment_names):
-                deployments = list(serve.list_deployments().values())
-                self.all_deployment_async_handles = [
-                    deployment.get_handle(sync=False) for deployment in deployments
+            if len(self.all_app_async_handles) < len(all_app_names):
+                applications = list(serve.status().applications.keys())
+                self.all_app_async_handles = [
+                    serve.get_app_handle(app) for app in applications
                 ]
 
-            return random.choice(self.all_deployment_async_handles)
+            return random.choice(self.all_app_async_handles)
 
         async def handle_request(self, request, depth: int):
             # Max recursive call depth reached
             if depth > 4:
                 return "hi"
 
-            next_async_handle = self.get_random_async_handle()
-            obj_ref = await next_async_handle.handle_request.remote(request, depth + 1)
+            next_async_handle = await self.get_random_async_handle()
+            fut = next_async_handle.handle_request.remote(request, depth + 1)
 
-            return await obj_ref
+            return await fut
 
         async def __call__(self, request):
             return await self.handle_request(request, 0)
 
-    for deployment in all_deployment_names:
-        Echo.options(name=deployment).deploy()
+    for name in all_app_names:
+        serve.run(Echo.bind(), name=name, route_prefix=f"/{name}")
+
+    return all_app_names
 
 
 @click.command()
@@ -169,11 +173,12 @@ def main(
         f"Deploying with min {min_replicas} and max {max_replicas}"
         f"target replicas ....\n"
     )
-    setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments)
+    all_endpoints = setup_multi_deployment_replicas(
+        min_replicas, max_replicas, num_deployments
+    )
 
     logger.info("Warming up cluster ....\n")
     endpoint_refs = []
-    all_endpoints = list(serve.list_deployments().keys())
     for endpoint in all_endpoints:
         endpoint_refs.append(
             warm_up_one_cluster.options(num_cpus=0).remote(

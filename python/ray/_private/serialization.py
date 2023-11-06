@@ -4,6 +4,8 @@ import threading
 import traceback
 from typing import Any
 
+import google.protobuf.message
+
 import ray._private.utils
 import ray.cloudpickle as pickle
 from ray._private import ray_constants
@@ -296,7 +298,22 @@ class SerializationContext:
             elif error_type == ErrorType.Value("LOCAL_RAYLET_DIED"):
                 return LocalRayletDiedError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
-                return TaskCancelledError()
+                # Task cancellations are serialized in two ways, so check both
+                # deserialization paths.
+                # TODO(swang): We should only have one serialization path.
+                try:
+                    # Deserialization from C++ (the CoreWorker task submitter).
+                    # The error info will be stored as a RayErrorInfo.
+                    error_message = ""
+                    if data:
+                        error_info = self._deserialize_error_info(data, metadata_fields)
+                        error_message = error_info.error_message
+                    return TaskCancelledError(error_message=error_message)
+                except google.protobuf.message.DecodeError:
+                    # Deserialization from Python. The TaskCancelledError is
+                    # serialized and returned directly.
+                    obj = self._deserialize_msgpack_data(data, metadata_fields)
+                    return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
@@ -419,8 +436,17 @@ class SerializationContext:
         contained_object_refs = []
 
         if isinstance(value, RayTaskError):
-            metadata = str(ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
-            value = value.to_bytes()
+            if issubclass(value.cause.__class__, TaskCancelledError):
+                # Handle task cancellation errors separately because we never
+                # want to warn about tasks that were intentionally cancelled by
+                # the user.
+                metadata = str(ErrorType.Value("TASK_CANCELLED")).encode("ascii")
+                value = value.to_bytes()
+            else:
+                metadata = str(ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode(
+                    "ascii"
+                )
+                value = value.to_bytes()
         elif isinstance(value, ray.actor.ActorHandle):
             # TODO(fyresone): ActorHandle should be serialized via the
             # custom type feature of cross-language.

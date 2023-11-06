@@ -28,45 +28,7 @@ class instrumented_io_context : public boost::asio::io_context {
  public:
   /// Initializes the global stats struct after calling the base contructor.
   /// TODO(ekl) allow taking an externally defined event tracker.
-  instrumented_io_context()
-      : is_running_{false}, event_stats_(std::make_shared<EventTracker>()) {}
-
-  /// Run the io_context if and only if no other thread is running it. Blocks
-  /// other threads from running once started. Noop if there is a thread
-  /// running it already. Only used in GcsClient::Connect, to be deprecated
-  /// after the introduction of executors.
-  void run_if_not_running(std::function<void()> prerun_fn) {
-    absl::MutexLock l(&mu_);
-    // Note: this doesn't set is_running_ because it blocks anything else from
-    // running anyway.
-    if (!is_running_) {
-      prerun_fn();
-      is_running_ = true;
-      boost::asio::io_context::run();
-    }
-  }
-
-  /// Assumes the mutex is held. Undefined behavior if not.
-  void stop_without_lock() {
-    is_running_ = false;
-    boost::asio::io_context::stop();
-  }
-
-  void run() {
-    {
-      absl::MutexLock l(&mu_);
-      is_running_ = true;
-    }
-    boost::asio::io_context::run();
-  }
-
-  void stop() {
-    {
-      absl::MutexLock l(&mu_);
-      is_running_ = false;
-    }
-    boost::asio::io_context::stop();
-  }
+  instrumented_io_context() : event_stats_(std::make_shared<EventTracker>()) {}
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -74,14 +36,8 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
-  void post(std::function<void()> handler, const std::string name);
-
-  /// A proxy post function where the operation start is manually recorded. For example,
-  /// this is useful for tracking the number of active outbound RPC calls.
-  ///
-  /// \param handler The handler to be posted to the event loop.
-  /// \param handle The stats handle returned by RecordStart() previously.
-  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle);
+  /// \param delay_us Delay time before the handler will be executed.
+  void post(std::function<void()> handler, const std::string name, int64_t delay_us = 0);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -94,8 +50,6 @@ class instrumented_io_context : public boost::asio::io_context {
   EventTracker &stats() const { return *event_stats_; };
 
  private:
-  absl::Mutex mu_;
-  bool is_running_;
   /// The event stats tracker to use to record asio handler stats to.
   std::shared_ptr<EventTracker> event_stats_;
 };

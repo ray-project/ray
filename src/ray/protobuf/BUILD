@@ -132,6 +132,7 @@ proto_library(
     deps = [
       ":common_proto",
       ":gcs_proto",
+      ":autoscaler_proto",
     ],
 )
 
@@ -367,7 +368,7 @@ cc_proto_library(
 
 proto_library(
     name = "autoscaler_proto",
-    srcs = ["experimental/autoscaler.proto"],
+    srcs = ["autoscaler.proto"],
 )
 
 python_grpc_compile(

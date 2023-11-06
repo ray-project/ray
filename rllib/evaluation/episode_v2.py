@@ -12,7 +12,7 @@ from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.typing import AgentID, EnvID, PolicyID, TensorType
+from ray.rllib.utils.typing import AgentID, EnvID, EnvInfoDict, PolicyID, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -60,8 +60,8 @@ class EpisodeV2:
         # Total # of steps take by all agents in this env.
         self.total_agent_steps: int = 0
         # Dict for user to add custom metrics.
-        # TODO(jungong) : we should probably unify custom_metrics, user_data,
-        # and hist_data into a single data container for user to track per-step
+        # TODO (sven): We should probably unify custom_metrics, user_data,
+        #  and hist_data into a single data container for user to track per-step.
         # metrics and states.
         self.custom_metrics: Dict[str, float] = {}
         # Temporary storage. E.g. storing data in between two custom
@@ -193,7 +193,7 @@ class EpisodeV2:
             ),
             is_policy_recurrent=policy.is_recurrent(),
             intial_states=policy.get_initial_state(),
-            _enable_rl_module_api=policy.config["_enable_rl_module_api"],
+            _enable_new_api_stack=policy.config["_enable_new_api_stack"],
         )
         self._agent_collectors[agent_id].add_init_obs(
             episode_id=self.episode_id,
@@ -369,6 +369,11 @@ class EpisodeV2:
 
     def set_last_info(self, agent_id: AgentID, info: Dict):
         self._last_infos[agent_id] = info
+
+    def last_info_for(
+        self, agent_id: AgentID = _DUMMY_AGENT_ID
+    ) -> Optional[EnvInfoDict]:
+        return self._last_infos.get(agent_id)
 
     @property
     def length(self):

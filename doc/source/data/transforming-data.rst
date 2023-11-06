@@ -12,11 +12,11 @@ to express a chain of computations.
 
 This guide shows you how to:
 
-* `Transform rows <#transforming-rows>`_
-* `Transform batches <#transforming-batches>`_
-* `Groupby and transform groups <#groupby-and-transforming-groups>`_
-* `Shuffle rows <#shuffling-rows>`_
-* `Repartition data <#repartitioning-data>`_
+* :ref:`Transform rows <transforming_rows>`
+* :ref:`Transform batches <transforming_batches>`
+* :ref:`Groupby and transform groups <transforming_groupby>`
+* :ref:`Shuffle rows <shuffling_rows>`
+* :ref:`Repartition data <repartitioning_data>`
 
 .. _transforming_rows:
 
@@ -43,7 +43,7 @@ If your transformation returns exactly one row for each input row, call
         return row
 
     ds = (
-        ray.data.read_images("example://image-datasets/simple", include_paths=True)
+        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
         .map(parse_filename)
     )
 
@@ -111,7 +111,7 @@ uses tasks by default.
         return batch
 
     ds = (
-        ray.data.read_images("example://image-datasets/simple")
+        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
         .map_batches(increase_brightness)
     )
 
@@ -226,7 +226,7 @@ To configure the batch type, specify ``batch_format`` in
                 return batch
 
             ds = (
-                ray.data.read_images("example://image-datasets/simple")
+                ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
                 .map_batches(increase_brightness, batch_format="numpy")
             )
 
@@ -311,6 +311,8 @@ To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then,
                 .map_groups(normalize_features)
             )
 
+.. _shuffling_rows:
+
 Shuffling rows
 ==============
 
@@ -321,14 +323,16 @@ To randomly shuffle all rows, call :meth:`~ray.data.Dataset.random_shuffle`.
     import ray
 
     ds = (
-        ray.data.read_images("example://image-datasets/simple")
+        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
         .random_shuffle()
     )
 
 .. tip::
 
     :meth:`~ray.data.Dataset.random_shuffle` is slow. For better performance, try
-    `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+    :ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
+
+.. _repartitioning_data:
 
 Repartitioning data
 ===================

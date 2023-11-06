@@ -1,5 +1,4 @@
-from ray import tune
-from ray.air import session
+from ray import train, tune
 
 
 def objective(step, alpha, beta):
@@ -13,7 +12,7 @@ def training_function(config):
         # Iterative training function - can be any arbitrary training procedure.
         intermediate_score = objective(step, alpha, beta)
         # Feed the score back back to Tune.
-        session.report({"mean_loss": intermediate_score})
+        train.report({"mean_loss": intermediate_score})
 
 
 tuner = tune.Tuner(

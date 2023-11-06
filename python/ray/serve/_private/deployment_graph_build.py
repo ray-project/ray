@@ -1,39 +1,36 @@
 import inspect
-from typing import List
 from collections import OrderedDict
+from typing import List
 
 from ray import cloudpickle
-
-from ray.serve.deployment import Deployment, schema_to_deployment
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
-from ray.serve._private.deployment_method_node import DeploymentMethodNode
-from ray.serve._private.deployment_node import DeploymentNode
-from ray.serve._private.deployment_function_node import DeploymentFunctionNode
-from ray.serve._private.deployment_executor_node import DeploymentExecutorNode
-from ray.serve._private.deployment_method_executor_node import (
-    DeploymentMethodExecutorNode,
-)
-from ray.serve._private.deployment_function_executor_node import (
-    DeploymentFunctionExecutorNode,
-)
-from ray.serve.handle import RayServeHandle
-from ray.serve.schema import DeploymentSchema
-
-
-from ray.dag import (
-    DAGNode,
-    ClassNode,
-    ClassMethodNode,
-    PARENT_CLASS_NODE_KEY,
-)
+from ray.dag import PARENT_CLASS_NODE_KEY, ClassMethodNode, ClassNode, DAGNode
 from ray.dag.function_node import FunctionNode
 from ray.dag.input_node import InputNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.experimental.gradio_utils import type_to_string
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_NEW_HANDLE_API,
+    SERVE_DEFAULT_APP_NAME,
+)
+from ray.serve._private.deployment_executor_node import DeploymentExecutorNode
+from ray.serve._private.deployment_function_executor_node import (
+    DeploymentFunctionExecutorNode,
+)
+from ray.serve._private.deployment_function_node import DeploymentFunctionNode
+from ray.serve._private.deployment_method_executor_node import (
+    DeploymentMethodExecutorNode,
+)
+from ray.serve._private.deployment_method_node import DeploymentMethodNode
+from ray.serve._private.deployment_node import DeploymentNode
+from ray.serve.deployment import Deployment, schema_to_deployment
+from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.handle import DeploymentHandle, RayServeHandle
+from ray.serve.schema import DeploymentSchema
 
 
-def build(ray_dag_root_node: DAGNode, name: str = None) -> List[Deployment]:
+def build(
+    ray_dag_root_node: DAGNode, name: str = SERVE_DEFAULT_APP_NAME
+) -> List[Deployment]:
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
     DAG authored with Ray DAG API.
@@ -151,7 +148,7 @@ def get_and_validate_ingress_deployment(
 
 
 def transform_ray_dag_to_serve_dag(
-    dag_node: DAGNode, node_name_generator: _DAGNodeNameGenerator, name: str = None
+    dag_node: DAGNode, node_name_generator: _DAGNodeNameGenerator, app_name: str
 ):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
@@ -172,8 +169,13 @@ def transform_ray_dag_to_serve_dag(
         # deployment handles (executable and picklable) in ray serve DAG to make
         # serve DAG end to end executable.
         def replace_with_handle(node):
-            if isinstance(node, DeploymentNode):
-                return RayServeHandle(node._deployment.name)
+            if isinstance(node, DeploymentNode) or isinstance(
+                node, DeploymentFunctionNode
+            ):
+                if RAY_SERVE_ENABLE_NEW_HANDLE_API:
+                    return DeploymentHandle(node._deployment.name, app_name)
+                else:
+                    return RayServeHandle(node._deployment.name, app_name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 
@@ -214,9 +216,6 @@ def transform_ray_dag_to_serve_dag(
         ):
             deployment_name = deployment_shell.name
 
-        if name:
-            deployment_name = name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment_name
-
         # Set the route prefix, prefer the one user supplied,
         # otherwise set it to /deployment_name
         if (
@@ -230,15 +229,15 @@ def transform_ray_dag_to_serve_dag(
         deployment = deployment_shell.options(
             func_or_class=dag_node._body,
             name=deployment_name,
-            init_args=replaced_deployment_init_args,
-            init_kwargs=replaced_deployment_init_kwargs,
             route_prefix=route_prefix,
-            is_driver_deployment=deployment_shell._is_driver_deployment,
+            _init_args=replaced_deployment_init_args,
+            _init_kwargs=replaced_deployment_init_kwargs,
             _internal=True,
         )
 
         return DeploymentNode(
             deployment,
+            app_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
@@ -250,7 +249,7 @@ def transform_ray_dag_to_serve_dag(
         # TODO: (jiaodong) Need to capture DAGNodes in the parent node
         parent_deployment_node = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
 
-        parent_class = parent_deployment_node._deployment._func_or_class
+        parent_class = parent_deployment_node._deployment.func_or_class
         method = getattr(parent_class, dag_node._method_name)
         if "return" in method.__annotations__:
             other_args_to_resolve["result_type_string"] = type_to_string(
@@ -260,6 +259,7 @@ def transform_ray_dag_to_serve_dag(
         return DeploymentMethodNode(
             parent_deployment_node._deployment,
             dag_node._method_name,
+            app_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
@@ -288,13 +288,10 @@ def transform_ray_dag_to_serve_dag(
             ):
                 deployment_name = schema.name
 
-        # Update the deployment name if the application name provided.
-        if name:
-            deployment_name = name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment_name
-
         return DeploymentFunctionNode(
             dag_node._body,
             deployment_name,
+            app_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
@@ -410,9 +407,8 @@ def generate_executor_dag_driver_deployment(
     )
 
     return original_driver_deployment.options(
-        init_args=replaced_deployment_init_args,
-        init_kwargs=replaced_deployment_init_kwargs,
-        is_driver_deployment=original_driver_deployment._is_driver_deployment,
+        _init_args=replaced_deployment_init_args,
+        _init_kwargs=replaced_deployment_init_kwargs,
         _internal=True,
     )
 
@@ -461,7 +457,6 @@ def process_ingress_deployment_in_serve_dag(
         # didn't provide anything in particular.
         new_ingress_deployment = ingress_deployment.options(
             route_prefix="/",
-            is_driver_deployment=ingress_deployment._is_driver_deployment,
             _internal=True,
         )
         deployments[-1] = new_ingress_deployment

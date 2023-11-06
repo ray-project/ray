@@ -23,7 +23,7 @@ from ray._private.ray_constants import (
 )
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardAgentRouteTable
 
 # 64 KB
 BLOCK_SIZE = 1 << 16
@@ -214,7 +214,7 @@ async def _stream_log_in_chunk(
     """
     assert "b" in file.mode, "Only binary file is supported."
     assert not (
-        keep_alive_interval_sec >= 0 and end_offset is not -1
+        keep_alive_interval_sec >= 0 and end_offset != -1
     ), "Keep-alive is not allowed when specifying an end offset"
 
     file.seek(start_offset, 0)

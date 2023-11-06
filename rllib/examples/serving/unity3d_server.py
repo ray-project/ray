@@ -151,11 +151,6 @@ if __name__ == "__main__":
         .evaluation(off_policy_estimation_methods={})
     )
 
-    # Disable RLModules because they need connectors
-    # TODO(Artur): Deprecate ExternalEnv and reenable connectors and RL Modules here
-    config.rl_module(_enable_rl_module_api=False)
-    config._enable_learner_api = False
-
     # Create the Algorithm used for Policy serving.
     algo = config.build()
 
@@ -174,9 +169,9 @@ if __name__ == "__main__":
         print(algo.train())
         if count % args.checkpoint_freq == 0:
             print("Saving learning progress to checkpoint file.")
-            checkpoint = algo.save()
+            checkpoint = algo.save().checkpoint
             # Write the latest checkpoint location to CHECKPOINT_FILE,
             # so we can pick up from the latest one after a server re-start.
             with open(checkpoint_path, "w") as f:
-                f.write(checkpoint)
+                f.write(checkpoint.path)
         count += 1

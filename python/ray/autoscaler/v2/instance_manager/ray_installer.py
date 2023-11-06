@@ -80,6 +80,7 @@ class RayInstaller(object):
             use_internal_ip=True,
             docker_config=docker_config,
             node_resources=self._config.get_node_resources(instance.instance_type),
+            node_labels=self._config.get_node_labels(instance.instance_type),
             process_runner=self._process_runner,
         )
         try:

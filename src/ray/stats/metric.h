@@ -105,17 +105,7 @@ class Metric {
   Metric(const std::string &name,
          const std::string &description,
          const std::string &unit,
-         const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : name_(name),
-        description_(description),
-        unit_(unit),
-        tag_keys_(tag_keys),
-        measure_(nullptr) {}
-
-  Metric(const std::string &name,
-         const std::string &description,
-         const std::string &unit,
-         const std::vector<std::string> &tag_keys);
+         const std::vector<std::string> &tag_keys = {});
 
   virtual ~Metric();
 
@@ -159,13 +149,7 @@ class Gauge : public Metric {
   Gauge(const std::string &name,
         const std::string &description,
         const std::string &unit,
-        const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
-
-  Gauge(const std::string &name,
-        const std::string &description,
-        const std::string &unit,
-        const std::vector<std::string> &tag_keys)
+        const std::vector<std::string> &tag_keys = {})
       : Metric(name, description, unit, tag_keys) {}
 
  private:
@@ -179,14 +163,7 @@ class Histogram : public Metric {
             const std::string &description,
             const std::string &unit,
             const std::vector<double> boundaries,
-            const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {}
-
-  Histogram(const std::string &name,
-            const std::string &description,
-            const std::string &unit,
-            const std::vector<double> boundaries,
-            const std::vector<std::string> &tag_keys)
+            const std::vector<std::string> &tag_keys = {})
       : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {}
 
  private:
@@ -202,13 +179,7 @@ class Count : public Metric {
   Count(const std::string &name,
         const std::string &description,
         const std::string &unit,
-        const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
-
-  Count(const std::string &name,
-        const std::string &description,
-        const std::string &unit,
-        const std::vector<std::string> &tag_keys)
+        const std::vector<std::string> &tag_keys = {})
       : Metric(name, description, unit, tag_keys) {}
 
  private:
@@ -221,13 +192,7 @@ class Sum : public Metric {
   Sum(const std::string &name,
       const std::string &description,
       const std::string &unit,
-      const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
-
-  Sum(const std::string &name,
-      const std::string &description,
-      const std::string &unit,
-      const std::vector<std::string> &tag_keys)
+      const std::vector<std::string> &tag_keys = {})
       : Metric(name, description, unit, tag_keys) {}
 
  private:

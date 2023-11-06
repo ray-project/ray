@@ -228,16 +228,30 @@ export const formatSummaryToTaskProgress = (
 
 const formatToJobProgressGroup = (
   nestedJobProgress: NestedJobProgress,
-): JobProgressGroup => {
+  showFinishedTasks = true,
+): JobProgressGroup | undefined => {
   const formattedProgress = formatStateCountsToProgress(
     nestedJobProgress.state_counts,
   );
+
+  const total = Object.values(formattedProgress).reduce(
+    (acc, count) => acc + count,
+    0,
+  );
+  if (
+    !showFinishedTasks &&
+    total - (formattedProgress.numFinished ?? 0) === 0
+  ) {
+    return undefined;
+  }
 
   return {
     name: nestedJobProgress.name,
     key: nestedJobProgress.key,
     progress: formattedProgress,
-    children: nestedJobProgress.children.map(formatToJobProgressGroup),
+    children: nestedJobProgress.children
+      .map((child) => formatToJobProgressGroup(child, showFinishedTasks))
+      .filter((child): child is JobProgressGroup => child !== undefined),
     type: nestedJobProgress.type,
     link: nestedJobProgress.link,
   };
@@ -245,12 +259,16 @@ const formatToJobProgressGroup = (
 
 export const formatNestedJobProgressToJobProgressGroup = (
   summary: StateApiNestedJobProgress,
+  showFinishedTasks = true,
 ) => {
   const tasks = summary.node_id_to_summary.cluster.summary;
-  const progressGroups = Object.values(tasks).map(formatToJobProgressGroup);
+  const progressGroups = tasks
+    .map((task) => formatToJobProgressGroup(task, showFinishedTasks))
+    .filter((group): group is JobProgressGroup => group !== undefined);
 
-  const total = progressGroups.reduce<TaskProgress>((acc, group) => {
-    Object.entries(group.progress).forEach(([key, count]) => {
+  const total = tasks.reduce<TaskProgress>((acc, group) => {
+    const formattedProgress = formatStateCountsToProgress(group.state_counts);
+    Object.entries(formattedProgress).forEach(([key, count]) => {
       const progressKey = key as keyof TaskProgress;
       acc[progressKey] = (acc[progressKey] ?? 0) + count;
     });
@@ -272,6 +290,7 @@ export const formatNestedJobProgressToJobProgressGroup = (
 export const useJobProgressByLineage = (
   jobId: string | undefined,
   disableRefresh = false,
+  showFinishedTasks = true,
 ) => {
   const [msg, setMsg] = useState("Loading progress...");
   const [error, setError] = useState(false);
@@ -279,8 +298,8 @@ export const useJobProgressByLineage = (
   const [latestFetchTimestamp, setLatestFetchTimestamp] = useState(0);
 
   const { data, isLoading } = useSWR(
-    jobId ? ["useJobProgressByLineageAndName", jobId] : null,
-    async ([_, jobId]) => {
+    jobId ? ["useJobProgressByLineageAndName", jobId, showFinishedTasks] : null,
+    async ([_, jobId, showFinishedTasks]) => {
       const rsp = await getStateApiJobProgressByLineage(jobId);
       setMsg(rsp.data.msg);
 
@@ -288,6 +307,7 @@ export const useJobProgressByLineage = (
         setLatestFetchTimestamp(new Date().getTime());
         const summary = formatNestedJobProgressToJobProgressGroup(
           rsp.data.data.result.result,
+          showFinishedTasks,
         );
         return { summary, totalTasks: rsp.data.data.result.num_filtered };
       } else {

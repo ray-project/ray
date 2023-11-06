@@ -1,4 +1,6 @@
+import os
 import time
+from dataclasses import astuple, dataclass
 
 import numpy as np
 import pandas as pd
@@ -6,6 +8,8 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Dataset
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
@@ -18,29 +22,75 @@ from ray.tests.conftest import *  # noqa
 class RandomBytesDatasource(Datasource):
     def create_reader(self, **read_args):
         return RandomBytesReader(
-            read_args["num_blocks_per_task"], read_args["block_size"]
+            read_args["num_batches_per_task"],
+            read_args["row_size"],
+            num_rows_per_batch=read_args.get("num_rows_per_batch", None),
+            use_bytes=read_args.get("use_bytes", True),
+            use_arrow=read_args.get("use_arrow", False),
         )
 
 
 class RandomBytesReader(Reader):
-    def __init__(self, num_blocks_per_task: int, block_size: int):
-        self.num_blocks_per_task = num_blocks_per_task
-        self.block_size = block_size
+    def __init__(
+        self,
+        num_batches_per_task: int,
+        row_size: int,
+        num_rows_per_batch=None,
+        use_bytes=True,
+        use_arrow=False,
+    ):
+        self.num_batches_per_task = num_batches_per_task
+        self.row_size = row_size
+        if num_rows_per_batch is None:
+            num_rows_per_batch = 1
+        self.num_rows_per_batch = num_rows_per_batch
+        self.use_bytes = use_bytes
+        self.use_arrow = use_arrow
 
     def estimate_inmemory_data_size(self):
         return None
 
     def get_read_tasks(self, parallelism: int):
         def _blocks_generator():
-            for _ in range(self.num_blocks_per_task):
-                yield pd.DataFrame({"one": [np.random.bytes(self.block_size)]})
+            for _ in range(self.num_batches_per_task):
+                if self.use_bytes:
+                    # NOTE(swang): Each np object has some metadata bytes, so
+                    # actual size can be much more than num_rows_per_batch * row_size
+                    # if row_size is small.
+                    yield pd.DataFrame(
+                        {
+                            "one": [
+                                np.random.bytes(self.row_size)
+                                for _ in range(self.num_rows_per_batch)
+                            ]
+                        }
+                    )
+                elif self.use_arrow:
+                    batch = {
+                        "one": np.ones(
+                            (self.num_rows_per_batch, self.row_size), dtype=np.uint8
+                        )
+                    }
+                    block = ArrowBlockAccessor.numpy_to_block(batch)
+                    yield block
+                else:
+                    yield pd.DataFrame(
+                        {
+                            "one": [
+                                np.array2string(np.ones(self.row_size, dtype=int))
+                                for _ in range(self.num_rows_per_batch)
+                            ]
+                        }
+                    )
 
         return parallelism * [
             ReadTask(
                 lambda: _blocks_generator(),
                 BlockMetadata(
-                    num_rows=self.num_blocks_per_task,
-                    size_bytes=self.num_blocks_per_task * self.block_size,
+                    num_rows=self.num_batches_per_task * self.num_rows_per_batch,
+                    size_bytes=self.num_batches_per_task
+                    * self.num_rows_per_batch
+                    * self.row_size,
                     schema=None,
                     input_files=None,
                     exec_stats=None,
@@ -67,44 +117,21 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.init(num_cpus=8)
     ctx = ray.data.context.DataContext.get_current()
 
-    try:
-        original = ctx.block_splitting_enabled
+    ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
+    if not block_split:
+        # Setting infinite block size effectively disables block splitting.
+        ctx.target_max_block_size = float("inf")
+    ds = ray.data.read_datasource(
+        SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
+    )
 
-        ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
-        if not block_split:
-            # Setting infinite block size effectively disables block splitting.
-            ctx.target_max_block_size = float("inf")
-        ds = ray.data.read_datasource(
-            SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
-        )
+    start = time.time()
+    ds.map(lambda x: x)
+    delta = time.time() - start
 
-        start = time.time()
-        ds.map(lambda x: x)
-        delta = time.time() - start
-
-        print("full read time", delta)
-        # Should run in ~3 seconds. It takes >9 seconds if bulk read is broken.
-        assert delta < 8, delta
-    finally:
-        ctx.block_splitting_enabled = original
-
-
-def test_enable_in_ray_client(ray_start_cluster_enabled):
-    cluster = ray_start_cluster_enabled
-    cluster.add_node(num_cpus=4)
-    cluster.head_node._ray_params.ray_client_server_port = "10004"
-    cluster.head_node.start_ray_client_server()
-    address = "ray://localhost:10004"
-
-    # Import of ray.data.context module, and this triggers the initialization of
-    # default configuration values in DataContext.
-    from ray.data.context import DataContext
-
-    assert DataContext.get_current().block_splitting_enabled
-
-    # Verify Ray client also has dynamic block splitting enabled.
-    ray.init(address)
-    assert DataContext.get_current().block_splitting_enabled
+    print("full read time", delta)
+    # Should run in ~3 seconds. It takes >9 seconds if bulk read is broken.
+    assert delta < 8, delta
 
 
 @pytest.mark.parametrize(
@@ -116,7 +143,6 @@ def test_enable_in_ray_client(ray_start_cluster_enabled):
 )
 def test_dataset(
     shutdown_only,
-    enable_dynamic_block_splitting,
     target_max_block_size,
     compute,
 ):
@@ -130,14 +156,14 @@ def test_dataset(
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
-    block_size = 1024
+    block_size = target_max_block_size
     num_tasks = 10
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
         parallelism=num_tasks,
-        num_blocks_per_task=num_blocks_per_task,
-        block_size=block_size,
+        num_batches_per_task=num_blocks_per_task,
+        row_size=block_size,
     )
     # Note the following calls to ds will not fully execute it.
     assert ds.schema() is not None
@@ -145,11 +171,15 @@ def test_dataset(
     assert ds.num_blocks() == num_tasks
     assert ds.size_bytes() >= 0.7 * block_size * num_blocks_per_task * num_tasks
 
+    # Too-large blocks will get split to respect target max block size.
     map_ds = ds.map_batches(lambda x: x, compute=compute)
     map_ds = map_ds.materialize()
-    assert map_ds.num_blocks() == num_tasks
+    assert map_ds.num_blocks() == num_tasks * num_blocks_per_task
+    # Blocks smaller than requested batch size will get coalesced.
     map_ds = ds.map_batches(
-        lambda x: x, batch_size=num_blocks_per_task * num_tasks, compute=compute
+        lambda x: {},
+        batch_size=num_blocks_per_task * num_tasks,
+        compute=compute,
     )
     map_ds = map_ds.materialize()
     assert map_ds.num_blocks() == 1
@@ -187,40 +217,7 @@ def test_dataset(
         assert len(batch["one"]) == 10
 
 
-def test_dataset_pipeline(
-    ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
-):
-    # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
-    # row has 1024 bytes.
-    num_blocks_per_task = 10
-    block_size = 1024
-    num_tasks = 10
-
-    ds = ray.data.read_datasource(
-        RandomBytesDatasource(),
-        parallelism=num_tasks,
-        num_blocks_per_task=num_blocks_per_task,
-        block_size=block_size,
-    )
-    dsp = ds.window(blocks_per_window=2)
-    assert dsp._length == num_tasks / 2
-
-    dsp = dsp.map_batches(lambda x: x)
-    result_batches = list(ds.iter_batches(batch_size=5))
-    for batch in result_batches:
-        assert len(batch["one"]) == 5
-    assert len(result_batches) == num_blocks_per_task * num_tasks / 5
-
-    dsp = ds.window(blocks_per_window=2)
-    assert dsp._length == num_tasks / 2
-
-    dsp = ds.repeat().map_batches(lambda x: x)
-    assert len(dsp.take(5)) == 5
-
-
-def test_filter(
-    ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
-):
+def test_filter(ray_start_regular_shared, target_max_block_size):
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
@@ -229,8 +226,8 @@ def test_filter(
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
         parallelism=1,
-        num_blocks_per_task=num_blocks_per_task,
-        block_size=block_size,
+        num_batches_per_task=num_blocks_per_task,
+        row_size=block_size,
     )
 
     ds = ds.filter(lambda _: True)
@@ -244,9 +241,7 @@ def test_filter(
     assert ds.num_blocks() == num_blocks_per_task
 
 
-def test_lazy_block_list(
-    shutdown_only, enable_dynamic_block_splitting, target_max_block_size
-):
+def test_lazy_block_list(shutdown_only, target_max_block_size):
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
@@ -256,8 +251,8 @@ def test_lazy_block_list(
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
         parallelism=num_tasks,
-        num_blocks_per_task=num_blocks_per_task,
-        block_size=block_size,
+        num_batches_per_task=num_blocks_per_task,
+        row_size=block_size,
     )
     ds.schema()
 
@@ -345,7 +340,8 @@ def test_lazy_block_list(
         assert block_metadata.schema is not None
 
 
-def test_read_large_data(ray_start_cluster, enable_dynamic_block_splitting):
+@pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
+def test_read_large_data(ray_start_cluster):
     # Test 20G input with single task
     num_blocks_per_task = 20
     block_size = 1024 * 1024 * 1024
@@ -361,12 +357,191 @@ def test_read_large_data(ray_start_cluster, enable_dynamic_block_splitting):
     ds = ray.data.read_datasource(
         RandomBytesDatasource(),
         parallelism=1,
-        num_blocks_per_task=num_blocks_per_task,
-        block_size=block_size,
+        num_batches_per_task=num_blocks_per_task,
+        row_size=block_size,
     )
 
-    ds = ds.map_batches(foo, batch_size=None)
+    ds = ds.map_batches(foo, num_rows_per_batch=None)
     assert ds.count() == num_blocks_per_task
+
+
+def _test_write_large_data(
+    tmp_path, ext, write_fn, read_fn, use_bytes, write_kwargs=None
+):
+    # Test 2G input with single task
+    num_blocks_per_task = 200
+    block_size = 10 * 1024 * 1024
+
+    ds = ray.data.read_datasource(
+        RandomBytesDatasource(),
+        parallelism=1,
+        num_batches_per_task=num_blocks_per_task,
+        row_size=block_size,
+        use_bytes=use_bytes,
+    )
+
+    # This should succeed without OOM.
+    # https://github.com/ray-project/ray/pull/37966.
+    out_dir = os.path.join(tmp_path, ext)
+    write_kwargs = {} if write_kwargs is None else write_kwargs
+    write_fn(ds, out_dir, **write_kwargs)
+
+    max_heap_memory = ds._write_ds._get_stats_summary().get_max_heap_memory()
+    assert max_heap_memory < (num_blocks_per_task * block_size / 2), (
+        max_heap_memory,
+        ext,
+    )
+
+    # Make sure we can read out a record.
+    if read_fn is not None:
+        assert read_fn(out_dir).count() == num_blocks_per_task
+
+
+def test_write_large_data_parquet(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "parquet",
+        Dataset.write_parquet,
+        ray.data.read_parquet,
+        use_bytes=True,
+    )
+
+
+def test_write_large_data_json(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path, "json", Dataset.write_json, ray.data.read_json, use_bytes=False
+    )
+
+
+def test_write_large_data_numpy(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "numpy",
+        Dataset.write_numpy,
+        ray.data.read_numpy,
+        use_bytes=False,
+        write_kwargs={"column": "one"},
+    )
+
+
+def test_write_large_data_csv(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path, "csv", Dataset.write_csv, ray.data.read_csv, use_bytes=False
+    )
+
+
+def test_write_large_data_tfrecords(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "tfrecords",
+        Dataset.write_tfrecords,
+        ray.data.read_tfrecords,
+        use_bytes=True,
+    )
+
+
+def test_write_large_data_webdataset(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "webdataset",
+        Dataset.write_webdataset,
+        ray.data.read_webdataset,
+        use_bytes=True,
+    )
+
+
+@dataclass
+class TestCase:
+    target_max_block_size: int
+    batch_size: int
+    num_batches: int
+    expected_num_blocks: int
+
+
+TEST_CASES = [
+    # Don't create blocks smaller than 50%.
+    TestCase(
+        target_max_block_size=1024,
+        batch_size=int(1024 * 1.125),
+        num_batches=1,
+        expected_num_blocks=1,
+    ),
+    # Split blocks larger than 150% the target block size.
+    TestCase(
+        target_max_block_size=1024,
+        batch_size=int(1024 * 1.8),
+        num_batches=1,
+        expected_num_blocks=2,
+    ),
+    # Huge batch will get split into multiple blocks.
+    TestCase(
+        target_max_block_size=1024,
+        batch_size=int(1024 * 10.125),
+        num_batches=1,
+        expected_num_blocks=11,
+    ),
+    # Different batch sizes but same total size should produce a similar number
+    # of blocks.
+    TestCase(
+        target_max_block_size=1024,
+        batch_size=int(1024 * 1.5),
+        num_batches=4,
+        expected_num_blocks=6,
+    ),
+    TestCase(
+        target_max_block_size=1024,
+        batch_size=int(1024 * 0.75),
+        num_batches=8,
+        expected_num_blocks=6,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "target_max_block_size,batch_size,num_batches,expected_num_blocks",
+    [astuple(test) for test in TEST_CASES],
+)
+def test_block_slicing(
+    ray_start_regular_shared,
+    restore_data_context,
+    target_max_block_size,
+    batch_size,
+    num_batches,
+    expected_num_blocks,
+):
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.target_max_block_size = target_max_block_size
+
+    # Row sizes smaller than this seem to add significant amounts of per-row
+    # metadata overhead.
+    row_size = 128
+    num_rows_per_batch = int(batch_size / row_size)
+    num_tasks = 1
+
+    ds = ray.data.read_datasource(
+        RandomBytesDatasource(),
+        parallelism=num_tasks,
+        num_batches_per_task=num_batches,
+        num_rows_per_batch=num_rows_per_batch,
+        row_size=row_size,
+        use_bytes=False,
+        use_arrow=True,
+    ).materialize()
+    assert ds.num_blocks() == expected_num_blocks
+
+    block_sizes = []
+    num_rows = 0
+    for batch in ds.iter_batches(batch_size=None, batch_format="numpy"):
+        block_sizes.append(batch["one"].size)
+        num_rows += len(batch["one"])
+    assert num_rows == num_rows_per_batch * num_batches
+    for size in block_sizes:
+        # Blocks are not too big.
+        assert (
+            size <= target_max_block_size * ray.data.context.MAX_SAFE_BLOCK_SIZE_FACTOR
+        )
+        # Blocks are not too small.
+        assert size >= target_max_block_size / 2
 
 
 if __name__ == "__main__":

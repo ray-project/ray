@@ -5,6 +5,7 @@ import os
 import time
 import traceback
 from collections import defaultdict
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
 from ray._private.ray_constants import (
@@ -27,6 +28,7 @@ from ray._private.utils import get_or_create_event_loop
 from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
+from ray._private.runtime_env.nsight import NsightPlugin
 from ray.core.generated import (
     runtime_env_agent_pb2,
     agent_manager_pb2,
@@ -47,9 +49,12 @@ SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
 class CreatedEnvResult:
     # Whether or not the env was installed correctly.
     success: bool
-    # If success is True, will be a serialized RuntimeEnvContext
-    # If success is False, will be an error message.
-    result: str
+    # If success is True, will be a RuntimeEnvContext
+    # If success is False, will be None
+    context: RuntimeEnvContext
+    # If success is True, will be None
+    # If success is False, error message will be filled in
+    error_message: str
     # The time to create a runtime env in ms.
     creation_time_ms: int
 
@@ -198,6 +203,9 @@ class RuntimeEnvAgent:
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
+        # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
+        # and unify with nsight and other profilers.
+        self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
         self._container_manager = ContainerManager(temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
@@ -209,6 +217,7 @@ class RuntimeEnvAgent:
             self._conda_plugin,
             self._py_modules_plugin,
             self._java_jars_plugin,
+            self._nsight_plugin,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
         for plugin in self._base_plugins:
@@ -282,7 +291,8 @@ class RuntimeEnvAgent:
         self._logger.debug(
             f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
-            f"{request.serialized_runtime_env}."
+            f"{request.serialized_runtime_env} to be used by worker : "
+            f"{request.worker_id}."
         )
 
         async def _setup_runtime_env(
@@ -341,15 +351,16 @@ class RuntimeEnvAgent:
                 setup_timeout_seconds: The timeout of runtime environment creation.
 
             Returns:
-                a tuple which contains result (bool), runtime env context (str), error
-                message(str).
+                a tuple which contains result(bool),
+                runtime env context(RuntimeEnvContext),
+                and error message(str).
 
             """
             self._logger.info(
                 f"Creating runtime env: {serialized_env} with timeout "
                 f"{setup_timeout_seconds} seconds."
             )
-            serialized_context = None
+            runtime_env_context = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
@@ -361,7 +372,6 @@ class RuntimeEnvAgent:
                     runtime_env_context = await asyncio.wait_for(
                         runtime_env_setup_task, timeout=setup_timeout_seconds
                     )
-                    serialized_context = runtime_env_context.serialize()
                     error_message = None
                     break
                 except Exception as e:
@@ -394,9 +404,9 @@ class RuntimeEnvAgent:
                 self._logger.info(
                     "Successfully created runtime env: %s, the context: %s",
                     serialized_env,
-                    serialized_context,
+                    runtime_env_context.serialize(),
                 )
-                return True, serialized_context, None
+                return True, runtime_env_context, None
 
         try:
             serialized_env = request.serialized_runtime_env
@@ -422,22 +432,23 @@ class RuntimeEnvAgent:
             self._env_locks[serialized_env] = asyncio.Lock()
 
         async with self._env_locks[serialized_env]:
+            runtime_env_context = None
+            runtime_env_reply = None
             if serialized_env in self._env_cache:
-                serialized_context = self._env_cache[serialized_env]
                 result = self._env_cache[serialized_env]
                 if result.success:
-                    context = result.result
+                    runtime_env_context = result.context
                     self._logger.info(
                         "Runtime env already created "
-                        f"successfully. Env: {serialized_env}, "
-                        f"context: {context}"
+                        f"successfully. Env: {serialized_env}."
                     )
-                    return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                        status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
-                        serialized_runtime_env_context=context,
+                    runtime_env_reply = (
+                        runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+                            status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
+                        )
                     )
                 else:
-                    error_message = result.result
+                    error_message = result.error_message
                     self._logger.info(
                         "Runtime env already failed. "
                         f"Env: {serialized_env}, "
@@ -447,61 +458,93 @@ class RuntimeEnvAgent:
                     self._reference_table.decrease_reference(
                         runtime_env, serialized_env, request.source_process
                     )
-                    return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                        status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-                        error_message=error_message,
+                    runtime_env_reply = (
+                        runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+                            status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                            error_message=error_message,
+                        )
+
+            else:
+
+                if SLEEP_FOR_TESTING_S:
+                    self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
+                    time.sleep(int(SLEEP_FOR_TESTING_S))
+
+                runtime_env_config = RuntimeEnvConfig.from_proto(
+                    request.runtime_env_config
+                )
+                # accroding to the document of `asyncio.wait_for`,
+                # None means disable timeout logic
+                setup_timeout_seconds = (
+                    None
+                    if runtime_env_config["setup_timeout_seconds"] == -1
+                    else runtime_env_config["setup_timeout_seconds"]
+                )
+
+                start = time.perf_counter()
+                (
+                    successful,
+                    runtime_env_context,
+                    error_message,
+                ) = await _create_runtime_env_with_retry(
+                    runtime_env,
+                    serialized_env,
+                    request.serialized_allocated_resource_instances,
+                    setup_timeout_seconds,
+                )
+                creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
+                if not successful:
+                    # Recover the reference.
+                    self._reference_table.decrease_reference(
+                        runtime_env, serialized_env, request.source_process
+                    )
+                # Add the result to env cache.
+                self._env_cache[serialized_env] = CreatedEnvResult(
+                    successful,
+                    runtime_env_context,
+                    error_message,
+                    creation_time_ms,
+                )
+
+                runtime_env_reply = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+                    status=agent_manager_pb2.AGENT_RPC_STATUS_OK
+                    if successful
+                    else agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                    error_message=error_message,
+                )
+
+            # Trigger `pre_worker_startup` of plugins to prepare something for each
+            # worker process, such as making a unique working directory.
+            if runtime_env_context and request.worker_id:
+                # Copy here because `pre_worker_startup` will rewrite it for a
+                # specific worker.
+                runtime_env_context = deepcopy(runtime_env_context)
+                for (
+                    plugin_setup_context
+                ) in self._plugin_manager.sorted_plugin_setup_contexts():
+                    await plugin_setup_context.class_instance.pre_worker_startup(
+                        runtime_env, runtime_env_context, request.worker_id.decode()
                     )
 
-            if SLEEP_FOR_TESTING_S:
-                self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
-                time.sleep(int(SLEEP_FOR_TESTING_S))
-
-            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
-            # accroding to the document of `asyncio.wait_for`,
-            # None means disable timeout logic
-            setup_timeout_seconds = (
-                None
-                if runtime_env_config["setup_timeout_seconds"] == -1
-                else runtime_env_config["setup_timeout_seconds"]
-            )
-
-            start = time.perf_counter()
-            (
-                successful,
-                serialized_context,
-                error_message,
-            ) = await _create_runtime_env_with_retry(
-                runtime_env,
-                serialized_env,
-                request.serialized_allocated_resource_instances,
-                setup_timeout_seconds,
-            )
-            creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
-            if not successful:
-                # Recover the reference.
-                self._reference_table.decrease_reference(
-                    runtime_env, serialized_env, request.source_process
+            # Need to write runtime env context here because `pre_worker_startup`
+            # could rewrite the context.
+            if runtime_env_context:
+                runtime_env_reply.serialized_runtime_env_context = (
+                    runtime_env_context.serialize()
                 )
-            # Add the result to env cache.
-            self._env_cache[serialized_env] = CreatedEnvResult(
-                successful,
-                serialized_context if successful else error_message,
-                creation_time_ms,
-            )
-            # Reply the RPC
-            return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_OK
-                if successful
-                else agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-                serialized_runtime_env_context=serialized_context,
-                error_message=error_message,
-            )
+                self._logger.info(
+                    "The serialized runtime env context for reply is "
+                    f"{runtime_env_reply.serialized_runtime_env_context}."
+                )
+            
+            return runtime_env_reply
+
 
     async def DeleteRuntimeEnvIfPossible(self, request):
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
             "reference for runtime env: "
-            f"{request.serialized_runtime_env}."
+            f"{request.serialized_runtime_env} used by worker: {request.worker_id}."
         )
 
         try:
@@ -521,6 +564,16 @@ class RuntimeEnvAgent:
         self._reference_table.decrease_reference(
             runtime_env, request.serialized_runtime_env, request.source_process
         )
+
+        # Trigger `post_worker_exit` of plugins to clean something for each
+        # worker process, such as the cleanup of working directory.
+        if request.worker_id:
+            for (
+                plugin_setup_context
+            ) in self._plugin_manager.sorted_plugin_setup_contexts():
+                await plugin_setup_context.class_instance.post_worker_exit(
+                    runtime_env, request.worker_id.decode()
+                )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK
@@ -546,7 +599,7 @@ class RuntimeEnvAgent:
             runtime_env_states[runtime_env].runtime_env = runtime_env
             runtime_env_states[runtime_env].success = result.success
             if not result.success:
-                runtime_env_states[runtime_env].error = result.result
+                runtime_env_states[runtime_env].error = result.error_message
             runtime_env_states[runtime_env].creation_time_ms = result.creation_time_ms
 
         reply = runtime_env_agent_pb2.GetRuntimeEnvsInfoReply()

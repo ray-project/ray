@@ -22,18 +22,23 @@ from ray.util.state.custom_types import (
     TypeWorkerType,
 )
 from ray.util.state.exception import RayStateApiException
+from ray.dashboard.modules.job.pydantic_models import JobDetails
+
+# TODO(aguo): Instead of a version check, modify the below models
+# to use pydantic BaseModel instead of dataclass.
+# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
+# generate an __init__ method. Additionally, it will raise an error if
+# it detects `init=True` to be set.
+from ray._private.pydantic_compat import IS_PYDANTIC_2
 
 try:
     from pydantic.dataclasses import dataclass
 
-    from ray.dashboard.modules.job.pydantic_models import JobDetails
 
 except ImportError:
     # pydantic is not available in the dashboard.
     # We will use the dataclass from the standard library.
     from dataclasses import dataclass
-
-    JobDetails = object
 
 
 logger = logging.getLogger(__name__)
@@ -117,7 +122,7 @@ class Humanify:
         return resources
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class ListApiOptions:
     # Maximum number of entries to return
     limit: int = DEFAULT_LIMIT
@@ -159,13 +164,13 @@ class ListApiOptions:
                 )
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class GetApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class SummaryApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
@@ -336,7 +341,7 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
     return filtered_data
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class GetLogOptions:
     timeout: int
     node_id: Optional[str] = None
@@ -407,7 +412,7 @@ class GetLogOptions:
 
 # See the ActorTableData message in gcs.proto for all potential options that
 # can be included in this class.
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class ActorState(StateSchema):
     """Actor State"""
 
@@ -458,7 +463,7 @@ class ActorState(StateSchema):
     repr_name: Optional[str] = state_column(detail=True, filterable=True)
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class PlacementGroupState(StateSchema):
     """PlacementGroup State"""
 
@@ -487,7 +492,7 @@ class PlacementGroupState(StateSchema):
     stats: Optional[dict] = state_column(filterable=False, detail=True)
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class NodeState(StateSchema):
     """Node State"""
 
@@ -508,6 +513,8 @@ class NodeState(StateSchema):
     resources_total: dict = state_column(
         filterable=False, format_fn=Humanify.node_resources
     )
+    #: The labels of the node.
+    labels: dict = state_column(filterable=False)
     #: The time when the node (raylet) starts.
     start_time_ms: Optional[int] = state_column(
         filterable=False, detail=True, format_fn=Humanify.timestamp
@@ -520,9 +527,10 @@ class NodeState(StateSchema):
     )
 
 
-# NOTE:
-# Declaring this as dataclass would make __init__ not being called properly.
-class JobState(StateSchema, JobDetails):
+# NOTE: Declaring this as dataclass would make __init__ not being called properly.
+# NOTE: `JobDetails` will be `None` in the minimal install because Pydantic is not
+#       installed. Inheriting from `None` raises an exception.
+class JobState(StateSchema, JobDetails if JobDetails is not None else object):
     """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
     def __init__(self, **kwargs):
@@ -557,7 +565,13 @@ class JobState(StateSchema, JobDetails):
             # check if the class is a pydantic model.
             return []
 
-        return JobDetails.__fields__
+        # TODO(aguo): Once we only support pydantic 2, we can remove this if check.
+        # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
+        return (
+            JobDetails.model_fields
+            if hasattr(JobDetails, "model_fields")
+            else JobDetails.__fields__
+        )
 
     def asdict(self):
         return JobDetails.dict(self)
@@ -571,7 +585,7 @@ class JobState(StateSchema, JobDetails):
         }
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class WorkerState(StateSchema):
     """Worker State"""
 
@@ -633,7 +647,7 @@ class WorkerState(StateSchema):
     )
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class ClusterEventState(StateSchema):
     severity: str = state_column(filterable=True)
     time: str = state_column(filterable=False)
@@ -643,7 +657,7 @@ class ClusterEventState(StateSchema):
     custom_fields: Optional[dict] = state_column(filterable=False, detail=True)
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class TaskState(StateSchema):
     """Task State"""
 
@@ -729,7 +743,7 @@ class TaskState(StateSchema):
     error_message: Optional[str] = state_column(detail=True, filterable=False)
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class ObjectState(StateSchema):
     """Object State"""
 
@@ -785,7 +799,7 @@ class ObjectState(StateSchema):
     ip: str = state_column(filterable=True)
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class RuntimeEnvState(StateSchema):
     """Runtime Environment State"""
 
@@ -841,7 +855,7 @@ for state in AVAILABLE_STATES:
 """
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class ListApiResponse:
     # NOTE(rickyyx): We currently perform hard truncation when querying
     # resources which could have a large number (e.g. asking raylets for
@@ -887,7 +901,7 @@ Summary API schema
 DRIVER_TASK_ID_PREFIX = "ffffffffffffffffffffffffffffffffffffffff"
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class TaskSummaryPerFuncOrClassName:
     #: The function or class name of this task.
     func_or_class_name: str
@@ -906,7 +920,7 @@ class Link:
     id: str
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class NestedTaskSummary:
     #: The name of this task group
     name: str
@@ -993,7 +1007,8 @@ class TaskSummaries:
         Step 2: Put the tasks in a tree structure based on ownership
         Step 3: Merge together siblings in the tree if there are more
         than one with the same name.
-        Step 4: Total the children
+        Step 4: Sort by running and then errored and then successful tasks
+        Step 5: Total the children
 
         This can probably be more efficient if we merge together some steps to
         reduce the amount of iterations but this algorithm produces very easy to
@@ -1220,11 +1235,32 @@ class TaskSummaries:
         # Step 3
         summary, _ = merge_sibings_for_task_group(summary)
 
+        def get_running_tasks_count(task_group: NestedTaskSummary) -> int:
+            return (
+                task_group.state_counts.get("RUNNING", 0)
+                + task_group.state_counts.get("RUNNING_IN_RAY_GET", 0)
+                + task_group.state_counts.get("RUNNING_IN_RAY_WAIT", 0)
+            )
+
+        def get_pending_tasks_count(task_group: NestedTaskSummary) -> int:
+            return (
+                task_group.state_counts.get("PENDING_ARGS_AVAIL", 0)
+                + task_group.state_counts.get("PENDING_NODE_ASSIGNMENT", 0)
+                + task_group.state_counts.get("PENDING_OBJ_STORE_MEM_AVAIL", 0)
+                + task_group.state_counts.get("PENDING_ARGS_FETCH", 0)
+            )
+
         def sort_task_groups(task_groups: List[NestedTaskSummary]) -> None:
-            # Sort by timestamp
+            # Sort by running tasks, pending tasks, failed tasks, timestamp,
+            # and actor_creation_task
             # Put actor creation tasks above other tasks with the same timestamp
             task_groups.sort(key=lambda x: 0 if x.type == "ACTOR_CREATION_TASK" else 1)
             task_groups.sort(key=lambda x: x.timestamp or sys.maxsize)
+            task_groups.sort(
+                key=lambda x: x.state_counts.get("FAIELD", 0), reverse=True
+            )
+            task_groups.sort(key=get_pending_tasks_count, reverse=True)
+            task_groups.sort(key=get_running_tasks_count, reverse=True)
 
         def calc_total_for_task_group(
             task_group: NestedTaskSummary,
@@ -1261,7 +1297,7 @@ class TaskSummaries:
         )
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class ActorSummaryPerClass:
     #: The class name of the actor.
     class_name: str
@@ -1306,7 +1342,7 @@ class ActorSummaries:
         )
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class ObjectSummaryPerKey:
     #: Total number of objects of the type.
     total_objects: int
@@ -1399,7 +1435,7 @@ class ObjectSummaries:
         )
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class StateSummary:
     #: Node ID -> summary per node
     #: If the data is not required to be orgnized per node, it will contain
@@ -1407,7 +1443,7 @@ class StateSummary:
     node_id_to_summary: Dict[str, Union[TaskSummaries, ActorSummaries, ObjectSummaries]]
 
 
-@dataclass(init=True)
+@dataclass(init=not IS_PYDANTIC_2)
 class SummaryApiResponse:
     # Carried over from ListApiResponse
     # We currently use list API for listing the resources

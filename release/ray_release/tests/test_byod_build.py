@@ -5,13 +5,40 @@ from unittest.mock import patch
 from typing import List
 
 from ray_release.bazel import bazel_runfile
-from ray_release.configs.global_config import init_global_config
+from ray_release.configs.global_config import init_global_config, get_global_config
 from ray_release.test import Test
 from ray_release.byod.build import (
     build_anyscale_custom_byod_image,
+    build_anyscale_base_byod_images,
     build_champagne_image,
     DATAPLANE_FILENAME,
+    _get_ray_commit,
 )
+
+
+def test_get_ray_commit() -> None:
+    assert (
+        _get_ray_commit(
+            {
+                "RAY_WANT_COMMIT_IN_IMAGE": "abc123",
+                "COMMIT_TO_TEST": "def456",
+                "BUILDKITE_COMMIT": "987789",
+            }
+        )
+        == "abc123"
+    )
+
+    assert (
+        _get_ray_commit(
+            {
+                "COMMIT_TO_TEST": "def456",
+                "BUILDKITE_COMMIT": "987789",
+            }
+        )
+        == "def456"
+    )
+    assert _get_ray_commit({"BUILDKITE_COMMIT": "987789"}) == "987789"
+    assert _get_ray_commit({"PATH": "/usr/bin"}) == ""
 
 
 def test_build_anyscale_champagne_image() -> None:
@@ -79,6 +106,62 @@ def test_build_anyscale_custom_byod_image() -> None:
         "amazonaws.com/anyscale/ray:abc123-py37 -t 029272617770.dkr.ecr.us-west-2."
         "amazonaws.com/anyscale/ray:abc123-py37-c3fc5fc6d84cea4d7ab885c6cdc966542e"
         "f59e4c679b8c970f2f77b956bfd8fb" in " ".join(cmds[0])
+
+
+def test_build_anyscale_base_byod_images() -> None:
+    images = []
+
+    def _mock_validate_and_push(image: str) -> None:
+        images.append(image)
+
+    with patch("ray_release.byod.build_ray.build_ray", return_value=None), patch(
+        "ray_release.byod.build._download_dataplane_build_file", return_value=None
+    ), patch(
+        "os.environ",
+        {"BUILDKITE_COMMIT": "abc123", "BUILDKITE_BRANCH": "master"},
+    ), patch(
+        "subprocess.check_call", return_value=None
+    ), patch(
+        "ray_release.byod.build._byod_image_exist", return_value=False
+    ), patch(
+        "ray_release.byod.build._ray_image_exist", return_value=True
+    ), patch(
+        "ray_release.byod.build._validate_and_push", side_effect=_mock_validate_and_push
+    ):
+        tests = [
+            Test(name="aws", env="aws", cluster={"byod": {}}),
+            Test(name="aws", env="aws", cluster={"byod": {"type": "gpu"}}),
+            Test(
+                # This is a duplicate of the default.
+                name="aws",
+                env="aws",
+                python="3.8",
+                cluster={"byod": {"type": "cpu"}},
+            ),
+            Test(name="aws", env="aws", cluster={"byod": {"type": "cu121"}}),
+            Test(
+                name="aws", env="aws", python="3.9", cluster={"byod": {"type": "cu116"}}
+            ),
+            Test(
+                name="aws",
+                env="aws",
+                python="3.11",
+                cluster={"byod": {"type": "cu118"}},
+            ),
+            Test(name="gce", env="gce", cluster={"byod": {}}),
+        ]
+        build_anyscale_base_byod_images(tests)
+        global_config = get_global_config()
+        aws_cr = global_config["byod_aws_cr"]
+        gcp_cr = global_config["byod_gcp_cr"]
+        assert images == [
+            f"{aws_cr}/anyscale/ray:abc123-py38-cpu",
+            f"{aws_cr}/anyscale/ray-ml:abc123-py38-gpu",
+            f"{aws_cr}/anyscale/ray:abc123-py38-cu121",
+            f"{aws_cr}/anyscale/ray:abc123-py39-cu116",
+            f"{aws_cr}/anyscale/ray:abc123-py311-cu118",
+            f"{gcp_cr}/anyscale/ray:abc123-py38-cpu",
+        ]
 
 
 if __name__ == "__main__":

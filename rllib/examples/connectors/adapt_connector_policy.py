@@ -126,7 +126,6 @@ if __name__ == "__main__":
         create_appo_cartpole_checkpoint(tmpdir)
         policy_checkpoint_path = os.path.join(
             tmpdir,
-            "checkpoint_000000",
             "policies",
             policy_id,
         )

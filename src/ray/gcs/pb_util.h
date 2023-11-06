@@ -20,7 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
-#include "src/ray/protobuf/experimental/autoscaler.pb.h"
+#include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -52,6 +52,7 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
   *job_info_ptr->mutable_driver_address() = driver_address;
+  job_info_ptr->set_driver_ip_address(driver_address.ip_address());
   job_info_ptr->set_driver_pid(driver_pid);
   job_info_ptr->set_entrypoint(entrypoint);
   *job_info_ptr->mutable_config() = job_config;
@@ -111,6 +112,8 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const WorkerID &worker_id,
+    const NodeID &node_id,
+    const std::string &ip_address,
     int64_t timestamp,
     rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
@@ -120,6 +123,8 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   // Only report the worker id + delta (new data upon worker failures).
   // GCS will merge the data with original worker data.
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(node_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_ip_address(ip_address);
   worker_failure_info_ptr->set_timestamp(timestamp);
   worker_failure_info_ptr->set_exit_type(disconnect_type);
   worker_failure_info_ptr->set_exit_detail(disconnect_detail);

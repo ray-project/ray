@@ -86,12 +86,9 @@ def _has_missing(
         if not message:
             message = f"Run `pip install {' '.join(missing)}` for rich notebook output."
 
-        if sys.version_info < (3, 8):
-            logger.info(f"Missing packages: {missing}. {message}")
-        else:
-            # stacklevel=3: First level is this function, then ensure_notebook_deps,
-            # then the actual function affected.
-            logger.info(f"Missing packages: {missing}. {message}", stacklevel=3)
+        # stacklevel=3: First level is this function, then ensure_notebook_deps,
+        # then the actual function affected.
+        logger.info(f"Missing packages: {missing}. {message}", stacklevel=3)
 
     return missing
 
@@ -121,12 +118,9 @@ def _has_outdated(
         if not message:
             message = f"Run `pip install -U {install_str}` for rich notebook output."
 
-        if sys.version_info < (3, 8):
-            logger.info(f"Outdated packages:\n{outdated_str}\n{message}")
-        else:
-            # stacklevel=3: First level is this function, then ensure_notebook_deps,
-            # then the actual function affected.
-            logger.info(f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3)
+        # stacklevel=3: First level is this function, then ensure_notebook_deps,
+        # then the actual function affected.
+        logger.info(f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3)
 
     return outdated
 

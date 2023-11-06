@@ -1,16 +1,16 @@
 import collections
 import os
-import sys
 import time
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
-    Any,
     Callable,
     Dict,
     Iterator,
     List,
+    Literal,
     Optional,
+    Protocol,
     Tuple,
     TypeVar,
     Union,
@@ -31,16 +31,12 @@ try:
 except ImportError:
     resource = None
 
-if sys.version_info >= (3, 8):
-    from typing import Literal, Protocol
-else:
-    from typing_extensions import Literal, Protocol
-
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
     from ray.data._internal.block_builder import BlockBuilder
+    from ray.data._internal.sort import SortKey
     from ray.data.aggregate import AggregateFn
 
 
@@ -49,30 +45,6 @@ U = TypeVar("U", covariant=True)
 
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
-
-
-def _validate_key_fn(
-    schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-    key: Optional[str],
-) -> None:
-    """Check the key function is valid on the given schema."""
-    if schema is None:
-        # Dataset is empty/cleared, validation not possible.
-        return
-    is_simple_format = isinstance(schema, type)
-    if isinstance(key, str):
-        if is_simple_format:
-            raise ValueError(
-                "String key '{}' requires dataset format to be "
-                "'arrow' or 'pandas', was 'simple'.".format(key)
-            )
-        if len(schema.names) > 0 and key not in schema.names:
-            raise ValueError(
-                "The column '{}' does not exist in the "
-                "schema '{}'.".format(key, schema)
-            )
-    else:
-        raise ValueError(f"In Ray 2.5, the key must be a string, was: {key}")
 
 
 # Represents a batch of records to be stored in the Ray object store.
@@ -234,6 +206,10 @@ class BlockMetadata:
     def __post_init__(self):
         if self.input_files is None:
             self.input_files = []
+        if self.size_bytes is not None:
+            # Require size_bytes to be int, ray.util.metrics objects
+            # will not take other types like numpy.int64
+            assert isinstance(self.size_bytes, int)
 
 
 @DeveloperAPI
@@ -427,12 +403,12 @@ class BlockAccessor:
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
 
-    def sample(self, n_samples: int, key: Any) -> "Block":
+    def sample(self, n_samples: int, sort_key: "SortKey") -> "Block":
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
     def sort_and_partition(
-        self, boundaries: List[T], key: Any, descending: bool
+        self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
@@ -443,7 +419,7 @@ class BlockAccessor:
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List["Block"], key: Any, descending: bool
+        blocks: List["Block"], sort_key: "SortKey"
     ) -> Tuple[Block, BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError

@@ -24,7 +24,10 @@ class Metric:
     """
 
     def __init__(
-        self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
+        self,
+        name: str,
+        description: str = "",
+        tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         if len(name) == 0:
             raise ValueError("Empty name is not allowed. Please provide a metric name.")
@@ -160,7 +163,10 @@ class Counter(Metric):
     """
 
     def __init__(
-        self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
+        self,
+        name: str,
+        description: str = "",
+        tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
         self._metric = CythonCount(self._name, self._description, self._tag_keys)
@@ -202,7 +208,10 @@ class Count(Counter):
     """
 
     def __init__(
-        self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
+        self,
+        name: str,
+        description: str = "",
+        tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         logger.warning(
             "`metrics.Count` has been renamed to `metrics.Counter`. "
@@ -233,7 +242,7 @@ class Histogram(Metric):
         name: str,
         description: str = "",
         boundaries: List[float] = None,
-        tag_keys: Optional[Tuple[str]] = None,
+        tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
         if boundaries is None or len(boundaries) == 0:
@@ -302,7 +311,10 @@ class Gauge(Metric):
     """
 
     def __init__(
-        self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
+        self,
+        name: str,
+        description: str = "",
+        tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
         self._metric = CythonGauge(self._name, self._description, self._tag_keys)
