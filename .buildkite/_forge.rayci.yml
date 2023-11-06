@@ -35,6 +35,7 @@ steps:
     tags:
       - python_dependencies
       - docker
+      - tune
       - core_cpp
     wanda: ci/docker/ray.cpu.base.wanda.yaml
     matrix:

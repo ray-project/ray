@@ -27,7 +27,7 @@ import os
 import shutil
 import subprocess
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import yaml
 
@@ -121,7 +121,9 @@ def _update_docker_status(
                 "json",
             ]
         )
-        data: List[Dict[str, str]] = json.loads(data_str)
+        data = json.loads(data_str)
+        if not isinstance(data, list):
+            data = [data]
     except Exception as e:
         print(f"Ran into error when fetching status: {e}")
         return None
