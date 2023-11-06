@@ -151,14 +151,6 @@ class ParquetDatasource(ParquetBaseDatasource):
     PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
     automatic Arrow dataset schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import ParquetDatasource
-        >>> source = ParquetDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource( # doctest: +SKIP
-        ...     source, paths="/path/to/dir").take()
-        [{"a": 1, "b": "foo"}, ...]
     """
 
     def get_name(self):

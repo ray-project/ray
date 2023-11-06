@@ -346,11 +346,9 @@ void ClusterTaskManager::CancelTaskForOwner(
   }
 }
 
-void ClusterTaskManager::FillResourceUsage(
-    rpc::ResourcesData &data,
-    const std::shared_ptr<NodeResources> &last_reported_resources) {
+void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   // This populates load information.
-  scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
+  scheduler_resource_reporter_.FillResourceUsage(data);
   // This populates usage information.
   cluster_resource_scheduler_->GetLocalResourceManager().PopulateResourceUsage(data);
 }

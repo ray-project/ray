@@ -30,8 +30,13 @@ DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
 # all input blocks anyway, so there is no performance advantage to having
 # smaller blocks. Setting a larger block size allows avoiding overhead from an
 # excessive number of partitions.
-# We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
-DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
+# We choose 1GiB as 4x less than the typical memory:core ratio (4:1).
+DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
+
+# We will attempt to slice blocks whose size exceeds this factor *
+# target_max_block_size. We will warn the user if slicing fails and we produce
+# blocks larger than this threshold.
+MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
 # Dataset will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
