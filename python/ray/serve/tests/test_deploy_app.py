@@ -24,6 +24,10 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ServeInstanceDetails,
 )
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_RUNTIME_ENV_PINNED_URI,
+)
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors, list_tasks
 
@@ -621,12 +625,7 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
 def test_deploy_app_runtime_env(client: ServeControllerClient):
     config_template = {
         "import_path": "conditional_dag.serve_dag",
-        "runtime_env": {
-            "working_dir": (
-                "https://github.com/ray-project/test_dag/archive/"
-                "41d09119cbdf8450599f993f51318e9e27c59098.zip"
-            )
-        },
+        "runtime_env": {"working_dir": TEST_DAG_PINNED_URI},
     }
 
     config1 = ServeApplicationSchema.parse_obj(config_template)
@@ -995,10 +994,7 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
                 "route_prefix": "/app1",
                 "import_path": "conditional_dag.serve_dag",
                 "runtime_env": {
-                    "working_dir": (
-                        "https://github.com/ray-project/test_dag/archive/"
-                        "41d09119cbdf8450599f993f51318e9e27c59098.zip"
-                    )
+                    "working_dir": TEST_DAG_PINNED_URI,
                 },
             },
             {
@@ -1006,10 +1002,7 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
                 "route_prefix": "/app2",
                 "import_path": "hello_world.app",
                 "runtime_env": {
-                    "working_dir": (
-                        "https://github.com/zcin/test_runtime_env/archive/"
-                        "c96019b6049cd9a2997db5ea0f10432bfeffb844.zip"
-                    )
+                    "working_dir": TEST_RUNTIME_ENV_PINNED_URI,
                 },
             },
         ],

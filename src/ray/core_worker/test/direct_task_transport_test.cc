@@ -66,6 +66,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             1,
                             false,
                             false,
+                            -1,
                             resources,
                             resources,
                             serialized_runtime_env,
@@ -181,6 +182,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   Status ReturnWorker(int worker_port,
                       const WorkerID &worker_id,
                       bool disconnect_worker,
+                      const std::string &disconnect_worker_error_detail,
                       bool worker_exiting) override {
     if (disconnect_worker) {
       num_workers_disconnected++;

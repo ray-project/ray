@@ -38,20 +38,30 @@ def test_enough_gpus() -> None:
 
 
 def test_run_tests_in_docker() -> None:
+    inputs = []
+
     def _mock_popen(input: List[str]) -> None:
-        input_str = " ".join(input)
+        inputs.append(" ".join(input))
+
+    with mock.patch("subprocess.Popen", side_effect=_mock_popen), mock.patch(
+        "ci.ray_ci.tester_container.TesterContainer.install_ray",
+        return_value=None,
+    ):
+        TesterContainer(
+            "team", build_type="debug", test_envs=["ENV_01", "ENV_02"]
+        )._run_tests_in_docker(["t1", "t2"], [0, 1], ["v=k"], "flag")
+        input_str = inputs[-1]
+        assert "--env ENV_01 --env ENV_02 --env BUILDKITE_BUILD_URL" in input_str
         assert '--gpus "device=0,1"' in input_str
         assert (
             "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
             "--config=ci-debug --test_env v=k --test_arg flag t1 t2" in input_str
         )
 
-    with mock.patch("subprocess.Popen", side_effect=_mock_popen), mock.patch(
-        "ci.ray_ci.tester_container.TesterContainer.install_ray",
-        return_value=None,
-    ):
-        container = TesterContainer("team", build_type="debug")
-        container._run_tests_in_docker(["t1", "t2"], [0, 1], ["v=k"], "flag")
+        TesterContainer("team")._run_tests_in_docker(["t1", "t2"], [], ["v=k"])
+        input_str = inputs[-1]
+        assert "--env BUILDKITE_BUILD_URL" in input_str
+        assert "--gpus" not in input_str
 
 
 def test_run_script_in_docker() -> None:

@@ -41,7 +41,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         block: Block,
         output_num_blocks: int,
         boundaries: List[KeyType],
-        key: Optional[str],
+        key: Union[str, List[str], None],
         aggs: List[AggregateFn],
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
@@ -74,7 +74,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
     @staticmethod
     def _prune_unused_columns(
         block: Block,
-        key: str,
+        key: Union[str, List[str]],
         aggs: Tuple[AggregateFn],
     ) -> Block:
         """Prune unused columns from block before aggregate."""
@@ -83,6 +83,8 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
 
         if isinstance(key, str):
             columns.add(key)
+        elif isinstance(key, list):
+            columns.update(key)
         elif callable(key):
             prune_columns = False
 

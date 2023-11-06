@@ -56,3 +56,6 @@ class DataIteratorImpl(DataIterator):
             )
 
         raise AttributeError()
+
+    def _get_dataset_tag(self):
+        return (self._base_dataset._plan._dataset_name or "") + self._base_dataset._uuid

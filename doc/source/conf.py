@@ -183,7 +183,7 @@ author = "The Ray Team"
 # mocking of certain external dependencies.
 from setup import find_version
 
-release = find_version("ray", "__init__.py")
+release = find_version("ray", "_version.py")
 
 language = None
 

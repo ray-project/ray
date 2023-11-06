@@ -12,7 +12,33 @@ from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_champagne_image,
     DATAPLANE_FILENAME,
+    _get_ray_commit,
 )
+
+
+def test_get_ray_commit() -> None:
+    assert (
+        _get_ray_commit(
+            {
+                "RAY_WANT_COMMIT_IN_IMAGE": "abc123",
+                "COMMIT_TO_TEST": "def456",
+                "BUILDKITE_COMMIT": "987789",
+            }
+        )
+        == "abc123"
+    )
+
+    assert (
+        _get_ray_commit(
+            {
+                "COMMIT_TO_TEST": "def456",
+                "BUILDKITE_COMMIT": "987789",
+            }
+        )
+        == "def456"
+    )
+    assert _get_ray_commit({"BUILDKITE_COMMIT": "987789"}) == "987789"
+    assert _get_ray_commit({"PATH": "/usr/bin"}) == ""
 
 
 def test_build_anyscale_champagne_image() -> None:

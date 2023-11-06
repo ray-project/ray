@@ -162,7 +162,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
             num_rows = len(paths) * rows_per_file
         return BlockMetadata(
             num_rows=num_rows,
-            size_bytes=None if None in file_sizes else sum(file_sizes),
+            size_bytes=None if None in file_sizes else int(sum(file_sizes)),
             schema=schema,
             input_files=paths,
             exec_stats=None,
@@ -399,8 +399,8 @@ def _expand_paths(
 
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-        _unwrap_protocol,
     )
+    from ray.data.datasource.path_util import _unwrap_protocol
 
     # We break down our processing paths into a few key cases:
     # 1. If len(paths) < threshold, fetch the file info for the individual files/paths
