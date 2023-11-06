@@ -463,6 +463,7 @@ class RuntimeEnvAgent:
                             status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                             error_message=error_message,
                         )
+                    )
 
             else:
 
@@ -536,9 +537,8 @@ class RuntimeEnvAgent:
                     "The serialized runtime env context for reply is "
                     f"{runtime_env_reply.serialized_runtime_env_context}."
                 )
-            
-            return runtime_env_reply
 
+            return runtime_env_reply
 
     async def DeleteRuntimeEnvIfPossible(self, request):
         self._logger.info(

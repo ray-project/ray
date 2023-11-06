@@ -573,7 +573,7 @@ def test_override_failure(shutdown_only):
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("disable_working_dir_gc", [True, False])
 def test_id_named_working_dir(tmp_working_dir, disable_working_dir_gc, shutdown_only):
-    """Tests the case where we pass an empty directory as the working_dir."""
+    """Tests the independent id named working directory for echo worker."""
     if disable_working_dir_gc:
         os.environ["RAY_RUNTIME_ENV_DISABLE_WORKING_DIR_GC"] = "true"
     else:
