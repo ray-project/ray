@@ -264,6 +264,8 @@ class _StatsActor:
             self.gpu_usage.set(stats.get("gpu_usage", 0), tags)
             self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
 
+        # This update is called from a dataset's executor,
+        # so all tags should contain the same dataset
         self.update_dataset(tags_list[0]["dataset"], state)
 
     def update_iter_metrics(self, stats: "DatasetStats", tags):

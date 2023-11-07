@@ -316,10 +316,9 @@ class StreamingExecutor(Executor, threading.Thread):
         if not DEBUG_TRACE_SCHEDULING:
             _debug_dump_topology(topology, log_to_stdout=False)
 
-        metric_tags = self._get_metrics_tags()
         update_stats_actor_metrics(
             [op.metrics for op in self._topology],
-            metric_tags,
+            self._get_metrics_tags(),
             self._get_state_dict(state="RUNNING"),
         )
 
