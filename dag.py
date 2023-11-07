@@ -28,14 +28,20 @@ class Gather:
 
 def run_benchmark(num_actors, num_trials):
     init_val = 10
+    # This required a change to cache actor handles in the DAG.
     actors = [Actor.bind(init_val) for _ in range(num_actors)]
     gather_actor = Gather.bind()
+    # 1 task for each actor.
     vals = [a.get.bind() for a in actors]
+    # Gather results with another actor because Ray DAGs only support one
+    # return value right now.
     ret = gather_actor.gather.bind(*vals)
 
     # Warmup.
     for _ in range(3):
-        ray.get(ret.execute()) == init_val * num_actors
+        ref = ret.execute()
+        print(ref)
+        ray.get(ref) == init_val * num_actors
 
     print("Starting...")
     start = time.time()
