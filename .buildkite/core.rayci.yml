@@ -1,6 +1,6 @@
 group: core tests
 steps:
-  # build
+  # builds
   - name: corebuild
     wanda: ci/docker/core.build.wanda.yaml
     depends_on: oss-ci-base_build
@@ -18,7 +18,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       EXTRA_DEPENDENCY: core
 
-  # test
+  # tests
   - label: ":ray: core: python tests"
     tags: python
     instance_type: large
@@ -121,6 +121,20 @@ steps:
         --only-tags asan_tests
         --except-tags kubernetes,manual
     depends_on: corebuild
+    job_env: forge
+
+  - label: ":ray: core: wheel tests"
+    tags: linux_wheels
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core 
+        --build-type wheel
+        --parallelism-per-worker 3
+        --only-tags post_wheel_build
+        --test-env=RAY_CI_POST_WHEEL_TESTS=True
+    depends_on: 
+      - manylinux
+      - corebuild
     job_env: forge
 
   - label: ":ray: core: minimal tests {{matrix}}"

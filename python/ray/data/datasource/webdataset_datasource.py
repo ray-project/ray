@@ -308,17 +308,25 @@ class WebDatasetDatasource(FileBasedDatasource):
 
     _FILE_EXTENSION = "tar"
 
-    def _read_stream(
+    def __init__(
         self,
-        stream: "pyarrow.NativeFile",
-        path: str,
+        paths: Union[str, List[str]],
         decoder: Optional[Union[bool, str, callable, list]] = True,
         fileselect: Optional[Union[bool, callable, list]] = None,
         filerename: Optional[Union[bool, callable, list]] = None,
         suffixes: Optional[Union[bool, callable, list]] = None,
         verbose_open: bool = False,
-        **kw,
+        **file_based_datasource_kwargs,
     ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        self.decoder = decoder
+        self.fileselect = fileselect
+        self.filerename = filerename
+        self.suffixes = suffixes
+        self.verbose_open = verbose_open
+
+    def _read_stream(self, stream: "pyarrow.NativeFile", path: str):
         """Read and decode samples from a stream.
 
         Note that fileselect selects files during reading, while suffixes
@@ -340,14 +348,14 @@ class WebDatasetDatasource(FileBasedDatasource):
 
         files = _tar_file_iterator(
             stream,
-            fileselect=fileselect,
-            filerename=filerename,
-            verbose_open=verbose_open,
+            fileselect=self.fileselect,
+            filerename=self.filerename,
+            verbose_open=self.verbose_open,
         )
-        samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
+        samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=self.suffixes)
         for sample in samples:
-            if decoder is not None:
-                sample = _apply_list(decoder, sample, default=_default_decoder)
+            if self.decoder is not None:
+                sample = _apply_list(self.decoder, sample, default=_default_decoder)
             yield pd.DataFrame({k: [v] for k, v in sample.items()})
 
     def _write_block(

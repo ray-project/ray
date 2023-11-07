@@ -1,7 +1,5 @@
-import builtins
 import warnings
-from copy import copy
-from typing import Any, Callable, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Iterable, List, Optional
 
 import numpy as np
 
@@ -55,6 +53,7 @@ class Datasource:
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
+    @Deprecated
     def on_write_start(self, **write_args) -> None:
         """Callback for when a write job starts.
 
@@ -66,6 +65,7 @@ class Datasource:
         """
         pass
 
+    @Deprecated
     def write(
         self,
         blocks: Iterable[Block],
@@ -84,6 +84,7 @@ class Datasource:
         """
         raise NotImplementedError
 
+    @Deprecated
     def on_write_complete(self, write_results: List[WriteResult], **kwargs) -> None:
         """Callback for when a write job completes.
 
@@ -97,6 +98,7 @@ class Datasource:
         """
         pass
 
+    @Deprecated
     def on_write_failed(
         self, write_results: List[ObjectRef[WriteResult]], error: Exception, **kwargs
     ) -> None:
@@ -154,6 +156,11 @@ class Datasource:
             not has_implemented_get_read_tasks
             or not has_implemented_estimate_inmemory_data_size
         )
+
+    @property
+    def supports_distributed_reads(self) -> bool:
+        """If ``False``, only launch read tasks on the driver's node."""
+        return True
 
 
 @Deprecated
@@ -237,123 +244,6 @@ class ReadTask(Callable[[], Iterable[Block]]):
                 "`block`.".format(result)
             )
         yield from result
-
-
-@PublicAPI
-class RangeDatasource(Datasource):
-    """An example datasource that generates ranges of numbers from [0..n).
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import RangeDatasource
-        >>> source = RangeDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource(source, n=10).take() # doctest: +SKIP
-        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    """
-
-    def create_reader(
-        self,
-        n: int,
-        block_format: str = "arrow",
-        tensor_shape: Tuple = (1,),
-        column_name: Optional[str] = None,
-    ) -> List[ReadTask]:
-        return _RangeDatasourceReader(n, block_format, tensor_shape, column_name)
-
-
-class _RangeDatasourceReader(Reader):
-    def __init__(
-        self,
-        n: int,
-        block_format: str = "list",
-        tensor_shape: Tuple = (1,),
-        column_name: Optional[str] = None,
-    ):
-        self._n = int(n)
-        self._block_format = block_format
-        self._tensor_shape = tensor_shape
-        self._column_name = column_name
-
-    def estimate_inmemory_data_size(self) -> Optional[int]:
-        if self._block_format == "tensor":
-            element_size = np.product(self._tensor_shape)
-        else:
-            element_size = 1
-        return 8 * self._n * element_size
-
-    def get_read_tasks(
-        self,
-        parallelism: int,
-    ) -> List[ReadTask]:
-        read_tasks: List[ReadTask] = []
-        n = self._n
-        block_format = self._block_format
-        tensor_shape = self._tensor_shape
-        block_size = max(1, n // parallelism)
-
-        # Example of a read task. In a real datasource, this would pull data
-        # from an external system instead of generating dummy data.
-        def make_block(start: int, count: int) -> Block:
-            if block_format == "arrow":
-                import pyarrow as pa
-
-                return pa.Table.from_arrays(
-                    [np.arange(start, start + count)],
-                    names=[self._column_name or "value"],
-                )
-            elif block_format == "tensor":
-                import pyarrow as pa
-
-                tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
-                    np.arange(start, start + count),
-                    tuple(range(1, 1 + len(tensor_shape))),
-                )
-                return BlockAccessor.batch_to_block(
-                    {self._column_name: tensor} if self._column_name else tensor
-                )
-            else:
-                return list(builtins.range(start, start + count))
-
-        if block_format == "arrow":
-            _check_pyarrow_version()
-            import pyarrow as pa
-
-            schema = pa.Table.from_pydict({self._column_name or "value": [0]}).schema
-        elif block_format == "tensor":
-            _check_pyarrow_version()
-            import pyarrow as pa
-
-            tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
-                np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
-            )
-            schema = BlockAccessor.batch_to_block(
-                {self._column_name: tensor} if self._column_name else tensor
-            ).schema
-        elif block_format == "list":
-            schema = int
-        else:
-            raise ValueError("Unsupported block type", block_format)
-        if block_format == "tensor":
-            element_size = int(np.product(tensor_shape))
-        else:
-            element_size = 1
-
-        i = 0
-        while i < n:
-            count = min(block_size, n - i)
-            meta = BlockMetadata(
-                num_rows=count,
-                size_bytes=8 * count * element_size,
-                schema=copy(schema),
-                input_files=None,
-                exec_stats=None,
-            )
-            read_tasks.append(
-                ReadTask(lambda i=i, count=count: [make_block(i, count)], meta)
-            )
-            i += block_size
-
-        return read_tasks
 
 
 @DeveloperAPI

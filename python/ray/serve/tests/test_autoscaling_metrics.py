@@ -94,7 +94,7 @@ def test_e2e(serve_instance):
 
     handle = serve.run(A.bind())
     dep_id = DeploymentID("A", "default")
-    [handle.remote() for _ in range(50)]
+    [handle.remote()._to_object_ref_sync() for _ in range(50)]
 
     # Wait for metrics to propagate
     def get_data():

@@ -747,8 +747,6 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   std::string key = "CPU";
   auto resources = std::make_shared<rpc::ResourcesData>();
   resources->set_node_id(node_info->node_id());
-  // Set this flag because GCS won't publish unchanged resources.
-  resources->set_should_global_gc(true);
   gcs_server_->UpdateGcsResourceManagerInTest(*resources);
 
   RestartGcsServer();
