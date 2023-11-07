@@ -254,6 +254,7 @@ class ResultGrid:
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
         if trial.status == Trial.TERMINATED:
             return None
+        # TODO(justinvyu): [populate_exception] for storage_path != None
         if trial.pickled_error_file and os.path.exists(trial.pickled_error_file):
             with open(trial.pickled_error_file, "rb") as f:
                 e = cloudpickle.load(f)

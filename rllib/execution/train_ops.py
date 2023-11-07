@@ -44,9 +44,6 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
     the LEARN_ON_BATCH_TIMER timer of the `algorithm` object.
     """
-    if log_once("train_one_step_deprecation_warning"):
-        deprecation_warning(old="ray.rllib.execution.train_ops.train_one_step")
-
     config = algorithm.config
     workers = algorithm.workers
     local_worker = workers.local_worker()

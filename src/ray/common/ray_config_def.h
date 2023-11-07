@@ -482,10 +482,6 @@ RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
 /// Normally each metrics is about < 1KB. 1000 means it is around 1MB.
 RAY_CONFIG(int64_t, metrics_report_batch_size, 1000)
 
-/// If task events (status change and profiling events) from driver should be ignored.
-/// Currently for testing only.
-RAY_CONFIG(bool, task_events_skip_driver_for_test, false)
-
 /// The interval duration for which task state events will be reported to GCS.
 /// The reported data should only be used for observability.
 /// Setting the value to 0 disables the task event recording and reporting.
@@ -699,9 +695,6 @@ RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5
 RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false)
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
-
-/// If enabled, raylet will report resources only when resources are changed.
-RAY_CONFIG(bool, enable_light_weight_resource_report, true)
 
 // The number of seconds to wait for the Raylet to start. This is normally
 // fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time

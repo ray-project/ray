@@ -42,12 +42,16 @@ void GcsResourceManager::ConsumeSyncMessage(
   // io context for thread safety.
   io_context_.dispatch(
       [this, message]() {
-        rpc::ResourcesData resources;
-        resources.ParseFromString(message->sync_message());
-        resources.set_node_id(message->node_id());
         if (message->message_type() == syncer::MessageType::COMMANDS) {
-          UpdateFromResourceCommand(resources);
+          syncer::CommandsSyncMessage commands_sync_message;
+          commands_sync_message.ParseFromString(message->sync_message());
+          UpdateClusterFullOfActorsDetected(
+              NodeID::FromBinary(message->node_id()),
+              commands_sync_message.cluster_full_of_actors_detected());
         } else if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
+          rpc::ResourcesData resources;
+          resources.ParseFromString(message->sync_message());
+          resources.set_node_id(message->node_id());
           UpdateFromResourceView(resources);
         } else {
           RAY_LOG(FATAL) << "Unsupported message type: " << message->message_type();
@@ -160,25 +164,13 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
     // It will happen when the node has been deleted or hasn't been added.
     return;
   }
-  if (data.resource_load_changed()) {
-    (*iter->second.mutable_resource_load()) = data.resource_load();
-    (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
-  }
+  (*iter->second.mutable_resource_load()) = data.resource_load();
+  (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
 }
 
 const absl::flat_hash_map<NodeID, rpc::ResourcesData>
     &GcsResourceManager::NodeResourceReportView() const {
   return node_resource_usages_;
-}
-
-void GcsResourceManager::HandleReportResourceUsage(
-    rpc::ReportResourceUsageRequest request,
-    rpc::ReportResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  UpdateFromResourceView(request.resources());
-
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
 void GcsResourceManager::HandleGetAllResourceUsage(
@@ -237,8 +229,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
 
-void GcsResourceManager::UpdateFromResourceCommand(const rpc::ResourcesData &data) {
-  const auto node_id = NodeID::FromBinary(data.node_id());
+void GcsResourceManager::UpdateClusterFullOfActorsDetected(
+    const NodeID &node_id, bool cluster_full_of_actors_detected) {
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
     return;
@@ -246,8 +238,7 @@ void GcsResourceManager::UpdateFromResourceCommand(const rpc::ResourcesData &dat
 
   // TODO(rickyx): We should change this to be part of RESOURCE_VIEW.
   // This is being populated from NodeManager as part of COMMANDS
-  iter->second.set_cluster_full_of_actors_detected(
-      data.cluster_full_of_actors_detected());
+  iter->second.set_cluster_full_of_actors_detected(cluster_full_of_actors_detected);
 }
 
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
@@ -339,8 +330,6 @@ std::string GcsResourceManager::DebugString() const {
          << counts_[CountType::GET_RESOURCES_REQUEST]
          << "\n- GetAllAvailableResources request count"
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
-         << "\n- ReportResourceUsage request count: "
-         << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
          << "\n- GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
   return stream.str();

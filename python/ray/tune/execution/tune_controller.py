@@ -437,9 +437,13 @@ class TuneController:
             # Ex: moved local/cloud experiment directory
 
             # Propagate updated storage ctx properties to the trial's restored copy.
-            # TODO(justinvyu): [handle_moved_storage_path]
-            trial.storage.storage_path = self._storage.storage_path
-            trial.storage.experiment_dir_name = self._storage.experiment_dir_name
+            new_storage = copy.copy(trial.storage)
+            new_storage.storage_filesystem = self._storage.storage_filesystem
+            new_storage.storage_fs_path = self._storage.storage_fs_path
+            new_storage.experiment_dir_name = self._storage.experiment_dir_name
+            # ATTN: `trial.set_storage` is used intentionally, since it
+            # also updates the absolute paths and filesystem of tracked checkpoints.
+            trial.set_storage(new_storage)
 
             # Avoid creating logdir in client mode for returned trial results,
             # since the dir might not be creatable locally.

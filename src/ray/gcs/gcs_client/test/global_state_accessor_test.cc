@@ -192,9 +192,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   std::promise<bool> promise1;
   auto resources1 = std::make_shared<rpc::ResourcesData>();
   resources1->set_node_id(node_table_data->node_id());
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-      resources1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
-  WaitReady(promise1.get_future(), timeout_ms_);
+  gcs_server_->UpdateGcsResourceManagerInTest(*resources1);
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
@@ -208,9 +206,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   (*heartbeat2->mutable_resources_total())["GPU"] = 10;
   (*heartbeat2->mutable_resources_available())["CPU"] = 1;
   (*heartbeat2->mutable_resources_available())["GPU"] = 5;
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-      heartbeat2, [&promise2](Status status) { promise2.set_value(status.ok()); }));
-  WaitReady(promise2.get_future(), timeout_ms_);
+  gcs_server_->UpdateGcsResourceManagerInTest(*heartbeat2);
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
@@ -242,6 +238,29 @@ TEST_P(GlobalStateAccessorTest, TestWorkerTable) {
       WorkerID::FromRandom().Binary());
   ASSERT_TRUE(global_state_->AddWorkerInfo(another_worker_data->SerializeAsString()));
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 2);
+}
+
+TEST_P(GlobalStateAccessorTest, TestUpdateWorkerDebuggerPort) {
+  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
+  // Add worker info
+  auto worker_table_data = Mocker::GenWorkerTableData();
+  worker_table_data->mutable_worker_address()->set_worker_id(
+      WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
+
+  // Get worker info
+  auto worker_id = WorkerID::FromBinary(worker_table_data->worker_address().worker_id());
+  ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
+
+  // Update the worker debugger port
+  auto debugger_port = 10000;
+  ASSERT_TRUE(global_state_->UpdateWorkerDebuggerPort(worker_id, debugger_port));
+
+  // Verify the debugger port
+  auto another_worker_table_data = Mocker::GenWorkerTableData();
+  auto worker_info = global_state_->GetWorkerInfo(worker_id);
+  ASSERT_TRUE(another_worker_table_data->ParseFromString(*worker_info));
+  ASSERT_EQ(another_worker_table_data->debugger_port(), debugger_port);
 }
 
 // TODO(sang): Add tests after adding asyncAdd

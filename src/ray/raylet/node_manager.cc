@@ -635,20 +635,6 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   worker_pool_.HandleJobFinished(job_id);
 }
 
-void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
-  auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
-  auto normal_task_resources = local_task_manager_->CalcNormalTaskResources();
-  if (last_heartbeat_resources->normal_task_resources != normal_task_resources) {
-    RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.DebugString();
-    resources_data.set_resources_normal_task_changed(true);
-    auto resource_map = normal_task_resources.GetResourceMap();
-    resources_data.mutable_resources_normal_task()->insert(resource_map.begin(),
-                                                           resource_map.end());
-    resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-    last_heartbeat_resources->normal_task_resources = normal_task_resources;
-  }
-}
-
 void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
   auto all_workers = worker_pool_.GetAllRegisteredWorkers();
   for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
@@ -1191,11 +1177,6 @@ void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
 
 bool NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
-  // Trigger local GC at the next heartbeat interval.
-  if (resource_data.should_global_gc()) {
-    should_local_gc_ = true;
-  }
-
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           scheduling::NodeID(node_id.Binary()), resource_data)) {
     RAY_LOG(INFO)
@@ -1497,6 +1478,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   // Publish the worker failure.
   auto worker_failure_data_ptr =
       gcs::CreateWorkerFailureData(worker->WorkerId(),
+                                   self_node_id_,
+                                   initial_config_.node_manager_address,
                                    time(nullptr),
                                    disconnect_type,
                                    disconnect_detail,
@@ -1760,7 +1743,7 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
   auto resources_data = reply->mutable_resources();
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  cluster_task_manager_->FillResourceUsage(*resources_data, nullptr);
+  cluster_task_manager_->FillResourceUsage(*resources_data);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2724,6 +2707,8 @@ void NodeManager::TriggerGlobalGC() {
 }
 
 void NodeManager::Stop() {
+  // This never fails.
+  RAY_CHECK_OK(store_client_.Disconnect());
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
@@ -2755,12 +2740,10 @@ void NodeManager::ConsumeSyncMessage(
     if (UpdateResourceUsage(node_id, data)) {
       cluster_task_manager_->ScheduleAndDispatchTasks();
     }
-    // Message view shouldn't carry this field.
-    RAY_CHECK(!data.should_global_gc());
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
-    rpc::ResourcesData data;
-    data.ParseFromString(message->sync_message());
-    if (data.should_global_gc()) {
+    syncer::CommandsSyncMessage commands_sync_message;
+    commands_sync_message.ParseFromString(message->sync_message());
+    if (commands_sync_message.should_global_gc()) {
       should_local_gc_ = true;
     }
   }
@@ -2770,15 +2753,16 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
     int64_t after_version, syncer::MessageType message_type) const {
   RAY_CHECK(message_type == syncer::MessageType::COMMANDS);
 
-  rpc::ResourcesData resources_data;
-  resources_data.set_should_global_gc(true);
-  resources_data.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
+  syncer::CommandsSyncMessage commands_sync_message;
+  commands_sync_message.set_should_global_gc(true);
+  commands_sync_message.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >=
+                                                            1);
   syncer::RaySyncMessage msg;
   msg.set_version(absl::GetCurrentTimeNanos());
   msg.set_node_id(self_node_id_.Binary());
   msg.set_message_type(syncer::MessageType::COMMANDS);
   std::string serialized_msg;
-  RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+  RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
   msg.set_sync_message(std::move(serialized_msg));
   return std::make_optional(std::move(msg));
 }
