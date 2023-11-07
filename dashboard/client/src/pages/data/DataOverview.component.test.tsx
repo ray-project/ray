@@ -69,9 +69,7 @@ describe("DataOverview", () => {
 
     // First Dataset
     expect(screen.getByText("test_ds1")).toBeVisible();
-    expect(screen.getByText("Total: 100")).toBeVisible();
-    expect(screen.getByText("Finished: 50")).toBeVisible();
-    expect(screen.getByText("Running: 50")).toBeVisible();
+    expect(screen.getByText("50 / 100")).toBeVisible();
     expect(screen.getByText("1969/12/31 16:00:00")).toBeVisible();
     expect(screen.getByText("10.0000B")).toBeVisible();
     expect(screen.getByText("20.0000B")).toBeVisible();
@@ -86,8 +84,7 @@ describe("DataOverview", () => {
 
     // Second Dataset
     expect(screen.getByText("test_ds2")).toBeVisible();
-    expect(screen.getByText("Total: 200")).toBeVisible();
-    expect(screen.getByText("Finished: 200")).toBeVisible();
+    expect(screen.getByText("200 / 200")).toBeVisible();
     expect(screen.getByText("1969/12/31 16:00:01")).toBeVisible();
     expect(screen.getByText("1969/12/31 16:00:02")).toBeVisible();
     expect(screen.getByText("50.0000B")).toBeVisible();

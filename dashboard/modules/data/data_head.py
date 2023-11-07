@@ -14,22 +14,19 @@ from urllib.parse import quote
 import ray
 
 
+# Window and sampling rate used for certain Prometheus queries.
+# Datapoints up until `MAX_TIME_WINDOW` ago are queried at `SAMPLE_RATE` intervals.
 MAX_TIME_WINDOW = "1h"
 SAMPLE_RATE = "1s"
 
 
 class PrometheusQuery(Enum):
-    """Enum to store types of Prometheus queries for a given metric.
+    """Enum to store types of Prometheus queries for a given metric and grouping."""
 
-    Values are stored in the form (name, dataset-level query, operator-level query)
-    """
-
-    VALUE = ("value", "sum({}) by (dataset)", "sum({}) by (dataset, operator)")
+    VALUE = ("value", "sum({}) by ({})")
     MAX = (
         "max",
-        "max_over_time(sum({}) by (dataset)[" + f"{MAX_TIME_WINDOW}:{SAMPLE_RATE}])",
-        "max_over_time(sum({}) by (dataset, operator)["
-        + f"{MAX_TIME_WINDOW}:{SAMPLE_RATE}])",
+        "max_over_time(sum({}) by ({})[" + f"{MAX_TIME_WINDOW}:{SAMPLE_RATE}])",
     )
 
 
@@ -71,7 +68,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                     for query in queries:
                         # Dataset level
                         dataset_result = await self._query_prometheus(
-                            query.value[1].format(metric)
+                            query.value[1].format(metric, "dataset")
                         )
                         for res in dataset_result["data"]["result"]:
                             dataset, value = res["metric"]["dataset"], res["value"][1]
@@ -80,7 +77,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
 
                         # Operator level
                         operator_result = await self._query_prometheus(
-                            query.value[2].format(metric)
+                            query.value[1].format(metric, "dataset, operator")
                         )
                         for res in operator_result["data"]["result"]:
                             dataset, operator, value = (
