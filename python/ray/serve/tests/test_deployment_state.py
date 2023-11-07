@@ -1988,7 +1988,7 @@ def test_new_version_and_scale_up(mock_deployment_state):
 
 
 @pytest.mark.parametrize("scale_direction", ["up", "down"])
-def test_scale_num_replicas_up(mock_deployment_state_manager_full, scale_direction):
+def test_scale_num_replicas(mock_deployment_state_manager_full, scale_direction):
     """Test upscaling and downscaling the number of replicas manually."""
 
     # State
@@ -2075,7 +2075,7 @@ def test_scale_num_replicas_up(mock_deployment_state_manager_full, scale_directi
 
 
 @pytest.mark.parametrize("scale_direction", ["up", "down"])
-def test_autoscale_up(mock_deployment_state_manager_full, scale_direction):
+def test_autoscale(mock_deployment_state_manager_full, scale_direction):
     """Test autoscaling up and down."""
 
     # State

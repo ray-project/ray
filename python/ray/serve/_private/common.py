@@ -123,9 +123,7 @@ class DeploymentStatusTrigger(str, Enum):
 class DeploymentStatusInfo:
     name: str
     status: DeploymentStatus
-    status_trigger: Optional[
-        DeploymentStatusTrigger
-    ] = DeploymentStatusTrigger.UNSPECIFIED
+    status_trigger: DeploymentStatusTrigger = DeploymentStatusTrigger.UNSPECIFIED
     message: str = ""
 
     def debug_string(self):

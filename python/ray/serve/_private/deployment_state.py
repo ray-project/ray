@@ -1374,7 +1374,7 @@ class DeploymentState:
     def _set_target_state(
         self,
         target_info: DeploymentInfo,
-        status_trigger: DeploymentStatusTrigger = DeploymentStatusTrigger.CONFIG_UPDATE,
+        status_trigger: DeploymentStatusTrigger,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
@@ -1405,11 +1405,16 @@ class DeploymentState:
         is_scale = target_state.compare_state_excluding_num_replicas(self._target_state)
         if self._target_state.info and is_scale:
             new, old = (target_state.num_replicas, self._target_state.num_replicas)
-            scaling_decision = "Upscaling" if new > old else "Downscaling"
+            assert new != old
+            scaling_decision = (
+                DeploymentStatus.UPSCALING
+                if new > old
+                else DeploymentStatus.DOWNSCALING
+            )
             self._curr_status_info.update(
-                status=DeploymentStatus(scaling_decision.upper()),
+                status=scaling_decision,
                 status_trigger=status_trigger,
-                message=f"{scaling_decision} from {old} to {new} replicas.",
+                message=f"{scaling_decision.capitalize()} from {old} to {new} replicas.",  # noqa
             )
         # Otherwise, the deployment configuration has actually been updated.
         else:

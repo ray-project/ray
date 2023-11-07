@@ -420,7 +420,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
 
         for deployment in app_details[app].deployments.values():
             assert deployment.status == DeploymentStatus.HEALTHY
-            assert deployment.status == DeploymentStatusTrigger.DEPLOY
+            assert deployment.status_trigger == DeploymentStatusTrigger.DEPLOY
             # Route prefix should be app level options eventually
             assert "route_prefix" not in deployment.deployment_config.dict(
                 exclude_unset=True
