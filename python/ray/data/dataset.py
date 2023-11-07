@@ -110,20 +110,22 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import (
-    BigQueryDatasource,
     BlockWritePathProvider,
     Connection,
-    CSVDatasource,
     Datasink,
     Datasource,
     FilenameProvider,
-    ImageDatasource,
-    JSONDatasource,
-    NumpyDatasource,
-    ParquetDatasource,
     ReadTask,
-    SQLDatasource,
-    TFRecordDatasource,
+    _BigQueryDatasink,
+    _CSVDatasink,
+    _ImageDatasink,
+    _JSONDatasink,
+    _MongoDatasink,
+    _NumpyDatasink,
+    _ParquetDatasink,
+    _SQLDatasink,
+    _TFRecordDatasink,
+    _WebDatasetDatasink,
 )
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -2742,19 +2744,18 @@ class Dataset:
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
         """
-        self.write_datasource(
-            ParquetDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _ParquetDatasink(
+            path,
+            arrow_parquet_args_fn=arrow_parquet_args_fn,
+            arrow_parquet_args=arrow_parquet_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=arrow_parquet_args_fn,
-            **arrow_parquet_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_json(
@@ -2839,19 +2840,18 @@ class Dataset:
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
         """
-        self.write_datasource(
-            JSONDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _JSONDatasink(
+            path,
+            pandas_json_args_fn=pandas_json_args_fn,
+            pandas_json_args=pandas_json_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=pandas_json_args_fn,
-            **pandas_json_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -2901,18 +2901,17 @@ class Dataset:
                 opening the file to write to.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            ImageDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _ImageDatasink(
+            path,
+            column,
+            file_format,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
-            column=column,
-            file_format=file_format,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_csv(
@@ -2994,19 +2993,18 @@ class Dataset:
                     #pyarrow.csv.write_csv>`_
                 when writing each block to a file.
         """
-        self.write_datasource(
-            CSVDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _CSVDatasink(
+            path,
+            arrow_csv_args_fn=arrow_csv_args_fn,
+            arrow_csv_args=arrow_csv_args,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            write_args_fn=arrow_csv_args_fn,
-            **arrow_csv_args,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_tfrecords(
@@ -3079,19 +3077,17 @@ class Dataset:
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
-
-        self.write_datasource(
-            TFRecordDatasource(),
-            ray_remote_args=ray_remote_args,
+        datasink = _TFRecordDatasink(
             path=path,
-            dataset_uuid=self._uuid,
+            tf_schema=tf_schema,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            tf_schema=tf_schema,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3152,21 +3148,17 @@ class Dataset:
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
 
         """
-
-        from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
-
-        self.write_datasource(
-            WebDatasetDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
+        datasink = _WebDatasetDatasink(
+            path,
+            encoder=encoder,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
-            encoder=encoder,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_numpy(
@@ -3230,18 +3222,17 @@ class Dataset:
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
 
-        self.write_datasource(
-            NumpyDatasource(),
-            ray_remote_args=ray_remote_args,
-            path=path,
-            dataset_uuid=self._uuid,
-            column=column,
+        datasink = _NumpyDatasink(
+            path,
+            column,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             block_path_provider=block_path_provider,
+            dataset_uuid=self._uuid,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_sql(
@@ -3299,11 +3290,8 @@ class Dataset:
             ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
                 write tasks.
         """  # noqa: E501
-        self.write_datasource(
-            SQLDatasource(connection_factory),
-            ray_remote_args=ray_remote_args,
-            sql=sql,
-        )
+        datasink = _SQLDatasink(sql=sql, connection_factory=connection_factory)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @PublicAPI(stability="alpha")
     @ConsumptionAPI
@@ -3364,15 +3352,12 @@ class Dataset:
             ValueError: if ``database`` doesn't exist.
             ValueError: if ``collection`` doesn't exist.
         """
-        from ray.data.datasource import MongoDatasource
-
-        self.write_datasource(
-            MongoDatasource(),
-            ray_remote_args=ray_remote_args,
+        datasink = _MongoDatasink(
             uri=uri,
             database=database,
             collection=collection,
         )
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @ConsumptionAPI
     def write_bigquery(
@@ -3396,7 +3381,6 @@ class Dataset:
                 docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_bigquery(
-                    BigQueryDatasource(),
                     project_id="my_project_id",
                     dataset="my_dataset_table",
                 )
@@ -3410,13 +3394,8 @@ class Dataset:
                 overwritten if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
-
-        self.write_datasource(
-            BigQueryDatasource(),
-            ray_remote_args=ray_remote_args,
-            dataset=dataset,
-            project_id=project_id,
-        )
+        datasink = _BigQueryDatasink(project_id, dataset)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
     @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")
