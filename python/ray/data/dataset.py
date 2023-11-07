@@ -1116,7 +1116,7 @@ class Dataset:
 
         Returns:
             The block-shuffled :class:`Dataset`.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
 
@@ -2743,7 +2743,7 @@ class Dataset:
                     /generated/pyarrow.parquet.write_table.html\
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
-        """
+        """  # noqa: E501
         datasink = _ParquetDatasink(
             path,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
@@ -4721,7 +4721,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
@@ -4804,7 +4804,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=16,
+                   num_blocks=...,
                    num_rows=150,
                    schema={
                       sepal length (cm): double,
