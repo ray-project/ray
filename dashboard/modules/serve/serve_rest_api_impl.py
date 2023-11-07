@@ -108,43 +108,6 @@ def create_serve_rest_api(
                 status=aiohttp.web.HTTPOk.status_code,
             )
 
-        @dashboard_route_table.get("/api/serve/deployments/")
-        @optional_utils.init_ray_and_catch_exceptions()
-        @validate_endpoint(log_deprecation_warning=log_deprecation_warning)
-        async def get_all_deployments(self, req: Request) -> Response:
-            from ray.serve.schema import ServeApplicationSchema
-
-            logger.warning(
-                "The Serve REST API endpoint `GET /api/serve/deployments/` is "
-                "deprecated. Please switch to using `GET /api/serve/applications/`. "
-            )
-
-            controller = await self.get_serve_controller()
-
-            if controller is None:
-                config = ServeApplicationSchema.get_empty_schema_dict()
-            else:
-                try:
-                    config = await controller.get_app_config.remote()
-                    if config is None:
-                        config = ServeApplicationSchema.get_empty_schema_dict()
-                except ray.exceptions.RayTaskError as e:
-                    # Task failure sometimes are due to GCS
-                    # failure. When GCS failed, we expect a longer time
-                    # to recover.
-                    return Response(
-                        status=503,
-                        text=(
-                            "Failed to get a response from the controller.  "
-                            f"The GCS may be down, please retry later: {e}"
-                        ),
-                    )
-
-            return Response(
-                text=json.dumps(config),
-                content_type="application/json",
-            )
-
         @dashboard_route_table.get("/api/serve/applications/")
         @optional_utils.init_ray_and_catch_exceptions()
         @validate_endpoint(log_deprecation_warning=log_deprecation_warning)
@@ -176,54 +139,6 @@ def create_serve_rest_api(
                 content_type="application/json",
             )
 
-        @dashboard_route_table.get("/api/serve/deployments/status")
-        @optional_utils.init_ray_and_catch_exceptions()
-        @validate_endpoint(log_deprecation_warning=log_deprecation_warning)
-        async def get_all_deployment_statuses(self, req: Request) -> Response:
-            from ray.serve.schema import _serve_status_to_schema, ServeStatusSchema
-
-            logger.warning(
-                "The Serve REST API endpoint `GET /api/serve/deployments/status` is "
-                "deprecated. Please switch to using `GET /api/serve/applications/`. "
-            )
-
-            controller = await self.get_serve_controller()
-
-            if controller is None:
-                status_json = ServeStatusSchema.get_empty_schema_dict()
-                status_json_str = json.dumps(status_json)
-            else:
-                from ray.serve._private.common import StatusOverview
-                from ray.serve.generated.serve_pb2 import (
-                    StatusOverview as StatusOverviewProto,
-                )
-
-                serve_status = await controller.get_serve_status.remote()
-                proto = StatusOverviewProto.FromString(serve_status)
-                status = StatusOverview.from_proto(proto)
-                status_json_str = _serve_status_to_schema(status).json()
-
-            return Response(
-                text=status_json_str,
-                content_type="application/json",
-            )
-
-        @dashboard_route_table.delete("/api/serve/deployments/")
-        @optional_utils.init_ray_and_catch_exceptions()
-        @validate_endpoint(log_deprecation_warning=log_deprecation_warning)
-        async def delete_serve_application(self, req: Request) -> Response:
-            from ray import serve
-
-            logger.warning(
-                "The Serve REST API endpoint `DELETE /api/serve/deployments/` is "
-                "deprecated. Please switch to using `DELETE /api/serve/applications/`. "
-            )
-
-            if await self.get_serve_controller() is not None:
-                serve.shutdown()
-
-            return Response()
-
         @dashboard_route_table.delete("/api/serve/applications/")
         @optional_utils.init_ray_and_catch_exceptions()
         async def delete_serve_applications(self, req: Request) -> Response:
@@ -233,96 +148,6 @@ def create_serve_rest_api(
                 serve.shutdown()
 
             return Response()
-
-        @dashboard_route_table.put("/api/serve/deployments/")
-        @optional_utils.init_ray_and_catch_exceptions()
-        @validate_endpoint(log_deprecation_warning=log_deprecation_warning)
-        async def put_all_deployments(self, req: Request) -> Response:
-            from ray.serve._private.api import serve_start_async
-            from ray.serve.schema import ServeApplicationSchema
-            from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
-            from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-
-            logger.warning(
-                "The Serve REST API endpoint `PUT /api/serve/deployments/` and the "
-                "single-application config format is deprecated. Please switch to "
-                "using `PUT /api/serve/applications/` and the multi-application config "
-                "format."
-            )
-
-            try:
-                config = ServeApplicationSchema.parse_obj(await req.json())
-            except ValidationError as e:
-                return Response(
-                    status=400,
-                    text=repr(e),
-                )
-
-            if "name" in config.dict(exclude_unset=True):
-                error_msg = (
-                    "Specifying the name of an application is only allowed "
-                    "for apps that are listed as part of a multi-app config "
-                    "file. "
-                ) + MULTI_APP_MIGRATION_MESSAGE
-                logger.warning(error_msg)
-                return Response(
-                    status=400,
-                    text=error_msg,
-                )
-
-            async with self._controller_start_lock:
-                client = await serve_start_async(
-                    http_options={
-                        "host": config.host,
-                        "port": config.port,
-                        "location": "EveryNode",
-                    },
-                )
-
-            if client.http_config.host != config.host:
-                return Response(
-                    status=400,
-                    text=(
-                        "Serve is already running on this Ray cluster. Its "
-                        f'HTTP host is set to "{client.http_config.host}". '
-                        f'However, the requested host is "{config.host}". '
-                        f"The requested host must match the running Serve "
-                        "application's host. To change the Serve application "
-                        "host, shut down Serve on this Ray cluster using the "
-                        "`serve shutdown` CLI command or by sending a DELETE "
-                        "request to this Ray cluster's "
-                        '"/api/serve/deployments/" endpoint. CAUTION: shutting '
-                        "down Serve will also shut down all Serve deployments."
-                    ),
-                )
-
-            if client.http_config.port != config.port:
-                return Response(
-                    status=400,
-                    text=(
-                        "Serve is already running on this Ray cluster. Its "
-                        f'HTTP port is set to "{client.http_config.port}". '
-                        f'However, the requested port is "{config.port}". '
-                        f"The requested port must match the running Serve "
-                        "application's port. To change the Serve application "
-                        "port, shut down Serve on this Ray cluster using the "
-                        "`serve shutdown` CLI command or by sending a DELETE "
-                        "request to this Ray cluster's "
-                        '"/api/serve/deployments/" endpoint. CAUTION: shutting '
-                        "down Serve will also shut down all Serve deployments."
-                    ),
-                )
-
-            try:
-                client.deploy_apps(config)
-                record_extra_usage_tag(TagKey.SERVE_REST_API_VERSION, "v1")
-            except RayTaskError as e:
-                return Response(
-                    status=400,
-                    text=str(e),
-                )
-            else:
-                return Response()
 
         @dashboard_route_table.put("/api/serve/applications/")
         @optional_utils.init_ray_and_catch_exceptions()

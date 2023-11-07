@@ -107,10 +107,10 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
 
   gcs_resource_manager_->OnNodeAdd(*node);
 
-  rpc::ReportResourceUsageRequest report_request;
-  (*report_request.mutable_resources()->mutable_resources_available())["CPU"] = 2;
-  (*report_request.mutable_resources()->mutable_resources_total())["CPU"] = 2;
-  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, report_request.resources());
+  rpc::ResourcesData resources_data;
+  (*resources_data.mutable_resources_available())["CPU"] = 2;
+  (*resources_data.mutable_resources_total())["CPU"] = 2;
+  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resources_data);
 
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply, send_reply_callback);
@@ -123,7 +123,7 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   ASSERT_EQ(get_all_reply2.resource_usage_data().batch().size(), 0);
 
   // This will be ignored since the node is dead.
-  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, report_request.resources());
+  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resources_data);
   rpc::GetAllResourceUsageReply get_all_reply3;
   gcs_resource_manager_->HandleGetAllResourceUsage(
       get_all_request, &get_all_reply3, send_reply_callback);
@@ -162,12 +162,8 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
   // cluster_full_of_actors_detected flag. (This is how NodeManager currently
   // updates potential resources deadlock).
   {
-    rpc::ResourcesData resources_data;
-    resources_data.set_node_id(node->node_id());
-    resources_data.mutable_resources_total()->insert({"CPU", 10});
-    resources_data.mutable_resources_available()->insert({"CPU", 10});
-    resources_data.set_cluster_full_of_actors_detected(true);
-    gcs_resource_manager_->UpdateFromResourceCommand(resources_data);
+    gcs_resource_manager_->UpdateClusterFullOfActorsDetected(
+        NodeID::FromBinary(node->node_id()), true);
 
     // Still 5 because the syncer COMMANDS message is ignored.
     ASSERT_EQ(

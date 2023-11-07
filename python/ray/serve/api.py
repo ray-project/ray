@@ -48,7 +48,7 @@ from ray.serve.context import (
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -449,7 +449,7 @@ def run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
-) -> Optional[RayServeSyncHandle]:
+) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
     The application is returned by `Deployment.bind()`. Example:
@@ -473,9 +473,11 @@ def run(
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
             route_prefix of the ingress deployment. If specified neither as an argument
             nor in the ingress deployment, the route prefix will default to '/'.
+        logging_config: Application logging config. If provided, the config will
+            be applied to all deployments which doesn't have logging config.
 
     Returns:
-        RayServeSyncHandle: A handle that can be used to call the application.
+        DeploymentHandle: A handle that can be used to call the application.
     """
 
     if len(name) == 0:

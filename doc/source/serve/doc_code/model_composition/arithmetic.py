@@ -90,8 +90,7 @@ with InputNode() as request_number:
 
 graph = DAGDriver.bind(add_3_output, http_adapter=json_request)
 
-handle: DeploymentHandle = serve.run(graph).options(use_new_handle_api=True)
-
+handle: DeploymentHandle = serve.run(graph)
 response: DeploymentResponse = handle.predict.remote(5)
 print(response.result())
 # __test_graph_end__

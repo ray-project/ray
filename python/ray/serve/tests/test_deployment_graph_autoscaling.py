@@ -52,7 +52,7 @@ def test_autoscaling_0_replica(serve_instance):
             autoscaling_config=autoscaling_config,
         ).bind(output)
     dag_handle = serve.run(serve_dag)
-    assert 2 == ray.get(dag_handle.predict.remote(1))
+    assert 2 == dag_handle.predict.remote(1).result()
 
 
 @pytest.mark.parametrize("min_replicas", [0, 1])

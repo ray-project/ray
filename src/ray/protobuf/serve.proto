@@ -143,6 +143,10 @@ message RequestMetadata {
   string call_method = 3;
 
   map<string, string> context = 4;
+
+  string multiplexed_model_id = 5;
+
+  string route = 6;
 }
 
 message RequestWrapper {

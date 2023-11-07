@@ -736,9 +736,6 @@ class gRPCProxy(GenericProxy):
                 message=message,
             )
         except asyncio.CancelledError:
-            # Ignore the rest of the response (the handler will be cancelled).
-            # NOTE(edoakes): we aren't passing a `disconnected_task` to the
-            # `ProxyResponseGenerator` so this won't ever happen.
             message = f"Client for request {request_id} disconnected."
             logger.info(message)
             yield ResponseStatus(
