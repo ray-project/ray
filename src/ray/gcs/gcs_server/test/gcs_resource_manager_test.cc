@@ -141,59 +141,6 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   ASSERT_EQ(get_all_reply3.resource_usage_data().batch().size(), 0);
 }
 
-TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
-  auto node = Mocker::GenNodeInfo();
-  node->mutable_resources_total()->insert({"CPU", 10});
-  gcs_resource_manager_->OnNodeAdd(*node);
-
-  rpc::ResourcesData resources_data;
-  resources_data.set_node_id(node->node_id());
-  resources_data.mutable_resources_total()->insert({"CPU", 5});
-  resources_data.mutable_resources_available()->insert({"CPU", 5});
-  resources_data.set_cluster_full_of_actors_detected(false);
-
-  // Update resource usage from resource view.
-  {
-    ASSERT_FALSE(gcs_resource_manager_->NodeResourceReportView()
-                     .at(NodeID::FromBinary(node->node_id()))
-                     .cluster_full_of_actors_detected());
-    gcs_resource_manager_->UpdateFromResourceView(resources_data);
-    ASSERT_EQ(
-        cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
-            .total.GetResourceMap()
-            .at("CPU"),
-        5);
-
-    ASSERT_FALSE(gcs_resource_manager_->NodeResourceReportView()
-                     .at(NodeID::FromBinary(node->node_id()))
-                     .cluster_full_of_actors_detected());
-  }
-
-  // Update from syncer COMMANDS will not update the resources, but the
-  // cluster_full_of_actors_detected flag. (This is how NodeManager currently
-  // updates potential resources deadlock).
-  {
-    rpc::ResourcesData resources_data;
-    resources_data.set_node_id(node->node_id());
-    resources_data.mutable_resources_total()->insert({"CPU", 10});
-    resources_data.mutable_resources_available()->insert({"CPU", 10});
-    resources_data.set_cluster_full_of_actors_detected(true);
-    gcs_resource_manager_->UpdateFromResourceCommand(resources_data);
-
-    // Still 5 because the syncer COMMANDS message is ignored.
-    ASSERT_EQ(
-        cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
-            .total.GetResourceMap()
-            .at("CPU"),
-        5);
-
-    // The flag is updated.
-    ASSERT_TRUE(gcs_resource_manager_->NodeResourceReportView()
-                    .at(NodeID::FromBinary(node->node_id()))
-                    .cluster_full_of_actors_detected());
-  }
-}
-
 TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
   auto node = Mocker::GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 10});

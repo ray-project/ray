@@ -118,11 +118,6 @@ class GcsServer {
     return *gcs_autoscaler_state_manager_;
   }
 
-  void UpdateGcsResourceManagerInTest(const rpc::ResourcesData &resources) {
-    RAY_CHECK(gcs_resource_manager_ != nullptr);
-    gcs_resource_manager_->UpdateFromResourceView(resources);
-  }
-
  protected:
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;
