@@ -12,6 +12,7 @@ Cursor = Any  # A Python DB API2-compliant `Cursor` object.
 
 logger = logging.getLogger(__name__)
 
+
 def _cursor_to_block(cursor) -> Block:
     import pyarrow as pa
 
@@ -109,7 +110,9 @@ class SQLDatasource(Datasource):
             is_limit_supported = False
 
         if not is_limit_supported:
-            logger.warning("Queried Database does not support 'LIMIT', forcing parallelism of 1")
+            logger.warning(
+                "Queried Database does not support 'LIMIT', forcing parallelism of 1"
+            )
             metadata = BlockMetadata(None, None, None, None, None)
             return [ReadTask(fallback_read_fn, metadata)]
 
