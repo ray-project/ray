@@ -693,6 +693,12 @@ class ServeController:
             ),
         )
 
+        if self._target_capacity != config.target_capacity:
+            logger.info(
+                "target_capacity updated from "
+                f"'{self._target_capacity}' to '{config.target_capacity}'."
+            )
+
         self._target_capacity = config.target_capacity
 
         # Delete live applications not listed in the config.
