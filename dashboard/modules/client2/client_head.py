@@ -5,7 +5,7 @@ import ray._private.ray_constants as ray_constants
 import ray
 import logging
 
-routes = optional_utils.ClassMethodRouteTable
+routes = optional_utils.DashboardHeadRouteTable
 logger = logging.getLogger(__name__)
 
 
