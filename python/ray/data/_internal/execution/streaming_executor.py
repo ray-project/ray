@@ -179,17 +179,13 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._shutdown:
                 return
             logger.get_logger().debug(f"Shutting down {self}.")
-            update_stats_actor_dataset(
-                self._dataset_tag,
-                {
-                    "state": "FINISHED" if execution_completed else "FAILED",
-                    "end_time": time.time(),
-                },
-            )
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
+            self._update_stats_metrics(
+                state="FINISHED" if execution_completed else "FAILED"
+            )
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
@@ -311,16 +307,7 @@ class StreamingExecutor(Executor, threading.Thread):
             _debug_dump_topology(topology, log_to_stdout=False)
 
         if time.time() - self._last_stats_update >= STATS_ACTOR_UPDATE_INTERVAL_SECONDS:
-            last_op, last_state = list(topology.items())[-1]
-            update_stats_actor_metrics(
-                [op.metrics for op in self._topology],
-                self._get_metrics_tags(),
-                # TODO (Zandew): report progress at operator level
-                {
-                    "progress": last_state.num_completed_tasks,
-                    "total": last_op.num_outputs_total(),
-                },
-            )
+            self._update_stats_metrics(state="RUNNING")
             self._last_stats_update = time.time()
 
         # Log metrics of newly completed operators.
@@ -379,6 +366,20 @@ class StreamingExecutor(Executor, threading.Thread):
             {"dataset": self._dataset_tag, "operator": f"{op.name}{i}"}
             for i, op in enumerate(self._topology)
         ]
+
+    def _update_stats_metrics(self, state: str):
+        last_op, last_state = list(self._topology.items())[-1]
+        update_stats_actor_metrics(
+            [op.metrics for op in self._topology],
+            self._get_metrics_tags(),
+            # TODO (Zandew): report progress at operator level
+            {
+                "progress": last_state.num_completed_tasks,
+                "total": last_op.num_outputs_total(),
+                "state": state,
+                "end_time": None if state == "RUNNING" else time.time(),
+            },
+        )
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:

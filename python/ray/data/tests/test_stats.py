@@ -1223,7 +1223,7 @@ def test_stats_actor_iter_metrics():
     final_stats = update_fn.call_args_list[-1].args[0]
 
     assert final_stats == ds_stats
-    assert ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
+    assert "dataset" + ds._uuid == update_fn.call_args_list[-1].args[1]["dataset"]
 
 
 def test_dataset_name():
