@@ -366,7 +366,7 @@ def deploy(config_file_name: str, address: str):
     type=str,
     help=(
         "Route prefix for the application. This should only be used "
-        "when running an application specified by import path, and "
+        "when running an application specified by import path and "
         "will be ignored if running a config file."
     ),
 )
