@@ -196,7 +196,7 @@ class ServeController:
         self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
-        # The target capacity percentage for all replicas across the cluster.
+        # The target capacity percentage for all deployments across the cluster.
         self._target_capacity: Optional[float] = None
         self._recover_config_from_checkpoint()
 
