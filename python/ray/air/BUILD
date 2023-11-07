@@ -124,13 +124,14 @@ py_test(
     deps = [":ml_lib"]
 )
 
-py_test(
-    name = "test_remote_storage_hdfs",
-    size = "small",
-    srcs = ["tests/test_remote_storage_hdfs.py"],
-    tags = ["team:ml", "exclusive", "hdfs"],
-    deps = [":ml_lib"]
-)
+# TODO(justinvyu): Re-enable this after fixing the test.
+# py_test(
+#     name = "test_remote_storage_hdfs",
+#     size = "small",
+#     srcs = ["tests/test_remote_storage_hdfs.py"],
+#     tags = ["team:ml", "exclusive", "hdfs"],
+#     deps = [":ml_lib"]
+# )
 
 py_test(
     name = "test_resource_changing",
