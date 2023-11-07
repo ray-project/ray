@@ -224,8 +224,7 @@ def _format_in_threadpool(
     ) -> Iterator[Batch]:
         # Step 4a: Format the batches.
         formatted_batch_iter = format_batches(
-            batch_iter,
-            batch_format=batch_format,
+            batch_iter, batch_format=batch_format, stats=stats
         )
 
         # Step 4b: Apply the collate function if applicable.
