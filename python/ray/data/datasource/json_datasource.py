@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import (
@@ -17,14 +17,30 @@ class JSONDatasource(FileBasedDatasource):
 
     _FILE_EXTENSION = ["json", "jsonl"]
 
-    # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        *,
+        arrow_json_args: Optional[Dict[str, Any]] = None,
+        **file_based_datasource_kwargs,
+    ):
         from pyarrow import json
 
-        read_options = reader_args.pop(
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        if arrow_json_args is None:
+            arrow_json_args = {}
+
+        self.read_options = arrow_json_args.pop(
             "read_options", json.ReadOptions(use_threads=False)
         )
-        return json.read_json(f, read_options=read_options, **reader_args)
+        self.arrow_json_args = arrow_json_args
+
+    # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
+    def _read_file(self, f: "pyarrow.NativeFile", path: str):
+        from pyarrow import json
+
+        return json.read_json(f, read_options=self.read_options, **self.arrow_json_args)
 
     def _write_block(
         self,

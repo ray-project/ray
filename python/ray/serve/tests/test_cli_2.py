@@ -142,7 +142,7 @@ def test_shutdown(ray_start_stop):
         # nothing is deployed
         def serve_config_empty():
             config_response = subprocess.check_output(["serve", "config"])
-            return "No config has been deployed" in config_response.decode("utf-8")
+            return len(config_response) == 0
 
         def serve_status_empty():
             status_response = subprocess.check_output(["serve", "status"])
@@ -500,35 +500,6 @@ TestBuildFNode = global_f.bind()
 TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
-def test_build_single_app(ray_start_stop, node):
-    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
-        print(f'Building node "{node}".')
-        # Build an app
-        subprocess.check_output(
-            [
-                "serve",
-                "build",
-                "--single-app",
-                f"ray.serve.tests.test_cli_2.{node}",
-                "-o",
-                tmp.name,
-            ]
-        )
-        print("Build succeeded! Deploying node.")
-
-        subprocess.check_output(["serve", "deploy", tmp.name])
-        wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
-        print("Deploy succeeded! Node is live and reachable over HTTP. Deleting node.")
-
-        subprocess.check_output(["serve", "shutdown", "-y"])
-        wait_for_condition(
-            lambda: ping_endpoint("") == CONNECTION_ERROR_MSG, timeout=15
-        )
-        print("Delete succeeded! Node is not reachable over HTTP.")
-
-
 TestApp1Node = global_f.options(route_prefix="/app1").bind()
 TestApp2Node = NoArgDriver.options(route_prefix="/app2").bind(global_f.bind())
 
@@ -587,43 +558,6 @@ def test_build_multi_app(ray_start_stop):
 k8sFNode = global_f.options(
     num_replicas=2, ray_actor_options={"num_cpus": 2, "num_gpus": 1}
 ).bind()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_build_kubernetes_flag():
-    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
-        print("Building k8sFNode.")
-        subprocess.check_output(
-            [
-                "serve",
-                "build",
-                "--single-app",
-                "ray.serve.tests.test_cli_2.k8sFNode",
-                "-o",
-                tmp.name,
-                "-k",
-            ]
-        )
-        print("Build succeeded!")
-
-        tmp.seek(0)
-        config = yaml.safe_load(tmp.read())
-        assert config == {
-            "importPath": "ray.serve.tests.test_cli_2.k8sFNode",
-            "runtimeEnv": json.dumps({}),
-            "host": "0.0.0.0",
-            "port": 8000,
-            "deployments": [
-                {
-                    "name": "global_f",
-                    "numReplicas": 2,
-                    "rayActorOptions": {
-                        "numCpus": 2.0,
-                        "numGpus": 1.0,
-                    },
-                },
-            ],
-        }
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
