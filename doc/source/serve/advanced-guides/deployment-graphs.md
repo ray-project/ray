@@ -1,9 +1,9 @@
 (serve-deployment-graphs)=
 
-# Experimental Deployment Graphs
+# Deployment Graphs (Deprecated)
 
 :::{note}
-The call graph is in **alpha**, so its APIs are subject to change.
+This API is **deprecated** and will be removed in an upcoming release. Please use the recommended [model composition pattern](https://docs.ray.io/en/latest/serve/model_composition.html) instead.
 :::
 
 For more advanced composition patterns, it can be useful to surface the relationships between deployments, instead of hiding them inside individual deployment definitions.
@@ -12,11 +12,11 @@ Ray Serve's **deployment graph API** lets you specify how to route requests thro
 
 ## Binding Deployments
 
-The basic building block for all deployment graphs is the `DeploymentNode`. One type of `DeploymentNode` is the `ClassNode`. You can create `ClassNodes` by binding class-based deployments to their constructor's arguments with the `bind` method. This may sound familiar because you've already been doing this whenever you bind and run class-based deployments, such as in the [Calling Deployments using ServeHandles](serve-model-composition-serve-handles) section.
+The basic building block for all deployment graphs is the `DeploymentNode`. One type of `DeploymentNode` is the `ClassNode`. You can create `ClassNodes` by binding class-based deployments to their constructor's arguments with the `bind` method. This binding may sound familiar because you do it whenever you bind and run class-based deployments, such as [calling deployments using DeploymentHandles](serve-model-composition-deployment-handles) section.
 
 As another example:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/language_example.py
 :start-after: __echo_class_start__
 :end-before: __echo_class_end__
 :language: python
@@ -44,9 +44,9 @@ You can try this example out using the `serve run` CLI:
 $ serve run echo:foo_node
 ```
 
-Here's a client script that can send requests to your node:
+This client script that can send requests to your node:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/language_example.py
 :start-after: __echo_client_start__
 :end-before: __echo_client_end__
 :language: python
@@ -112,10 +112,10 @@ To run the call graph, you need to use a driver. Drivers are deployments that pr
 graph = DAGDriver.bind(add_3_output)
 ```
 
-Generally, the `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of a graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` also deploys the rest of the graph's deployments.
+Generally, you need to bind the `DAGDriver` to the `FunctionNode` or `MethodNode` representing the final output of a graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` also deploys the rest of the graph's deployments.
 
 :::{note}
-The `DAGDriver` can also be bound to `ClassNodes`. This is useful if you construct a deployment graph where `ClassNodes` invoke other `ClassNodes`' methods. In this case, you should pass in the "root" `ClassNode` to `DAGDriver` (i.e. the one that you would otherwise pass into `serve.run`). Check out the [Calling Deployments using ServeHandles](serve-model-composition-serve-handles) section for more info.
+You can also bind the `DAGDriver` to `ClassNodes`. This approach is useful if you construct a deployment graph where `ClassNodes` invoke other `ClassNodes`' methods. In this case, you should pass in the "root" `ClassNode` to `DAGDriver` (that is, the one that you would otherwise pass into `serve.run`). See [Calling Deployments using DeploymentHandles](serve-model-composition-deployment-handles) for more information.
 :::
 
 You can test this example using this client script:
@@ -273,5 +273,3 @@ On the other hand, when the script visualizes the final graph output, `combine_o
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/visualize_full.svg)
 
-### Visualizing the Graph with Gradio
-Another option is to visualize your deployment graph through Gradio. Check out the [Graph Visualization with Gradio Tutorial](serve-gradio-dag-visualization) to learn how to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.

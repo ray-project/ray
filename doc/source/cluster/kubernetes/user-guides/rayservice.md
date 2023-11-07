@@ -1,6 +1,6 @@
 (kuberay-rayservice)=
 
-# RayService
+# Deploy Ray Serve Applications
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ Note that the YAML file in this example uses `serveConfigV2` to specify a multi-
 
 ```sh
 # Step 3.1: Download `ray_v1alpha1_rayservice.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0-rc.0/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
 
 # Step 3.2: Create a RayService
 kubectl apply -f ray_v1alpha1_rayservice.yaml
@@ -160,7 +160,7 @@ kubectl describe rayservices rayservice-sample
 kubectl port-forward svc/rayservice-sample-head-svc --address 0.0.0.0 8265:8265
 ```
 
-* See [rayservice-troubleshooting.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayservice-troubleshooting.md#observability) for more details on RayService observability.
+* See [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability.
 Below is a screenshot example of the Serve page in the Ray dashboard.
   ![Ray Serve Dashboard](../images/dashboard_serve.png)
 
@@ -186,7 +186,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 You can update the configurations for the applications by modifying `serveConfigV2` in the RayService config file. Reapplying the modified config with `kubectl apply` reapplies the new configurations to the existing RayCluster instead of creating a new RayCluster.
 
-Update the price of mangos from `3` to `4` for the fruit stand app in [ray_v1alpha1_rayservice.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml). This change reconfigures the existing MangoStand deployment, and future requests will use the updated Mango price.
+Update the price of mangos from `3` to `4` for the fruit stand app in [ray_v1alpha1_rayservice.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0-rc.0/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml). This change reconfigures the existing MangoStand deployment, and future requests will use the updated Mango price.
 
 ```sh
 # Step 7.1: Update the price of mangos from 3 to 4.

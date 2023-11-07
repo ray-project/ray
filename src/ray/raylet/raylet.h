@@ -30,6 +30,7 @@ namespace ray {
 namespace raylet {
 
 using rpc::GcsNodeInfo;
+using rpc::NodeSnapshot;
 
 class NodeManager;
 

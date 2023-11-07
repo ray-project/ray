@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray import train, tune
+import ray.cloudpickle as ray_pickle
 from ray.train import (
     Checkpoint,
     CheckpointConfig,
@@ -112,6 +113,37 @@ def _train_fn_sometimes_failing(config):
     state["it"] += 1
     with create_dict_checkpoint(state) as checkpoint:
         train.report(state, checkpoint=checkpoint)
+
+
+class _ClassTrainableSometimesFailing(Trainable):
+    def step(self):
+        # Fails if failing is set and marker file exists.
+        # Hangs if hanging is set and marker file exists.
+        failing, hanging = self.config["failing_hanging"]
+        num_epochs = self.config.get("num_epochs", 1)
+
+        # We fail after reporting num_epochs checkpoints.
+        if self.iteration == self.config.get("fail_epochs", 1):
+
+            if failing and failing.exists():
+                raise RuntimeError("I am failing")
+
+            if hanging and hanging.exists():
+                time.sleep(60)
+
+        print("Training iteration", self.iteration, "/", num_epochs)
+        return {
+            "it": self.iteration,
+            "done": self.iteration >= num_epochs,
+        }
+
+    def save_checkpoint(self, checkpoint_dir: str):
+        # ATTN: This is mirrored from `create_dict_checkpoint`
+        with open(os.path.join(checkpoint_dir, "data.pkl"), "wb") as f:
+            ray_pickle.dump({"it": self.iteration}, f)
+
+    def load_checkpoint(self, checkpoint):
+        print("Restored iteration", self.iteration)
 
 
 class _FailOnStats(Callback):
@@ -647,9 +679,6 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 @pytest.mark.parametrize("use_function_trainable", [True, False])
 def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_trainable):
     """Tests Tuner restoration for a `tune.with_parameters` wrapped trainable."""
-    if not use_function_trainable:
-        # TODO(justinvyu): [class_trainable]
-        pytest.skip("Class trainable not supported yet if FF is enabled.")
 
     def train_func(config, data_str=None, data_obj=None):
         assert data_str is not None and data_obj is not None
@@ -863,8 +892,8 @@ def test_custom_searcher_and_scheduler_restore(ray_start_2_cpus, tmpdir):
     )
 
 
-@pytest.mark.parametrize("use_air_trainer", [True, False])
-def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, use_air_trainer):
+@pytest.mark.parametrize("trainable_type", ["function", "class", "data_parallel"])
+def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, trainable_type):
     """Checkpoints saved after experiment restore should pick up at the correct
     iteration and should not overwrite the checkpoints from the original run.
     Old checkpoints should still be deleted if the total number of checkpoints
@@ -892,28 +921,35 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, use_air_trai
     fail_marker = tmp_path / "fail_marker"
     fail_marker.write_text("", encoding="utf-8")
 
-    trainable = (
-        DataParallelTrainer(
-            _train_fn_sometimes_failing, scaling_config=ScalingConfig(num_workers=1)
-        )
-        if use_air_trainer
-        else _train_fn_sometimes_failing
-    )
+    num_to_keep = 4
+    checkpoint_config = CheckpointConfig(num_to_keep=num_to_keep)
     param_space = {
         "failing_hanging": (fail_marker, None),
         "num_epochs": 2,
     }
-    if use_air_trainer:
-        param_space = {"train_loop_config": param_space}
 
-    num_to_keep = 4
+    if trainable_type == "function":
+        trainable = _train_fn_sometimes_failing
+    elif trainable_type == "class":
+        trainable = _ClassTrainableSometimesFailing
+        checkpoint_config.checkpoint_frequency = 1
+        param_space["num_epochs"] = 4
+        param_space["fail_epochs"] = 2
+    elif trainable_type == "data_parallel":
+        trainable = DataParallelTrainer(
+            _train_fn_sometimes_failing, scaling_config=ScalingConfig(num_workers=1)
+        )
+        param_space = {"train_loop_config": param_space}
+    else:
+        raise ValueError(f"Invalid trainable type: {trainable_type}")
+
     tuner = Tuner(
         trainable,
         tune_config=TuneConfig(num_samples=1),
         run_config=RunConfig(
             name="exp_name",
             storage_path=str(tmp_path),
-            checkpoint_config=CheckpointConfig(num_to_keep=num_to_keep),
+            checkpoint_config=checkpoint_config,
         ),
         param_space=param_space,
     )

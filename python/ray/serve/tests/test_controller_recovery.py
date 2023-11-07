@@ -2,25 +2,24 @@ import asyncio
 import os
 import sys
 import time
-import pytest
 from collections import defaultdict
 
+import pytest
+
 import ray
-from ray.exceptions import RayTaskError
-from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.util.state import list_actors
-
-
 from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
     SERVE_CONTROLLER_NAME,
-    SERVE_PROXY_NAME,
+    SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
 )
-from ray.serve.tests.test_failure import request_with_retries
 from ray.serve._private.utils import get_random_letters
+from ray.serve.tests.test_failure import request_with_retries
+from ray.util.state import list_actors
 
 
 def test_recover_start_from_replica_actor_names(serve_instance):

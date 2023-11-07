@@ -151,6 +151,9 @@ message NodeState {
 
   // Ray node kind.
   RayNodeKind ray_node_kind = 12;
+
+  // Observability debug string describing why the node is not idle.
+  repeated string node_activity = 13;
 }
 
 // ============= Autoscaling State Service API =======================

@@ -1,29 +1,22 @@
+import logging
 from collections import defaultdict
 from io import BytesIO
-import logging
 from pydoc import locate
 from typing import Any, Dict, Optional
 
 import ray
 from ray import cloudpickle
-from ray.experimental.gradio_utils import type_to_string
-
-from ray.dag import (
-    DAGNode,
-    InputNode,
-    InputAttributeNode,
-)
+from ray.dag import DAGNode, InputAttributeNode, InputNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.dag.vis_utils import _dag_to_dot
-
-from ray.serve.handle import RayServeHandle
+from ray.experimental.gradio_utils import type_to_string
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
 from ray.serve._private.deployment_method_executor_node import (
     DeploymentMethodExecutorNode,
 )
-
+from ray.serve.handle import RayServeHandle
 
 logger = logging.getLogger(__name__)
 _gradio = None

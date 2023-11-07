@@ -32,7 +32,7 @@ import psutil
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
-    from ray.rllib.evaluation import RolloutWorker
+    from ray.rllib.evaluation import RolloutWorker, WorkerSet
 
 
 @PublicAPI
@@ -64,10 +64,91 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         algorithm: "Algorithm",
         **kwargs,
     ) -> None:
-        """Callback run when a new algorithm instance has finished setup.
+        """Callback run when a new Algorithm instance has finished setup.
 
         This method gets called at the end of Algorithm.setup() after all
         the initialization is done, and before actually training starts.
+
+        Args:
+            algorithm: Reference to the Algorithm instance.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_workers_recreated(
+        self,
+        *,
+        algorithm: "Algorithm",
+        worker_set: "WorkerSet",
+        worker_ids: List[int],
+        is_evaluation: bool,
+        **kwargs,
+    ) -> None:
+        """Callback run after one or more workers have been recreated.
+
+        You can access (and change) the worker(s) in question via the following code
+        snippet inside your custom override of this method:
+
+        Note that any "worker" inside the algorithm's `self.worker` and
+        `self.evaluation_workers` WorkerSets are instances of a subclass of EnvRunner.
+
+        .. testcode::
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks
+
+            class MyCallbacks(DefaultCallbacks):
+                def on_workers_recreated(
+                    self,
+                    *,
+                    algorithm,
+                    worker_set,
+                    worker_ids,
+                    is_evaluation,
+                    **kwargs,
+                ):
+                    # Define what you would like to do on the recreated
+                    # workers:
+                    def func(w):
+                        # Here, we just set some arbitrary property to 1.
+                        if is_evaluation:
+                            w._custom_property_for_evaluation = 1
+                        else:
+                            w._custom_property_for_training = 1
+
+                    # Use the `foreach_workers` method of the worker set and
+                    # only loop through those worker IDs that have been restarted.
+                    # Note that we set `local_worker=False` to NOT include it (local
+                    # workers are never recreated; if they fail, the entire Algorithm
+                    # fails).
+                    worker_set.foreach_worker(
+                        func,
+                        remote_worker_ids=worker_ids,
+                        local_worker=False,
+                    )
+
+        Args:
+            algorithm: Reference to the Algorithm instance.
+            worker_set: The WorkerSet object in which the workers in question reside.
+                You can use a `worker_set.foreach_worker(remote_worker_ids=...,
+                local_worker=False)` method call to execute custom
+                code on the recreated (remote) workers. Note that the local worker is
+                never recreated as a failure of this would also crash the Algorithm.
+            worker_ids: The list of (remote) worker IDs that have been recreated.
+            is_evaluation: Whether `worker_set` is the evaluation WorkerSet (located
+                in `Algorithm.evaluation_workers`) or not.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_checkpoint_loaded(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        """Callback run when an Algorithm has loaded a new state from a checkpoint.
+
+        This method gets called at the end of `Algorithm.load_checkpoint()`.
 
         Args:
             algorithm: Reference to the Algorithm instance.
@@ -81,7 +162,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         Args:
             policy_id: ID of the newly created policy.
-            policy: the policy just created.
+            policy: The policy just created.
         """
         pass
 
@@ -476,6 +557,16 @@ def make_multi_callbacks(
         def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
             for callback in self._callback_list:
                 callback.on_algorithm_init(algorithm=algorithm, **kwargs)
+
+        @override(DefaultCallbacks)
+        def on_workers_recreated(self, **kwargs) -> None:
+            for callback in self._callback_list:
+                callback.on_workers_recreated(**kwargs)
+
+        @override(DefaultCallbacks)
+        def on_checkpoint_loaded(self, *, algorithm: "Algorithm", **kwargs) -> None:
+            for callback in self._callback_list:
+                callback.on_checkpoint_loaded(algorithm=algorithm, **kwargs)
 
         @override(DefaultCallbacks)
         def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:

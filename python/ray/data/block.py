@@ -1,6 +1,5 @@
 import collections
 import os
-import sys
 import time
 from dataclasses import dataclass
 from typing import (
@@ -9,7 +8,9 @@ from typing import (
     Dict,
     Iterator,
     List,
+    Literal,
     Optional,
+    Protocol,
     Tuple,
     TypeVar,
     Union,
@@ -29,11 +30,6 @@ try:
     import resource
 except ImportError:
     resource = None
-
-if sys.version_info >= (3, 8):
-    from typing import Literal, Protocol
-else:
-    from typing_extensions import Literal, Protocol
 
 if TYPE_CHECKING:
     import pandas

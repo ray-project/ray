@@ -116,7 +116,7 @@ def test_dataset(
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
-    block_size = 1024
+    block_size = target_max_block_size
     num_tasks = 10
 
     ds = ray.data.read_datasource(
@@ -131,11 +131,13 @@ def test_dataset(
     assert ds.num_blocks() == num_tasks
     assert ds.size_bytes() >= 0.7 * block_size * num_blocks_per_task * num_tasks
 
+    # Too-large blocks will get split to respect target max block size.
     map_ds = ds.map_batches(lambda x: x, compute=compute)
     map_ds = map_ds.materialize()
-    assert map_ds.num_blocks() == num_tasks
+    assert map_ds.num_blocks() == num_tasks * num_blocks_per_task
+    # Blocks smaller than requested batch size will get coalesced.
     map_ds = ds.map_batches(
-        lambda x: x, batch_size=num_blocks_per_task * num_tasks, compute=compute
+        lambda x: {}, batch_size=num_blocks_per_task * num_tasks, compute=compute
     )
     map_ds = map_ds.materialize()
     assert map_ds.num_blocks() == 1
@@ -171,35 +173,6 @@ def test_dataset(
     assert len(ds.take_all()) == num_blocks_per_task * num_tasks
     for batch in ds.iter_batches(batch_size=10):
         assert len(batch["one"]) == 10
-
-
-def test_dataset_pipeline(ray_start_regular_shared, target_max_block_size):
-    # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
-    # row has 1024 bytes.
-    num_blocks_per_task = 10
-    block_size = 1024
-    num_tasks = 10
-
-    ds = ray.data.read_datasource(
-        RandomBytesDatasource(),
-        parallelism=num_tasks,
-        num_blocks_per_task=num_blocks_per_task,
-        block_size=block_size,
-    )
-    dsp = ds.window(blocks_per_window=2)
-    assert dsp._length == num_tasks / 2
-
-    dsp = dsp.map_batches(lambda x: x)
-    result_batches = list(ds.iter_batches(batch_size=5))
-    for batch in result_batches:
-        assert len(batch["one"]) == 5
-    assert len(result_batches) == num_blocks_per_task * num_tasks / 5
-
-    dsp = ds.window(blocks_per_window=2)
-    assert dsp._length == num_tasks / 2
-
-    dsp = ds.repeat().map_batches(lambda x: x)
-    assert len(dsp.take(5)) == 5
 
 
 def test_filter(ray_start_regular_shared, target_max_block_size):

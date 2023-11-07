@@ -4,14 +4,11 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.bc as bc
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
     framework_iterator,
 )
-
-tf1, tf, tfv = try_import_tf()
 
 
 class TestBC(unittest.TestCase):
@@ -29,10 +26,11 @@ class TestBC(unittest.TestCase):
         And learns from a historic-data file (while being evaluated on an
         actual env using evaluation_num_workers > 0).
         """
-        rllib_dir = Path(__file__).parent.parent.parent.parent
-        print("rllib dir={}".format(rllib_dir))
+        rllib_dir = Path(__file__).parents[3]
+        print("rllib_dir={}".format(rllib_dir))
+        # This has still to be done until `pathlib` will be used in the readers.
         data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
+        print(f"data_file={data_file} exists={os.path.isfile(data_file)}")
 
         config = (
             bc.BCConfig()
@@ -48,33 +46,57 @@ class TestBC(unittest.TestCase):
         num_iterations = 350
         min_reward = 75.0
 
-        # Test for all frameworks.
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            algo = config.build(env="CartPole-v1")
-            learnt = False
-            for i in range(num_iterations):
-                results = algo.train()
-                check_train_results(results)
-                print(results)
+        # Test for RLModule API and ModelV2.
+        for rl_modules in [True, False]:
+            config.rl_module(_enable_rl_module_api=rl_modules).training(
+                _enable_learner_api=rl_modules
+            )
+            # Old and new stack support different frameworks
+            if rl_modules:
+                frameworks_to_test = ("torch", "tf2")
+            else:
+                frameworks_to_test = ("torch", "tf")
 
-                eval_results = results.get("evaluation")
-                if eval_results:
-                    print("iter={} R={}".format(i, eval_results["episode_reward_mean"]))
-                    # Learn until good reward is reached in the actual env.
-                    if eval_results["episode_reward_mean"] > min_reward:
-                        print("learnt!")
-                        learnt = True
-                        break
+            for _ in framework_iterator(config, frameworks=frameworks_to_test):
+                for recurrent in [True, False]:
+                    # We only test recurrent networks with RLModules.
+                    if recurrent:
+                        # TODO (Artur): We read input data without a time-dimensions.
+                        #  In order for a recurrent offline learning RL Module to
+                        #  work, the input data needs to be transformed do add a
+                        #  time-dimension.
+                        continue
 
-            if not learnt:
-                raise ValueError(
-                    "`BC` did not reach {} reward from expert offline "
-                    "data!".format(min_reward)
-                )
+                    config.training(model={"use_lstm": recurrent})
+                    algo = config.build(env="CartPole-v1")
+                    learnt = False
+                    for i in range(num_iterations):
+                        results = algo.train()
+                        check_train_results(results)
+                        print(results)
 
-            check_compute_single_action(algo, include_prev_action_reward=True)
+                        eval_results = results.get("evaluation")
+                        if eval_results:
+                            print(
+                                "iter={} R={}".format(
+                                    i, eval_results["episode_reward_mean"]
+                                )
+                            )
+                            # Learn until good reward is reached in the actual env.
+                            if eval_results["episode_reward_mean"] > min_reward:
+                                print("learnt!")
+                                learnt = True
+                                break
 
-            algo.stop()
+                    if not learnt:
+                        raise ValueError(
+                            "`BC` did not reach {} reward from expert offline "
+                            "data!".format(min_reward)
+                        )
+
+                    check_compute_single_action(algo, include_prev_action_reward=True)
+
+                    algo.stop()
 
 
 if __name__ == "__main__":

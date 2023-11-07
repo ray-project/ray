@@ -1,6 +1,7 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml
-ARG ARROW_VERSION
 FROM $DOCKER_IMAGE_BASE_BUILD
+
+ARG ARROW_VERSION
 
 # Unset dind settings; we are using the host's docker daemon.
 ENV DOCKER_TLS_CERTDIR=

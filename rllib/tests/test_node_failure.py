@@ -62,7 +62,7 @@ class NodeFailureTests(unittest.TestCase):
         ppo = PPO(config=config, env="CartPole-v1")
 
         # One step with all nodes up, enough to satisfy resource requirements
-        ppo.step()
+        ppo.train()
 
         self.assertEqual(ppo.workers.num_healthy_remote_workers(), 6)
         self.assertEqual(ppo.workers.num_remote_workers(), 6)
@@ -72,7 +72,7 @@ class NodeFailureTests(unittest.TestCase):
         self.cluster.remove_node(node_to_kill)
 
         # step() should continue with 4 rollout workers.
-        ppo.step()
+        ppo.train()
 
         self.assertEqual(ppo.workers.num_healthy_remote_workers(), 4)
         self.assertEqual(ppo.workers.num_remote_workers(), 6)
@@ -103,7 +103,7 @@ class NodeFailureTests(unittest.TestCase):
         # This step should continue with 4 workers, but by the end
         # of weight syncing, the 2 recovered rollout workers should
         # be back.
-        ppo.step()
+        ppo.train()
 
         # Workers should be back up, everything back to normal.
         self.assertEqual(ppo.workers.num_healthy_remote_workers(), 6)

@@ -307,33 +307,33 @@ class TfMultiCategorical(Distribution):
     @override(Distribution)
     def sample(self) -> TensorType:
         arr = [cat.sample() for cat in self._cats]
-        sample_ = tf.stack(arr, axis=1)
+        sample_ = tf.stack(arr, axis=-1)
         return sample_
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
         arr = [cat.rsample() for cat in self._cats]
-        sample_ = tf.stack(arr, axis=1)
+        sample_ = tf.stack(arr, axis=-1)
         return sample_
 
     @override(Distribution)
     def logp(self, value: tf.Tensor) -> TensorType:
-        actions = tf.unstack(tf.cast(value, tf.int32), axis=1)
+        actions = tf.unstack(tf.cast(value, tf.int32), axis=-1)
         logps = tf.stack([cat.logp(act) for cat, act in zip(self._cats, actions)])
         return tf.reduce_sum(logps, axis=0)
 
     @override(Distribution)
     def entropy(self) -> TensorType:
         return tf.reduce_sum(
-            tf.stack([cat.entropy() for cat in self._cats], axis=1), axis=1
+            tf.stack([cat.entropy() for cat in self._cats], axis=-1), axis=-1
         )
 
     @override(Distribution)
     def kl(self, other: Distribution) -> TensorType:
         kls = tf.stack(
-            [cat.kl(oth_cat) for cat, oth_cat in zip(self._cats, other.cats)], axis=1
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self._cats, other._cats)], axis=-1
         )
-        return tf.reduce_sum(kls, axis=1)
+        return tf.reduce_sum(kls, axis=-1)
 
     @staticmethod
     @override(Distribution)
@@ -347,7 +347,6 @@ class TfMultiCategorical(Distribution):
         cls,
         logits: tf.Tensor,
         input_lens: List[int],
-        temperatures: List[float] = None,
         **kwargs,
     ) -> "TfMultiCategorical":
         """Creates this Distribution from logits (and additional arguments).
@@ -361,17 +360,11 @@ class TfMultiCategorical(Distribution):
                 be instantiated from the given logits.
             input_lens: A list of integers that indicate the length of the logits
                 vectors to be passed into each child distribution.
-            temperatures: A list of floats representing the temperature to use for
-                each Categorical distribution. If not provided, 1.0 is used for all.
             **kwargs: Forward compatibility kwargs.
         """
-        if not temperatures:
-            # If temperatures are not provided, use 1.0 for all actions.
-            temperatures = [1.0] * len(input_lens)
-
         categoricals = [
             TfCategorical(logits=logits)
-            for logits in tf.split(logits, input_lens, axis=1)
+            for logits in tf.split(logits, input_lens, axis=-1)
         ]
 
         return TfMultiCategorical(categoricals=categoricals)
@@ -422,11 +415,8 @@ class TfMultiDistribution(Distribution):
             for dist in self._flat_child_distributions:
                 if isinstance(dist, TfCategorical):
                     split_indices.append(1)
-                elif (
-                    isinstance(dist, TfMultiCategorical)
-                    and dist.action_space is not None
-                ):
-                    split_indices.append(np.prod(dist.action_space.shape))
+                elif isinstance(dist, TfMultiCategorical):
+                    split_indices.append(len(dist._cats))
                 else:
                     sample = dist.sample()
                     # Cover Box(shape=()) case.

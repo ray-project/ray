@@ -158,7 +158,7 @@ class FaultAwareApply:
         *args,
         **kwargs,
     ) -> T:
-        """Calls the given function with this rollout worker instance.
+        """Calls the given function with this Actor instance.
 
         A generic interface for applying arbitray member functions on a
         remote actor.
@@ -175,12 +175,14 @@ class FaultAwareApply:
         try:
             return func(self, *args, **kwargs)
         except Exception as e:
+            # Actor should be recreated by Ray.
             if self.config.recreate_failed_workers:
                 logger.exception("Worker exception, recreating: {}".format(e))
                 # Small delay to allow logs messages to propagate.
                 time.sleep(self.config.delay_between_worker_restarts_s)
                 # Kill this worker so Ray Core can restart it.
                 sys.exit(1)
+            # Actor should be left dead.
             else:
                 raise e
 
@@ -738,7 +740,7 @@ class FaultTolerantActorManager:
             timeout_seconds: Ray.get() timeout. Default is 0 (only those that are
                 already ready).
             tags: A tag or a list of tags to identify the results from this async call.
-            return_obj_refs: whether to return ObjectRef instead of actual results.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
             mark_healthy: whether to mark certain actors healthy based on the results
                 of these remote calls. Useful, for example, to make sure actors
                 do not come back without proper state restoration.

@@ -7,8 +7,8 @@ import pytest
 import requests
 
 import ray
-from ray._private.test_utils import run_string_as_driver
 from ray import serve
+from ray._private.test_utils import run_string_as_driver
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -76,17 +76,17 @@ ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
-@serve.deployment(name="test1", route_prefix="/hello")
+@serve.deployment
 def f(*args):
     return "hello"
 
-f.deploy()
+serve.run(f.bind(), name="test1", route_prefix="/hello")
 """.format(
         ray_client_instance
     )
     run_string_as_driver(deploy)
 
-    assert "test1" in serve.list_deployments()
+    assert "test1" in serve.status().applications
     assert requests.get("http://localhost:8000/hello").text == "hello"
 
     delete = """
@@ -95,13 +95,13 @@ ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
-serve.get_deployment("test1").delete()
+serve.delete("test1")
 """.format(
         ray_client_instance
     )
     run_string_as_driver(delete)
 
-    assert "test1" not in serve.list_deployments()
+    assert "test1" not in serve.status().applications
 
     fastapi = """
 import ray
@@ -121,7 +121,7 @@ def hello():
 class A:
     pass
 
-A.deploy()
+serve.run(A.bind(), route_prefix="/A")
 """.format(
         ray_client_instance
     )

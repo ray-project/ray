@@ -23,5 +23,6 @@ post_build_cmds:
   - echo "mkdir -p /mnt/local_storage" >> ~/.bashrc
   - echo "sudo chmod 0777 /mnt/local_storage" >> ~/.bashrc
   - echo "sudo mount /dev/nvme1n1 /mnt/local_storage || true" >> ~/.bashrc
+  - pip3 uninstall -y pytorch-lightning
   - pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-  - pip3 install "pytorch_lightning==2.0.3" "transformers==4.30.2" "accelerate==0.20.3" "deepspeed==0.9.4"
+  - pip3 install "lightning==2.0.3" "transformers==4.30.2" "accelerate==0.20.3" "deepspeed==0.9.4"

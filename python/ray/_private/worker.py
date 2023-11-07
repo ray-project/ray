@@ -37,10 +37,7 @@ from urllib.parse import urlparse
 import colorama
 import setproctitle
 
-if sys.version_info >= (3, 8):
-    from typing import Literal, Protocol
-else:
-    from typing_extensions import Literal, Protocol
+from typing import Literal, Protocol
 
 import ray
 import ray._private.node
@@ -59,6 +56,7 @@ import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._raylet import StreamingObjectRefGenerator
+from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -428,8 +426,8 @@ class Worker:
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
         # environment variables.
-        self.original_gpu_and_accelerator_runtime_ids = (
-            ray._private.utils.get_gpu_and_accelerator_runtime_ids()
+        self.original_visible_accelerator_ids = (
+            ray._private.utils.get_visible_accelerator_ids()
         )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -495,6 +493,12 @@ class Worker:
         return ActorID.nil()
 
     @property
+    def actor_name(self):
+        if hasattr(self, "core_worker"):
+            return self.core_worker.get_actor_name().decode("utf-8")
+        return None
+
+    @property
     def current_task_id(self):
         return self.core_worker.get_current_task_id()
 
@@ -552,6 +556,9 @@ class Worker:
             # https://github.com/ray-project/ray/issues/35598
             return
 
+        if not hasattr(self, "core_worker"):
+            return
+
         self.core_worker.record_task_log_start(
             self.get_out_file_path(),
             self.get_err_file_path(),
@@ -567,6 +574,9 @@ class Worker:
             # Recording actor task log is expensive and should be enabled only
             # when needed.
             # https://github.com/ray-project/ray/issues/35598
+            return
+
+        if not hasattr(self, "core_worker"):
             return
 
         self.core_worker.record_task_log_end(
@@ -835,24 +845,22 @@ class Worker:
             # Close the pubsub client to avoid leaking file descriptors.
             subscriber.close()
 
-    def get_resource_ids_for_resource(
+    def get_accelerator_ids_for_accelerator_resource(
         self, resource_name: str, resource_regex: str
-    ) -> Union[List[str], List[int]]:
-        """Get the resource IDs that are assigned to the given resource.
+    ) -> List[str]:
+        """Get the accelerator IDs that are assigned to the given accelerator resource.
 
         Args:
             resource_name: The name of the resource.
             resource_regex: The regex of the resource.
 
         Returns:
-            (List[str]) The IDs that are assigned to the given resource pre-configured.
-            (List[int]) The IDs that are assigned to the given resource.
-
+            (List[str]) The IDs that are assigned to the given resource.
         """
         resource_ids = self.core_worker.resource_ids()
         assigned_ids = set()
-        # Handle both normal and placement group GPU, accelerator resources.
-        # Note: We should only get the GPU, accelerator ids from the placement
+        # Handle both normal and placement group accelerator resources.
+        # Note: We should only get the accelerator ids from the placement
         # group resource that does not contain the bundle index!
         import re
 
@@ -865,23 +873,20 @@ class Worker:
         # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
         # respect that in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
-        if (
-            self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
-            is not None
-        ):
-            runtime_ids = self.original_gpu_and_accelerator_runtime_ids[resource_name]
-            assigned_ids = [str(runtime_ids[i]) for i in assigned_ids]
-            # Give all accelerator ids local_mode.
+        if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
+            original_ids = self.original_visible_accelerator_ids[resource_name]
+            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            # Give all accelerator ids in local_mode.
             if self.mode == LOCAL_MODE:
                 if resource_name == ray_constants.GPU:
-                    max_runtime_ids = self.node.get_resource_spec().num_gpus
+                    max_accelerators = self.node.get_resource_spec().num_gpus
                 else:
-                    max_runtime_ids = self.node.get_resource_spec().resources.get(
+                    max_accelerators = self.node.get_resource_spec().resources.get(
                         resource_name, None
                     )
-                if max_runtime_ids:
-                    assigned_ids = runtime_ids[:max_runtime_ids]
-        return list(assigned_ids)
+                if max_accelerators:
+                    assigned_ids = original_ids[:max_accelerators]
+        return [str(assigned_id) for assigned_id in assigned_ids]
 
 
 @PublicAPI
@@ -899,9 +904,12 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return worker.get_resource_ids_for_resource(
-        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-    )
+    return [
+        int(i)
+        for i in worker.get_accelerator_ids_for_accelerator_resource(
+            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+        )
+    ]
 
 
 @Deprecated(
@@ -1152,6 +1160,7 @@ def init(
     This method handles two cases; either a Ray cluster already exists and we
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
+    Note: This method overwrite sigterm handler of the driver process.
 
     In most cases, it is enough to just call this method with no arguments.
     This will autodetect an existing Ray cluster or start a new Ray instance if
@@ -1320,16 +1329,27 @@ def init(
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
 
+    # terminate any signal before connecting driver
+    def sigterm_handler(signum, frame):
+        sys.exit(signum)
+
+    if threading.current_thread() is threading.main_thread():
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
+    else:
+        logger.warning(
+            "SIGTERM handler is not set because current thread "
+            "is not the main thread."
+        )
+
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
     address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if address_env_var:
-        if address is None or address == "auto":
-            address = address_env_var
-            logger.info(
-                f"Using address {address_env_var} set in the environment "
-                f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
-            )
+    if address_env_var and (address is None or address == "auto"):
+        address = address_env_var
+        logger.info(
+            f"Using address {address_env_var} set in the environment "
+            f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
+        )
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
@@ -1411,29 +1431,35 @@ def init(
         job_config = ray.job_config.JobConfig()
 
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
-        if runtime_env:
-            logger.warning(
-                "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
-                "are provided, only using JSON_ENV_VAR to construct "
-                "job_config. Please ensure no runtime_env is used in driver "
-                "script's ray.init() when using job submission API."
-            )
         injected_job_config_json = json.loads(
             os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR)
         )
         injected_job_config: ray.job_config.JobConfig = (
             ray.job_config.JobConfig.from_json(injected_job_config_json)
         )
-        # NOTE: We always prefer runtime_env injected via RAY_JOB_CONFIG_JSON_ENV_VAR,
-        #       as compared to via ray.init(runtime_env=...) to make sure runtime_env
-        #       specified via job submission API takes precedence
-        runtime_env = injected_job_config.runtime_env
+        driver_runtime_env = runtime_env
+        runtime_env = _merge_runtime_env(
+            injected_job_config.runtime_env,
+            driver_runtime_env,
+            override=os.getenv("RAY_OVERRIDE_JOB_RUNTIME_ENV") == "1",
+        )
+        if runtime_env is None:
+            # None means there was a conflict.
+            raise ValueError(
+                "Failed to merge the Job's runtime env "
+                f"{injected_job_config.runtime_env} with "
+                f"a ray.init's runtime env {driver_runtime_env} because "
+                "of a conflict. Specifying the same runtime_env fields "
+                "or the same environment variable keys is not allowed. "
+                "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
+                "combine Job and Driver's runtime environment in the event of "
+                "a conflict."
+            )
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
-
         job_config.set_runtime_env(runtime_env)
         # Similarly, we prefer metadata provided via job submission API
         for key, value in injected_job_config.metadata.items():
@@ -1738,20 +1764,6 @@ def shutdown(_exiting_interpreter: bool = False):
 
 atexit.register(shutdown, True)
 
-
-# TODO(edoakes): this should only be set in the driver.
-def sigterm_handler(signum, frame):
-    sys.exit(signum)
-
-
-try:
-    ray._private.utils.set_sigterm_handler(sigterm_handler)
-except ValueError:
-    logger.warning(
-        "Failed to set SIGTERM handler, processes might"
-        "not be cleaned up properly on exit."
-    )
-
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
 normal_excepthook = sys.excepthook
@@ -1915,9 +1927,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
-                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+                return colorama.Fore.YELLOW
             else:
-                return colorama.Style.BRIGHT + colorama.Fore.CYAN
+                return colorama.Fore.CYAN
         elif os.getenv("RAY_COLOR_PREFIX") == "1":
             colors = [
                 # colorama.Fore.BLUE, # Too dark
@@ -1957,8 +1969,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,
@@ -1974,8 +1985,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 hide_tqdm()
                 print(
-                    "{}{}({}{}, ip={}){} {}".format(
-                        colorama.Style.DIM,
+                    "{}({}{}, ip={}){} {}".format(
                         color_for(data, line),
                         prefix_for(data),
                         pid,

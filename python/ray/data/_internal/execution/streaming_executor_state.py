@@ -13,6 +13,7 @@ import ray
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -138,7 +139,7 @@ class OpState:
         enabled = verbose_progress or is_all_to_all
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
-            self.op.num_outputs_total() or 1,
+            self.op.num_outputs_total(),
             index,
             enabled=enabled,
         )
@@ -170,7 +171,7 @@ class OpState:
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
-            self.progress_bar.update(1)
+            self.progress_bar.update(1, self.op._estimated_output_blocks)
 
     def refresh_progress_bar(self) -> None:
         """Update the console with the latest operator progress."""
@@ -377,6 +378,7 @@ def select_operator_to_run(
     topology: Topology,
     cur_usage: TopologyResourceUsage,
     limits: ExecutionResources,
+    backpressure_policies: List[BackpressurePolicy],
     ensure_at_least_one_running: bool,
     execution_id: str,
     autoscaling_state: AutoscalingState,
@@ -406,6 +408,7 @@ def select_operator_to_run(
             and op.should_add_input()
             and under_resource_limits
             and not op.completed()
+            and all(p.can_run(op) for p in backpressure_policies)
         ):
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.

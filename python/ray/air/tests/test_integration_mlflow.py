@@ -8,9 +8,8 @@ from unittest.mock import patch
 from mlflow.tracking import MlflowClient
 
 from ray._private.dict import flatten_dict
-from ray.train._internal.session import init_session
+from ray.train._internal.session import init_session, shutdown_session
 from ray.train._internal.storage import StorageContext
-from ray.tune.trainable.session import _shutdown as tune_session_shutdown
 from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow, _NoopModule
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 
@@ -50,8 +49,8 @@ class MLflowTest(unittest.TestCase):
         assert client.get_experiment_by_name("existing_experiment").experiment_id == "1"
 
     def tearDown(self) -> None:
-        # Remove tune session if initialized to clean up for next test
-        tune_session_shutdown()
+        # Shutdown session to clean up for next test
+        shutdown_session()
 
     def testMlFlowLoggerCallbackConfig(self):
         # Explicitly pass in all args.

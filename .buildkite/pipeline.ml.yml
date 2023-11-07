@@ -1,151 +1,17 @@
 #ci:group=ML tests
 
-- label: ":airplane: AIR tests (ray/air)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
-  instance_size: large
+- label: ":train: :key: Train examples with authentication"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_BRANCH_BUILD"]
+  instance_size: medium
   commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - if [[ "$BUILDKITE_PIPELINE_ID" != "0183465b-c6fb-479b-8577-4cfd743b545d" ]]; then exit 0; fi
+    - trap ./ci/build/upload_build_info.sh EXIT
+    - TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu,-hdfs
-      python/ray/air/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air 
-      python/ray/data/...
-
-- label: ":airplane: AIR/ML release smoke tests"
-  conditions:
-    [
-        "NO_WHEELS_REQUIRED",
-        "RAY_CI_RELEASE_TESTS_AFFECTED",
-        "RAY_CI_ML_AFFECTED",
-        "RAY_CI_PYTHON_AFFECTED",
-    ]
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=team:ml
-      release/...
-
-
-- label: ":steam_locomotive: Train tests and examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
-  instance_size: large
-  parallelism: 4
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    # Todo (krfricke): Move mosaicml to train-test-requirements.txt
-    - pip install "mosaicml==0.12.1"
-    - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh
-      --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-needs_credentials
+    - $(python ci/env/setup_credentials.py)
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials 
+      --test_env=WANDB_API_KEY --test_env=COMET_API_KEY
       python/ray/train/...
-
-- label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only,-ray_air,-gpu,-doctest,-needs_credentials python/ray/train/...
-
-# - label: ":train: :key: Train examples with authentication"
-#   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_BRANCH_BUILD"]
-#   instance_size: medium
-#   commands:
-#     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-#     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-#     - TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
-#     - ./ci/env/env_info.sh
-#     - credentials=$(python ./ci/env/setup_credentials.py)
-#     - credential_exit_code=$$?
-#     - if [ $credential_exit_code -eq 0 ]; then echo "Credentials are fetched successfully"; bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials 
-#       python/ray/train/... $credentials; else echo "Credentials cannot be fetched"; exit 1; fi
-
-- label: ":brain: RLlib: Benchmarks (Torch 2.x)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    # Install torch 2.x locally until we move to torch 2.x in the CI.
-    - pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=torch_2.x_only_benchmark
-      rllib/...
-
-- label: ":brain: RLlib: Learning tests TF2-static-graph"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
-  parallelism: 3
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous,-fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph
-      --test_arg=--framework=tf rllib/...
-
-- label: ":brain: RLlib: Learning tests TF2-eager-tracing"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
-  parallelism: 3
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_discrete,learning_tests_continuous,crashing_cartpole,stateless_cartpole,-fake_gpus,-torch_only,-multi_gpu,-no_tf_eager_tracing
-      --test_arg=--framework=tf2 rllib/...
-
-- label: ":brain: RLlib: Learning tests PyTorch"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
-  parallelism: 3
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous,-fake_gpus,-tf_only,-tf2_only,-multi_gpu
-      --test_arg=--framework=torch rllib/...
-
-- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs TF2-static-graph"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph,-multi_gpu
-      --test_arg=--framework=tf
-      rllib/...
-
-# TODO: (sven) tf2 (eager) multi-GPU
-- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs PyTorch"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=fake_gpus,-tf_only,-tf2_only,-multi_gpu
-      --test_arg=--framework=torch
-      rllib/...
 
 - label: ":brain: RLlib: Memory leak tests TF2-eager-tracing"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
@@ -173,103 +39,6 @@
       --test_arg=--framework=torch
       rllib/...
 
-- label: ":brain: RLlib: Learning tests Pytorch (With Ray Data)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
-  instance_size: large
-  commands:
-    # skip on master because we are running these test under all RLlib suites anyw/ay
-    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-tf_only,-tf2_only
-      --test_arg=--framework=torch
-      rllib/...
-
-
-- label: ":brain: RLlib: Learning tests TF2 (With Ray Data)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
-  instance_size: large
-  commands:
-    # skip on master because we are running these test under all RLlib suites anyw/ay
-    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-torch_only
-      --test_arg=--framework=tf2
-      rllib/...
-
-- label: ":brain: RLlib: Unit-tests (With Ray Data)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
-  instance_size: large
-  commands:
-    # skip on master because we are running these test under all RLlib suites anyw/ay
-    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=ray_data,-learning_tests_with_ray_data,-multi_gpu,-gpu
-      rllib/...
-
-- label: ":brain: RLlib: Algorithm, Model and other tests"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  parallelism: 4
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-no_cpu,-torch_2.x_only_benchmark
-      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
-      rllib/...
-
-- label: ":brain: RLlib: RLModule tests"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  parallelism: 4
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=rlm
-      --test_env=RLLIB_ENABLE_RL_MODULE=1
-      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-
-- label: ":brain: RLlib: Examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
-  parallelism: 5
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples,-multi_gpu,-gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-
-- label: ":brain: RLlib: tests/ dir"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  parallelism: 2
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-
 - label: ":brain: RLlib: Documentation code/examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   instance_size: medium
@@ -281,80 +50,6 @@
       --test_tag_filters=documentation --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":octopus: Tune tests and examples (small)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: small
-  parallelism: 3
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh
-      --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
-      python/ray/tune/...
-
-- label: ":octopus: Tune tests and examples (medium)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
-      python/ray/tune/...
-
-- label: ":octopus: :spiral_note_pad: New output: Tune tests and examples (small)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: small
-  parallelism: 3
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh
-      --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
-      --test_env=AIR_VERBOSITY=1
-      python/ray/tune/...
-
-- label: ":octopus: :spiral_note_pad: New output: Tune tests and examples (medium)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
-      --test_env=AIR_VERBOSITY=1
-      python/ray/tune/...
-
-
-- label: ":octopus: :brain: Tune tests and examples {using RLlib}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_RLLIB_AFFECTED"]
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu_only,rllib
-      python/ray/tune/...
-
-- label: ":octopus: ML library integrations tests and examples."
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: small
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only 
-      python/ray/tests/xgboost/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only 
-      python/ray/tests/horovod/...
-
-
 # TODO(amogkam): Re-enable Ludwig tests after Ludwig supports Ray 2.0
 #- label: ":octopus: Ludwig tests and examples. Python 3.7"
 #  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
@@ -363,18 +58,14 @@
 #    - INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
 #    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/ludwig/...
 
-- label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
+- label: ":tropical_fish: ML Libraries w/ Ray Client."
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
-      --test_tag_filters=client
-      python/ray/tune/...
 
 - label: ":potable_water: Dataset library integrations tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
@@ -392,6 +83,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-java.sh
+    # TODO(scottjlee): upgrade ARROW_VERSION to 12.* and ARROW_MONGO_VERSION to 1.0.*
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=9.* ARROW_MONGO_VERSION=0.5.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - sudo apt-get purge -y mongodb*
@@ -462,47 +154,292 @@
       doc/...
 
 
+- label: ":exploding_death_star: RLlib Contrib: A2C Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/a2c && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/a2c/tests/
+    - python rllib_contrib/a2c/examples/a2c_cartpole_v1.py --run-as-test
+
 - label: ":exploding_death_star: RLlib Contrib: A3C Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - (cd rllib_contrib/a3c && pip install -r requirements.txt && pip install -e .)
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/a3c && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/a3c/tests/test_a3c.py
+
+- label: ":exploding_death_star: RLlib Contrib: AlphaStar Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/alpha_star && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/alpha_star/tests/
+    - python rllib_contrib/alpha_star/examples/multi-agent-cartpole-alpha-star.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: AlphaZero Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/alpha_zero && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/alpha_zero/tests/
+    - python rllib_contrib/alpha_zero/examples/alpha_zero_cartpole_sparse_rewards.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: APEX DDPG Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/apex_ddpg && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/apex_ddpg/tests/
+    - python rllib_contrib/apex_ddpg/examples/apex_ddpg_pendulum_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: APEX DQN Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/apex_dqn && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/apex_dqn/tests/
+    - python rllib_contrib/apex_dqn/examples/apex_dqn_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: ARS Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/ars && pip install -r requirements.txt && pip install -e ".[development"])
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/ars/tests/
+    - python rllib_contrib/ars/examples/ars_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: Bandit Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/bandit && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/bandit/tests/
+    - python rllib_contrib/bandit/examples/bandit_linucb_interest_evolution_recsim.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: CRR Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/crr && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/crr/tests/
+    - python rllib_contrib/crr/examples/crr_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/ddpg/tests/
+    - python rllib_contrib/ddpg/examples/ddpg_pendulum_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: DDPPO Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/ddppo && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/ddppo/tests/
+    - python rllib_contrib/ddppo/examples/ddppo_pendulum_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: Decision Transformer Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/dt && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/dt/tests/
+    - python rllib_contrib/dt/examples/dt_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: ES Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/es && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/es/tests/
+    - python rllib_contrib/es/examples/es_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: Leela Chess Zero Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/leela_chess_zero && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/leela_chess_zero/tests/
+    - python rllib_contrib/leela_chess_zero/examples/leela_chess_zero_connect_4.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: MADDPG Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/maddpg && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/maddpg/tests/
+    - python rllib_contrib/maddpg/examples/two_step_game.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: MAML Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 
-    - source /root/.bashrc
-    - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e .)
+    # Install mujoco necessary for the testing environments
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
+    - mkdir -p /root/.mujoco
+    - wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
+    - mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
+    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
+    - export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco-2.1.1/bin
+
+    - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/maml/tests/test_maml.py
 
-- label: ":exploding_death_star: RLlib Contrib: A2C Tests"
+- label: ":exploding_death_star: RLlib Contrib: MBMPO Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - (cd rllib_contrib/a2c && pip install -r requirements.txt && pip install -e .)
+
+    # Install mujoco necessary for the testing environments
+    - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
+    - mkdir -p /root/.mujoco
+    - wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
+    - mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
+    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco-2.1.1-linux-x86_64.tar.gz)
+    - echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco-2.1.1/bin' >> /root/.bashrc
+    - source /root/.bashrc
+
+    - (cd rllib_contrib/mbmpo && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/a2c/tests/
-    - python rllib_contrib/a2c/examples/a2c_cartpole_v1.py --run-as-test
+    - pytest rllib_contrib/mbmpo/tests/
+    - python rllib_contrib/mbmpo/examples/mbmpo_cartpole_v1_model_based.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: PG Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/pg && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/pg/tests/
+    - python rllib_contrib/pg/examples/pg_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: QMIX Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/qmix && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/qmix/tests/
+    - python rllib_contrib/qmix/examples/qmix_two_step_game.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: R2D2 Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e .)
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/r2d2/tests/
     - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
 
-- label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
+- label: ":exploding_death_star: RLlib Contrib: SimpleQ Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e .)
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/simple_q && pip install -r requirements.txt && pip install -e ".[development]")
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/ddpg/tests/
-    - python rllib_contrib/ddpg/examples/ddpg_pendulum_v1.py --run-as-test
+    - pytest rllib_contrib/simple_q/tests/
+    - python rllib_contrib/simple_q/examples/simple_q_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: SlateQ Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/slate_q && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/slate_q/tests/
+    - python rllib_contrib/slate_q/examples/recommender_system_with_recsim_and_slateq.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: TD3 Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - conda deactivate
+    - conda create -n rllib_contrib python=3.8 -y
+    - conda activate rllib_contrib
+    - (cd rllib_contrib/td3 && pip install -r requirements.txt && pip install -e ".[development]")
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/td3/tests/
+    - python rllib_contrib/td3/examples/td3_pendulum_v1.py --run-as-test

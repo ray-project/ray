@@ -46,7 +46,7 @@ class TuneConfig:
             and stop actors often (e.g., PBT in time-multiplexing mode). This
             requires trials to have the same resource requirements.
             Defaults to ``True`` for function trainables (including most
-            Ray AIR trainers) and ``False`` for class and registered trainables
+            Ray Train Trainers) and ``False`` for class and registered trainables
             (e.g. RLlib).
         trial_name_creator: Optional function that takes in a Trial and returns
             its name (i.e. its string representation). Be sure to include some unique

@@ -1,4 +1,9 @@
+from ray.data.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data.datasource.binary_datasource import BinaryDatasource
+from ray.data.datasource.block_path_provider import (
+    BlockWritePathProvider,
+    DefaultBlockWritePathProvider,
+)
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import (
     Datasource,
@@ -10,8 +15,6 @@ from ray.data.datasource.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
-    BlockWritePathProvider,
-    DefaultBlockWritePathProvider,
     FileBasedDatasource,
     FileExtensionFilter,
     _S3FileSystemWrapper,
@@ -39,6 +42,7 @@ from ray.data.datasource.partitioning import (
 from ray.data.datasource.sql_datasource import Connection, SQLDatasource
 from ray.data.datasource.text_datasource import TextDatasource
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
+from ray.data.datasource.torch_datasource import TorchDatasource
 from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
@@ -47,6 +51,7 @@ from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 __all__ = [
     "BaseFileMetadataProvider",
     "BinaryDatasource",
+    "BigQueryDatasource",
     "BlockWritePathProvider",
     "Connection",
     "CSVDatasource",
@@ -77,6 +82,7 @@ __all__ = [
     "Reader",
     "TextDatasource",
     "TFRecordDatasource",
+    "TorchDatasource",
     "WebDatasetDatasource",
     "WriteResult",
     "_S3FileSystemWrapper",

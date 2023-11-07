@@ -1,3 +1,5 @@
+.. _train-inspect-results:
+
 Inspecting Training Results
 ===========================
 
@@ -123,3 +125,11 @@ that was raised.
     :start-after: __result_error_start__
     :end-before: __result_error_end__
 
+
+Finding results on persistent storage
+-------------------------------------
+All training results, including reported metrics, checkpoints, and error files,
+are stored on the configured :ref:`persistent storage <train-log-dir>`.
+
+See :ref:`our persistent storage guide <train-log-dir>` to configure this location
+for your training run.

@@ -276,7 +276,7 @@ class HyperBandScheduler(FIFOScheduler):
             # kill bad trials
             self._num_stopped += len(bad)
             for t in bad:
-                if t.status == Trial.PAUSED:
+                if t.status == Trial.PAUSED or t.is_saving:
                     logger.debug(f"Stopping other trial {str(t)}")
                     tune_controller.stop_trial(t)
                 elif t.status == Trial.RUNNING:
@@ -305,7 +305,7 @@ class HyperBandScheduler(FIFOScheduler):
                         "Expected trial to be either PAUSED, PENDING, or RUNNING.\n"
                         "If you encounter this, please file an issue on the Ray Github."
                     )
-                    if t.status == Trial.PAUSED:
+                    if t.status == Trial.PAUSED or t.is_saving:
                         logger.debug(f"Unpausing trial {str(t)}")
                         self._unpause_trial(tune_controller, t)
                         bracket.trials_to_unpause.add(t)
@@ -315,6 +315,20 @@ class HyperBandScheduler(FIFOScheduler):
                         logger.debug(f"Continuing current trial {str(t)}")
                         action = TrialScheduler.CONTINUE
                     # else: PENDING trial (from a previous unpause) should stay as is.
+                elif bracket.finished() and bracket.stop_last_trials:
+                    # Scheduler decides to not continue trial because the bracket
+                    # reached max_t. In this case, stop the trials
+                    if t.status == Trial.PAUSED or t.is_saving:
+                        logger.debug(f"Bracket finished. Stopping other trial {str(t)}")
+                        tune_controller.stop_trial(t)
+                    elif t.status == Trial.RUNNING:
+                        # See the docstring: There can only be at most one RUNNING
+                        # trial, which is the current trial.
+                        logger.debug(
+                            f"Bracket finished. Stopping current trial {str(t)}"
+                        )
+                        bracket.cleanup_trial(t)
+                        action = TrialScheduler.STOP
         return action
 
     def _unpause_trial(self, tune_controller: "TuneController", trial: Trial):
@@ -465,6 +479,10 @@ class _Bracket:
         if not self.stop_last_trials and self._halves == 0:
             return True
         elif self._get_result_time(result) < self._cumul_r:
+            logger.debug(
+                f"Continuing trial {trial} as it hasn't reached the time threshold "
+                f"{self._cumul_r}, yet."
+            )
             return True
         return False
 
@@ -482,12 +500,24 @@ class _Bracket:
         if self._halves == 0 and not self.stop_last_trials:
             return self._live_trials, []
         assert self._halves > 0
-        self._halves -= 1
-        self._n /= self._eta
-        self._n = int(np.ceil(self._n))
 
+        # "Halving" is a misnomer. We're actually reducing by factor `eta`.
+        self._halves -= 1
+
+        # If we had 8 trials in the bracket and eta=2, we will keep 4.
+        # If we had 9 trials in the bracket and eta=3, we will keep 3.
+        self._n = int(np.ceil(self._n / self._eta))
+
+        # Likewise, we increase the number of iterations until we process the bracket
+        # again.
+        # Remember r0 = max_t * self._eta ** (-s)
+        # Let max_t=16, eta=2, s=1. Then r0=8, and we calculate r1=16.
+        # Let max_t=16, eta=2, s=2. Then r0=4, and we calculate r1=8, r2=16.
+
+        # Let max_t=81, eta=3, s=1. Then r0=27, and we calculate r1=81.
+        # Let max_t=81, eta=3, s=2. Then r0=9, and we calculate r1=27, r2=81.
         self._r *= self._eta
-        self._r = int(min(self._r, self._max_t_attr - self._cumul_r))
+        self._r = int(min(self._r, self._max_t_attr))
         self._cumul_r = self._r
         sorted_trials = sorted(
             self._live_trials, key=lambda t: metric_op * self._live_trials[t][metric]

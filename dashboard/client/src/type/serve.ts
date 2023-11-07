@@ -87,7 +87,7 @@ export enum ServeProxyLocation {
   FixedNumber = "FixedNumber",
 }
 
-// Keep in sync with HTTPProxyStatus in python/ray/serve/_private/common.py
+// Keep in sync with ProxyStatus in python/ray/serve/_private/common.py
 export enum ServeSystemActorStatus {
   STARTING = "STARTING",
   HEALTHY = "HEALTHY",
@@ -104,7 +104,7 @@ export type ServeSystemActor = {
   log_file_path: string | null;
 };
 
-export type ServeHttpProxy = {
+export type ServeProxy = {
   status: ServeSystemActorStatus;
 } & ServeSystemActor;
 
@@ -121,7 +121,7 @@ export type ServeApplicationsRsp = {
   proxy_location: ServeProxyLocation;
   controller_info: ServeSystemActor;
   proxies: {
-    [name: string]: ServeHttpProxy;
+    [name: string]: ServeProxy;
   } | null;
   applications: {
     [name: string]: ServeApplication;

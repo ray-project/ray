@@ -387,7 +387,7 @@ def test_jemalloc_ray_start(monkeypatch, ray_start_cluster):
     assert check_jemalloc_enabled(
         node.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.pid
     )
-    assert ray.get(ray.remote(check_jemalloc_enabled).remote())
+    assert not ray.get(ray.remote(check_jemalloc_enabled).remote())
 
     ray.shutdown()
     cluster.shutdown()

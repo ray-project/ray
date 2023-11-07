@@ -4,14 +4,16 @@
 # __start__
 # Run the following script with the WANDB_API_KEY env var set.
 import os
+
+import torch
+import wandb
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+from torchvision.models import resnet18
+
 import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
-import torch
-from torchvision import datasets, transforms
-from torchvision.models import resnet18
-from torch.utils.data import DataLoader
-import wandb
 
 assert os.environ.get("WANDB_API_KEY", None), "Please set WANDB_API_KEY env var."
 
@@ -45,7 +47,7 @@ def train_func(config):
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
     # Training
-    for epoch in range(2):
+    for epoch in range(1):
         for images, labels in train_loader:
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -61,6 +63,6 @@ def train_func(config):
 
 trainer = TorchTrainer(
     train_func,
-    scaling_config=ScalingConfig(num_workers=4),
+    scaling_config=ScalingConfig(num_workers=2),
 )
 trainer.fit()

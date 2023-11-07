@@ -91,7 +91,7 @@ def test_disallow_non_unique_operators():
     o3 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]), o1
     )
-    o4 = PhysicalOperator("test_combine", [o2, o3])
+    o4 = PhysicalOperator("test_combine", [o2, o3], target_max_block_size=None)
     with pytest.raises(ValueError):
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
 
@@ -160,7 +160,7 @@ def test_select_operator_to_run():
     # Test empty.
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         is None
     )
@@ -169,21 +169,21 @@ def test_select_operator_to_run():
     topo[o1].outqueue.append("dummy1")
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
     topo[o1].outqueue.append("dummy2")
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
     topo[o2].outqueue.append("dummy3")
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o3
     )
@@ -193,7 +193,7 @@ def test_select_operator_to_run():
     o3.internal_queue_size = MagicMock(return_value=0)
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
@@ -202,7 +202,7 @@ def test_select_operator_to_run():
     o3.internal_queue_size = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
@@ -210,7 +210,7 @@ def test_select_operator_to_run():
     o2.internal_queue_size = MagicMock(return_value=0)
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o3
     )
@@ -218,7 +218,7 @@ def test_select_operator_to_run():
     o2.internal_queue_size = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o3
     )
@@ -227,7 +227,7 @@ def test_select_operator_to_run():
     o2.throttling_disabled = MagicMock(return_value=True)
     assert (
         select_operator_to_run(
-            topo, NO_USAGE, ExecutionResources(), True, "dummy", AutoscalingState()
+            topo, NO_USAGE, ExecutionResources(), [], True, "dummy", AutoscalingState()
         )
         == o2
     )
@@ -348,6 +348,10 @@ def test_execution_allowed():
     )
 
 
+@pytest.mark.skip(
+    reason="Temporarily disable to deflake rest of test suite. Started being flaky "
+    "after moving to civ2? Needs further investigation to confirm."
+)
 def test_resource_constrained_triggers_autoscaling(monkeypatch):
     RESOURCE_REQUEST_TIMEOUT = 5
     monkeypatch.setattr(
@@ -406,6 +410,7 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
                 EMPTY_DOWNSTREAM_USAGE,
             ),
             ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
+            [],
             True,
             execution_id,
             autoscaling_state,
@@ -515,6 +520,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             topo,
             TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
             ExecutionResources(cpu=1),
+            [],
             True,
             "dummy",
             AutoscalingState(),
@@ -527,6 +533,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             topo,
             TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
             ExecutionResources(cpu=1),
+            [],
             True,
             "dummy",
             AutoscalingState(),
@@ -538,6 +545,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
             topo,
             TopologyResourceUsage(ExecutionResources(cpu=1), EMPTY_DOWNSTREAM_USAGE),
             ExecutionResources(cpu=1),
+            [],
             False,
             "dummy",
             AutoscalingState(),

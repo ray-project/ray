@@ -96,7 +96,7 @@ of Ray Tasks itself, e.g.
 .. testcode::
 
   import ray
-  from ray import air, tune
+  from ray import tune
 
   def create_task_that_uses_resources():
     @ray.remote(num_cpus=10)

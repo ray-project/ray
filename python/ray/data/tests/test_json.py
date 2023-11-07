@@ -216,7 +216,7 @@ def test_read_json_ignore_missing_paths(
     else:
         with pytest.raises(FileNotFoundError):
             ds = ray.data.read_json(paths, ignore_missing_paths=ignore_missing_paths)
-            ds.fully_executed()
+            ds.materialize()
 
 
 def test_zipped_json_read(ray_start_regular_shared, tmp_path):

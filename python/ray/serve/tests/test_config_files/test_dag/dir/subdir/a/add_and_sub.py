@@ -1,12 +1,12 @@
 from enum import Enum
 from typing import List, TypeVar
-from ray.serve.handle import RayServeHandle
 
 import starlette.requests
 
 from ray import serve
 from ray.serve.deployment_graph import InputNode
 from ray.serve.drivers import DAGDriver
+from ray.serve.handle import RayServeHandle
 
 RayHandleLike = TypeVar("RayHandleLike")
 

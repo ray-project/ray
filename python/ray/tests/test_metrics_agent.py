@@ -111,7 +111,7 @@ _AUTOSCALER_METRICS = [
 
 
 # This list of metrics should be kept in sync with
-# ray/python/ray/autoscaler/_private/prom_metrics.py
+# dashboard/dashboard_metrics.py
 _DASHBOARD_METRICS = [
     "ray_dashboard_api_requests_duration_seconds_bucket",
     "ray_dashboard_api_requests_duration_seconds_created",
@@ -153,6 +153,7 @@ _NODE_COMPONENT_METRICS = [
     "ray_component_cpu_percentage",
     "ray_component_rss_mb",
     "ray_component_uss_mb",
+    "ray_component_num_fds",
 ]
 
 _METRICS.append("ray_health_check_rpc_latency_ms_sum")
@@ -444,6 +445,7 @@ def test_per_func_name_stats(shutdown_only):
     comp_metrics = [
         "ray_component_cpu_percentage",
         "ray_component_rss_mb",
+        "ray_component_num_fds",
     ]
     if sys.platform == "linux" or sys.platform == "linux2":
         # Uss only available from Linux

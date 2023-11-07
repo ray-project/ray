@@ -97,14 +97,10 @@ class SearchGenerator(SearchAlgorithm):
             Trial: Returns a single trial.
         """
         if not self.is_finished():
-            return self.create_trial_if_possible(
-                self._experiment.spec, self._experiment.legacy_dir_name
-            )
+            return self.create_trial_if_possible(self._experiment.spec)
         return None
 
-    def create_trial_if_possible(
-        self, experiment_spec: Dict, output_path: str
-    ) -> Optional[Trial]:
+    def create_trial_if_possible(self, experiment_spec: Dict) -> Optional[Trial]:
         logger.debug("creating trial")
         trial_id = Trial.generate_id()
         suggested_config = self.searcher.suggest(trial_id)
@@ -124,7 +120,6 @@ class SearchGenerator(SearchAlgorithm):
         tag = "{0}_{1}".format(str(self._counter), format_vars(flattened_config))
         trial = _create_trial_from_spec(
             spec,
-            output_path,
             self._parser,
             evaluated_params=flatten_dict(suggested_config),
             experiment_tag=tag,

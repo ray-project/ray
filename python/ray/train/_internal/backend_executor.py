@@ -1,32 +1,32 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Any
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
-from ray.data import Dataset
+import ray._private.ray_constants as ray_constants
 from ray._private.ray_constants import env_integer
-from ray.air.config import CheckpointConfig
+from ray.data import Dataset
 from ray.exceptions import RayActorError
-from ray.train import DataConfig
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint, DataConfig
 from ray.train._internal.session import (
-    TrainingResult,
     TrialInfo,
+    _TrainingResult,
     get_session,
     init_session,
     shutdown_session,
 )
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import StorageContext
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -41,6 +41,25 @@ class TrainBackendError(Exception):
 
 class TrainingWorkerError(Exception):
     """Raised if a worker fails during training."""
+
+
+@dataclass
+class ResourceConfig:
+    """
+    Resource configuration for resource_ids to share between workers.
+
+    Args:
+        resource_name: The name of the resource to configure
+         (Example: "neuron_cores" or "gpu").
+        resource_enable_sharing_env_var: The environment variable to
+         check if the resource should be shared.
+        share_resource_ids_env_var: The environment variable to configure for
+         sharing the resources with other workers.
+    """
+
+    resource_name: str
+    resource_enable_sharing_env_var: str
+    share_resource_ids_env_var: str
 
 
 class BackendExecutor:
@@ -74,7 +93,6 @@ class BackendExecutor:
         num_gpus_per_worker: float = 0,
         additional_resources_per_worker: Optional[Dict[str, float]] = None,
         max_retries: int = 3,
-        checkpoint_config: Optional[CheckpointConfig] = None,
     ):
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
@@ -95,12 +113,13 @@ class BackendExecutor:
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
 
-        self._checkpoint_keep_all_ranks = (
-            checkpoint_config and checkpoint_config._checkpoint_keep_all_ranks
-        )
-        self._checkpoint_upload_from_workers = (
-            checkpoint_config and checkpoint_config._checkpoint_upload_from_workers
-        )
+        self._resource_configs = [
+            ResourceConfig(
+                ray_constants.NEURON_CORES,
+                ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
+                ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+            )
+        ]
 
     def start(
         self,
@@ -144,6 +163,17 @@ class BackendExecutor:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
 
+            # Always propagate the driver's DataContext to each worker in the group.
+            from ray.data import DataContext
+
+            def _set_driver_dataset_context(ctx: DataContext):
+                DataContext._set_current(ctx)
+
+            self.worker_group.execute(
+                _set_driver_dataset_context,
+                DataContext.get_current(),
+            )
+
             share_cuda_visible_devices_enabled = bool(
                 env_integer(
                     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
@@ -153,6 +183,16 @@ class BackendExecutor:
 
             if self._num_gpus_per_worker > 0 and share_cuda_visible_devices_enabled:
                 self._share_cuda_visible_devices()
+            elif self._additional_resources_per_worker:
+                for resource_config in self._resource_configs:
+                    if self._is_share_resources_enabled(
+                        resource_config.resource_name,
+                        resource_config.resource_enable_sharing_env_var,
+                    ):
+                        self._share_resource_ids(
+                            resource_config.resource_name,
+                            resource_config.share_resource_ids_env_var,
+                        )
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
@@ -245,31 +285,81 @@ class BackendExecutor:
             - Worker2: "0,1"
 
         """
+        self._share_resource_ids(
+            ray_constants.GPU, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR
+        )
 
-        node_ids_and_gpu_ids = [
-            (w.metadata.node_id, w.metadata.gpu_ids) for w in self.worker_group.workers
+    def _share_resource_ids(self, resource: str, env_var: str):
+        """Sets the given env_var on all workers.
+
+        For each worker, the cores/devices are visible to all the
+        workers on that worker's node.This allows workers on the
+        same node to communicate with one another.
+
+        Example:
+
+            Setup:
+            - Node1:
+                - Worker1: {0, 1}
+                - Worker2: {2, 3}
+            - Node2:
+                - Worker3: {0, 1}
+
+            NEURON_RT_VISIBLE_CORES/TPU_VISIBLE_CHIPS/...:
+            - Worker1: "0,1,2,3"
+            - Worker2: "0,1,2,3"
+            - Worker2: "0,1"
+
+        Args:
+            resource: The name of the resource/accelerator.
+            env_var: The name of the environment variable to set.
+        """
+        node_ids_and_resource_ids = [
+            (
+                w.metadata.node_id,
+                w.metadata.resource_ids[resource],
+            )
+            for w in self.worker_group.workers
         ]
-
         node_id_to_worker_id = defaultdict(set)
-        node_id_to_gpu_ids = defaultdict(set)
+        node_id_to_resource_ids = defaultdict(set)
 
-        for worker_id, (node_id, gpu_ids) in enumerate(node_ids_and_gpu_ids):
+        for worker_id, (node_id, resource_ids) in enumerate(node_ids_and_resource_ids):
             node_id_to_worker_id[node_id].add(worker_id)
-            node_id_to_gpu_ids[node_id].update(gpu_ids)
+            node_id_to_resource_ids[node_id].update(resource_ids)
 
         futures = []
-        for node_id, gpu_ids in node_id_to_gpu_ids.items():
-            gpu_ids = sorted(gpu_ids)
-            all_gpu_ids = ",".join(gpu_ids)
+        for node_id, resource_ids in node_id_to_resource_ids.items():
+            resource_ids = sorted(resource_ids)
+            all_resource_ids = ",".join(resource_ids)
 
-            def set_gpu_ids():
-                os.environ["CUDA_VISIBLE_DEVICES"] = all_gpu_ids
+            def set_resource_ids():
+                os.environ[env_var] = all_resource_ids
 
             for worker_id in node_id_to_worker_id[node_id]:
                 futures.append(
-                    self.worker_group.execute_single_async(worker_id, set_gpu_ids)
+                    self.worker_group.execute_single_async(worker_id, set_resource_ids)
                 )
         ray.get(futures)
+
+    def _is_share_resources_enabled(self, resource_name: str, enable_sharing_env: str):
+        """Whether to share resource IDs on all workers
+        based on enable_sharing_env.
+
+        This will return true if resources are requested and greater than 0.
+        Also, user can disable by configuring the `enable_sharing_env` to "0".
+
+        Args:
+            resource_name: The name of the resource/accelerator.
+            enable_sharing_env: The name of the environment variable
+                to check.
+        """
+        has_resource_requested = (
+            self._additional_resources_per_worker.get(resource_name, 0) > 0
+        )
+        return has_resource_requested and ray_constants.env_bool(
+            enable_sharing_env, True
+        )
 
     def _create_rank_world_size_mappings(self) -> List[Dict]:
         """Create rank and world size mappings for workers.
@@ -367,7 +457,6 @@ class BackendExecutor:
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
         )
-        use_lazy_checkpointing = not env_integer(DISABLE_LAZY_CHECKPOINTING_ENV, 0)
 
         # First initialize the session.
         def initialize_session(
@@ -381,8 +470,6 @@ class BackendExecutor:
             checkpoint,
             dataset_shard,
             metadata,
-            checkpoint_keep_all_ranks,
-            checkpoint_upload_from_workers,
             storage,
         ):
             try:
@@ -398,9 +485,6 @@ class BackendExecutor:
                     metadata=metadata,
                     checkpoint=checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
-                    enable_lazy_checkpointing=use_lazy_checkpointing,
-                    checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
-                    checkpoint_upload_from_workers=(checkpoint_upload_from_workers),
                     storage=storage,
                 )
             except ValueError:
@@ -443,10 +527,6 @@ class BackendExecutor:
                     dataset_shard=self.dataset_shards[index],
                     metadata=metadata,
                     checkpoint=checkpoint,
-                    checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,
-                    checkpoint_upload_from_workers=(
-                        self._checkpoint_upload_from_workers
-                    ),
                     storage=storage,
                 )
             )
@@ -465,15 +545,15 @@ class BackendExecutor:
 
         self.worker_group.execute_async(train_async)
 
-    def get_next_results(self) -> Optional[List[TrainingResult]]:
-        """Fetches the next ``TrainingResult`` from each worker.
+    def get_next_results(self) -> Optional[List[_TrainingResult]]:
+        """Fetches the next ``_TrainingResult`` from each worker.
 
-        Each ``TrainingResult`` is expected to correspond to the same step from
-        each worker (e.g. the same call to ``session.report()``).
+        Each ``_TrainingResult`` is expected to correspond to the same step from
+        each worker (e.g. the same call to ``train.report()``).
 
         Returns:
-            A list of ``TrainingResult``s with the same
-            ``TrainingResultType``, or ``None`` if there are no more results.
+            A list of ``_TrainingResult``s or ``None`` if there are no more results
+            since the training function has exited on all workers.
         """
 
         def get_next():
@@ -509,28 +589,7 @@ class BackendExecutor:
                 # Return None if all results are None.
                 return None
 
-        if not _use_storage_context():
-            first_result = results[0]
-            result_type = first_result.type
-            if any(r.type != result_type for r in results):
-                raise RuntimeError(
-                    "Some workers returned results with "
-                    "different types. Make sure that "
-                    "`session.report()` are called the "
-                    "same number of times on all workers."
-                )
-
         return results
-
-    def _set_legacy_checkpoint_uri(self, uri: str):
-        """Tell remote sessions where to upload the chekcpoint."""
-
-        def set_uri():
-            session = _get_session("_set_legacy_checkpoint_uri")
-            session._set_legacy_checkpoint_uri(uri)
-
-        futures = self.worker_group.execute_async(set_uri)
-        self.get_with_failure_handling(futures)
 
     def pause_reporting(self):
         """Disable workers from enqueuing results from ``session.report()``.

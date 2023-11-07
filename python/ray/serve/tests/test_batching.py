@@ -1,16 +1,17 @@
-import time
-import pytest
 import asyncio
-import requests
-from typing import List
-from functools import partial
-from starlette.responses import StreamingResponse
+import time
 from concurrent.futures.thread import ThreadPoolExecutor
+from functools import partial
+from typing import List
+
+import pytest
+import requests
+from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray.serve.exceptions import RayServeException
 from ray._private.utils import get_or_create_event_loop
+from ray.serve.exceptions import RayServeException
 
 
 def test_batching(serve_instance):

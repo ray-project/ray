@@ -494,6 +494,16 @@ class DreamerV3Config(AlgorithmConfig):
 class DreamerV3(Algorithm):
     """Implementation of the model-based DreamerV3 RL algorithm described in [1]."""
 
+    # TODO (sven): Deprecate/do-over the Algorithm.compute_single_action() API.
+    @override(Algorithm)
+    def compute_single_action(self, *args, **kwargs):
+        raise NotImplementedError(
+            "DreamerV3 does not support the `compute_single_action()` API. Refer to the"
+            " README here (https://github.com/ray-project/ray/tree/master/rllib/"
+            "algorithms/dreamerv3) to find more information on how to run action "
+            "inference with this algorithm."
+        )
+
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:

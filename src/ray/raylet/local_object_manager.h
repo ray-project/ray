@@ -318,7 +318,7 @@ class LocalObjectManager {
   mutable absl::Mutex mutex_;
 
   /// The current number of active spill workers.
-  int64_t num_active_workers_ GUARDED_BY(mutex_);
+  int64_t num_active_workers_ ABSL_GUARDED_BY(mutex_);
 
   /// The max number of active spill workers.
   const int64_t max_active_workers_;

@@ -2,20 +2,24 @@ import requests
 from starlette.requests import Request
 
 from ray import serve
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment
-class Router:
-    def __init__(self, ver_25_handle: RayServeHandle, ver_26_handle: RayServeHandle):
-        self.ver_25_handle = ver_25_handle
-        self.ver_26_handle = ver_26_handle
+class Ingress:
+    def __init__(self, ver_25_handle, ver_26_handle):
+        self.ver_25_handle: DeploymentHandle = ver_25_handle.options(
+            use_new_handle_api=True,
+        )
+        self.ver_26_handle: DeploymentHandle = ver_26_handle.options(
+            use_new_handle_api=True,
+        )
 
     async def __call__(self, request: Request):
         if request.query_params["version"] == "25":
-            return await (await self.ver_25_handle.remote())
+            return await self.ver_25_handle.remote()
         else:
-            return await (await self.ver_26_handle.remote())
+            return await self.ver_26_handle.remote()
 
 
 @serve.deployment
@@ -32,7 +36,7 @@ ver_26 = requests_version.options(
     ray_actor_options={"runtime_env": {"pip": ["requests==2.26.0"]}},
 ).bind()
 
-app = Router.bind(ver_25, ver_26)
+app = Ingress.bind(ver_25, ver_26)
 serve.run(app)
 
 assert requests.get("http://127.0.0.1:8000/?version=25").text == "2.25.1"

@@ -287,8 +287,30 @@ struct Mocker {
       auto new_events = data.add_events_by_task();
       new_events->CopyFrom(events);
     }
-    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
-    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
+
+    for (int i = 0; i < num_status_task_events_dropped; ++i) {
+      rpc::TaskAttempt rpc_task_attempt;
+      rpc_task_attempt.set_task_id(RandomTaskId().Binary());
+      rpc_task_attempt.set_attempt_number(0);
+      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
+    }
+
+    data.set_num_profile_events_dropped(num_profile_task_events_dropped);
+    data.set_job_id(JobID::FromInt(0).Binary());
+
+    return data;
+  }
+
+  static rpc::TaskEventData GenTaskEventsDataLoss(
+      const std::vector<TaskAttempt> &drop_tasks, int job_id = 0) {
+    rpc::TaskEventData data;
+    for (const auto &task_attempt : drop_tasks) {
+      rpc::TaskAttempt rpc_task_attempt;
+      rpc_task_attempt.set_task_id(task_attempt.first.Binary());
+      rpc_task_attempt.set_attempt_number(task_attempt.second);
+      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
+    }
+    data.set_job_id(JobID::FromInt(job_id).Binary());
 
     return data;
   }

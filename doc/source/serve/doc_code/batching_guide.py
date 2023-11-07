@@ -1,7 +1,7 @@
 # flake8: noqa
 # __single_sample_begin__
-import ray
 from ray import serve
+from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment
@@ -10,17 +10,20 @@ class Model:
         return single_sample * 2
 
 
-handle = serve.run(Model.bind())
-assert ray.get(handle.remote(1)) == 2
+handle: DeploymentHandle = serve.run(Model.bind()).options(
+    use_new_handle_api=True,
+)
+assert handle.remote(1).result() == 2
 # __single_sample_end__
 
 
 # __batch_begin__
-import numpy as np
 from typing import List
 
-import ray
+import numpy as np
+
 from ray import serve
+from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment
@@ -31,8 +34,11 @@ class Model:
         return np.array(multiple_samples) * 2
 
 
-handle = serve.run(Model.bind())
-assert ray.get([handle.remote(i) for i in range(8)]) == [i * 2 for i in range(8)]
+handle: DeploymentHandle = serve.run(Model.bind()).options(
+    use_new_handle_api=True,
+)
+responses = [handle.remote(i) for i in range(8)]
+assert list(r.result() for r in responses) == [i * 2 for i in range(8)]
 # __batch_end__
 
 

@@ -1,5 +1,7 @@
 import time
 import json
+import os
+
 import boto3
 from botocore.config import Config
 
@@ -24,6 +26,8 @@ class DBReporter(Reporter):
             "_table": "release_test_result",
             "report_timestamp_ms": int(time.time() * 1000),
             "status": result.status or "",
+            "branch": os.environ.get("BUILDKITE_BRANCH", ""),
+            "commit": os.environ.get("BUILDKITE_COMMIT", ""),
             "results": result.results or {},
             "name": test.get("name", ""),
             "group": test.get("group", ""),

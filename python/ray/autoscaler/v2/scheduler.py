@@ -166,6 +166,8 @@ class SchedulingNode:
 
         TODO(rickyx): add pluggable scoring functions here.
 
+        TODO(rickyx): node availability
+
         Returns:
             A utilization score for this node.
         """

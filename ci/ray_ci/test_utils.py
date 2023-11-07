@@ -14,7 +14,11 @@ def test_chunk_into_n() -> None:
 
 def test_docker_login() -> None:
     def _mock_subprocess_run(
-        cmd: List[str], stdin=None, stdout=None, stderr=None
+        cmd: List[str],
+        stdin=None,
+        stdout=None,
+        stderr=None,
+        check=True,
     ) -> None:
         assert cmd == ["pip", "install", "awscli"] or stdin.read() == b"password"
 

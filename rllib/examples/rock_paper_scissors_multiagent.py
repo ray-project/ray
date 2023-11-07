@@ -99,7 +99,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
             return random.choice(["always_same", "beat_last"])
 
     config = (
-        AlgorithmConfig(algo_class=algorithm)
+        PGConfig()
         .environment("RockPaperScissors")
         .framework(args.framework)
         .rollouts(

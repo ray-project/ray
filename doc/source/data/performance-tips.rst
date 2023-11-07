@@ -29,7 +29,7 @@ By default, Ray Data automatically selects the read ``parallelism`` according to
 2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it's set to 8.
 3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
 
-Occasionally, it's advantageous to manually tune the parallelism to optimize the application. This can be done when loading data via the ``parallelism`` parameter.
+Occasionally, it's advantageous to manually tune the parallelism to optimize the application. You can do this by setting the ``parallelism`` parameter.
 For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
 
 Tuning read resources

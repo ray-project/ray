@@ -19,7 +19,6 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-class ClusterResourceManager;
 namespace gcs {
 
 class GcsResourceManager;
@@ -30,8 +29,6 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
  public:
   GcsAutoscalerStateManager(
       const std::string &session_name,
-      const ClusterResourceManager &cluster_resource_manager,
-      const GcsResourceManager &gcs_resource_manager,
       const GcsNodeManager &gcs_node_manager,
       const GcsPlacementGroupManager &gcs_placement_group_manager,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
@@ -59,11 +56,26 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
                        rpc::autoscaler::DrainNodeReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
+  void UpdateResourceLoadAndUsage(const rpc::ResourcesData &data);
+
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
 
+  void OnNodeAdd(const rpc::GcsNodeInfo &node);
+
+  void OnNodeDead(const NodeID &node) { node_resource_info_.erase(node); }
+
+  const absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
+      &GetNodeResourceInfo() const {
+    return node_resource_info_;
+  }
+
  private:
+  /// \brief Get the aggregated resource load from all nodes.
+  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+  GetAggregatedResourceLoad() const;
+
   /// \brief Internal method for populating the rpc::ClusterResourceState
   /// protobuf.
   /// \param state The state to be filled.
@@ -125,14 +137,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   // Ray cluster session name.
   const std::string session_name_ = "";
 
-  /// Cluster resources manager that provides cluster resources information.
-  const ClusterResourceManager &cluster_resource_manager_;
-
   /// Gcs node manager that provides node status information.
   const GcsNodeManager &gcs_node_manager_;
-
-  /// GCS resource manager that provides resource demand/load information.
-  const GcsResourceManager &gcs_resource_manager_;
 
   /// GCS placement group manager reference.
   const GcsPlacementGroupManager &gcs_placement_group_manager_;
@@ -162,6 +168,14 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   /// Cached autoscaling state.
   absl::optional<rpc::autoscaler::AutoscalingState> autoscaling_state_ = absl::nullopt;
+
+  /// Resource load and usage of all nodes.
+  /// Note: This is similar to the data structure in `gcs_resource_manager`
+  /// but we update load and usage together.
+  ///
+  /// The absl::Time in the pair is the last time the item was updated.
+  absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
+      node_resource_info_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };
