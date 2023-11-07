@@ -38,6 +38,11 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   if (!allocation.has_value()) {
     return nullptr;
   }
+
+  auto header_ptr = static_cast<uint8_t *>(allocation->address) + allocation->offset;
+  auto max_readers_ptr = reinterpret_cast<int64_t *>(header_ptr);
+  *max_readers_ptr = 0;
+
   auto ptr = std::make_unique<LocalObject>(std::move(allocation.value()));
   auto entry =
       object_table_.emplace(object_info.object_id, std::move(ptr)).first->second.get();

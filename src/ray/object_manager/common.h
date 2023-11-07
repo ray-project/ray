@@ -36,6 +36,11 @@ using RestoreSpilledObjectCallback =
                        const std::string &,
                        std::function<void(const ray::Status &)>)>;
 
+struct PlasmaObjectHeader {
+  // TODO(swang): This needs to be atomic.
+  int64_t max_readers = -1;
+};
+
 /// A struct that includes info about the object.
 struct ObjectInfo {
   ObjectID object_id;
@@ -50,7 +55,7 @@ struct ObjectInfo {
   /// Owner's worker ID.
   WorkerID owner_worker_id;
 
-  int64_t GetObjectSize() const { return data_size + metadata_size; }
+  int64_t GetObjectSize() const { return sizeof(PlasmaObjectHeader) + data_size + metadata_size; }
 
   bool operator==(const ObjectInfo &other) const {
     return ((object_id == other.object_id) && (data_size == other.data_size) &&
