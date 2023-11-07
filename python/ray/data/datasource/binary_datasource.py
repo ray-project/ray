@@ -1,5 +1,4 @@
-from io import BytesIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Union
 
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -15,27 +14,21 @@ class BinaryDatasource(FileBasedDatasource):
 
     _COLUMN_NAME = "bytes"
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
-        from pyarrow.fs import HadoopFileSystem
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        include_paths: bool = False,
+        **file_based_datasource_kwargs,
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
 
-        include_paths = reader_args.pop("include_paths", False)
-        if reader_args.get("compression") == "snappy":
-            import snappy
+        self.include_paths = include_paths
 
-            filesystem = reader_args.get("filesystem", None)
-            rawbytes = BytesIO()
-
-            if isinstance(filesystem, HadoopFileSystem):
-                snappy.hadoop_snappy.stream_decompress(src=f, dst=rawbytes)
-            else:
-                snappy.stream_decompress(src=f, dst=rawbytes)
-
-            data = rawbytes.getvalue()
-        else:
-            data = f.readall()
+    def _read_file(self, f: "pyarrow.NativeFile", path: str):
+        data = f.readall()
 
         builder = ArrowBlockBuilder()
-        if include_paths:
+        if self.include_paths:
             item = {self._COLUMN_NAME: data, "path": path}
         else:
             item = {self._COLUMN_NAME: data}

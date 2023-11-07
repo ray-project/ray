@@ -129,7 +129,6 @@ def test_chaos_actor_retry(set_kill_interval):
 
 def test_chaos_defer(monkeypatch, ray_start_cluster):
     with monkeypatch.context() as m:
-        m.setenv("RAY_grpc_based_resource_broadcast", "true")
         # defer for 3s
         m.setenv(
             "RAY_testing_asio_delay_us",

@@ -156,12 +156,6 @@ MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-# Message
-MULTI_APP_MIGRATION_MESSAGE = (
-    "Please see the documentation for ServeDeploySchema for more details on multi-app "
-    "config files."
-)
-
 DAG_DEPRECATION_MESSAGE = (
     "The DAG API is deprecated. Please use the recommended model composition pattern "
     "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
