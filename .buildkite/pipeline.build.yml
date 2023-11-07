@@ -45,7 +45,7 @@
       --test_env=DOCKER_TLS_CERTDIR=/certs
       -- python/ray/tests/...
 
-- label: ":book: Doctest (CPU)"
+- label: ":book: civ1 doctest"
   instance_size: large
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -58,7 +58,7 @@
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=doctest,-gpu,-team:core
+      --test_tag_filters=doctest,-gpu,-team:core,-team:data,-team:ml,-team:rllib,-team:serve
       python/ray/... doc/...
 
 - label: ":kubernetes: operator"

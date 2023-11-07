@@ -160,6 +160,29 @@ steps:
     depends_on: rllibbuild
     job_env: forge
 
+  - label: ":brain: rllib: doc tests"
+    tags: 
+      - rllib_directly
+      - doc
+    instance_type: medium
+    commands:
+      # doc tests
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... rllib 
+        --except-tags gpu
+        --only-tags doctest
+        --parallelism-per-worker 2
+      # doc examples
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... rllib 
+        --except-tags gpu,post_wheel_build,timeseries_libs,doctest
+        --parallelism-per-worker 2
+        --skip-ray-installation
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --only-tags documentation
+        --parallelism-per-worker 2
+        --skip-ray-installation
+    depends_on: rllibbuild
+    job_env: forge
+
   - label: ":brain: rllib: multi-gpu tests"
     tags: 
       - rllib

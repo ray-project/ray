@@ -81,6 +81,23 @@ steps:
     depends_on: 
       - manylinux
       - servebuild
+
+  - label: ":ray-serve: serve: doc tests"
+    tags: 
+      - serve
+      - doc
+    instance_type: large
+    commands:
+      # doc tests
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... serve 
+        --only-tags doctest
+        --parallelism-per-worker 3
+      # doc examples
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... serve 
+        --except-tags gpu,post_wheel_build,timeseries_libs,doctest,xcommit
+        --parallelism-per-worker 3
+        --skip-ray-installation
+    depends_on: servebuild
     job_env: forge
 
   - label: ":ray-serve: serve: default minimal"
