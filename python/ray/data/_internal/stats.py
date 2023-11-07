@@ -20,6 +20,9 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
 
+# Interval for making remote calls to the _StatsActor.
+STATS_ACTOR_UPDATE_INTERVAL_SECONDS = 5
+
 StatsDict = Dict[str, List[BlockMetadata]]
 
 

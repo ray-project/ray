@@ -1,4 +1,5 @@
 import collections
+import threading
 import time
 from contextlib import nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional, Tuple
@@ -17,6 +18,7 @@ from ray.data._internal.block_batching.util import (
 )
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import (
+    STATS_ACTOR_UPDATE_INTERVAL_SECONDS,
     DatasetStats,
     clear_stats_actor_iter_metrics,
     update_stats_actor_iter_metrics,
@@ -25,9 +27,6 @@ from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-
-# Interval for metrics update remote calls to _StatsActor during iteration.
-STATS_UPDATE_INTERVAL_SECONDS = 30
 
 
 def iter_batches(
@@ -162,6 +161,7 @@ def iter_batches(
             batch_format=batch_format,
             collate_fn=collate_fn,
             num_threadpool_workers=prefetch_batches,
+            metrics_tag=metrics_tag,
         )
 
         # Step 5: Finalize each batch.
@@ -180,7 +180,6 @@ def iter_batches(
     async_batch_iter = make_async_gen(block_refs, fn=_async_iter_batches, num_workers=1)
     metrics_tag = {"dataset": dataset_tag}
 
-    last_stats_update_time = 0
     while True:
         with stats.iter_total_blocked_s.timer() if stats else nullcontext():
             try:
@@ -190,9 +189,6 @@ def iter_batches(
         with stats.iter_user_s.timer() if stats else nullcontext():
             yield next_batch
 
-        if time.time() - last_stats_update_time >= STATS_UPDATE_INTERVAL_SECONDS:
-            update_stats_actor_iter_metrics(stats, metrics_tag)
-            last_stats_update_time = time.time()
     clear_stats_actor_iter_metrics(metrics_tag)
 
 
@@ -202,6 +198,7 @@ def _format_in_threadpool(
     batch_format: Optional[str],
     collate_fn: Optional[Callable[[DataBatch], Any]],
     num_threadpool_workers: int,
+    metrics_tag: str,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
 
@@ -216,14 +213,19 @@ def _format_in_threadpool(
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
         num_threadpool_workers: The number of threads to use in the threadpool.
+        metrics_tag: Tag for emitting iteration metrics to _StatsActor.
     """
+
+    last_stats_update = [0]  # hack to make this variable mutable
+    stats_update_lock = threading.Lock()
 
     def threadpool_computations_format_collate(
         batch_iter: Iterator[Batch],
     ) -> Iterator[Batch]:
         # Step 4a: Format the batches.
         formatted_batch_iter = format_batches(
-            batch_iter, batch_format=batch_format, stats=stats
+            batch_iter,
+            batch_format=batch_format,
         )
 
         # Step 4b: Apply the collate function if applicable.
@@ -231,7 +233,19 @@ def _format_in_threadpool(
             formatted_batch_iter = collate(
                 formatted_batch_iter, collate_fn=collate_fn, stats=stats
             )
-        yield from formatted_batch_iter
+
+        for batch in formatted_batch_iter:
+            yield batch
+            # Update stats in here to avoid blocking main
+            # iteration thread with task submission overhead.
+            if stats_update_lock.acquire(blocking=False):
+                if (
+                    time.time() - last_stats_update[0]
+                    >= STATS_ACTOR_UPDATE_INTERVAL_SECONDS
+                ):
+                    update_stats_actor_iter_metrics(stats, metrics_tag)
+                    last_stats_update[0] = time.time()
+                stats_update_lock.release()
 
     if num_threadpool_workers > 0:
         collated_iter = make_async_gen(

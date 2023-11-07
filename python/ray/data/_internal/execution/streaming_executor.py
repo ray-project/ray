@@ -35,6 +35,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import (
+    STATS_ACTOR_UPDATE_INTERVAL_SECONDS,
     DatasetStats,
     clear_stats_actor_metrics,
     register_dataset_to_stats_actor,
@@ -70,6 +71,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
+        self._last_stats_update: float = 0
 
         self._execution_id = uuid.uuid4().hex
         self._autoscaling_state = AutoscalingState()
@@ -308,16 +310,18 @@ class StreamingExecutor(Executor, threading.Thread):
         if not DEBUG_TRACE_SCHEDULING:
             _debug_dump_topology(topology, log_to_stdout=False)
 
-        last_op, last_state = list(topology.items())[-1]
-        update_stats_actor_metrics(
-            [op.metrics for op in self._topology],
-            self._get_metrics_tags(),
-            # TODO (Zandew): report progress at operator level
-            {
-                "progress": last_state.num_completed_tasks,
-                "total": last_op.num_outputs_total(),
-            },
-        )
+        if time.time() - self._last_stats_update >= STATS_ACTOR_UPDATE_INTERVAL_SECONDS:
+            last_op, last_state = list(topology.items())[-1]
+            update_stats_actor_metrics(
+                [op.metrics for op in self._topology],
+                self._get_metrics_tags(),
+                # TODO (Zandew): report progress at operator level
+                {
+                    "progress": last_state.num_completed_tasks,
+                    "total": last_op.num_outputs_total(),
+                },
+            )
+            self._last_stats_update = time.time()
 
         # Log metrics of newly completed operators.
         for op in topology:
