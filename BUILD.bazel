@@ -825,7 +825,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "manual"],
     deps = [
         ":core_worker_lib",
         ":gcs",
@@ -1872,20 +1872,6 @@ ray_cc_test(
         ":gcs_server_lib",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "grpc_based_resource_broadcaster_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/grpc_based_resource_broadcaster_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

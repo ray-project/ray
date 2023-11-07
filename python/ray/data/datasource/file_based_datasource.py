@@ -1,3 +1,4 @@
+import io
 import pathlib
 import posixpath
 import warnings
@@ -16,14 +17,19 @@ from typing import (
 
 import numpy as np
 
+import ray
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.util import _check_pyarrow_version, make_async_gen
+from ray.data._internal.util import (
+    _check_pyarrow_version,
+    _is_local_scheme,
+    make_async_gen,
+)
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.block_path_provider import BlockWritePathProvider
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
+from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
@@ -116,9 +122,6 @@ class FileBasedDatasource(Datasource):
 
     If the _FILE_EXTENSION is defined, per default only files with this extension
     will be read. If None, no default filter is used.
-
-    Current subclasses:
-        JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
     # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
@@ -129,6 +132,168 @@ class FileBasedDatasource(Datasource):
     # Number of threads for concurrent reading within each read task.
     # If zero or negative, reading will be performed in the main thread.
     _NUM_THREADS_PER_TASK = 0
+
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+        partition_filter: PathPartitionFilter = None,
+        partitioning: Partitioning = None,
+        ignore_missing_paths: bool = False,
+        shuffle: Union[Literal["files"], None] = None,
+    ):
+        _check_pyarrow_version()
+        self._schema = schema
+        self._open_stream_args = open_stream_args
+        self._meta_provider = meta_provider
+        self._partition_filter = partition_filter
+        self._partitioning = partitioning
+        self._ignore_missing_paths = ignore_missing_paths
+        paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        self._paths, self._file_sizes = map(
+            list,
+            zip(
+                *meta_provider.expand_paths(
+                    paths,
+                    self._filesystem,
+                    partitioning,
+                    ignore_missing_paths=ignore_missing_paths,
+                )
+            ),
+        )
+
+        if ignore_missing_paths and len(self._paths) == 0:
+            raise ValueError(
+                "None of the provided paths exist. "
+                "The 'ignore_missing_paths' field is set to True."
+            )
+
+        self._supports_distributed_reads = not _is_local_scheme(paths)
+        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the Ray "
+                "cluster can't access your local files. To fix this issue, store "
+                "files in cloud storage or a distributed filesystem like NFS."
+            )
+
+        if self._partition_filter is not None:
+            # Use partition filter to skip files which are not needed.
+            path_to_size = dict(zip(self._paths, self._file_sizes))
+            self._paths = self._partition_filter(self._paths)
+            self._file_sizes = [path_to_size[p] for p in self._paths]
+            if len(self._paths) == 0:
+                raise ValueError(
+                    "No input files found to read. Please double check that "
+                    "'partition_filter' field is set properly."
+                )
+        self._file_metadata_shuffler = None
+        if shuffle == "files":
+            self._file_metadata_shuffler = np.random.default_rng()
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        total_size = 0
+        for sz in self._file_sizes:
+            if sz is not None:
+                total_size += sz
+        return total_size
+
+    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        import numpy as np
+
+        ctx = DataContext.get_current()
+        open_stream_args = self._open_stream_args
+        partitioning = self._partitioning
+
+        if self._file_metadata_shuffler is not None:
+            files_metadata = list(zip(self._paths, self._file_sizes))
+            shuffled_files_metadata = [
+                files_metadata[i]
+                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
+            ]
+            paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
+        else:
+            paths, file_sizes = self._paths, self._file_sizes
+
+        read_stream = self._read_stream
+        filesystem = _wrap_s3_serialization_workaround(self._filesystem)
+
+        if open_stream_args is None:
+            open_stream_args = {}
+
+        open_input_source = self._open_input_source
+
+        def read_files(
+            read_paths: Iterable[str],
+        ) -> Iterable[Block]:
+            nonlocal filesystem, open_stream_args, partitioning
+
+            DataContext._set_current(ctx)
+            fs = _unwrap_s3_serialization_workaround(filesystem)
+            for read_path in read_paths:
+                partitions: Dict[str, str] = {}
+                if partitioning is not None:
+                    parse = PathPartitionParser(partitioning)
+                    partitions = parse(read_path)
+
+                with _open_file_with_retry(
+                    read_path,
+                    lambda: open_input_source(fs, read_path, **open_stream_args),
+                ) as f:
+                    for data in read_stream(f, read_path):
+                        if partitions:
+                            data = _add_partitions(data, partitions)
+                        yield data
+
+        def create_read_task_fn(read_paths, num_threads):
+            def read_task_fn():
+                nonlocal num_threads, read_paths
+
+                if num_threads > 0:
+                    if len(read_paths) < num_threads:
+                        num_threads = len(read_paths)
+
+                    logger.get_logger().debug(
+                        f"Reading {len(read_paths)} files with {num_threads} threads."
+                    )
+
+                    yield from make_async_gen(
+                        iter(read_paths),
+                        read_files,
+                        num_workers=num_threads,
+                    )
+                else:
+                    logger.get_logger().debug(f"Reading {len(read_paths)} files.")
+                    yield from read_files(read_paths)
+
+            return read_task_fn
+
+        # fix https://github.com/ray-project/ray/issues/24296
+        parallelism = min(parallelism, len(paths))
+
+        read_tasks = []
+        for read_paths, file_sizes in zip(
+            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
+        ):
+            if len(read_paths) <= 0:
+                continue
+
+            meta = self._meta_provider(
+                read_paths,
+                self._schema,
+                rows_per_file=self._rows_per_file(),
+                file_sizes=file_sizes,
+            )
+
+            read_task_fn = create_read_task_fn(read_paths, self._NUM_THREADS_PER_TASK)
+
+            read_task = ReadTask(read_task_fn, meta)
+
+            read_tasks.append(read_task)
+
+        return read_tasks
 
     def _open_input_source(
         self,
@@ -145,29 +310,67 @@ class FileBasedDatasource(Datasource):
         Implementations that do not support streaming reads (e.g. that require random
         access) should override this method.
         """
+        import pyarrow as pa
+        from pyarrow.fs import HadoopFileSystem
+
+        compression = open_args.get("compression", None)
+        if compression is None:
+            try:
+                # If no compression manually given, try to detect
+                # compression codec from path.
+                compression = pa.Codec.detect(path).name
+            except (ValueError, TypeError):
+                # Arrow's compression inference on the file path
+                # doesn't work for Snappy, so we double-check ourselves.
+                import pathlib
+
+                suffix = pathlib.Path(path).suffix
+                if suffix and suffix[1:] == "snappy":
+                    compression = "snappy"
+                else:
+                    compression = None
+
         buffer_size = open_args.pop("buffer_size", None)
         if buffer_size is None:
             ctx = DataContext.get_current()
             buffer_size = ctx.streaming_read_buffer_size
-        return filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
 
-    def create_reader(self, **kwargs):
-        return _FileBasedDatasourceReader(self, **kwargs)
+        if compression == "snappy":
+            # Arrow doesn't support streaming Snappy decompression since the canonical
+            # C++ Snappy library doesn't natively support streaming decompression. We
+            # works around this by manually decompressing the file with python-snappy.
+            open_args["compression"] = None
+        else:
+            open_args["compression"] = compression
+
+        file = filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
+
+        if compression == "snappy":
+            import snappy
+
+            stream = io.BytesIO()
+            if isinstance(filesystem, HadoopFileSystem):
+                snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
+            else:
+                snappy.stream_decompress(src=file, dst=stream)
+            stream.seek(0)
+
+            file = pa.PythonFile(stream, mode="r")
+
+        return file
 
     def _rows_per_file(self):
         """Returns the number of rows per file, or None if unknown."""
         return None
 
-    def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
-    ) -> Iterator[Block]:
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         """Streaming read a single file, passing all kwargs to the reader.
 
         By default, delegates to self._read_file().
         """
-        yield self._read_file(f, path, **reader_args)
+        yield self._read_file(f, path)
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
+    def _read_file(self, f: "pyarrow.NativeFile", path: str) -> Block:
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.
@@ -378,197 +581,9 @@ class FileBasedDatasource(Datasource):
             return None
         return FileExtensionFilter(cls._FILE_EXTENSION)
 
-
-class _FileBasedDatasourceReader(Reader):
-    def __init__(
-        self,
-        delegate: FileBasedDatasource,
-        paths: Union[str, List[str]],
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-        open_stream_args: Optional[Dict[str, Any]] = None,
-        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-        partition_filter: PathPartitionFilter = None,
-        partitioning: Partitioning = None,
-        ignore_missing_paths: bool = False,
-        shuffle: Union[Literal["files"], None] = None,
-        **reader_args,
-    ):
-        _check_pyarrow_version()
-        self._delegate = delegate
-        self._schema = schema
-        self._open_stream_args = open_stream_args
-        self._meta_provider = meta_provider
-        self._partition_filter = partition_filter
-        self._partitioning = partitioning
-        self._ignore_missing_paths = ignore_missing_paths
-        self._reader_args = reader_args
-        paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        self._paths, self._file_sizes = map(
-            list,
-            zip(
-                *meta_provider.expand_paths(
-                    paths,
-                    self._filesystem,
-                    partitioning,
-                    ignore_missing_paths=ignore_missing_paths,
-                )
-            ),
-        )
-
-        if ignore_missing_paths and len(self._paths) == 0:
-            raise ValueError(
-                "None of the provided paths exist. "
-                "The 'ignore_missing_paths' field is set to True."
-            )
-
-        if self._partition_filter is not None:
-            # Use partition filter to skip files which are not needed.
-            path_to_size = dict(zip(self._paths, self._file_sizes))
-            self._paths = self._partition_filter(self._paths)
-            self._file_sizes = [path_to_size[p] for p in self._paths]
-            if len(self._paths) == 0:
-                raise ValueError(
-                    "No input files found to read. Please double check that "
-                    "'partition_filter' field is set properly."
-                )
-        self._file_metadata_shuffler = None
-        if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
-
-    def estimate_inmemory_data_size(self) -> Optional[int]:
-        total_size = 0
-        for sz in self._file_sizes:
-            if sz is not None:
-                total_size += sz
-        return total_size
-
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        import numpy as np
-
-        ctx = DataContext.get_current()
-        open_stream_args = self._open_stream_args
-        reader_args = self._reader_args
-        partitioning = self._partitioning
-
-        if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(self._paths, self._file_sizes))
-            shuffled_files_metadata = [
-                files_metadata[i]
-                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
-            ]
-            paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
-        else:
-            paths, file_sizes = self._paths, self._file_sizes
-
-        read_stream = self._delegate._read_stream
-        filesystem = _wrap_s3_serialization_workaround(self._filesystem)
-
-        if open_stream_args is None:
-            open_stream_args = {}
-
-        open_input_source = self._delegate._open_input_source
-
-        def read_files(
-            read_paths: Iterable[str],
-        ) -> Iterable[Block]:
-            nonlocal filesystem, open_stream_args, reader_args, partitioning
-
-            DataContext._set_current(ctx)
-            fs = _unwrap_s3_serialization_workaround(filesystem)
-            for read_path in read_paths:
-                compression = open_stream_args.pop("compression", None)
-                if compression is None:
-                    import pyarrow as pa
-
-                    try:
-                        # If no compression manually given, try to detect
-                        # compression codec from path.
-                        compression = pa.Codec.detect(read_path).name
-                    except (ValueError, TypeError):
-                        # Arrow's compression inference on the file path
-                        # doesn't work for Snappy, so we double-check ourselves.
-                        import pathlib
-
-                        suffix = pathlib.Path(read_path).suffix
-                        if suffix and suffix[1:] == "snappy":
-                            compression = "snappy"
-                        else:
-                            compression = None
-                if compression == "snappy":
-                    # Pass Snappy compression as a reader arg, so datasource subclasses
-                    # can manually handle streaming decompression in
-                    # self._delegate._read_stream().
-                    reader_args["compression"] = compression
-                    reader_args["filesystem"] = fs
-                elif compression is not None:
-                    # Non-Snappy compression, pass as open_input_stream() arg so Arrow
-                    # can take care of streaming decompression for us.
-                    open_stream_args["compression"] = compression
-
-                partitions: Dict[str, str] = {}
-                if partitioning is not None:
-                    parse = PathPartitionParser(partitioning)
-                    partitions = parse(read_path)
-
-                with _open_file_with_retry(
-                    read_path,
-                    lambda: open_input_source(fs, read_path, **open_stream_args),
-                ) as f:
-                    for data in read_stream(f, read_path, **reader_args):
-                        if partitions:
-                            data = _add_partitions(data, partitions)
-                        yield data
-
-        def create_read_task_fn(read_paths, num_threads):
-            def read_task_fn():
-                nonlocal num_threads, read_paths
-
-                if num_threads > 0:
-                    if len(read_paths) < num_threads:
-                        num_threads = len(read_paths)
-
-                    logger.get_logger().debug(
-                        f"Reading {len(read_paths)} files with {num_threads} threads."
-                    )
-
-                    yield from make_async_gen(
-                        iter(read_paths),
-                        read_files,
-                        num_workers=num_threads,
-                    )
-                else:
-                    logger.get_logger().debug(f"Reading {len(read_paths)} files.")
-                    yield from read_files(read_paths)
-
-            return read_task_fn
-
-        # fix https://github.com/ray-project/ray/issues/24296
-        parallelism = min(parallelism, len(paths))
-
-        read_tasks = []
-        for read_paths, file_sizes in zip(
-            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
-        ):
-            if len(read_paths) <= 0:
-                continue
-
-            meta = self._meta_provider(
-                read_paths,
-                self._schema,
-                rows_per_file=self._delegate._rows_per_file(),
-                file_sizes=file_sizes,
-            )
-
-            read_task_fn = create_read_task_fn(
-                read_paths, self._delegate._NUM_THREADS_PER_TASK
-            )
-
-            read_task = ReadTask(read_task_fn, meta)
-
-            read_tasks.append(read_task)
-
-        return read_tasks
+    @property
+    def supports_distributed_reads(self) -> bool:
+        return self._supports_distributed_reads
 
 
 def _add_partitions(
