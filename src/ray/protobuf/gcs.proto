@@ -546,7 +546,7 @@ message ResourceLoad {
 }
 
 message ResourcesData {
-  reserved 3, 8;
+  reserved 3, 8, 17;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
@@ -577,8 +577,6 @@ message ResourcesData {
   int64 idle_duration_ms = 15;
   // Whether the node is being drained.
   bool is_draining = 16;
-  // Why the node is not idle.
-  repeated string node_activity = 17;
 }
 
 message ResourceUsageBatchData {

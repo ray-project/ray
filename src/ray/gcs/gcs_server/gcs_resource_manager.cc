@@ -49,10 +49,10 @@ void GcsResourceManager::ConsumeSyncMessage(
               NodeID::FromBinary(message->node_id()),
               commands_sync_message.cluster_full_of_actors_detected());
         } else if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
-          rpc::ResourcesData resources;
-          resources.ParseFromString(message->sync_message());
-          resources.set_node_id(message->node_id());
-          UpdateFromResourceView(resources);
+          syncer::ResourceViewSyncMessage resource_view_sync_message;
+          resource_view_sync_message.ParseFromString(message->sync_message());
+          UpdateFromResourceView(NodeID::FromBinary(message->node_id()),
+                                 resource_view_sync_message);
         } else {
           RAY_LOG(FATAL) << "Unsupported message type: " << message->message_type();
         }
@@ -136,25 +136,27 @@ void GcsResourceManager::HandleGetAllAvailableResources(
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
 }
 
-void GcsResourceManager::UpdateFromResourceView(const rpc::ResourcesData &data) {
-  NodeID node_id = NodeID::FromBinary(data.node_id());
+void GcsResourceManager::UpdateFromResourceView(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   // When gcs detects task pending, we may receive an local update. But it can be ignored
   // here because gcs' syncer has already broadcast it.
   if (node_id == local_node_id_) {
     return;
   }
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    UpdateNodeNormalTaskResources(node_id, data);
+    // TODO (jjyao) This is currently an no-op.
+    // UpdateNodeNormalTaskResources(node_id, data);
   } else {
     // We will only update the node's resources if it's from resource view reports.
     if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
-                                              data)) {
+                                              resource_view_sync_message)) {
       RAY_LOG(INFO)
           << "[UpdateFromResourceView]: received resource usage from unknown node id "
           << node_id;
     }
   }
-  UpdateNodeResourceUsage(node_id, data);
+  UpdateNodeResourceUsage(node_id, resource_view_sync_message);
 }
 
 void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
@@ -241,22 +243,24 @@ void GcsResourceManager::UpdateClusterFullOfActorsDetected(
   iter->second.set_cluster_full_of_actors_detected(cluster_full_of_actors_detected);
 }
 
-void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
-                                                 const rpc::ResourcesData &resources) {
+void GcsResourceManager::UpdateNodeResourceUsage(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   // Note: This may be inconsistent with autoscaler state, which is
   // not reported as often as a Ray Syncer message.
   if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
       maybe_node_info != absl::nullopt) {
     auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
 
-    if (resources.idle_duration_ms() > 0) {
+    if (resource_view_sync_message.idle_duration_ms() > 0) {
       snapshot->set_state(rpc::NodeSnapshot::IDLE);
-      snapshot->set_idle_duration_ms(resources.idle_duration_ms());
+      snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
     } else {
       snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
-      snapshot->mutable_node_activity()->CopyFrom(resources.node_activity());
+      snapshot->mutable_node_activity()->CopyFrom(
+          resource_view_sync_message.node_activity());
     }
-    if (resources.is_draining()) {
+    if (resource_view_sync_message.is_draining()) {
       snapshot->set_state(rpc::NodeSnapshot::DRAINING);
     }
   }
@@ -268,15 +272,13 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     // we are guaranteed that no resource usage will be reported.
     return;
   }
-  if (resources.resources_total_size() > 0) {
-    (*iter->second.mutable_resources_total()) = resources.resources_total();
+  if (resource_view_sync_message.resources_total_size() > 0) {
+    (*iter->second.mutable_resources_total()) =
+        resource_view_sync_message.resources_total();
   }
 
-  (*iter->second.mutable_resources_available()) = resources.resources_available();
-
-  if (resources.resources_normal_task_changed()) {
-    (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
-  }
+  (*iter->second.mutable_resources_available()) =
+      resource_view_sync_message.resources_available();
 }
 
 void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {

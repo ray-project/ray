@@ -297,7 +297,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param id The ID of the node manager that sent the resources data.
   /// \param data The resources data including load information.
   /// \return Whether the node resource usage is updated.
-  bool UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
+  bool UpdateResourceUsage(
+      const NodeID &id,
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
   /// Handle a worker finishing its assigned task.
   ///

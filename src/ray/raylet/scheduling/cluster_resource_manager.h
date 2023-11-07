@@ -55,7 +55,8 @@ class ClusterResourceManager {
   ///
   /// \param node_id ID of the node which resoruces need to be updated.
   /// \param resource_data The node resource data.
-  bool UpdateNode(scheduling::NodeID node_id, const rpc::ResourcesData &resource_data);
+  bool UpdateNode(scheduling::NodeID node_id,
+                  const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
