@@ -85,11 +85,13 @@ class PlasmaStore {
 
   /// Return the number of plasma objects that have been created.
   int64_t GetCumulativeCreatedObjects() const {
+    absl::MutexLock lock(&mutex_);
     return object_lifecycle_mgr_.GetNumObjectsCreatedTotal();
   }
 
   /// Return the plasma object bytes that have been created.
   int64_t GetCumulativeCreatedBytes() const {
+    absl::MutexLock lock(&mutex_);
     return object_lifecycle_mgr_.GetNumBytesCreatedTotal();
   }
 
