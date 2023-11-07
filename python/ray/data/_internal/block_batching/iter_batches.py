@@ -4,7 +4,7 @@ import time
 from contextlib import nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional, Tuple
 
-from python.ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.dataset_logger import DatasetLogger
 
 import ray
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
