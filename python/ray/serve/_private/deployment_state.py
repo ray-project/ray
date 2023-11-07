@@ -1409,7 +1409,7 @@ class DeploymentState:
         if target_capacity is None or target_capacity == 100:
             return num_replicas
 
-        return max(1, math.round(num_replicas * target_capacity / 100.0))
+        return max(1, int(round(num_replicas * target_capacity / 100.0, 0)))
 
     def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
@@ -1496,9 +1496,10 @@ class DeploymentState:
         if decision_num_replicas == self._target_state.num_replicas:
             return
 
-        self._set_target_state_autoscaling(decision_num_replicas)
-
-        # XXX: COMMENT THIS.
+        # Adjust the logged replica counts based on `target_capacity`. In reality the
+        # autoscaling algorithm operates on the full replica count and the target
+        # will be adjusted in the in the main deployment update cycle, but this log
+        # statement needs to be comprehensible to the user.
         adjusted_curr_num_replicas = self.get_capacity_adjusted_num_replicas(
             self._target_state.num_replicas, target_capacity
         )
@@ -1512,6 +1513,8 @@ class DeploymentState:
             f"{current_num_ongoing_requests}, current handle queued queries: "
             f"{current_handle_queued_queries}."
         )
+
+        self._set_target_state_autoscaling(decision_num_replicas)
 
     def delete(self) -> None:
         if not self._target_state.deleting:
@@ -2064,9 +2067,12 @@ class DeploymentState:
         Also updates the internal DeploymentStatusInfo based on the current
         state of the system.
         """
-        adjusted_target_num_replicas = self.get_capacity_adjusted_num_replicas(
-            self._target_state.num_replicas, target_capacity
-        )
+        if self._target_state.deleting:
+            adjusted_target_num_replicas = 0
+        else:
+            adjusted_target_num_replicas = self.get_capacity_adjusted_num_replicas(
+                self._target_state.num_replicas, target_capacity
+            )
 
         deleted, any_replicas_recovering = False, False
         upscale = []
@@ -2505,7 +2511,7 @@ class DeploymentStateManager:
                     deployment_state.get_autoscale_metric_lookback_period(),
                 )
                 deployment_state.autoscale(
-                    current_handle_queued_queries, target_capacity
+                    current_handle_queued_queries, target_capacity=target_capacity
                 )
 
             deployment_state_update_result = deployment_state.update(
