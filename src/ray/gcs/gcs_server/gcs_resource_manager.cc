@@ -145,7 +145,7 @@ void GcsResourceManager::UpdateFromResourceView(
     return;
   }
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    // TODO (jjyao) This is currently an no-op.
+    // TODO (jjyao) This is currently an no-op and is broken.
     // UpdateNodeNormalTaskResources(node_id, data);
   } else {
     // We will only update the node's resources if it's from resource view reports.

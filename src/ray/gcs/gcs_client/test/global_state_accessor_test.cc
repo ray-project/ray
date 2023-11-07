@@ -190,9 +190,9 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
 
   // Report resource usage first time.
   std::promise<bool> promise1;
-  auto resources1 = std::make_shared<rpc::ResourcesData>();
-  resources1->set_node_id(node_table_data->node_id());
-  gcs_server_->UpdateGcsResourceManagerInTest(*resources1);
+  syncer::ResourceViewSyncMessage resources1;
+  gcs_server_->UpdateGcsResourceManagerInTest(
+      NodeID::FromBinary(node_table_data->node_id()), resources1);
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
@@ -200,13 +200,13 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
 
   // Report changed resource usage.
   std::promise<bool> promise2;
-  auto heartbeat2 = std::make_shared<rpc::ResourcesData>();
-  heartbeat2->set_node_id(node_table_data->node_id());
-  (*heartbeat2->mutable_resources_total())["CPU"] = 1;
-  (*heartbeat2->mutable_resources_total())["GPU"] = 10;
-  (*heartbeat2->mutable_resources_available())["CPU"] = 1;
-  (*heartbeat2->mutable_resources_available())["GPU"] = 5;
-  gcs_server_->UpdateGcsResourceManagerInTest(*heartbeat2);
+  syncer::ResourceViewSyncMessage resources2;
+  (*resources2.mutable_resources_total())["CPU"] = 1;
+  (*resources2.mutable_resources_total())["GPU"] = 10;
+  (*resources2.mutable_resources_available())["CPU"] = 1;
+  (*resources2.mutable_resources_available())["GPU"] = 5;
+  gcs_server_->UpdateGcsResourceManagerInTest(
+      NodeID::FromBinary(node_table_data->node_id()), resources2);
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());

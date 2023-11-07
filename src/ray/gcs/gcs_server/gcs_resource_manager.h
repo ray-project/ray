@@ -128,7 +128,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Update resource usage of given node.
   ///
   /// \param node_id Node id.
-  /// \param resources The resource usage of the node.
+  /// \param resource_view_sync_message The resource usage of the node.
   void UpdateNodeResourceUsage(
       const NodeID &node_id,
       const syncer::ResourceViewSyncMessage &resource_view_sync_message);
@@ -136,7 +136,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Process a new resource report from a node, independent of the rpc handler it came
   /// from.
   ///
-  /// \param data The resource report.
+  /// \param node_id Node id.
+  /// \param resource_view_sync_message The resource usage of the node.
   void UpdateFromResourceView(
       const NodeID &node_id,
       const syncer::ResourceViewSyncMessage &resource_view_sync_message);
