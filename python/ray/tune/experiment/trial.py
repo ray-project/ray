@@ -638,16 +638,16 @@ class Trial:
             self.storage.trial_dir_name = self.relative_logdir
 
         assert self.local_path
-        logdir_path = Path(self.local_path)
-        max_path_length = _get_max_path_length()
-        if len(str(logdir_path)) >= max_path_length:
-            logger.warning(
-                f"The path to the trial log directory is too long "
-                f"(max length: {max_path_length}. "
-                f"Consider using `trial_dirname_creator` to shorten the path. "
-                f"Path: {logdir_path}"
-            )
-        logdir_path.mkdir(parents=True, exist_ok=True)
+        # logdir_path = Path(self.local_path)
+        # max_path_length = _get_max_path_length()
+        # if len(str(logdir_path)) >= max_path_length:
+        #     logger.warning(
+        #         f"The path to the trial log directory is too long "
+        #         f"(max length: {max_path_length}. "
+        #         f"Consider using `trial_dirname_creator` to shorten the path. "
+        #         f"Path: {logdir_path}"
+        #     )
+        # logdir_path.mkdir(parents=True, exist_ok=True)
 
         self.invalidate_json_state()
 

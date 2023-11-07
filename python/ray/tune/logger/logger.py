@@ -166,11 +166,11 @@ class LoggerCallback(Callback):
     ):
         self.log_trial_end(trial, failed=True)
 
-    def _restore_from_remote(self, file_name: str, trial: "Trial") -> None:
+    def _restore_from_remote(self, file_name: str, trial: "Trial", local_path) -> None:
         if not trial.checkpoint:
             return
 
-        local_file = os.path.join(trial.local_path, file_name)
+        local_file = os.path.join(local_path, file_name)
         remote_file = os.path.join(trial.storage.trial_fs_path, file_name)
 
         try:

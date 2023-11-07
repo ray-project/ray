@@ -20,9 +20,9 @@ if TYPE_CHECKING:
     from ray.tune.experimental.output import AirVerbosity
 
 DEFAULT_CALLBACK_CLASSES = (
-    CSVLoggerCallback,
+    # CSVLoggerCallback,
     JsonLoggerCallback,
-    TBXLoggerCallback,
+    # TBXLoggerCallback,
 )
 
 
@@ -126,19 +126,19 @@ def _create_default_callbacks(
 
     # If CSV, JSON or TensorboardX loggers are missing, add
     if os.environ.get("TUNE_DISABLE_AUTO_CALLBACK_LOGGERS", "0") != "1":
-        if not has_csv_logger:
-            callbacks.append(CSVLoggerCallback())
+        # if not has_csv_logger:
+        #     callbacks.append(CSVLoggerCallback())
         if not has_json_logger:
             callbacks.append(JsonLoggerCallback())
-        if not has_tbx_logger:
-            try:
-                callbacks.append(TBXLoggerCallback())
-            except ImportError:
-                logger.warning(
-                    "The TensorboardX logger cannot be instantiated because "
-                    "either TensorboardX or one of it's dependencies is not "
-                    "installed. Please make sure you have the latest version "
-                    "of TensorboardX installed: `pip install -U tensorboardx`"
-                )
+        # if not has_tbx_logger:
+        #     try:
+        #         callbacks.append(TBXLoggerCallback())
+        #     except ImportError:
+        #         logger.warning(
+        #             "The TensorboardX logger cannot be instantiated because "
+        #             "either TensorboardX or one of it's dependencies is not "
+        #             "installed. Please make sure you have the latest version "
+        #             "of TensorboardX installed: `pip install -U tensorboardx`"
+        #         )
 
     return callbacks

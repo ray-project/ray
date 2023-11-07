@@ -399,9 +399,12 @@ class DataParallelTrainer(BaseTrainer):
                 else None
             )
 
+            metrics = first_worker_result.metrics
+            metrics.setdefault(
+                "checkpoint_dir_name", tune_session.storage.checkpoint_dir_name
+            )
             tracked_training_result = _TrainingResult(
-                checkpoint=checkpoint,
-                metrics=first_worker_result.metrics,
+                checkpoint=checkpoint, metrics=metrics
             )
 
             logger.debug(

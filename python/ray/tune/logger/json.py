@@ -2,8 +2,11 @@ import json
 import logging
 import numpy as np
 import os
+from pathlib import Path
+import shutil
+import tempfile
 
-from typing import TYPE_CHECKING, Dict, TextIO
+from typing import TYPE_CHECKING, Dict, List, TextIO
 
 from ray.air.constants import (
     EXPR_PARAM_FILE,
@@ -11,6 +14,8 @@ from ray.air.constants import (
     EXPR_RESULT_FILE,
 )
 import ray.cloudpickle as cloudpickle
+from ray.train._internal.syncer import _BackgroundProcessLauncher
+from ray.train._internal.storage import _upload_to_fs_path
 from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.annotations import Deprecated, PublicAPI
@@ -84,19 +89,27 @@ class JsonLoggerCallback(LoggerCallback):
         self._trial_configs: Dict["Trial", Dict] = {}
         self._trial_files: Dict["Trial", TextIO] = {}
 
+        self._tempdir = Path(tempfile.mkdtemp())
+
+        self._process_launcher = _BackgroundProcessLauncher(period=60)
+
     def log_trial_start(self, trial: "Trial"):
         if trial in self._trial_files:
             self._trial_files[trial].close()
 
-        # Update config
-        self.update_config(trial, trial.config)
-
         # Make sure logdir exists
-        trial.init_local_path()
-        local_file = os.path.join(trial.local_path, EXPR_RESULT_FILE)
+        trial_local_path = self._tempdir.joinpath(trial.storage.trial_dir_name)
+        trial_local_path.mkdir(exist_ok=True)
+        local_file = trial_local_path.joinpath(EXPR_RESULT_FILE)
+
+        # Update config
+        self.update_config(trial, trial.config, trial_local_path)
 
         # Resume the file from remote storage.
-        self._restore_from_remote(EXPR_RESULT_FILE, trial)
+        if not local_file.exists():
+            self._restore_from_remote(
+                EXPR_RESULT_FILE, trial, trial_local_path.as_posix()
+            )
 
         self._trial_files[trial] = open(local_file, "at")
 
@@ -107,6 +120,15 @@ class JsonLoggerCallback(LoggerCallback):
         self._trial_files[trial].write("\n")
         self._trial_files[trial].flush()
 
+        self._process_launcher.launch_if_needed(
+            _upload_to_fs_path,
+            dict(
+                local_path=self._tempdir.as_posix(),
+                fs=trial.storage.storage_filesystem,
+                fs_path=trial.storage.experiment_fs_path,
+            ),
+        )
+
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         if trial not in self._trial_files:
             return
@@ -114,10 +136,22 @@ class JsonLoggerCallback(LoggerCallback):
         self._trial_files[trial].close()
         del self._trial_files[trial]
 
-    def update_config(self, trial: "Trial", config: Dict):
+    def on_experiment_end(self, trials: List["Trial"], **info):
+        self._process_launcher.launch(
+            _upload_to_fs_path,
+            dict(
+                local_path=self._tempdir.as_posix(),
+                fs=trials[0].storage.storage_filesystem,
+                fs_path=trials[0].storage.experiment_fs_path,
+            ),
+        )
+        self._process_launcher.wait()
+        shutil.rmtree(self._tempdir.as_posix())
+
+    def update_config(self, trial: "Trial", config: Dict, trial_local_path):
         self._trial_configs[trial] = config
 
-        config_out = os.path.join(trial.local_path, EXPR_PARAM_FILE)
+        config_out = os.path.join(trial_local_path, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
             json.dump(
                 self._trial_configs[trial],
@@ -127,6 +161,6 @@ class JsonLoggerCallback(LoggerCallback):
                 cls=SafeFallbackEncoder,
             )
 
-        config_pkl = os.path.join(trial.local_path, EXPR_PARAM_PICKLE_FILE)
+        config_pkl = os.path.join(trial_local_path, EXPR_PARAM_PICKLE_FILE)
         with open(config_pkl, "wb") as f:
             cloudpickle.dump(self._trial_configs[trial], f)
