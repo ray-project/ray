@@ -15,6 +15,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
     SERVE_LOG_DEPLOYMENT,
+    SERVE_LOG_EXTRA_FIELDS,
     SERVE_LOG_LEVEL_NAME,
     SERVE_LOG_MESSAGE,
     SERVE_LOG_RECORD_FORMAT,
@@ -75,14 +76,19 @@ class ServeJSONFormatter(logging.Formatter):
         if SERVE_LOG_ROUTE in record.__dict__:
             record_format[SERVE_LOG_ROUTE] = SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE]
 
-        if "_extra" in record.__dict__ and record.__dict__["_extra"]:
-            for key in record.__dict__["_extra"]:
-                record_format[key] = f"%({key})s"
-
         if SERVE_LOG_APPLICATION in record.__dict__:
             record_format[SERVE_LOG_APPLICATION] = SERVE_LOG_RECORD_FORMAT[
                 SERVE_LOG_APPLICATION
             ]
+
+        if SERVE_LOG_EXTRA_FIELDS in record.__dict__:
+            for k, v in record.__dict__[SERVE_LOG_EXTRA_FIELDS].items():
+                record_format[k] = json.dumps(v)
+
+        if SERVE_LOG_MESSAGE in record.__dict__:
+            record.__dict__[SERVE_LOG_MESSAGE] = json.dumps(
+                record.__dict__[SERVE_LOG_MESSAGE]
+            )
 
         record_format[SERVE_LOG_MESSAGE] = SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
 
@@ -166,33 +172,6 @@ def get_component_logger_file_path() -> Optional[str]:
                 return absolute_path[len(ray_logs_dir) :]
 
 
-original_makeRecord = logging.Logger.makeRecord
-
-
-def make_record_with_extra(
-    self, name, level, fn, lno, msg, args, exc_info, func=None, extra=None, sinfo=None
-):
-    # Unfortunately logging doesn't provide any functionality to differentiate extra
-    # fields from "record" object. So we add _extra field by ourselves to record the
-    # extra field.
-
-    record = original_makeRecord(
-        self,
-        name,
-        level,
-        fn,
-        lno,
-        msg,
-        args,
-        exc_info,
-        func=func,
-        extra=extra,
-        sinfo=sinfo,
-    )
-    record._extra = extra
-    return record
-
-
 def configure_component_logger(
     *,
     component_name: str,
@@ -209,7 +188,6 @@ def configure_component_logger(
 
     This logger will *not* propagate its log messages to the parent logger(s).
     """
-    logging.Logger.makeRecord = make_record_with_extra
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
     logger.setLevel(log_level)

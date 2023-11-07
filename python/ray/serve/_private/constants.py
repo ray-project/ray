@@ -192,6 +192,8 @@ SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_TIME: "%(asctime)s",
 }
 
+SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
+
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
