@@ -21,7 +21,7 @@ A RayService manages two components:
 * **Kubernetes-native support for Ray clusters and Ray Serve applications:** After using a Kubernetes config to define a Ray cluster and its Ray Serve applications, you can use `kubectl` to create the cluster and its applications.
 * **In-place updates for Ray Serve applications:** Users can update the Ray Serve config in the RayService CR config and use `kubectl apply` to update the applications. See [Step 7](#step-7-in-place-update-for-ray-serve-applications) for more details.
 * **Zero downtime upgrades for Ray clusters:** Users can update the Ray cluster config in the RayService CR config and use `kubectl apply` to update the cluster. RayService temporarily creates a pending cluster and waits for it to be ready, then switches traffic to the new cluster and terminates the old one. See [Step 8](#step-8-zero-downtime-upgrade-for-ray-clusters) for more details.
-* **Services HA:** RayService monitors the Ray cluster and Serve deployments' health statuses. If RayService detects an unhealthy status for a period of time, RayService tries to create a new Ray cluster and switch traffic to the new cluster when it's ready.
+* **Services HA:** RayService monitors the Ray cluster and Serve deployments' health statuses. If RayService detects an unhealthy status for a period of time, RayService tries to create a new Ray cluster and switch traffic to the new cluster when it's ready. See [this documentation](kuberay-rayservice-ha) for more details.
 
 ## Example: Serve two simple Ray Serve applications using RayService
 
@@ -294,6 +294,7 @@ kubectl delete pod curl
 
 ## Next steps
 
+* See [RayService high availability](kuberay-rayservice-ha) for more details on RayService HA.
 * See [RayService troubleshooting guide](kuberay-raysvc-troubleshoot) if you encounter any issues.
 * See [Examples](kuberay-examples) for more RayService examples.
 The [MobileNet example](kuberay-mobilenet-rayservice-example) is a good example to start with because it doesn't require GPUs and is easy to run on a local machine.

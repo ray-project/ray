@@ -281,7 +281,9 @@ if __name__ == "__main__":
                 # we pass, as the flag RAY_CI_DOC_AFFECTED is only
                 # used to indicate that tests/examples should be run
                 # (documentation will be built always)
-            elif changed_file.startswith("release/"):
+            elif changed_file.startswith("release/") or changed_file.startswith(
+                ".buildkite/release"
+            ):
                 if changed_file.startswith("release/ray_release"):
                     # Release test unit tests are ALWAYS RUN, so pass
                     pass
@@ -301,7 +303,10 @@ if __name__ == "__main__":
             ):
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
-            elif changed_file.endswith("build-docker-images.py"):
+            elif (
+                changed_file.endswith("build-docker-images.py")
+                or changed_file == ".buildkite/build.rayci.yml"
+            ):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_TOOLS_AFFECTED = 1

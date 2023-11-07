@@ -3,12 +3,13 @@ import inspect
 import logging
 import warnings
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from fastapi import APIRouter, FastAPI
 
 import ray
 from ray import cloudpickle
+from ray._private.serialization import pickle_dumps
 from ray.dag import DAGNode
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
@@ -47,7 +48,7 @@ from ray.serve.context import (
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import ServeInstanceDetails, ServeStatus
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -222,7 +223,9 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
         # this ingress deployment. We don't use copy.copy here to avoid
         # recursion issue.
         ensure_serialization_context()
-        frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+        frozen_app = cloudpickle.loads(
+            pickle_dumps(app, error_msg="Failed to serialize the FastAPI app.")
+        )
 
         class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
             def __init__(self, *args, **kwargs):
@@ -254,8 +257,6 @@ def deployment(
     name: Default[str] = DEFAULT.VALUE,
     version: Default[str] = DEFAULT.VALUE,
     num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
-    init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
-    init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
@@ -290,8 +291,6 @@ def deployment(
             this deployment. Defaults to 1.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` cannot be set.
-        init_args: [DEPRECATED] These should be passed to `.bind()` instead.
-        init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
         route_prefix: [DEPRECATED] Route prefix should be set per-application
             through `serve.run()`.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
@@ -383,8 +382,8 @@ def deployment(
     def decorator(_func_or_class):
         replica_config = ReplicaConfig.create(
             _func_or_class,
-            init_args=(init_args if init_args is not DEFAULT.VALUE else None),
-            init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
+            init_args=None,
+            init_kwargs=None,
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
@@ -443,7 +442,7 @@ def run(
     port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
-) -> Optional[RayServeSyncHandle]:
+) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
     The application is returned by `Deployment.bind()`. Example:
@@ -469,7 +468,7 @@ def run(
             nor in the ingress deployment, the route prefix will default to '/'.
 
     Returns:
-        RayServeSyncHandle: A handle that can be used to call the application.
+        DeploymentHandle: A handle that can be used to call the application.
     """
 
     if len(name) == 0:

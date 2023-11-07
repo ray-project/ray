@@ -21,7 +21,6 @@ from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     ParquetDatasource,
     _deserialize_fragments_with_retry,
-    _ParquetDatasourceReader,
     _SerializedFragment,
 )
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -724,19 +723,17 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             data_size >= 7_000_000 and data_size <= 10_000_000
         ), "actual data size is out of expected bound"
 
-        reader = _ParquetDatasourceReader(tensor_output_path)
+        datasource = ParquetDatasource(tensor_output_path)
         assert (
-            reader._encoding_ratio >= 300 and reader._encoding_ratio <= 600
+            datasource._encoding_ratio >= 300 and datasource._encoding_ratio <= 600
         ), "encoding ratio is out of expected bound"
-        data_size = reader.estimate_inmemory_data_size()
+        data_size = datasource.estimate_inmemory_data_size()
         assert (
             data_size >= 6_000_000 and data_size <= 10_000_000
         ), "estimated data size is either out of expected bound"
         assert (
             data_size
-            == _ParquetDatasourceReader(
-                tensor_output_path
-            ).estimate_inmemory_data_size()
+            == ParquetDatasource(tensor_output_path).estimate_inmemory_data_size()
         ), "estimated data size is not deterministic in multiple calls."
 
         text_output_path = os.path.join(tmp_path, "text")
@@ -754,17 +751,17 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             data_size >= 1_000_000 and data_size <= 2_000_000
         ), "actual data size is out of expected bound"
 
-        reader = _ParquetDatasourceReader(text_output_path)
+        datasource = ParquetDatasource(text_output_path)
         assert (
-            reader._encoding_ratio >= 150 and reader._encoding_ratio <= 300
+            datasource._encoding_ratio >= 150 and datasource._encoding_ratio <= 300
         ), "encoding ratio is out of expected bound"
-        data_size = reader.estimate_inmemory_data_size()
+        data_size = datasource.estimate_inmemory_data_size()
         assert (
             data_size >= 1_000_000 and data_size <= 2_000_000
         ), "estimated data size is out of expected bound"
         assert (
             data_size
-            == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
+            == ParquetDatasource(text_output_path).estimate_inmemory_data_size()
         ), "estimated data size is not deterministic in multiple calls."
     finally:
         ctx.decoding_size_estimation = old_decoding_size_estimation
@@ -950,30 +947,6 @@ def test_parquet_write_create_dir(
     assert df.equals(dfds)
 
 
-def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
-    data_path = str(tmp_path)
-    one_data = list(range(6))
-    df1 = pd.DataFrame({"one": one_data[:3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": one_data[3:], "two": ["e", "f", "g"]})
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-
-    def _block_udf(block):
-        df = BlockAccessor.for_block(block).to_pandas().copy()
-        df["one"] += 1
-        return pa.Table.from_pandas(df)
-
-    # 2 write tasks
-    ds._set_uuid("data")
-    ds.write_parquet(data_path, _block_udf=_block_udf)
-    path1 = os.path.join(data_path, "data_000000_000000.parquet")
-    path2 = os.path.join(data_path, "data_000001_000000.parquet")
-    dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
-    expected_df = df
-    expected_df["one"] += 1
-    assert expected_df.equals(dfds)
-
-
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
@@ -1073,9 +1046,13 @@ def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
     assert ds.count() == 1000
 
 
-def test_parquet_datasource_names(ray_start_regular_shared):
-    assert ParquetBaseDatasource().get_name() == "ParquetBulk"
-    assert ParquetDatasource().get_name() == "Parquet"
+def test_parquet_datasource_names(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({"spam": [1, 2, 3]})
+    path = os.path.join(tmp_path, "data.parquet")
+    df.to_parquet(path)
+
+    assert ParquetBaseDatasource(path).get_name() == "ParquetBulk"
+    assert ParquetDatasource(path).get_name() == "Parquet"
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
