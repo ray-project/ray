@@ -684,30 +684,62 @@ def test_target_capacity_field(ray_start_stop, url: str):
     raw_json = requests.get(url).json()
 
     # `target_capacity` should be present in the response before deploying anything.
-    assert raw_json["target_capacity"] is None, raw_json
+    assert raw_json["target_capacity"] is None
 
-    config_without_target_capacity = {
+    config = {
         "http_options": {
             "host": "127.0.0.1",
             "port": 8000,
         },
         "applications": [],
     }
-    deploy_config_multi_app(config_without_target_capacity, url)
-
-    raw_json = requests.get(url).json()
+    deploy_config_multi_app(config, url)
 
     # `target_capacity` should be present in the response even if not set.
-    assert raw_json["target_capacity"] is None, raw_json
-
-    # Parse the response to ensure it's formatted correctly.
+    raw_json = requests.get(url).json()
+    assert raw_json["target_capacity"] is None
     details = ServeInstanceDetails(**raw_json)
     assert details.target_capacity is None
     assert details.http_options.host == "127.0.0.1"
     assert details.http_options.port == 8000
     assert details.applications == {}
 
-    # TODO(edoakes): add test cases that set and update `target_capacity`.
+    # Set `target_capacity`, ensure it is returned properly.
+    config["target_capacity"] = 20
+    deploy_config_multi_app(config, url)
+    raw_json = requests.get(url).json()
+    assert raw_json["target_capacity"] == 20
+    details = ServeInstanceDetails(**raw_json)
+    assert details.target_capacity == 20
+    assert details.http_options.host == "127.0.0.1"
+    assert details.http_options.port == 8000
+    assert details.applications == {}
+
+    # Update `target_capacity`, ensure it is returned properly.
+    config["target_capacity"] = 40
+    deploy_config_multi_app(config, url)
+    raw_json = requests.get(url).json()
+    assert raw_json["target_capacity"] == 40
+    details = ServeInstanceDetails(**raw_json)
+    assert details.target_capacity == 40
+    assert details.http_options.host == "127.0.0.1"
+    assert details.http_options.port == 8000
+    assert details.applications == {}
+
+    # Reset `target_capacity` by omitting it, ensure it is returned properly.
+    del config["target_capacity"]
+    deploy_config_multi_app(config, url)
+    raw_json = requests.get(url).json()
+    assert raw_json["target_capacity"] is None
+    details = ServeInstanceDetails(**raw_json)
+    assert details.target_capacity is None
+    assert details.http_options.host == "127.0.0.1"
+    assert details.http_options.port == 8000
+    assert details.applications == {}
+
+    # Try to set an invalid `target_capacity`, ensure a `400` status is returned.
+    config["target_capacity"] = 101
+    assert requests.put(url, json=config, timeout=30).status_code == 400
 
 
 if __name__ == "__main__":
