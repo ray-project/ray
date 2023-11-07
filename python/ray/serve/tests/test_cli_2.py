@@ -50,8 +50,9 @@ def ping_endpoint(endpoint: str, params: str = ""):
 
 
 def check_app_running(app_name: str):
-    status = serve.status().applications[app_name]
-    assert status.status == "RUNNING"
+    status_response = subprocess.check_output(["serve", "status"])
+    status = yaml.safe_load(status_response)["applications"]
+    assert status[app_name]["status"] == "RUNNING"
     return True
 
 
