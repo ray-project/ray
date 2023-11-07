@@ -66,18 +66,19 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                 # TODO (Zandew): store results of completed datasets in stats actor.
                 for metric, queries in DATASET_METRICS.items():
                     for query in queries:
+                        query_name, prom_query = query.value
                         # Dataset level
                         dataset_result = await self._query_prometheus(
-                            query.value[1].format(metric, "dataset")
+                            prom_query.format(metric, "dataset")
                         )
                         for res in dataset_result["data"]["result"]:
                             dataset, value = res["metric"]["dataset"], res["value"][1]
                             if dataset in datasets:
-                                datasets[dataset][metric][query.value[0]] = value
+                                datasets[dataset][metric][query_name] = value
 
                         # Operator level
                         operator_result = await self._query_prometheus(
-                            query.value[1].format(metric, "dataset, operator")
+                            prom_query.format(metric, "dataset, operator")
                         )
                         for res in operator_result["data"]["result"]:
                             dataset, operator, value = (
@@ -93,7 +94,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                                 and operator in datasets[dataset]["operators"]
                             ):
                                 datasets[dataset]["operators"][operator][metric][
-                                    query.value[0]
+                                    query_name
                                 ] = value
             except aiohttp.client_exceptions.ClientConnectorError:
                 # Prometheus server may not be running,
