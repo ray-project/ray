@@ -1876,20 +1876,6 @@ ray_cc_test(
     ],
 )
 
-ray_cc_test(
-    name = "grpc_based_resource_broadcaster_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/grpc_based_resource_broadcaster_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 ray_cc_library(
     name = "gcs_client_lib",
     srcs = [

@@ -872,15 +872,15 @@ void GcsServer::TryGlobalGC() {
   // detections and under throttling are sent out (similar to
   // `NodeManager::WarnResourceDeadlock()`).
   if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
-    rpc::ResourcesData resources_data;
-    resources_data.set_should_global_gc(true);
+    syncer::CommandsSyncMessage commands_sync_message;
+    commands_sync_message.set_should_global_gc(true);
 
     auto msg = std::make_shared<syncer::RaySyncMessage>();
     msg->set_version(absl::GetCurrentTimeNanos());
     msg->set_node_id(kGCSNodeID.Binary());
     msg->set_message_type(syncer::MessageType::COMMANDS);
     std::string serialized_msg;
-    RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+    RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
     msg->set_sync_message(std::move(serialized_msg));
     ray_syncer_->BroadcastRaySyncMessage(std::move(msg));
     global_gc_throttler_->RunNow();
