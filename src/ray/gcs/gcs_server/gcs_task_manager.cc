@@ -627,6 +627,10 @@ void GcsTaskManager::GcsTaskManagerStorage::JobTaskSummary::GcOldDroppedTaskAtte
   if (dropped_task_attempts_.size() > max_dropped_task_attempts_tracked_in_gcs) {
     num_to_evict =
         dropped_task_attempts_.size() - max_dropped_task_attempts_tracked_in_gcs;
+
+    // Add 10% to mitigate thrashing.
+    num_to_evict = std::min(dropped_task_attempts_.size(),
+                            num_to_evict + static_cast<size_t>(0.1 * num_to_evict));
   }
   num_task_attempts_dropped_tracked_ = dropped_task_attempts_.size();
   if (num_to_evict == 0) {
