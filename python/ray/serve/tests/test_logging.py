@@ -14,6 +14,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import ServeComponentType
+from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS
 from ray.serve._private.logging_utils import ServeJSONFormatter
 
 
@@ -278,6 +279,31 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
         check_log_file(resp["log_file"], user_method_log_regexes)
         check_log_file(resp2["log_file"], user_class_method_log_regexes)
+
+
+def test_extra_field(serve_and_ray_shutdown):
+    """Test ray serve extra logging"""
+    ray.init(runtime_env={"env_vars": {"RAY_SERVE_ENABLE_JSON_LOGGING": "1"}})
+
+    logger = logging.getLogger("ray.serve")
+
+    @serve.deployment
+    def fn(*args):
+        logger.info(
+            "user_func", extra={"k1": "my_v1", SERVE_LOG_EXTRA_FIELDS: {"k2": "my_v2"}}
+        )
+        return {
+            "log_file": logger.handlers[1].baseFilename,
+        }
+
+    serve.run(fn.bind(), name="app1", route_prefix="/fn")
+    resp = requests.get("http://127.0.0.1:8000/fn").json()
+    with open(resp["log_file"], "r") as f:
+        s = f.read()
+        assert re.findall(".*my_v1.*", s) == []
+        # value is json escaping, need to use another two backslash
+        # in regex to match the backslash :)
+        assert re.findall('.*"k2": "\\\\"my_v2\\\\.*', s) != []
 
 
 @pytest.mark.parametrize("is_deployment_type_component", [False, True])
