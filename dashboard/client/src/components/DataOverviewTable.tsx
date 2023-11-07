@@ -176,8 +176,9 @@ const DatasetTable = ({
       <TableRow key={operator.operator}>
         <TableCell></TableCell>
         <TableCell align="left">{operator.operator}</TableCell>
-        <TableCell align="right">
+        <TableCell align="right" size={"small"}>
           <TaskProgressBar
+            showLegend={false}
             numFinished={operator.progress}
             numRunning={
               operator.state === "RUNNING"
@@ -228,8 +229,9 @@ const DatasetTable = ({
           )}
         </TableCell>
         <TableCell align="left">{dataset}</TableCell>
-        <TableCell align="right">
+        <TableCell align="right" size={"small"}>
           <TaskProgressBar
+            showLegend={false}
             numFinished={progress}
             numRunning={state === "RUNNING" ? total - progress : undefined}
             numCancelled={state === "FAILED" ? total - progress : undefined}
