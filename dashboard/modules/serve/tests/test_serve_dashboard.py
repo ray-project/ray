@@ -732,7 +732,7 @@ def test_target_capacity_field(ray_start_stop, url: str):
     raw_json = requests.get(url).json()
     assert raw_json["target_capacity"] is None
     details = ServeInstanceDetails(**raw_json)
-    assert details.target_capacity == 40
+    assert details.target_capacity is None
     assert details.http_options.host == "127.0.0.1"
     assert details.http_options.port == 8000
     assert details.applications == {}
