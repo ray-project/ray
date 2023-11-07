@@ -1456,7 +1456,7 @@ class DeploymentState:
                 )
         return current_num_ongoing_requests
 
-    def autoscale(self, current_handle_queued_queries: int):
+    def autoscale(self, current_handle_queued_queries: int, *, target_capacity: Optional[float] = None):
         """
         Autoscale the deployment based on metrics
 
@@ -1468,6 +1468,7 @@ class DeploymentState:
         if self._target_state.deleting:
             return
 
+        # XXX: add target_capacity to calculation.
         current_num_ongoing_requests = self.get_replica_current_ongoing_requests()
         autoscaling_policy = self._target_state.info.autoscaling_policy
         decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
@@ -2034,7 +2035,7 @@ class DeploymentState:
             else:
                 self._replicas.add(replica.actor_details.state, replica)
 
-    def update(self) -> DeploymentStateUpdateResult:
+    def update(self, *, target_capacity: Optional[float]) -> DeploymentStateUpdateResult:
         """Attempts to reconcile this deployment to match its goal state.
 
         This is an asynchronous call; it's expected to be called repeatedly.
@@ -2449,11 +2450,18 @@ class DeploymentStateManager:
             current_handle_queued_queries = 0
         return current_handle_queued_queries
 
-    def update(self) -> bool:
+    def update(self, *, target_capacity: Optional[float]) -> bool:
         """Updates the state of all deployments to match their goal state.
+
+        `target_capacity` represents the target capacity percentage for all replicas
+        across the cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for
+        each deployment will be scaled by this percentage.
 
         Returns True if any of the deployments have replicas in the RECOVERING state.
         """
+        if target_capacity is not None and (target_capacity < 0 or target_capacity > 100):
+            raise ValueError("`target_capacity` must be between 0 and 100.")
+
         deleted_ids = []
         any_recovering = False
         upscales = {}
@@ -2465,9 +2473,9 @@ class DeploymentStateManager:
                     deployment_id,
                     deployment_state.get_autoscale_metric_lookback_period(),
                 )
-                deployment_state.autoscale(current_handle_queued_queries)
+                deployment_state.autoscale(current_handle_queued_queries, target_capacity=target_capacity)
 
-            deployment_state_update_result = deployment_state.update()
+            deployment_state_update_result = deployment_state.update(target_capacity=target_capacity)
             if deployment_state_update_result.upscale:
                 upscales[deployment_id] = deployment_state_update_result.upscale
             if deployment_state_update_result.downscale:

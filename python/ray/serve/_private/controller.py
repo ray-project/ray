@@ -341,7 +341,9 @@ class ServeController:
 
             try:
                 dsm_update_start_time = time.time()
-                any_recovering = self.deployment_state_manager.update()
+                any_recovering = self.deployment_state_manager.update(
+                    target_capacity=self._target_capacity
+                )
                 self.dsm_update_duration_gauge_s.set(
                     time.time() - dsm_update_start_time
                 )
