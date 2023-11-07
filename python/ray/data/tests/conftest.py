@@ -731,12 +731,15 @@ def get_initial_core_execution_metrics_cursor():
 def assert_core_execution_metrics_equals(
     expected_metrics: CoreExecutionMetrics, cursor=None
 ):
-    ref = barrier.remote()
-    wait_for_condition(
-        lambda: any(
-            ref.hex().startswith(t.task_id) for t in ray.util.state.list_tasks()
+    # Wait for a task to finish to prevent a race condition where not all of
+    # the task metrics have been collected yet.
+    if expected_metrics.get_task_count() is not None:
+        ref = barrier.remote()
+        wait_for_condition(
+            lambda: any(
+                ref.hex().startswith(t.task_id) for t in ray.util.state.list_tasks()
+            )
         )
-    )
 
     metrics = PhysicalCoreExecutionMetrics(cursor)
     metrics.assert_task_metrics(expected_metrics)
@@ -752,5 +755,58 @@ def assert_core_execution_metrics_equals(
         cursor.clear_object_store_stats()
     elif expected_metrics.get_actor_count() is None:
         cursor.clear_actor_count()
+
+    return cursor
+
+
+def assert_blocks_expected_in_plasma(
+    cursor,
+    num_blocks_expected,
+    block_size_expected=None,
+    total_bytes_expected=None,
+):
+    assert not (
+        block_size_expected is not None and total_bytes_expected is not None
+    ), "only specify one of block_size_expected, total_bytes_expected"
+
+    if total_bytes_expected is None:
+        if block_size_expected is None:
+            block_size_expected = (
+                ray.data.context.DataContext.get_current().target_max_block_size
+            )
+        total_bytes_expected = num_blocks_expected * block_size_expected
+
+    print(f"Expecting {total_bytes_expected} bytes, {num_blocks_expected} blocks")
+
+    def _assert(cursor):
+        assert_core_execution_metrics_equals(
+            CoreExecutionMetrics(
+                object_store_stats={
+                    "cumulative_created_plasma_objects": lambda count: num_blocks_expected
+                    * 0.5
+                    <= count
+                    <= 1.5 * num_blocks_expected,
+                    "cumulative_created_plasma_bytes": lambda count: total_bytes_expected
+                    * 0.5
+                    <= count
+                    <= 1.5 * total_bytes_expected,
+                },
+            ),
+            cursor,
+        )
+        return True
+
+    wait_for_condition(lambda: _assert(cursor))
+
+    # Get the latest cursor.
+    cursor = assert_core_execution_metrics_equals(
+        CoreExecutionMetrics(
+            object_store_stats={
+                "cumulative_created_plasma_objects": lambda count: True,
+                "cumulative_created_plasma_bytes": lambda count: True,
+            }
+        ),
+        cursor,
+    )
 
     return cursor

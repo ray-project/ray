@@ -17,6 +17,7 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Reader, ReadTask
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
+    assert_blocks_expected_in_plasma,
     assert_core_execution_metrics_equals,
     get_initial_core_execution_metrics_cursor,
 )
@@ -193,8 +194,8 @@ def test_dataset(
                 "_execute_read_task_split": 1,
             },
             object_store_stats={
-                "cumulative_created_plasma_objects": lambda count: True,
                 "cumulative_created_plasma_bytes": lambda count: True,
+                "cumulative_created_plasma_objects": lambda count: True,
             },
         ),
         cursor,
@@ -205,7 +206,7 @@ def test_dataset(
     map_ds = map_ds.materialize()
     num_blocks_expected = num_tasks * num_blocks_per_task
     assert map_ds.num_blocks() == num_blocks_expected
-    cursor = assert_core_execution_metrics_equals(
+    assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
                 "MapWorker(ReadRandomBytes->MapBatches"
@@ -214,16 +215,11 @@ def test_dataset(
                 "_MapWorker.get_location": lambda count: True,
                 "ReadRandomBytes->MapBatches(<lambda>)": num_tasks,
             },
-            object_store_stats={
-                "cumulative_created_plasma_objects": lambda count: count
-                >= num_blocks_expected
-                and count < 2 * num_blocks_expected,
-                "cumulative_created_plasma_bytes": lambda count: count
-                >= ctx.target_max_block_size * num_blocks_expected
-                and count < ctx.target_max_block_size * (num_blocks_expected + 1),
-            },
         ),
         cursor,
+    )
+    assert_blocks_expected_in_plasma(
+        cursor, num_blocks_expected, block_size_expected=ctx.target_max_block_size
     )
 
     # Blocks smaller than requested batch size will get coalesced.
