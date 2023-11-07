@@ -42,7 +42,9 @@ class MPIPlugin(RuntimeEnvPlugin):
         # mpirun -n 10 python mpi.py worker_entry_func
 
         worker_entry = mpi_config.get("worker_entry", None)
-        assert worker_entry is not None, "`worker_entry` must be setup in the runtime env."
+        assert (
+            worker_entry is not None
+        ), "`worker_entry` must be setup in the runtime env."
         assertPath(worker_entry).is_file(), "`worker_entry` must be a file."
 
         cmds = (
