@@ -27,6 +27,7 @@ from ray._private.utils import get_or_create_event_loop
 from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
+from ray._private.runtime_env.secret_env_vars import SecretEnvVarsPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
 from ray.core.generated import (
     runtime_env_agent_pb2,
@@ -199,6 +200,8 @@ class RuntimeEnvAgent:
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
+        self._secret_env_vars = SecretEnvVarsPlugin()
+
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
@@ -214,6 +217,7 @@ class RuntimeEnvAgent:
             self._py_modules_plugin,
             self._java_jars_plugin,
             self._nsight_plugin,
+            self._secret_env_vars,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
         for plugin in self._base_plugins:
