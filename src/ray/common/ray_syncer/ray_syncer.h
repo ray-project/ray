@@ -27,6 +27,7 @@
 namespace ray {
 namespace syncer {
 
+using ray::rpc::syncer::CommandsSyncMessage;
 using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
 

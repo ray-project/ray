@@ -21,6 +21,13 @@ enum MessageType {
   COMMANDS = 1;
 }
 
+message CommandsSyncMessage {
+  // Whether this node manager is requesting global GC.
+  bool should_global_gc = 1;
+  // Whether this node has detected a resource deadlock (full of actors).
+  bool cluster_full_of_actors_detected = 2;
+}
+
 message RaySyncMessage {
   // The version of the message. -1 means the version is not set.
   int64 version = 1;

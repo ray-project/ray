@@ -162,12 +162,8 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
   // cluster_full_of_actors_detected flag. (This is how NodeManager currently
   // updates potential resources deadlock).
   {
-    rpc::ResourcesData resources_data;
-    resources_data.set_node_id(node->node_id());
-    resources_data.mutable_resources_total()->insert({"CPU", 10});
-    resources_data.mutable_resources_available()->insert({"CPU", 10});
-    resources_data.set_cluster_full_of_actors_detected(true);
-    gcs_resource_manager_->UpdateFromResourceCommand(resources_data);
+    gcs_resource_manager_->UpdateClusterFullOfActorsDetected(
+        NodeID::FromBinary(node->node_id()), true);
 
     // Still 5 because the syncer COMMANDS message is ignored.
     ASSERT_EQ(
