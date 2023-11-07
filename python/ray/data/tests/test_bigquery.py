@@ -8,8 +8,7 @@ from google.cloud.bigquery import job
 from google.cloud.bigquery_storage_v1.types import stream as gcbqs_stream
 
 import ray
-from ray.data.datasource import BigQueryDatasource
-from ray.data.datasource import _BigQueryDatasink
+from ray.data.datasource import BigQueryDatasource, _BigQueryDatasink
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -155,7 +154,7 @@ class TestReadBigQuery:
 
     def test_dataset_query_kwargs_provided(self):
         with pytest.raises(ValueError) as exception:
-            bq_ds = BigQueryDatasource(
+            BigQueryDatasource(
                 project_id=_TEST_GCP_PROJECT_ID,
                 dataset=_TEST_BQ_DATASET,
                 query="SELECT * FROM mockdataset.mocktable",
@@ -219,6 +218,6 @@ class TestWriteBigQuery:
         block = pa.Table.from_arrays([arr], names=["data"])
         status = bq_datasink.write(
             blocks=[block],
-            ctx=None,            
+            ctx=None,
         )
         assert status == "ok"

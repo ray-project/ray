@@ -3404,7 +3404,6 @@ class Dataset:
         datasink = _BigQueryDatasink(project_id, dataset)
         self.write_datasink(datasink, ray_remote_args=ray_remote_args)
 
-
     @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasource(
