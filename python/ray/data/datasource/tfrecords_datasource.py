@@ -6,6 +6,7 @@ from typing import (
     Dict,
     Iterable,
     Iterator,
+    List,
     Optional,
     Union,
 )
@@ -29,14 +30,20 @@ class TFRecordDatasource(FileBasedDatasource):
 
     _FILE_EXTENSION = "tfrecords"
 
-    def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
-    ) -> Iterator[Block]:
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        tf_schema: Optional["schema_pb2.Schema"] = None,
+        **file_based_datasource_kwargs,
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        self.tf_schema = tf_schema
+
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         import pyarrow as pa
         import tensorflow as tf
         from google.protobuf.message import DecodeError
-
-        tf_schema: Optional["schema_pb2.Schema"] = reader_args.get("tf_schema", None)
 
         for record in _read_records(f, path):
             example = tf.train.Example()
@@ -49,7 +56,9 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
 
-            yield pa.Table.from_pydict(_convert_example_to_dict(example, tf_schema))
+            yield pa.Table.from_pydict(
+                _convert_example_to_dict(example, self.tf_schema)
+            )
 
     def _write_block(
         self,

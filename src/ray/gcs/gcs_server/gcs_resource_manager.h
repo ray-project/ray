@@ -92,11 +92,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                               rpc::GetDrainingNodesReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle report resource usage rpc from a raylet.
-  void HandleReportResourceUsage(rpc::ReportResourceUsageRequest request,
-                                 rpc::ReportResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle get all resource usage rpc request.
   /// Autoscaler-specific RPC called from Python.
   void HandleGetAllResourceUsage(rpc::GetAllResourceUsageRequest request,
@@ -151,7 +146,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ///
   /// This is currently used for setting cluster full of actors info from syncer.
   /// \param data The resource report.
-  void UpdateFromResourceCommand(const rpc::ResourcesData &data);
+  void UpdateClusterFullOfActorsDetected(const NodeID &node_id,
+                                         bool cluster_full_of_actors_detected);
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
