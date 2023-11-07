@@ -673,7 +673,6 @@ class ApplicationStateManager:
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._application_states: Dict[str, ApplicationState] = dict()
-        self._target_capacity: Optional[float] = None
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
@@ -690,12 +689,6 @@ class ApplicationStateManager:
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
                 self._application_states[app_name] = app_state
-
-    def set_target_capacity(self, target_capacity: Optional[float]):
-        self._target_capacity = target_capacity
-
-    def get_target_capacity(self) -> Optional[float]:
-        return self._target_capacity
 
     def delete_application(self, name: str) -> None:
         """Delete application by name"""

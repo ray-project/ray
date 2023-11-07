@@ -196,7 +196,10 @@ class ServeController:
         self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
+        # The target capacity percentage for all replicas across the cluster.
+        self._target_capacity: Optional[float] = None
         self._recover_config_from_checkpoint()
+
         # Nodes where proxy actors should run.
         self._proxy_nodes = set()
         self._update_proxy_nodes()
@@ -688,13 +691,14 @@ class ServeController:
             ),
         )
 
-        # Delete live applications not listed in config
+        self._target_capacity = config.target_capacity
+
+        # Delete live applications not listed in the config.
         existing_applications = set(
             self.application_state_manager._application_states.keys()
         )
         new_applications = {app_config.name for app_config in config.applications}
         self.delete_apps(existing_applications.difference(new_applications))
-        self.application_state_manager.set_target_capacity(config.target_capacity)
 
     def delete_deployment(self, name: str):
         """Should only be used for 1.x deployments."""
@@ -828,7 +832,7 @@ class ServeController:
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
-            target_capacity=self.application_state_manager.get_target_capacity(),
+            target_capacity=self._target_capacity,
             controller_info=self._actor_details,
             proxy_location=http_config.location,
             http_options=http_options,
