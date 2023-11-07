@@ -726,6 +726,17 @@ def test_target_capacity_field(ray_start_stop, url: str):
     assert details.http_options.port == 8000
     assert details.applications == {}
 
+    # Reset `target_capacity` by omitting it, ensure it is returned properly.
+    del config["target_capacity"]
+    deploy_config_multi_app(config, url)
+    raw_json = requests.get(url).json()
+    assert raw_json["target_capacity"] is None
+    details = ServeInstanceDetails(**raw_json)
+    assert details.target_capacity == 40
+    assert details.http_options.host == "127.0.0.1"
+    assert details.http_options.port == 8000
+    assert details.applications == {}
+
     # Try to set an invalid `target_capacity`, ensure a `400` status is returned.
     config["target_capacity"] = 101
     assert requests.put(url, json=config, timeout=30).status_code == 400
