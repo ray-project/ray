@@ -466,6 +466,8 @@ message WorkerTableData {
   // by a raylet. (I.e., driver worker won't have this value).
   // If the value doesn't present, it is -1.
   uint64 worker_launched_time_ms = 26;
+  // The debugger port on the worker process.
+  optional uint32 debugger_port = 27;
 }
 
 // Fields to publish when worker fails.
