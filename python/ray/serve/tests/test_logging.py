@@ -301,9 +301,7 @@ def test_extra_field(serve_and_ray_shutdown):
     with open(resp["log_file"], "r") as f:
         s = f.read()
         assert re.findall(".*my_v1.*", s) == []
-        # value is json escaping, need to use another two backslash
-        # in regex to match the backslash :)
-        assert re.findall('.*"k2": "\\\\"my_v2\\\\.*', s) != []
+        assert re.findall('.*"k2": "my_v2".*', s) != []
 
 
 @pytest.mark.parametrize("is_deployment_type_component", [False, True])

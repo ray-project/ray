@@ -83,9 +83,12 @@ class ServeJSONFormatter(logging.Formatter):
 
         if SERVE_LOG_EXTRA_FIELDS in record.__dict__:
             for k, v in record.__dict__[SERVE_LOG_EXTRA_FIELDS].items():
-                record_format[k] = json.dumps(v)
+                record_format[k] = v
 
-        record_format[SERVE_LOG_MESSAGE] = SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
+        if SERVE_LOG_MESSAGE in record.__dict__:
+            record_format[SERVE_LOG_MESSAGE] = (
+                SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE] % record.__dict__
+            )
 
         # create a formatter using the format string
         formatter = logging.Formatter(json.dumps(record_format))
