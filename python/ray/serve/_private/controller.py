@@ -1047,6 +1047,7 @@ class ServeControllerAvatar:
             self._controller = None
         if self._controller is None:
             http_config = HTTPOptions()
+            logging_config = LoggingConfig()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
                 num_cpus=0,
@@ -1060,6 +1061,7 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
+                logging_config=logging_config,
             )
 
     def check_alive(self) -> None:
