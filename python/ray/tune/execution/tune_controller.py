@@ -348,6 +348,16 @@ class TuneController:
         return _experiment_checkpoint_exists(directory)
 
     def _get_save_fn(self):
+        fs = self._storage.storage_filesystem
+        experiment_fs_path = self._storage.experiment_fs_path
+        exp_state_fs_path = os.path.join(
+            experiment_fs_path, self.experiment_state_file_name
+        )
+        search_alg_filename = self._search_alg.CKPT_FILE_TMPL.format(self._session_str)
+        search_alg_state_fs_path = os.path.join(experiment_fs_path, search_alg_filename)
+        callback_filename = self._callbacks.CKPT_FILE_TMPL.format(self._session_str)
+        callback_state_fs_path = os.path.join(experiment_fs_path, callback_filename)
+
         # Get state from trial executor and runner
         # NOTE: This context manager is for Datasets captured in a trial config.
         # This is the case when *tuning over datasets*.
@@ -365,23 +375,12 @@ class TuneController:
                     "start_time": self._start_time,
                     "timestamp": self._last_checkpoint_time,
                 },
+                "search_alg_filename": search_alg_filename,
+                "callback_filename": callback_filename,
             }
 
         search_alg_state = self._search_alg.get_state()
         callback_state = self._callbacks.get_state()
-        fs = self._storage.storage_filesystem
-        experiment_fs_path = self._storage.experiment_fs_path
-
-        exp_state_fs_path = os.path.join(
-            experiment_fs_path, self.experiment_state_file_name
-        )
-        search_alg_state_fs_path = os.path.join(
-            experiment_fs_path,
-            self._search_alg.CKPT_FILE_TMPL.format(self._session_str),
-        )
-        callback_state_fs_path = os.path.join(
-            experiment_fs_path, self._callbacks.CKPT_FILE_TMPL.format(self._session_str)
-        )
 
         def save_fn():
             with fs.open_output_stream(exp_state_fs_path) as f:
@@ -443,6 +442,72 @@ class TuneController:
 
         self._search_alg.save_to_dir(experiment_dir, session_str=self._session_str)
         self._callbacks.save_to_dir(experiment_dir, session_str=self._session_str)
+
+    def restore_experiment_state(self) -> List[Trial]:
+        raise NotImplementedError
+        experiment_dir = self._storage.experiment_local_path
+
+        # Find newest state file
+        newest_state_path = _find_newest_experiment_checkpoint(experiment_dir)
+
+        if not newest_state_path:
+            raise ValueError(
+                f"Tried to resume experiment from directory "
+                f"`{experiment_dir}`, but no "
+                f"experiment checkpoint data was found."
+            )
+
+        # Set checkpoint file to load
+        logger.warning(
+            f"Attempting to resume experiment from {experiment_dir}. "
+            "This will ignore any new changes to the specification."
+        )
+        logger.info(
+            "Using the newest experiment state file found within the "
+            f"experiment directory: {Path(newest_state_path).name}"
+        )
+
+        # Actually load data
+        with open(newest_state_path, "r") as f:
+            runner_state = json.load(f, cls=TuneFunctionDecoder)
+
+        # 1. Restore trial runner state
+        self.__setstate__(runner_state["runner_data"])
+
+        # 2. Restore search algorithm and callback state
+        if self._search_alg.has_checkpoint(experiment_dir):
+            self._search_alg.restore_from_dir(experiment_dir)
+
+        if self._callbacks.can_restore(experiment_dir):
+            self._callbacks.restore_from_dir(experiment_dir)
+
+        # 3. Load trials
+        trials = []
+        for trial_json_state, trial_runtime_metadata in runner_state["trial_data"]:
+            trial = Trial.from_json_state(trial_json_state)
+            trial.restore_run_metadata(trial_runtime_metadata)
+
+            # The following properties may be updated on restoration
+            # Ex: moved local/cloud experiment directory
+
+            # Propagate updated storage ctx properties to the trial's restored copy.
+            new_storage = copy.copy(trial.storage)
+            new_storage.storage_filesystem = self._storage.storage_filesystem
+            new_storage.storage_fs_path = self._storage.storage_fs_path
+            new_storage.experiment_dir_name = self._storage.experiment_dir_name
+            # ATTN: `trial.set_storage` is used intentionally, since it
+            # also updates the absolute paths and filesystem of tracked checkpoints.
+            trial.set_storage(new_storage)
+
+            # Avoid creating logdir in client mode for returned trial results,
+            # since the dir might not be creatable locally.
+            # TODO(ekl) this is kind of a hack.
+            if not ray.util.client.ray.is_connected():
+                trial.init_local_path()  # Create logdir if it does not exist
+
+            trials.append(trial)
+
+        return trials
 
     def restore_from_dir(self) -> List[Trial]:
         """Restore TrialRunner state from local experiment directory.
