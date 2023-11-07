@@ -114,6 +114,14 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_mpi",
+  size = "small",
+  srcs = ["mpi/test_mpi.py"],
+  data = ["mpi/mpi_worker.py"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+    
 py_test_module_list(
   files = [
     "test_actor_bounded_threads.py",

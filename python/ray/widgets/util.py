@@ -5,6 +5,8 @@ import textwrap
 from functools import wraps
 from typing import Any, Callable, Iterable, Optional, TypeVar, Union
 
+from packaging.version import Version
+
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
@@ -100,7 +102,6 @@ def _has_outdated(
     outdated = []
     for (lib, version) in deps:
         try:
-            from packaging.version import Version
 
             module = importlib.import_module(lib)
             if version and Version(module.__version__) < Version(version):

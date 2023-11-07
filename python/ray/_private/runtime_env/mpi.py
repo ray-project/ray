@@ -52,7 +52,8 @@ class MPIPlugin(RuntimeEnvPlugin):
             + mpi_config.get("args", [])
             + [
                 context.py_executable,
-                str(Path(__file__).absolute()),
+                "-m",
+                "ray._private.runtime_env.mpi",
                 str(Path(worker_entry).absolute()),
             ]
         )
