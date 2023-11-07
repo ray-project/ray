@@ -41,6 +41,20 @@ steps:
     depends_on: mlbuild
     job_env: forge
 
+  - label: ":train: ml: train gpu tests"
+    tags: 
+      - train
+      - gpu
+    instance_type: gpu-large
+    parallelism: 2
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/air/... //doc/... ml
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
+        --build-name mlgpubuild
+        --only-tags gpu,gpu_only
+    depends_on: mlgpubuild
+    job_env: forge
+
   - label: ":train: ml: train authentication tests"
     tags:
       - train
@@ -159,19 +173,6 @@ steps:
         --build-name minbuild-ml-py3.8
         --only-tags minimal
     depends_on: minbuild-ml
-    job_env: forge
-
-  - label: ":train: ml: train gpu tests"
-    tags: 
-      - train
-      - gpu
-    instance_type: gpu-large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/air/... //doc/... ml
-        --parallelism-per-worker 2
-        --build-name mlgpubuild
-        --only-tags gpu,gpu_only
-    depends_on: mlgpubuild
     job_env: forge
 
   - label: ":train: ml: train gpu lightning 2.0 tests"
