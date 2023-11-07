@@ -17,6 +17,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CTaskID,
     CPlacementGroupID,
+    CVirtualClusterID,
     CNodeID,
 )
 from ray.includes.function_descriptor cimport (

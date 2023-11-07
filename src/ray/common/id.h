@@ -330,6 +330,30 @@ class ObjectID : public BaseID<ObjectID> {
   uint8_t id_[kLength];
 };
 
+class VirtualClusterID : public BaseID<VirtualClusterID> {
+ private:
+  static constexpr size_t kUniqueBytesLength = 14;
+
+ public:
+  /// Length of `VirtualClusterID` in bytes.
+  static constexpr size_t kLength = kUniqueBytesLength + JobID::kLength;
+
+  static constexpr size_t Size() { return kLength; }
+
+  static VirtualClusterID Of(const JobID &job_id);
+
+  static VirtualClusterID FromRandom() = delete;
+
+  VirtualClusterID() : BaseID() {}
+
+  JobID JobId() const;
+
+  MSGPACK_DEFINE(id_);
+
+ private:
+  uint8_t id_[kLength];
+};
+
 class PlacementGroupID : public BaseID<PlacementGroupID> {
  private:
   static constexpr size_t kUniqueBytesLength = 14;
@@ -558,6 +582,7 @@ DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 DEFINE_UNIQUE_ID(PlacementGroupID);
+DEFINE_UNIQUE_ID(VirtualClusterID);
 #include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID

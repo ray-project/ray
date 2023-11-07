@@ -883,6 +883,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const PlacementGroupCreationOptions &placement_group_creation_options,
       PlacementGroupID *placement_group_id);
 
+  Status CreateVirtualCluster(
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      VirtualClusterID *virtual_cluster_id);
+
   /// Remove a placement group. Note that this operation is synchronous.
   ///
   /// \param[in] placement_group_id The id of a placement group to remove.

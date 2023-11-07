@@ -19,6 +19,7 @@ from ray.includes.unique_ids cimport (
     CTaskID,
     CObjectID,
     CPlacementGroupID,
+    CVirtualClusterID,
     CWorkerID,
     ObjectIDIndexType,
 )
@@ -122,6 +123,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus CreatePlacementGroup(
             const CPlacementGroupCreationOptions &options,
             CPlacementGroupID *placement_group_id)
+        CRayStatus CreateVirtualCluster(
+            const c_vector[unordered_map[c_string, double]] &bundles,
+            CVirtualClusterID *virtual_cluster_id)
         CRayStatus RemovePlacementGroup(
             const CPlacementGroupID &placement_group_id)
         CRayStatus WaitPlacementGroupReady(

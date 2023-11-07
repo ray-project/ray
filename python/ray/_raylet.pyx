@@ -141,6 +141,7 @@ from ray.includes.unique_ids cimport (
     CNodeID,
     CObjectID,
     CPlacementGroupID,
+    CVirtualClusterID,
     ObjectIDIndexType,
 )
 from ray.includes.libcoreworker cimport (
@@ -3745,6 +3746,21 @@ cdef class CoreWorker:
             check_status(status)
 
             return ActorID(c_actor_id.Binary())
+
+    def create_virtual_cluster(
+                            self,
+                            c_vector[unordered_map[c_string, double]] bundles):
+        cdef:
+            CVirtualClusterID c_virtual_cluster_id
+
+        with nogil:
+            check_status(
+                        CCoreWorkerProcess.GetCoreWorker().
+                        CreateVirtualCluster(
+                            bundles,
+                            &c_virtual_cluster_id))
+
+        return VirtualClusterID(c_virtual_cluster_id.Binary())
 
     def create_placement_group(
                             self,

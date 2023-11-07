@@ -168,6 +168,14 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         const CClusterID Nil()
 
+    cdef cppclass CVirtualClusterID "ray::VirtualClusterID"(CBaseID[CVirtualClusterID]):
+
+        @staticmethod
+        CVirtualClusterID FromBinary(const c_string &binary)
+
+        @staticmethod
+        size_t Size()
+
     cdef cppclass CWorkerID "ray::WorkerID"(CUniqueID):
 
         @staticmethod

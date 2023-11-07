@@ -22,6 +22,7 @@ from ray.includes.unique_ids cimport (
     CUniqueID,
     CWorkerID,
     CPlacementGroupID,
+    CVirtualClusterID,
 )
 
 
@@ -346,6 +347,25 @@ cdef class ActorClassID(UniqueID):
 # This type alias is for backward compatibility.
 ObjectID = ObjectRef
 
+cdef class VirtualClusterID(BaseID):
+    cdef CVirtualClusterID data
+
+    def __init__(self, id):
+        check_id(id, CVirtualClusterID.Size())
+        self.data = CVirtualClusterID.FromBinary(<c_string>id)
+
+    cdef CVirtualClusterID native(self):
+        return <CVirtualClusterID>self.data
+
+    def binary(self):
+        return self.data.Binary()
+
+    def hex(self):
+        return decode(self.data.Hex())
+
+    def size(self):
+        return CVirtualClusterID.Size()
+
 cdef class PlacementGroupID(BaseID):
     cdef CPlacementGroupID data
 
@@ -399,4 +419,5 @@ _ID_TYPES = [
     TaskID,
     UniqueID,
     PlacementGroupID,
+    VirtualClusterID,
 ]
