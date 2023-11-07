@@ -222,6 +222,7 @@ class TestWriteBigQuery:
         )
         assert status == "ok"
 
+
 if __name__ == "__main__":
     import sys
 
