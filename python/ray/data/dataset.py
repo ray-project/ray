@@ -3394,9 +3394,6 @@ class Dataset:
                 overwritten if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
-        datasink = _BigQueryDatasink(project_id, dataset)
-        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
-
         if ray_remote_args is None:
             ray_remote_args = {}
 
@@ -3404,12 +3401,9 @@ class Dataset:
         # For correctness purposes, the write task cannot be retried
         ray_remote_args["max_retries"] = 0
 
-        self.write_datasource(
-            BigQueryDatasource(),
-            ray_remote_args=ray_remote_args,
-            dataset=dataset,
-            project_id=project_id,
-        )
+        datasink = _BigQueryDatasink(project_id, dataset)
+        self.write_datasink(datasink, ray_remote_args=ray_remote_args)
+
 
     @Deprecated
     @ConsumptionAPI(pattern="Time complexity:")
