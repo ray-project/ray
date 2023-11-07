@@ -223,7 +223,7 @@ def test_schema(ray_start_regular_shared):
             task_count={
                 "ReadRange": 10,
                 "reduce": 5,
-                "_get_reader": 1,
+                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         cursor,
@@ -266,7 +266,7 @@ def test_schema_no_execution(ray_start_regular_shared):
     cursor = None
     ds = ray.data.range(100, parallelism=10)
     cursor = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_reader": 1}), cursor
+        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1}), cursor
     )
     # We do not kick off the read task by default.
     assert ds._plan._in_blocks._num_computed() == 0
@@ -353,7 +353,7 @@ def test_count(ray_start_regular_shared):
     assert ds._plan._in_blocks._num_computed() == 0
 
     assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_reader": 1})
+        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1})
     )
 
 
@@ -462,7 +462,7 @@ def test_limit_execution(ray_start_regular_shared):
     cursor = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_get_reader": 1,
+                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         cursor=cursor,
@@ -488,7 +488,7 @@ def test_limit_execution(ray_start_regular_shared):
         CoreExecutionMetrics(
             task_count={
                 "_execute_read_task_split": 20,
-                "_get_reader": 1,
+                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         cursor=cursor,

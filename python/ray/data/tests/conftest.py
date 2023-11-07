@@ -591,6 +591,8 @@ class CoreExecutionMetrics:
             <= 1,
             "_StatsActor.clear_metrics": lambda count: count < 100,
             "_StatsActor.update_metrics": lambda count: count < 100,
+            "_StatsActor.clear_iter_metrics": lambda count: count < 100,
+            "_StatsActor.update_iter_metrics": lambda count: count < 100,
             "_StatsActor.get": lambda count: True,
             "_StatsActor.record_start": lambda count: True,
             "_StatsActor.record_task": lambda count: True,
