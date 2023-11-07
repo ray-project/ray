@@ -14,13 +14,13 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
 from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
 from ray.serve.generated.serve_pb2 import (
-    DeploymentStatusDriver as DeploymentStatusDriverProto,
-)
-from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+)
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 
@@ -109,7 +109,7 @@ class DeploymentStatus(str, Enum):
     DOWNSCALING = "DOWNSCALING"
 
 
-class DeploymentStatusDriver(str, Enum):
+class DeploymentStatusTrigger(str, Enum):
     UNSPECIFIED = "UNSPECIFIED"
     DEPLOY = "DEPLOY"
     CONFIG_UPDATE = "CONFIG_UPDATE"
@@ -123,7 +123,9 @@ class DeploymentStatusDriver(str, Enum):
 class DeploymentStatusInfo:
     name: str
     status: DeploymentStatus
-    status_driver: Optional[DeploymentStatusDriver] = DeploymentStatusDriver.UNSPECIFIED
+    status_trigger: Optional[
+        DeploymentStatusTrigger
+    ] = DeploymentStatusTrigger.UNSPECIFIED
     message: str = ""
 
     def debug_string(self):
@@ -138,20 +140,20 @@ class DeploymentStatusInfo:
         return DeploymentStatusInfoProto(
             name=self.name,
             status=f"DEPLOYMENT_STATUS_{self.status.name}",
-            status_driver=f"DEPLOYMENT_STATUS_DRIVER_{self.status_driver.name}",
+            status_trigger=f"DEPLOYMENT_STATUS_TRIGGER_{self.status_trigger.name}",
             message=self.message,
         )
 
     @classmethod
     def from_proto(cls, proto: DeploymentStatusInfoProto):
         status = DeploymentStatusProto.Name(proto.status)[len("DEPLOYMENT_STATUS_") :]
-        status_driver = DeploymentStatusDriverProto.Name(proto.status_driver)[
-            len("DEPLOYMENT_STATUS_DRIVER_") :
+        status_trigger = DeploymentStatusTriggerProto.Name(proto.status_trigger)[
+            len("DEPLOYMENT_STATUS_TRIGGER_") :
         ]
         return cls(
             name=proto.name,
             status=DeploymentStatus(status),
-            status_driver=DeploymentStatusDriver(status_driver),
+            status_trigger=DeploymentStatusTrigger(status_trigger),
             message=proto.message,
         )
 

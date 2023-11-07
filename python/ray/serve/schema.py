@@ -16,6 +16,7 @@ from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentInfo,
     DeploymentStatus,
+    DeploymentStatusTrigger,
     ProxyStatus,
     ReplicaState,
     ServeDeployMode,
@@ -721,6 +722,7 @@ class DeploymentStatusOverview:
     """
 
     status: DeploymentStatus
+    status_trigger: DeploymentStatusTrigger
     replica_states: Dict[ReplicaState, int]
     message: str
 
@@ -810,6 +812,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     name: str = Field(description="Deployment name.")
     status: DeploymentStatus = Field(
         description="The current status of the deployment."
+    )
+    status_trigger: DeploymentStatusTrigger = Field(
+        description="The trigger for the current status.",
     )
     message: str = Field(
         description=(
@@ -968,6 +973,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     deployments={
                         deployment_name: DeploymentStatusOverview(
                             status=deployment.status,
+                            status_trigger=deployment.status_trigger,
                             replica_states=dict(
                                 Counter([r.state.value for r in deployment.replicas])
                             ),

@@ -23,8 +23,8 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
-    DeploymentStatusDriver,
     DeploymentStatusInfo,
+    DeploymentStatusTrigger,
     Duration,
     MultiplexedReplicaInfo,
     ReplicaName,
@@ -1197,7 +1197,7 @@ class DeploymentState:
         self._replica_constructor_error_msg: Optional[str] = None
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
-            self._id.name, DeploymentStatus.UPDATING, DeploymentStatusDriver.DEPLOY
+            self._id.name, DeploymentStatus.UPDATING, DeploymentStatusTrigger.DEPLOY
         )
 
         self.replica_average_ongoing_requests: Dict[str, float] = dict()
@@ -1363,7 +1363,7 @@ class DeploymentState:
         self._curr_status_info = DeploymentStatusInfo(
             self.deployment_name,
             DeploymentStatus.UPDATING,
-            status_driver=DeploymentStatusDriver.DELETE,
+            status_trigger=DeploymentStatusTrigger.DELETE,
         )
         app_msg = f" in application '{self.app_name}'" if self.app_name else ""
         logger.info(
@@ -1374,13 +1374,13 @@ class DeploymentState:
     def _set_target_state(
         self,
         target_info: DeploymentInfo,
-        status_driver: DeploymentStatusDriver = DeploymentStatusDriver.CONFIG_UPDATE,
+        status_trigger: DeploymentStatusTrigger = DeploymentStatusTrigger.CONFIG_UPDATE,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
         Args:
             target_info: The info with which to set the target state.
-            status_driver: The driver that triggered this change of state.
+            status_trigger: The driver that triggered this change of state.
         """
 
         # We must write ahead the target state in case of GCS failure (we don't
@@ -1408,13 +1408,13 @@ class DeploymentState:
             scaling_decision = "Upscaling" if new > old else "Downscaling"
             self._curr_status_info.update(
                 status=DeploymentStatus(scaling_decision.upper()),
-                status_driver=status_driver,
+                status_trigger=status_trigger,
                 message=f"{scaling_decision} from {old} to {new} replicas.",
             )
         # Otherwise, the deployment configuration has actually been updated.
         else:
             self._curr_status_info.update(
-                status=DeploymentStatus.UPDATING, status_driver=status_driver
+                status=DeploymentStatus.UPDATING, status_trigger=status_trigger
             )
 
         self._target_state = target_state
@@ -1459,9 +1459,9 @@ class DeploymentState:
 
         self._set_target_state(
             deployment_info,
-            status_driver=DeploymentStatusDriver.CONFIG_UPDATE
+            status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE
             if existing_info
-            else DeploymentStatusDriver.DEPLOY,
+            else DeploymentStatusTrigger.DEPLOY,
         )
 
         logger.info(
@@ -1522,7 +1522,9 @@ class DeploymentState:
         new_info = copy(self._target_state.info)
         new_info.set_autoscaled_num_replicas(decision_num_replicas)
         new_info.version = self._target_state.version.code_version
-        self._set_target_state(new_info, status_driver=DeploymentStatusDriver.AUTOSCALE)
+        self._set_target_state(
+            new_info, status_trigger=DeploymentStatusTrigger.AUTOSCALE
+        )
 
     def delete(self) -> None:
         if not self._target_state.deleting:
@@ -1785,9 +1787,9 @@ class DeploymentState:
             else:
                 self._curr_status_info.update(
                     status=DeploymentStatus.UNHEALTHY,
-                    status_driver=DeploymentStatusDriver.UNSPECIFIED
+                    status_trigger=DeploymentStatusTrigger.UNSPECIFIED
                     if self._curr_status_info.status == DeploymentStatus.HEALTHY
-                    else self._curr_status_info.status_driver,
+                    else self._curr_status_info.status_trigger,
                     message=(
                         f"The deployment failed to start {failed_to_start_count} times "
                         "in a row. This may be due to a problem with its "
@@ -1822,13 +1824,13 @@ class DeploymentState:
                 if self._curr_status_info.status == DeploymentStatus.UPSCALING:
                     self._curr_status_info.update(
                         status=DeploymentStatus.HEALTHY,
-                        status_driver=DeploymentStatusDriver.UPSCALE_COMPLETED,
+                        status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED,
                         message="",
                     )
                 elif self._curr_status_info.status == DeploymentStatus.DOWNSCALING:
                     self._curr_status_info.update(
                         status=DeploymentStatus.HEALTHY,
-                        status_driver=DeploymentStatusDriver.DOWNSCALE_COMPLETED,
+                        status_trigger=DeploymentStatusTrigger.DOWNSCALE_COMPLETED,
                         message="",
                     )
                 else:
@@ -1984,9 +1986,9 @@ class DeploymentState:
                     # an update failed.
                     self._curr_status_info.update(
                         status=DeploymentStatus.UNHEALTHY,
-                        status_driver=DeploymentStatusDriver.UNSPECIFIED
+                        status_trigger=DeploymentStatusTrigger.UNSPECIFIED
                         if self._curr_status_info.status == DeploymentStatus.HEALTHY
-                        else self._curr_status_info.status_driver,
+                        else self._curr_status_info.status_trigger,
                         message="A replica's health check failed. This "
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",
@@ -2115,9 +2117,9 @@ class DeploymentState:
             )
             self._curr_status_info.update(
                 status=DeploymentStatus.UNHEALTHY,
-                status_driver=DeploymentStatusDriver.UNSPECIFIED
+                status_trigger=DeploymentStatusTrigger.UNSPECIFIED
                 if self._curr_status_info.status == DeploymentStatus.HEALTHY
-                else self._curr_status_info.status_driver,
+                else self._curr_status_info.status_trigger,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
 
@@ -2429,6 +2431,7 @@ class DeploymentStateManager:
             return DeploymentDetails(
                 name=id.name,
                 status=status_info.status,
+                status_trigger=status_info.status_trigger,
                 message=status_info.message,
                 deployment_config=_deployment_info_to_schema(
                     id.name, self.get_deployment(id)
