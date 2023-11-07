@@ -184,6 +184,24 @@ steps:
       - "3.10"
       - "3.11"
 
+  - label: ":ray: core: cpp tests"
+    tags: core_cpp
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang
+        --parallelism-per-worker 2
+    depends_on: corebuild
+    job_env: forge
+
+  - label: ":ray: core: cpp asan tests"
+    tags: core_cpp
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type asan-clang
+        --parallelism-per-worker 2
+    depends_on: corebuild
+    job_env: forge
+
   - label: ":ray: core: flaky tests"
     tags: python
     instance_type: large

@@ -7,25 +7,6 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_cpp
 
-- label: ":cpp: Tests"
-  conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
-  instance_size: small
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci --config=llvm $(./ci/run/bazel_export_options)
-      --build_tests_only
-      -- //:all //src/... -rllib/... -core_worker_test
-
-- label: ":cpp: Tests (ASAN)"
-  conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
-  instance_size: small
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci --config=asan-clang $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --jobs=2
-      -- //:all //src/... -//:core_worker_test
-
 - label: ":cpp: Tests (UBSAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
   instance_size: medium

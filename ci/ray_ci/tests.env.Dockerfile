@@ -31,6 +31,9 @@ elif [[ "$BUILD_TYPE" == "asan" ]]; then
 elif [[ "$BUILD_TYPE" == "java" ]]; then
   ./java/build-jar-multiplatform.sh linux
   RAY_INSTALL_JAVA=1 pip install -v -e python/
+elif [[ "$BUILD_TYPE" == "clang" || "$BUILD_TYPE" == "asan-clang" ]]; then
+  ./ci/env/install-llvm-binaries.sh
+  pip install -v -e python/
 else
   pip install -v -e python/
 fi
