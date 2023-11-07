@@ -834,6 +834,7 @@ class ServeController:
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
+            target_capacity=None,
             controller_info=self._actor_details,
             proxy_location=http_config.location,
             http_options=http_options,

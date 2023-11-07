@@ -294,7 +294,13 @@ def test_delete_multi_app(ray_start_stop, url):
 def test_get_serve_instance_details_not_started(ray_start_stop, url):
     """Test REST API when Serve hasn't started yet."""
 
-    ServeInstanceDetails(**requests.get(url).json())
+    raw_json = requests.get(url).json()
+
+    # `target_capacity` should always be present in the response.
+    assert raw_json["target_capacity"] is None
+
+    # Parse the response to ensure it's formatted correctly.
+    ServeInstanceDetails(**raw_json)
 
 
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
@@ -373,7 +379,11 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     wait_for_condition(applications_running, timeout=15)
     print("All applications are in a RUNNING state.")
 
-    serve_details = ServeInstanceDetails(**requests.get(url).json())
+    raw_json = requests.get(url).json()
+    # `target_capacity` should always be present in the response even when `None`.
+    assert raw_json["target_capacity"] is None
+
+    serve_details = ServeInstanceDetails(**raw_json)
     # CHECK: proxy location, HTTP host, and HTTP port
     assert serve_details.proxy_location == "HeadOnly"
     assert serve_details.http_options.host == "127.0.0.1"
