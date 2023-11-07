@@ -59,11 +59,11 @@ class SchedulingRequest:
         default_factory=list
     )
     # The ray nodes
-    node_states: List[NodeState] = field(default_factory=list)
+    current_nodes: List[NodeState] = field(default_factory=list)
     # The current list of instances.
     current_instances: List[Instance] = field(default_factory=list)
-    # The resource schedule config.
-    schedule_config: ClusterConfig
+    # The config for the cluster.
+    cluster_config: ClusterConfig
 
 
 @dataclass
@@ -128,7 +128,7 @@ class SchedulingNode:
     A scheduling node is expected to be used as:
 
         node  = SchedulingNode.from_node_config(node_config)
-        score, infeasible = node.try_schedule(requests)
+        remaining, score = node.try_schedule(requests)
 
         .... do something with the score ....
 
@@ -167,7 +167,6 @@ class SchedulingNode:
     status: SchedulingNodeStatus = SchedulingNodeStatus.TO_LAUNCH
     # Observability descriptive message for why the node was launched in the
     # first place.
-    # TODO
     launch_reason: Optional[str] = None
 
     def try_schedule(
@@ -186,7 +185,7 @@ class SchedulingNode:
 
         Returns:
             A tuple of:
-                - list of infeasible requests that cannot be scheduled on this node.
+                - list of remaining requests that cannot be scheduled on this node.
                 - the utilization score for this node with respect to the current
                 resource requests being scheduled.
         """
