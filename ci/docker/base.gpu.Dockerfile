@@ -34,7 +34,7 @@ RUN apt-get install -y -qq \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
     clang-format-12 jq \
-    clang-tidy-12 clang-12
+    clang-tidy-12 clang-12 libmpich-dev
 # Make using GCC 9 explicit.
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
     --slave /usr/bin/gcov gcov /usr/bin/gcov-9
