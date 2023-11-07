@@ -81,7 +81,7 @@ class SyncConfig:
                 )
 
     def __post_init__(self):
-        for (attr_name, extra_msg) in [
+        for attr_name, extra_msg in [
             ("upload_dir", "\nPlease specify `train.RunConfig(storage_path)` instead."),
             (
                 "syncer",
@@ -486,4 +486,72 @@ class _BackgroundSyncer(Syncer):
     def __getstate__(self):
         state = self.__dict__.copy()
         state["_sync_process"] = None
+        return state
+
+
+class _BackgroundProcessLauncher:
+    """Utility for launching a background thread that runs a function."""
+
+    def __init__(
+        self,
+        period: float = DEFAULT_SYNC_PERIOD,
+        timeout: float = DEFAULT_SYNC_TIMEOUT,
+    ):
+        self.period = period
+        self.timeout = timeout
+        self._process = None
+        self._current_cmd = None
+        self._last_launch_time = float("-inf")
+
+    def _should_continue_existing_process(self):
+        return (
+            self._process
+            and self._process.is_running
+            and time.monotonic() - self._process.start_time < self.timeout
+        )
+
+    def launch_if_needed(self, command, kwargs=None) -> bool:
+        if (
+            self._should_continue_existing_process()
+            or time.monotonic() - self._last_launch_time < self.period
+        ):
+            return False
+        self.launch(command, kwargs=kwargs)
+        return True
+
+    def launch(self, command, kwargs=None):
+        """Waits for the previous sync process to finish,
+        then launches a new process that runs the given command."""
+        if self._process:
+            try:
+                self.wait()
+            except Exception:
+                logger.warning(
+                    f"Last sync command failed with the following error:\n"
+                    f"{traceback.format_exc()}"
+                )
+
+        self._current_cmd = command
+        self._current_kwargs = kwargs or {}
+        self.retry()
+
+    def wait(self):
+        assert self._process
+        try:
+            self._process.wait(timeout=self.timeout)
+        finally:
+            # Regardless of whether the sync process succeeded within the timeout,
+            # clear the sync process so a new one can be created.
+            self._process = None
+
+    def retry(self):
+        if not self._current_cmd:
+            raise RuntimeError("No command set, cannot retry.")
+        self._process = _BackgroundProcess(self._current_cmd)
+        self._process.start(**self._current_kwargs)
+        self._last_launch_time = time.monotonic()
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_process"] = None
         return state
