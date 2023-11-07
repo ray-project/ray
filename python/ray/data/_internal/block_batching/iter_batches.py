@@ -4,6 +4,8 @@ import time
 from contextlib import nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional, Tuple
 
+from python.ray.data._internal.dataset_logger import DatasetLogger
+
 import ray
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
@@ -27,6 +29,8 @@ from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+logger = DatasetLogger(__name__)
 
 
 def iter_batches(
@@ -218,6 +222,8 @@ def _format_in_threadpool(
 
     last_stats_update = [0]  # hack to make this variable mutable
     stats_update_lock = threading.Lock()
+    lock_lock = threading.Lock()
+    total = [0]
 
     def threadpool_computations_format_collate(
         batch_iter: Iterator[Batch],
@@ -237,7 +243,9 @@ def _format_in_threadpool(
             yield batch
             # Update stats in here to avoid blocking main
             # iteration thread with task submission overhead.
+            start = time.perf_counter()
             if stats_update_lock.acquire(blocking=False):
+                tt = time.perf_counter() - start
                 if (
                     time.time() - last_stats_update[0]
                     >= STATS_ACTOR_UPDATE_INTERVAL_SECONDS
@@ -245,7 +253,12 @@ def _format_in_threadpool(
                     update_stats_actor_iter_metrics(stats, metrics_tag)
                     last_stats_update[0] = time.time()
                 stats_update_lock.release()
+            else:
+                tt = time.perf_counter() - start
+            with lock_lock.acquire():
+                total[0] += tt
 
+    logger.get_logger().info(f"LOCK OVERHEAD: {total[0]}")
     if num_threadpool_workers > 0:
         collated_iter = make_async_gen(
             base_iterator=batch_iter,
