@@ -39,7 +39,6 @@ from ray.data._internal.stats import (
     DatasetStats,
     clear_stats_actor_metrics,
     register_dataset_to_stats_actor,
-    update_stats_actor_dataset,
     update_stats_actor_metrics,
 )
 from ray.data.context import DataContext

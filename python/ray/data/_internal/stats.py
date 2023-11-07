@@ -393,12 +393,6 @@ def register_dataset_to_stats_actor(dataset_tag):
     _stats_actor.register_dataset.remote(dataset_tag)
 
 
-def update_stats_actor_dataset(dataset_tag, state):
-    global _stats_actor
-    _check_cluster_stats_actor()
-    _stats_actor.update_dataset.remote(dataset_tag, state)
-
-
 class DatasetStats:
     """Holds the execution times for a given Dataset.
 
