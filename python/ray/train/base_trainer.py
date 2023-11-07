@@ -609,12 +609,20 @@ class BaseTrainer(abc.ABC):
                 _entrypoint=AirEntrypoint.TRAINER,
             )
 
-        experiment_local_path, _ = TunerInternal.setup_create_experiment_checkpoint_dir(
+        (
+            experiment_local_path,
+            experiment_dir_name,
+        ) = TunerInternal.setup_create_experiment_checkpoint_dir(
             trainable, self.run_config
         )
 
-        experiment_local_path = Path(experiment_local_path)
-        self._save(experiment_local_path)
+        # experiment_local_path = Path(experiment_local_path)
+        from ray.train.constants import _get_defaults_results_dir
+
+        storage_path = self.run_config.storage_path or _get_defaults_results_dir()
+        fs, fs_path = get_fs_and_path(storage_path, self.run_config.storage_filesystem)
+        experiment_path = os.path.join(fs_path, experiment_dir_name)
+        self._save(fs, experiment_path)
 
         restore_msg = TrainingFailedError._RESTORE_MSG.format(
             trainer_cls_name=self.__class__.__name__,
@@ -632,7 +640,7 @@ class BaseTrainer(abc.ABC):
             raise TrainingFailedError(restore_msg) from parent_error
         # Other exceptions get passed through directly (ex: on `fail_fast='raise'`)
 
-        assert len(result_grid) == 1
+        assert len(result_grid) == 1, str(result_grid)
         result = result_grid[0]
         if result.error:
             # Raise trainable errors to the user with a message to restore
@@ -642,7 +650,7 @@ class BaseTrainer(abc.ABC):
             ) from result.error
         return result
 
-    def _save(self, experiment_path: Union[str, Path]):
+    def _save(self, fs, experiment_path: Union[str, Path]):
         """Saves the current trainer's class along with the `param_dict` of
         parameters passed to this trainer's constructor.
 
@@ -671,9 +679,8 @@ class BaseTrainer(abc.ABC):
 
         cls_and_param_dict = (self.__class__, param_dict)
 
-        experiment_path = Path(experiment_path)
-        with open(experiment_path / _TRAINER_PKL, "wb") as fp:
-            pickle.dump(cls_and_param_dict, fp)
+        with fs.open_output_stream(os.path.join(experiment_path, _TRAINER_PKL)) as f:
+            f.write(pickle.dumps(cls_and_param_dict))
 
     def _extract_fields_for_tuner_param_space(self) -> Dict:
         """Extracts fields to be included in `Tuner.param_space`.

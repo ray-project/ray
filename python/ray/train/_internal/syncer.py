@@ -510,11 +510,14 @@ class _BackgroundProcessLauncher:
             and time.monotonic() - self._process.start_time < self.timeout
         )
 
-    def launch_if_needed(self, command, kwargs=None) -> bool:
-        if (
+    def ready_for_next_launch(self) -> bool:
+        return not (
             self._should_continue_existing_process()
             or time.monotonic() - self._last_launch_time < self.period
-        ):
+        )
+
+    def launch_if_needed(self, command, kwargs=None) -> bool:
+        if not self.ready_for_next_launch():
             return False
         self.launch(command, kwargs=kwargs)
         return True

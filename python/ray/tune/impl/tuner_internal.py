@@ -146,9 +146,17 @@ class TunerInternal:
         # without allowing for checkpointing tuner and trainable.
         # Thus this has to happen before tune.run() so that we can have something
         # to restore from.
-        experiment_checkpoint_path = Path(self._local_experiment_dir, _TUNER_PKL)
-        with open(experiment_checkpoint_path, "wb") as fp:
-            pickle.dump(self.__getstate__(), fp)
+        # experiment_checkpoint_path = Path(self._local_experiment_dir, _TUNER_PKL)
+
+        from ray.train.constants import _get_defaults_results_dir
+
+        storage_path = self._run_config.storage_path or _get_defaults_results_dir()
+        fs, fs_path = get_fs_and_path(storage_path, self._run_config.storage_filesystem)
+        experiment_path = os.path.join(fs_path, self._experiment_dir_name)
+
+        fs.create_dir(experiment_path)
+        with fs.open_output_stream(os.path.join(experiment_path, _TUNER_PKL)) as f:
+            f.write(pickle.dumps(self.__getstate__()))
 
     def get_run_config(self) -> RunConfig:
         return self._run_config

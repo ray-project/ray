@@ -14,6 +14,7 @@ import logging
 import os
 
 import ray
+import ray.cloudpickle as ray_pickle
 from ray.air import ResourceRequest
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
@@ -40,6 +41,7 @@ from ray.tune.experiment import Experiment
 from ray.tune.execution.insufficient_resources_manager import (
     _InsufficientResourcesManager,
 )
+from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_METRIC,
@@ -345,6 +347,58 @@ class TuneController:
 
         return _experiment_checkpoint_exists(directory)
 
+    def _get_save_fn(self):
+        # Get state from trial executor and runner
+        # NOTE: This context manager is for Datasets captured in a trial config.
+        # This is the case when *tuning over datasets*.
+        # If the datasets have already been full executed, then serializing
+        # block refs means that this checkpoint is not usable in a new Ray cluster.
+        # This context will serialize the dataset execution plan instead, if available.
+        with out_of_band_serialize_dataset():
+            runner_state = {
+                # Trials
+                "trial_data": list(self._get_trial_checkpoints().values()),
+                # Experiment data
+                "runner_data": self.__getstate__(),
+                # Metadata
+                "stats": {
+                    "start_time": self._start_time,
+                    "timestamp": self._last_checkpoint_time,
+                },
+            }
+
+        search_alg_state = self._search_alg.get_state()
+        callback_state = self._callbacks.get_state()
+        fs = self._storage.storage_filesystem
+        experiment_fs_path = self._storage.experiment_fs_path
+
+        exp_state_fs_path = os.path.join(
+            experiment_fs_path, self.experiment_state_file_name
+        )
+        search_alg_state_fs_path = os.path.join(
+            experiment_fs_path,
+            self._search_alg.CKPT_FILE_TMPL.format(self._session_str),
+        )
+        callback_state_fs_path = os.path.join(
+            experiment_fs_path, self._callbacks.CKPT_FILE_TMPL.format(self._session_str)
+        )
+
+        def save_fn():
+            with fs.open_output_stream(exp_state_fs_path) as f:
+                f.write(
+                    json.dumps(runner_state, indent=2, cls=TuneFunctionEncoder).encode(
+                        "utf-8"
+                    )
+                )
+
+            with fs.open_output_stream(search_alg_state_fs_path) as f:
+                f.write(ray_pickle.dumps(search_alg_state))
+
+            with fs.open_output_stream(callback_state_fs_path) as f:
+                f.write(ray_pickle.dumps(callback_state))
+
+        return save_fn
+
     def save_to_dir(self):
         """Save TuneController state to the local experiment directory.
 
@@ -373,8 +427,14 @@ class TuneController:
             experiment_dir, f".tmp_experiment_state_{uuid.uuid4()}"
         )
 
-        with open(tmp_file_name, "w") as f:
-            json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
+        # NOTE: This context manager is for Datasets captured in a trial config.
+        # This is the case when *tuning over datasets*.
+        # If the datasets have already been full executed, then serializing
+        # block refs means that this checkpoint is not usable in a new Ray cluster.
+        # This context will serialize the dataset execution plan instead, if available.
+        with out_of_band_serialize_dataset():
+            with open(tmp_file_name, "w") as f:
+                json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
 
         os.replace(
             tmp_file_name,
@@ -483,7 +543,7 @@ class TuneController:
             disable=self._checkpoint_manager.auto_checkpoint_enabled or force or wait,
         ):
             self._checkpoint_manager.checkpoint(
-                save_fn=self.save_to_dir, force=force, wait=wait
+                get_save_fn=self._get_save_fn, force=force, wait=wait
             )
 
     def resume(

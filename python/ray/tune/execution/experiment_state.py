@@ -16,8 +16,8 @@ from ray.train._internal.storage import (
     _download_from_fs_path,
     _list_at_fs_path,
 )
+from ray.train._internal.syncer import _BackgroundProcessLauncher
 from ray.tune.experiment import Trial
-from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +162,10 @@ class _ExperimentCheckpointManager:
         )
         self._should_force_cloud_sync = False
 
+        self._process_launcher = _BackgroundProcessLauncher(
+            period=self._checkpoint_period
+        )
+
     @property
     def auto_checkpoint_enabled(self):
         return self._auto_checkpoint_enabled
@@ -192,7 +196,7 @@ class _ExperimentCheckpointManager:
 
     def checkpoint(
         self,
-        save_fn: Callable[[], None],
+        get_save_fn: Callable[[], None],
         force: bool = False,
         wait: bool = False,
     ):
@@ -210,38 +214,15 @@ class _ExperimentCheckpointManager:
             wait: Wait until sync to cloud has finished.
 
         """
-        experiment_local_path = self._storage.experiment_local_path
-        if not experiment_local_path:
-            return
-
         force = force or self._should_force_cloud_sync
+        if force:
+            self._process_launcher.launch(get_save_fn())
+        else:
+            if self._process_launcher.ready_for_next_launch:
+                self._process_launcher.launch(get_save_fn())
 
-        now = time.time()
-        if now - self._last_save_time < self._checkpoint_period and not force:
-            return
-
-        # Checkpoint
-        checkpoint_time_start = time.monotonic()
-
-        # NOTE: This context manager is for Datasets captured in a trial config.
-        # This is the case when *tuning over datasets*.
-        # If the datasets have already been full executed, then serializing
-        # block refs means that this checkpoint is not usable in a new Ray cluster.
-        # This context will serialize the dataset execution plan instead, if available.
-        with out_of_band_serialize_dataset():
-            save_fn()
-
-        # Sync to cloud
-        self.sync_up(force=force, wait=wait)
-
-        checkpoint_time_taken = time.monotonic() - checkpoint_time_start
-
-        # Adjust dynamic checkpointing
-        self._update_auto_checkpoint_time(time_taken=checkpoint_time_taken)
-
-        # Finish
-        self._last_save_time = time.time()
-        return experiment_local_path
+        if wait:
+            self._process_launcher.wait()
 
     def sync_up(self, force: bool = False, wait: bool = False) -> bool:
         syncer = self._storage.syncer
