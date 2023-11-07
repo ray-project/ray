@@ -1,5 +1,6 @@
-import pytest
 from unittest import mock
+
+import pytest
 
 import ray
 from ray.data.datasource.file_based_datasource import (
