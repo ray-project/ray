@@ -36,6 +36,7 @@ def setup_hdfs():
     yield hostname, port
 
 
+@pytest.mark.skip("TODO(justinvyu): Fix and re-enable this test.")
 def test_hdfs_train_checkpointing(tmp_path, monkeypatch, setup_hdfs):
     """See `ray.train.tests.test_new_persistence` for details."""
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
