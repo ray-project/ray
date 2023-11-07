@@ -45,7 +45,7 @@ class MPIPlugin(RuntimeEnvPlugin):
         assert (
             worker_entry is not None
         ), "`worker_entry` must be setup in the runtime env."
-        assertPath(worker_entry).is_file(), "`worker_entry` must be a file."
+        assert Path(worker_entry).is_file(), "`worker_entry` must be a file."
 
         cmds = (
             ["mpirun"]
