@@ -26,7 +26,7 @@ import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 
 const columns = [
-  { label: "" },
+  { label: "" }, // Empty column for dropdown icons
   { label: "Dataset / Operator Name", align: "start" },
   {
     label: "Progress",
