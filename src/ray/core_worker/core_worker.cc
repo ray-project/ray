@@ -2115,13 +2115,22 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   return Status::OK();
 }
 
+namespace {
+bool MatchBundleResource(const std::string &str) {
+  std::stringstream pattern;
+  pattern << "^" << kBundle_ResourceLabel << "_group_([0-9a-f_]+)";
+  static const std::regex resource_pattern(pattern.str());
+  return std::regex_match(str, resource_pattern);
+}
+}  // namespace
+
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
   const auto &bundles = placement_group_creation_options.bundles;
   for (const auto &bundle : bundles) {
     for (const auto &resource : bundle) {
-      if (resource.first.find(kBundle_ResourceLabel) != std::string::npos) {
+      if (MatchBundleResource(resource.first)) {
         std::ostringstream stream;
         stream << kBundle_ResourceLabel << " is a system reserved resource, which is not "
                << "allowed to be used in placement group naming. ";
@@ -2651,7 +2660,7 @@ Status CoreWorker::ExecuteTask(
       // kBundle_ResourceLabel* is a phantom resource used only for scheduling.
       // Since the task is already scheduled onto the worker, we don't need it.
       for (auto iter = resource_ids->begin(); iter != resource_ids->end();) {
-        if (iter->first.find(kBundle_ResourceLabel) == 0) {
+        if (MatchBundleResource(iter->first)) {
           iter = resource_ids->erase(iter);
         } else {
           iter++;
