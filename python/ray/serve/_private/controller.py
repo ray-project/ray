@@ -441,11 +441,15 @@ class ServeController:
             logger.info(
                 "Recovering config from checkpoint.", extra={"log_to_stderr": False}
             )
-            deployment_time, config_checkpoints_dict = pickle.loads(checkpoint)
-            applications = list(config_checkpoints_dict.values())
+            deployment_time, target_capacity, config_checkpoints_dict = pickle.loads(
+                checkpoint
+            )
             self.deploy_config(
-                ServeDeploySchema.parse_obj({"applications": applications}),
-                deployment_time,
+                ServeDeploySchema(
+                    applications=list(config_checkpoints_dict.values()),
+                    target_capacity=target_capacity,
+                ),
+                deployment_time=deployment_time,
             )
 
     def _all_running_replicas(self) -> Dict[DeploymentID, List[RunningReplicaInfo]]:
@@ -643,28 +647,15 @@ class ServeController:
 
     def deploy_config(
         self,
-        config: Union[ServeApplicationSchema, ServeDeploySchema],
-        deployment_time: float = 0,
+        config: ServeDeploySchema,
+        deployment_time: float = 0.0,
     ) -> None:
-        """Kicks off a task that deploys a set of Serve applications.
+        """Apply the config described in `ServeDeploySchema`.
 
-        Cancels in-progress tasks that are deploying Serve applications with the same
-        name as newly deployed applications.
+        This is idempotent and will upgrade the applications to the goal state
+        specified in the config.
 
-        Args:
-            config:
-                [if ServeApplicationSchema]
-                    name: Application name. If not provided, it is empty string.
-                    import_path: Serve deployment graph's import path
-                    runtime_env: runtime_env to run the deployment graph in
-                    deployments: Dictionaries that contain argument-value options
-                        that can be passed directly into a set_options() call. Overrides
-                        deployment options set in the graph's code itself.
-                [if ServeDeploySchema]
-                    applications: Dictionaries of the format ServeApplicationSchema.
-
-            deployment_time: set deployment_timestamp. If not provided, time.time() is
-                used to indicate the deployment time.
+        If `deployment_time` is not provided, `time.time()` is used.
         """
         ServeUsageTag.API_VERSION.record("v2")
         if not deployment_time:
@@ -692,7 +683,9 @@ class ServeController:
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps((deployment_time, new_config_checkpoint)),
+            pickle.dumps(
+                (deployment_time, config.target_capacity, new_config_checkpoint)
+            ),
         )
 
         # Delete live applications not listed in config
@@ -701,6 +694,7 @@ class ServeController:
         )
         new_applications = {app_config.name for app_config in config.applications}
         self.delete_apps(existing_applications.difference(new_applications))
+        self.application_state_manager.set_target_capacity(config.target_capacity)
 
     def delete_deployment(self, name: str):
         """Should only be used for 1.x deployments."""
@@ -834,7 +828,7 @@ class ServeController:
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
-            target_capacity=None,
+            target_capacity=self.application_state_manager.get_target_capacity(),
             controller_info=self._actor_details,
             proxy_location=http_config.location,
             http_options=http_options,
@@ -878,7 +872,7 @@ class ServeController:
     def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            _, config_checkpoints_dict = pickle.loads(checkpoint)
+            _, _, config_checkpoints_dict = pickle.loads(checkpoint)
             if name in config_checkpoints_dict:
                 config = config_checkpoints_dict[name]
                 return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
