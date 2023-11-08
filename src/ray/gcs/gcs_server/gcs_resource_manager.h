@@ -146,7 +146,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ///
   /// This is currently used for setting cluster full of actors info from syncer.
   /// \param data The resource report.
-  void UpdateFromResourceCommand(const rpc::ResourcesData &data);
+  void UpdateClusterFullOfActorsDetected(const NodeID &node_id,
+                                         bool cluster_full_of_actors_detected);
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.

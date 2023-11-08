@@ -18,11 +18,10 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeException
-from ray.serve.schema import (
-    ServeApplicationSchema,
-    ServeDeploySchema,
-    ServeInstanceDetails,
+from ray.serve.schema import ServeDeploySchema, ServeInstanceDetails
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_RUNTIME_ENV_PINNED_URI,
 )
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors, list_tasks
@@ -165,68 +164,10 @@ def check_multi_app():
     )
 
 
-def test_deploy_app_basic(client: ServeControllerClient):
-    config = ServeApplicationSchema.parse_obj(get_test_config())
-    client.deploy_apps(config)
-    check_single_app()
-
-
 def test_deploy_multi_app_basic(client: ServeControllerClient):
     config = ServeDeploySchema.parse_obj(get_test_deploy_config())
     client.deploy_apps(config)
     check_multi_app()
-
-
-def test_deploy_app_with_overriden_config(client: ServeControllerClient):
-    config = get_test_config()
-    config["deployments"] = [
-        {
-            "name": "Multiplier",
-            "user_config": {
-                "factor": 4,
-            },
-        },
-        {
-            "name": "Adder",
-            "user_config": {
-                "increment": 5,
-            },
-        },
-    ]
-
-    client.deploy_apps(ServeApplicationSchema.parse_obj(config))
-
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).text
-        == "5 pizzas please!"
-    )
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).text
-        == "8 pizzas please!"
-    )
-
-
-def test_deploy_app_update_config(client: ServeControllerClient):
-    config = ServeApplicationSchema.parse_obj(get_test_config())
-    client.deploy_apps(config)
-    check_single_app()
-
-    config = get_test_config()
-    config["deployments"] = [
-        {
-            "name": "Adder",
-            "user_config": {
-                "increment": -1,
-            },
-        },
-    ]
-
-    client.deploy_apps(ServeApplicationSchema.parse_obj(config))
-
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
-        == "1 pizzas please!"
-    )
 
 
 def test_deploy_multi_app_update_config(client: ServeControllerClient):
@@ -261,54 +202,6 @@ def test_deploy_multi_app_update_config(client: ServeControllerClient):
         lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "12 pizzas please!"
     )
-
-
-def test_deploy_app_update_num_replicas(client: ServeControllerClient):
-    config = ServeApplicationSchema.parse_obj(get_test_config())
-    client.deploy_apps(config)
-    check_single_app()
-
-    actors = list_actors(filters=[("state", "=", "ALIVE")])
-
-    config = get_test_config()
-    config["deployments"] = [
-        {
-            "name": "Adder",
-            "num_replicas": 2,
-            "user_config": {
-                "increment": 0,
-            },
-            "ray_actor_options": {"num_cpus": 0.1},
-        },
-        {
-            "name": "Multiplier",
-            "num_replicas": 3,
-            "user_config": {
-                "factor": 0,
-            },
-            "ray_actor_options": {"num_cpus": 0.1},
-        },
-    ]
-
-    client.deploy_apps(ServeApplicationSchema.parse_obj(config))
-
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
-        == "2 pizzas please!"
-    )
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).text
-        == "0 pizzas please!"
-    )
-
-    wait_for_condition(
-        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status
-        == ApplicationStatus.RUNNING,
-        timeout=15,
-    )
-
-    updated_actors = list_actors(filters=[("state", "=", "ALIVE")])
-    assert len(updated_actors) == len(actors) + 3
 
 
 def test_deploy_multi_app_update_num_replicas(client: ServeControllerClient):
@@ -381,39 +274,6 @@ def test_deploy_multi_app_update_num_replicas(client: ServeControllerClient):
     assert len(updated_actors) == len(actors) + 8
 
 
-def test_deploy_app_update_timestamp(client: ServeControllerClient):
-    assert SERVE_DEFAULT_APP_NAME not in serve.status().applications
-
-    config = ServeApplicationSchema.parse_obj(get_test_config())
-    client.deploy_apps(config)
-
-    first_deploy_time = (
-        serve.status().applications[SERVE_DEFAULT_APP_NAME].last_deployed_time_s
-    )
-    assert first_deploy_time > 0
-
-    time.sleep(0.1)
-
-    config = get_test_config()
-    config["deployments"] = [
-        {
-            "name": "Adder",
-            "num_replicas": 2,
-        },
-    ]
-    client.deploy_apps(ServeApplicationSchema.parse_obj(config))
-
-    assert (
-        serve.status().applications[SERVE_DEFAULT_APP_NAME].last_deployed_time_s
-        > first_deploy_time
-    )
-    assert serve.status().applications[SERVE_DEFAULT_APP_NAME].status in {
-        ApplicationStatus.DEPLOYING,
-        ApplicationStatus.RUNNING,
-    }
-    check_single_app()
-
-
 def test_deploy_multi_app_update_timestamp(client: ServeControllerClient):
     assert "app1" not in serve.status().applications
     assert "app2" not in serve.status().applications
@@ -458,36 +318,6 @@ def test_deploy_multi_app_update_timestamp(client: ServeControllerClient):
     }
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
-        == "4 pizzas please!"
-    )
-
-
-def test_deploy_app_overwrite_apps(client: ServeControllerClient):
-    """Check that overwriting a live app with a new one works."""
-
-    # Launch first graph. Its driver's route_prefix should be "/".
-    test_config_1 = ServeApplicationSchema.parse_obj(
-        {
-            "import_path": "ray.serve.tests.test_config_files.world.DagNode",
-        }
-    )
-    client.deploy_apps(test_config_1)
-
-    wait_for_condition(
-        lambda: requests.get("http://localhost:8000/").text == "wonderful world"
-    )
-
-    # Launch second graph. Its driver's route_prefix should also be "/".
-    # "/" should lead to the new driver.
-    test_config_2 = ServeApplicationSchema.parse_obj(
-        {
-            "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
-        }
-    )
-    client.deploy_apps(test_config_2)
-
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -618,43 +448,6 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
     )
 
 
-def test_deploy_app_runtime_env(client: ServeControllerClient):
-    config_template = {
-        "import_path": "conditional_dag.serve_dag",
-        "runtime_env": {
-            "working_dir": (
-                "https://github.com/ray-project/test_dag/archive/"
-                "41d09119cbdf8450599f993f51318e9e27c59098.zip"
-            )
-        },
-    }
-
-    config1 = ServeApplicationSchema.parse_obj(config_template)
-    client.deploy_apps(config1)
-
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-        == "0 pizzas please!"
-    )
-
-    # Override the configuration
-    config_template["deployments"] = [
-        {
-            "name": "Adder",
-            "ray_actor_options": {
-                "runtime_env": {"env_vars": {"override_increment": "1"}}
-            },
-        }
-    ]
-    config2 = ServeApplicationSchema.parse_obj(config_template)
-    client.deploy_apps(config2)
-
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-        == "3 pizzas please!"
-    )
-
-
 def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
     """Test redeploying applications will remove old deployments."""
 
@@ -765,31 +558,40 @@ def test_deploy_config_update_heavyweight(
 ):
     """Check that replicas are torn down when code updates are made."""
     config_template = {
-        "import_path": "ray.serve.tests.test_config_files.pid.node",
-        "deployments": [
+        "applications": [
             {
-                "name": "f",
-                "autoscaling_config": None,
-                "user_config": {"name": "alice"},
-                "ray_actor_options": {"num_cpus": 0.1},
-            },
-        ],
+                "name": "default",
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+                "deployments": [
+                    {
+                        "name": "f",
+                        "autoscaling_config": None,
+                        "user_config": {"name": "alice"},
+                        "ray_actor_options": {"num_cpus": 0.1},
+                    },
+                ],
+            }
+        ]
     }
 
-    client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
+    client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
     wait_for_condition(partial(check_running, client), timeout=15)
     pid1, _ = requests.get("http://localhost:8000/f").json()
 
     if field_to_update == "import_path":
-        config_template[
+        config_template["applications"][0][
             "import_path"
         ] = "ray.serve.tests.test_config_files.pid.dup_node"
     elif field_to_update == "runtime_env":
-        config_template["runtime_env"] = {"env_vars": {"test_var": "test_val"}}
+        config_template["applications"][0]["runtime_env"] = {
+            "env_vars": {"test_var": "test_val"}
+        }
     elif field_to_update == "ray_actor_options":
-        config_template["deployments"][0]["ray_actor_options"] = {"num_cpus": 0.2}
+        config_template["applications"][0]["deployments"][0]["ray_actor_options"] = {
+            "num_cpus": 0.2
+        }
 
-    client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
+    client.deploy_apps(ServeDeploySchema.parse_obj(config_template))
     wait_for_condition(partial(check_running, client), timeout=15)
 
     pids = []
@@ -995,10 +797,7 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
                 "route_prefix": "/app1",
                 "import_path": "conditional_dag.serve_dag",
                 "runtime_env": {
-                    "working_dir": (
-                        "https://github.com/ray-project/test_dag/archive/"
-                        "41d09119cbdf8450599f993f51318e9e27c59098.zip"
-                    )
+                    "working_dir": TEST_DAG_PINNED_URI,
                 },
             },
             {
@@ -1006,10 +805,7 @@ def test_deploy_separate_runtime_envs(client: ServeControllerClient):
                 "route_prefix": "/app2",
                 "import_path": "hello_world.app",
                 "runtime_env": {
-                    "working_dir": (
-                        "https://github.com/zcin/test_runtime_env/archive/"
-                        "c96019b6049cd9a2997db5ea0f10432bfeffb844.zip"
-                    )
+                    "working_dir": TEST_RUNTIME_ENV_PINNED_URI,
                 },
             },
         ],
@@ -1125,40 +921,6 @@ def test_deploy_with_route_prefix_conflict(client: ServeControllerClient):
     )
 
 
-def test_deploy_single_then_multi(client: ServeControllerClient):
-    """Deploying single-app then multi-app config should fail."""
-
-    single_app_config = ServeApplicationSchema.parse_obj(get_test_config())
-    multi_app_config = ServeDeploySchema.parse_obj(get_test_deploy_config())
-
-    # Deploy single app config
-    client.deploy_apps(single_app_config)
-    check_single_app()
-
-    # Deploying multi app config afterwards should fail
-    with pytest.raises(RayServeException):
-        client.deploy_apps(multi_app_config)
-    # The original application should still be up and running
-    check_single_app()
-
-
-def test_deploy_multi_then_single(client: ServeControllerClient):
-    """Deploying multi-app then single-app config should fail."""
-
-    single_app_config = ServeApplicationSchema.parse_obj(get_test_config())
-    multi_app_config = ServeDeploySchema.parse_obj(get_test_deploy_config())
-
-    # Deploy multi app config
-    client.deploy_apps(multi_app_config)
-    check_multi_app()
-
-    # Deploying single app config afterwards should fail
-    with pytest.raises(RayServeException):
-        client.deploy_apps(single_app_config)
-    # The original applications should still be up and running
-    check_multi_app()
-
-
 def test_deploy_multi_app_deleting(client: ServeControllerClient):
     """Test deleting an application by removing from config."""
 
@@ -1250,19 +1012,21 @@ def test_deployments_not_listed_in_config(client: ServeControllerClient):
     not redeploy.
     """
 
-    config = {"import_path": "ray.serve.tests.test_config_files.pid.node"}
-    client.deploy_apps(ServeApplicationSchema(**config))
+    config = {
+        "applications": [{"import_path": "ray.serve.tests.test_config_files.pid.node"}]
+    }
+    client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(partial(check_running, client), timeout=15)
-    pid1, _ = requests.get("http://localhost:8000/f").json()
+    pid1, _ = requests.get("http://localhost:8000/").json()
 
     # Redeploy the same config (with no deployments listed)
-    client.deploy_apps(ServeApplicationSchema(**config))
+    client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(partial(check_running, client), timeout=15)
 
     # It should be the same replica actor
     pids = []
     for _ in range(4):
-        pids.append(requests.get("http://localhost:8000/f").json()[0])
+        pids.append(requests.get("http://localhost:8000/").json()[0])
     assert all(pid == pid1 for pid in pids)
 
 

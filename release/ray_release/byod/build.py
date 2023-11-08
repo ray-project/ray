@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Dict
 
 import boto3
 import hashlib
@@ -7,7 +7,6 @@ import subprocess
 import sys
 import time
 
-from ray_release.byod.build_ray import build_ray
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -105,7 +104,6 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     """
     Builds the Anyscale BYOD images for the given tests.
     """
-    build_ray(tests)
     _download_dataplane_build_file()
     to_be_built = {}
     built = set()
@@ -217,11 +215,18 @@ def _validate_and_push(byod_image: str) -> None:
     )
 
 
-def _get_ray_commit() -> str:
-    return os.environ.get(
+def _get_ray_commit(envs: Optional[Dict[str, str]] = None) -> str:
+    if envs is None:
+        envs = os.environ
+    for key in [
+        "RAY_WANT_COMMIT_IN_IMAGE",
         "COMMIT_TO_TEST",
-        os.environ["BUILDKITE_COMMIT"],
-    )
+        "BUILDKITE_COMMIT",
+    ]:
+        commit = envs.get(key, "")
+        if commit:
+            return commit
+    return ""
 
 
 def _download_dataplane_build_file() -> None:
