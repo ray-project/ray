@@ -1509,20 +1509,16 @@ class DeploymentState:
         if decision_num_replicas == self._target_state.num_replicas:
             return
 
-        # Adjust the logged replica counts based on `target_capacity`. In reality the
+        # Adjust the logged replica count based on `target_capacity`. In reality the
         # autoscaling algorithm operates on the full replica count and the target
         # will be adjusted in the in the main deployment update cycle, but this log
         # statement needs to be comprehensible to the user.
-        adjusted_curr_num_replicas = self.get_capacity_adjusted_num_replicas(
-            self._target_state.num_replicas, target_capacity
-        )
         adjusted_decision_num_replicas = self.get_capacity_adjusted_num_replicas(
             decision_num_replicas, target_capacity
         )
         logger.info(
             f"Autoscaling replicas for deployment {self.deployment_name} in "
-            f"application {self.app_name} from {adjusted_curr_num_replicas} to "
-            f"{adjusted_decision_num_replicas}. Current ongoing requests: "
+            f"application {self.app_name} to {adjusted_decision_num_replicas}. "
             f"{current_num_ongoing_requests}, current handle queued queries: "
             f"{current_handle_queued_queries}."
         )
