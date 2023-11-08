@@ -1,6 +1,6 @@
 import ray
 from ray import train
-from ray.train import Checkpoint, DataConfig, ScalingConfig
+from ray.train import DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.data.datasource.partitioning import Partitioning
 import tempfile
