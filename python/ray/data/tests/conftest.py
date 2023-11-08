@@ -782,14 +782,16 @@ def assert_blocks_expected_in_plasma(
         assert_core_execution_metrics_equals(
             CoreExecutionMetrics(
                 object_store_stats={
-                    "cumulative_created_plasma_objects": lambda count: num_blocks_expected
-                    * 0.5
-                    <= count
-                    <= 1.5 * num_blocks_expected,
-                    "cumulative_created_plasma_bytes": lambda count: total_bytes_expected
-                    * 0.5
-                    <= count
-                    <= 1.5 * total_bytes_expected,
+                    "cumulative_created_plasma_objects": (
+                        lambda count: num_blocks_expected * 0.5
+                        <= count
+                        <= 1.5 * num_blocks_expected
+                    ),
+                    "cumulative_created_plasma_bytes": (
+                        lambda count: total_bytes_expected * 0.5
+                        <= count
+                        <= 1.5 * total_bytes_expected
+                    ),
                 },
             ),
             cursor,
