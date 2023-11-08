@@ -166,7 +166,7 @@ def _start_controller(
         SERVE_CONTROLLER_NAME,
         http_config=http_options,
         grpc_options=grpc_options,
-        logging_config=system_logging_config,
+        system_logging_config=system_logging_config,
     )
 
     proxy_handles = ray.get(controller.get_proxies.remote())

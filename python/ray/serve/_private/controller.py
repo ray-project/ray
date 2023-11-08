@@ -114,7 +114,7 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        logging_config: LoggingConfig,
+        system_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -134,11 +134,11 @@ class ServeController:
         # Try to read config from checkpoint
         # logging config from checkpoint take precedence over the one passed in
         # the constructor.
-        self.logging_config = None
+        self.system_logging_config = None
         log_config_checkpoint = self.kv_store.get(LOGGING_CONFIG_CHECKPOINT_KEY)
         if log_config_checkpoint is not None:
-            logging_config = pickle.loads(log_config_checkpoint)
-        self.reconfigure_system_logging_config(logging_config)
+            system_logging_config = pickle.loads(log_config_checkpoint)
+        self.reconfigure_system_logging_config(system_logging_config)
 
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
@@ -162,7 +162,7 @@ class ServeController:
             http_config,
             self._controller_node_id,
             self.cluster_node_info_cache,
-            self.logging_config,
+            self.system_logging_config,
             grpc_options,
         )
 
@@ -218,24 +218,29 @@ class ServeController:
             description="The number of times that controller has started.",
         ).inc()
 
-    def reconfigure_system_logging_config(self, logging_config: LoggingConfig):
-        if self.logging_config and self.logging_config == logging_config:
+    def reconfigure_system_logging_config(self, system_logging_config: LoggingConfig):
+        if (
+            self.system_logging_config
+            and self.system_logging_config == system_logging_config
+        ):
             return
-        self.kv_store.put(LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(logging_config))
-        self.logging_config = logging_config
+        self.kv_store.put(
+            LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(system_logging_config)
+        )
+        self.system_logging_config = system_logging_config
 
         self.long_poll_host.notify_changed(
             LongPollNamespace.SYSTEM_LOGGING_CONFIG,
-            logging_config,
+            system_logging_config,
         )
         configure_component_logger(
             component_name="controller",
             component_id=str(os.getpid()),
-            logging_config=logging_config,
+            logging_config=system_logging_config,
         )
         logger.debug(
             "Configure the serve controller logger "
-            f"with logging config: {self.logging_config}"
+            f"with logging config: {self.system_logging_config}"
         )
 
     def check_alive(self) -> None:
@@ -1017,7 +1022,7 @@ class ServeController:
         for handler in logger.handlers:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
-        return self.logging_config, log_file_path
+        return self.system_logging_config, log_file_path
 
 
 @ray.remote(num_cpus=0)

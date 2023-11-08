@@ -447,7 +447,8 @@ class TestLoggingAPI:
             route_prefix="/app2",
         )
         resp = requests.get("http://127.0.0.1:8000/app2").json()
-        # Make sure 'model_debug_level' log content does not exist
+        check_log_file(resp["log_file"], [".*model_info_level.*"])
+        # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
             check_log_file(resp["log_file"], [".*model_debug_level.*"])
 
