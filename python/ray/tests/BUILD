@@ -115,9 +115,10 @@ py_test_module_list(
 )
 
 py_test(
-    name = "test_mpi",
+  name = "test_mpi",
   size = "small",
   srcs = ["mpi/test_mpi.py"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
   data = ["mpi/mpi_worker.py"],
   deps = ["//:ray_lib", ":conftest"],
 )
