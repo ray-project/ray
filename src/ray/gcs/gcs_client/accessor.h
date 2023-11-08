@@ -588,6 +588,16 @@ class WorkerInfoAccessor {
   virtual Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
                           const StatusCallback &callback);
 
+  /// Update the worker debugger port in GCS asynchronously.
+  ///
+  /// \param worker_id The ID of worker to update in the GCS.
+  /// \param debugger_port The debugger port of worker to update in the GCS.
+  /// \param callback Callback that will be called after update finishes.
+  /// \return Status
+  virtual Status AsyncUpdateDebuggerPort(const WorkerID &worker_id,
+                                         uint32_t debugger_port,
+                                         const StatusCallback &callback);
+
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to

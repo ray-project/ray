@@ -889,6 +889,24 @@ Status WorkerInfoAccessor::AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> 
   return Status::OK();
 }
 
+Status WorkerInfoAccessor::AsyncUpdateDebuggerPort(const WorkerID &worker_id,
+                                                   uint32_t debugger_port,
+                                                   const StatusCallback &callback) {
+  rpc::UpdateWorkerDebuggerPortRequest request;
+  request.set_worker_id(worker_id.Binary());
+  request.set_debugger_port(debugger_port);
+  RAY_LOG(DEBUG) << "Updating the worker debugger port, worker id = " << worker_id
+                 << ", port = " << debugger_port << ".";
+  client_impl_->GetGcsRpcClient().UpdateWorkerDebuggerPort(
+      request,
+      [callback](const Status &status, const rpc::UpdateWorkerDebuggerPortReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
 PlacementGroupInfoAccessor::PlacementGroupInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 

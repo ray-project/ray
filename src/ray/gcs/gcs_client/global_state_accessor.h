@@ -133,6 +133,13 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllWorkerInfo() ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Update the worker debugger port in the GCS Service.
+  ///
+  /// \param worker_id The ID of worker to update in the GCS Service.
+  /// \param debugger_port The debugger port of worker to update in the GCS Service.
+  /// \return Is operation success.
+  bool UpdateWorkerDebuggerPort(const WorkerID &worker_id, const uint32_t debugger_port);
+
   /// Add information of a worker to GCS Service.
   ///
   /// \param serialized_string The serialized data of worker to be added in the GCS
