@@ -10,6 +10,7 @@ from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
+import ray.cloudpickle as pickle
 from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
@@ -53,7 +54,7 @@ def _arrow_extension_scalars_are_subclassable():
 
 
 @PublicAPI(stability="beta")
-class ArrowTensorType(pa.PyExtensionType):
+class ArrowTensorType(pa.ExtensionType):
     """
     Arrow ExtensionType for an array of fixed-shaped, homogeneous-typed
     tensors.
@@ -73,6 +74,7 @@ class ArrowTensorType(pa.PyExtensionType):
             dtype: pyarrow dtype of tensor elements.
         """
         self._shape = shape
+        self._dtype = dtype
         super().__init__(pa.list_(dtype))
 
     @property
@@ -98,8 +100,15 @@ class ArrowTensorType(pa.PyExtensionType):
 
         return TensorDtype(self._shape, self.storage_type.value_type.to_pandas_dtype())
 
-    def __reduce__(self):
-        return ArrowTensorType, (self._shape, self.storage_type.value_type)
+    def __arrow_ext_serialize__(self):
+        arguments = (self._shape, self.storage_type.value_type)
+        return pickle.dumps(arguments)
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        shape, dtype = pickle.loads(serialized)
+        assert storage_type == pa.list_(dtype)
+        return cls(shape, dtype)
 
     def __arrow_ext_class__(self):
         """
@@ -526,7 +535,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
 
 @PublicAPI(stability="alpha")
-class ArrowVariableShapedTensorType(pa.PyExtensionType):
+class ArrowVariableShapedTensorType(pa.ExtensionType):
     """
     Arrow ExtensionType for an array of heterogeneous-shaped, homogeneous-typed
     tensors.
@@ -578,11 +587,14 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
         data_field_index = self.storage_type.get_field_index("data")
         return self.storage_type[data_field_index].type.value_type
 
-    def __reduce__(self):
-        return (
-            ArrowVariableShapedTensorType,
-            (self.storage_type["data"].type.value_type, self._ndim),
-        )
+    def __arrow_ext_serialize__(self):
+        arguments = (self.storage_type["data"].type.value_type, self._ndim)
+        return pickle.dumps(arguments)
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        dtype, ndim = pickle.loads(serialized)
+        return cls(dtype, ndim)
 
     def __arrow_ext_class__(self):
         """
