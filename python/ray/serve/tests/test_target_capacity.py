@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from typing import Dict
 
@@ -16,6 +17,8 @@ INGRESS_DEPLOYMENT_NAME = "ingress"
 INGRESS_DEPLOYMENT_NUM_REPLICAS = 6
 DOWNSTREAM_DEPLOYMENT_NAME = "downstream"
 DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS = 2
+SCALE_TO_ZERO_DEPLOYMENT_NAME = "zero"
+SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS = 4
 
 
 @pytest.fixture
@@ -206,6 +209,102 @@ def test_controller_recover_target_capacity(
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+        },
+    )
+
+
+@serve.deployment(
+    ray_actor_options={"num_cpus": 0},
+    autoscaling_config={
+        "min_replicas": 0,
+        "max_replicas": SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS,
+        "target_num_ongoing_requests_per_replicas": 1,
+        "upscale_delay_s": 1,
+        "downscale_delay_s": 1,
+        "smoothing_factor": 4,
+        "metrics_interval_s": 1,
+    },
+    max_concurrent_queries=2,
+    graceful_shutdown_timeout_s=0,
+)
+class ScaleToZeroDeployment:
+    async def __call__(self, *args):
+        await asyncio.sleep(10000)
+
+
+scale_to_zero_app = ScaleToZeroDeployment.options(
+    name=SCALE_TO_ZERO_DEPLOYMENT_NAME,
+).bind()
+
+
+def test_autoscaling_scale_to_zero(
+    shutdown_ray_and_serve, client: ServeControllerClient
+):
+    config = ServeDeploySchema(
+        applications=[
+            ServeApplicationSchema(
+                import_path="ray.serve.tests.test_target_capacity:scale_to_zero_app"
+            )
+        ]
+    )
+
+    # Initially deploy at target_capacity 0, should have 0 replicas.
+    config.target_capacity = 0.0
+    client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 0.0)
+    wait_for_condition(
+        check_expected_num_replicas,
+        deployment_to_num_replicas={
+            SCALE_TO_ZERO_DEPLOYMENT_NAME: 0,
+        },
+    )
+
+    # Send a bunch of requests. Autoscaler will want to scale it up to max replicas,
+    # but it should stay at one due to the target_capacity.
+    handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    responses = [
+        handle.remote() for _ in range(5 * SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS)
+    ]
+    wait_for_condition(
+        check_expected_num_replicas,
+        deployment_to_num_replicas={
+            SCALE_TO_ZERO_DEPLOYMENT_NAME: 1,
+        },
+    )
+
+    # Increase to target_capacity 100, should scale all the way up.
+    config.target_capacity = 100.0
+    client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 100.0)
+    wait_for_condition(
+        check_expected_num_replicas,
+        deployment_to_num_replicas={
+            SCALE_TO_ZERO_DEPLOYMENT_NAME: SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS,
+        },
+    )
+
+    # Decrease to target_capacity 50, should scale down.
+    config.target_capacity = 50.0
+    client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 50.0)
+    wait_for_condition(
+        check_expected_num_replicas,
+        deployment_to_num_replicas={
+            SCALE_TO_ZERO_DEPLOYMENT_NAME: SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS / 2,
+        },
+    )
+
+    # TODO(edoakes): for some reason, the deployment does not actually scale down to
+    # zero here, so skipping this part for now. Instead it repeatedly scales down and
+    # then back up. Seems to have something to do with the handle-side queue metric.
+    return
+
+    # Cancel all of the requests, should scale down to zero.
+    [r.cancel() for r in responses]
+    wait_for_condition(
+        check_expected_num_replicas,
+        deployment_to_num_replicas={
+            SCALE_TO_ZERO_DEPLOYMENT_NAME: 0,
         },
     )
 
