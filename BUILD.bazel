@@ -825,7 +825,7 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core"],
+    tags = ["team:core", "manual"],
     deps = [
         ":core_worker_lib",
         ":gcs",

@@ -972,6 +972,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
             "controller_info": {},
             "proxies": {},
             "applications": {},
+            "target_capacity": None,
         }
 
     def _get_status(self) -> ServeStatus:
