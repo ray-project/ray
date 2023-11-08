@@ -179,13 +179,6 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._shutdown:
                 return
             logger.get_logger().debug(f"Shutting down {self}.")
-            update_stats_actor_dataset(
-                self._dataset_tag,
-                {
-                    "state": "FINISHED" if execution_completed else "FAILED",
-                    "end_time": time.time(),
-                },
-            )
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
