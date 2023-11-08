@@ -1,15 +1,9 @@
 import re
 import os
-import sys
 import logging
-import subprocess
-import importlib
 from typing import Optional, List, Tuple
-
-try:
-    import GPUtil
-except ImportError:
-    pass
+import ray._private.thirdparty.pynvml as pynvml
+from pkg_resources import packaging
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
@@ -21,6 +15,9 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 # TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
 # the form "Tesla V100-SXM2-16GB" or "Tesla K80").
 NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
+
+# version with mig uuid
+MIG_UUID_DRIVER_VERSION = "470.42.01"
 
 
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
@@ -39,7 +36,6 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         cuda_visible_devices = os.environ.get(
             NvidiaGPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
         )
-
         if cuda_visible_devices is None:
             return None
 
@@ -53,55 +49,80 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
-        num_gpus = 0
-        if importlib.util.find_spec("GPUtil"):
-            gpu_list = GPUtil.getGPUs()
-            num_gpus = len(gpu_list)
-        elif sys.platform.startswith("linux"):
-            proc_gpus_path = "/proc/driver/nvidia/gpus"
-            if os.path.isdir(proc_gpus_path):
-                num_gpus = len(os.listdir(proc_gpus_path))
-        elif sys.platform == "win32":
-            props = "AdapterCompatibility"
-            cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
-            lines = subprocess.check_output(cmdargs).splitlines()[1:]
-            num_gpus = len([x.rstrip() for x in lines if x.startswith(b"NVIDIA")])
-        return num_gpus
+        try:
+            pynvml.nvmlInit()
+        except pynvml.NVMLError:
+            return 0  # pynvml init failed
+        driver_version = pynvml.nvmlSystemGetDriverVersion()
+        device_count = pynvml.nvmlDeviceGetCount()
+        cuda_devices = []
+        for index in range(device_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+            mig_enabled = False
+            if mig_enabled:
+                try:
+                    max_mig_count = pynvml.nvmlDeviceGetMaxMigDeviceCount(handle)
+                except pynvml.NVMLError_NotSupported:
+                    cuda_devices.append(str(index))
+                    continue
+                for mig_index in range(max_mig_count):
+                    try:
+                        mig_handle = pynvml.nvmlDeviceGetMigDeviceHandleByIndex(
+                            handle, mig_index
+                        )
+                        mig_uuid = ""
+                        if packaging.version(driver_version) >= packaging.version(
+                            MIG_UUID_DRIVER_VERSION
+                        ):
+                            mig_uuid = pynvml.nvmlDeviceGetUUID(mig_handle)
+                        else:
+                            mig_uuid = (
+                                f"MIG-{pynvml.nvmlDeviceGetUUID(handle)}"
+                                f"/{pynvml.nvmlDeviceGetComputeInstanceId(mig_handle)}"
+                                f"/{pynvml.nvmlDeviceGetGpuInstanceId(mig_handle)}"
+                            )
+                        cuda_devices.append(mig_uuid)
+                    except pynvml.NVMError_:
+                        break
+            else:
+                cuda_devices.append(str(index))
+        os.environ[
+            NvidiaGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
+        ] = ",".join(cuda_devices)
+        pynvml.nvmlShutdown()
+        return len(cuda_devices)
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
         try:
-            if importlib.util.find_spec("GPUtil"):
-                gpu_list = GPUtil.getGPUs()
-                if len(gpu_list) > 0:
-                    gpu_list_names = [gpu.name for gpu in gpu_list]
-                    return NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                        gpu_list_names.pop()
-                    )
-            elif sys.platform.startswith("linux"):
-                proc_gpus_path = "/proc/driver/nvidia/gpus"
-                if not os.path.isdir(proc_gpus_path):
-                    return None
-                gpu_dirs = os.listdir(proc_gpus_path)
-                if len(gpu_dirs) == 0:
-                    return None
-                gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
-                info_str = open(gpu_info_path).read()
-                if not info_str:
-                    return None
-                lines = info_str.split("\n")
-                full_model_name = None
-                for line in lines:
-                    split = line.split(":")
-                    if len(split) != 2:
+            pynvml.nvmlInit()
+            device_count = pynvml.nvmlDeviceGetCount()
+            cuda_devices_names = []
+            for index in range(device_count):
+                handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+                mig_enabled = False
+                if mig_enabled:
+                    try:
+                        max_mig_count = pynvml.nvmlDeviceGetMaxMigDeviceCount(handle)
+                    except pynvml.NVMLError_NotSupported:
+                        cuda_devices_names.append(pynvml.nvmlDeviceGetName(handle))
                         continue
-                    k, v = split
-                    if k.strip() == "Model":
-                        full_model_name = v.strip()
-                        break
-                return NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                    full_model_name
-                )
+                    for mig_index in range(max_mig_count):
+                        try:
+                            mig_handle = pynvml.nvmlDeviceGetMigDeviceHandleByIndex(
+                                handle, mig_index
+                            )
+                            cuda_devices_names.append(
+                                pynvml.nvmlDeviceGetName(mig_handle)
+                            )
+                        except pynvml.NVMError_:
+                            break
+                else:
+                    cuda_devices_names.append(pynvml.nvmlDeviceGetName(handle))
+            pynvml.nvmlShutdown()
+            return NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
+                cuda_devices_names.pop()
+            )
         except Exception:
             logger.exception("Could not parse gpu information.")
         return None

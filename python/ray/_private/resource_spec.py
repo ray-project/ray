@@ -173,6 +173,9 @@ class ResourceSpec(
                     accelerator_resource_name
                 )
             )
+            from pdb import set_trace as bp
+
+            bp()
             num_accelerators = None
             if accelerator_resource_name == "GPU":
                 num_accelerators = self.num_gpus
@@ -198,6 +201,9 @@ class ResourceSpec(
                 # Try to automatically detect the number of accelerators.
                 num_accelerators = (
                     accelerator_manager.get_current_node_num_accelerators()
+                )
+                visible_accelerator_ids = (
+                    accelerator_manager.get_current_process_visible_accelerator_ids()
                 )
                 # Don't use more accelerators than allowed by visible accelerator ids.
                 if visible_accelerator_ids is not None:
