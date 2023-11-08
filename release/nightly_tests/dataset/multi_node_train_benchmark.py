@@ -18,7 +18,7 @@ from image_loader_microbenchmark import get_mosaic_dataloader
 
 import torch
 import torch.distributed as dist
-from torchvision.models import resnet50
+from torchvision.models import resnet50, ResNet50_Weights
 import torch.nn as nn
 import torch.optim as optim
 
@@ -174,7 +174,7 @@ def train_loop_per_worker():
     device = train.torch.get_device()
 
     # Setup the model
-    raw_model = resnet50()
+    raw_model = resnet50(weights=ResNet50_Weights.DEFAULT)
     model = train.torch.prepare_model(raw_model)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
@@ -268,7 +268,7 @@ def train_loop_per_worker():
                     epoch_accuracy=(num_correct / num_rows),
                     running_loss=running_loss,
                 ),
-                checkpoint=Checkpoint.from_directory(tmpdir),
+                # checkpoint=Checkpoint.from_directory(tmpdir),
             )
         end_t = time.time()
         # Workaround to report the epoch start/end time from each worker, so that we
@@ -431,14 +431,12 @@ def benchmark_code(
                     partitioning=partitioning,
                 )
 
-                def wnid_to_index(batch):
-                    batch["label"] = [
-                        IMAGENET_WNID_TO_ID[wnid] for wnid in batch["class"]
-                    ]
-                    batch.pop("class")
-                    return batch
+                def wnid_to_index(row):
+                    row["label"] = IMAGENET_WNID_TO_ID[row["class"]]
+                    row.pop("class")
+                    return row
 
-                ray_dataset = ray_dataset.map_batches(wnid_to_index)
+                ray_dataset = ray_dataset.map(wnid_to_index)
             elif args.file_type == "parquet":
                 ray_dataset = ray.data.read_parquet(
                     args.data_root,
