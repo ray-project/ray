@@ -121,7 +121,7 @@ class DeploymentTargetState:
     def compare_state_excluding_num_replicas(self, other_target_state) -> bool:
         """Compare with another target state.
 
-        Returns: Whether all configurable info is identicable other than num_replicas.
+        Returns: Whether all configurable info is identical other than num_replicas.
         """
 
         if not other_target_state.info:
