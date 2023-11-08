@@ -80,7 +80,7 @@ def test_autodetect_tpu_accelerator_type(
 )
 @patch("requests.get")
 @patch("os.getenv")
-def test__get_tpu_worker_id(mock_os, mock_request, test_case):
+def test_get_tpu_worker_id(mock_os, mock_request, test_case):
     gce_or_gke, worker_id, expected_value = test_case
     if gce_or_gke == "gce":
         mock_response = mock.MagicMock()
