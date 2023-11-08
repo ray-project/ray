@@ -102,7 +102,8 @@ class LoggingConfig(BaseModel):
     enable_access_log: bool = Field(
         default=True,
         description=(
-            "Whether to enable access logs for each request. Default to True."
+            "Whether to enable access logs . Default to True. If set to false, "
+            "logs won't be written to the log file."
         ),
     )
 
