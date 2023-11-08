@@ -83,6 +83,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
     # Initially deploy at target_capacity 0, should have 1 replica of each.
     config.target_capacity = 0.0
     client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 0.0)
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
@@ -94,6 +95,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
     # Increase target_capacity to 50, ingress deployment should scale up.
     config.target_capacity = 50.0
     client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 50.0)
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
@@ -105,6 +107,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
     # Increase target_capacity to 100, both should fully scale up.
     config.target_capacity = 100.0
     client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 100.0)
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
@@ -116,6 +119,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
     # Finish rollout (remove target_capacity), should have no effect.
     config.target_capacity = None
     client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity is None)
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
@@ -136,6 +140,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
 
     # Initially deploy with no target_capacity (full scale).
     client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity is None)
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
@@ -147,6 +152,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
     # Decrease target_capacity to 50, both deployments should scale down.
     config.target_capacity = 50.0
     client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 50.0)
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
@@ -158,6 +164,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
     # Decrease target_capacity to 0, both should fully scale down to zero.
     config.target_capacity = 0.0
     client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 0.0)
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
@@ -181,6 +188,7 @@ def test_controller_recover_target_capacity(
     # Deploy with target_capacity 50, both deployments should be at half scale.
     config.target_capacity = 50.0
     client.deploy_apps(config)
+    wait_for_condition(lambda: serve.status().target_capacity == 50.0)
     wait_for_condition(
         check_expected_num_replicas,
         deployment_to_num_replicas={
