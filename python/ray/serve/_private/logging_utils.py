@@ -174,6 +174,8 @@ def configure_component_logger(
     using the provided name and unique ID for this instance (e.g., replica ID).
 
     This logger will *not* propagate its log messages to the parent logger(s).
+
+    RotatingFileHandler will not be set if enable_access_log is False.
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
@@ -200,7 +202,6 @@ def configure_component_logger(
     stream_handler.addFilter(log_to_stderr_filter)
     logger.addHandler(stream_handler)
 
-    print("enable_access_log: ", logging_config.enable_access_log)
     if logging_config.enable_access_log:
 
         if logging_config.logs_dir:
