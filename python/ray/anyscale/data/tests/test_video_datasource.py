@@ -3,12 +3,11 @@ import pytest
 
 import ray
 from ray.anyscale.data import VideoDatasource
-from ray.anyscale.data.video_datasource import _VideoDatasourceReader
 
 
 def test_video_datasource():
     uri = "s3://anonymous@ray-example-data/basketball.mp4"
-    ds = ray.data.read_datasource(VideoDatasource(), paths=uri)
+    ds = ray.data.read_datasource(VideoDatasource(uri))
 
     assert ds.count() == 333
     assert ds.schema().names == ["frame", "frame_index"]
@@ -26,12 +25,11 @@ def test_video_datasource():
 
 def test_in_memory_size_estimation():
     uri = "s3://anonymous@antoni-test/sewer-videos/sewer_example_0.mp4"
-    datasource = VideoDatasource()
+    datasource = VideoDatasource(uri)
 
-    reader = _VideoDatasourceReader(datasource, paths=uri)
-    estimated_size = reader.estimate_inmemory_data_size()
+    estimated_size = datasource.estimate_inmemory_data_size()
 
-    ds = ray.data.read_datasource(datasource, paths=uri).materialize()
+    ds = ray.data.read_datasource(datasource).materialize()
     actual_size = ds.size_bytes()
 
     percent_error = (abs(estimated_size - actual_size) / actual_size) * 100

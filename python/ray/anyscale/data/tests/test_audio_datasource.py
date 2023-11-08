@@ -18,7 +18,7 @@ def audio_uri():
 
 
 def test_audio_datasource(ray_start_regular_shared, audio_uri):
-    ds = ray.data.read_datasource(AudioDatasource(), paths=audio_uri)
+    ds = ray.data.read_datasource(AudioDatasource(audio_uri))
 
     # Verify basic audio properties
     assert ds.count() == NUM_AUDIO_FILES, ds.count()
