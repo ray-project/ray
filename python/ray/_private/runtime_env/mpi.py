@@ -1,5 +1,4 @@
 import logging
-import os
 
 from typing import List, Optional
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -60,8 +59,6 @@ class MPIPlugin(RuntimeEnvPlugin):
 
         logger.info(f"Running MPI plugin\n {proc.stdout.decode()}")
 
-        from pathlib import Path
-
         # worker_entry should be a file either in the working dir
         # or visible inside the cluster.
         worker_entry = mpi_config.get("worker_entry")
@@ -69,7 +66,6 @@ class MPIPlugin(RuntimeEnvPlugin):
         assert (
             worker_entry is not None
         ), "`worker_entry` must be setup in the runtime env."
-
 
         cmds = (
             ["mpirun"]
