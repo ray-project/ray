@@ -168,7 +168,7 @@ class ForwardHealthCheckToEnvWorker(RolloutWorker):
 
     def ping(self) -> str:
         # See if Env wants to throw error.
-        _ = self.env.step(self.env.action_space.sample())
+        _ = self.env.step(self.env.action_space_sample())
         # If there is no error raised from sample(), we simply reply pong.
         return super().ping()
 
