@@ -1987,7 +1987,7 @@ class DeploymentState:
                 if replica.version == self._target_state.version:
                     # If the deployment transitioned from HEALTHY to
                     # UNHEALTHY, then there isn't an explicit status
-                    # driver since it wasn't because a new deployment or
+                    # trigger since it wasn't because a new deployment or
                     # an update failed.
                     self._curr_status_info.update(
                         status=DeploymentStatus.UNHEALTHY,
