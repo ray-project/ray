@@ -48,14 +48,8 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     """
 
     def get_input_data(target_max_block_size) -> List[RefBundle]:
-        parallelism, _, min_safe_parallelism, _ = _autodetect_parallelism(
-            op._parallelism,
-            target_max_block_size,
-            DataContext.get_current(),
-            op._datasource_or_legacy_reader,
-            op._mem_size,
-        )
-
+        assert hasattr(op, "_detected_parallelism")
+        parallelism = op._detected_parallelism
         read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
