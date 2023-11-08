@@ -992,6 +992,113 @@ Status PlacementGroupInfoAccessor::SyncWaitUntilReady(
   return status;
 }
 
+VirtualClusterAccessor::VirtualClusterAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status VirtualClusterAccessor::SyncCreateVirtualCluster(
+    const ray::VirtualClusterSpecification &virtual_cluster_spec) {
+  rpc::CreateVirtualClusterRequest request;
+  rpc::CreateVirtualClusterReply reply;
+
+  request.mutable_virtual_cluster_spec()->CopyFrom(virtual_cluster_spec.GetMessage());
+
+  auto status = client_impl_->GetGcsRpcClient().SyncCreateVirtualCluster(
+      request, &reply, GetGcsTimeoutMs());
+  if (status.ok()) {
+    RAY_LOG(DEBUG) << "Finished registering virtual cluster. virtual cluster id = "
+                   << virtual_cluster_spec.VirtualClusterId();
+  } else {
+    RAY_LOG(ERROR) << "Virtual cluster id = " << virtual_cluster_spec.VirtualClusterId()
+                   << " failed to be registered. " << status;
+  }
+  return status;
+}
+
+Status VirtualClusterAccessor::SyncRemoveVirtualCluster(
+    const ray::VirtualClusterID &virtual_cluster_id) {
+  rpc::RemoveVirtualClusterRequest request;
+  rpc::RemoveVirtualClusterReply reply;
+  request.set_virtual_cluster_id(virtual_cluster_id.Binary());
+  auto status = client_impl_->GetGcsRpcClient().SyncRemoveVirtualCluster(
+      request, &reply, GetGcsTimeoutMs());
+  return status;
+}
+
+// Status VirtualClusterAccessor::AsyncGet(
+//     const VirtualClusterID &virtual_cluster_id,
+//     const OptionalItemCallback<rpc::VirtualClusterTableData> &callback) {
+//   RAY_LOG(DEBUG) << "Getting virtual cluster info, virtual cluster id = "
+//                  << virtual_cluster_id;
+//   rpc::GetVirtualClusterRequest request;
+//   request.set_virtual_cluster_id(virtual_cluster_id.Binary());
+//   client_impl_->GetGcsRpcClient().GetVirtualCluster(
+//       request,
+//       [virtual_cluster_id, callback](const Status &status,
+//                                      const rpc::GetVirtualClusterReply &reply) {
+//         if (reply.has_virtual_cluster_table_data()) {
+//           callback(status, reply.virtual_cluster_table_data());
+//         } else {
+//           callback(status, boost::none);
+//         }
+//         RAY_LOG(DEBUG) << "Finished getting virtual cluster info, virtual cluster id =
+//         "
+//                        << virtual_cluster_id;
+//       });
+//   return Status::OK();
+// }
+
+// Status VirtualClusterAccessor::AsyncGetByName(
+//     const std::string &name,
+//     const std::string &ray_namespace,
+//     const OptionalItemCallback<rpc::VirtualClusterTableData> &callback,
+//     int64_t timeout_ms) {
+//   RAY_LOG(DEBUG) << "Getting named virtual cluster info, name = " << name;
+//   rpc::GetNamedVirtualClusterRequest request;
+//   request.set_name(name);
+//   request.set_ray_namespace(ray_namespace);
+//   client_impl_->GetGcsRpcClient().GetNamedVirtualCluster(
+//       request,
+//       [name, callback](const Status &status,
+//                        const rpc::GetNamedVirtualClusterReply &reply) {
+//         if (reply.has_virtual_cluster_table_data()) {
+//           callback(status, reply.virtual_cluster_table_data());
+//         } else {
+//           callback(status, boost::none);
+//         }
+//         RAY_LOG(DEBUG) << "Finished getting named virtual cluster info, status = "
+//                        << status << ", name = " << name;
+//       },
+//       /*timeout_ms*/ timeout_ms);
+//   return Status::OK();
+// }
+
+// Status VirtualClusterAccessor::AsyncGetAll(
+//     const MultiItemCallback<rpc::VirtualClusterTableData> &callback) {
+//   RAY_LOG(DEBUG) << "Getting all virtual cluster info.";
+//   rpc::GetAllVirtualClusterRequest request;
+//   client_impl_->GetGcsRpcClient().GetAllVirtualCluster(
+//       request,
+//       [callback](const Status &status, const rpc::GetAllVirtualClusterReply &reply) {
+//         callback(status, VectorFromProtobuf(reply.virtual_cluster_table_data()));
+//         RAY_LOG(DEBUG) << "Finished getting all virtual cluster info, status = "
+//                        << status;
+//       });
+//   return Status::OK();
+// }
+
+// Status VirtualClusterAccessor::SyncWaitUntilReady(
+//     const VirtualClusterID &virtual_cluster_id, int64_t timeout_seconds) {
+//   rpc::WaitVirtualClusterUntilReadyRequest request;
+//   rpc::WaitVirtualClusterUntilReadyReply reply;
+//   request.set_virtual_cluster_id(virtual_cluster_id.Binary());
+//   auto status = client_impl_->GetGcsRpcClient().SyncWaitVirtualClusterUntilReady(
+//       request, &reply, absl::ToInt64Milliseconds(absl::Seconds(timeout_seconds)));
+//   RAY_LOG(DEBUG) << "Finished waiting virtual cluster until ready, virtual cluster id =
+//   "
+//                  << virtual_cluster_id;
+//   return status;
+// }
+
 InternalKVAccessor::InternalKVAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 

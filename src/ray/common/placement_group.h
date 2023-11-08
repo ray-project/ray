@@ -21,13 +21,6 @@
 
 namespace ray {
 
-struct pair_hash {
-  template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2> &pair) const {
-    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-  }
-};
-
 using BundleLocations =
     absl::flat_hash_map<BundleID,
                         std::pair<NodeID, std::shared_ptr<const BundleSpecification>>,

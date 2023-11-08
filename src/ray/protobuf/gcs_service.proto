@@ -402,9 +402,14 @@ message VirtualClusterBundle {
   map<string, double> resources = 1;
 }
 
-message CreateVirtualClusterRequest {
+// Specification of a virtual cluster. 
+message VirtualClusterSpec {
   bytes virtual_cluster_id = 1;
   repeated VirtualClusterBundle bundles = 2;
+}
+
+message CreateVirtualClusterRequest {
+  VirtualClusterSpec virtual_cluster_spec = 1;
 }
 
 message CreateVirtualClusterReply {

@@ -18,6 +18,7 @@
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/virtual_cluster.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
 #include "ray/rpc/client_call.h"
@@ -666,6 +667,76 @@ class PlacementGroupInfoAccessor {
   virtual Status SyncWaitUntilReady(const PlacementGroupID &placement_group_id,
                                     int64_t timeout_seconds);
 
+ private:
+  GcsClient *client_impl_;
+};
+
+class VirtualClusterAccessor {
+ public:
+  VirtualClusterAccessor() = default;
+  explicit VirtualClusterAccessor(GcsClient *client_impl);
+  virtual ~VirtualClusterAccessor() = default;
+
+  /// Create a virtual cluster to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param virtual_cluster_spec The specification for the virtual cluster creation task.
+  /// \return Status. The status of the RPC. TimedOut if the RPC times out. Invalid if the
+  /// same name virtual cluster is registered. NotFound if the virtual cluster is removed.
+  virtual Status SyncCreateVirtualCluster(
+      const ray::VirtualClusterSpecification &virtual_cluster_spec);
+
+  /// Remove a virtual cluster to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param virtual_cluster_id The id for the virtual cluster to remove.
+  /// \return Status
+  virtual Status SyncRemoveVirtualCluster(const VirtualClusterID &virtual_cluster_id);
+
+  // //////// TODO
+  //   /// Get a virtual cluster data from GCS asynchronously by id.
+  //   ///
+  //   /// \param virtual_cluster_id The id of a virtual cluster to obtain from GCS.
+  //   /// \return Status.
+  //   virtual Status AsyncGet(
+  //       const VirtualClusterID &virtual_cluster_id,
+  //       const OptionalItemCallback<rpc::VirtualClusterTableData> &callback);
+
+  //   /// Get a virtual cluster data from GCS asynchronously by name.
+  //   ///
+  //   /// \param virtual_cluster_name The name of a virtual cluster to obtain from GCS.
+  //   /// \param ray_namespace The ray namespace.
+  //   /// \param callback The callback that's called when the RPC is replied.
+  //   /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
+  //   /// \return Status.
+  //   virtual Status AsyncGetByName(
+  //       const std::string &virtual_cluster_name,
+  //       const std::string &ray_namespace,
+  //       const OptionalItemCallback<rpc::VirtualClusterTableData> &callback,
+  //       int64_t timeout_ms = -1);
+
+  //   /// Get all virtual cluster info from GCS asynchronously.
+  //   ///
+  //   /// \param callback Callback that will be called after lookup finished.
+  //   /// \return Status
+  //   virtual Status AsyncGetAll(
+  //       const MultiItemCallback<rpc::VirtualClusterTableData> &callback);
+
+  //   /// Wait for a virtual cluster until ready asynchronously.
+  //   ///
+  //   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  //   ///
+  //   /// \param virtual_cluster_id The id for the virtual cluster to wait for until
+  //   ready.
+  //   /// \param timeout_seconds The timeout in seconds.
+  //   /// \return Status. TimedOut if the RPC times out. NotFound if the placement has
+  //   already
+  //   /// removed.
+  //   virtual Status SyncWaitUntilReady(const VirtualClusterID &virtual_cluster_id,
+  //                                     int64_t timeout_seconds);
+  // //////// END TODO
  private:
   GcsClient *client_impl_;
 };

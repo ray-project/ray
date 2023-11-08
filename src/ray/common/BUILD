@@ -146,6 +146,7 @@ ray_cc_library(
         "bundle_spec.cc",
         "function_descriptor.cc",
         "placement_group.cc",
+        "virtual_cluster.cc",
         "scheduling/cluster_resource_data.cc",
         "scheduling/fixed_point.cc",
         "scheduling/scheduling_ids.cc",
@@ -159,6 +160,7 @@ ray_cc_library(
         "bundle_spec.h",
         "function_descriptor.h",
         "placement_group.h",
+        "virtual_cluster.h",
         "scheduling/cluster_resource_data.h",
         "scheduling/fixed_point.h",
         "scheduling/scheduling_ids.h",
@@ -182,6 +184,7 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "//src/ray/protobuf:gcs_service_cc_proto",
     ],
 )
 

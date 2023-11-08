@@ -36,6 +36,13 @@ class WorkerID;
 class UniqueID;
 class JobID;
 
+struct pair_hash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<T1, T2> &pair) const {
+    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+  }
+};
+
 /// TODO(qwang): These 2 helper functions should be removed
 /// once we separated the `WorkerID` from `UniqueID`.
 ///
@@ -409,6 +416,7 @@ std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
+std::ostream &operator<<(std::ostream &os, const VirtualClusterID &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                           \
   class RAY_EXPORT type : public UniqueID {                                              \
