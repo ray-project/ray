@@ -1,8 +1,10 @@
 import pytest
 import ray
+import sys
 import os
 
 mpi_worker_file = os.path.join(os.path.dirname(__file__), "mpi_worker.py")
+
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only test MPI on linux.")
 def test_mpi_func_pi(ray_start_regular):
@@ -44,6 +46,4 @@ def test_mpi_actor_pi(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))
