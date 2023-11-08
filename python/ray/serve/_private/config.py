@@ -166,6 +166,12 @@ class DeploymentConfig(BaseModel):
             )
         if "log_level" not in v:
             v["log_level"] = "INFO"
+        
+        if "encoding" in v and v["encoding"] not in ["JSON", "TEXT"]:
+            raise ValueError(
+                f"Got '{v}' for encoding. Encoding must be one "
+                "of ['JSON', 'TEXT']."
+            )
 
         return v
 

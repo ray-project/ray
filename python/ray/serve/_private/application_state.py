@@ -913,10 +913,6 @@ def build_serve_application(
         deploy_args_list = []
         for deployment in deployments:
             is_ingress = deployment.name == ingress.name
-            # If app log config is set and deployment config is not set,
-            # set app config to deployment log config.
-            if deployment.logging_config is None and logging_config:
-                deployment.set_logging_config(logging_config.dict())
             deploy_args_list.append(
                 get_deploy_args(
                     name=deployment._name,
