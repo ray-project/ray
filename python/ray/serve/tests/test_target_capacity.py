@@ -118,7 +118,8 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
     # Finish rollout (remove target_capacity), should have no effect.
     config.target_capacity = None
     client.deploy_apps(config)
-    assert check_expected_num_replicas(
+    wait_for_condition(
+        check_expected_num_replicas,
         ingress_replicas=INGRESS_DEPLOYMENT_NUM_REPLICAS,
         downstream_replicas=DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
     )
