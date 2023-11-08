@@ -5,9 +5,9 @@ import pytest
 import requests
 from unittest.mock import patch
 
+import ray
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators import tpu
-from ray.util.accelerators.tpu import pod_name, pod_worker_count
 
 
 @patch("glob.glob")
@@ -80,7 +80,7 @@ def test_autodetect_tpu_accelerator_type(
 )
 @patch("requests.get")
 @patch("os.getenv")
-def test_get_tpu_worker_id(mock_os, mock_request, test_case):
+def test__get_tpu_worker_id(mock_os, mock_request, test_case):
     gce_or_gke, worker_id, expected_value = test_case
     if gce_or_gke == "gce":
         mock_response = mock.MagicMock()
@@ -90,7 +90,7 @@ def test_get_tpu_worker_id(mock_os, mock_request, test_case):
         mock_os.return_value = None
     else:
         mock_os.return_value = worker_id
-    assert TPUAcceleratorManager.get_tpu_worker_id() == expected_value
+    assert TPUAcceleratorManager._get_tpu_worker_id() == expected_value
 
 
 @pytest.mark.parametrize(
@@ -228,11 +228,12 @@ def test_tpu_pod_detect_and_configure_worker(test_config):
     ):
         with patch(
             "ray._private.accelerators.tpu.TPUAcceleratorManager."
-            "get_tpu_accelerator_type",
+            "_get_tpu_accelerator_type",
             return_value="v4-16",
         ):
             with patch(
-                "ray._private.accelerators.tpu.TPUAcceleratorManager.get_tpu_worker_id",
+                "ray._private.accelerators.tpu.TPUAcceleratorManager"
+                "._get_tpu_worker_id",
                 return_value=worker_id,
             ):
                 TPUAcceleratorManager.postprocess_resources(resources=resources)
@@ -245,7 +246,7 @@ def test_pod_name_smoke():
         "ray._private.accelerators.tpu.TPUAcceleratorManager.get_tpu_id",
         return_value="my-tpu",
     ):
-        name = pod_name()
+        name = ray.util.accelerators.tpu.pod_name()
     assert name == "my-tpu"
 
 
@@ -254,7 +255,7 @@ def test_empty_pod_name_returns_none():
         "ray._private.accelerators.tpu.TPUAcceleratorManager.get_tpu_id",
         return_value="",
     ):
-        name = pod_name()
+        name = ray.util.accelerators.tpu.pod_name()
     assert name is None
 
 
@@ -263,7 +264,7 @@ def test_worker_count():
         "ray._private.accelerators.tpu.TPUAcceleratorManager.num_workers_in_tpu_pod",
         return_value=4,
     ):
-        worker_count = pod_worker_count()
+        worker_count = ray.util.accelerators.tpu.pod_worker_count()
     assert worker_count == 4
 
 

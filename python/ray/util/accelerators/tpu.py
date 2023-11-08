@@ -13,7 +13,7 @@ def pod_name() -> Optional[str]:
     return tpu_id
 
 
-def pod_worker_count() -> int:
+def pod_worker_count() -> Optional[int]:
     """Count the number of workers associated with the TPU pod that the worker belongs to.
     Returns:
       int: the total number of workers in the TPU pod. Returns 0 if the worker is not

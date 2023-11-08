@@ -50,6 +50,18 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 
 
 def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
+    """Convert a provided accelerator_config to accelerator_type.
+
+    Args:
+        accelerator_config: A dictionary defining the spec of a
+            TPU accelerator. The dictionary should consist of
+            the keys 'type', indicating the TPU chip type, and
+            'topology', indicating the topology of the TPU.
+
+    Returns:
+        A string, accelerator_type, e.g. "v4-8".
+
+    """
     generation = accelerator_config["type"].lower()
     topology = accelerator_config["topology"]
     # Reduce e.g. "2x2x2" to 8

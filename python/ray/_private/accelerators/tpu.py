@@ -49,7 +49,7 @@ TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 
 
-def _get_tpu_metadata(key: str) -> str:
+def _get_tpu_metadata(key: str) -> Optional[str]:
     """Poll and get TPU metadata."""
     try:
         accelerator_type_request = requests.get(
@@ -196,7 +196,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = None
 
     @staticmethod
-    def get_tpu_accelerator_type() -> Optional[str]:
+    def _get_tpu_accelerator_type() -> Optional[str]:
         """Get the TPU accelerator type if applicable.
 
         Individual TPU VMs within a TPU pod must know what type
@@ -230,7 +230,19 @@ class TPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_tpu_id() -> Optional[str]:
-        """Return the name of the TPU pod that this worker node is a part of."""
+        """Return the name of the TPU pod that this worker node is a part of.
+
+        For instance, if the TPU was created with name "my-tpu", this function
+        will return "my-tpu".
+
+        If created through the Ray cluster launcher, the
+        name will typically be something like "ray-my-tpu-cluster-worker-aa946781-tpu".
+
+        In case the TPU was created through KubeRay, we currently expect that the
+        environment variable TPU_ID is set per TPU pod slice, in which case
+        this function will return the value of that environment variable.
+
+        """
         try:
             # Start with GKE-based check
             tpu_id = os.getenv(GKE_TPU_ID_ENV_VAR, None)
@@ -243,7 +255,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             return None
 
     @staticmethod
-    def get_tpu_worker_id() -> Optional[int]:
+    def _get_tpu_worker_id() -> Optional[int]:
         """Return the worker index of the TPU pod."""
         try:
             # Start with GKE-based check
@@ -259,7 +271,7 @@ class TPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def num_workers_in_tpu_pod() -> Optional[int]:
         """Return the total number of workers in a TPU pod."""
-        accelerator_type = TPUAcceleratorManager.get_tpu_accelerator_type()
+        accelerator_type = TPUAcceleratorManager._get_tpu_accelerator_type()
         if accelerator_type:
             version = accelerator_type.split("-")[0]
             num_chips_or_cores = int(accelerator_type.split("-")[1])
@@ -272,7 +284,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             return None
 
     @staticmethod
-    def get_current_node_accelerator_type() -> Optional[List[str]]:
+    def get_current_node_accelerator_type() -> Optional[str]:
         """Attempt to detect the TPU accelerator type.
 
         Returns:
@@ -287,7 +299,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             return "TPU-" + str(tpu_accelerator_type.split("-")[0].upper())
 
         ray_accelerator_type = None
-        tpu_accelerator_type = TPUAcceleratorManager.get_tpu_accelerator_type()
+        tpu_accelerator_type = TPUAcceleratorManager._get_tpu_accelerator_type()
 
         if tpu_accelerator_type is not None:
             ray_accelerator_type = tpu_accelerator_type_to_ray_accelerator_type(
@@ -340,16 +352,10 @@ class TPUAcceleratorManager(AcceleratorManager):
             tpu_executable = executable.options(resources={"TPU": 4, tpu_name: 1})
             return [tpu_executable.remote() for _ in range(num_workers)]
 
-        Returns:
-            An optional list of strings representing:
-            - the TPU accelerator version, e.g. "TPU-V2", "TPU-V3",
-              "TPU-V4" if applicable, else None.
-            - the TPU pod name
-            - if worker 0, the TPU topology.
         """
         tpu_id = TPUAcceleratorManager.get_tpu_id()
-        worker_id = TPUAcceleratorManager.get_tpu_worker_id()
-        tpu_accelerator_type = TPUAcceleratorManager.get_tpu_accelerator_type()
+        worker_id = TPUAcceleratorManager._get_tpu_worker_id()
+        tpu_accelerator_type = TPUAcceleratorManager._get_tpu_accelerator_type()
 
         if tpu_id and worker_id is not None and tpu_accelerator_type:
             pod_resource_name = f"TPU-{tpu_accelerator_type}"
