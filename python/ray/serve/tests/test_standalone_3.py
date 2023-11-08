@@ -611,7 +611,9 @@ def test_client_shutdown_gracefully_when_timeout(
     serve.shutdown()
 
 
-def test_serve_shut_down_without_duplicated_logs(shutdown_ray, call_ray_stop_only):
+def test_serve_shut_down_without_duplicated_logs(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
     """Test Serve shut down without duplicated logs.
 
     When Serve shutdown is called and executing the shutdown process, the controller
