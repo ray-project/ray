@@ -15,9 +15,11 @@ import ray
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
+from ray.data.datasource.csv_datasink import _CSVDatasink
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
@@ -1345,22 +1347,12 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
     # initial pyarrow use.
     ray.init(runtime_env={"pip": [f"pyarrow=={unsupported_pyarrow_version}"]})
 
-    # Test Arrow-native creation APIs.
-    # Test range.
-    with pytest.raises(ImportError):
-        ray.data.range(10).take_all()
+    @ray.remote
+    def should_error():
+        _check_pyarrow_version()
 
-    # Test from_arrow.
     with pytest.raises(ImportError):
-        ray.data.from_arrow(pa.table({"a": [1, 2]}))
-
-    # Test read_parquet.
-    with pytest.raises(ImportError):
-        ray.data.read_parquet("example://iris.parquet").take_all()
-
-    # Test from_numpy (we use Arrow for representing the tensors).
-    with pytest.raises(ImportError):
-        ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
+        ray.get(should_error.remote())
 
 
 def test_unsupported_pyarrow_versions_check_disabled(
@@ -1368,6 +1360,8 @@ def test_unsupported_pyarrow_versions_check_disabled(
     unsupported_pyarrow_version,
     disable_pyarrow_version_check,
 ):
+    ray.shutdown()
+
     # Test that unsupported pyarrow versions DO NOT cause an error to be raised upon the
     # initial pyarrow use when the version check is disabled.
     ray.init(
@@ -1377,22 +1371,12 @@ def test_unsupported_pyarrow_versions_check_disabled(
         },
     )
 
-    # Test Arrow-native creation APIs.
-    # Test range.
-    try:
-        ray.data.range(10).take_all()
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
+    @ray.remote
+    def should_pass():
+        _check_pyarrow_version()
 
-    # Test from_arrow.
     try:
-        ray.data.from_arrow(pa.table({"a": [1, 2]}))
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
-
-    # Test from_numpy (we use Arrow for representing the tensors).
-    try:
-        ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
+        ray.get(should_pass.remote())
     except ImportError as e:
         pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
 
@@ -1439,6 +1423,7 @@ def test_read_write_local_node(ray_start_cluster):
     cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
     cluster.add_node(resources={"bar:3": 100}, num_cpus=10)
 
+    ray.shutdown()
     ray.init(cluster.address)
 
     import os
@@ -1512,31 +1497,40 @@ class Counter:
 
 
 class FlakyCSVDatasource(CSVDatasource):
-    def __init__(self):
+    def __init__(self, paths, **csv_datasource_kwargs):
+        super().__init__(paths, **csv_datasource_kwargs)
+
         self.counter = Counter.remote()
 
-    def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+    def _read_stream(self, f: "pa.NativeFile", path: str):
         count = self.counter.increment.remote()
         if ray.get(count) == 1:
             raise ValueError("oops")
         else:
-            for block in CSVDatasource._read_stream(self, f, path, **reader_args):
+            for block in CSVDatasource._read_stream(self, f, path):
                 yield block
 
-    def _write_block(self, f: "pa.NativeFile", block: BlockAccessor, **writer_args):
+
+class FlakyCSVDatasink(_CSVDatasink):
+    def __init__(self, path, **csv_datasink_kwargs):
+        super().__init__(path, **csv_datasink_kwargs)
+
+        self.counter = Counter.remote()
+
+    def write_block_to_file(self, block: BlockAccessor, file):
         count = self.counter.increment.remote()
         if ray.get(count) == 1:
             raise ValueError("oops")
         else:
-            CSVDatasource._write_block(self, f, block, **writer_args)
+            super().write_block_to_file(block, file)
 
 
 def test_dataset_retry_exceptions(ray_start_regular, local_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(local_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options={})
-    ds1 = ray.data.read_datasource(FlakyCSVDatasource(), parallelism=1, paths=path1)
-    ds1.write_datasource(FlakyCSVDatasource(), path=local_path, dataset_uuid="data")
+    ds1 = ray.data.read_datasource(FlakyCSVDatasource(path1), parallelism=1)
+    ds1.write_datasink(FlakyCSVDatasink(local_path, dataset_uuid="data"))
     assert df1.equals(
         pd.read_csv(
             os.path.join(local_path, "data_000000_000000.csv"), storage_options={}
@@ -1556,9 +1550,8 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
 
     with pytest.raises(ValueError):
         ray.data.read_datasource(
-            FlakyCSVDatasource(),
+            FlakyCSVDatasource(paths=path1),
             parallelism=1,
-            paths=path1,
             ray_remote_args={"retry_exceptions": False},
         ).take()
 

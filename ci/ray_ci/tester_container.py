@@ -96,6 +96,10 @@ class TesterContainer(Container):
             test_cmd += "--config=ci-debug "
         if self.build_type == "asan":
             test_cmd += "--config=asan --config=asan-buildkite "
+        if self.build_type == "clang":
+            test_cmd += "--config=llvm "
+        if self.build_type == "asan-clang":
+            test_cmd += "--config=asan-clang "
         for env in test_envs:
             test_cmd += f"--test_env {env} "
         if test_arg:
