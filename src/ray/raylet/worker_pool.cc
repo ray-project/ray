@@ -382,7 +382,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     if (!worker_id.IsNil()) {
       env.emplace(kEnvVarKeyWorkerId, worker_id.Hex());
     } else {
-      env.emplace(kEnvVarKeyWorkerId, WorkerID::FromRandom());
+      env.emplace(kEnvVarKeyWorkerId, WorkerID::FromRandom().Hex());
     }
   }
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
