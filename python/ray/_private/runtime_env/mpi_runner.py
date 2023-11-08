@@ -1,0 +1,26 @@
+import sys
+import os
+import argparse
+import logging
+from typing import List, Optional
+import importlib
+from mpi4py import MPI
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Setup MPI worker")
+    parser.add_argument("worker_entry")
+    parser.add_argument("main_entry")
+
+    args, remaining_args = parser.parse_known_args()
+
+    comm = MPI.COMM_WORLD
+
+    rank = comm.Get_rank()
+
+    entry_file = args.main_entry if rank == 0 else args.worker_entry
+
+    sys.argv[1:] = remaining_args
+    spec = importlib.util.spec_from_file_location("__main__", entry_file)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)

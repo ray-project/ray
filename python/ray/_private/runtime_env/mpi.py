@@ -51,32 +51,9 @@ class MPIPlugin(RuntimeEnvPlugin):
             + [
                 context.py_executable,
                 "-m",
-                "ray._private.runtime_env.mpi",
-                str(Path(worker_entry).absolute()),
+                "ray._private.runtime_env.mpi_runner",
+                worker_entry
             ]
         )
         # Construct the start cmd
         context.py_executable = " ".join(cmds)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Setup MPI worker")
-    parser.add_argument("worker_entry")
-    parser.add_argument("main_entry")
-
-    args, remaining_args = parser.parse_known_args()
-
-    from mpi4py import MPI
-
-    comm = MPI.COMM_WORLD
-
-    rank = comm.Get_rank()
-
-    entry_file = args.main_entry if rank == 0 else args.worker_entry
-
-    import importlib
-
-    sys.argv[1:] = remaining_args
-    spec = importlib.util.spec_from_file_location("__main__", entry_file)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
