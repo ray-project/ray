@@ -368,7 +368,7 @@ class TestActorManager(unittest.TestCase):
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
         time.sleep(1)
         results_ping_pong = manager.fetch_ready_async_reqs(
-            tags="pingpong", timeout_seconds=10
+            tags="pingpong", timeout_seconds=5
         )
         results_call = manager.fetch_ready_async_reqs(tags="call", timeout_seconds=5)
         self.assertEquals(len(list(results_ping_pong)), 4)
