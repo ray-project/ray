@@ -162,7 +162,8 @@ class ReportCheckpointCallback(_Callback):
         if should_checkpoint:
             checkpoint = TensorflowCheckpoint.from_model(self.model)
             ray.train.report(metrics, checkpoint=checkpoint)
-            shutil.rmtree(checkpoint.path)  # Clean up temporary checkpoint
+            # Clean up temporary checkpoint
+            shutil.rmtree(checkpoint.path, ignore_errors=True)
         else:
             ray.train.report(metrics, checkpoint=None)
 
