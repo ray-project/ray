@@ -241,7 +241,11 @@ class SingleAgentEnvRunner(EnvRunner):
                     #for k, v in self.module.get_initial_state().items():
                     #    states[k][i] = convert_to_numpy(v)
 
-                    done_episodes_to_return.append(self._episodes[i])
+                    done_episodes_to_return.append(
+                        self._episodes[i].convert_lists_to_numpy(
+                            keep_every_n_state_out=self.config.model.get("max_seq_len"),
+                        )
+                    )
                     # Create a new episode object.
                     self._episodes[i] = SingleAgentEpisode(
                         observations=[obs[i]], infos=[infos[i]], #states=s
@@ -261,7 +265,12 @@ class SingleAgentEnvRunner(EnvRunner):
         # ... and all ongoing episode chunks.
         # Initialized episodes do not have recorded any step and lack
         # `extra_model_outputs`.
-        ongoing_episodes = [episode for episode in self._episodes if episode.t > 0]
+        ongoing_episodes = [
+            episode.convert_lists_to_numpy(
+                keep_every_n_state_out=self.config.model.get(STATE_OUT)
+            )
+            for episode in self._episodes if episode.t > 0
+        ]
         # Also, make sure, we return a copy and start new chunks so that callers
         # of this function do not alter the ongoing and returned Episode objects.
         self._episodes = [eps.create_successor() for eps in self._episodes]
@@ -310,7 +319,7 @@ class SingleAgentEnvRunner(EnvRunner):
             episodes[i].add_initial_observation(
                 initial_observation=obs[i],
                 initial_info=infos[i],
-                initial_state={k: s[i] for k, s in states.items()},
+                #initial_state={k: s[i] for k, s in states.items()},
                 initial_render_image=render_images[i],
             )
 

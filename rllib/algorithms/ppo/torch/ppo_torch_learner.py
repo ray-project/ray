@@ -14,7 +14,7 @@ from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -42,26 +42,32 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
         # TODO (Kourosh): batch type is NestedDict.
-        # TODO (Kourosh): We may or may not user module_id. For example if we have an
-        # agent based learning rate scheduler, we may want to use module_id to get the
-        # learning rate for that agent.
 
-        # RNN case: Mask away 0-padded chunks at end of time axis.
-        if self.module[module_id].is_stateful():
-            # In the RNN case, we expect incoming tensors to be padded to the maximum
-            # sequence length. We infer the max sequence length from the actions
-            # tensor.
-            maxlen = torch.max(batch[SampleBatch.SEQ_LENS])
-            mask = sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen=maxlen)
-            num_valid = torch.sum(mask)
+        # Possibly apply masking to some sub loss terms and to the total loss term
+        # at the end. Masking could be used for RNN-based model (zero padded `batch`)
+        # and for PPO's batched value function (and bootstrap value) computations,
+        # for which we add an additional (artificial) timestep to each episode to
+        # simplify the actual computation.
 
-            def possibly_masked_mean(t):
-                return torch.sum(t[mask]) / num_valid
+        def possibly_masked_mean(data_):
+            return torch.sum(data_[batch["loss_mask"]]) / num_valid
+
+        ## RNN case: Mask away 0-padded chunks at end of time axis.
+        #if self.module[module_id].is_stateful():
+        #    # In the RNN case, we expect incoming tensors to be padded to the maximum
+        #    # sequence length. We infer the max sequence length from the actions
+        #    # tensor.
+        #    maxlen = torch.max(batch[SampleBatch.SEQ_LENS])
+        #    mask = sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen=maxlen)
+        #    num_valid = torch.sum(mask)
+
+        #    def possibly_masked_mean(t):
+        #        return torch.sum(t[mask]) / num_valid
 
         # non-RNN case: No masking.
-        else:
-            mask = None
-            possibly_masked_mean = torch.mean
+        #else:
+        #    mask = None
+        #    possibly_masked_mean = torch.mean
 
         action_dist_class_train = (
             self.module[module_id].unwrapped().get_train_action_dist_cls()
@@ -172,3 +178,14 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
 
         return results
+
+    @override(PPOLearner)
+    def _compute_values(self, batch):
+        # TODO (sven): Make multi-agent capable.
+        module = self.module[DEFAULT_POLICY_ID]
+        # Shared encoder.
+        encoder_outs = module.encoder(batch)
+        # Value head.
+        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
+        # Squeeze out last dimension (single node value head).
+        batch[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)

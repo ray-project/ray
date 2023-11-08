@@ -203,6 +203,8 @@ class PPOConfig(AlgorithmConfig):
             entropy_coeff_schedule=self.entropy_coeff_schedule,
             clip_param=self.clip_param,
             vf_clip_param=self.vf_clip_param,
+            gamma=self.gamma,
+            lambda_=self.lambda_,
             **dataclasses.asdict(base_hps),
         )
 

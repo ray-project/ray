@@ -319,24 +319,30 @@ class AlgorithmConfig(_Config):
         # If not specified, we will try to auto-detect this.
         self._is_atari = None
 
+        # TODO (sven): Rename into `sampling()`
         # `self.rollouts()`
         self.env_runner_cls = None
+        # TODO (sven): Rename into `num_env_runner_workers`.
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
         self.create_env_on_local_worker = False
-        # TODO (sven): Deprecate as soon as A3C moves to `rllib_contrib`.
-        self.sample_async = False
         self.enable_connectors = True
         self.sampling_connectors = None
-        self.learner_connector = None
+        self.episode_lookback_horizon = 1
+        # TODO (sven): Rename into `sample_timesteps`.
         self.rollout_fragment_length = 200
+        # TODO (sven): Rename into `sample_mode`.
         self.batch_mode = "truncate_episodes"
-        self.remote_env_batch_wait_ms = 0
+        # TODO (sven): Rename into `validate_env_runner_workers_after_construction`.
         self.validate_workers_after_construction = True
         self.compress_observations = False
+        # TODO (sven): Rename into `env_runner_perf_stats_ema_coef`.
         self.sampler_perf_stats_ema_coef = None
-        # TODO (sven): Deprecate together with old stack.
+
+        # TODO (sven): Deprecate together with old API stack.
+        self.sample_async = False
         self.remote_worker_envs = False
+        self.remote_env_batch_wait_ms = 0
         self.enable_tf1_exec_eagerly = False
         self.sample_collector = SimpleListCollector
         self.preprocessor_pref = "deepmind"
@@ -367,7 +373,7 @@ class AlgorithmConfig(_Config):
             self.model = copy.deepcopy(MODEL_DEFAULTS)
         except AttributeError:
             pass
-
+        self.learner_connector = None
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -1478,6 +1484,7 @@ class AlgorithmConfig(_Config):
                 Tuple["ConnectorV2", "ConnectorV2", "ConnectorContextV2"],
             ]
         ] = NotProvided,
+        episode_lookback_horizon: Optional[int] = NotProvided,
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
@@ -1529,6 +1536,13 @@ class AlgorithmConfig(_Config):
                 and returning a tuple consisting of an env-to-module ConnectorV2
                 (might be a pipeline), a module-to-env ConnectorV2 (might be a pipeline),
                 and an initial ConnectorContextV2 object.
+            episode_lookback_horizon: The amount of data (in timesteps) to keep from the
+                preceeding episode chunk when a new chunk (for the same episode) is
+                generated to continue sampling. The larger this value, the more a
+                env-to-module connector will be able to look back in time and compile
+                module input data from this information. For example, if your custom
+                env-to-module connector (and your custom RLModule) requires the previous
+                10 rewards as inputs, you must set this to at least 10.
             use_worker_filter_stats: Whether to use the workers in the WorkerSet to
                 update the central filters (held by the local worker). If False, stats
                 from the workers will not be used and discarded.
@@ -1620,6 +1634,8 @@ class AlgorithmConfig(_Config):
             self.enable_connectors = enable_connectors
         if sampling_connectors is not NotProvided:
             self.sampling_connectors = sampling_connectors
+        if episode_lookback_horizon is not NotProvided:
+            self.episode_lookback_horizon = episode_lookback_horizon
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:

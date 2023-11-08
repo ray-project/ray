@@ -2,9 +2,12 @@ import numpy as np
 import uuid
 
 from gymnasium.core import ActType, ObsType
+import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional, SupportsFloat
 
+from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.spaces.space_utils import batch
 
 
 class SingleAgentEpisode:
@@ -128,7 +131,7 @@ class SingleAgentEpisode:
             from both episodes.
         """
         assert episode_chunk.id_ == self.id_
-        assert not self.is_done
+        assert not self.is_done and not self.is_numpy
         # Make sure the timesteps match.
         assert self.t == episode_chunk.t_started
 
@@ -143,10 +146,10 @@ class SingleAgentEpisode:
 
         # Extend ourselves. In case, episode_chunk is already terminated (and numpyfied)
         # we need to convert to lists (as we are ourselves still filling up lists).
-        self.observations.extend(list(episode_chunk.observations))
-        self.actions.extend(list(episode_chunk.actions))
-        self.rewards.extend(list(episode_chunk.rewards))
-        self.infos.extend(list(episode_chunk.infos))
+        self.observations.extend(episode_chunk.observations)
+        self.actions.extend(episode_chunk.actions)
+        self.rewards.extend(episode_chunk.rewards)
+        self.infos.extend(episode_chunk.infos)
         self.t = episode_chunk.t
         #self.states = episode_chunk.states
 
@@ -156,20 +159,23 @@ class SingleAgentEpisode:
             self.is_truncated = True
 
         for k, v in episode_chunk.extra_model_outputs.items():
-            self.extra_model_outputs[k].extend(list(v))
+            self.extra_model_outputs[k].extend(v)
 
         # Validate.
         self.validate()
 
-    def add_initial_observation(
+    def add_env_reset(
         self,
         *,
-        initial_observation: ObsType,
-        initial_info: Optional[Dict] = None,
+        observation: ObsType,
+        info: Optional[Dict] = None,
         #initial_state=None,
-        initial_render_image: Optional[np.ndarray] = None,
+        render_image: Optional[np.ndarray] = None,
     ) -> None:
-        """Adds the initial data to the episode.
+        """Adds the initial data (after an `env.reset()`) to the episode.
+
+        This data consists of initial observations and -infos, as well as - optionally -
+        a render image.
 
         Args:
             initial_observation: Obligatory. The initial observation.
@@ -185,18 +191,18 @@ class SingleAgentEpisode:
         # Leave self.t (and self.t_started) at 0.
         assert self.t == self.t_started == 0
 
-        initial_info = initial_info or {}
+        info = info or {}
 
-        self.observations.append(initial_observation)
+        self.observations.append(observation)
         #self.states = initial_state
-        self.infos.append(initial_info)
-        if initial_render_image is not None:
-            self.render_images.append(initial_render_image)
+        self.infos.append(info)
+        if render_image is not None:
+            self.render_images.append(render_image)
         # TODO (sven): Do we have to call validate here? It is our own function
         # that manipulates the object.
         self.validate()
 
-    def add_timestep(
+    def add_env_step(
         self,
         observation: ObsType,
         action: ActType,
@@ -209,7 +215,11 @@ class SingleAgentEpisode:
         render_image: Optional[np.ndarray] = None,
         extra_model_output: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Adds a timestep to the episode.
+        """Adds the results of an `env.step([action])` call to the episode.
+
+        This data consists of an observation and info dict, an action, a reward,
+        terminated/truncated flags, extra model outputs (e.g. action probabilities or
+        RNN internal state outputs), and - optionally - a render image.
 
         Args:
             observation: The observation received from the
@@ -251,7 +261,7 @@ class SingleAgentEpisode:
         self.validate()
 
     def validate(self) -> None:
-        """Validates the episode.
+        """Validates the episode's data.
 
         This function ensures that the data stored to a `SingleAgentEpisode` is
         in order (e.g. that the correct number of observations, actions, rewards
@@ -265,23 +275,17 @@ class SingleAgentEpisode:
             == len(self.rewards) + 1
             == len(self.actions) + 1
         )
-        # TODO (sven): This is unclear to me. It makes sense
-        # to start at a point after the length of experiences
-        # provided at initialization, but when we test then here
-        # it will imo always error out.
-        # Example: we initialize the class by providing 101 observations,
-        # 100 actions and rewards.
-        # self.t = self.t_started = len(observations) - 1. Then
-        # we add a single timestep. self.t += 1 and
-        # self.t - self.t_started is 1, but len(rewards) is 100.
-        assert len(self.rewards) == (self.t - self.t_started)
-
         for k, v in self.extra_model_outputs.items():
             assert len(v) == len(self.observations) - 1
 
-        # Convert all lists to numpy arrays, if we are terminated.
-        if self.is_done:
-            self.convert_lists_to_numpy()
+    @property
+    def is_numpy(self) -> bool:
+        """True, if the data in this episode is already stored as numpy arrays."""
+        if len(self) == 0:
+            return False
+        # If rewards are still a list, return False.
+        # Otherwise, rewards should already be a (1D) numpy array.
+        return not isinstance(self.rewards, list)
 
     @property
     def is_done(self) -> bool:
@@ -293,34 +297,69 @@ class SingleAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
-    def convert_lists_to_numpy(self) -> None:
-        """Converts list attributes to numpy arrays.
+    def convert_lists_to_numpy(
+        self,
+        # TODO (sven): One of the few hard-coded hacks left. Problem: Doing this
+        #  reduction saves a lot of space/network transfer from EnvRunner workers to
+        #  Learners, but adds this knowledge requirement (which is only relevant for
+        #  the Learner) into the EnvRunner (which should NOT be involved in Learner-specific
+        #  logic). So this extra arg is good for performance, but bad for transparency.
+        keep_every_n_state_out: Optional[int] = None,
+    ) -> "SingleAgentEpisode":
+        """Converts this Episode's list attributes to numpy arrays.
 
-        When an episode is terminated or truncated (`self.is_done`) the data
-        will be not anymore touched and instead converted to numpy for later
-        use in postprocessing. This function converts all the data stored
-        into numpy arrays.
+        In case some data is nested (e.g. we have a dict obs space), each leaf in the
+        nested structure is converted into a numpy ndarray and thus the data is
+        converted from a list of (nested) structs into a (nested) struct of
+        (batched) ndarrays.
+        
+        Note that INFOS are not numpy'ized and will remain as list type (normally, a
+        list of the original, env-returned dicts).
+
+        Args:
+            keep_every_n_state_out: Optional int to indicate, every how many STATE_OUT
+                data we should keep (found in `self.extra_model_outputs[STATE_OUT]`)
+                after numpy conversion. This might make sense to save space and network
+                time as well as make sure that an RNN-based model can still use these
+                reduced state data for a (B, T, ...) forward pass (where state
+                inputs have the shape (B, ...)).
+
+        Returns:
+             This `SingleAgentEpisode` object with the converted data.
         """
 
-        self.observations = np.array(self.observations)
-        self.actions = np.array(self.actions)
+        self.observations = batch(self.observations)
+        self.actions = batch(self.actions)
         self.rewards = np.array(self.rewards)
-        self.infos = np.array(self.infos)
         self.render_images = np.array(self.render_images, dtype=np.uint8)
         for k, v in self.extra_model_outputs.items():
-            self.extra_model_outputs[k] = np.array(v)
+            if keep_every_n_state_out and k == STATE_OUT:
+                v = v[::keep_every_n_state_out]
+            self.extra_model_outputs[k] = batch(v)
 
-    def create_successor(self) -> "SingleAgentEpisode":
-        """Returns a successor episode chunk (of len=0) continuing with this one.
+        return self
 
-        The successor will have the same ID and state as self and its only observation
-        will be the last observation in self. Its length will therefore be 0 (no
-        steps taken yet).
+    def cut(self, overlap: int = 0) -> "SingleAgentEpisode":
+        """Returns a successor episode chunk (of len=0) continuing from this Episode.
+
+        The successor will have the same ID as self and its observations
+        will be the last observation(s) in this Episode (self). Its length will
+        therefore be 0 (no steps taken yet).
 
         This method is useful if you would like to discontinue building an episode
         chunk (b/c you have to return it from somewhere), but would like to have a new
         episode (chunk) instance to continue building the actual env episode at a later
         time.
+
+        Args:
+            overlap: The number of timesteps to take into the new chunk, simply for
+                horizon/visibility reasons (but without actually being part of the
+                new chunk). For example, if this episode ends in actions 5, 6, 7,
+                and 8, and we call `cut(overlap=2)`, the returned chunk will have
+                actions 7 and 8 already in it, but still t_started==t==8 (not 7!).
+                Episodes being "finalized" into batches for model forward passing or
+                used for metrics computations should ignore this extra data at the
+                beginning.
 
         Returns:
             The successor Episode chunk of this one with the same ID and state and the
@@ -332,7 +371,7 @@ class SingleAgentEpisode:
             # Same ID.
             id_=self.id_,
             # First (and only) observation of successor is this episode's last obs.
-            observations=[self.observations[-1]],
+            observations=[tree.map_structure(lambda s: s[-1], self.observations)],
             # First (and only) info of successor is this episode's last info.
             infos=[self.infos[-1]],
             # Same state.
@@ -344,32 +383,32 @@ class SingleAgentEpisode:
     def to_sample_batch(self) -> SampleBatch:
         """Converts a `SingleAgentEpisode` into a `SampleBatch`.
 
-        Note that `RLlib` is relying in training on the `SampleBatch`  class and
-        therefore episodes have to be converted to this format before training can
-        start.
-
         Returns:
             A SampleBatch containing all of this episode's data.
         """
         return SampleBatch({
             key: self.get_data(key) for key in [
                 SampleBatch.EPS_ID,
+                SampleBatch.T,
                 SampleBatch.OBS,
                 SampleBatch.INFOS,
                 SampleBatch.ACTIONS,
                 SampleBatch.REWARDS,
                 SampleBatch.TERMINATEDS,
                 SampleBatch.TRUNCATEDS,
-                SampleBatch.T,
                 *self.extra_model_outputs.keys()
             ]
         })
 
     def get_data(self, key):
+        """TODO (sven): """
         if key == SampleBatch.OBS:
-            return self.observations[:-1]
+            if self.is_numpy:
+                return tree.map_structure(lambda s: s[:-1], self.observations)
+            else:
+                return self.observations[:-1]
         elif key == SampleBatch.INFOS:
-            return self.infos[1:]
+            return self.infos[:-1]
         elif key == SampleBatch.ACTIONS:
             return self.actions
         elif key == SampleBatch.REWARDS:
@@ -464,7 +503,6 @@ class SingleAgentEpisode:
         """Calculates an episode's return.
 
         The return is computed by a simple sum, neglecting the discount factor.
-        This is used predominantly for metrics.
 
         Returns:
             The sum of rewards collected during this episode.
@@ -537,9 +575,10 @@ class SingleAgentEpisode:
         Raises:
             AssertionError: If episode has never been stepped so far.
         """
-        assert len(self.observations) > 0, (
+        len = self.t - self.t_started
+        assert len >= 0, (
             "ERROR: Cannot determine length of episode that hasn't started yet! Call "
             "`SingleAgentEpisode.add_initial_observation(initial_observation=...)` "
             "first (after which `len(SingleAgentEpisode)` will be 0)."
         )
-        return len(self.observations) - 1
+        return len

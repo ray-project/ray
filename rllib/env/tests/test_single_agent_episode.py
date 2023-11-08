@@ -9,7 +9,7 @@ import ray
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 # TODO (simon): Add to the tests `info` and `extra_model_outputs`
-# as soon as #39732 is merged.
+#  as soon as #39732 is merged.
 
 
 class TestEnv(gym.Env):
@@ -102,7 +102,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # The starting point and count should now be at `len(observations) - 1`.
         self.assertTrue(episode.t == episode.t_started == (len(observations) - 1))
 
-    def test_add_initial_observation(self):
+    def test_add_env_reset_data(self):
         """Tests adding initial observations and infos.
 
         This test ensures that when initial observation and info are provided
@@ -116,7 +116,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
 
         # Add initial observations.
         obs, info = env.reset()
-        episode.add_initial_observation(initial_observation=obs, initial_info=info)
+        episode.add_env_reset(observation=obs, info=info)
 
         # Assert that the observations are added to their list.
         self.assertTrue(len(episode.observations) == 1)
@@ -125,7 +125,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Assert that the timesteps are still at zero as we have not stepped, yet.
         self.assertTrue(episode.t == episode.t_started == 0)
 
-    def test_add_timestep(self):
+    def test_add_env_step_data(self):
         """Tests if adding timestep data to a `SingleAgentEpisode` works.
 
         Adding timestep data is the central part of collecting episode
@@ -138,13 +138,13 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Set the random seed (otherwise the episode will terminate at
         # different points in each test run).
         obs, info = env.reset(seed=0)
-        episode.add_initial_observation(initial_observation=obs, initial_info=info)
+        episode.add_env_reset(observation=obs, info=info)
 
         # Sample 100 timesteps and add them to the episode.
         for i in range(100):
             action = env.action_space.sample()
             obs, reward, is_terminated, is_truncated, info = env.step(action)
-            episode.add_timestep(
+            episode.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
@@ -173,8 +173,8 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.is_truncated == is_truncated)
         self.assertTrue(episode.is_done == is_terminated or is_truncated)
 
-    def test_create_successor(self):
-        """Tests creation of a scucessor of a `SingleAgentEpisode`.
+    def test_cut(self):
+        """Tests cutting a `SingleAgentEpisode` (and creating a successor).
 
         This test makes sure that when creating a successor the successor's
         data is coherent with the episode that should be succeeded.
@@ -188,14 +188,14 @@ class TestSingelAgentEpisode(unittest.TestCase):
         env = TestEnv()
         # Add initial observation.
         init_obs, init_info = env.reset()
-        episode_1.add_initial_observation(
-            initial_observation=init_obs, initial_info=init_info
+        episode_1.add_env_reset(
+            observation=init_obs, info=init_info
         )
         # Sample 100 steps.
         for i in range(100):
             action = i
             obs, reward, is_terminated, is_truncated, info = env.step(action)
-            episode_1.add_timestep(
+            episode_1.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
@@ -209,7 +209,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertTrue(episode_1.t == 100)
 
         # Create a successor.
-        episode_2 = episode_1.create_successor()
+        episode_2 = episode_1.cut()
         # Assert that it has the same id.
         self.assertTrue(episode_1.id_ == episode_2.id_)
         # Assert that the timestep starts at the end of the last episode.
@@ -223,7 +223,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Test immutability.
         action = 100
         obs, reward, is_terminated, is_truncated, info = env.step(action)
-        episode_2.add_timestep(
+        episode_2.add_env_step(
             observation=obs,
             action=action,
             reward=reward,
@@ -248,14 +248,12 @@ class TestSingelAgentEpisode(unittest.TestCase):
         env = TestEnv()
         init_obs, init_info = env.reset()
         episode_1 = SingleAgentEpisode()
-        episode_1.add_initial_observation(
-            initial_observation=init_obs, initial_info=init_info
-        )
+        episode_1.add_env_reset(observation=init_obs, info=init_info)
         # Sample 100 timesteps.
         for i in range(100):
             action = i
             obs, reward, is_terminated, is_truncated, info = env.step(action)
-            episode_1.add_timestep(
+            episode_1.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
@@ -266,13 +264,13 @@ class TestSingelAgentEpisode(unittest.TestCase):
             )
 
         # Create a successor.
-        episode_2 = episode_1.create_successor()
+        episode_2 = episode_1.cut()
 
         # Now, sample 100 more timesteps.
         for i in range(100, 200):
             action = i
             obs, reward, is_terminated, is_truncated, info = env.step(action)
-            episode_2.add_timestep(
+            episode_2.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
@@ -345,14 +343,14 @@ class TestSingelAgentEpisode(unittest.TestCase):
         env = TestEnv()
         # Add initial observation.
         init_obs, init_info = env.reset()
-        episode.add_initial_observation(
-            initial_observation=init_obs, initial_info=init_info
+        episode.add_env_reset(
+            observation=init_obs, info=init_info
         )
         # Sample 100 steps.
         for i in range(100):
             action = i
             obs, reward, is_terminated, is_truncated, info = env.step(action)
-            episode.add_timestep(
+            episode.add_env_step(
                 observation=obs,
                 action=action,
                 reward=reward,
@@ -406,14 +404,14 @@ class TestSingelAgentEpisode(unittest.TestCase):
     #    env = TestEnv()
     #    # Add initial observation.
     #    init_obs, init_obs = env.reset()
-    #    episode.add_initial_observation(
+    #    episode.add_env_reset(
     #        initial_observation=init_obs, initial_info=init_obs
     #    )
     #    # Sample 100 steps.
     #    for i in range(100):
     #        action = i
     #        obs, reward, is_terminated, is_truncated, info = env.step(action)
-    #        episode.add_timestep(
+    #        episode.add_env_step(
     #            observation=obs,
     #            action=action,
     #            reward=reward,

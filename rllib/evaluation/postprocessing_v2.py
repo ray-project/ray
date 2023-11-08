@@ -19,155 +19,25 @@ from ray.rllib.utils.typing import TensorType
 _, tf, _ = try_import_tf()
 
 
-@DeveloperAPI
-def compute_advantages_for_episodes(
-    batch: SampleBatch,
-    episodes: List[SingleAgentEpisode],
-    gamma: float,
-    lambda_: float,
-    use_gae: bool,
-    use_critic: bool,
-    rl_module: RLModule,
-) -> np._typing.NDArray:
-    """Computes advantages over a list of Episodes and return advantages as tensor."""
-
-    # Compute value function outs, if not already in the episodes.
-    if SampleBatch.VF_PREDS not in batch:
-        # Shared encoder.
-        encoder_outs = rl_module.encoder(batch)
-        # Value head.
-        vf_out = rl_module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        # TODO (sven): Make framework agnostic.
-        batch[SampleBatch.VF_PREDS] = vf_out.squeeze(-1)
-
-    # Compute bootstrapped values at end of
-    episode = compute_bootstrap_value_for_episode(episode, rl_module)
-
-    vf_preds = episode.extra_model_outputs[SampleBatch.VF_PREDS]
-    rewards = episode.rewards
-
-    # TODO (simon): In case of recurrent models sequeeze out time dimension.
-
-    episode = compute_advantages_for_episode(
-        episode,
-        last_r=episode.extra_model_outputs[SampleBatch.VALUES_BOOTSTRAPPED][-1],
-        gamma=gamma,
-        lambda_=lambda_,
-        use_gae=use_gae,
-        use_critic=use_critic,
-        vf_preds=vf_preds,
-        rewards=rewards,
-    )
-
-    standardize_fields(train_batch, ["advantages"])
-
-    # TODO (simon): Add dimension in case of recurrent model.
-    return episode
-
-
-def compute_bootstrap_value_for_episode(
-    episode: SingleAgentEpisode, rl_module: RLModule
-) -> SingleAgentEpisode:
-    if episode.is_terminated:
-        last_r = 0.0
-    else:
-        # TODO (simon): This has to be made multi-agent ready.
-        initial_states = rl_module.get_initial_state()
-        state = {
-            k: initial_states[k] if episode.states is None else episode.states[k]
-            for k in initial_states.keys()
-        }
-
-        input_dict = {
-            STATE_IN: tree.map_structure(
-                lambda s: convert_to_torch_tensor(s)
-                if rl_module.framework == "torch"
-                else tf.convert_to_tensor(s),
-                state,
-            ),
-            SampleBatch.OBS: convert_to_torch_tensor(
-                np.expand_dims(episode.observations[-1], axis=0)
-            )
-            if rl_module.framework == "torch"
-            else tf.convert_to_tensor(np.expand_dims(episode.observations[-1], axis=0)),
-        }
-
-        # TODO (simon): Torch might need the correct device.
-        # TODO (simon): Add support for recurrent models.
-
-        fwd_out = rl_module.forward_exploration(input_dict)
-        # TODO (simon): Remove time dimension in case of recurrent model.
-        last_r = fwd_out[SampleBatch.VF_PREDS][-1]
-
-    vf_preds = episode.extra_model_outputs[SampleBatch.VF_PREDS]
-    # TODO (simon): Squeeze out the time dimension in case of recurrent model.
-    episode.extra_model_outputs[SampleBatch.VALUES_BOOTSTRAPPED] = np.concatenate(
-        [
-            vf_preds[1:],
-            np.array([convert_to_numpy(last_r)], dtype=np.float32),
-        ],
-        axis=0,
-    )
-
-    # TODO (simon): Unsqueeze in case of recurrent model.
-
-    return episode
-
-
-def compute_advantages_for_episode(
-    episode: SingleAgentEpisode,
-    last_r: float,
+def compute_advantages(
+    batch,
     gamma: float = 0.9,
     lambda_: float = 1.0,
-    use_critic: bool = True,
-    use_gae: bool = True,
-    rewards: TensorType = None,
-    vf_preds: TensorType = None,
+    standardize_advantages: bool = True,
 ):
-    assert (
-        SampleBatch.VF_PREDS in episode.extra_model_outputs or not use_critic
-    ), "use_critic=True but values not found"
-    assert use_critic or not use_gae, "Can't use gae without using a value function."
-    # TODO (simon): Check if we need conversion here.
-    last_r = convert_to_numpy(last_r)
+    values = batch[SampleBatch.VF_PREDS]
+    rewards = batch[SampleBatch.REWARDS]
+    terminals = batch[SampleBatch.TERMINATEDS]
+    deltas = rewards + (1.0 - terminals) * gamma * np.append(values[1:], 0.0) - values
+    advantages = np.zeros_like(rewards)
 
-    if rewards is None:
-        rewards = episode.rewards
-    if vf_preds is None:
-        vf_preds = episode.extra_model_outs[SampleBatch.VF_PREDS]
+    last_gae = 0.0
+    for t in reversed(range(len(rewards))):
+        last_gae = deltas[t] + gamma * lambda_ * (1.0 - terminals[t]) * last_gae
+        advantages[t] = last_gae
 
-    if use_gae:
-        vpred_t = np.concatenate([vf_preds, np.array([last_r])])
-        delta_t = rewards + gamma * vpred_t[1:] - vpred_t[:-1]
-        # This formula for the advantage comes from:
-        # Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
-        episode.extra_model_outputs[Postprocessing.ADVANTAGES] = discount_cumsum(
-            delta_t, gamma * lambda_
-        )
-        episode.extra_model_outputs[Postprocessing.VALUE_TARGETS] = (
-            episode.extra_model_outputs[Postprocessing.ADVANTAGES] + vf_preds
-        ).astype(np.float32)
-    else:
-        rewards_plus_v = np.concatenate([rewards, np.array([last_r])])
-        discounted_returns = discount_cumsum(rewards_plus_v, gamma)[:-1].astype(
-            np.float32
-        )
+    # Standardize advantages.
+    if standardize_advantages:
+        advantages = (advantages - advantages.mean()) / max(1e-4, advantages.std())
 
-        if use_critic:
-            episode.extra_model_outputs[Postprocessing.ADVANTAGES] = (
-                discounted_returns - vf_preds
-            )
-            episode.extra_model_outputs[
-                Postprocessing.VALUE_TARGETS
-            ] = discounted_returns
-        else:
-            episode.extra_model_outputs[Postprocessing.ADVANTAGES] = discounted_returns
-            episode.extra_model_outputs[Postprocessing.VALUE_TARGETS] = np.zeros_like(
-                episode.extra_model_outputs[Postprocessing.ADVANTAGES]
-            )
-
-    episode.extra_model_outputs[
-        Postprocessing.ADVANTAGES
-    ] = episode.extra_model_outputs[Postprocessing.ADVANTAGES].astype(np.float32)
-
-    return episode
+    return advantages
