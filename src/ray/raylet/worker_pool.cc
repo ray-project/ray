@@ -381,6 +381,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     RAY_LOG(DEBUG) << "Launch worker with " << kEnvVarKeyJobId << " " << job_id.Hex();
     if (!worker_id.IsNil()) {
       env.emplace(kEnvVarKeyWorkerId, worker_id.Hex());
+    } else {
+      env.emplace(kEnvVarKeyWorkerId, WorkerID::FromRandom());
     }
   }
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));

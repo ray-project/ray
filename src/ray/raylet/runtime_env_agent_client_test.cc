@@ -604,7 +604,8 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   };
 
   for (int i = 0; i < 100; ++i) {
-    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", WorkerID::Nil(), callback);
+    client->DeleteRuntimeEnvIfPossible(
+        "serialized_runtime_env", WorkerID::Nil(), callback);
   }
 
   ioc.run();
