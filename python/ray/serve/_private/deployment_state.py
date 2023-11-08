@@ -141,6 +141,8 @@ class DeploymentTargetState:
                 == other_target_state.info.deployment_config.dict(
                     exclude={"num_replicas"}
                 ),
+                # TODO(zcin): version can be None, this is from an outdated codepath.
+                # We should remove outdated code, so version can never be None.
                 self.version,
                 self.version == other_target_state.version,
             ]
@@ -1413,6 +1415,10 @@ class DeploymentState:
         if self._target_state.info and is_scale:
             if self._curr_status_info.status != DeploymentStatus.UPDATING:
                 new, old = (target_state.num_replicas, self._target_state.num_replicas)
+                # New replicas should never be equal to old replicas because both
+                # deploy() and autoscale() return early if the new number of replicas
+                # is the same, so _set_target_state should never get an exact copy of
+                # the existing target state.
                 assert new != old
                 scaling_decision = (
                     DeploymentStatus.UPSCALING
