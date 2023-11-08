@@ -126,7 +126,7 @@ class SQLDatasource(Datasource):
         # Databases like DB2, Oracle, and MS SQL Server don't support `LIMIT`.
         try:
             with _connect(self.connection_factory) as cursor:
-                cursor.execute(f"SELECT * FROM ({self.sql}) as T LIMIT 1 OFFSET 0")
+                cursor.execute(f"SELECT * FROM ({self.sql}) as T OFFSET 0 LIMIT 1")
             is_limit_supported = True
         except Exception:
             is_limit_supported = False
@@ -189,7 +189,7 @@ class SQLDatasource(Datasource):
         def read_fn() -> Iterable[Block]:
             with _connect(self.connection_factory) as cursor:
                 cursor.execute(
-                    f"SELECT * FROM ({self.sql}) as T LIMIT {num_rows} OFFSET {offset}"
+                    f"SELECT * FROM ({self.sql}) as T OFFSET {offset} LIMIT {num_rows} "
                 )
                 block = _cursor_to_block(cursor)
                 return [block]
