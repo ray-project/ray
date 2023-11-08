@@ -1405,13 +1405,18 @@ class DeploymentState:
     ) -> int:
         """Return the target state `num_replicas` adjusted by the `target_capacity`.
 
-        The output will never be lower than `1`.
+        The output will only ever be 0 if the passed `num_replicas` is 0. This is to
+        support autoscaling deployments using scale-to-zero (we assume that any other
+        deployment should always have at least 1 replica).
 
         Rather than using the default `round` behavior in Python, which rounds half to
         even, uses the `decimal` module to round half up (standard rounding behavior).
         """
         if target_capacity is None or target_capacity == 100:
             return num_replicas
+
+        if num_replicas == 0:
+            return 0
 
         adjusted_num_replicas = Decimal(num_replicas * target_capacity) / Decimal(100.0)
         rounded_adjusted_num_replicas = adjusted_num_replicas.to_integral_value(
@@ -1822,7 +1827,7 @@ class DeploymentState:
         return False, any_replicas_recovering
 
     def _check_startup_replicas(
-        self, original_state: ReplicaState, stop_on_slow=False
+        self, original_state: ReplicaState, target_num_replicas: int, stop_on_slow=False
     ) -> List[Tuple[DeploymentReplica, ReplicaStartupStatus]]:
         """
         Common helper function for startup actions tracking and status
@@ -1881,7 +1886,7 @@ class DeploymentState:
         # backoff factor by setting EXPONENTIAL_BACKOFF_FACTOR)
         failed_to_start_threshold = min(
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            self._target_state.num_replicas * 3,
+            target_num_replicas * 3,
         )
         if (
             replicas_failed
@@ -1922,7 +1927,7 @@ class DeploymentState:
             },
         )
 
-    def _check_and_update_replicas(self):
+    def _check_and_update_replicas(self, target_num_replicas: int):
         """
         Check current state of all DeploymentReplica being tracked, and compare
         with state container from previous update() cycle to see if any state
@@ -1969,10 +1974,14 @@ class DeploymentState:
                     )
 
         slow_start_replicas = []
-        slow_start = self._check_startup_replicas(ReplicaState.STARTING)
-        slow_update = self._check_startup_replicas(ReplicaState.UPDATING)
+        slow_start = self._check_startup_replicas(
+            ReplicaState.STARTING, target_num_replicas
+        )
+        slow_update = self._check_startup_replicas(
+            ReplicaState.UPDATING, target_num_replicas
+        )
         slow_recover = self._check_startup_replicas(
-            ReplicaState.RECOVERING, stop_on_slow=True
+            ReplicaState.RECOVERING, target_num_replicas, stop_on_slow=True
         )
 
         slow_start_replicas = slow_start + slow_update + slow_recover
@@ -2091,7 +2100,7 @@ class DeploymentState:
             # we manage.
 
             # Check the state of existing replicas and transition if necessary.
-            self._check_and_update_replicas()
+            self._check_and_update_replicas(adjusted_target_num_replicas)
 
             self._stop_replicas_on_draining_nodes()
 
@@ -2496,7 +2505,7 @@ class DeploymentStateManager:
     def update(self, target_capacity: Optional[float] = None) -> bool:
         """Updates the state of all deployments to match their goal state.
 
-        `target_capacity` represents the target capacity percentage for all replicas
+        `target_capacity` represents the target capacity percentage for all deployments
         across the cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for
         each deployment will be scaled by this percentage.
 
@@ -2505,7 +2514,10 @@ class DeploymentStateManager:
         if target_capacity is not None and (
             target_capacity < 0 or target_capacity > 100
         ):
-            raise ValueError("`target_capacity` must be between 0 and 100.")
+            raise ValueError(
+                f"Got invalid `target_capacity`: {target_capacity}. "
+                "`target_capacity` must be between 0 and 100."
+            )
 
         deleted_ids = []
         any_recovering = False
