@@ -36,7 +36,8 @@ class MPIPlugin(RuntimeEnvPlugin):
         logger.info(f"Running MPI plugin\n {proc.stdout.decode()}")
 
         from pathlib import Path
-
+        # worker_entry should be a file either in the working dir
+        # or visible inside the cluster.
         worker_entry = mpi_config.get("worker_entry", None)
         assert (
             worker_entry is not None
