@@ -157,10 +157,10 @@ def _start_controller(
     if isinstance(grpc_options, dict):
         grpc_options = gRPCOptions(**grpc_options)
 
-    if logging_config is None:
-        logging_config = LoggingConfig()
+    if system_logging_config is None:
+        system_logging_config = LoggingConfig()
     elif isinstance(system_logging_config, dict):
-        system_logging_config = LoggingConfig(**logging_config)
+        system_logging_config = LoggingConfig(**system_logging_config)
 
     controller = ServeController.options(**controller_actor_options).remote(
         SERVE_CONTROLLER_NAME,
