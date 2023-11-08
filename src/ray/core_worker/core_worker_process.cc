@@ -75,11 +75,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
 
 WorkerID GetWorkerID() {
   auto worker_id_env = std::getenv(kEnvVarKeyWorkerId);
-  RAY_CHECK(worker_id_env != nullptr)
-      << kEnvVarKeyWorkerId << " env var is needed by worker.";
-  RAY_LOG(INFO) << "Using worker ID " << worker_id_env << " from env var "
-                << kEnvVarKeyWorkerId << ".";
-  return WorkerID(UniqueID::FromHex(std::string(worker_id_env)));
+  if (worker_id_env) {
+    RAY_LOG(INFO) << "Using worker ID " << worker_id_env << " from env var "
+                  << kEnvVarKeyWorkerId << ".";
+    return WorkerID(UniqueID::FromHex(std::string(worker_id_env)));
+  } else {
+    return WorkerID::FromRandom();
+  }
 }
 
 CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
