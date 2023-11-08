@@ -15,9 +15,17 @@ if __name__ == "__main__":
 
     rank = comm.Get_rank()
 
-    entry_file = args.main_entry if rank == 0 else args.worker_entry
+    if rank == 0:
+        entry_file = args.main_entry
 
-    sys.argv[1:] = remaining_args
-    spec = importlib.util.spec_from_file_location("__main__", entry_file)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+        sys.argv[1:] = remaining_args
+        spec = importlib.util.spec_from_file_location("__main__", entry_file)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    else:
+        module, func = args.worker_entry.rsplit(".", 1)
+        print("DBG:", args.worker_entry, module, func)
+        m = __import__(module)
+        print("DBGG:", m, func)
+        f = getattr(m, func)
+        f()

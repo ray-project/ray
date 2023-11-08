@@ -113,15 +113,6 @@ py_test_module_list(
   tags = ["exclusive", "no_main", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
-
-py_test(
-  name = "test_mpi",
-  size = "small",
-  srcs = ["mpi/test_mpi.py"],
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
-  data = ["mpi/mpi_worker.py"],
-  deps = ["//:ray_lib", ":conftest"],
-)
     
 py_test_module_list(
   files = [
@@ -147,6 +138,7 @@ py_test_module_list(
     "test_multi_node_2.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
+    "test_mpi.py",
     "test_node_manager.py",
     "test_object_assign_owner.py",
     "test_placement_group_2.py",

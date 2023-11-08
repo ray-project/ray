@@ -1,4 +1,6 @@
 import logging
+import os
+
 from typing import List, Optional
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
@@ -16,18 +18,19 @@ class MPIPlugin(RuntimeEnvPlugin):
         runtime_env={
             "mpi": {
                 "args": ["-n", "4"],
-                "worker_entry": mpi_worker_file,
+                "worker_entry": worker_entry,
             }
         }
     )
     def calc_pi():
       ...
 
-    Here mpi_worker_file should be the file name inside working dir or a path
-    to the file visible to the ray cluster.
+    Here worker_entry should be function for the MPI worker to run.
+    For example, it should be `'py_module.worker_func'`. The module should be able to
+    be imported in the runtime.
 
     In the mpi worker with rank==0, it'll be the normal ray function or actor.
-    For the worker with rank > 0, it'll just run `python mpi_worker_file`.
+    For the worker with rank > 0, it'll just run `worker_func`.
     """
 
     priority = 90
@@ -61,11 +64,12 @@ class MPIPlugin(RuntimeEnvPlugin):
 
         # worker_entry should be a file either in the working dir
         # or visible inside the cluster.
-        worker_entry = mpi_config.get("worker_entry", None)
+        worker_entry = mpi_config.get("worker_entry")
+
         assert (
             worker_entry is not None
         ), "`worker_entry` must be setup in the runtime env."
-        assert Path(worker_entry).is_file(), "`worker_entry` must be a file."
+
 
         cmds = (
             ["mpirun"]
