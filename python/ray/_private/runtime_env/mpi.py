@@ -8,6 +8,28 @@ default_logger = logging.getLogger(__name__)
 
 
 class MPIPlugin(RuntimeEnvPlugin):
+    """This plugin enable a MPI cluster to run on top of ray.
+
+    To use this, "mpi" need to be added to the runtime env like following
+
+    @ray.remote(
+        runtime_env={
+            "mpi": {
+                "args": ["-n", "4"],
+                "worker_entry": mpi_worker_file,
+            }
+        }
+    )
+    def calc_pi():
+      ...
+
+    Here mpi_worker_file should be the file name inside working dir or a path
+    to the file visible to the ray cluster.
+
+    In the mpi worker with rank==0, it'll be the normal ray function or actor.
+    For the worker with rank > 0, it'll just run `python mpi_worker_file`.
+    """
+
     priority = 90
     name = "mpi"
 
@@ -36,6 +58,7 @@ class MPIPlugin(RuntimeEnvPlugin):
         logger.info(f"Running MPI plugin\n {proc.stdout.decode()}")
 
         from pathlib import Path
+
         # worker_entry should be a file either in the working dir
         # or visible inside the cluster.
         worker_entry = mpi_config.get("worker_entry", None)
