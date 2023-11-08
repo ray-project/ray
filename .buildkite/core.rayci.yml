@@ -1,6 +1,6 @@
 group: core tests
 steps:
-  # build
+  # builds
   - name: corebuild
     wanda: ci/docker/core.build.wanda.yaml
     depends_on: oss-ci-base_build
@@ -18,7 +18,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       EXTRA_DEPENDENCY: core
 
-  # test
+  # tests
   - label: ":ray: core: python tests"
     tags: python
     instance_type: large

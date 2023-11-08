@@ -186,6 +186,14 @@ py_test(
 )
 
 py_test(
+    name = "test_file_datasink",
+    size = "small",
+    srcs = ["tests/test_file_datasink.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_filename_provider",
     size = "small",
     srcs = ["tests/test_filename_provider.py"],
