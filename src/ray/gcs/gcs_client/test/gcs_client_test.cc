@@ -598,14 +598,13 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
 
   // Report resource usage of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto resource = std::make_shared<rpc::ResourcesData>();
-  resource->set_node_id(node_id.Binary());
+  syncer::ResourceViewSyncMessage resource;
   // Set this flag to indicate resources has changed.
-  (*resource->mutable_resources_available())["CPU"] = 1.0;
-  (*resource->mutable_resources_available())["GPU"] = 10.0;
-  (*resource->mutable_resources_total())["CPU"] = 1.0;
-  (*resource->mutable_resources_total())["GPU"] = 10.0;
-  gcs_server_->UpdateGcsResourceManagerInTest(*resource);
+  (*resource.mutable_resources_available())["CPU"] = 1.0;
+  (*resource.mutable_resources_available())["GPU"] = 10.0;
+  (*resource.mutable_resources_total())["CPU"] = 1.0;
+  (*resource.mutable_resources_total())["GPU"] = 10.0;
+  gcs_server_->UpdateGcsResourceManagerInTest(node_id, resource);
 
   // Assert get all available resources right.
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
@@ -745,17 +744,15 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(RegisterNode(*node_info));
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   std::string key = "CPU";
-  auto resources = std::make_shared<rpc::ResourcesData>();
-  resources->set_node_id(node_info->node_id());
-  gcs_server_->UpdateGcsResourceManagerInTest(*resources);
+  syncer::ResourceViewSyncMessage resources;
+  gcs_server_->UpdateGcsResourceManagerInTest(node_id, resources);
 
   RestartGcsServer();
 
   node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
   node_id = NodeID::FromBinary(node_info->node_id());
-  resources->set_node_id(node_info->node_id());
-  gcs_server_->UpdateGcsResourceManagerInTest(*resources);
+  gcs_server_->UpdateGcsResourceManagerInTest(node_id, resources);
 
   WaitForExpectedCount(node_change_count, 2);
 }
