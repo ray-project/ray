@@ -2706,6 +2706,34 @@ class TestTargetCapacity:
     Tests related to the `target_capacity` field that adjusts the target num_replicas.
     """
 
+    @pytest.mark.parametrize(
+        "num_replicas,target_capacity,expected_output",
+        [
+            (10, None, 10),
+            (10, 100, 10),
+            (10, 99, 10),
+            (10, 50, 5),
+            (10, 0, 1),
+            (10, 25, 2),
+            (1, None, 1),
+            (1, 100, 1),
+            (1, 0, 1),
+            (1, 23, 1),
+            (3, 20, 1),
+            (3, 40, 1),
+            (3, 70, 2),
+            (3, 90, 3),
+        ],
+    )
+    def test_get_capacity_adjusted_num_replicas(
+        self, num_replicas: int, target_capacity: Optional[float], expected_output: int
+    ):
+        result = DeploymentState.get_capacity_adjusted_num_replicas(
+            num_replicas, target_capacity
+        )
+        assert isinstance(result, int)
+        assert result == expected_output
+
     def test_initial_deploy(self, mock_deployment_state):
         """
         Deploy with target_capacity set, should apply immediately.
