@@ -87,7 +87,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
         check_expected_num_replicas,
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: 1,
-            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: 1,
+            DOWNSTREAM_DEPLOYMENT_NAME: 1,
         },
     )
 
@@ -98,7 +98,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
         check_expected_num_replicas,
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
-            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+            DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
     )
 
@@ -109,7 +109,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
         check_expected_num_replicas,
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
-            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
+            DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
     )
 
@@ -120,7 +120,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
         check_expected_num_replicas,
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
-            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
+            DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
     )
 
@@ -140,7 +140,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
         check_expected_num_replicas,
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
-            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
+            DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
     )
 
@@ -151,7 +151,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
         check_expected_num_replicas,
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
-            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+            DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
     )
 
@@ -162,7 +162,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
         check_expected_num_replicas,
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: 1,
-            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: 1,
+            DOWNSTREAM_DEPLOYMENT_NAME: 1,
         },
     )
 
@@ -185,7 +185,7 @@ def test_controller_recover_target_capacity(
         check_expected_num_replicas,
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
-            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+            DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
     )
 
@@ -197,7 +197,7 @@ def test_controller_recover_target_capacity(
         check_expected_num_replicas,
         deployment_to_num_replicas={
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
-            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+            DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
     )
 
