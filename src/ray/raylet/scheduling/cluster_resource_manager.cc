@@ -71,14 +71,16 @@ void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
   }
 }
 
-bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
-                                        const rpc::ResourcesData &resource_data) {
+bool ClusterResourceManager::UpdateNode(
+    scheduling::NodeID node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   if (!nodes_.contains(node_id)) {
     return false;
   }
 
-  auto resources_total = MapFromProtobuf(resource_data.resources_total());
-  auto resources_available = MapFromProtobuf(resource_data.resources_available());
+  auto resources_total = MapFromProtobuf(resource_view_sync_message.resources_total());
+  auto resources_available =
+      MapFromProtobuf(resource_view_sync_message.resources_available());
   NodeResources node_resources =
       ResourceMapToNodeResources(resources_total, resources_available);
   NodeResources local_view;
@@ -86,15 +88,15 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
 
   local_view.total = node_resources.total;
   local_view.available = node_resources.available;
-  local_view.object_pulls_queued = resource_data.object_pulls_queued();
+  local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
   // Update the idle duration for the node in terms of resources usage.
-  local_view.idle_resource_duration_ms = resource_data.idle_duration_ms();
+  local_view.idle_resource_duration_ms = resource_view_sync_message.idle_duration_ms();
 
   // Last update time to the local node resources view.
   local_view.last_resource_update_time = absl::Now();
 
-  local_view.is_draining = resource_data.is_draining();
+  local_view.is_draining = resource_view_sync_message.is_draining();
 
   AddOrUpdateNode(node_id, local_view);
   received_node_resources_[node_id] = std::move(local_view);
