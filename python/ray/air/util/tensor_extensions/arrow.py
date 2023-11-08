@@ -74,7 +74,6 @@ class ArrowTensorType(pa.ExtensionType):
             dtype: pyarrow dtype of tensor elements.
         """
         self._shape = shape
-        self._dtype = dtype
         super().__init__(pa.list_(dtype))
 
     @property
