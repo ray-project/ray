@@ -29,6 +29,18 @@ from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
 
+# Shared amongst multiple schemas.
+TARGET_CAPACITY_FIELD = Field(
+    default=None,
+    description=(
+        "[EXPERIMENTAL]: the target capacity percentage for all replicas across the "
+        "cluster. The `num_replicas`, `min_replicas`, and `max_replicas` for each "
+        "deployment will be scaled by this percentage."
+    ),
+    ge=0,
+    le=100,
+)
+
 
 def _route_prefix_format(cls, v):
     """
@@ -639,6 +651,7 @@ class ServeDeploySchema(BaseModel):
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
     )
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
     @validator("applications")
     def application_names_unique(cls, v):
@@ -754,10 +767,13 @@ class ServeStatus:
         proxies: The proxy actors running on each node in the cluster.
             A map from node ID to proxy status.
         applications: The live applications in the cluster.
+        target_capacity: the target capacity percentage for all replicas across the
+            cluster.
     """
 
     proxies: Dict[str, ProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
 
 @PublicAPI(stability="stable")
@@ -942,6 +958,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
+    target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:
@@ -955,10 +972,12 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
             "controller_info": {},
             "proxies": {},
             "applications": {},
+            "target_capacity": None,
         }
 
     def _get_status(self) -> ServeStatus:
         return ServeStatus(
+            target_capacity=self.target_capacity,
             proxies={node_id: proxy.status for node_id, proxy in self.proxies.items()},
             applications={
                 app_name: ApplicationStatusOverview(
