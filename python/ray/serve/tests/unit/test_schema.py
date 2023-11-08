@@ -580,13 +580,13 @@ class TestLoggingConfig:
                 "log_level": logging.DEBUG,
                 "encoding": "JSON",
                 "logs_dir": "/my_dir",
-                "access_log": "ALL",
+                "enable_access_log": True,
             }
         )
         assert schema.log_level == "DEBUG"
         assert schema.encoding == "JSON"
         assert schema.logs_dir == "/my_dir"
-        assert schema.access_log == "ALL"
+        assert schema.enable_access_log
 
         # Test string values for log_level.
         schema = LoggingConfig.parse_obj(
@@ -603,7 +603,7 @@ class TestLoggingConfig:
                     "logging_level": logging.INFO,
                     "encoding": "NOT_EXIST",
                     "logs_dir": "/my_dir",
-                    "access_log": "ALL",
+                    "enable_access_log": True,
                 }
             )
 
@@ -612,7 +612,7 @@ class TestLoggingConfig:
         assert schema.log_level == "INFO"
         assert schema.encoding == "TEXT"
         assert schema.logs_dir is None
-        assert schema.access_log == "ALL"
+        assert schema.enable_access_log
 
 
 # This function is defined globally to be accessible via import path

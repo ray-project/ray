@@ -195,13 +195,13 @@ def configure_component_logger(
 
     logging.setLogRecordFactory(record_factory)
 
-    if logging_config._should_enable_stream_logging():
-        stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
-        stream_handler.addFilter(log_to_stderr_filter)
-        logger.addHandler(stream_handler)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(ServeFormatter(component_name, component_id))
+    stream_handler.addFilter(log_to_stderr_filter)
+    logger.addHandler(stream_handler)
 
-    if logging_config._should_enable_file_logging():
+    print("enable_access_log: ", logging_config.enable_access_log)
+    if logging_config.enable_access_log:
 
         if logging_config.logs_dir:
             logs_dir = logging_config.logs_dir

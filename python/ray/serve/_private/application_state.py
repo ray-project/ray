@@ -962,6 +962,12 @@ def override_deployment_info(
     app_logging_config = config_dict.get("logging_config", None)
     deployment_override_options = config_dict.get("deployments", [])
 
+    # Get logging config for each deployment if set.
+    deployment_override_logging_config = {}
+    for deployments_config in override_config.deployments:
+        if deployments_config.logging_config:
+            deployment_override_logging_config[deployments_config.name] = deployments_config.logging_config.dict()
+
     # If application loggin config is set, apply to all existing deployment config
     if app_logging_config:
         for _, info in deployment_infos.items():
@@ -1025,6 +1031,8 @@ def override_deployment_info(
         override_options["replica_config"] = replica_config
 
         # Override deployment config options
+        if options["name"] in deployment_override_logging_config:
+            options.update(deployment_override_logging_config)
         original_options = info.deployment_config.dict()
         options.pop("name", None)
         original_options.update(options)

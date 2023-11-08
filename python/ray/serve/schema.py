@@ -71,15 +71,6 @@ class EncodingType(str, Enum):
 
 
 @PublicAPI(stability="alpha")
-class AccessLoggingType(str, Enum):
-
-    ALL = "ALL"
-    FILE_ONLY = "FILE_ONLY"
-    STREAM_ONLY = "STREAM_ONLY"
-    DISABLE = "DISABLE"
-
-
-@PublicAPI(stability="alpha")
 class LoggingConfig(BaseModel):
     """Logging config schema for configuring serve components logs."""
 
@@ -108,11 +99,10 @@ class LoggingConfig(BaseModel):
             "('/tmp/ray/session_latest/logs/serve/...')."
         ),
     )
-    access_log: Union[str, AccessLoggingType] = Field(
-        default="ALL",
+    enable_access_log: bool = Field(
+        default=True,
         description=(
-            "Configure how to access the Serve logs. Default to 'ALL' to enable "
-            " streaming and file access logs together."
+            "Whether to enable access logs for each request. Default to True."
         ),
     )
 
@@ -123,17 +113,6 @@ class LoggingConfig(BaseModel):
             raise ValueError(
                 f"Got '{v}' for encoding. Encoding must be one "
                 f"of {set(EncodingType)}."
-            )
-
-        return v
-
-    @validator("access_log")
-    def validate_access_log(cls, v):
-
-        if v not in list(AccessLoggingType):
-            raise ValueError(
-                f"Got '{v}' for access_log. access_log must be one "
-                f"of {set(AccessLoggingType)}."
             )
 
         return v
@@ -155,19 +134,13 @@ class LoggingConfig(BaseModel):
             )
         return v
 
-    def _should_enable_stream_logging(self):
-        return self.access_log in [AccessLoggingType.ALL, AccessLoggingType.STREAM_ONLY]
-
-    def _should_enable_file_logging(self):
-        return self.access_log in [AccessLoggingType.ALL, AccessLoggingType.FILE_ONLY]
-
     def _compute_hash(self) -> int:
         return crc32(
             (
                 str(self.encoding)
                 + str(self.log_level)
                 + str(self.logs_dir)
-                + str(self.access_log)
+                + str(self.enable_access_log)
             ).encode("utf-8")
         )
 

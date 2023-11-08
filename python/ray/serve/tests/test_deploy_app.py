@@ -1361,13 +1361,13 @@ class TestDeploywithLoggingConfig:
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
     @pytest.mark.parametrize(
-        "access_type", ["ALL", "FILE_ONLY", "STREAM_ONLY", "DISABLE"]
+        "enable_access_type", [True, False]
     )
-    def test_access_log(self, client: ServeControllerClient, access_type: str):
+    def test_access_log(self, client: ServeControllerClient, enable_access_type: bool):
 
         config_dict = self.get_deploy_config()
         config_dict["applications"][0]["logging_config"] = {
-            "access_log": access_type,
+            "enable_access_log": enable_access_type,
         }
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
@@ -1375,7 +1375,10 @@ class TestDeploywithLoggingConfig:
             lambda: requests.post("http://localhost:8000/app1").status_code == 200
         )
         resp = requests.get("http://127.0.0.1:8000/app1").json()
-        assert resp["handlers_state"] == access_type
+        if enable_access_type:
+            assert resp["num_handlers"] == 2
+        else:
+            assert resp["num_handlers"] == 1
 
 
 if __name__ == "__main__":

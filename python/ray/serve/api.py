@@ -65,7 +65,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
     grpc_options: Union[None, dict, gRPCOptions] = None,
-    logging_config: Union[None, dict, LoggingConfig] = None,
+    system_logging_config: Union[None, dict, LoggingConfig] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -89,7 +89,7 @@ def start(
         grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
-        logging_config: logging config options for the serve component (controller &
+        system_logging_config: logging config options for the serve component (controller &
           proxy).
     """
 
@@ -122,7 +122,7 @@ def start(
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
-        logging_config=logging_config,
+        system_logging_config=system_logging_config,
         **kwargs,
     )
 
@@ -523,9 +523,9 @@ def run(
 
             deployment._route_prefix = route_prefix
         if deployment.logging_config is None and logging_config:
-            if isinstance(logging_config, LoggingConfig):
-                logging_config = logging_config.dict()
-            deployment.set_logging_config(logging_config)
+            if isinstance(logging_config, dict):
+                logging_config = LoggingConfig(**logging_config)
+            deployment.set_logging_config(logging_config.dict())
         deployment_parameters = {
             "name": deployment._name,
             "replica_config": deployment._replica_config,

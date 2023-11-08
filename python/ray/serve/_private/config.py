@@ -26,7 +26,6 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
-from ray.serve.generated.serve_pb2 import AccessLoggingType as AccessLoggingTypeProto
 from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
@@ -191,10 +190,7 @@ class DeploymentConfig(BaseModel):
                 data["logging_config"]["encoding"] = EncodingTypeProto.Value(
                     data["logging_config"]["encoding"]
                 )
-            if "access_log" in data["logging_config"]:
-                data["logging_config"]["access_log"] = AccessLoggingTypeProto.Value(
-                    data["logging_config"]["access_log"]
-                )
+
             data["logging_config"] = LoggingConfigProto(**data["logging_config"])
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
@@ -247,10 +243,6 @@ class DeploymentConfig(BaseModel):
             if "encoding" in data["logging_config"]:
                 data["logging_config"]["encoding"] = EncodingTypeProto.Name(
                     data["logging_config"]["encoding"]
-                )
-            if "access_log" in data["logging_config"]:
-                data["logging_config"]["access_log"] = AccessLoggingTypeProto.Name(
-                    data["logging_config"]["access_log"]
                 )
 
         return cls(**data)
