@@ -1,6 +1,4 @@
-import sys
 import logging
-import argparse
 from typing import List, Optional
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
@@ -52,7 +50,7 @@ class MPIPlugin(RuntimeEnvPlugin):
                 context.py_executable,
                 "-m",
                 "ray._private.runtime_env.mpi_runner",
-                worker_entry
+                worker_entry,
             ]
         )
         # Construct the start cmd
