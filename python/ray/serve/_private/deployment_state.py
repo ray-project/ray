@@ -1404,7 +1404,9 @@ class DeploymentState:
     ) -> int:
         """Return the target state `num_replicas` adjusted by the `target_capacity`.
 
-        This will never be lower than `1`.
+        The output will never be lower than `1`.
+
+        This uses default `round` behavior in Python, which rounds half to even.
         """
         if target_capacity is None or target_capacity == 100:
             return num_replicas
