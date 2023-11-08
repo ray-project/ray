@@ -10,13 +10,15 @@ class Model:
     def __call__(self):
         logger.debug("this_is_debug_info")
 
-        log_file = logger.handlers[1].baseFilename
+        log_file = None
+        if len(logger.handlers) == 2:
+            log_file = logger.handlers[1].baseFilename
 
         return {
             "log_file": log_file,
             "replica": serve.get_replica_context().replica_tag,
             "log_level": logger.level,
-            "num_handlers_state": len(logger.handlers),
+            "num_handlers": len(logger.handlers),
         }
 
 

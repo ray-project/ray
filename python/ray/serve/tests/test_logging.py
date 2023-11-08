@@ -34,7 +34,7 @@ def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_MAX_BYTES", str(max_bytes))
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
 
-'''
+
 def test_log_rotation_config(monkeypatch, ray_shutdown):
     # This test should be executed before any test that uses
     # the shared serve_instance, as environment variables
@@ -284,7 +284,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
         check_log_file(resp["log_file"], user_method_log_regexes)
         check_log_file(resp2["log_file"], user_class_method_log_regexes)
-'''
+
 
 def check_log_file(log_file: str, expected_regex: list):
     with open(log_file, "r") as f:
@@ -294,7 +294,6 @@ def check_log_file(log_file: str, expected_regex: list):
 
 
 class TestLoggingAPI:
-    '''
     def test_start_serve_with_logging_config(self, serve_and_ray_shutdown):
         serve.start(system_logging_config={"log_level": "DEBUG", "encoding": "JSON"})
         serve_log_dir = get_serve_logs_dir()
@@ -394,9 +393,7 @@ class TestLoggingAPI:
 
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
 
-    @pytest.mark.parametrize(
-        "enable_access_type", [True, False]
-    )
+    @pytest.mark.parametrize("enable_access_type", [True, False])
     def test_access_log(self, serve_and_ray_shutdown, enable_access_type):
         logger = logging.getLogger("ray.serve")
 
@@ -413,10 +410,8 @@ class TestLoggingAPI:
 
         resp = requests.get("http://127.0.0.1:8000/")
         assert resp.status_code == 200
-    '''
 
     def test_application_logging_overwrite(self, serve_and_ray_shutdown):
-
         @serve.deployment
         class Model:
             def __call__(self, req: starlette.requests.Request):

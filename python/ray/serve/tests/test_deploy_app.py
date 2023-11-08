@@ -1197,15 +1197,45 @@ class TestDeploywithLoggingConfig:
         }
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
-    def test_deploy_app_with_logging_config(
+    def test_deploy_app_with_application_logging_config(
         self, client: ServeControllerClient, encoding_type: str
     ):
+        """Deploy application with application logging config"""
         config_dict = self.get_deploy_config()
 
-        # Set json and debug
         config_dict["applications"][0]["logging_config"] = {
             "encoding": encoding_type,
         }
+        config = ServeDeploySchema.parse_obj(config_dict)
+        client.deploy_apps(config)
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1").status_code == 200
+        )
+
+        resp = requests.post("http://localhost:8000/app1").json()
+
+        if encoding_type == "JSON":
+            expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+        else:
+            expected_log_regex = [f'.*{resp["replica"]}.*']
+        check_log_file(resp["log_file"], expected_log_regex)
+
+    @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
+    def test_deploy_app_with_deployment_logging_config(
+        self, client: ServeControllerClient, encoding_type: str
+    ):
+        """Deploy application with deployment logging config"""
+        config_dict = self.get_deploy_config()
+
+        config_dict["applications"][0]["deployments"] = [
+            {
+                "name": "Model",
+                "logging_config": {
+                    "encoding": encoding_type,
+                },
+                "autoscaling_config": {"min_replicas": 1, "max_replicas": 2},
+            },
+        ]
         config = ServeDeploySchema.parse_obj(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
@@ -1360,9 +1390,7 @@ class TestDeploywithLoggingConfig:
         # log content should be redirected to new file
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
 
-    @pytest.mark.parametrize(
-        "enable_access_type", [True, False]
-    )
+    @pytest.mark.parametrize("enable_access_type", [True, False])
     def test_access_log(self, client: ServeControllerClient, enable_access_type: bool):
 
         config_dict = self.get_deploy_config()

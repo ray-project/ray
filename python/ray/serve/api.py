@@ -89,8 +89,8 @@ def start(
         grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
-        system_logging_config: logging config options for the serve component (controller &
-          proxy).
+        system_logging_config: logging config options for the serve component (
+            controller & proxy).
     """
 
     if detached is not True:

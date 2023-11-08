@@ -97,6 +97,7 @@ def create_replica_wrapper(actor_class_name: str):
                 logging_config = LoggingConfig()
             else:
                 logging_config = LoggingConfig(**deployment_config.logging_config)
+
             configure_component_logger(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,

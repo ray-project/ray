@@ -163,13 +163,10 @@ class DeploymentConfig(BaseModel):
                 f"Got invalid type '{type(v)}' for logging_config. "
                 "Expected a dictionary."
             )
-        if "log_level" not in v:
-            v["log_level"] = "INFO"
+        # Handle default value
+        from ray.serve.schema import LoggingConfig
 
-        if "encoding" in v and v["encoding"] not in ["JSON", "TEXT"]:
-            raise ValueError(
-                f"Got '{v}' for encoding. Encoding must be one " "of ['JSON', 'TEXT']."
-            )
+        v = LoggingConfig(**v).dict()
 
         return v
 

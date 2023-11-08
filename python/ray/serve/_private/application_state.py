@@ -392,7 +392,6 @@ class ApplicationState:
                 config_version,
                 self._target_state.config.name,
                 self._target_state.config.args,
-                self._target_state.config.logging_config,
             )
             self._build_app_task_info = BuildAppTaskInfo(
                 build_app_obj_ref, config_version, False
@@ -876,7 +875,6 @@ def build_serve_application(
     code_version: str,
     name: str,
     args: Dict,
-    logging_config: Optional[LoggingConfig] = None,
 ) -> Tuple[List[Dict], Optional[str]]:
     """Import and build a Serve application.
 
@@ -962,16 +960,12 @@ def override_deployment_info(
     app_logging_config = config_dict.get("logging_config", None)
     deployment_override_options = config_dict.get("deployments", [])
 
-    # Get logging config for each deployment if set.
-    deployment_override_logging_config = {}
-    for deployments_config in override_config.deployments:
-        if deployments_config.logging_config:
-            deployment_override_logging_config[deployments_config.name] = deployments_config.logging_config.dict()
-
     # If application loggin config is set, apply to all existing deployment config
     if app_logging_config:
         for _, info in deployment_infos.items():
-            info.deployment_config.logging_config = app_logging_config
+            info.deployment_config.logging_config = LoggingConfig(
+                **app_logging_config
+            ).dict()
 
     # Override options for each deployment listed in the config.
     for options in deployment_override_options:
@@ -1031,8 +1025,6 @@ def override_deployment_info(
         override_options["replica_config"] = replica_config
 
         # Override deployment config options
-        if options["name"] in deployment_override_logging_config:
-            options.update(deployment_override_logging_config)
         original_options = info.deployment_config.dict()
         options.pop("name", None)
         original_options.update(options)
