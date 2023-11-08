@@ -2986,6 +2986,127 @@ class TestTargetCapacity:
         check_counts(deployment_state, total=10, by_state=[(ReplicaState.RUNNING, 10)])
         assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
 
+    # TODO(edoakes): this test should be updated to go through the autoscaling policy.
+    def test_target_capacity_with_changing_num_replicas(self, mock_deployment_state):
+        """
+        Test that target_capacity works with changing num_replicas (emulating
+        autoscaling).
+        """
+        deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+
+        b_info_1, b_version_1 = deployment_info(num_replicas=2)
+        updating = deployment_state.deploy(b_info_1)
+        assert updating
+
+        # Start with target_capacity set to 0, should have 1 replica start up regardless
+        # of the autoscaling decision.
+        deployment_state_update_result = deployment_state.update(target_capacity=0)
+        deployment_state._deployment_scheduler.schedule(
+            {deployment_state._id: deployment_state_update_result.upscale}, {}
+        )
+        check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+        assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+        for replica in deployment_state._replicas.get():
+            replica._actor.set_ready()
+
+        deployment_state.update(target_capacity=0)
+        check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Increase the target number of replicas. Should still only have 1.
+        deployment_state._target_state.num_replicas = 10
+
+        deployment_state.update(target_capacity=0)
+        check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Increase target_capacity to 50, should have 4 more replicas start up.
+        deployment_state_update_result = deployment_state.update(target_capacity=50)
+        deployment_state._deployment_scheduler.schedule(
+            {deployment_state._id: deployment_state_update_result.upscale}, {}
+        )
+        check_counts(
+            deployment_state,
+            total=5,
+            by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING, 4)],
+        )
+        # TODO(edoakes): when we update the state machine to include
+        # upscaling/downscaling, this should be upscaling.
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        for replica in deployment_state._replicas.get():
+            replica._actor.set_ready()
+
+        deployment_state.update(target_capacity=50)
+        check_counts(deployment_state, total=5, by_state=[(ReplicaState.RUNNING, 5)])
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Reduce num_replicas and remove target_capacity, should stay the same.
+        deployment_state._target_state.num_replicas = 5
+        deployment_state_update_result = deployment_state.update()
+        deployment_state._deployment_scheduler.schedule(
+            {deployment_state._id: deployment_state_update_result.upscale}, {}
+        )
+        check_counts(
+            deployment_state,
+            total=5,
+            by_state=[(ReplicaState.RUNNING, 5)],
+        )
+        # TODO(edoakes): when we update the state machine to include
+        # upscaling/downscaling, this should be upscaling.
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        deployment_state.update(target_capacity=50)
+        check_counts(deployment_state, total=5, by_state=[(ReplicaState.RUNNING, 5)])
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Set target_capacity to 50 and increase num_replicas to 6, should have 2 stop.
+        deployment_state._target_state.num_replicas = 6
+        deployment_state_update_result = deployment_state.update(target_capacity=50)
+
+        replicas_to_stop = deployment_state._deployment_scheduler.schedule(
+            {}, {deployment_state._id: deployment_state_update_result.downscale}
+        )[deployment_state._id]
+        deployment_state.stop_replicas(replicas_to_stop)
+        check_counts(
+            deployment_state,
+            total=5,
+            by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STOPPING, 2)],
+        )
+
+        # TODO(edoakes): when we update the state machine to include
+        # upscaling/downscaling, this should be downscaling.
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        for replica in deployment_state._replicas.get([ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+
+        deployment_state.update(target_capacity=50)
+        check_counts(deployment_state, total=3, by_state=[(ReplicaState.RUNNING, 3)])
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Unset target capacity, should scale back up to 6.
+        deployment_state_update_result = deployment_state.update()
+        deployment_state._deployment_scheduler.schedule(
+            {deployment_state._id: deployment_state_update_result.upscale}, {}
+        )
+        check_counts(
+            deployment_state,
+            total=6,
+            by_state=[(ReplicaState.RUNNING, 3), (ReplicaState.STARTING, 3)],
+        )
+        # TODO(edoakes): when we update the state machine to include
+        # upscaling/downscaling, this should be upscaling.
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        for replica in deployment_state._replicas.get():
+            replica._actor.set_ready()
+
+        deployment_state.update()
+        check_counts(deployment_state, total=6, by_state=[(ReplicaState.RUNNING, 6)])
+        assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
