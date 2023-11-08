@@ -243,6 +243,9 @@ class _TrainSession:
         # Force a final (blocking) sync of artifacts in the trial path to storage.
         self.storage.persist_artifacts(force=True)
 
+        # Clean up the artifact directory once the last worker is finished with it.
+        # TODO(justinvyu)
+
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
         # SystemError

@@ -27,6 +27,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
+import tempfile
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray._private.storage import _get_storage_uri
@@ -120,7 +121,6 @@ def _pyarrow_fs_copy_files(
 
 
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
-
     is_dir = _is_directory(fs, fs_path)
 
     try:
@@ -469,6 +469,12 @@ class StorageContext:
         self._create_validation_file()
         self._check_validation_file()
 
+        # TODO(justinvyu): This directory is shared across workers of the same
+        # trial on the same node. Saved on restore as well.
+        # Need to consider this for cleaning up. Alternative is to keep a separate
+        # directory for each storage context?
+        self._artifact_staging_dir = Path(tempfile.mkdtemp())
+
     def __str__(self):
         return (
             "StorageContext<\n"
@@ -578,20 +584,37 @@ class StorageContext:
         if not self.sync_config.sync_artifacts:
             return
 
+        # TODO: This comment + check is now obsolete
         # Skip if we don't need to sync (e.g., storage_path == storage_local_path, and
         # all trial artifacts are already in the right place)
         if not self.syncer:
             return
 
+        def is_empty_dir(path) -> bool:
+            return not next(os.scandir(path), None)
+
+        if is_empty_dir(self.artifact_staging_dir):
+            logger.info(
+                "[storage] Local staging directory for artifacts is empty "
+                "-- skipping sync."
+            )
+            return
+
         if force:
+            logger.info(
+                "[storage] Performing *forced* sync of artifacts from the "
+                "local staging directory "
+                "to the trial directory on storage:\n"
+                f"{self._artifact_staging_dir} ->\n{self.trial_fs_path}"
+            )
             self.syncer.wait()
             self.syncer.sync_up(
-                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+                local_dir=self.artifact_staging_dir, remote_dir=self.trial_fs_path
             )
             self.syncer.wait()
         else:
             self.syncer.sync_up_if_needed(
-                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+                local_dir=self.artifact_staging_dir, remote_dir=self.trial_fs_path
             )
 
     @property
@@ -651,6 +674,12 @@ class StorageContext:
     def checkpoint_dir_name(self) -> str:
         """The current checkpoint directory name, based on the checkpoint index."""
         return StorageContext._make_checkpoint_dir_name(self.current_checkpoint_index)
+
+    @property
+    def artifact_staging_dir(self) -> str:
+        if not self._artifact_staging_dir.exists():
+            self._artifact_staging_dir.mkdir(parents=True, exist_ok=True)
+        return self._artifact_staging_dir.as_posix()
 
     @staticmethod
     def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:

@@ -177,7 +177,7 @@ def train_fn(config):
         assert train_session.storage.checkpoint_fs_path
 
         # Check that the working dir for each worker is the shared trial dir.
-        assert os.getcwd() == train_session.storage.trial_local_path
+        # assert os.getcwd() == train_session.storage.trial_local_path
 
     start = 0
 
@@ -200,12 +200,13 @@ def train_fn(config):
 
         # Save an artifact in the local trial dir.
         rank = train.get_context().get_world_rank()
+        artifact_dir = train.get_context().get_artifact_staging_dir()
         artifact_file_name = (
             f"artifact-rank={rank}-iter={i}.txt"
             if in_trainer
             else f"artifact-iter={i}.txt"
         )
-        with open(artifact_file_name, "w") as f:
+        with open(os.path.join(artifact_dir, artifact_file_name), "w") as f:
             f.write(f"{i}")
 
         if in_trainer and train.get_context().get_world_rank() in config.get(

@@ -75,6 +75,9 @@ class TrainContext:
     def get_storage(self) -> StorageContext:
         return session.get_storage()
 
+    def get_artifact_staging_dir(self) -> str:
+        return self.get_storage().artifact_staging_dir
+
 
 @PublicAPI(stability="stable")
 def get_context() -> TrainContext:
