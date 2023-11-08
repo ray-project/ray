@@ -2,7 +2,7 @@ import json
 import os
 import shutil
 import sys
-from typing import Optional
+from typing import Tuple
 from pathlib import Path
 
 import click
@@ -14,20 +14,11 @@ from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
-from ray_release.config import (
-    read_and_validate_release_test_collection,
-    DEFAULT_WHEEL_WAIT_TIMEOUT,
-    parse_python_version,
-)
+from ray_release.config import read_and_validate_release_test_collection
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
-from ray_release.wheels import (
-    find_and_wait_for_ray_wheels_url,
-    find_ray_wheels_url,
-    get_buildkite_repo_branch,
-    parse_commit_from_wheel_url,
-)
+from ray_release.wheels import get_buildkite_repo_branch
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 
@@ -35,9 +26,9 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 @click.command()
 @click.option(
     "--test-collection-file",
-    default=None,
     type=str,
-    help="File containing test configurations",
+    multiple=True,
+    help="Test collection file, relative path to ray repo.",
 )
 @click.option(
     "--run-jailed-tests",
@@ -62,7 +53,7 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     help="Global config to use for test execution.",
 )
 def main(
-    test_collection_file: Optional[str] = None,
+    test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
     global_config: str = "oss_config.yaml",
@@ -76,14 +67,9 @@ def main(
     tmpdir = None
 
     env = {}
-    test_collection_file = test_collection_file or os.path.join(
-        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-    )
-
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
     test_attr_regex_filters = settings["test_attr_regex_filters"]
-    ray_wheels = settings["ray_wheels"]
     priority = settings["priority"]
 
     logger.info(
@@ -91,7 +77,6 @@ def main(
         f"  frequency =               {settings['frequency']}\n"
         f"  prefer_smoke_tests =      {settings['prefer_smoke_tests']}\n"
         f"  test_attr_regex_filters = {settings['test_attr_regex_filters']}\n"
-        f"  ray_wheels =              {settings['ray_wheels']}\n"
         f"  ray_test_repo =           {settings['ray_test_repo']}\n"
         f"  ray_test_branch =         {settings['ray_test_branch']}\n"
         f"  priority =                {settings['priority']}\n"
@@ -100,7 +85,7 @@ def main(
 
     try:
         test_collection = read_and_validate_release_test_collection(
-            test_collection_file
+            test_collection_file or ["release/release_tests.yaml"]
         )
     except ReleaseTestConfigError as e:
         raise ReleaseTestConfigError(
@@ -146,13 +131,6 @@ def main(
 
     logger.info(f"Tests to run:\n{group_str}")
 
-    # Wait for wheels here so we have them ready before we kick off
-    # the other workers
-    ray_wheels_url = find_and_wait_for_ray_wheels_url(
-        ray_wheels, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
-    )
-    logger.info(f"Starting pipeline for Ray wheel: {ray_wheels_url}")
-
     no_concurrency_limit = settings["no_concurrency_limit"]
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
@@ -173,23 +151,11 @@ def main(
         tests = grouped_tests[group]
         group_steps = []
         for test, smoke_test in tests:
-            # If the python version is defined, we need a different Ray wheels URL
-            if "python" in test:
-                python_version = parse_python_version(test["python"])
-                this_ray_wheels_url = find_ray_wheels_url(
-                    ray_wheels, python_version=python_version
-                )
-            else:
-                this_ray_wheels_url = ray_wheels_url
-
-            ray_commit = parse_commit_from_wheel_url(this_ray_wheels_url)
-            if ray_commit:
-                env.update({"RAY_COMMIT_OF_WHEEL": ray_commit})
             step = get_step(
                 test,
+                test_collection_file,
                 report=report,
                 smoke_test=smoke_test,
-                ray_wheels=this_ray_wheels_url,
                 env=env,
                 priority_val=priority.value,
                 global_config=global_config,

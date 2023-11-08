@@ -14,18 +14,15 @@ import yaml
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import ValidationError
 from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private import api as _private_api
-from ray.serve._private.common import ServeDeployMode
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_graph_build import build as pipeline_build
@@ -232,11 +229,9 @@ def start(
 
 
 @cli.command(
-    short_help="Deploy Serve application(s) from a YAML config file.",
+    short_help="Deploy Serve applications from a YAML config file.",
     help=(
-        "This supports both configs of the format ServeApplicationSchema, which "
-        "deploys a single application, as well as ServeDeploySchema, which deploys "
-        "multiple applications.\n\n"
+        "This supported config format is ServeDeploySchema. "
         "This call is async; a successful response only indicates that the "
         "request was sent to the Ray cluster successfully. It does not mean "
         "the the deployments have been deployed/updated.\n\n"
@@ -260,32 +255,8 @@ def deploy(config_file_name: str, address: str):
     with open(config_file_name, "r") as config_file:
         config = yaml.safe_load(config_file)
 
-    try:
-        ServeDeploySchema.parse_obj(config)
-        ServeSubmissionClient(address).deploy_applications(config)
-    except ValidationError as v2_err:
-        try:
-            ServeApplicationSchema.parse_obj(config)
-            cli_logger.warning(
-                "The single-application config format is deprecated and will be "
-                "removed in a future version. Please switch to using the multi-"
-                "application config (see "
-                "https://docs.ray.io/en/latest/serve/multi-app.html)."
-            )
-            ServeSubmissionClient(address).deploy_application(config)
-        except ValidationError as v1_err:
-            # If we find the field "applications" in the config, most likely
-            # user is trying to deploy a multi-application config
-            if "applications" in config:
-                raise v2_err from None
-            else:
-                raise v1_err from None
-        except RuntimeError as e:
-            # Error deploying application
-            raise e from None
-    except RuntimeError:
-        # Error deploying application
-        raise
+    ServeDeploySchema.parse_obj(config)
+    ServeSubmissionClient(address).deploy_applications(config)
 
     cli_logger.success(
         "\nSent deploy request successfully.\n "
@@ -295,7 +266,7 @@ def deploy(config_file_name: str, address: str):
 
 
 @cli.command(
-    short_help="Run Serve application(s).",
+    short_help="Run Serve applications.",
     help=(
         "Runs an application from the specified import path (e.g., my_script:"
         "app) or application(s) from a YAML config.\n\n"
@@ -378,15 +349,6 @@ def deploy(config_file_name: str, address: str):
     ),
 )
 @click.option(
-    "--gradio",
-    is_flag=True,
-    help=(
-        "Whether to enable gradio visualization of deployment graph. The "
-        "visualization can only be used with deployment graphs with DAGDriver "
-        "as the ingress deployment."
-    ),
-)
-@click.option(
     "--reload",
     "-r",
     is_flag=True,
@@ -408,7 +370,6 @@ def run(
     host: str,
     port: int,
     blocking: bool,
-    gradio: bool,
     reload: bool,
 ):
     if host is not None or port is not None:
@@ -416,11 +377,6 @@ def run(
             "Specifying `--host` and `--port` to `serve run` is deprecated and will be "
             "removed in a future version. To specify custom HTTP options, use the "
             "`serve start` command."
-        )
-    if gradio:
-        cli_logger.warning(
-            "The gradio visualization tool is deprecated because the DAG API is "
-            "deprecated. Both will be removed in a future version."
         )
 
     sys.path.insert(0, app_dir)
@@ -444,52 +400,20 @@ def run(
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
 
-            try:
-                config = ServeDeploySchema.parse_obj(config_dict)
-                if gradio:
-                    raise click.ClickException(
-                        "The gradio visualization feature of `serve run` does not "
-                        "support multiple applications."
-                    )
+            config = ServeDeploySchema.parse_obj(config_dict)
 
-                # If host or port is specified as a CLI argument, they should take
-                # priority over config values.
-                if host is None:
-                    if "http_options" in config_dict:
-                        host = config_dict["http_options"].get(
-                            "host", DEFAULT_HTTP_HOST
-                        )
-                    else:
-                        host = DEFAULT_HTTP_HOST
-                if port is None:
-                    if "http_options" in config_dict:
-                        port = config_dict["http_options"].get(
-                            "port", DEFAULT_HTTP_PORT
-                        )
-                    else:
-                        port = DEFAULT_HTTP_PORT
-            except ValidationError as v2_err:
-                try:
-                    config = ServeApplicationSchema.parse_obj(config_dict)
-                    cli_logger.warning(
-                        "The single-application config format is deprecated and will "
-                        "be removed in a future version. Please switch to using the "
-                        "multi-application config (see "
-                        "https://docs.ray.io/en/latest/serve/multi-app.html)."
-                    )
-                    # If host or port is specified as a CLI argument, they should take
-                    # priority over config values.
-                    if host is None:
-                        host = config_dict.get("host", DEFAULT_HTTP_HOST)
-                    if port is None:
-                        port = config_dict.get("port", DEFAULT_HTTP_PORT)
-                except ValidationError as v1_err:
-                    # If we find the field "applications" in the config, most likely
-                    # user is trying to deploy a multi-application config
-                    if "applications" in config_dict:
-                        raise v2_err from None
-                    else:
-                        raise v1_err from None
+            # If host or port is specified as a CLI argument, they should take
+            # priority over config values.
+            if host is None:
+                if "http_options" in config_dict:
+                    host = config_dict["http_options"].get("host", DEFAULT_HTTP_HOST)
+                else:
+                    host = DEFAULT_HTTP_HOST
+            if port is None:
+                if "http_options" in config_dict:
+                    port = config_dict["http_options"].get("port", DEFAULT_HTTP_PORT)
+                else:
+                    port = DEFAULT_HTTP_PORT
 
     else:
         is_config = False
@@ -539,22 +463,13 @@ def run(
 
     try:
         if is_config:
-            client.deploy_apps(config, _blocking=gradio)
+            client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
-            if gradio:
-                handle = serve.get_deployment_handle(
-                    "DAGDriver", app_name=SERVE_DEFAULT_APP_NAME
-                )
         else:
-            handle = serve.run(app, host=host, port=port)
+            serve.run(app, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")
 
-        if gradio:
-            from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
-
-            visualizer = GraphVisualizer()
-            visualizer.visualize_with_gradio(handle)
-        elif reload:
+        if reload:
             if not blocking:
                 raise click.ClickException(
                     "The --non-blocking option conflicts with the --reload option."
@@ -600,7 +515,7 @@ def run(
         sys.exit()
 
 
-@cli.command(help="Gets the current config(s) of Serve application(s) on the cluster.")
+@cli.command(help="Gets the current configs of Serve applications on the cluster.")
 @click.option(
     "--address",
     "-a",
@@ -625,14 +540,6 @@ def config(address: str, name: Optional[str]):
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
-
-    if serve_details.deploy_mode != ServeDeployMode.MULTI_APP:
-        if name is not None:
-            raise click.ClickException(
-                "A single-app config was deployed to this cluster, so fetching an "
-                "application config by name is not allowed."
-            )
-        name = SERVE_DEFAULT_APP_NAME
 
     # Fetch app configs for all live applications on the cluster
     if name is None:
@@ -754,7 +661,7 @@ def shutdown(address: str, yes: bool):
             abort=True,
         )
 
-    ServeSubmissionClient(address).delete_application()
+    ServeSubmissionClient(address).delete_applications()
 
     cli_logger.success(
         "Sent shutdown request; applications will be deleted asynchronously."
@@ -779,15 +686,6 @@ def shutdown(address: str, yes: bool):
     help=APP_DIR_HELP_STR,
 )
 @click.option(
-    "--kubernetes_format",
-    "-k",
-    is_flag=True,
-    help=(
-        "Print a single-application Serve config in Kubernetes format. Must be used "
-        "with the flag `--single-app`."
-    ),
-)
-@click.option(
     "--output-path",
     "-o",
     default=None,
@@ -796,16 +694,6 @@ def shutdown(address: str, yes: bool):
         "Local path where the output config will be written in YAML format. "
         "If not provided, the config will be printed to STDOUT."
     ),
-)
-@click.option(
-    "--multi-app",
-    is_flag=True,
-    help="Generate a multi-application config from multiple targets.",
-)
-@click.option(
-    "--single-app",
-    is_flag=True,
-    help="[DEPRECATED] Generate a single-application config from one target.",
 )
 @click.option(
     "--grpc-servicer-functions",
@@ -818,27 +706,12 @@ def shutdown(address: str, yes: bool):
 def build(
     import_paths: Tuple[str],
     app_dir: str,
-    kubernetes_format: bool,
     output_path: Optional[str],
-    # This is no longer used, it is only kept here to avoid breaking existing CLI usage
-    multi_app: bool,
-    single_app: bool,
     grpc_servicer_functions: List[str],
 ):
-    # Add logger messages for users who are still using --multi-app
-    if multi_app:
-        cli_logger.warning(
-            "`serve build` now generates a config in multi-application format by "
-            "default. The flag `--multi-app` is now redundant and will be removed soon."
-        )
-        if single_app:
-            raise click.ClickException(
-                "You cannot specify both `--single-app` and `--multi-app`."
-            )
-
     sys.path.insert(0, app_dir)
 
-    def build_app_config(import_path: str, _kubernetes_format: bool, name: str = None):
+    def build_app_config(import_path: str, name: str = None):
         app: Application = import_attr(import_path)
         if not isinstance(app, Application):
             raise TypeError(
@@ -848,124 +721,58 @@ def build(
         deployments = pipeline_build(app, name)
         ingress = get_and_validate_ingress_deployment(deployments)
         schema = ServeApplicationSchema(
+            name=name,
+            route_prefix=ingress.route_prefix,
             import_path=import_path,
             runtime_env={},
-            deployments=[deployment_to_schema(d, single_app) for d in deployments],
+            deployments=[
+                deployment_to_schema(d, include_route_prefix=False) for d in deployments
+            ],
         )
-        # If building a multi-app config, auto-generate names for each application.
-        # Also, each ServeApplicationSchema should not have host and port set, it should
-        # be set at the top level of ServeDeploySchema.
-        if single_app:
-            schema.host = "0.0.0.0"
-            schema.port = 8000
-        else:
-            schema.name = name
-            schema.route_prefix = ingress.route_prefix
 
-        if _kubernetes_format:
-            return schema.kubernetes_dict(exclude_unset=True)
-        else:
-            return schema.dict(exclude_unset=True)
+        return schema.dict(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
         f"on Ray v{ray.__version__}.\n\n"
     )
 
-    if single_app:
-        cli_logger.warning(
-            "The single-application config format is deprecated and will be removed in "
-            "a future version. Please switch to using the multi-application config "
-            "(see https://docs.ray.io/en/latest/serve/multi-app.html)."
-        )
-        if len(import_paths) > 1:
-            raise click.ClickException(
-                "Got more than one argument. Only one import path is accepted when "
-                "using the flag `--single-app`."
-            )
+    app_configs = []
+    for app_index, import_path in enumerate(import_paths):
+        app_configs.append(build_app_config(import_path, name=f"app{app_index + 1}"))
 
-        config_str += yaml.dump(
-            build_app_config(
-                import_paths[0], kubernetes_format, SERVE_DEFAULT_APP_NAME
-            ),
-            Dumper=ServeApplicationSchemaDumper,
-            default_flow_style=False,
-            sort_keys=False,
-        )
-    else:
-        if kubernetes_format:
-            raise click.ClickException(
-                "Multi-application config does not support Kubernetes format."
-            )
+    deploy_config = {
+        "proxy_location": "EveryNode",
+        "http_options": {
+            "host": "0.0.0.0",
+            "port": 8000,
+        },
+        "grpc_options": {
+            "port": DEFAULT_GRPC_PORT,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
+        "applications": app_configs,
+    }
 
-        app_configs = []
-        for app_index, import_path in enumerate(import_paths):
-            app_configs.append(
-                build_app_config(import_path, False, f"app{app_index + 1}")
-            )
+    # Parse + validate the set of application configs
+    ServeDeploySchema.parse_obj(deploy_config)
 
-        deploy_config = {
-            "proxy_location": "EveryNode",
-            "http_options": {
-                "host": "0.0.0.0",
-                "port": 8000,
-            },
-            "grpc_options": {
-                "port": DEFAULT_GRPC_PORT,
-                "grpc_servicer_functions": grpc_servicer_functions,
-            },
-            "applications": app_configs,
-        }
-
-        # Parse + validate the set of application configs
-        ServeDeploySchema.parse_obj(deploy_config)
-
-        config_str += yaml.dump(
-            deploy_config,
-            Dumper=ServeDeploySchemaDumper,
-            default_flow_style=False,
-            sort_keys=False,
-        )
-        cli_logger.info(
-            "The auto-generated application names default to `app1`, `app2`, ... etc. "
-            "Rename as necessary.\n",
-        )
+    config_str += yaml.dump(
+        deploy_config,
+        Dumper=ServeDeploySchemaDumper,
+        default_flow_style=False,
+        sort_keys=False,
+    )
+    cli_logger.info(
+        "The auto-generated application names default to `app1`, `app2`, ... etc. "
+        "Rename as necessary.\n",
+    )
 
     # Ensure file ends with only one newline
     config_str = config_str.rstrip("\n") + "\n"
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)
-
-
-class ServeApplicationSchemaDumper(yaml.SafeDumper):
-    """YAML dumper object with custom formatting for ServeApplicationSchema.
-
-    Reformat config to follow this spacing:
-    ---------------------------------------
-
-    import_path: example.path
-
-    runtime_env: {}
-
-    deployments:
-
-    - name: val1
-        ...
-
-    - name: val2
-        ...
-    """
-
-    def write_line_break(self, data=None):
-        # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
-        super().write_line_break(data)
-
-        # Indents must be at most 2 to ensure that only the top 2 levels of
-        # the config file have line breaks between them. The top 2 levels include
-        # import_path, runtime_env, deployments, and all entries of deployments.
-        if len(self.indents) <= 2:
-            super().write_line_break()
 
 
 class ServeDeploySchemaDumper(yaml.SafeDumper):

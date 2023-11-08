@@ -234,7 +234,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InstallEventListeners();
 
   // Init autoscaling manager
-  InitGcsAutoscalerStateManager();
+  InitGcsAutoscalerStateManager(gcs_init_data);
 
   // Start RPC server when all tables have finished loading initial
   // data.
@@ -647,7 +647,7 @@ void GcsServer::InitGcsWorkerManager() {
   rpc_server_.RegisterService(*worker_info_service_);
 }
 
-void GcsServer::InitGcsAutoscalerStateManager() {
+void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
   auto v2_enabled = std::to_string(RayConfig::instance().enable_autoscaler_v2());
   RAY_LOG(INFO) << "Autoscaler V2 enabled: " << v2_enabled;
@@ -680,6 +680,7 @@ void GcsServer::InitGcsAutoscalerStateManager() {
                                                   *gcs_node_manager_,
                                                   *gcs_placement_group_manager_,
                                                   raylet_client_pool_);
+  gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
       main_service_, *gcs_autoscaler_state_manager_));
@@ -740,6 +741,7 @@ void GcsServer::InstallEventListeners() {
         gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
+        gcs_job_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
         pubsub_handler_->RemoveSubscriberFrom(node_id.Binary());
@@ -870,15 +872,15 @@ void GcsServer::TryGlobalGC() {
   // detections and under throttling are sent out (similar to
   // `NodeManager::WarnResourceDeadlock()`).
   if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
-    rpc::ResourcesData resources_data;
-    resources_data.set_should_global_gc(true);
+    syncer::CommandsSyncMessage commands_sync_message;
+    commands_sync_message.set_should_global_gc(true);
 
     auto msg = std::make_shared<syncer::RaySyncMessage>();
     msg->set_version(absl::GetCurrentTimeNanos());
     msg->set_node_id(kGCSNodeID.Binary());
     msg->set_message_type(syncer::MessageType::COMMANDS);
     std::string serialized_msg;
-    RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+    RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
     msg->set_sync_message(std::move(serialized_msg));
     ray_syncer_->BroadcastRaySyncMessage(std::move(msg));
     global_gc_throttler_->RunNow();

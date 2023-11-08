@@ -174,7 +174,7 @@ class RemoteFunction:
                 This is a dictionary mapping strings (resource names) to floats.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
-                See `ray.util.accelerators` for accelerator types.
+                See :ref:`accelerator types <accelerator_types>`.
             memory: The heap memory request in bytes for this task/actor,
                 rounded down to the nearest integer.
             object_store_memory: The object store memory request for actors only.
@@ -338,6 +338,11 @@ class RemoteFunction:
             # TODO(sang): This is a temporary private API.
             # Remove it when we migrate to the streaming generator.
             num_returns = ray._raylet.STREAMING_GENERATOR_RETURN
+        generator_backpressure_num_objects = task_options[
+            "_generator_backpressure_num_objects"
+        ]
+        if generator_backpressure_num_objects is None:
+            generator_backpressure_num_objects = -1
 
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
@@ -425,6 +430,7 @@ class RemoteFunction:
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
+                generator_backpressure_num_objects,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
