@@ -419,7 +419,7 @@ message RemoveVirtualClusterReply {
   GcsStatus status = 1;
 }
 
-service VirtualClusterGcsService {
+service VirtualClusterInfoGcsService {
   // Create virtual cluster via gcs service.
   rpc CreateVirtualCluster(CreateVirtualClusterRequest)
       returns (CreateVirtualClusterReply);
