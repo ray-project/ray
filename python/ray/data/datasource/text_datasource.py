@@ -14,17 +14,27 @@ class TextDatasource(FileBasedDatasource):
 
     _COLUMN_NAME = "text"
 
-    def _read_file(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
-    ) -> List[str]:
+    def __init__(
+        self,
+        paths: List[str],
+        *,
+        drop_empty_lines: bool = False,
+        encoding: str = "utf-8",
+        **file_based_datasource_kwargs
+    ):
+        super().__init__(paths, **file_based_datasource_kwargs)
+
+        self.drop_empty_lines = drop_empty_lines
+        self.encoding = encoding
+
+    def _read_file(self, f: "pyarrow.NativeFile", path: str) -> List[str]:
         data = f.readall()
 
         builder = DelegatingBlockBuilder()
 
-        drop_empty_lines = reader_args["drop_empty_lines"]
-        lines = data.decode(reader_args["encoding"]).split("\n")
+        lines = data.decode(self.encoding).split("\n")
         for line in lines:
-            if drop_empty_lines and line.strip() == "":
+            if self.drop_empty_lines and line.strip() == "":
                 continue
             item = {self._COLUMN_NAME: line}
             builder.add(item)

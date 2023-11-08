@@ -240,6 +240,29 @@ TEST_P(GlobalStateAccessorTest, TestWorkerTable) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 2);
 }
 
+TEST_P(GlobalStateAccessorTest, TestUpdateWorkerDebuggerPort) {
+  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
+  // Add worker info
+  auto worker_table_data = Mocker::GenWorkerTableData();
+  worker_table_data->mutable_worker_address()->set_worker_id(
+      WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
+
+  // Get worker info
+  auto worker_id = WorkerID::FromBinary(worker_table_data->worker_address().worker_id());
+  ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
+
+  // Update the worker debugger port
+  auto debugger_port = 10000;
+  ASSERT_TRUE(global_state_->UpdateWorkerDebuggerPort(worker_id, debugger_port));
+
+  // Verify the debugger port
+  auto another_worker_table_data = Mocker::GenWorkerTableData();
+  auto worker_info = global_state_->GetWorkerInfo(worker_id);
+  ASSERT_TRUE(another_worker_table_data->ParseFromString(*worker_info));
+  ASSERT_EQ(another_worker_table_data->debugger_port(), debugger_port);
+}
+
 // TODO(sang): Add tests after adding asyncAdd
 TEST_P(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);

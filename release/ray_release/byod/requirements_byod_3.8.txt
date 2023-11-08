@@ -129,6 +129,10 @@ ale-py==0.8.1 \
     # via
     #   -r release/ray_release/byod/requirements_byod_3.8.in
     #   gym
+anyio==4.0.0 \
+    --hash=sha256:cfdb2b588b9fc25ede96d8db56ed50848b0b649dca3dd1df0b11f683bb9e0b5f \
+    --hash=sha256:f7ed51751b2c2add651e5747c891b47e26d2a21be5d32d9311dfe9692f3e5d7a
+    # via starlette
 anyscale==0.5.129 \
     --hash=sha256:18ecf870e789aefbda6afed0be058942d4b3311b544142a06e8f6a2aaa5a4622
     # via -r release/ray_release/byod/requirements_byod_3.8.in
@@ -606,7 +610,13 @@ entrypoints==0.4 \
 exceptiongroup==1.1.2 \
     --hash=sha256:12c3e887d6485d16943a309616de20ae5582633e0a2eda17f4e10fd61c1e8af5 \
     --hash=sha256:e346e69d186172ca7cf029c8c1d16235aa0e04035e5750b4b95039e65204328f
-    # via pytest
+    # via
+    #   anyio
+    #   pytest
+fastapi==0.103.0 \
+    --hash=sha256:4166732f5ddf61c33e9fa4664f73780872511e0598d4d5434b1816dc1e6d9421 \
+    --hash=sha256:61ab72c6c281205dd0cbaccf503e829a37e0be108d965ac223779a8479243665
+    # via -r release/ray_release/byod/requirements_byod_3.8.in
 fasteners==0.18 \
     --hash=sha256:1d4caf5f8db57b0e4107d94fd5a1d02510a450dced6ca77d1839064c1bacf20c \
     --hash=sha256:cb7c13ef91e0c7e4fe4af38ecaf6b904ec3f5ce0dda06d34924b6b74b869d953
@@ -940,6 +950,7 @@ idna==3.4 \
     --hash=sha256:814f528e8dead7d329833b91c5faa87d60bf71824cd12a7530b5526063d02cb4 \
     --hash=sha256:90b77e79eaa3eba6de819a0c442c0b4ceefc341a7a2ab77d7562bf49f425c5c2
     # via
+    #   anyio
     #   requests
     #   yarl
 importlib-metadata==6.8.0 \
@@ -1460,7 +1471,9 @@ pydantic==1.10.11 \
     --hash=sha256:f66d479cf7eb331372c470614be6511eae96f1f120344c25f3f9bb59fb1b5528 \
     --hash=sha256:fe429898f2c9dd209bd0632a606bddc06f8bce081bbd03d1c775a45886e2c1cb \
     --hash=sha256:ff44c5e89315b15ff1f7fdaf9853770b810936d6b01a7bcecaa227d2f8fe444f
-    # via anyscale
+    # via
+    #   anyscale
+    #   fastapi
 pygments==2.15.1 \
     --hash=sha256:8ace4d3c1dd481894b2005f560ead0f9f19ee64fe983366be1a21e171d12775c \
     --hash=sha256:db2db3deb4b4179f399a09054b023b6a586b76499d36965813c71aa8ed7b5fd1
@@ -1924,10 +1937,18 @@ smmap==5.0.0 \
     --hash=sha256:2aba19d6a040e78d8b09de5c57e96207b09ed71d8e55ce0959eeee6c8e190d94 \
     --hash=sha256:c840e62059cd3be204b0c9c9f74be2c09d5648eddd4580d9314c3ecde0b30936
     # via gitdb
+sniffio==1.3.0 \
+    --hash=sha256:e60305c5e5d314f5389259b7f22aaa33d8f7dee49763119234af3755c55b9101 \
+    --hash=sha256:eecefdce1e5bbfb7ad2eeaabf7c1eeb404d7757c379bd1f7e5cce9d8bf425384
+    # via anyio
 spinners==0.0.24 \
     --hash=sha256:1eb6aeb4781d72ab42ed8a01dcf20f3002bf50740d7154d12fb8c9769bf9e27f \
     --hash=sha256:2fa30d0b72c9650ad12bbe031c9943b8d441e41b4f5602b0ec977a19f3290e98
     # via halo
+starlette==0.27.0 \
+    --hash=sha256:6a6b0d042acb8d469a01eba54e9cda6cbd24ac602c4cd016723117d6a7e73b75 \
+    --hash=sha256:918416370e846586541235ccd38a474c08b80443ed31c578a418e2209b3eef91
+    # via fastapi
 tabulate==0.9.0 \
     --hash=sha256:0095b12bf5966de529c0feb1fa08671671b3368eec77d7ef7ab114be2c068b3c \
     --hash=sha256:024ca478df22e9340661486f85298cff5f6dcdba14f3813e8830015b9ed1948f
@@ -2038,8 +2059,10 @@ typing-extensions==4.5.0 \
     --hash=sha256:fb33085c39dd998ac16d1431ebc293a8b3eedd00fd4a32de0ff79002c19511b4
     # via
     #   ale-py
+    #   fastapi
     #   pydantic
     #   rich
+    #   starlette
     #   tensorflow
     #   typer
     #   wandb
