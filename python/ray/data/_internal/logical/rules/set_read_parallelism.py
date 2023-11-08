@@ -81,6 +81,7 @@ class SetReadParallelismRule(Rule):
     factor to split the output blocks of the read task, so that the following
     stage will have the desired parallelism.
     """
+
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         ops = [plan.dag]
 

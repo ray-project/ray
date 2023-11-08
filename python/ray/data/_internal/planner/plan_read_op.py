@@ -14,7 +14,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformFn,
 )
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.util import _autodetect_parallelism, _warn_on_high_parallelism
+from ray.data._internal.util import _warn_on_high_parallelism
 from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
