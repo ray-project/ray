@@ -274,7 +274,7 @@ class SingleAgentEpisode:
         # self.t = self.t_started = len(observations) - 1. Then
         # we add a single timestep. self.t += 1 and
         # self.t - self.t_started is 1, but len(rewards) is 100.
-        assert len(self.rewards) == (self.t - self.t_started)
+        # assert len(self.rewards) == (self.t - self.t_started)
 
         if len(self.extra_model_outputs) > 0:
             for k, v in self.extra_model_outputs.items():

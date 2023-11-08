@@ -31,6 +31,7 @@ class MultiAgentTestEnv(MultiAgentEnv):
         seed: Optional[int] = None,
         options: Optional[dict] = None,
     ) -> Tuple[MultiAgentDict, MultiAgentDict]:
+        # TODO (simon): Seed does not work. The results are always different.
         super().reset(seed=seed)
         self.t = 0
         # The number of agents that are ready at this timestep.
@@ -138,7 +139,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
         is_terminateds = []
         is_truncateds = []
         extra_model_outputs = []
-        states = []
         # Initialize observation and info.
         obs, info = env.reset(seed=0)
         observations.append(obs)
@@ -159,7 +159,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             infos.append(info)
             is_terminateds.append(is_terminated)
             is_truncateds.append(is_truncated)
-            states.append({agent_id: np.random.random() for agent_id in action})
+            states = {agent_id: np.random.random() for agent_id in action}
             extra_model_outputs.append(
                 {
                     agent_id: {"extra_1": np.random.random()}
@@ -204,7 +204,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             rewards=rewards[-10:],
             infos=infos[-11:],
             t_started=100,
-            states=states[-10:],
+            states=states,
             is_terminated=is_terminateds[-10:],
             is_truncated=is_truncateds[-10:],
             extra_model_outputs=extra_model_outputs[-10:],
@@ -301,6 +301,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
             self.assertEqual(len(episode.global_t_to_local_t[agent_id]), 1)
             self.assertEqual(episode.global_t_to_local_t[agent_id][0], 0)
 
+        # TODO (simon): Test the buffers and reward storage.
+
     def test_add_timestep(self):
         # Create an environment and add the initial observations, infos, and states.
         env = MultiAgentTestEnv()
@@ -386,6 +388,129 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertGreaterEqual(50, episode.agent_episodes["agent_1"].actions[-1])
         self.assertGreaterEqual(100, episode.agent_episodes["agent_5"].observations[-1])
         self.assertGreaterEqual(100, episode.agent_episodes["agent_5"].actions[-1])
+
+        # Now test, if agents that have never stepped are handled correctly.
+        # agent 5 will be the agent that never stepped.
+        observations = [
+            {"agent_1": 0, "agent_2": 0, "agent_3": 0},
+            {"agent_1": 1, "agent_3": 1, "agent_4": 1},
+            {"agent_2": 2, "agent_4": 2},
+        ]
+        actions = [
+            {"agent_1": 0, "agent_2": 0, "agent_3": 0},
+            {"agent_1": 1, "agent_3": 1, "agent_4": 1},
+        ]
+        rewards = [
+            {"agent_1": 1.0, "agent_3": 1.0, "agent_4": 1.0},
+            {"agent_2": 1.0, "agent_4": 1.0},
+        ]
+        infos = [
+            {"agent_1": {}, "agent_2": {}, "agent_3": {}},
+            {"agent_1": {}, "agent_3": {}, "agent_4": {}},
+            {"agent_2": {}, "agent_4": {}},
+        ]
+        is_terminated = [
+            {"__all__": False, "agent_1": False, "agent_3": False, "agent_4": False},
+            {"__all__": False, "agent_2": False, "agent_4": False},
+        ]
+        is_truncated = [
+            {"__all__": False, "agent_1": False, "agent_3": False, "agent_4": False},
+            {"__all__": False, "agent_2": False, "agent_4": False},
+        ]
+
+        episode = MultiAgentEpisode(
+            agent_ids=["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"],
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            infos=infos,
+            is_terminated=is_terminated,
+            is_truncated=is_truncated,
+        )
+        # Now test that intermediate rewards will get recorded and actions buffered.
+        action = {"agent_2": 3, "agent_4": 3}
+        observation = {"agent_1": 3, "agent_2": 3}
+        reward = {"agent_1": 1.0, "agent_2": 1.0, "agent_3": 1.0, "agent_5": 1.0}
+        infos = {"agent_1": {}, "agent_2": {}}
+        is_terminated = {k: False for k in observation.keys()}
+        is_terminated.update({"__all__": False})
+        is_truncated = {k: False for k in observation.keys()}
+        is_truncated.update({"__all__": False})
+        episode.add_timestep(
+            observation=observation,
+            action=action,
+            reward=reward,
+            info=info,
+            is_terminated=is_terminated,
+            is_truncated=is_truncated,
+        )
+        # Assert that the action buffer for agent 4 is full.
+        # Note, agent 4 acts, but receives no observation.
+        # Note also, all other buffers are always full, due to their defaults.
+        self.assertTrue(episode.agent_buffers["agent_4"]["actions"].full())
+        # Assert that the reward buffers of agents 3 and 5 are at 1.0.
+        self.assertEquals(episode.agent_buffers["agent_3"]["rewards"].get_nowait(), 1.0)
+        self.assertEquals(episode.agent_buffers["agent_5"]["rewards"].get_nowait(), 1.0)
+        # Now, refill the buffers.
+        episode.agent_buffers["agent_3"]["rewards"].put_nowait(1.0)
+        episode.agent_buffers["agent_5"]["rewards"].put_nowait(1.0)
+
+    def test_create_successor(self):
+        # Create an environment.
+        env = MultiAgentTestEnv()
+        # Create an empty episode.
+        episode_1 = MultiAgentEpisode(agent_ids=env._agent_ids)
+
+        # Generate initial observation and info.
+        obs, info = env.reset(seed=0)
+        episode_1.add_initial_observation(
+            initial_observation=obs,
+            initial_info=info,
+            initial_state={agent_id: np.random.random() for agent_id in env._agent_ids},
+        )
+        # Now, generate 100 samples.
+        for i in range(100):
+            action = {agent_id: i for agent_id in obs}
+            obs, reward, is_terminated, is_truncated, info = env.step(action)
+            episode_1.add_timestep(
+                observation=obs,
+                action=action,
+                reward=reward,
+                info=info,
+                is_terminated=is_terminated,
+                is_truncated=is_truncated,
+                state={agent_id: np.random.random() for agent_id in action},
+                extra_model_output={
+                    agent_id: {"extra": np.random.random(10)} for agent_id in action
+                },
+            )
+        # Assert that the episode has 100 timesteps.
+        self.assertEqual(episode_1.t, 100)
+
+        # Create a successor.
+        episode_2 = episode_1.create_successor()
+        # Assert that it has the same id.
+        self.assertEqual(episode_1.id_, episode_2.id_)
+        # Assert that the timestep starts at the end of the last episode.
+        self.assertTrue(episode_1.t == episode_2.t, episode_2.t_started)
+        # Assert that the last observation and info of `episode_1` is the first
+        # observation of `episode_2`.
+        for agent_id in obs:
+            self.assertEqual(
+                episode_1.agent_episodes[agent_id].observations[-1],
+                episode_2.agent_episodes[agent_id].observations[0],
+            )
+            self.assertEqual(
+                episode_1.agent_episodes[agent_id].infos[-1],
+                episode_2.agent_episodes[agent_id].infos[0],
+            )
+        # Assert that the last states in `episode_1` are identical with the first one
+        # in `episode_2`.
+        for agent_id in action:
+            self.assertEqual(
+                episode_1.agent_episodes[agent_id].states,
+                episode_2.agent_episodes[agent_id].states,
+            )
 
 
 if __name__ == "__main__":

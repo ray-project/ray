@@ -235,8 +235,11 @@ class MultiAgentEpisode:
     # Then also add possibility to get __all__ obs (or None)
     # Write many test cases (numbered obs).
     def get_observations(
-        self, indices: Union[int, List[int]] = -1, global_ts: bool = True
-    ) -> MultiAgentDict:
+        self,
+        indices: Union[int, List[int]] = -1,
+        global_ts: bool = True,
+        as_list: bool = False,
+    ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
         """Gets observations for all agents that stepped in the last timesteps.
 
         Note that observations are only returned for agents that stepped
@@ -255,12 +258,20 @@ class MultiAgentEpisode:
             timestep, observations are returned (i.e. not all agent ids are
             necessarily in the keys).
         """
-
-        return self._getattr_by_index("observations", indices, global_ts)
+        return self._getattr_by_index(
+            "observations",
+            indices,
+            has_initial_value=True,
+            global_ts=global_ts,
+            as_list=as_list,
+        )
 
     def get_actions(
-        self, indices: Union[int, List[int]] = -1, global_ts: bool = True
-    ) -> MultiAgentDict:
+        self,
+        indices: Union[int, List[int]] = -1,
+        global_ts: bool = True,
+        as_list: bool = False,
+    ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
         """Gets actions for all agents that stepped in the last timesteps.
 
         Note that actions are only returned for agents that stepped
@@ -280,11 +291,14 @@ class MultiAgentEpisode:
             necessarily in the keys).
         """
 
-        return self._getattr_by_index("actions", indices, global_ts)
+        return self._getattr_by_index("actions", indices, global_ts, as_list)
 
     def get_rewards(
-        self, indices: Union[int, List[int]] = -1, global_ts: bool = True
-    ) -> MultiAgentDict:
+        self,
+        indices: Union[int, List[int]] = -1,
+        global_ts: bool = True,
+        as_list: bool = False,
+    ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
         """Gets rewards for all agents that stepped in the last timesteps.
 
         Note that rewards are only returned for agents that stepped
@@ -303,11 +317,14 @@ class MultiAgentEpisode:
             timestep, rewards are returned (i.e. not all agent ids are
             necessarily in the keys).
         """
-        return self._getattr_by_index("rewards", indices, global_ts)
+        return self._getattr_by_index("rewards", indices, global_ts, as_list)
 
     def get_infos(
-        self, indices: Union[int, List[int]] = -1, global_ts: bool = True
-    ) -> MultiAgentDict:
+        self,
+        indices: Union[int, List[int]] = -1,
+        global_ts: bool = True,
+        as_list: bool = False,
+    ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
         """Gets infos for all agents that stepped in the last timesteps.
 
         Note that infos are only returned for agents that stepped
@@ -326,11 +343,41 @@ class MultiAgentEpisode:
             timestep, infos are returned (i.e. not all agent ids are
             necessarily in the keys).
         """
-        return self._getattr_by_index("infos", indices, global_ts)
+        return self._getattr_by_index(
+            "infos",
+            indices,
+            has_initial_value=True,
+            global_ts=global_ts,
+            as_list=as_list,
+        )
+
+    def get_terminateds(self) -> MultiAgentDict:
+        """Gets the terminateds at given indices."""
+        terminateds = {
+            agent_id: self.agent_episodes[agent_id].is_terminated
+            for agent_id in self._agent_ids
+        }
+        terminateds.update({"__all__": self.is_terminated})
+        return terminateds
+
+    def get_truncateds(self) -> MultiAgentDict:
+        truncateds = {
+            agent_id: self.agent_episodes[agent_id].is_truncated
+            for agent_id in self._agent_ids
+        }
+        truncateds.update({"__all__": self.is_terminated})
+        return truncateds
+
+    def get_states(self) -> MultiAgentDict:
+        """Gets all agent states."""
+        return {
+            agent_id: self.agent_episodes[agent_id].states
+            for agent_id in self._agent_ids
+        }
 
     def get_extra_model_outputs(
         self, indices: Union[int, List[int]] = -1, global_ts: bool = True
-    ) -> MultiAgentDict:
+    ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
         """Gets extra model outputs for all agents that stepped in the last timesteps.
 
         Note that extra model outputs are only returned for agents that stepped
@@ -382,7 +429,9 @@ class MultiAgentEpisode:
         # TODO (simon): After clearing with sven for initialization of timesteps
         # this might be removed.
         if len(self.global_t_to_local_t) == 0:
-            self.global_t_to_local_t = {agent_id: [] for agent_id in self._agent_ids}
+            self.global_t_to_local_t = {
+                agent_id: _IndexMapping() for agent_id in self._agent_ids
+            }
 
         # Note that we store the render images into the `MultiAgentEpisode`
         # instead into each `SingleAgentEpisode`.
@@ -452,6 +501,7 @@ class MultiAgentEpisode:
 
         # TODO (sven, simon): Wilol there still be an `__all__` that is
         # terminated or truncated?
+        # TODO (simon): Maybe allow user to not provide this and then all is False?
         self.is_terminated = (
             False if is_terminated is None else is_terminated["__all__"]
         )
@@ -462,7 +512,6 @@ class MultiAgentEpisode:
         if render_image is not None:
             self.render_images.append(render_image)
 
-        # TODO (simon): Handle `__all__` terminated and trucnated cases.
         # Add data to agent episodes.
         for agent_id in self._agent_ids:
             # Skip agents that have been terminated or truncated.
@@ -691,23 +740,27 @@ class MultiAgentEpisode:
                     )
                 # The agent is still alive.
                 else:
+                    # TODO (sven, simon): Check, if this should stay like this. This
+                    # enables agents that have never stepped to collect rewards.
+
                     # First check, if the agent had already an intiial observation.
-                    if len(self.agent_episodes[agent_id].observations) > 0:
-                        # If the agent received an reward (triggered by actions of
-                        # other agents) we collect it and add it to the one in the
-                        # buffer.
-                        # TODO (sven, simon): Agents could have had already rewards
-                        # before the their initial observation, .e.g. cooperation
-                        # games.
-                        if agent_id in reward:
-                            self.agent_buffers[agent_id]["rewards"].put_nowait(
-                                self.agent_buffers[agent_id]["rewards"].get_nowait()
-                                + reward[agent_id]
-                            )
-                            # Add to the global reward list.
-                            self.global_rewards[agent_id].append(reward[agent_id])
-                            # Add also to the global reward timestep mapping.
-                            self.global_rewards_t[agent_id].append(self.t)
+                    # if len(self.agent_episodes[agent_id].observations) > 0:
+
+                    # If the agent received an reward (triggered by actions of
+                    # other agents) we collect it and add it to the one in the
+                    # buffer.
+                    # TODO (sven, simon): Agents could have had already rewards
+                    # before the their initial observation, .e.g. cooperation
+                    # games.
+                    if agent_id in reward:
+                        self.agent_buffers[agent_id]["rewards"].put_nowait(
+                            self.agent_buffers[agent_id]["rewards"].get_nowait()
+                            + reward[agent_id]
+                        )
+                        # Add to the global reward list.
+                        self.global_rewards[agent_id].append(reward[agent_id])
+                        # Add also to the global reward timestep mapping.
+                        self.global_rewards_t[agent_id].append(self.t)
             # CASE 4: Observation and action.
             # We have an observation and an action. Then we can simply add the
             # complete information to the episode.
@@ -731,7 +784,7 @@ class MultiAgentEpisode:
                     action[agent_id],
                     reward[agent_id],
                     info=None if agent_id not in info else info[agent_id],
-                    state=None if agent_id not in state else state[agent_id],
+                    state=None if state is None else state[agent_id],
                     # TODO (simon): Check, if case checking is necessary here.
                     # This would even insure against user errors in the env.
                     is_terminated=agent_is_terminated,
@@ -791,18 +844,28 @@ class MultiAgentEpisode:
         assert not self.is_done
 
         # Get the last multi-agent observation and info.
-        observations = self.get_observations()
-        infos = self.get_infos()
+        observations = self.get_observations(as_list=True)
+        infos = self.get_infos(as_list=True)
+        states = self.get_states()
+        is_terminateds = self.get_terminateds()
+        is_truncateds = self.get_truncateds()
         # It is more safe to use here a list of episode ids instead of
         # calling `create_successor()` as we need as the single source
         # of truth always the `global_t_to_local_t` timestep mapping.
+        # TODO (sven, simon): Maybe we better create an episode with only the
+        # agent that are still alive.
         return MultiAgentEpisode(
-            id=self.id_,
+            id_=self.id_,
+            agent_ids=self._agent_ids,
             agent_episode_ids={
-                agent_id: agent_eps.id_ for agent_id, agent_eps in self.agent_episodes
+                agent_id: agent_eps.id_
+                for agent_id, agent_eps in self.agent_episodes.items()
             },
             observations=observations,
             infos=infos,
+            is_terminated=[is_terminateds],
+            is_truncated=[is_truncateds],
+            states=states,
             t_started=self.t,
         )
 
@@ -1023,15 +1086,7 @@ class MultiAgentEpisode:
                 None if infos is None else self._get_single_agent_data(agent_id, infos)
             )
             agent_states = (
-                None
-                if states is None
-                else self._get_single_agent_data(
-                    agent_id,
-                    states,
-                    use_global_to_to_local_t=False,
-                    end_index=-1,
-                    shift=0,
-                )
+                None if states is None or agent_id not in states else states[agent_id]
             )
             agent_extra_model_outputs = (
                 None
@@ -1077,14 +1132,9 @@ class MultiAgentEpisode:
             ):
                 # Assert then that the other data is in order.
                 if agent_states:
-                    assert len(agent_states) == len(
-                        agent_actions
-                    ), f"Agent {agent_id} has not as many hidden states as actions."
-                    # Put the last state into the buffer.
+                    # Put the last states into the buffer.
                     self.agent_buffers[agent_id]["states"].get_nowait()
-                    self.agent_buffers[agent_id]["states"].put_nowait(
-                        agent_states.pop()
-                    )
+                    self.agent_buffers[agent_id]["states"].put_nowait(agent_states)
                 if agent_extra_model_outputs:
                     assert len(agent_extra_model_outputs) == len(
                         agent_actions
@@ -1146,27 +1196,50 @@ class MultiAgentEpisode:
         self,
         attr: str = "observations",
         indices: Union[int, List[int]] = -1,
+        has_initial_value=False,
         global_ts: bool = True,
+        as_list: bool = False,
     ) -> MultiAgentDict:
         # First for global_ts = True:
         if global_ts:
             # Check, if the indices are iterable.
             if isinstance(indices, list):
-                indices = [self.t + (idx if idx < 0 else idx) for idx in indices]
+                indices = [
+                    self.t + (idx + int(has_initial_value) if idx < 0 else idx)
+                    for idx in indices
+                ]
             else:
-                indices = [self.t + indices] if indices < 0 else [indices]
-
-            return {
-                agent_id: list(
-                    map(
-                        getattr(agent_eps, attr).__getitem__,
-                        self.global_t_to_local_t[agent_id].find_indices(indices),
-                    )
+                indices = (
+                    [self.t + indices + int(has_initial_value)]
+                    if indices < 0
+                    else [indices]
                 )
-                for agent_id, agent_eps in self.agent_episodes.items()
-                # Only include agent data for agents that stepped.
-                if len(self.global_t_to_local_t[agent_id].find_indices(indices)) > 0
-            }
+
+            # If a list should be returned.
+            if as_list:
+                return [
+                    {
+                        agent_id: getattr(agent_eps, attr)[
+                            self.global_t_to_local_t[agent_id].find_indices([idx])[0]
+                        ]
+                        for agent_id, agent_eps in self.agent_episodes.items()
+                        if self.global_t_to_local_t[agent_id].find_indices([idx])
+                    }
+                    for idx in indices
+                ]
+            # Otherwise we return a dictionary.
+            else:
+                {
+                    agent_id: list(
+                        map(
+                            getattr(agent_eps, attr).__getitem__,
+                            self.global_t_to_local_t[agent_id].find_indices(indices),
+                        )
+                    )
+                    for agent_id, agent_eps in self.agent_episodes.items()
+                    # Only include agent data for agents that stepped.
+                    if len(self.global_t_to_local_t[agent_id].find_indices(indices)) > 0
+                }
         # Otherwise just look for the timesteps in the `SingleAgentEpisode`s
         # directly.
         else:

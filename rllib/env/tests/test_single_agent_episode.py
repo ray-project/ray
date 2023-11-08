@@ -211,7 +211,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Create a successor.
         episode_2 = episode_1.create_successor()
         # Assert that it has the same id.
-        self.assertTrue(episode_1.id_ == episode_2.id_)
+        self.assertEqual(episode_1.id_, episode_2.id_)
         # Assert that the timestep starts at the end of the last episode.
         self.assertTrue(episode_1.t == episode_2.t == episode_2.t_started)
         # Assert that the last observation of `episode_1` is the first of
@@ -230,7 +230,7 @@ class TestSingelAgentEpisode(unittest.TestCase):
             info=info,
             is_terminated=is_terminated,
             is_truncated=is_truncated,
-            extra_model_output={"extra": np.random.random(1)},
+            extra_model_output={"extra": np.random.random()},
         )
         # Assert that this does not change also the predecessor's data.
         self.assertFalse(len(episode_1.observations) == len(episode_2.observations))
