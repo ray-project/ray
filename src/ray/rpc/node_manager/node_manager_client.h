@@ -202,6 +202,11 @@ class NodeManagerWorkerClient
                          GetTaskFailureCause,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
+  ///Update the Label
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         UpdateLabel,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
  private:
   /// Constructor.

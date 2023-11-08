@@ -359,6 +359,15 @@ message DrainRayletReply {
   bool is_accepted = 1;
 }
 
+
+message UpdateLabelRequest{
+  // New key-value labels of this node.
+  map<string, string> huili = 1;
+
+}
+
+message UpdateLabelReply{}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage.
@@ -424,4 +433,5 @@ service NodeManagerService {
   // Gets the task execution result. May contain a result if
   // the task completed in error.
   rpc GetTaskFailureCause(GetTaskFailureCauseRequest) returns (GetTaskFailureCauseReply);
+  rpc UpdateLabel(UpdateLabelRequest) returns(UpdateLabelReply);
 }

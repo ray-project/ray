@@ -2683,6 +2683,20 @@ void NodeManager::HandleGlobalGC(rpc::GlobalGCRequest request,
   TriggerGlobalGC();
 }
 
+void NodeManager::HandleUpdateLabel(rpc::UpdateLabelRequest request,
+                                       rpc::UpdateLabelReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+    // Update node labels when node added.
+
+    absl::flat_hash_map<std::string, std::string> labels(request.huili().begin(),
+                                                       request.huili().end());
+    cluster_resource_scheduler_->GetLocalResourceManager().update_label(labels);
+
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+                                       
+}
+
+
 bool NodeManager::TryLocalGC() {
   // If plasma store is under high pressure, we should try to schedule a global gc.
   bool plasma_high_pressure =

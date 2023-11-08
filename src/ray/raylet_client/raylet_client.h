@@ -199,7 +199,12 @@ class RayletClientInterface : public PinObjectsInterface,
       const std::string &reason_message,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
+  virtual void UpdateLabel(
+      std::unordered_map<std::string, std::string> &huili,
+      const rpc::ClientCallback<rpc::UpdateLabelReply> &callback)=0;
+
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
+
 };
 
 namespace raylet {
@@ -483,6 +488,11 @@ class RayletClient : public RayletClientInterface {
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;
+      
+  void UpdateLabel(
+      
+      std::unordered_map<std::string, std::string> &labels,
+      const rpc::ClientCallback<rpc::UpdateLabelReply> &callback) override;
 
   void NotifyGCSRestart(
       const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override;

@@ -536,6 +536,15 @@ void raylet::RayletClient::UpdateResourceUsage(
   grpc_client_->UpdateResourceUsage(request, callback);
 }
 
+
+void raylet::RayletClient::UpdateLabel(
+    std::unordered_map<std::string, std::string>  &huili,
+    const rpc::ClientCallback<rpc::UpdateLabelReply> &callback) {
+  rpc::UpdateLabelRequest request;
+  
+  grpc_client_->UpdateLabel(request, callback);
+}
+
 void raylet::RayletClient::GetResourceLoad(
     const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) {
   rpc::GetResourceLoadRequest request;
