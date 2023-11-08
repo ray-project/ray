@@ -2,7 +2,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union, Any
 from zlib import crc32
 
 from ray._private.pydantic_compat import (
@@ -71,7 +71,7 @@ class EncodingType(str, Enum):
 
 
 @PublicAPI(stability="alpha")
-class AcessLoggingType(str, Enum):
+class AccessLoggingType(str, Enum):
 
     ALL = "ALL"
     FILE_ONLY = "FILE_ONLY"
@@ -108,7 +108,7 @@ class LoggingConfig(BaseModel):
             "('/tmp/ray/session_latest/logs/serve/...')."
         ),
     )
-    access_log: Union[str, AcessLoggingType] = Field(
+    access_log: Union[str, AccessLoggingType] = Field(
         default="ALL",
         description=(
             "Configure how to access the Serve logs. Default to 'ALL' to enable "
@@ -128,12 +128,12 @@ class LoggingConfig(BaseModel):
         return v
 
     @validator("access_log")
-    def valida_acccess_log(cls, v):
+    def validate_access_log(cls, v):
 
-        if v not in list(AcessLoggingType):
+        if v not in list(AccessLoggingType):
             raise ValueError(
                 f"Got '{v}' for access_log. access_log must be one "
-                f"of {set(AcessLoggingType)}."
+                f"of {set(AccessLoggingType)}."
             )
 
         return v
@@ -156,13 +156,12 @@ class LoggingConfig(BaseModel):
         return v
 
     def _should_enable_stream_logging(self):
-        return self.access_log in [AcessLoggingType.ALL, AcessLoggingType.STREAM_ONLY]
+        return self.access_log in [AccessLoggingType.ALL, AccessLoggingType.STREAM_ONLY]
 
     def _should_enable_file_logging(self):
-        return self.access_log in [AcessLoggingType.ALL, AcessLoggingType.FILE_ONLY]
+        return self.access_log in [AccessLoggingType.ALL, AccessLoggingType.FILE_ONLY]
 
-    @property
-    def version(self):
+    def _compute_hash(self) -> int:
         return crc32(
             (
                 str(self.encoding)
@@ -171,6 +170,11 @@ class LoggingConfig(BaseModel):
                 + str(self.access_log)
             ).encode("utf-8")
         )
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, LoggingConfig):
+            return False
+        return self._compute_hash() == other._compute_hash()
 
 
 @PublicAPI(stability="stable")

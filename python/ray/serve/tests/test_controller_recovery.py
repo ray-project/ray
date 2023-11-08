@@ -433,15 +433,13 @@ def test_controller_crashes_with_logging_config(serve_instance):
 
     # Check the controller update
     def check_log_state():
-        log_state = ray.get(client._controller._get_logger_state.remote())
-        assert log_state["logging_config"].encoding == "JSON"
-        assert log_state["logging_config"].log_level == "DEBUG"
+        logging_config, _ = ray.get(client._controller._get_logging_config.remote())
+        assert logging_config.encoding == "JSON"
+        assert logging_config.log_level == "DEBUG"
         return True
 
     wait_for_condition(check_log_state, timeout=60)
-    log_file_path = ray.get(client._controller._get_logger_state.remote())[
-        "log_file_path"
-    ]
+    _, log_file_path = ray.get(client._controller._get_logging_config.remote())
     # DEBUG level check & JSON check
     check_log_file(
         log_file_path,
@@ -461,9 +459,7 @@ def test_controller_crashes_with_logging_config(serve_instance):
 
     # Check the controller log config
     wait_for_condition(check_log_state)
-    new_log_file_path = ray.get(client._controller._get_logger_state.remote())[
-        "log_file_path"
-    ]
+    _, new_log_file_path = ray.get(client._controller._get_logging_config.remote())
     assert new_log_file_path != log_file_path
     # Check again, make sure the logging config is recovered.
     check_log_file(new_log_file_path, ['.*"component_name":.*'])
@@ -477,7 +473,7 @@ def test_controller_crashes_with_logging_config(serve_instance):
     wait_for_condition(check_proxy_handle_in_controller)
     proxy_handles = ray.get(client._controller.get_proxies.remote())
     proxy_handle = list(proxy_handles.values())[0]
-    file_path = ray.get(proxy_handle._get_logger_state.remote())["log_file_path"]
+    _, file_path = ray.get(proxy_handle._get_logging_config.remote())
     # Send request, we should see json logging and debug log message in proxy log.
     resp = requests.get("http://127.0.0.1:8000")
     assert resp.status_code == 200

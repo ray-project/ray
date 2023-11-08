@@ -226,7 +226,7 @@ def configure_component_logger(
         )
         if RAY_SERVE_ENABLE_JSON_LOGGING:
             logger.warning(
-                "'RAY_SERVE_ENABLE_JSON_LOGGING' is going to be deprecated, please use "
+                "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
                 "'LoggingConfig' to enable json format."
             )
         if (

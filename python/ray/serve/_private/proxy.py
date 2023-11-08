@@ -1206,13 +1206,13 @@ class ProxyActor:
             logging_config=logging_config,
         )
 
-    def _get_logger_state(self) -> Dict:
-        """Test purpose, get the log information."""
+    def _get_logging_config(self) -> Tuple:
+        """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
-        return {"log_file_path": log_file_path}
+        return log_file_path
 
     def should_start_grpc_service(self) -> bool:
         """Determine whether gRPC service should be started.

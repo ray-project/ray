@@ -890,6 +890,9 @@ def build_serve_application(
         name: application name. If specified, application will be deployed
             without removing existing applications.
         args: Arguments to be passed to the application builder.
+        logging_config: The application logging config, if deployment logging
+            config is not set, application logging config will be applied to the
+            deployment logging config.
     Returns:
         Deploy arguments: a list of deployment arguments if application
             was built successfully, otherwise None.
@@ -963,6 +966,11 @@ def override_deployment_info(
     app_logging_config = config_dict.get("logging_config", None)
     deployment_override_options = config_dict.get("deployments", [])
 
+    # If application loggin config is set, apply to all existing deployment config
+    if app_logging_config:
+        for _, info in deployment_infos.items():
+            info.deployment_config.logging_config = app_logging_config
+
     # Override options for each deployment listed in the config.
     for options in deployment_override_options:
         deployment_name = options["name"]
@@ -1023,9 +1031,6 @@ def override_deployment_info(
         # Override deployment config options
         original_options = info.deployment_config.dict()
         options.pop("name", None)
-        # If deployment logging config is not set, apply the application logging config
-        if "logging_config" not in options and app_logging_config:
-            options["logging_config"] = app_logging_config
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
 
@@ -1040,9 +1045,4 @@ def override_deployment_info(
         ):
             deployment.route_prefix = app_route_prefix
 
-    # When there is no deployment entries and app logging config is set,
-    # apply app logging config to all existing deployment logging config.
-    if not deployment_override_options and app_logging_config:
-        for deployment in list(deployment_infos.values()):
-            deployment.deployment_config.logging_config = app_logging_config
     return deployment_infos

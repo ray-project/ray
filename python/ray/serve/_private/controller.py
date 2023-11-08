@@ -221,7 +221,7 @@ class ServeController:
     def reconfigure_system_logging_config(self, logging_config: LoggingConfig):
         if (
             self.logging_config
-            and self.logging_config.version == logging_config.version
+            and self.logging_config == logging_config
         ):
             return
         self.kv_store.put(LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(logging_config))
@@ -1014,14 +1014,13 @@ class ServeController:
                 "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
             )
 
-    def _get_logger_state(self) -> Dict:
-        """Test purpose, get the log information."""
+    def _get_logging_config(self) -> Tuple:
+        """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
-        return {"logging_config": self.logging_config, "log_file_path": log_file_path}
-
+        return self.logging_config, log_file_path
 
 @ray.remote(num_cpus=0)
 class ServeControllerAvatar:
