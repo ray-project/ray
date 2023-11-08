@@ -1,9 +1,9 @@
 import sys
+from typing import Dict
 
 import pytest
 
 import ray
-import ray.actor
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.client import ServeControllerClient
@@ -49,26 +49,18 @@ test_app = DummyDeployment.options(
 )
 
 
-def check_expected_num_replicas(
-    ingress_replicas: int, downstream_replicas: int
-) -> bool:
+def check_expected_num_replicas(deployment_to_num_replicas: Dict[str, int]) -> bool:
     status = serve.status()
     assert SERVE_DEFAULT_APP_NAME in status.applications
 
-    application = status.applications["default"]
+    application = status.applications[SERVE_DEFAULT_APP_NAME]
     assert application.status == ApplicationStatus.RUNNING
 
-    assert INGRESS_DEPLOYMENT_NAME in application.deployments
-    assert (
-        sum(application.deployments[INGRESS_DEPLOYMENT_NAME].replica_states.values())
-        == ingress_replicas
-    )
-
-    assert DOWNSTREAM_DEPLOYMENT_NAME in application.deployments
-    assert (
-        sum(application.deployments[DOWNSTREAM_DEPLOYMENT_NAME].replica_states.values())
-        == downstream_replicas
-    )
+    for name, num_replicas in deployment_to_num_replicas.items():
+        assert name in application.deployments
+        assert (
+            sum(application.deployments[name].replica_states.values()) == num_replicas
+        )
 
     return True
 
@@ -93,8 +85,10 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
     client.deploy_apps(config)
     wait_for_condition(
         check_expected_num_replicas,
-        ingress_replicas=1,
-        downstream_replicas=1,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: 1,
+            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: 1,
+        },
     )
 
     # Increase target_capacity to 50, ingress deployment should scale up.
@@ -102,8 +96,10 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
     client.deploy_apps(config)
     wait_for_condition(
         check_expected_num_replicas,
-        ingress_replicas=INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
-        downstream_replicas=DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
+            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+        },
     )
 
     # Increase target_capacity to 100, both should fully scale up.
@@ -111,8 +107,10 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
     client.deploy_apps(config)
     wait_for_condition(
         check_expected_num_replicas,
-        ingress_replicas=INGRESS_DEPLOYMENT_NUM_REPLICAS,
-        downstream_replicas=DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
+            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
+        },
     )
 
     # Finish rollout (remove target_capacity), should have no effect.
@@ -120,8 +118,10 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
     client.deploy_apps(config)
     wait_for_condition(
         check_expected_num_replicas,
-        ingress_replicas=INGRESS_DEPLOYMENT_NUM_REPLICAS,
-        downstream_replicas=DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
+            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
+        },
     )
 
 
@@ -138,8 +138,10 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
     client.deploy_apps(config)
     wait_for_condition(
         check_expected_num_replicas,
-        ingress_replicas=INGRESS_DEPLOYMENT_NUM_REPLICAS,
-        downstream_replicas=DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
+            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
+        },
     )
 
     # Decrease target_capacity to 50, both deployments should scale down.
@@ -147,8 +149,10 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
     client.deploy_apps(config)
     wait_for_condition(
         check_expected_num_replicas,
-        ingress_replicas=INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
-        downstream_replicas=DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
+            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+        },
     )
 
     # Decrease target_capacity to 0, both should fully scale down to zero.
@@ -156,8 +160,10 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
     client.deploy_apps(config)
     wait_for_condition(
         check_expected_num_replicas,
-        ingress_replicas=1,
-        downstream_replicas=1,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: 1,
+            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: 1,
+        },
     )
 
 
@@ -177,17 +183,22 @@ def test_controller_recover_target_capacity(
     client.deploy_apps(config)
     wait_for_condition(
         check_expected_num_replicas,
-        ingress_replicas=INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
-        downstream_replicas=DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
+            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+        },
     )
 
     ray.kill(client._controller, no_restart=False)
 
     # Verify that the target_capacity is recovered after the controller comes back.
     wait_for_condition(lambda: serve.status().target_capacity == 50.0)
-    assert check_expected_num_replicas(
-        ingress_replicas=INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
-        downstream_replicas=DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+    wait_for_condition(
+        check_expected_num_replicas,
+        deployment_to_num_replicas={
+            INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
+            DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
+        },
     )
 
 
